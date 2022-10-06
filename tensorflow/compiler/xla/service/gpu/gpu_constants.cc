@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
-#include "tensorflow/core/framework/allocator.h"
+
+#include "tensorflow/tsl/framework/allocator.h"
 
 namespace xla {
 namespace gpu {

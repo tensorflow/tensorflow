@@ -16,14 +16,14 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 
 // Converts arith.constant ops from freezing passes back to tf.Const ops.
 def ConvertArithConstToTfConst : Pat<
-  (Arith_ConstantOp:$res NonOpaqueElementsAttr:$value),
+  (Arith_ConstantOp:$res DenseElementsAttr:$value),
   (TF_ConstOp $value),
   [(AnyStaticShapeTensor $res)]>;
 

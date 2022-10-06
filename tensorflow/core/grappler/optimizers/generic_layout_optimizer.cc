@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -38,7 +37,7 @@ namespace {
 
 constexpr char kNHWC[] = "NHWC";
 constexpr char kNCHW[] = "NCHW";
-constexpr float kGPURatioThreshold = 0.5;
+constexpr float kVoltaGPURatioThreshold = 0.5;
 constexpr float kConvGPUFP16Threshold = 0.5;
 
 struct MutableNodeViewFormatter {
@@ -47,35 +46,27 @@ struct MutableNodeViewFormatter {
   }
 };
 
-struct GpuStats {
-  int num_gpus;
-  int num_voltas;
-  int num_amperes;
-};
-
-inline GpuStats GetNumGPUs(const Cluster& cluster) {
+inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
-  GpuStats gpu_stats;
-  gpu_stats.num_gpus = 0;
-  gpu_stats.num_voltas = 0;
-  gpu_stats.num_amperes = 0;
+  int num_gpus = 0;
+  int num_volta = 0;
   for (const auto& device : devices) {
     if (device.second.type() != kGPU) {
       continue;
     }
-    gpu_stats.num_gpus++;
+    num_gpus++;
     auto compute_capability_it =
         device.second.environment().find("architecture");
     if (compute_capability_it == device.second.environment().end()) {
       continue;
     }
     double compute_capability = 0.0;
-    if (absl::SimpleAtod(compute_capability_it->second, &compute_capability)) {
-      if (compute_capability >= 7.0) gpu_stats.num_voltas++;
-      if (compute_capability >= 8.0) gpu_stats.num_amperes++;
+    if (absl::SimpleAtod(compute_capability_it->second, &compute_capability) &&
+        compute_capability >= 7.0) {
+      num_volta++;
     }
   }
-  return gpu_stats;
+  return {num_gpus, num_volta};
 }
 
 inline bool NumConvOnDeviceWithDataTypeOverThreshold(
@@ -114,30 +105,21 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
 }
 
 inline std::pair<string, string> GetSrcAndDstDataFormats(
-    const TransposeContext& context, GpuStats gpu_stats) {
+    const TransposeContext& context, int num_gpus, int num_voltas) {
   string src_format = kNHWC;
   string dst_format = kNCHW;
 
   const bool is_NHWC_enforced =
       (!context.enforced_layout.empty() && context.enforced_layout == "NHWC");
-  const bool volta_ok =
-      (static_cast<float>(gpu_stats.num_voltas) /
-       static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
-  const bool ampere_ok =
-      (static_cast<float>(gpu_stats.num_amperes) /
-       static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
   const bool should_swap =
-      volta_ok &&
-      (NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF) ||
-       (ampere_ok && tensor_float_32_execution_enabled()));
+      ((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
+       kVoltaGPURatioThreshold) &&
+      NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF);
   // We swap only if NHWC is enforced or no layout is enforced and the devices
   // config meet the thresholds
   if (is_NHWC_enforced || (context.enforced_layout.empty() && should_swap)) {
     std::swap(src_format, dst_format);
   }
-
-  VLOG(2) << "Layout conversion of " << src_format << " to " << dst_format
-          << " will take place.";
 
   return {src_format, dst_format};
 }
@@ -440,18 +422,20 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
         absl::StrCat("Invalid value for enforced_layout: ", enforced_layout_,
                      ". Supported layouts: 'NHWC', 'NCHW'."));
   }
-  const auto gpu_stats = GetNumGPUs(*cluster);
+  const auto num_gpus_and_num_volta = GetNumGPUs(*cluster);
+  const int num_gpus = num_gpus_and_num_volta.first;
 
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   TransposeContext context;
   context.enforced_layout = enforced_layout_;
 
-  if (gpu_stats.num_gpus > 0) {
+  if (num_gpus > 0) {
     TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
         /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
 
-    const auto src_dst_formats = GetSrcAndDstDataFormats(context, gpu_stats);
+    const auto src_dst_formats = GetSrcAndDstDataFormats(
+        context, num_gpus, num_gpus_and_num_volta.second);
     context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
                                        src_dst_formats.second);
   } else {

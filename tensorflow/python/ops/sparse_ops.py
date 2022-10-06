@@ -438,7 +438,7 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  
     # output_shape tensor value. We update the output._dense_shape_default,
     # which populate output.shape as the best effort.
     output = sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
-    output._dense_shape_default = tensor_shape.TensorShape(static_output_shape)
+    output.set_shape(tensor_shape.TensorShape(static_output_shape))
     return output
 
 
@@ -852,10 +852,14 @@ def sparse_reorder(sp_input, name=None):
 
   if sp_input.get_shape().is_fully_defined():
     dense_shape = sp_input.get_shape().as_list()
+    return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
   else:
     dense_shape = array_ops.identity(sp_input.dense_shape)
-
-  return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
+    sp_output = sparse_tensor.SparseTensor(reordered_ind, reordered_val,
+                                           dense_shape)
+    # propagate the static shape
+    sp_output.set_shape(sp_input.shape)
+    return sp_output
 
 
 @tf_export("sparse.reshape", v1=["sparse.reshape", "sparse_reshape"])
@@ -1061,7 +1065,7 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],
@@ -1671,7 +1675,7 @@ def sparse_tensor_to_dense(sp_input,
 
   For this sparse tensor with three non-empty values:
 
-  >>> sp_input = tf.SparseTensor(
+  >>> sp_input = tf.sparse.SparseTensor(
   ...   dense_shape=[3, 5],
   ...   values=[7, 8, 9],
   ...   indices =[[0, 1],

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -271,6 +272,12 @@ class SpmdPartitioner : public HloModulePass {
   // replicated sharding.
   virtual bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) {
+    if (hlo->opcode() == HloOpcode::kCustomCall) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(hlo->custom_call_target())) {
+        return partitioner->CanSideEffectingHaveReplicatedSharding();
+      }
+    }
     return hlo->opcode() == HloOpcode::kInfeed ||
            hlo->opcode() == HloOpcode::kOutfeed;
   }
@@ -308,7 +315,7 @@ class PartitionedHlo {
   // A cache for resharding each partitioned HLO.
   struct ReshardCache {
     struct PerHloCache {
-      std::vector<std::pair<HloSharding, PartitionedHlo>> reshard_cache;
+      absl::flat_hash_map<HloSharding, PartitionedHlo> reshard_cache;
       std::vector<
           std::tuple<HloSharding, Window, WindowedInputShardReturnValue>>
           window_reshard_cache;
@@ -338,13 +345,24 @@ class PartitionedHlo {
     // to use the tuple sharding. Reshard() implementation assumes this.
     if (hlo_->shape().IsTuple() && !hlo_->sharding().IsTuple()) {
       hlo_->set_sharding(
-          hlo_->sharding().GetTupleSharding(hlo_->shape()).ValueOrDie());
+          hlo_->sharding().GetTupleSharding(hlo_->shape()).value());
     }
   }
 
-  // Reshards the current SPMD instruction to a new sharding. Could only modify
-  // the reshard cache.
-  PartitionedHlo Reshard(const HloSharding& target);
+  PartitionedHlo CloneWithNewHlo(HloInstruction* hlo) const {
+    PartitionedHlo new_phlo = *this;
+    new_phlo.hlo_ = hlo;
+    if (!hlo->has_sharding() && hlo_->has_sharding()) {
+      hlo->set_sharding(hlo_->sharding());
+    }
+    return new_phlo;
+  }
+
+  // Reshards the current SPMD instruction to a new sharding with optional
+  // specified pad value used during resharding. Could only modify the reshard
+  // cache.
+  PartitionedHlo Reshard(const HloSharding& target,
+                         std::optional<Literal> pad_value = std::nullopt);
 
   // Pads the garbage area of the output with the provided value. Normally,
   // unevenly partitioned dimensions are padded on the right, but this function
@@ -369,6 +387,9 @@ class PartitionedHlo {
 
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
+
+  // Returns the rank of the SPMD instruction.
+  const int64_t rank() const { return base_shape_.rank(); }
 
   // Original full shape of the data.
   const Shape& base_shape() const { return base_shape_; }
@@ -397,6 +418,7 @@ class PartitionedHlo {
   // Same as Reshard except that it does not explicitly modify the reshard
   // cache, although it would indirectly modify by calling Replicate().
   PartitionedHlo ReshardNoCache(const HloSharding& target,
+                                std::optional<Literal> pad_value = std::nullopt,
                                 bool allow_full_replication = true);
 
   // Helper function to broadcast data from a single device to all devices.

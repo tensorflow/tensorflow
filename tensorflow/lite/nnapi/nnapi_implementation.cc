@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdlib>
+#include <memory>
 
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
@@ -29,11 +30,26 @@ limitations under the License.
 #include <sys/system_properties.h>
 #endif  // __ANDROID__
 
-#define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
+#define EXPAND_VA_ARGS(...) , ##__VA_ARGS__
+#define NNAPI_LOG(format, ...) \
+  fprintf(stderr, format "\n" EXPAND_VA_ARGS(__VA_ARGS__));
 
 namespace {
 
 #ifdef __ANDROID__
+// See frameworks/base/core/java/android/os/Process.java in AOSP.
+const int kFirstIsolatedUid = 99000;
+const int kLastIsolatedUid = 99999;
+const int kFirstAppZygoteIsolatedUid = 90000;
+const int kLastAppZygoteIsolatedUid = 98999;
+
+bool IsIsolatedProcess() {
+  int uid = getuid();
+  return (uid >= kFirstIsolatedUid && uid <= kLastIsolatedUid) ||
+         (uid >= kFirstAppZygoteIsolatedUid &&
+          uid <= kLastAppZygoteIsolatedUid);
+}
+
 int32_t GetAndroidSdkVersion() {
   const char* sdkProp = "ro.build.version.sdk";
   char sdkVersion[PROP_VALUE_MAX];
@@ -156,7 +172,6 @@ ASharedMemory_create_fn getASharedMemory_create() {
 #define LOAD_FUNCTION_RENAME(handle, name, symbol) \
   nnapi.name = reinterpret_cast<name##_fn>(        \
       LoadFunction(handle, symbol, /*optional*/ false));
-
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
   nnapi.android_sdk_version = 0;
@@ -166,6 +181,12 @@ const NnApi LoadNnApi() {
   if (nnapi.android_sdk_version < 27) {
     NNAPI_LOG("nnapi error: requires android sdk version to be at least %d",
               27);
+    nnapi.nnapi_exists = false;
+    return nnapi;
+  }
+
+  if (IsIsolatedProcess()) {
+    NNAPI_LOG("NNAPI is disabled in an isolated process");
     nnapi.nnapi_exists = false;
     return nnapi;
   }

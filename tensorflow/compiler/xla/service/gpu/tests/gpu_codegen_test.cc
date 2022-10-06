@@ -17,14 +17,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -48,7 +46,7 @@ GpuCodegenTest::CreateNewVerifiedModuleWithFTZ(bool ftz) {
 void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
     std::unique_ptr<VerifiedHloModule> hlo_module, absl::string_view pattern) {
   std::unique_ptr<Executable> executable =
-      std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
+      std::move(CompileToExecutable(std::move(hlo_module)).value());
   std::string ptx_str(static_cast<GpuExecutable*>(executable.get())->text());
 
   // On the ROCM platform the "ptx" string is not populated for the compiled
@@ -57,8 +55,21 @@ void GpuCodegenTest::CompileAndOptionallyVerifyPtx(
   if (!is_built_with_rocm_) {
     StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
     ASSERT_TRUE(filecheck_result.ok());
-    EXPECT_TRUE(filecheck_result.ValueOrDie());
+    EXPECT_TRUE(filecheck_result.value());
   }
+}
+
+std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
+  return absl::StrReplaceAll(
+      input,
+      {{"KERNEL_ANNOTATION",
+        is_built_with_rocm_ ? "amdgpu_kernel void" : "void"},
+       {"BARRIER",
+        is_built_with_rocm_ ? "@llvm.amdgcn.s.barrier" : "@llvm.nvvm.barrier0"},
+       {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.bpermute"
+                                       : "float @llvm.nvvm.shfl.sync.down.f32"},
+       {"TIDX", is_built_with_rocm_ ? "llvm.amdgcn.workitem.id.x"
+                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"}});
 }
 
 }  // namespace gpu

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <utility>
 
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -30,8 +30,11 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSADEQUANTIZETFLSOFTMAXPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 class TosaDequantizeTFLSoftmax
-    : public TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
+    : public impl::TosaDequantizeTFLSoftmaxPassBase<TosaDequantizeTFLSoftmax> {
  public:
   explicit TosaDequantizeTFLSoftmax() {}
   void runOnOperation() override;

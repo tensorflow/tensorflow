@@ -15,23 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 
+#include <numeric>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/types.h"
 
 using ::int64_t;
 using mlir::IntegerType;
@@ -83,21 +83,19 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   return PrimitiveType::PRIMITIVE_TYPE_INVALID;
 }
 
-StatusOr<Shape> TypeToShape(
-    mlir::Type type, CustomShapeRepresentationFn shape_representation_fn) {
-  tensorflow::PartialTensorShape partial_tensor_shape =
-      tensorflow::ConvertTypeToTensorShape(type);
-
-  tensorflow::TensorShape fully_defined_tensor_shape;
-  if (!partial_tensor_shape.AsTensorShape(&fully_defined_tensor_shape)) {
-    return tensorflow::errors::InvalidArgument(
-        "XLA HLO only allows fully-defined shape");
+std::optional<DimLevelType> ConvertDimLevelType(
+    mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType dlt) {
+  switch (dlt) {
+    case mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType::Singleton:
+      return DimLevelType::DIM_SINGLETON;
+    case mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType::
+        Compressed:
+      return DimLevelType::DIM_COMPRESSED;
+    case mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType::Dense:
+      return DimLevelType::DIM_DENSE;
+    default:
+      return std::nullopt;
   }
-
-  tensorflow::DataType dtype;
-  TF_RETURN_IF_ERROR(tensorflow::ConvertToDataType(type, &dtype));
-
-  return shape_representation_fn(fully_defined_tensor_shape, dtype);
 }
 
 Shape TypeToShape(mlir::Type type) {
@@ -191,6 +189,33 @@ Shape TypeToShape(mlir::Type type) {
     PrimitiveType primitive_type = TypeToPrimitiveType(t.getElementType());
     if (primitive_type == PrimitiveType::PRIMITIVE_TYPE_INVALID) return {};
 
+    if (auto sparse = mlir::sparse_tensor::getSparseTensorEncoding(type)) {
+      // In this case `shape` has no bounds, because MHLO doesn't support
+      // sparse tensors with bounded dynamism. This works out for us, because
+      // neither does the shape_util MakeShape API.
+      if (!t.hasStaticShape()) return {};
+
+      // TODO(atondwal): Handle $pointerBitWidth, $indexBitWidth after they're
+      // added to xla
+      if (sparse.getPointerBitWidth() != 32 || sparse.getIndexBitWidth() != 32)
+        return {};
+
+      llvm::SmallVector<DimLevelType, 3> dim_level_types;
+      for (auto dlt : sparse.getDimLevelType()) {
+        auto new_dlt = ConvertDimLevelType(dlt);
+        if (!new_dlt) return {};
+        dim_level_types.push_back(*new_dlt);
+      }
+
+      std::vector<int64_t> ordering(rank);
+      std::iota(ordering.rbegin(), ordering.rend(), 0);
+      auto final_ordering = mlir::applyPermutationMap(
+          sparse.getDimOrdering(), llvm::ArrayRef<int64_t>(ordering));
+      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithLayout(
+          primitive_type, shape, final_ordering, dim_level_types);
+      return sparse_shape;
+    }
+
     return ShapeUtil::MakeShape(primitive_type, shape, is_dynamic);
   } else if (auto tuple_type = type.dyn_cast<mlir::TupleType>()) {
     llvm::SmallVector<Shape, 4> shapes;
@@ -202,6 +227,10 @@ Shape TypeToShape(mlir::Type type) {
 
   } else if (type.isa<mlir::mhlo::TokenType>()) {
     return ShapeUtil::MakeTokenShape();
+  } else if (auto bundle_type = type.dyn_cast<mlir::mhlo::AsyncBundleType>()) {
+    auto tuple_type =
+        mlir::TupleType::get(type.getContext(), bundle_type.getTypes());
+    return TypeToShape(tuple_type);
   }
 
   // Return empty XLA shape to signify error. No MLIR Type maps to a empty

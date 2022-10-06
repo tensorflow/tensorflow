@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
 #include "llvm/IR/BasicBlock.h"
@@ -682,6 +682,16 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
           return GetIrArray(*operand, *fusion)
               .EmitReadArrayElement(index, &b_, operand->name());
         });
+  }
+}
+
+void IrEmitter::MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
+                                        const char* sync_scope_id) {
+  if (IsEmittingForAMDGPU() &&
+      ir_emitter_context_->rocm_compute_capability().gcn_arch_name().substr(
+          0, 6) == "gfx90a") {
+    b_.CreateFence(atomic_ordering,
+                   b_.getContext().getOrInsertSyncScopeID(sync_scope_id));
   }
 }
 

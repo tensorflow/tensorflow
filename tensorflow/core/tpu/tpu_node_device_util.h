@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_TPU_NODE_DEVICE_H_
-#define TENSORFLOW_CORE_TPU_TPU_NODE_DEVICE_H_
+#ifndef TENSORFLOW_CORE_TPU_TPU_NODE_DEVICE_UTIL_H_
+#define TENSORFLOW_CORE_TPU_TPU_NODE_DEVICE_UTIL_H_
 
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
@@ -27,4 +27,4 @@ bool TpuOpFilter(KernelDef* kdef);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_TPU_NODE_DEVICE_H_
+#endif  // TENSORFLOW_CORE_TPU_TPU_NODE_DEVICE_UTIL_H_

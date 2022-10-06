@@ -35,7 +35,7 @@ namespace {
 
 xla::Status CreateXlaStatus(::TpuStatus* status) {
   if (status->code == tensorflow::error::OK) {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   } else {
     return xla::Status(tensorflow::error::Code(status->code),
                        absl::StrFormat("%s", status->msg));

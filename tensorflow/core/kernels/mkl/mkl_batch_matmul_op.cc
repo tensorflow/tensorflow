@@ -135,8 +135,9 @@ class BatchMatMulMkl : public OpKernel {
 
     // Compute parameters for DNNL matmul primitive.
     MklBatchMatMulHelper bmm;
-    auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
-                                         adj_x_, adj_y_);
+    string prefix = "batchmatmul";
+    auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
+                                         out_shape, adj_x_, adj_y_);
 
 #ifdef DNNL_AARCH64_USE_ACL
     // ACL does not support reuse of primitives with different data.

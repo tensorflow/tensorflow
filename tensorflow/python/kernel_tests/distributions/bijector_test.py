@@ -17,7 +17,6 @@
 import abc
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -43,7 +42,7 @@ class BaseBijectorTest(test.TestCase):
       """Minimal specification of a `Bijector`."""
 
       def __init__(self):
-        super(_BareBonesBijector, self).__init__(forward_min_event_ndims=0)
+        super().__init__(forward_min_event_ndims=0)
 
     bij = _BareBonesBijector()
     self.assertEqual([], bij.graph_parents)
@@ -86,7 +85,7 @@ class BrokenBijector(bijector.Bijector):
 
   def __init__(
       self, forward_missing=False, inverse_missing=False, validate_args=False):
-    super(BrokenBijector, self).__init__(
+    super().__init__(
         validate_args=validate_args, forward_min_event_ndims=0, name="broken")
     self._forward_missing = forward_missing
     self._inverse_missing = inverse_missing
@@ -141,8 +140,7 @@ class BijectorTestEventNdims(test.TestCase):
             event_ndims: (1, 2)})
 
 
-@six.add_metaclass(abc.ABCMeta)
-class BijectorCachingTestBase(object):
+class BijectorCachingTestBase(metaclass=abc.ABCMeta):
 
   @abc.abstractproperty
   def broken_bijector_cls(self):
@@ -194,7 +192,7 @@ class ExpOnlyJacobian(bijector.Bijector):
   """Only used for jacobian calculations."""
 
   def __init__(self, forward_min_event_ndims=0):
-    super(ExpOnlyJacobian, self).__init__(
+    super().__init__(
         validate_args=False,
         is_constant_jacobian=False,
         forward_min_event_ndims=forward_min_event_ndims,
@@ -211,7 +209,7 @@ class ConstantJacobian(bijector.Bijector):
   """Only used for jacobian calculations."""
 
   def __init__(self, forward_min_event_ndims=0):
-    super(ConstantJacobian, self).__init__(
+    super().__init__(
         validate_args=False,
         is_constant_jacobian=True,
         forward_min_event_ndims=forward_min_event_ndims,

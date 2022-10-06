@@ -2,6 +2,8 @@
 // RUN: | FileCheck %s
 // RUN: tf-tfrt-opt %s -tf-jitrt-math-approximation="oplist=exp"               \
 // RUN: | FileCheck --check-prefix=EXP %s
+// RUN: tf-tfrt-opt %s -tf-jitrt-math-approximation="oplist=expm1"             \
+// RUN: | FileCheck --check-prefix=EXPM1 %s
 // RUN: tf-tfrt-opt %s -tf-jitrt-math-approximation                            \
 // RUN: | FileCheck --check-prefix=NOOP %s
 
@@ -68,5 +70,26 @@
 // CHECK: }
 func.func @exp_scalar(%arg0: f32) -> f32 {
   %0 = math.exp %arg0 : f32
+  func.return %0 : f32
+}
+
+// CHECK-LABEL: func @expm1_scalar(
+// CHECK-NOT: math.exp
+// EXP: math.expm1
+// EXPM1-NOT: math.expm1
+// NOOP: math.expm1
+// CHECK:    %[[VAL_38:.*]] = arith.cmpf ueq, %[[VAL_37:.*]], %cst
+// CHECK:    %[[VAL_39:.*]] = arith.subf %[[VAL_37]], %cst
+// CHECK:    %[[VAL_40:.*]] = arith.cmpf oeq, %[[VAL_39]], %cst_0
+// CHECK:    %[[VAL_41:.*]] = math.log %[[VAL_37]]
+// CHECK:    %[[VAL_42:.*]] = arith.cmpf oeq, %[[VAL_41]], %[[VAL_37]]
+// CHECK:    %[[VAL_43:.*]] = arith.divf %arg0, %[[VAL_41]]
+// CHECK:    %[[VAL_44:.*]] = arith.mulf %[[VAL_39]], %[[VAL_43]]
+// CHECK:    %[[VAL_45:.*]] = arith.select %[[VAL_42]], %[[VAL_37]], %[[VAL_44]]
+// CHECK:    %[[VAL_46:.*]] = arith.select %[[VAL_40]], %cst_0, %[[VAL_45]] 
+// CHECK:    %[[VAL_47:.*]] = arith.select %[[VAL_38]], %arg0, %[[VAL_46]] 
+// CHECK: }
+func.func @expm1_scalar(%arg0 : f32) -> f32 {
+  %0 = math.expm1 %arg0: f32
   func.return %0 : f32
 }

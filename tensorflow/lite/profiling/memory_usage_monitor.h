@@ -68,7 +68,7 @@ class MemoryUsageMonitor {
     if (!is_supported_ || check_memory_thd_ != nullptr) {
       return kInvalidMemUsageMB;
     }
-    return peak_max_rss_kb_ / 1024.0;
+    return peak_mem_footprint_kb_ / 1024.0;
   }
 
   MemoryUsageMonitor(MemoryUsageMonitor&) = delete;
@@ -84,7 +84,8 @@ class MemoryUsageMonitor {
   std::unique_ptr<absl::Notification> stop_signal_ = nullptr;
   absl::Duration sampling_interval_;
   std::unique_ptr<std::thread> check_memory_thd_ = nullptr;
-  int64_t peak_max_rss_kb_ = static_cast<int64_t>(kInvalidMemUsageMB * 1024);
+  int64_t peak_mem_footprint_kb_ =
+      static_cast<int64_t>(kInvalidMemUsageMB * 1024);
 };
 
 }  // namespace memory

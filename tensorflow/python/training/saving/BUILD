@@ -1,7 +1,7 @@
 # Description:
 #   Low-level utilities for reading and writing checkpoints.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     default_visibility = [
@@ -50,11 +50,12 @@ py_library(
         ":saveable_object",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
+        "//tensorflow/python/types",
         "//tensorflow/python/util:tf_export",
-        "@six_archive//:six",
     ],
 )
 

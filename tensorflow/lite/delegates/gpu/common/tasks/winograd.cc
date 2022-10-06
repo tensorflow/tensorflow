@@ -69,7 +69,7 @@ MAIN_FUNCTION($0) {
   }
 )";
   if (src_desc.IsLinear()) {
-    c += "  args.src_tensor.GetAddress(src_base, 0, 0, S);\n";
+    c += "  int src_base = args.src_tensor.GetAddress(0, 0, S);\n";
   }
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
@@ -169,7 +169,7 @@ MAIN_FUNCTION($0) {
 )";
   if (src_desc.IsLinear()) {
     c += R"(
-  args.src_tensor.GetAddress(src_adress, tile_id, 0, Z);
+  int src_adress = args.src_tensor.GetAddress(tile_id, 0, Z);
   for (int y = 0; y < 6; ++y) {
     for (int x = 0; x < 6; ++x, src_adress += args.src_tensor.Width()) {
       FLT4 src = args.src_tensor.Read(src_adress);
@@ -344,7 +344,7 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
            ", 0, args.src_tensor.Width() - 1);\n";
     }
     if (src_desc.IsLinear()) {
-      c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
+      c += "  int src_a_" + xs + " = args.src_tensor.GetAddress(xc" + xs +
            ", 0, DST_Z);\n";
       if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
         c += "  src_a_" + xs +
@@ -470,12 +470,11 @@ void Winograd4x4To36TileX6::UploadBt() {
     bt_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition_.GetDataType();
-  desc.UploadLinearData(bt_aligned);
-  args_.AddObject("bt_non_uniform",
-                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bt_tensor_desc = CreateConstantLinearTensorDescriptor(
+      definition_.src_tensors[0].GetDataType(),
+      definition_.src_tensors[0].GetStorageType(), bt_aligned);
+  args_.AddObject("bt_non_uniform", std::make_unique<TensorDescriptor>(
+                                        std::move(bt_tensor_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(bt_mat, definition_.GetDataType(), &buffer_desc);
@@ -551,12 +550,11 @@ Winograd36To4x4 CreateWinograd36To4x4(
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  TensorLinearDescriptor bias_desc;
-  bias_desc.storage_type = LinearStorageType::BUFFER;
-  bias_desc.element_type = definition.GetDataType();
-  bias_desc.UploadLinearData(biases);
-  desc.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(bias_desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      definition.src_tensors[0].GetDataType(),
+      definition.src_tensors[0].GetStorageType(), biases);
+  desc.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                     std::move(bias_tensor_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(AtMatrixForWinograd4x4To6x6(),
@@ -695,12 +693,11 @@ void Winograd36To4x4Tile4x1::UploadAt() {
     at_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition_.GetDataType();
-  desc.UploadLinearData(at_aligned);
-  args_.AddObject("at_non_uniform",
-                  std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor at_tensor_desc = CreateConstantLinearTensorDescriptor(
+      definition_.src_tensors[0].GetDataType(),
+      definition_.src_tensors[0].GetStorageType(), at_aligned);
+  args_.AddObject("at_non_uniform", std::make_unique<TensorDescriptor>(
+                                        std::move(at_tensor_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(at_mat, definition_.GetDataType(), &buffer_desc);
@@ -754,12 +751,10 @@ Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
   Winograd36To4x4Tile4x1 result(definition, gpu_info);
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(biases);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), biases);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   result.UploadAt();
   return result;
 }

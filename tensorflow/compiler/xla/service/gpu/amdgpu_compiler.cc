@@ -37,7 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
-#include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 
 namespace xla {
 namespace gpu {
@@ -54,12 +55,12 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
   if (!datadir.empty()) {
     potential_rocdl_dirs.push_back(datadir);
   }
-  potential_rocdl_dirs.push_back(tensorflow::RocdlRoot());
+  potential_rocdl_dirs.push_back(tsl::RocdlRoot());
 
   // Tries all potential ROCDL directories in the order they are inserted.
   // Returns the first directory that exists in the file system.
   for (const std::string& potential_rocdl_dir : potential_rocdl_dirs) {
-    if (tensorflow::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
+    if (tsl::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
       VLOG(2) << "Found ROCm-Device-Libs dir " << potential_rocdl_dir;
       return potential_rocdl_dir;
     }
@@ -102,7 +103,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
@@ -113,16 +114,13 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   HloPassPipeline post_pipeline("AMDGPU post-layout_assignment");
 
-  if (!IsBefEnabled(hlo_module->config())) {
-    // Transform TriangularSolve ops into custom-calls, so we can add temp
-    // memory. XLIR allocates temp memory, and so the custom-call implementation
-    // for TriangularSolve is not needed.
-    post_pipeline.AddPass<TriangularSolveRewriter>();
-  }
+  // Transform TriangularSolve ops into custom-calls, so we can add temp
+  // memory.
+  post_pipeline.AddPass<TriangularSolveRewriter>();
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 AMDGPUCompiler::AMDGPUCompiler()

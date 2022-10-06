@@ -204,40 +204,5 @@ std::unique_ptr<NodeTransformation> NewRemoveIdentityStridedSlice() {
   return absl::make_unique<RemoveIdentityStridedSlice>();
 }
 
-class RemoveCastAfterLogicalOp : public SequenceTransformation {
- public:
-  int ExpectedSequenceLength() const final { return 2; }
-
-  TransformResult ApplyToNodesSequence(const std::vector<Node*>& sequence,
-                                       GraphFloat32* graph) final {
-    auto& logical_node = *sequence[0];
-    auto op_type = OperationTypeFromString(logical_node.operation.type);
-    if (!(op_type == OperationType::GREATER ||
-          op_type == OperationType::GREATER_EQUAL ||
-          op_type == OperationType::LESS ||
-          op_type == OperationType::LESS_EQUAL ||
-          op_type == OperationType::EQUAL ||
-          op_type == OperationType::NOT_EQUAL)) {
-      return {TransformStatus::SKIPPED, ""};
-    }
-    auto& cast_node = *sequence[1];
-    if (cast_node.operation.type != ToString(OperationType::CAST)) {
-      return {TransformStatus::SKIPPED, ""};
-    }
-
-    absl::Status status = RemoveFollowingNode(graph, &cast_node, &logical_node);
-    if (!status.ok()) {
-      return {TransformStatus::INVALID,
-              "Unable to remove cast node after logigal node: " +
-                  std::string(status.message())};
-    }
-    return {TransformStatus::APPLIED, ""};
-  }
-};
-
-std::unique_ptr<SequenceTransformation> NewRemoveCastAfterLogicalOp() {
-  return std::make_unique<RemoveCastAfterLogicalOp>();
-}
-
 }  // namespace gpu
 }  // namespace tflite

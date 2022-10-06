@@ -1,6 +1,6 @@
 # tf.data service tests.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -86,7 +86,6 @@ tf_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
         "//tensorflow/python/data/experimental/ops:testing",
@@ -181,7 +180,7 @@ tf_py_test(
     name = "cross_trainer_cache_test",
     size = "medium",
     srcs = ["cross_trainer_cache_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

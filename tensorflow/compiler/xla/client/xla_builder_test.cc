@@ -599,7 +599,7 @@ TEST_F(XlaBuilderTest, ProtoMatches) {
     auto one = ConstantR0<float>(&b, 1);
     auto two = ConstantR0<float>(&b, 2);
     Add(Call(&b, call, {x, y}), Call(&b, call, {one, two}));
-    computations.push_back(b.Build().ValueOrDie());
+    computations.push_back(b.Build().value());
   }
   auto c0_string = computations[0].proto().SerializeAsString();
   auto c1_string = computations[1].proto().SerializeAsString();

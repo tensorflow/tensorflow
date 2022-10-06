@@ -164,6 +164,13 @@ bool FillStringBufferFromPyString(PyObject* value,
 
 bool FillStringBufferWithPyArray(PyObject* value,
                                  DynamicBuffer* dynamic_buffer) {
+  if (!PyArray_Check(value)) {
+    PyErr_Format(PyExc_ValueError,
+                 "Passed in value type is not a numpy array, got type %s.",
+                 value->ob_type->tp_name);
+    return false;
+  }
+
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
   switch (PyArray_TYPE(array)) {
     case NPY_OBJECT:

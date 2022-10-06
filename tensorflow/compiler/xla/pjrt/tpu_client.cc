@@ -32,18 +32,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/tpu/tpu_executable.h"
-#include "tensorflow/stream_executor/tpu/tpu_executable_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_executor_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_stream.h"
+#include "tensorflow/tsl/platform/casts.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tf_tpu = tensorflow::tpu;
 
@@ -133,7 +133,7 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
 }
 
 StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   if (executable.client() != this) {
     return InvalidArgument(
         "Passed executable from different client (platform '%s') to "
@@ -154,7 +154,7 @@ StatusOr<std::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
 }
 
 StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
-    const PjRtExecutable& executable) const {
+    const PjRtLoadedExecutable& executable) const {
   const PjRtStreamExecutorExecutable* se_executable =
       tensorflow::down_cast<const PjRtStreamExecutorExecutable*>(&executable);
   if (se_executable->executables().size() > 1) {
@@ -168,8 +168,9 @@ StatusOr<std::string> PjRtTpuClient::SerializeExecutable(
   return tpu_executable->Serialize();
 }
 
-StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
-    absl::string_view serialized, CompileOptions options) {
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtTpuClient::DeserializeExecutable(absl::string_view serialized,
+                                     CompileOptions options) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TpuExecutable> tpu_executable,
                       TpuExecutable::Deserialize(serialized));
 
@@ -203,7 +204,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtTpuClient::DeserializeExecutable(
       std::move(extras.addressable_devices), this);
   TF_RETURN_IF_ERROR(
       pjrt_executable->SetUpDonation(options.parameter_is_tupled_arguments));
-  return std::unique_ptr<PjRtExecutable>(std::move(pjrt_executable));
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(pjrt_executable));
 }
 
 static StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>>
@@ -216,8 +217,7 @@ GetTpuDevices(
 
   std::map<int, int> core_id_to_device_ordinal;
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutor* executor = client->backend().stream_executor(i).value();
     tf_tpu::TpuExecutorInterface* tpu_executor =
         tensorflow::down_cast<tf_tpu::TpuExecutorInterface*>(
             executor->implementation());
@@ -290,8 +290,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
   std::vector<std::unique_ptr<LocalDeviceState>> local_device_states;
   local_device_states.reserve(client->device_count());
   for (int i = 0; i < client->device_count(); ++i) {
-    se::StreamExecutor* executor =
-        client->backend().stream_executor(i).ValueOrDie();
+    se::StreamExecutor* executor = client->backend().stream_executor(i).value();
     local_device_states.push_back(std::make_unique<TpuDeviceState>(
         executor, client, max_inflight_computations));
   }

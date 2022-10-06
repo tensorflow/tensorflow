@@ -100,7 +100,7 @@ int64_t FallbackExecuteOp::cost() {
 
   // Find the referenced kernel function.
   auto kernel_fn =
-      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(self, kernel());
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(self, getKernel());
   if (!kernel_fn) return 1;
 
   int64_t cost = 0;

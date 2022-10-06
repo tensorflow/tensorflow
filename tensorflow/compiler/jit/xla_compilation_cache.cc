@@ -21,7 +21,7 @@ limitations under the License.
 #include <utility>
 #include <variant>
 
-#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
+#include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -695,6 +695,50 @@ bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
   return reached_compile_threshold;
 }
 
+StatusOr<XlaCompilationCache::CompilationResultAndExecutable>
+XlaCompilationCache::GetCompilationResultIfAlreadyCompiled(
+    const NameAttrList& function,
+    absl::Span<const XlaCompiler::Argument> args) {
+  CompilationResultAndExecutable result{nullptr, nullptr};
+
+  TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
+
+  // The outer lock protects the existence of the cache entry. It does not
+  // protect the contents of the cache entry.
+  Entry* entry;
+  {
+    mutex_lock lock(compile_cache_mu_);
+    // Try to find a cache entry.
+    auto cache_entry = cache_.find(signature);
+    if (cache_entry == cache_.end()) {
+      return result;
+    }
+    entry = cache_entry->second.get();
+  }
+
+  // Acquire the cache entry lock.
+  // TODO(phawkins): this locking will need to be restructured when we implement
+  // cache eviction.
+  mutex_lock entry_lock(entry->mu);
+
+  const CompileState state = entry->compile_state;
+  if (state != CompileState::kCompiled) {
+    return result;
+  }
+
+  int64_t current_request_count = ++entry->request_count;
+
+  VLOG(2) << "Compilation cache entry hit and is already compiled : "
+          << static_cast<int>(entry->compile_state)
+          << " signature: " << signature.HumanString() << " with request count "
+          << current_request_count;
+
+  result.compilation_result = &entry->compilation_result;
+  result.executable = entry->executable.get();
+
+  return result;
+}
+
 Status XlaCompilationCache::CompileImpl(
     const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::Options& options, const NameAttrList& function,
@@ -719,11 +763,13 @@ Status XlaCompilationCache::CompileImpl(
   {
     mutex_lock lock(compile_cache_mu_);
     // Find or create a cache entry.
-    std::unique_ptr<Entry>& e = cache_[signature];
-    if (!e) {
-      e.reset(new Entry);
+    auto cache_entry = cache_.find(signature);
+    if (cache_entry == cache_.end()) {
+      auto inserted_entry =
+          cache_.emplace(signature, std::make_unique<Entry>());
+      cache_entry = inserted_entry.first;
     }
-    entry = e.get();
+    entry = cache_entry->second.get();
   }
 
   // We always compile a cluster the very first time it is executed.  This is an

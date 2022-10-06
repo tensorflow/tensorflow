@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// RUN: tf-quant-opt %s -quant-insert-quantized-functions --quant-insert-library-quantization-method="drq" | FileCheck %s
+// RUN: tf-quant-opt %s -quant-insert-quantized-functions='quantization-method=drq target-opset=UNIFORM_QUANTIZED' | FileCheck %s
 
 // Empty module
 module {

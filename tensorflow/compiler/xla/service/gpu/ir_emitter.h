@@ -151,8 +151,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       llvm::Value* source_address, llvm::Type* element_type);
 
   GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
-    return std::bind(&IrEmitter::ComputeNestedElement, this,
-                     std::placeholders::_1, std::placeholders::_2);
+    return [&](const HloComputation& computation,
+               absl::Span<llvm::Value* const> parameter_elements) {
+      return ComputeNestedElement(computation, parameter_elements);
+    };
   }
 
   StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
@@ -179,6 +181,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Bind all argument IrArrays of `fusion` to `fused_emitter`.
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
+
+  // Emit a fence for AMDGPU if necessary.
+  void MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
+                               const char* sync_scope_id);
 
  private:
   // A helper method for EmitAtomicOperationForNestedComputation. Certain

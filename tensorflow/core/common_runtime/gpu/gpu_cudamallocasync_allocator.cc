@@ -16,7 +16,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
 #include "absl/strings/str_cat.h"
@@ -111,7 +111,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
   pool_ = nullptr;
@@ -386,7 +386,9 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
 
 void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  if (cuda_stream_ != nullptr) {
+  CUstream new_cuda_stream = *(static_cast<CUstream*>(stream));
+  // We don't need to re-set the CUDA stream if this is the same stream
+  if (cuda_stream_ != nullptr && new_cuda_stream != cuda_stream_) {
     LOG(FATAL) <<  // Crash OK.
         "Trying to set the stream twice. This isn't supported. ";
   }
@@ -397,7 +399,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
     LOG(FATAL) <<  // Crash OK.
         "Failed to get CUDA pool attribute: " << GetCudaErrorMessage(status);
   }
-  cuda_stream_ = *(reinterpret_cast<CUstream*>(stream));
+  cuda_stream_ = new_cuda_stream;
   int64 prealloc_size = 0;
   // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
   // preallocates the total pool size.

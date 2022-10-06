@@ -157,6 +157,14 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
+  @staticmethod
+  def skip_these_tests():
+    # Testing the condition number fails when using XLA with cuBLASLt
+    # A slight numerical difference between different matmul algorithms
+    # leads to large precision issues
+    return linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest.skip_these_tests(
+    ) + ["cond"]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):

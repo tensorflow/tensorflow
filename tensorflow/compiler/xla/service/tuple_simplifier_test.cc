@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -37,16 +37,14 @@ namespace {
 class TupleSimplifierTest : public HloTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
-    TupleSimplifier simplifier;
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(), module);
     TF_ASSERT_OK(changed_status.status());
-    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+    EXPECT_EQ(change_expected, changed_status.value());
   }
   void Run(HloModule* module, bool change_expected, bool exclude_entry) {
-    TupleSimplifier simplifier(exclude_entry);
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(exclude_entry), module);
     TF_ASSERT_OK(changed_status.status());
-    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+    EXPECT_EQ(change_expected, changed_status.value());
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});

@@ -1010,10 +1010,16 @@ std::unordered_map<string, DeviceProperties> GetDevices(Cluster* cluster) {
   std::unordered_map<string, DeviceProperties> devices(cluster->GetDevices());
   DeviceProperties gpu_device_properies;
   gpu_device_properies.set_type("GPU");
+#if GOOGLE_CUDA
   gpu_device_properies.set_vendor("NVIDIA");
   gpu_device_properies.mutable_environment()->insert({"architecture", "8.0"});
   gpu_device_properies.mutable_environment()->insert({"cuda", "11050"});
   gpu_device_properies.mutable_environment()->insert({"cudnn", "8302"});
+#elif TENSORFLOW_USE_ROCM
+  gpu_device_properies.set_vendor("Advanced Micro Devices, Inc");
+  gpu_device_properies.mutable_environment()->insert(
+      {"architecture", "gfx908"});
+#endif
   devices.emplace(std::make_pair("/job:localhost/replica:0/task:0/device:GPU:0",
                                  gpu_device_properies));
   return devices;
@@ -1056,7 +1062,7 @@ class AutoMixedPrecisionImpl {
       case AutoMixedPrecisionMode::CUDA:
         return std::make_unique<AutoMixedPrecisionListsCuda>(cuda_version_,
                                                              cudnn_version_);
-      case AutoMixedPrecisionMode::MKL:
+      case AutoMixedPrecisionMode::BF16:
         return std::make_unique<AutoMixedPrecisionListsMkl>();
       case AutoMixedPrecisionMode::CPU:
         // Note: this is not a typo here. AutoMixedPrecisionListsCuda is used
@@ -1370,12 +1376,12 @@ Status AutoMixedPrecisionImpl::Optimize() {
       "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL", "", &optimization_level));
   optimization_level = absl::AsciiStrToUpper(optimization_level);
   force_all_fp16_ = optimization_level == "UNSAFE_FORCE_ALL";
-  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::MKL) {
+  if (force_all_fp16_ && mode_ == AutoMixedPrecisionMode::BF16) {
     // Many ops do not support bfloat16 on the CPU so we disallowing forcing to
     // bfloat16.
     return errors::InvalidArgument(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL cannot be set to "
-        "UNSAFE_FORCE_ALL when MKL is used");
+        "UNSAFE_FORCE_ALL when oneDNN is used");
   }
 
   treat_infer_as_deny_ = optimization_level == "TREAT_INFER_AS_DENY";
@@ -1412,7 +1418,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
             !MustPreserve(node) && IsOnDevice(node, device_type) &&
             (ShouldIgnorePerformance() || IsOnSuitableGPUArch(node));
         break;
-      case AutoMixedPrecisionMode::MKL:
+      case AutoMixedPrecisionMode::BF16:
       case AutoMixedPrecisionMode::CPU:
         device_type = DEVICE_CPU;
         should_process = !MustPreserve(node) && IsOnDevice(node, device_type);
@@ -1842,8 +1848,8 @@ void AutoMixedPrecisionImpl::PropagateAllowThroughClear(
 void AutoMixedPrecisionImpl::AddInferToAllowIfFollowAllow(
     const absl::flat_hash_set<int>& deny_set,
     absl::flat_hash_set<int>* allow_set) const {
-  // Currently only target for MKL
-  if (mode_ != AutoMixedPrecisionMode::MKL) {
+  // Currently only target for oneDNN
+  if (mode_ != AutoMixedPrecisionMode::BF16) {
     return;
   }
   for (int item_idx = 0; item_idx < graph_type_view_.num_nodes(); ++item_idx) {
@@ -2269,12 +2275,12 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
 
 #if !defined(INTEL_MKL)
-  if (mode_ == AutoMixedPrecisionMode::MKL) {
+  if (mode_ == AutoMixedPrecisionMode::BF16) {
     return errors::Unimplemented(
-        "The auto_mixed_precision_mkl optimizer cannot be used since "
-        "this build of TensorFlow is not compiled with MKL support for "
-        "bfloat16. "
-        "For information on MKL builds, see: "
+        "The auto_mixed_precision_onednn_bfloat16 optimizer cannot be used "
+        "since this build of TensorFlow is not compiled with oneDNN support "
+        "for bfloat16. "
+        "For information on oneDNN builds, see: "
         "https://software.intel.com/en-us/articles/intel-optimization-for-"
         "tensorflow-installation-guide");
   }
@@ -2289,6 +2295,11 @@ Status AutoMixedPrecision::Optimize(Cluster* cluster, const GrapplerItem& item,
     LOG(WARNING) << "No (suitable) GPUs detected, skipping " << name()
                  << " graph optimizer";
     return OkStatus();
+  }
+
+  if (num_gpus >= 1 && mode_ == AutoMixedPrecisionMode::BF16) {
+    LOG(WARNING) << "Note: GPUs detected. Using " << name()
+                 << " graph optimizer configured for BFloat16 on CPUs";
   }
 
   // Optimize the output graph in-place.

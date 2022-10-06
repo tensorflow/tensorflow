@@ -102,7 +102,7 @@ class ContextDeviceMemory {
           "setDeviceMemory", tensorflow::profiler::TraceMeLevel::kInfo);
       execution_context_->setDeviceMemory(device_memory_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -263,23 +263,33 @@ class TRTEngineOp : public AsyncOpKernel {
   // could be unknown. During inference time this information is not available
   // otherwise (all shapes are known (concrete) shapes when we run inference).
   std::vector<PartialTensorShape> input_partial_shapes_;
+  // Shapes, excluding resource inputs.
+  std::vector<PartialTensorShape> input_partial_shapes_filtered_;
+
+  // The TF node can have more inputs than the TRT engine: resource inputs are
+  // saved as weight in the engine, instead of passing that as engine input.
+  // Input mask is true for those TF input that are TRT engine inputs.
+  std::vector<bool> input_mask_;
 
   // Whether to use explicit precision (QDQ) mode.
   bool use_explicit_precision_;
 };
 
-#define TYPECASE(dt, X, Y)                                    \
+#define TYPECASE(dt, X)                                       \
   case dt: {                                                  \
     return (void*)X->flat<EnumToDataType<dt>::Type>().data(); \
   }
 
 void* GetTensorAddress(const Tensor* tensor_ptr) {
-  auto tensor_type = tensor_ptr->dtype();
+  const auto tensor_type = tensor_ptr->dtype();
   switch (tensor_type) {
-    TYPECASE(DT_FLOAT, tensor_ptr, dest_ptr);
-    TYPECASE(DT_HALF, tensor_ptr, dest_ptr);
-    TYPECASE(DT_INT8, tensor_ptr, dest_ptr);
-    TYPECASE(DT_INT32, tensor_ptr, dest_ptr);
+    TYPECASE(DT_FLOAT, tensor_ptr);
+    TYPECASE(DT_HALF, tensor_ptr);
+    TYPECASE(DT_INT8, tensor_ptr);
+    TYPECASE(DT_INT32, tensor_ptr);
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    TYPECASE(DT_BOOL, tensor_ptr);
+#endif
     default: {
       LOG(ERROR) << "Unsupported Data type " << DataTypeString(tensor_type);
       return nullptr;
@@ -328,7 +338,7 @@ static Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
@@ -420,6 +430,21 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     OP_REQUIRES_OK(context, status);
   }
 
+  // Get a mask of non-resource inputs.
+  std::vector<DataType> in_types;
+  input_mask_.resize(input_partial_shapes_.size());
+  OP_REQUIRES_OK(context, context->GetAttr("InT", &in_types));
+  for (int i = 0; i < input_mask_.size(); i++) {
+    input_mask_[i] = (in_types[i] != DataType::DT_RESOURCE);
+  }
+
+  // Filter the shapes to exclude resources.
+  for (int i = 0; i < input_partial_shapes_.size(); i++) {
+    if (input_mask_[i]) {
+      input_partial_shapes_filtered_.push_back(input_partial_shapes_[i]);
+    }
+  }
+
   status = context->GetAttr("_allow_soft_placement", &allow_soft_placement_);
   if (status.code() == tensorflow::error::NOT_FOUND) {
     allow_soft_placement_ = true;
@@ -504,7 +529,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     }
   }
   has_dynamic_shape_input_ = absl::c_any_of(
-      input_partial_shapes_,
+      input_partial_shapes_filtered_,
       [](PartialTensorShape shape) { return !shape.IsFullyDefined(); });
   VLOG(2) << "TRTEngineOp has_dynamic_shape_input_: "
           << has_dynamic_shape_input_;
@@ -531,7 +556,7 @@ Status CopyToHostAsync(OpKernelContext* ctx, std::vector<Tensor>* native_inputs,
   if (ret != 0) {
     return errors::Internal("Could not copy tensor for native segment input");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Copies native_tensor, which is in host memory to ctx->output(t), which is in
@@ -548,7 +573,7 @@ Status CopyToDeviceAsync(OpKernelContext* ctx, const Tensor& native_tensor,
   if (ret != 0) {
     return errors::Internal("Could not copy tensor for native segment output");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
@@ -671,10 +696,11 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   //
   // In both of the above cases, setBatch here returns a boolean value to
   // indicate the result of the calibration process.
-  OP_REQUIRES_ASYNC(ctx, calib_ctx->calibrator_->setBatch(input_data, *stream),
-                    errors::Internal("Failed to feed calibration data"),
-                    dummy_async_helper);
-  VLOG(2) << "Passed calibration data";
+  if (!calib_ctx->calibrator_->setBatch(input_data, *stream)) {
+    VLOG(2) << "Failed to feed calibration data";
+  } else {
+    VLOG(2) << "Passed calibration data";
+  }
   ExecuteNativeSegment(ctx, async_helper);
 }
 
@@ -684,7 +710,7 @@ Status TRTEngineOp::VerifyInputShapes(
     return errors::InvalidArgument("Input shapes are empty, for ", name());
   }
 
-  if (input_partial_shapes_.empty()) {
+  if (input_partial_shapes_filtered_.empty()) {
     if (!use_implicit_batch_) {
       return errors::InvalidArgument(
           "Explicit batch mode requires input_partial_shapes_ ",
@@ -701,20 +727,21 @@ Status TRTEngineOp::VerifyInputShapes(
     const string error_msg = StrCat(
         "Input shapes do not match input partial shapes stored in graph, for ",
         name(), ": ", DebugString(input_concrete_shapes),
-        " != ", DebugString(input_partial_shapes_));
-    if (input_concrete_shapes.size() != input_partial_shapes_.size()) {
+        " != ", DebugString(input_partial_shapes_filtered_));
+    if (input_concrete_shapes.size() != input_partial_shapes_filtered_.size()) {
       return errors::InvalidArgument(error_msg);
     }
     for (int i = 0; i < input_concrete_shapes.size(); i++) {
-      if (input_concrete_shapes[i].dims() != input_partial_shapes_[i].dims()) {
+      if (input_concrete_shapes[i].dims() !=
+          input_partial_shapes_filtered_[i].dims()) {
         return errors::InvalidArgument(error_msg);
       }
     }
     for (int i = 0; i < input_concrete_shapes.size(); i++) {
       for (int d = 0; d < input_concrete_shapes[i].dims(); d++) {
-        if (input_partial_shapes_[i].dim_size(d) != -1) {
+        if (input_partial_shapes_filtered_[i].dim_size(d) != -1) {
           if (input_concrete_shapes[i].dim_size(d) !=
-              input_partial_shapes_[i].dim_size(d)) {
+              input_partial_shapes_filtered_[i].dim_size(d)) {
             return errors::InvalidArgument(error_msg);
           }
         }
@@ -743,7 +770,7 @@ Status TRTEngineOp::VerifyInputShapes(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool AllowEngineNativeSegmentExecution() {
@@ -781,11 +808,17 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   // Get shapes of inputs to engine.
   std::vector<TensorShape> input_concrete_shapes;
   input_concrete_shapes.reserve(ctx->num_inputs());
+  std::vector<TensorShape> input_concrete_shapes_filtered;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     input_concrete_shapes.push_back(ctx->input(i).shape());
+    if (ctx->input(i).dtype() != DataType::DT_RESOURCE) {
+      input_concrete_shapes_filtered.push_back(ctx->input(i).shape());
+    }
   }
 
-  Status verify_input_shape_status = VerifyInputShapes(input_concrete_shapes);
+  /// TODO(lsugy): fix case of engine with only resource inputs.
+  Status verify_input_shape_status =
+      VerifyInputShapes(input_concrete_shapes_filtered);
   // TODO(bixia): Fix the segmentation.
   if (!verify_input_shape_status.ok()) {
     LOG_FIRST_FEW_WARNING_WITH_PREFIX
@@ -800,6 +833,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       (has_dynamic_shape_input_ || cache_res->profiles_.HasShapeTensor())) {
     OP_REQUIRES_OK_ASYNC(ctx, cache_res->profiles_.CollectShapeValues(ctx),
                          dummy_async_helper);
+    cache_res->profiles_.SetInputMask(input_mask_);
     if (profile_generation_mode_) {
       // Collecting new shapes for profiles can be only done once. After the
       // shapes are converted to TRT profiles, no shapes can be collected
@@ -866,8 +900,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
       GetEngine(input_concrete_shapes, ctx, cache_res);
   OP_REQUIRES_OK_ASYNC(ctx, status.status(), dummy_async_helper);
 
-  EngineContext* engine_context = status.ValueOrDie().first;
-  int trt_context_idx = status.ValueOrDie().second;
+  EngineContext* engine_context = status.value().first;
+  int trt_context_idx = status.value().second;
   auto may_execute_native_segment = [&] {
     if (!AllowEngineNativeSegmentExecution()) {
       ctx->CtxFailure(
@@ -1005,7 +1039,7 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
       std::string(kTfTrtContainerName), std::string(resource_name), cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
-        return Status::OK();
+        return OkStatus();
       }});
 }
 
@@ -1146,16 +1180,22 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       if (!result.ok()) {
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
-      static_engine = std::move(result.ValueOrDie());
+      static_engine = std::move(result.value());
     }
+
     auto raw_static_engine = static_engine.get();
-    const auto max_batch_size = raw_static_engine->getMaxBatchSize();
-    // Static engine will have max_batch_size for batch size so that all inputs
-    // will map to this single engine.
     std::vector<TensorShape> engine_input_shapes(input_concrete_shapes);
-    for (int i = 0; i < engine_input_shapes.size(); i++) {
-      engine_input_shapes[i].set_dim(0, max_batch_size);
+
+    int max_batch_size = 1;
+    if (use_implicit_batch_) {
+      max_batch_size = raw_static_engine->getMaxBatchSize();
+      // Static engine will have max_batch_size for batch size so that all
+      // inputs will map to this single engine.
+      for (int i = 0; i < engine_input_shapes.size(); i++) {
+        engine_input_shapes[i].set_dim(0, max_batch_size);
+      }
     }
+
     ExecutionContext context = ExecutionContext::Create(raw_static_engine);
     // TODO(laigd): here we assume engine_input_shapes matches the actual input
     // shapes of the engine, we should verify that.
@@ -1214,8 +1254,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     if (!result.ok()) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine =
-        std::move(result.ValueOrDie());
+    TrtUniquePtrType<nvinfer1::ICudaEngine> engine = std::move(result.value());
     std::vector<ExecutionContext> exec_contexts;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), &exec_contexts));
@@ -1240,6 +1279,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
   auto* cres = cache_res->calib_ctx_.get();
 
   // Get the input shapes.
+  /// TODO(lsugy): support INT8 calibration in non-frozen mode.
   const int batch_size = ctx->input(0).dim_size(0);
   const int num_inputs = ctx->num_inputs();
   std::vector<TensorShape> shapes;
@@ -1247,21 +1287,20 @@ Status TRTEngineOp::AllocateCalibrationResources(
   VLOG(1) << "Constructing calibrator";
   for (int i = 0; i < num_inputs; i++) {
     // allocate workspace on device for inputs
+    auto* input = &cres->device_tensors_.at(i);
     const Tensor& t = ctx->input(i);
     shapes.emplace_back(t.shape());
-    TF_RETURN_IF_ERROR(
-        ctx->allocate_temp(t.dtype(), t.shape(), &cres->device_tensors_.at(i)));
-    CHECK_EQ(t.TotalBytes(),  // Crash OK
-             (cres->device_tensors_.at(i)).TotalBytes());
-    void* device_address = GetTensorAddress(&cres->device_tensors_.at(i));
+    TF_RETURN_IF_ERROR(ctx->allocate_temp(t.dtype(), t.shape(), input));
+    CHECK_EQ(t.TotalBytes(), input->TotalBytes());  // Crash OK
+
+    void* device_address = GetTensorAddress(input);
     if (device_address == nullptr) {
       return errors::InvalidArgument(
           "Unsupported data type encountered in input ", i);
     }
     cres->device_buffers_.emplace(
         StrCat(IONamePrefixes::kInputPHName, i),
-        std::pair<void*, size_t>(device_address,
-                                 cres->device_tensors_.at(i).TotalBytes()));
+        std::pair<void*, size_t>(device_address, input->TotalBytes()));
   }
   cres->calibrator_.reset(
       new TRTInt8Calibrator(cres->device_buffers_, batch_size, name()));
@@ -1324,6 +1363,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;
       cres->calibrator_->setDone();  // Ignore further pushes
+      cache_res->cache_.emplace(shapes, std::make_unique<EngineContext>());
     } else {
       // Transfer the ownership of the engine to the engine cache, so we can
       // dump it out during conversion for TF 2.0.
@@ -1349,7 +1389,7 @@ Status TRTEngineOp::AllocateCalibrationResources(
     VLOG(1) << "Calibration loop terminated " << this->name();
   }));
   VLOG(1) << "initialized calibrator resource";
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);

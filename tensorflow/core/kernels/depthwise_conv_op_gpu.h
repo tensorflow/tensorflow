@@ -669,7 +669,7 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
                               shared_memory_size, device.stream(), args, input,
                               filter, output));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns whether the context's GPU supports efficient fp16 math.
@@ -758,7 +758,7 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
                               std::min(max_block_count, config.block_count),
                               config.thread_per_block, 0, device.stream(), args,
                               input, filter, output, num_outputs));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
@@ -976,7 +976,7 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   TF_CHECK_OK(GpuLaunchKernel(
       kernel, config.block_count, config.thread_per_block, 0, device.stream(),
       args, out_backprop, filter, in_backprop, num_in_backprop));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
@@ -1585,7 +1585,7 @@ Status TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   TF_CHECK_OK(GpuLaunchKernel(kernel, config.block_count, block_dim,
                               shared_memory_size, device.stream(), args,
                               out_backprop, input, filter_backprop));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -1691,7 +1691,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
                                    " is not supported");
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
@@ -1703,7 +1703,7 @@ Status LaunchDepthwiseConv2dBackpropFilterGPU(
                                                        kKnownFilterHeight>(
             ctx, args, out_backprop, input, filter_backprop, data_format)
             .ok()) {
-      return Status::OK();
+      return OkStatus();
     }
 
     return LaunchDepthwiseConv2dBackpropFilterGPU<T, kKnownFilterWidth,

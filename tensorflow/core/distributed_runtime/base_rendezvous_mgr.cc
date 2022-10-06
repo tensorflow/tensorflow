@@ -129,7 +129,7 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env,
                                            int64_t step_id)
     : env_(env),
       step_id_(step_id),
-      local_(NewLocalRendezvous()),
+      local_(NewLocalRendezvous(env_->experimental_num_shards)),
       session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {

@@ -1,9 +1,5 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "pybind_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 licenses(["notice"])
 
@@ -43,6 +39,8 @@ pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core/platform:dynamic_annotations",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep
@@ -53,8 +51,8 @@ pybind_extension(
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
-        "@tf_runtime//backends/jitrt",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+        "@tf_runtime//backends/jitrt:results",
     ],
 )
 
@@ -77,6 +75,7 @@ pybind_extension(
         ":conversion_utils",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:refcount",
         "//tensorflow/core/runtime_fallback/util:type_util",
@@ -92,7 +91,7 @@ pybind_library(
     srcs = ["conversion_utils.cc"],
     hdrs = ["conversion_utils.h"],
     deps = [
+        "//tensorflow/compiler/xla/runtime:arguments",
         "@tf_runtime//:dtype",
-        "@tf_runtime//backends/jitrt:arguments",
     ],
 )

@@ -1,6 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
@@ -1322,7 +1322,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ragged_dynamic_partition_op_test",
     srcs = ["ragged_dynamic_partition_op_test.py"],
     python_version = "PY3",
@@ -1507,11 +1507,7 @@ py_test(
 
 cuda_py_test(
     name = "ragged_factory_ops_test",
-    size = "small",
     srcs = ["ragged_factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): times out
-    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

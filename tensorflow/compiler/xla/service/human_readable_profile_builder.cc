@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 namespace xla {
 

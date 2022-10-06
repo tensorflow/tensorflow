@@ -17,11 +17,11 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/matmul_autotune.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
 
 namespace tensorflow {
 

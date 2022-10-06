@@ -74,35 +74,45 @@ struct HostCallback {
   // The host callback function takes two pointer arrays, each element of which
   // points to allocated host buffer according to corresponding operand or
   // result's shape. The first is for the outputs and the second is for the
-  // inputs. The buffers are only guaranteed to be alive during the call.
-  std::function<void(void**, void**)> callback;
+  // inputs. The buffers are only guaranteed to be alive during the call. The
+  // callback can also return error status to indicate the entire execution
+  // should fail.
+  std::function<Status(void**, void**)> callback;
 };
 
 // A helper class that maintains the send/recv states for a host callback.
 class HostCallbackContext {
  public:
-  HostCallbackContext(const HostCallback* host_callback, PjRtClient* client)
-      : host_callback_(host_callback),
-        client_(client),
-        args_(host_callback->operands.size()),
-        result_channels_(host_callback->results.size()),
+  HostCallbackContext(HostCallback host_callback, PjRtClient* client)
+      : HostCallbackContext(std::move(host_callback),
+                            client->GetPjRtHostMemoryForDeviceManager()) {}
+
+  HostCallbackContext(
+      HostCallback host_callback,
+      PjRtHostMemoryForDeviceManager* host_memory_for_device_manager)
+      : host_callback_(std::move(host_callback)),
+        host_memory_for_device_manager_(host_memory_for_device_manager),
+        args_(host_callback_.operands.size()),
+        result_channels_(host_callback_.results.size()),
         ready_count_(args_.size()) {
-    CHECK(host_callback_);
-    CHECK(client_);
+    CHECK(host_memory_for_device_manager_);
+
     for (auto& channel : result_channels_) {
       channel = std::make_unique<ThreadSafePjRtChunkQueue>();
     }
   }
 
-  void OnSend(int arg_num, const PjRtTransferMetadata& metadata,
-              PjRtChunk data);
+  Status OnSend(int arg_num, const PjRtTransferMetadata& metadata,
+                PjRtChunk data);
 
   void Receive(int res_num, const PjRtTransferMetadata& metadata,
                CopyToDeviceStream& stream);
 
+  const HostCallback& host_callback() const { return host_callback_; }
+
  private:
-  const HostCallback* host_callback_ = nullptr;
-  PjRtClient* client_ = nullptr;
+  HostCallback host_callback_;
+  PjRtHostMemoryForDeviceManager* host_memory_for_device_manager_ = nullptr;
   std::vector<PjRtChunk> args_;
   std::vector<std::unique_ptr<ThreadSafePjRtChunkQueue>> result_channels_;
   std::atomic<int> ready_count_;
@@ -121,7 +131,8 @@ struct HostCallbackStates {
 // Creates the execution context for the `host_callback` for one replica.
 std::unique_ptr<HostCallbackContext>
 CreateHostCallbackStateAndAppendSendRecvCallbacks(
-    const HostCallback* host_callback, PjRtClient* client,
+    HostCallback host_callback,
+    PjRtHostMemoryForDeviceManager* host_memory_for_device_manager,
     std::vector<SendCallback>& send_callbacks,
     std::vector<RecvCallback>& recv_callbacks);
 

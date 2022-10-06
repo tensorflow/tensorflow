@@ -202,7 +202,7 @@ llvm::SmallVector<Tensor> RuntimeFallbackExecutor::Execute(
   llvm::SmallVector<Tensor> ret_values;
   for (unsigned i = 1; i < results.size(); ++i) {
     if (auto* error = results[i]->GetErrorIfPresent())
-      LOG(FATAL) << "Failed to execute a function: " << StrCat(*error);
+      LOG(FATAL) << "Failed to execute a function: " << error->message();
     ret_values.push_back(results[i]->get<tfrt_stub::FallbackTensor>().tensor());
   }
 

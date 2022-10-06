@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/dot_op_emitter.h"
@@ -80,8 +81,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -173,9 +174,12 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
   is_top_level_computation_ = is_top_level_computation;
   allow_reassociation_ = allow_reassociation;
   num_dynamic_loop_bounds_ = 0;
-  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
+  auto backend_config_or =
+      computation->root_instruction()->backend_config<BackendConfig>();
+  if (backend_config_or.ok() &&
+      !backend_config_or->outer_dimension_partitions().empty()) {
     num_dynamic_loop_bounds_ =
-        computation->root_instruction()->outer_dimension_partitions().size();
+        backend_config_or->outer_dimension_partitions().size();
   }
 
   if (computation->root_instruction()->opcode() != HloOpcode::kOutfeed) {
@@ -597,8 +601,11 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
   // Normalize the shape and the dimension to sort.
   Shape normalized_keys_shape =
       ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(keys_shape);
-  int64_t physical_dimension_to_sort = LayoutUtil::MakeLogicalToPhysical(
-      keys_shape.layout())[sort->sort_dimension()];
+  auto logical_to_physical =
+      LayoutUtil::MakeLogicalToPhysical(keys_shape.layout());
+  TF_RET_CHECK(sort->sort_dimension() < logical_to_physical.size());
+  int64_t physical_dimension_to_sort =
+      logical_to_physical[sort->sort_dimension()];
 
   int64_t sort_dimension_elements =
       normalized_keys_shape.dimensions(physical_dimension_to_sort);
@@ -1765,7 +1772,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   bool is_reduction_over_minor_dimension = absl::c_linear_search(
       dimensions, LayoutUtil::Minor(arg->shape().layout(), 0));
 
-  llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
+  llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
       ShapeUtil::ByteSizeOfPrimitiveType(reduce->shape().element_type()),
       MinimumAlignmentForPrimitiveType(reduce->shape().element_type())));
 
@@ -2230,7 +2237,10 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(call));
 
-  if (!computation->root_instruction()->outer_dimension_partitions().empty()) {
+  auto backend_config_or =
+      computation->root_instruction()->backend_config<BackendConfig>();
+  if (backend_config_or.ok() &&
+      !backend_config_or->outer_dimension_partitions().empty()) {
     // Having a nonempty set of 'outer_dimension_partitions' means that this
     // computation has been specially selected to be parallelized (one where the
     // root instruction is trivially parallelizable, like elementwise addition
@@ -2251,8 +2261,9 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
     // each call such that it only generates one partition of the output.
     HloInstruction* root = computation->root_instruction();
     TF_RETURN_IF_ERROR(EmitCallToParallelForkJoin(
-        call_args, root->shape(), root->outer_dimension_partitions(), &b_,
-        call_ir_function, computation->name()));
+        call_args, root->shape(),
+        backend_config_or->outer_dimension_partitions(), &b_, call_ir_function,
+        computation->name()));
 
     if (ComputationTransitivelyContainsCustomCall(computation)) {
       EmitEarlyReturnIfErrorStatus();
@@ -2756,7 +2767,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                                      const llvm_ir::IrArray& source_array) {
   unsigned primitive_type_size =
       ShapeUtil::ByteSizeOfPrimitiveType(primitive_type);
-  llvm::Align element_alignment(tensorflow::MathUtil::GCD<unsigned>(
+  llvm::Align element_alignment(tsl::MathUtil::GCD<unsigned>(
       primitive_type_size, MinimumAlignmentForPrimitiveType(primitive_type)));
   llvm::Type* primitive_llvm_type =
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
@@ -3531,7 +3542,7 @@ llvm::Value* IrEmitter::GetBufferForGlobalCallReturnValue(
   }
 
   const BufferAllocation::Slice root_buffer =
-      assignment_.GetUniqueTopLevelSlice(root_inst).ValueOrDie();
+      assignment_.GetUniqueTopLevelSlice(root_inst).value();
   return EmitBufferPointer(root_buffer, root_inst->shape());
 }
 

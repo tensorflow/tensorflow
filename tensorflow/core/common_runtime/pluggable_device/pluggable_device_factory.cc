@@ -84,7 +84,7 @@ Status SingleVirtualDeviceMemoryLimit(const string& platform_name,
   se::Platform* platform = PluggableDeviceMachineManager(platform_name);
   se::StreamExecutor* se =
       DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
-          .ValueOrDie();
+          .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return errors::Unknown(
         "Failed to query available memory for PluggableDevice ",

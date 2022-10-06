@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -735,7 +735,7 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   Shape f32vec100_color1 =
-      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, 0, 1);
+      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, {}, 0, 1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -794,7 +794,7 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 =
-      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, 0, 1);
+      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, {}, 0, 1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
 
@@ -2637,7 +2637,7 @@ ENTRY %main (a: f32[4096], b: f32[4096]) -> f32[4096] {
 
   auto get_slice = [&](std::string_view hlo_name, const ShapeIndex& index) {
     return buffers->GetUniqueSlice(FindInstruction(m.get(), hlo_name), index)
-        .ValueOrDie();
+        .value();
   };
 
   // Make sure the parameters and root of the async called computation has the

@@ -20,26 +20,26 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
 
 CublasLtMatmulThunk::CublasLtMatmulThunk(
     ThunkInfo thunk_info, cublas_lt::MatmulPlan plan, int64_t algorithm_idx,
-    const BufferAllocation::Slice& a_buffer,
-    const BufferAllocation::Slice& b_buffer,
-    const BufferAllocation::Slice& c_buffer,
-    const BufferAllocation::Slice& d_buffer)
+    BufferAllocation::Slice a_buffer, BufferAllocation::Slice b_buffer,
+    BufferAllocation::Slice c_buffer, BufferAllocation::Slice d_buffer,
+    BufferAllocation::Slice bias_buffer)
     : Thunk(Kind::kCublasLtMatmul, thunk_info),
       plan_(std::move(plan)),
       algorithm_idx_(algorithm_idx),
       a_buffer_(a_buffer),
       b_buffer_(b_buffer),
       c_buffer_(c_buffer),
-      d_buffer_(d_buffer) {}
+      d_buffer_(d_buffer),
+      bias_buffer_(bias_buffer) {}
 
 Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!algorithm_) {
@@ -52,12 +52,18 @@ Status CublasLtMatmulThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
+
+  se::DeviceMemoryBase bias;
+  if (bias_buffer_.allocation() != nullptr) {
+    bias = allocs.GetDeviceAddress(bias_buffer_);
+  }
+
   se::OwningScratchAllocator<> scratch_allocator(allocs.device_ordinal(),
                                                  allocs.memory_allocator());
   return plan_.ExecuteOnStream(
       params.stream, allocs.GetDeviceAddress(a_buffer_),
       allocs.GetDeviceAddress(b_buffer_), allocs.GetDeviceAddress(c_buffer_),
-      allocs.GetDeviceAddress(d_buffer_), *algorithm_, scratch_allocator);
+      allocs.GetDeviceAddress(d_buffer_), bias, *algorithm_, scratch_allocator);
 }
 
 }  // namespace gpu

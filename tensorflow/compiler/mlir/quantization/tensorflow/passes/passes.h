@@ -35,8 +35,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertMainFunctionPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
+// TODO(b/249914162): Pass OpSet by value instead of reference.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass();
+CreateLiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set);
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
@@ -44,7 +45,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsDRQPass();
+CreateLiftQuantizableSpotsAsFunctionsDRQPass(int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -57,7 +58,7 @@ CreateIssueIDsOfCustomAggregationOpsPass();
 
 // Inserts quantized function library.
 std::unique_ptr<OperationPass<ModuleOp>> CreateInsertQuantizedFunctionsPass(
-    QuantizationMethod quantization_method);
+    QuantizationMethod quantization_method, const OpSet& op_set);
 
 // Inserts custom aggregation operators for the calibration procedure.
 std::unique_ptr<OperationPass<func::FuncOp>>
@@ -67,7 +68,7 @@ CreateInsertCustomAggregationOpsPass();
 // pass runs, functions in the given graph will be replaced with their quantized
 // versions. By doing so, the quantization will be applied to the given input.
 std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
-    QuantizationMethod quantization_method);
+    QuantizationMethod quantization_method, OpSet target_opset = OpSet::TF);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -106,6 +107,15 @@ std::unique_ptr<OperationPass<mlir::func::FuncOp>> CreateOptimizePass();
 // MatmulOp.
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplaceCastHacksWithTFXLAOpsPass();
+
+// Creates a pass that moves & merges initializer function's ops into the @main
+// function. This pass should be run on a valid tf_executor dialect. The control
+// output of the initializer function for non-variable resource initialization
+// will be passed on as a dependency to a new `tf.NoOp`, whose control output
+// will be merged into the main function's FetchOp. The initializer functions
+// will be removed.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMergeInitializerFunctionOpsToMainPass();
 
 }  // namespace quant
 }  // namespace mlir

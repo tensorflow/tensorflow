@@ -10,7 +10,7 @@ load(
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_cc_library", "tflite_flex_shared_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 default_visibility = [
     "//tensorflow/compiler/mlir/lite:__subpackages__",
@@ -313,6 +313,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite:util",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([

@@ -12,22 +12,22 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pytype_library")
+load("//tensorflow:tensorflow.default.bzl", "pytype_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_xla_deps_py")
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 
 visibility = [
     # copybara:uncomment "//third_party/auroraml:__subpackages__",
@@ -232,7 +232,6 @@ py_library(
         ":tensor_util",
         ":type_spec",
         "//third_party/py/numpy",
-        "@six_archive//:six",
         "//tensorflow/python/client:_pywrap_debug_events_writer",
         "//tensorflow/python/client:_pywrap_events_writer",
         "//tensorflow/python/eager:context",
@@ -489,7 +488,6 @@ py_library(
         "//tensorflow/core/config:flags_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -674,6 +672,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core:lib_headers_for_pybind",
         "//third_party/py/numpy:headers",
         "//tensorflow/c:pywrap_required_hdrs",
@@ -757,6 +756,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core:lib_headers_for_pybind",
         "//third_party/py/numpy:headers",
         "//tensorflow/c:pywrap_required_hdrs",
@@ -879,6 +879,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:lib",
         "//tensorflow/core:framework",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core:lib_headers_for_pybind",
         "//third_party/py/numpy:headers",
         "//tensorflow/c:pywrap_required_hdrs",
@@ -938,7 +939,6 @@ py_library(
         "//tensorflow/python/eager:tape",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/util",
-        "@six_archive//:six",
     ],
 )
 
@@ -971,6 +971,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":composite_tensor",
+        ":composite_tensor_gradient",
         ":dtypes",
         ":tensor_conversion_registry",
         ":tensor_shape",
@@ -978,6 +979,16 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
+    ],
+)
+
+tf_py_test(
+    name = "indexed_slices_test",
+    srcs = ["indexed_slices_test.py"],
+    deps = [
+        ":composite_tensor_gradient",
+        "//tensorflow/python:ops",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -1000,6 +1011,7 @@ py_library(
         ":constant_op",
         ":dtypes",
         ":errors",
+        ":indexed_slices",
         ":ops",
         ":tensor_spec",
         ":tensor_util",
@@ -1015,7 +1027,9 @@ py_library(
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:graph_only_ops",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/platform",
         "//tensorflow/python/saved_model:save_context",
+        "//tensorflow/python/types",
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -1074,7 +1088,10 @@ cuda_py_test(
     size = "small",
     srcs = ["config_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],  # test_ops are not available in pip.
+    tags = [
+        "multi_gpu",
+        "no_pip",
+    ],  # test_ops are not available in pip.
     deps = [
         ":config",
         ":constant_op",
@@ -1093,6 +1110,28 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python/util",
+    ] + tf_additional_xla_deps_py(),
+)
+
+cuda_py_test(
+    name = "config_vgpu_test",
+    size = "small",
+    srcs = ["config_vgpu_test.py"],
+    python_version = "PY3",
+    shard_count = 10,  # use a large number to ensure no 2 tests run in the same process.
+    tags = [
+        "multi_gpu",
+        "no_pip",
+    ],  # test_ops are not available in pip.
+    deps = [
+        ":config",
+        ":constant_op",
+        ":errors",
+        ":ops",
+        ":test_lib",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform:client_testlib",
     ] + tf_additional_xla_deps_py(),
 )
 
@@ -1208,10 +1247,6 @@ py_library(
     srcs = ["composite_tensor_gradient.py"],
     deps = [
         ":composite_tensor",
-        ":for_generated_wrappers",
-        ":indexed_slices",
-        "//tensorflow/python/eager:backprop_util",
-        "//tensorflow/python/platform",
         "//tensorflow/python/util",
     ],
 )
@@ -1280,6 +1315,8 @@ pytype_library(
         ":composite_tensor",
         ":dtypes",
         ":tensor_shape",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform",
         "//tensorflow/python/types",
         "//tensorflow/python/util",
@@ -1397,7 +1434,6 @@ py_library(
         "//tensorflow/python/util",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@six_archive//:six",
     ],
 )
 
@@ -1410,6 +1446,7 @@ py_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//third_party/py/keras:__subpackages__",
+        "//third_party/py/keras_cv:__subpackages__",
     ],
 )
 
@@ -1877,6 +1914,7 @@ tf_py_test(
         ":test_lib",
         ":type_spec",
         ":type_utils",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:platform_test",
         "//third_party/py/numpy",
     ],

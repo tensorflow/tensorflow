@@ -207,10 +207,10 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   };
   if (src_desc.IsLinear()) {
     if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
-      c += "  args.src_tensor.GetAddress(addr_0, SRC_X, SRC_Y, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_1, SRC_X + 1, SRC_Y, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_2, SRC_X, SRC_Y + 1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_3, SRC_X + 1, SRC_Y + 1, 0);\n";
+      c += "  int addr_0 = args.src_tensor.GetAddress(SRC_X, SRC_Y, 0);\n";
+      c += "  int addr_1 = args.src_tensor.GetAddress(SRC_X + 1, SRC_Y, 0);\n";
+      c += "  int addr_2 = args.src_tensor.GetAddress(SRC_X, SRC_Y + 1, 0);\n";
+      c += "  int addr_3 = args.src_tensor.GetAddress(SRC_X+1, SRC_Y+1, 0);\n";
       c += "  addr_0 = select(-1, addr_0, (in_x0 && in_y0));\n";
       c += "  addr_1 = select(-1, addr_1, (in_x1 && in_y0));\n";
       c += "  addr_2 = select(-1, addr_2, (in_x0 && in_y1));\n";
@@ -228,10 +228,10 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
       c += "  int xc1 = clamp(SRC_X + 1, 0, args.src_tensor.Width() - 1);\n";
       c += "  int yc0 = clamp(SRC_Y, 0, args.src_tensor.Height() - 1);\n";
       c += "  int yc1 = clamp(SRC_Y + 1, 0, args.src_tensor.Height() - 1);\n";
-      c += "  args.src_tensor.GetAddress(addr_0, xc0, yc0, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_1, xc1, yc0, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_2, xc0, yc1, 0);\n";
-      c += "  args.src_tensor.GetAddress(addr_3, xc1, yc1, 0);\n";
+      c += "  int addr_0 = args.src_tensor.GetAddress(xc0, yc0, 0);\n";
+      c += "  int addr_1 = args.src_tensor.GetAddress(xc1, yc0, 0);\n";
+      c += "  int addr_2 = args.src_tensor.GetAddress(xc0, yc1, 0);\n";
+      c += "  int addr_3 = args.src_tensor.GetAddress(xc1, yc1, 0);\n";
       c += "  int dz = args.src_tensor.SliceStride();\n";
     }
   }
@@ -415,12 +415,10 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
   ConvolutionTransposed3x3 result(definition, gpu_info, padding);
   result.UploadWeights(attr.weights);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 
@@ -439,12 +437,10 @@ ConvolutionTransposed3x3 CreateConvolutionTransposed3x3DynamicWeights(
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
   ConvolutionTransposed3x3 result(new_def, gpu_info, padding);
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = new_def.GetDataType();
-  desc.UploadLinearData(attr.bias);
-  result.args_.AddObject(
-      "biases", std::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), attr.bias);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   return result;
 }
 

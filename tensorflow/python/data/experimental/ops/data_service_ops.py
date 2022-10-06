@@ -16,11 +16,9 @@
 
 import enum
 import functools
-import six
 
 from tensorflow.core.protobuf import data_service_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import compression_ops
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.data.experimental.service import _pywrap_utils
@@ -45,6 +43,7 @@ _PARALLEL_EPOCHS = "parallel_epochs"
 _DISTRIBUTED_EPOCH = "distributed_epoch"
 
 # TODO(b/176933539): Use the regular import.
+# TODO(b/238903802): Use TypeSpec serialization methods directly.
 nested_structure_coder = lazy_loader.LazyLoader(
     "nested_structure_coder", globals(),
     "tensorflow.python.saved_model.nested_structure_coder")
@@ -181,7 +180,7 @@ def _get_validated_sharding_policy(processing_mode):
 def _validate_job_name(job_name):
   if job_name is None:
     return
-  if not isinstance(job_name, six.string_types):
+  if not isinstance(job_name, str):
     raise ValueError("`job_name` must be a string, but `job_name` was of type "
                      f"{type(job_name)}. job_name={job_name}")
   if not job_name:
@@ -357,20 +356,12 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
     if data_transfer_protocol is not None:
       compat_kwargs["data_transfer_protocol"] = data_transfer_protocol
 
-    if (compat.forward_compatible(2022, 8, 31) or
-        self._dataset_id.dtype == dtypes.string):
-      data_service_dataset = (
-          gen_experimental_dataset_ops.data_service_dataset_v4)
-    else:
-      data_service_dataset = (
-          gen_experimental_dataset_ops.data_service_dataset_v3)
-
     # If `uncompress` is `True`, the dataset will query the servers to find
     # out the actual compression used. It is always set to `True` the first
     # time the graph is built, and set to false when serializing, so we will
     # uncompress at most once.
     uncompress = True
-    variant_tensor = data_service_dataset(
+    variant_tensor = gen_experimental_dataset_ops.data_service_dataset_v4(
         dataset_id=self._dataset_id,
         processing_mode=self._processing_mode,
         address=self._address,
@@ -438,7 +429,7 @@ def _parse_service(service):
   Returns:
     The (protocol, address) tuple
   """
-  if not isinstance(service, six.string_types):
+  if not isinstance(service, str):
     raise ValueError("`service` must be a string, but `service` was of type "
                      f"{type(service)}. service={service}")
   if not service:
@@ -799,7 +790,7 @@ def distribute(processing_mode,
       target_workers=target_workers)
 
 
-def _register_dataset(service, dataset, compression):
+def _register_dataset(service, dataset, compression, dataset_id=None):
   """Registers a dataset with the tf.data service.
 
   This transformation is similar to `register_dataset`, but supports additional
@@ -815,9 +806,15 @@ def _register_dataset(service, dataset, compression):
     compression: How to compress the dataset's elements before transferring them
       over the network. "AUTO" leaves the decision of how to compress up to the
       tf.data service runtime. `None` indicates not to compress.
+    dataset_id: (Optional.) By default, tf.data service generates a unique
+      (string) ID for each registered dataset. If a `dataset_id` is provided, it
+      will use the specified ID. If a dataset with a matching ID already exists,
+      no new dataset is registered. This is useful if multiple training jobs
+      want to (re)use the same dataset for training. In this case, they can
+      register the dataset with the same dataset ID.
 
   Returns:
-    A scalar tensor of the registered dataset's id.
+    A scalar string tensor representing the dataset ID.
   """
   _validate_compression(compression)
   if isinstance(service, tuple):
@@ -844,22 +841,17 @@ def _register_dataset(service, dataset, compression):
       element_spec=encoded_spec,
       compression=_get_compression_proto(compression))
 
-  if compat.forward_compatible(2022, 8, 31):
-    register_dataset_op = gen_experimental_dataset_ops.register_dataset_v2
-  else:
-    register_dataset_op = gen_experimental_dataset_ops.register_dataset
-  dataset_id = register_dataset_op(
+  return gen_experimental_dataset_ops.register_dataset_v2(
       dataset._variant_tensor,  # pylint: disable=protected-access
       address=address,
       protocol=protocol,
       external_state_policy=external_state_policy.value,
+      requested_dataset_id=dataset_id,
       metadata=metadata.SerializeToString())
-
-  return dataset_id
 
 
 @tf_export("data.experimental.service.register_dataset")
-def register_dataset(service, dataset, compression="AUTO"):
+def register_dataset(service, dataset, compression="AUTO", dataset_id=None):
   """Registers a dataset with the tf.data service.
 
   `register_dataset` registers a dataset with the tf.data service so that
@@ -900,11 +892,17 @@ def register_dataset(service, dataset, compression="AUTO"):
       transferring them over the network. "AUTO" leaves the decision of how to
       compress up to the tf.data service runtime. `None` indicates not to
       compress.
+    dataset_id: (Optional.) By default, tf.data service generates a unique
+      (string) ID for each registered dataset. If a `dataset_id` is provided, it
+      will use the specified ID. If a dataset with a matching ID already exists,
+      no new dataset is registered. This is useful if multiple training jobs
+      want to (re)use the same dataset for training. In this case, they can
+      register the dataset with the same dataset ID.
 
   Returns:
-    A scalar tensor of the registered dataset's id.
+    A scalar string tensor representing the dataset ID.
   """
-  return _register_dataset(service, dataset, compression)
+  return _register_dataset(service, dataset, compression, dataset_id)
 
 
 def _from_dataset_id(processing_mode,
@@ -918,7 +916,7 @@ def _from_dataset_id(processing_mode,
                      task_refresh_interval_hint_ms=None,
                      data_transfer_protocol=None,
                      compression="AUTO",
-                     cross_trainer_cache=False,
+                     cross_trainer_cache=None,
                      target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
@@ -1031,8 +1029,7 @@ def _from_dataset_id(processing_mode,
     protocol, address = _parse_service(service)
   _validate_compression(compression)
   if job_name is not None:
-    if not isinstance(job_name, six.string_types) and not isinstance(
-        job_name, ops.Tensor):
+    if not isinstance(job_name, str) and not isinstance(job_name, ops.Tensor):
       raise ValueError(
           "`job_name` must be a string or Tensor, but `job_name` was of type "
           f"{type(job_name)}. job_name={job_name}.")
@@ -1076,6 +1073,7 @@ def from_dataset_id(processing_mode,
                     num_consumers=None,
                     max_outstanding_requests=None,
                     data_transfer_protocol=None,
+                    cross_trainer_cache=None,
                     target_workers="AUTO"):
   """Creates a dataset which reads data from the tf.data service.
 
@@ -1157,6 +1155,11 @@ def from_dataset_id(processing_mode,
       `max_outstanding_requests` of memory.
     data_transfer_protocol: (Optional.) The protocol to use for transferring
       data with the tf.data service. By default, data is transferred using gRPC.
+    cross_trainer_cache: (Optional.) If a `CrossTrainerCache` object is
+      provided, dataset iteration will be shared across concurrently running
+      trainers. See
+      https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers
+      for details.
     target_workers: (Optional.) Which workers to read from. If `"AUTO"`, tf.data
       runtime decides which workers to read from. If `"ANY"`, reads from any
       tf.data service workers. If `"LOCAL"`, only reads from local in-processs
@@ -1184,4 +1187,5 @@ def from_dataset_id(processing_mode,
       num_consumers=num_consumers,
       max_outstanding_requests=max_outstanding_requests,
       data_transfer_protocol=data_transfer_protocol,
+      cross_trainer_cache=cross_trainer_cache,
       target_workers=target_workers)

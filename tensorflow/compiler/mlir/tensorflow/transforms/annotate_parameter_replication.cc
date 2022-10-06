@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -38,10 +37,13 @@ namespace {
 constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
+#define GEN_PASS_DEF_ANNOTATEPARAMETERREPLICATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
 struct AnnotateParameterReplicationPass
-    : public AnnotateParameterReplicationPassBase<
+    : public impl::AnnotateParameterReplicationPassBase<
           AnnotateParameterReplicationPass> {
   void runOnOperation() override;
 };
@@ -71,7 +73,8 @@ void AnnotateParameterReplicationPass::runOnOperation() {
             mirrored_index.cast<IntegerAttr>().getInt());
       }
     }
-    auto func = llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.func()));
+    auto func =
+        llvm::cast<func::FuncOp>(m.lookupSymbol(cluster_func.getFunc()));
     for (auto entry : llvm::enumerate(cluster_func.getOperands())) {
       auto operand = SkipIdentityAndReadVariable(entry.value());
       auto block_arg = operand.dyn_cast<BlockArgument>();
@@ -81,7 +84,7 @@ void AnnotateParameterReplicationPass::runOnOperation() {
           continue;
         }
       } else if (!operand.getParentRegion()->isProperAncestor(
-                     &replicate.body())) {
+                     &replicate.getBody())) {
         // Not a replication-invariant operand.
         continue;
       }

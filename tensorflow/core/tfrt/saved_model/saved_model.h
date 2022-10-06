@@ -16,42 +16,32 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_H_
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
-#include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
-#include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
-#include "tensorflow/core/public/session_options.h"
-#include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
-#include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tfrt/host_context/function.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
 
 namespace tfrt {
-
 class BEFFile;
 class HostContext;
-
-namespace tpu {
-class TpuModelResource;
-}  // namespace tpu
-
 }  // namespace tfrt
 
 namespace tensorflow {
@@ -125,10 +115,15 @@ class SavedModel {
   struct Options {
     explicit Options(const Runtime* rt) : graph_execution_options(rt) {}
 
-    // If true, the loading of any signature (or signature combination) will be
-    // deferred until the first corresponding invocationof running. Otherwise,
-    // the individual signatures will be loaded along with the saved model.
-    bool enable_lazy_loading = false;
+    // If the number of signagures is greater than the threshold, the loading of
+    // any signature (or signature combination) will be deferred until the first
+    // corresponding invocationof running. Otherwise, the individual signatures
+    // will be loaded along with the saved model.
+    int32_t lazy_loading_threshold = std::numeric_limits<int32_t>::max();
+
+    // If true, we'll attempt to find MLArchive within the given loading path.
+    // If not found, will use the path as a normal SavedModel directory.
+    bool maybe_load_from_mla = false;
 
     GraphExecutionOptions graph_execution_options;
   };
@@ -158,7 +153,7 @@ class SavedModel {
 
   // Returns the `FunctionMetadata` for a function. If the function is not
   // found, returns nullopt instead.
-  virtual absl::optional<FunctionMetadata> GetFunctionMetadata(
+  virtual std::optional<FunctionMetadata> GetFunctionMetadata(
       absl::string_view func_name) const = 0;
 
   // Runs the signature specified by `name`. Both `inputs` and `outputs`
@@ -205,16 +200,12 @@ class SavedModelImpl final : public SavedModel {
   // tensorflow saved model from `saved_model_dir`. Refer to
   // http://g3doc/learning/serving/g3doc/saved_model/overview.md
   // for explanations on SavedModel.
+  //
+  // If `options.maybe_load_from_mla` is true, tries opening `saved_model_dir`
+  // as an MLA. If it's not an MLA, uses it as a normal SavedModel directory.
   static std::unique_ptr<SavedModel> LoadSavedModel(
       Options options, absl::string_view saved_model_dir,
       const std::unordered_set<std::string>& tags, tensorflow::Status* status);
-
-  // Loads all SignatureDefs from `meta_graph_def`. Refer to
-  // http://g3doc/learning/serving/g3doc/saved_model/overview.md
-  // for explanations on SavedModel.
-  static std::unique_ptr<SavedModel> LoadSavedModel(
-      Options options, absl::string_view saved_model_dir,
-      tensorflow::MetaGraphDef meta_graph_def, tensorflow::Status* status);
 
   SavedModelImpl(
       Options options, tensorflow::MetaGraphDef meta_graph_def,
@@ -234,7 +225,7 @@ class SavedModelImpl final : public SavedModel {
 
   std::vector<std::string> GetFunctionNames() const override;
 
-  absl::optional<FunctionMetadata> GetFunctionMetadata(
+  std::optional<FunctionMetadata> GetFunctionMetadata(
       absl::string_view func_name) const override;
 
   tensorflow::Status Run(const RunOptions& run_options, absl::string_view name,
@@ -315,6 +306,7 @@ class SavedModelImpl final : public SavedModel {
                       std::unique_ptr<LoadingResult>>
       loading_result_cache_ TF_GUARDED_BY(loading_result_cache_mu_);
   std::unique_ptr<GraphExecutor> graph_executor_;
+  bool lazy_loading_enabled_ = false;
 };
 
 }  // namespace tfrt_stub

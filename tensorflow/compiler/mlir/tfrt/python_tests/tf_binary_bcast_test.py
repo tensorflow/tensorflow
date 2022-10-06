@@ -33,8 +33,8 @@ class TfBinaryBcastTest(test.TestCase):
   def test_bcast_2d_1d(self):
     mlir_function = """
       func.func @test(%arg0: tensor<?x4xf32>,
-                 %arg1: tensor<4xf32>,
-                 %arg2: tensor<4xf32>) -> tensor<?x4xf32> {
+                      %arg1: tensor<4xf32>,
+                      %arg2: tensor<4xf32>) -> tensor<?x4xf32> {
         %0 = "tf.Log1p"(%arg0)
              : (tensor<?x4xf32>) -> tensor<?x4xf32>
         %1 = "tf.Sub"(%0, %arg1)
@@ -63,7 +63,7 @@ class TfBinaryBcastTest(test.TestCase):
   def test_bcast_2d_2d(self):
     mlir_function = """
       func.func @test(%arg0: tensor<?x?xf32>,
-                 %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
+                      %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
         %0 = "tf.Mul"(%arg0, %arg1)
              : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
         func.return %0 : tensor<?x?xf32>
@@ -93,8 +93,8 @@ class TfBinaryBcastTest(test.TestCase):
   def test_bcast_2d_1d_0d(self):
     mlir_function = """
       func.func @compute(%arg0: tensor<?x4xf32>,
-                    %arg1: tensor<4xf32>,
-                    %arg2: tensor<f32>) -> tensor<?x4xf32> {
+                         %arg1: tensor<4xf32>,
+                         %arg2: tensor<f32>) -> tensor<?x4xf32> {
         %0 = "tf.AddV2"(%arg1, %arg2)
              : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
         %1 = "tf.AddV2"(%arg0, %0)
@@ -123,7 +123,7 @@ class TfBinaryBcastTest(test.TestCase):
   def test_bcast_3d_3d(self):
     mlir_function = """
       func.func @test(%arg0: tensor<?x?x12xf32>,
-                 %arg1: tensor<?x?x12xf32>) -> tensor<?x?x12xf32> {
+                      %arg1: tensor<?x?x12xf32>) -> tensor<?x?x12xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<?x?x12xf32>, tensor<?x?x12xf32>) -> tensor<?x?x12xf32>
         func.return %0 : tensor<?x?x12xf32>
@@ -144,8 +144,8 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_unranked_0d(self):
     mlir_function = """
-      func.func @compute(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
-                    %arg1: tensor<f32>) -> tensor<*xf32> {
+      func.func @compute(%arg0: tensor<*xf32> {rt.constraint = "rank"},
+                         %arg1: tensor<f32>) -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>
         func.return %0 : tensor<*xf32>
@@ -162,8 +162,8 @@ class TfBinaryBcastTest(test.TestCase):
 
   def test_bcast_unranked_unranked(self):
     mlir_function = """
-      func.func @compute(%arg0: tensor<*xf32> {jitrt.constraint = "rank"},
-                    %arg1: tensor<*xf32> {jitrt.constraint = "rank"})
+      func.func @compute(%arg0: tensor<*xf32> {rt.constraint = "rank"},
+                         %arg1: tensor<*xf32> {rt.constraint = "rank"})
           -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
@@ -202,7 +202,7 @@ class TfBinaryBcastTest(test.TestCase):
   def test_bcast_value_rank0(self):
     mlir_function = """
       func.func @compute(%arg0: tensor<*xi32>,
-                    %arg1: tensor<i32> {jitrt.constraint = "value"})
+                         %arg1: tensor<i32> {rt.constraint = "value"})
           -> tensor<*xi32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
@@ -223,7 +223,7 @@ class TfBinaryBcastTest(test.TestCase):
   def test_bcast_value_die_if_unsinkable(self):
     mlir_function = """
       func.func @compute(%arg0: tensor<*xf32>,
-                    %arg1: tensor<f32> {jitrt.constraint = "value"})
+                    %arg1: tensor<f32> {rt.constraint = "value"})
           -> tensor<*xf32> {
         %0 = "tf.AddV2"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<f32>) -> tensor<*xf32>

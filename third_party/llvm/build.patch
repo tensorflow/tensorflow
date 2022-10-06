@@ -44,3 +44,4 @@ index eec592dee5e5..7939ba627b1d 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+

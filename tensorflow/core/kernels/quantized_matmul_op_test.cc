@@ -62,10 +62,10 @@ TEST_F(QuantizedMatMulTest, Small_NoParams) {
   // | 15 | 16 | 17 | 18 |
   AddInputFromArray<quint8>(TensorShape({3, 4}),
                             {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -118,10 +118,10 @@ TEST_F(QuantizedMatMulTest, VerySmall_WithParams) {
   // The B matrix is:
   // |   1 |
   AddInputFromArray<quint8>(TensorShape({b_rows, b_cols}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {-12.0f});
-  AddInputFromArray<float>(TensorShape({1}), {243.0f});
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
-  AddInputFromArray<float>(TensorShape({1}), {256.0f});
+  AddInputFromArray<float>(TensorShape({}), {-12.0f});
+  AddInputFromArray<float>(TensorShape({}), {243.0f});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {256.0f});
   TF_ASSERT_OK(RunOpKernel());
   // We're requesting C = A.transposed() * B,
   // so we expect to get these results:
@@ -162,12 +162,50 @@ TEST_F(QuantizedMatMulTest, VerySmall_BadRange) {
   // The B matrix is:
   // |   1 |
   AddInputFromArray<quint8>(TensorShape({b_rows, b_cols}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {-12.0f});
-  AddInputFromArray<float>(TensorShape({1}), {243.0f});
+  AddInputFromArray<float>(TensorShape({}), {-12.0f});
+  AddInputFromArray<float>(TensorShape({}), {243.0f});
   // Here we set the range so that the min and max are equal, so we expect to
   // see an error when we run.
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
-  AddInputFromArray<float>(TensorShape({1}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  EXPECT_EQ(::tensorflow::error::INVALID_ARGUMENT, RunOpKernel().code());
+}
+
+// This test multiplies two 1x1 8bit matrices, but sets invalid quantized min
+// and max values, so we expect to get an error
+TEST_F(QuantizedMatMulTest, VerySmall_BadMinMax) {
+  // These parameters reflect a typical production usage of eight-bit matmuls
+  // in an Inception-style network.
+  const bool transpose_a = true;
+  const int a_rows = 1;
+  const int a_cols = 1;
+  const int b_rows = 1;
+  const int b_cols = 1;
+  const bool transpose_b = false;
+  TF_ASSERT_OK(NodeDefBuilder("quantized_mat_mul_op", "QuantizedMatMul")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("Toutput", DataTypeToEnum<qint32>::v())
+                   .Attr("transpose_a", transpose_a)
+                   .Attr("transpose_b", transpose_b)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  // The A matrix is:
+  // |  -1 |
+  AddInputFromArray<quint8>(TensorShape({a_rows, a_cols}), {11});
+  // The B matrix is:
+  // |   1 |
+  AddInputFromArray<quint8>(TensorShape({b_rows, b_cols}), {0});
+  // Here we set the error of a non scalar min_a value, so we expect to see an
+  // error when we run.
+  AddInputFromArray<float>(TensorShape({1}), {2});
+  AddInputFromArray<float>(TensorShape({}), {243.0f});
+  AddInputFromArray<float>(TensorShape({}), {1.0f});
+  AddInputFromArray<float>(TensorShape({}), {256.0f});
   EXPECT_EQ(::tensorflow::error::INVALID_ARGUMENT, RunOpKernel().code());
 }
 
@@ -233,10 +271,10 @@ TEST_F(QuantizedMatMulTest, Small_WithParams) {
                                                                3,
                                                                6,
                                                            });
-  AddInputFromArray<float>(TensorShape({1}), {-12.0f});
-  AddInputFromArray<float>(TensorShape({1}), {243.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-12.0f});
+  AddInputFromArray<float>(TensorShape({}), {243.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
   TF_ASSERT_OK(RunOpKernel());
   // We're requesting C = A.transposed() * B,
   // so we expect to get these results:
@@ -326,10 +364,10 @@ TEST_F(QuantizedMatMulTest, Medium_WithParams) {
 
   AddInputFromArray<quint8>(a_quantized.shape(), a_quantized.flat<quint8>());
   AddInputFromArray<quint8>(b_quantized.shape(), b_quantized.flat<quint8>());
-  AddInputFromArray<float>(TensorShape({1}), {a_min});
-  AddInputFromArray<float>(TensorShape({1}), {a_max});
-  AddInputFromArray<float>(TensorShape({1}), {b_min});
-  AddInputFromArray<float>(TensorShape({1}), {b_max});
+  AddInputFromArray<float>(TensorShape({}), {a_min});
+  AddInputFromArray<float>(TensorShape({}), {a_max});
+  AddInputFromArray<float>(TensorShape({}), {b_min});
+  AddInputFromArray<float>(TensorShape({}), {b_max});
   TF_ASSERT_OK(RunOpKernel());
 
   Tensor expected_float(DT_FLOAT, {a_cols, b_cols});

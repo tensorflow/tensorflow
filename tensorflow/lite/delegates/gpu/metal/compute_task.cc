@@ -189,12 +189,6 @@ const OperationDef& ComputeTask::GetDefinition() const {
   return operation_->GetDefinition();
 }
 
-bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
-
-absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  return operation_->AddOperation(task->operation_.get());
-}
-
 absl::Status ComputeTask::Compile(MetalDevice* device) {
   RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));

@@ -28,6 +28,7 @@ from tensorflow.python.ops.nn_grad import _DepthwiseConv2dNativeBackpropInputGra
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32("Uses matmul")
 class DepthwiseConv2DDeterministicTest(
     depthwise_conv_op_base.DepthwiseConv2DBase):
   """Test determinism-related functionality of tf.nn.depthwise_conv2d."""

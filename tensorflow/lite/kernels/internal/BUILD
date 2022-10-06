@@ -2,7 +2,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -301,6 +301,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":avx2_quantization_utils",
         ":common",
@@ -570,6 +571,7 @@ cc_library(
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -672,6 +674,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -878,6 +881,7 @@ cc_library(
 cc_library(
     name = "tensor_utils",
     srcs = [
+        "portable_tensor_utils.cc",
         "tensor_utils.cc",
     ],
     hdrs = [

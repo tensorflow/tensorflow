@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILEFILL
+#define GEN_PASS_DEF_TILECWISE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::failure;
@@ -87,9 +88,8 @@ bool isNonTiledCwiseGeneric(Operation *op) {
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
-    return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
-      return mlir::isParallelIterator(type);
-    });
+    return llvm::all_of(linalg_op.getIteratorTypesArray(),
+                        mlir::linalg::isParallelIterator);
   }
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
@@ -131,7 +131,7 @@ void Tile(mlir::func::FuncOp func, int64_t tile_size,
   func.walk([](LinalgOp op) { removeTransformationAttr(op); });
 }
 
-struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
+struct TileCWisePass : public impl::TileCWiseBase<TileCWisePass> {
   TileCWisePass() = default;
   explicit TileCWisePass(int64_t tile_size) { cwise_tile_size = tile_size; }
 
@@ -141,7 +141,7 @@ struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
   }
 };
 
-struct TileFillPass : public TileFillBase<TileFillPass> {
+struct TileFillPass : public impl::TileFillBase<TileFillPass> {
   TileFillPass() = default;
   explicit TileFillPass(int64_t tile_size) { cwise_tile_size = tile_size; }
 

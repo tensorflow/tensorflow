@@ -31,13 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -97,8 +97,21 @@ class HloTestBase : public ManifestCheckingTest {
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
   // returns false as the StatusOr value.
+  //
+  // These three overloads all do the same thing.  The && overload lets you do
+  // `RunHloPass(MyPass(), module)` all in one line.  The reason for the
+  // overload that takes a pointer is that, at one point in the past, non-const
+  // lvalue references were banned in Google code.
   static StatusOr<bool> RunHloPass(HloPassInterface* hlo_pass,
                                    HloModule* module);
+  static StatusOr<bool> RunHloPass(HloPassInterface& hlo_pass,
+                                   HloModule* module) {
+    return RunHloPass(&hlo_pass, module);
+  }
+  static StatusOr<bool> RunHloPass(HloPassInterface&& hlo_pass,
+                                   HloModule* module) {
+    return RunHloPass(&hlo_pass, module);
+  }
 
   static PrecisionConfig DefaultPrecisionConfig(int operands);
 
@@ -238,38 +251,39 @@ class HloTestBase : public ManifestCheckingTest {
   [[nodiscard]] ::testing::AssertionResult Run(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
-      const tensorflow::protobuf::Message* backend_config = nullptr);
+      const tsl::protobuf::Message* backend_config = nullptr);
 
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
       const absl::Span<Literal* const> arguments,
-      const std::optional<ErrorSpec>& error);
+      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Same as below, except requires passing the modules.
   ::testing::AssertionResult RunAndCompareTwoModules(
       std::unique_ptr<HloModule> module_0, std::unique_ptr<HloModule> module_1,
-      const std::optional<ErrorSpec>& error);
+      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
-  // Convenient wrapper for executing and comparing results of two unoptimized
-  // hlo modules with fake input.
+  // Convenient wrapper for executing and comparing results of two hlo modules
+  // with fake input. By default compares unoptimized modules. If the modules
+  // are already optimized, set |run_hlo_passes| to false.
   ::testing::AssertionResult RunAndCompareTwoModules(
       absl::string_view hlo_string_module_0,
       absl::string_view hlo_string_module_1,
-      const std::optional<ErrorSpec>& error);
+      const std::optional<ErrorSpec>& error, bool run_hlo_passes = true);
 
   // Executes an hlo module with fake inputs on multiple replicas.
   [[nodiscard]] ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
-      const tensorflow::protobuf::Message* backend_config = nullptr);
+      const tsl::protobuf::Message* backend_config = nullptr);
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   [[nodiscard]] ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
       std::vector<ExecutionProfile>* profiles,
-      const tensorflow::protobuf::Message* backend_config = nullptr,
+      const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareFromFile(
       const std::string& filename, const std::optional<ErrorSpec>& error,

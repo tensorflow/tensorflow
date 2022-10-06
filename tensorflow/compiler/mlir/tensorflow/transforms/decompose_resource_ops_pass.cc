@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decompose_resource_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -150,8 +149,11 @@ LogicalResult ApplyPatternsInClusterAndReachableFunctions(
   return success();
 }
 
+#define GEN_PASS_DEF_DECOMPOSERESOURCEOPSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct DecomposeResourceOpsPass
-    : public DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
+    : public impl::DecomposeResourceOpsPassBase<DecomposeResourceOpsPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.
     RewritePatternSet patterns(&getContext());
@@ -165,8 +167,11 @@ struct DecomposeResourceOpsPass
   }
 };
 
+#define GEN_PASS_DEF_DECOMPOSERESOURCEOPSINCLUSTERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct DecomposeResourceOpsInClusterPass
-    : public DecomposeResourceOpsInClusterPassBase<
+    : public impl::DecomposeResourceOpsInClusterPassBase<
           DecomposeResourceOpsInClusterPass> {
   void runOnOperation() override {
     // Add lowering patterns to the list.

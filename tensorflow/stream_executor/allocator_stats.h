@@ -16,48 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ALLOCATOR_STATS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ALLOCATOR_STATS_H_
 
-#include <string>
-
-#include "absl/types/optional.h"
-#include "tensorflow/stream_executor/platform/port.h"
-
-namespace stream_executor {
-
-// Runtime statistics collected by an allocator. Exactly the same as
-// tensorflow::AllocatorStats, but independently defined to preserve the mutual
-// independence of StreamExecutor and TensorFlow.
-struct AllocatorStats {
-  int64_t num_allocs;          // Number of allocations.
-  int64_t bytes_in_use;        // Number of bytes in use.
-  int64_t peak_bytes_in_use;   // The peak bytes in use.
-  int64_t largest_alloc_size;  // The largest single allocation seen.
-
-  // The upper limit of bytes of user allocatable device memory, if such a limit
-  // is known.
-  std::optional<int64_t> bytes_limit;
-
-  // Stack related memory usage.
-  int64_t bytes_reserved;  // Number of bytes reserved on the stack.
-  int64_t
-      peak_bytes_reserved;  // The peak number of bytes reserved on the stack.
-  // The upper limit on the number bytes of reservable memory on the stack,
-  // if such a limit is known.
-  std::optional<int64_t> bytes_reservable_limit;
-
-  int64_t largest_free_block_bytes;  // Largest free block's size in heap.
-
-  AllocatorStats()
-      : num_allocs(0),
-        bytes_in_use(0),
-        peak_bytes_in_use(0),
-        largest_alloc_size(0),
-        bytes_reserved(0),
-        peak_bytes_reserved(0),
-        largest_free_block_bytes(0) {}
-
-  std::string DebugString() const;
-};
-
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/allocator_stats.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_ALLOCATOR_STATS_H_

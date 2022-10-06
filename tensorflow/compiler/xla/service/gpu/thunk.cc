@@ -57,6 +57,8 @@ Thunk::ExecuteParams::ExecuteParams(
       return "kNcclAllToAll";
     case Thunk::kFft:
       return "kFft";
+    case Thunk::kFor:
+      return "kFor";
     case Thunk::kGemm:
       return "kGemm";
     case Thunk::kInfeed:

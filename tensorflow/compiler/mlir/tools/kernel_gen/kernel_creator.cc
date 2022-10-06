@@ -33,8 +33,8 @@ limitations under the License.
 #include "mlir/Conversion/SCFToGPU/SCFToGPUPass.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
@@ -51,16 +51,16 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/gpu_passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
@@ -122,7 +122,8 @@ Status LowerTFToJITInvocation(mlir::ModuleOp module,
           tile_sizes, unroll_factors, max_supported_rank, enable_ftz,
           index_64bit, jit_i64_indexed_for_large_tensors));
   pm.addPass(mlir::kernel_gen::tf_framework::CreateEmbedTFFrameworkPass());
-  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::createComputeOpAndFuncBufferizePass());
 
   pm.addPass(mlir::createFinalBufferizePass(
@@ -195,7 +196,8 @@ Status LowerTFtoLoops(mlir::ModuleOp module, llvm::ArrayRef<int64_t> tile_sizes,
   // TODO(pifon): Rename the pass to CreateHloLinalgBufferizePass or bufferize
   // in 2 steps: first Linalg, then Hlo. That would need refactoring of
   // BufferizeTypeConverter.
-  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::createComputeOpAndFuncBufferizePass());
   pm.addNestedPass<FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<FuncOp>(::mlir::createCSEPass());
@@ -242,7 +244,7 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
 
   // Expand memref_reshape to its ranked form so that we can propagate
   // scalars and avoid allocation.
-  pm.addNestedPass<FuncOp>(mlir::arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateShapeToDescriptorsPass());
@@ -263,7 +265,6 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
       /*alignment=*/64,
       mlir::kernel_gen::transforms::populateExtraBufferizeDialects,
       mlir::kernel_gen::transforms::populateExtraBufferizePatterns));
-  // TODO(herhut): Enable once no-longer broken.
   pm.addNestedPass<FuncOp>(::mlir::bufferization::createBufferHoistingPass());
   pm.addNestedPass<FuncOp>(mlir::bufferization::createPromoteBuffersToStackPass(
       [](Value alloc) { return IsSmallAlloc(alloc); }));
@@ -272,9 +273,8 @@ Status LowerLoopsToGPU(mlir::ModuleOp module, bool embed_memref_prints,
       ::mlir::bufferization::createBufferDeallocationPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // Apply the mapping and go to GPU. We cannot do this earlier due to missing
-  // interfaces on the GPU dialect.
-  // TODO(b/174830459): Move up once implemented.
+  // Apply the mapping and go to GPU. We cannot do this earlier as the GPU
+  // dialect requires memrefs.
   pm.addNestedPass<FuncOp>(mlir::createParallelLoopToGpuPass());
 
   // Some basic cleanup.

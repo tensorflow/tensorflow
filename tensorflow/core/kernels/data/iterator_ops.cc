@@ -22,6 +22,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/activity_watcher/activity.h"
+#include "tensorflow/core/activity_watcher/activity_utils.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -620,6 +622,8 @@ class ToSingleElementOp : public AsyncOpKernel {
  public:
   explicit ToSingleElementOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
+        metrics_collector_(ctx->device()->attributes().device_type(),
+                           *ctx->env()),
         unbounded_threadpool_(ctx->env(), "tf_data_to_single_element") {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
@@ -664,8 +668,10 @@ class ToSingleElementOp : public AsyncOpKernel {
     components.reserve(dataset->output_dtypes().size());
     bool end_of_sequence = false;
 
+    const absl::Time start_time = metrics_collector_.RecordStart();
     TF_RETURN_IF_ERROR(
         iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    metrics_collector_.RecordStop(start_time, components);
 
     if (end_of_sequence) {
       return errors::InvalidArgument("Dataset was empty.");
@@ -685,6 +691,7 @@ class ToSingleElementOp : public AsyncOpKernel {
     return OkStatus();
   }
 
+  IteratorMetricsCollector metrics_collector_;
   UnboundedThreadPool unbounded_threadpool_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
@@ -892,6 +899,11 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextOp exit. iter_id=" << ctx->frame_iter().iter_id;
   });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
+  });
   profiler::TraceMe traceme(
       [&] {
         return profiler::TraceMeEncode(
@@ -926,6 +938,11 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   auto cleanup = gtl::MakeCleanup([ctx] {
     VLOG(3) << "IteratorGetNextAsOptionalOp exit. iter_id="
             << ctx->frame_iter().iter_id;
+  });
+  activity_watcher::ActivityScope activity_scope([ctx = ctx]() {
+    return activity_watcher::ActivityFromContext(
+        ctx, "IteratorGetNextAsOptionalOp::DoCompute",
+        activity_watcher::ActivityCategory::kDatasetOp);
   });
   profiler::TraceMe traceme(
       [&] {

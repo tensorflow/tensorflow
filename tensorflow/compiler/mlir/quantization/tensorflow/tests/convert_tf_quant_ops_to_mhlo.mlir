@@ -15,7 +15,7 @@
 // RUN: tf-quant-opt %s -quant-convert-tf-quant-ops-to-mhlo | FileCheck %s
 
 func.func @quantized_matmul_fn(%input: tensor<*xf32>) -> tensor<*xf32> {
-  %weight = "tf.Const"() { value = opaque<"tf", "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2032207D207D2074656E736F725F636F6E74656E743A20225C3030315C3030325C3030335C30303422"> : tensor<2x2x!tf_type.qint8> } : () -> tensor<2x2x!tf_type.qint8>
+  %weight = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2032207D207D2074656E736F725F636F6E74656E743A20225C3030315C3030325C3030335C30303422"> : tensor<2x2x!tf_type.qint8> } : () -> tensor<2x2x!tf_type.qint8>
   %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
   %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
 

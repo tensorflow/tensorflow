@@ -31,7 +31,7 @@ namespace port {
 namespace {
 
 // If the CPU feature isn't present, log a fatal error.
-void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
+void CheckFeatureOrDie(CPUFeature feature, const std::string& feature_name) {
   if (!TestCPUFeature(feature)) {
     const auto error_msg =
         "The TensorFlow library was compiled to use " + feature_name +
@@ -52,8 +52,8 @@ void CheckFeatureOrDie(CPUFeature feature, const string& feature_name) {
 }
 
 // Check if CPU feature is included in the TensorFlow binary.
-void CheckIfFeatureUnused(CPUFeature feature, const string& feature_name,
-                          string& missing_instructions) {
+void CheckIfFeatureUnused(CPUFeature feature, const std::string& feature_name,
+                          std::string& missing_instructions) {
   if (TestCPUFeature(feature)) {
     missing_instructions.append(" ");
     missing_instructions.append(feature_name);
@@ -125,7 +125,7 @@ absl::once_flag g_cpu_feature_guard_warn_once_flag;
 
 void InfoAboutUnusedCPUFeatures() {
   absl::call_once(g_cpu_feature_guard_warn_once_flag, [] {
-    string missing_instructions;
+    std::string missing_instructions;
 #if defined(_MSC_VER) && !defined(__clang__)
 
 #ifndef __AVX__

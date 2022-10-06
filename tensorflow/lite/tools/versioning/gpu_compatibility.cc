@@ -366,9 +366,10 @@ absl::Status CheckSelectV2GpuDelegateCompatibility(const OpSignature& op_sig) {
   }
   // Only supports float inputs with non-broadcastable or scalar if/else.
   absl::Status error = absl::InvalidArgumentError(
-      "Cond must be float type, if, else tensors must be float and either "
-      "be same shape as output or constant, scalar.");
-  if ((op_sig.inputs.at(0).type != kTfLiteFloat16 &&
+      "Cond must be float or bool type, if, else tensors must be float and "
+      "either be same the shape as output or constant, scalar.");
+  if ((op_sig.inputs.at(0).type != kTfLiteBool &&
+       op_sig.inputs.at(0).type != kTfLiteFloat16 &&
        op_sig.inputs.at(0).type != kTfLiteFloat32) ||
       (op_sig.inputs.at(1).type != kTfLiteFloat16 &&
        op_sig.inputs.at(1).type != kTfLiteFloat32) ||
@@ -461,6 +462,10 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       if (op_sig.inputs.at(0).type == kTfLiteBool &&
           (op_sig.outputs.at(0).type == kTfLiteFloat16 ||
            op_sig.outputs.at(0).type == kTfLiteFloat32)) {
+        return absl::OkStatus();
+      } else if ((op_sig.inputs.at(0).type == kTfLiteFloat16 ||
+                  op_sig.inputs.at(0).type == kTfLiteFloat32) &&
+                 op_sig.outputs.at(0).type == kTfLiteBool) {
         return absl::OkStatus();
       } else if ((op_sig.inputs.at(0).type == kTfLiteFloat32 ||
                   op_sig.inputs.at(0).type == kTfLiteInt32) &&

@@ -54,6 +54,9 @@ class CoordinationServiceRpcHandler {
                                  ReportErrorToServiceResponse* response,
                                  StatusCallback done);
 
+  void GetTaskStateAsync(const GetTaskStateRequest* request,
+                         GetTaskStateResponse* response, StatusCallback done);
+
   void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                            InsertKeyValueResponse* response,
                            StatusCallback done);

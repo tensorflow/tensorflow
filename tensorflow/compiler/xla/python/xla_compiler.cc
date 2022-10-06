@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -53,7 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 namespace xla {
 namespace {
@@ -80,8 +81,7 @@ static std::string UniquifyName(const std::string& name) {
 StatusOr<py::bytes> GetComputationSerializedProto(
     const XlaComputation& computation) {
   std::string result;
-  if (!tensorflow::SerializeToStringDeterministic(computation.proto(),
-                                                  &result)) {
+  if (!tsl::SerializeToStringDeterministic(computation.proto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
@@ -90,7 +90,7 @@ StatusOr<py::bytes> GetComputationSerializedProto(
 // Converts a hlo module to a serialized HloModuleProto.
 StatusOr<py::bytes> GetHloModuleSerializedProto(const HloModule& module) {
   std::string result;
-  if (!tensorflow::SerializeToStringDeterministic(module.ToProto(), &result)) {
+  if (!tsl::SerializeToStringDeterministic(module.ToProto(), &result)) {
     return Unknown("Failed to serialize the HloModuleProto.");
   }
   return py::bytes(result);
@@ -576,7 +576,7 @@ void BuildXlaCompilerSubmodule(py::module& m) {
         DeviceAssignmentProto proto;
         TF_RETURN_IF_ERROR(da.Serialize(&proto));
         std::string result;
-        if (!tensorflow::SerializeToStringDeterministic(proto, &result)) {
+        if (!tsl::SerializeToStringDeterministic(proto, &result)) {
           return Unknown("Failed to serialize the DeviceAssignmentProto.");
         }
         return py::bytes(result);
@@ -596,6 +596,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
       .def_readwrite("parameter_is_tupled_arguments",
                      &CompileOptions::parameter_is_tupled_arguments)
+      .def_readwrite("compile_portable_executable",
+                     &CompileOptions::compile_portable_executable)
       .def_readonly("executable_build_options",
                     &CompileOptions::executable_build_options)
       // TODO(phawkins): the following fields exist for backward compatibility.
@@ -749,9 +751,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                     &xla::OpSharding::replicate_on_last_tile_dim,
                     &xla::OpSharding::set_replicate_on_last_tile_dim)
       .def("__repr__", &xla::OpSharding::DebugString)
-      .def("SerializeToString", [](const OpSharding& sharding) {
-        return py::bytes(sharding.SerializeAsString());
-      });
+      .def("SerializeToString",
+           [](const OpSharding& sharding) {
+             return py::bytes(sharding.SerializeAsString());
+           })
+      .def("clone",
+           [](const OpSharding& sharding) { return OpSharding(sharding); });
   DefRepeatedProperty(op_sharding, "tile_assignment_dimensions",
                       &xla::OpSharding::mutable_tile_assignment_dimensions);
   DefRepeatedProperty(op_sharding, "tile_assignment_devices",
@@ -760,6 +765,19 @@ void BuildXlaCompilerSubmodule(py::module& m) {
                       &xla::OpSharding::mutable_tuple_shardings);
   DefRepeatedProperty(op_sharding, "last_tile_dims",
                       &xla::OpSharding::mutable_last_tile_dims);
+
+  py::class_<HloSharding> hlo_sharding(m, "HloSharding");
+  hlo_sharding.def_static("from_proto", &xla::HloSharding::FromProto)
+      .def("__eq__", [](const xla::HloSharding& a,
+                        const xla::HloSharding& b) { return a == b; })
+      .def("__hash__",
+           [](const xla::HloSharding& self) { return absl::HashOf(self); })
+      .def("is_replicated", &xla::HloSharding::IsReplicated)
+      .def("tile", [](const xla::HloSharding& self,
+                      xla::Shape shape) { return self.TileShape(shape); })
+      .def("__repr__",
+           [](const xla::HloSharding& self) { return self.ToString(); })
+      .def("to_proto", &xla::HloSharding::ToProto);
 
   py::class_<FrontendAttributes> frontend_attributes(m, "FrontendAttributes");
   frontend_attributes.def(py::init<>())

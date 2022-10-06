@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/data_service_ops.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -75,6 +76,13 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kMetadata, &serialized_metadata));
     serialized_metadata_ = serialized_metadata;
   }
+
+  if (ctx->HasAttr(kRequestedDatasetId)) {
+    tstring requested_dataset_id;
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr(kRequestedDatasetId, &requested_dataset_id));
+    requested_dataset_id_ = requested_dataset_id;
+  }
 }
 
 void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
@@ -124,14 +132,19 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   }
   metadata.set_cardinality(dataset->Cardinality());
 
+  std::optional<std::string> requested_dataset_id;
+  if (!requested_dataset_id_.empty()) {
+    requested_dataset_id = requested_dataset_id_;
+  }
+
   DataServiceDispatcherClient client(address, protocol);
   std::string dataset_id;
   int64_t deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
                [&]() {
-                 return client.RegisterDataset(dataset_def, metadata,
-                                               dataset_id);
+                 return client.RegisterDataset(
+                     dataset_def, metadata, requested_dataset_id, dataset_id);
                },
                /*description=*/
                strings::StrCat("register dataset with dispatcher at ", address),

@@ -41,14 +41,13 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
 
@@ -60,8 +59,11 @@ constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
+#define GEN_PASS_DEF_TPUMERGEVARIABLESWITHEXECUTEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TPUMergeVariablesWithExecutePass
-    : public TF::TPUMergeVariablesWithExecutePassBase<
+    : public impl::TPUMergeVariablesWithExecutePassBase<
           TPUMergeVariablesWithExecutePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     // We need this here because at the moment we deserialize the TPUCompileMlir
@@ -153,7 +155,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
     const mlir::TF::ResourceAliasAnalysis::Info& resource_analysis_info,
     bool check_device, bool check_same_region) {
   VariableAccessesForTPUExecute var_access_info;
-  Attribute device_attr = execute_launch.deviceAttr();
+  Attribute device_attr = execute_launch.getDeviceAttr();
   if (check_device && !device_attr) return var_access_info;
   auto func = execute_launch->getParentOfType<mlir::func::FuncOp>();
 
@@ -511,9 +513,9 @@ LogicalResult MergeForOneTPUExecute(
 
   // Wrap in launch for device assignment.
   auto merged_execute_launch = builder->create<tf_device::LaunchOp>(
-      merged_execute.getLoc(), execute_launch.deviceAttr(),
+      merged_execute.getLoc(), execute_launch.getDeviceAttr(),
       merged_execute.getResultTypes());
-  merged_execute_launch.body().push_back(new Block);
+  merged_execute_launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&merged_execute_launch.GetBody());
   builder->create<tf_device::ReturnOp>(merged_execute.getLoc(),

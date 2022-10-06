@@ -53,7 +53,6 @@ py_library(
         "//tensorflow/python/autograph/pyct/static_analysis",
         "//tensorflow/python/autograph/utils",
         "@gast_archive//:gast",
-        "@six_archive//:six",
     ],
 )
 

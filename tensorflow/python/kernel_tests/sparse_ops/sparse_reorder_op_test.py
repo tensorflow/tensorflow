@@ -14,10 +14,13 @@
 # ==============================================================================
 """Tests for SparseReorder."""
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -26,7 +29,7 @@ import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-class SparseReorderTest(test.TestCase):
+class SparseReorderTest(test.TestCase, parameterized.TestCase):
 
   def _SparseTensorPlaceholder(self):
     return sparse_tensor.SparseTensor(
@@ -51,6 +54,36 @@ class SparseReorderTest(test.TestCase):
     self.assertAllEqual((5, 6), sp_input.get_shape())
     sp_output = sparse_ops.sparse_reorder(sp_input)
     self.assertAllEqual((5, 6), sp_output.get_shape())
+
+  @parameterized.named_parameters([
+      ("FullyStatic", [5, 6], None, [5, 6]),
+      ("Partial1", [None, 6], None, [None, 6]),
+      ("Partial2", [5, None], None, [5, None]),
+      ("RankFromStaticDenseShape", [None, None], None, [None, None]),
+      ("RankFromDenseShapeDim", None, [2], [None, None]),
+      ("FullyDynamic", None, [None], None),
+  ])
+  def testStaticShapeInfoPreservedInFunction(self,
+                                             static_dense_shape,
+                                             dense_shape_shape,
+                                             expected_output_shape):
+
+    @def_function.function
+    def func(indices, values, dense_shape):
+      if static_dense_shape:
+        dense_shape = [
+            static_dim or dense_shape[i]
+            for i, static_dim in enumerate(static_dense_shape)
+        ]
+      sp_input = sparse_tensor.SparseTensor(indices, values, dense_shape)
+      sp_output = sparse_ops.sparse_reorder(sp_input)
+      self.assertEqual(expected_output_shape, sp_output.get_shape())
+      return sp_output
+
+    _ = func.get_concrete_function(
+        tensor_spec.TensorSpec([6, 2], dtypes.int64),
+        tensor_spec.TensorSpec([6], dtypes.float64),
+        tensor_spec.TensorSpec(dense_shape_shape, dtypes.int64))
 
   def testAlreadyInOrder(self):
     with self.session() as sess:

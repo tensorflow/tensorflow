@@ -117,14 +117,14 @@ class Shape {
   int64_t dimensions(int index) const { return dimensions_.at(index); }
   int64_t dimensions_minor(int index) const {
     CHECK(has_layout());
-    return dimensions_.at(layout_.minor_to_major(index));
+    return dimensions_.at(layout_->minor_to_major(index));
   }
   void set_dimensions(int index, int64_t value) {
     dimensions_.at(index) = value;
   }
   void set_dimensions_minor(int index, int64_t value) {
     CHECK(has_layout());
-    dimensions_.at(layout_.minor_to_major(index)) = value;
+    dimensions_.at(layout_->minor_to_major(index)) = value;
   }
   void add_dimensions(int64_t value) {
     dimensions_.push_back(value);
@@ -153,10 +153,19 @@ class Shape {
   std::vector<Shape>* mutable_tuple_shapes() { return &tuple_shapes_; }
 
   // Methods for accessing the layout field.
-  bool has_layout() const { return layout_.format() != INVALID_FORMAT; }
-  const Layout& layout() const { return layout_; }
-  Layout* mutable_layout() { return &layout_; }
-  void clear_layout() { layout_.Clear(); }
+  bool has_layout() const { return layout_ != std::nullopt; }
+  const Layout& layout() const {
+    CHECK(has_layout()) << ShortDebugString();
+    return *layout_;
+  }
+  Layout* mutable_layout() {
+    CHECK(IsArray()) << ShortDebugString();
+    if (layout_ == std::nullopt) {
+      layout_.emplace();
+    }
+    return &(*layout_);
+  }
+  void clear_layout() { layout_ = std::nullopt; }
 
   // Recursively clear dynamic dimension of a shape.
   void clear_dynamic_dimensions() {
@@ -296,7 +305,7 @@ class Shape {
   std::vector<Shape> tuple_shapes_;
 
   // The layout of the shape. Only relevant for arrays.
-  Layout layout_;
+  std::optional<Layout> layout_;
 };
 
 // Shape of the parameters and output of an XLA computation. This is analogous

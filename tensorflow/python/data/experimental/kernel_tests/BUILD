@@ -1,6 +1,5 @@
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -251,25 +250,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "ignore_errors_test",
-    size = "small",
-    srcs = ["ignore_errors_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python/data/experimental/ops:error_ops",
-        "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
-        "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:options",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
     name = "io_test",
     size = "medium",
     srcs = ["io_test.py"],
@@ -306,7 +286,7 @@ tf_py_test(
     name = "make_batched_features_dataset_test",
     size = "small",
     srcs = ["make_batched_features_dataset_test.py"],
-    shard_count = 4,
+    shard_count = 6,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -481,7 +461,6 @@ tf_py_test(
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
-        "@six_archive//:six",
     ],
 )
 

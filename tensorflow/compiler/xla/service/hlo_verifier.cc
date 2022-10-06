@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -138,7 +138,7 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
           called_cmp, skip_nested_async_op_check));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -193,6 +193,13 @@ Status ShapeVerifier::HandleBitcastConvert(HloInstruction* convert) {
                                  convert->shape().element_type()));
 }
 
+Status ShapeVerifier::HandleStochasticConvert(HloInstruction* convert) {
+  return CheckShape(
+      convert, ShapeInference::InferStochasticConvertShape(
+                   convert->operand(0)->shape(), convert->operand(1)->shape(),
+                   convert->shape().element_type()));
+}
+
 Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
   return CheckUnaryShape(copy);
 }
@@ -204,6 +211,27 @@ Status ShapeVerifier::HandleDot(HloInstruction* dot) {
           dot->operand(0)->shape(), dot->operand(1)->shape(),
           dot->dot_dimension_numbers(),
           /*preferred_element_type=*/dot->shape().element_type()));
+  if (auto nibble_count =
+          absl::c_count(dot->precision_config().operand_precision(),
+                        PrecisionConfig::PACKED_NIBBLE)) {
+    if (nibble_count == 1) {
+      return InvalidArgument("Dot cannot have a single packed nibble argument");
+    }
+    if (nibble_count == 2) {
+      if (!ShapeUtil::ElementIsIntegralWithBits(dot->operand(0)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. LHS is "
+            "%s.",
+            dot->operand(0)->ToString());
+      }
+      if (!ShapeUtil::ElementIsIntegralWithBits(dot->operand(1)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. RHS is "
+            "%s.",
+            dot->operand(1)->ToString());
+      }
+    }
+  }
   return CheckShape(dot, expected);
 }
 
@@ -215,6 +243,42 @@ Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
           convolution->feature_group_count(), convolution->batch_group_count(),
           convolution->window(), convolution->convolution_dimension_numbers(),
           /*preferred_element_type=*/convolution->shape().element_type()));
+  if (auto nibble_count =
+          absl::c_count(convolution->precision_config().operand_precision(),
+                        PrecisionConfig::PACKED_NIBBLE)) {
+    if (nibble_count == 1) {
+      return InvalidArgument(
+          "Convolution cannot have a single packed nibble argument");
+    }
+    if (nibble_count == 2) {
+      if (convolution->feature_group_count() != 1) {
+        return InvalidArgument(
+            "Packed nibble precision does not support feature group count "
+            "%s.",
+            convolution->ToString());
+      }
+      if (convolution->batch_group_count() != 1) {
+        return InvalidArgument(
+            "Packed nibble precision does not support batch group count "
+            "%s.",
+            convolution->ToString());
+      }
+      if (!ShapeUtil::ElementIsIntegralWithBits(
+              convolution->operand(0)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. LHS is "
+            "%s.",
+            convolution->operand(0)->ToString());
+      }
+      if (!ShapeUtil::ElementIsIntegralWithBits(
+              convolution->operand(1)->shape(), 8)) {
+        return InvalidArgument(
+            "Packed nibble precision can only apply to 8 bit integers. RHS is "
+            "%s.",
+            convolution->operand(1)->ToString());
+      }
+    }
+  }
   return CheckShape(convolution, expected);
 }
 
@@ -892,7 +956,8 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
                                                  reverse->dimensions()));
 }
 
-Status ShapeVerifier::HandleSort(HloInstruction* sort) {
+Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
+  HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
   if (sort->operand_count() < 1) {
     return InternalError("Expected at least 1 operand for %s instruction: %s",
                          HloOpcodeString(sort->opcode()), sort->ToString());
@@ -943,6 +1008,15 @@ Status ShapeVerifier::HandleSort(HloInstruction* sort) {
           StringifyShape(sort->operand(operand)->shape()));
     }
   }
+
+  // Verify the sort_dimension.
+  if (sort->sort_dimension() >= sort->operand(0)->shape().rank()) {
+    return InternalError(
+        "Expected the sort_dimension %d of sort to be smaller than the rank %d "
+        "of the operand(s).",
+        sort->sort_dimension(), sort->shape().rank());
+  }
+
   return CheckVariadicShape(sort);
 }
 
@@ -1032,16 +1106,23 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
+  const Shape& output_shape = bitcast->shape();
+  const Shape& operand_shape = bitcast->operand(0)->shape();
   if (opts_.layout_sensitive &&
-      opts_.shape_size(bitcast->shape()) !=
-          opts_.shape_size(bitcast->operand(0)->shape())) {
-    return InternalError(
-        "Bitcast cannot have different shape sizes of output (%d) and operand "
-        "(%d) (%s) (%s)",
-        opts_.shape_size(bitcast->shape()),
-        opts_.shape_size(bitcast->operand(0)->shape()),
-        bitcast->shape().ToString(true),
-        bitcast->operand(0)->shape().ToString(true));
+      opts_.shape_size(output_shape) != opts_.shape_size(operand_shape)) {
+    // Allow bitcast that has the same data size but different trailing
+    // paddings.
+    if (!opts_.allow_bitcast_to_have_different_size ||
+        !(output_shape.is_static() && operand_shape.is_static() &&
+          (ShapeUtil::ArrayDataSize(output_shape) ==
+           ShapeUtil::ArrayDataSize(operand_shape)))) {
+      return InternalError(
+          "Bitcast cannot have different shape sizes of output (%d) and "
+          "operand "
+          "(%d) (%s) (%s)",
+          opts_.shape_size(output_shape), opts_.shape_size(operand_shape),
+          output_shape.ToString(true), operand_shape.ToString(true));
+    }
   }
   return OkStatus();
 }
@@ -1395,7 +1476,7 @@ Status CheckAsyncOpComputationShapes(const HloInstruction* async_op,
         async_shape.tuple_shapes(1).ToString(/*print_layout=*/true),
         computation_shape.result().ToString(/*print_layout=*/true));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckAsyncOpComputationThreadName(const HloInstruction* async_op) {
@@ -1430,7 +1511,7 @@ Status CheckCallableInstructionThreadName(const HloInstruction* instruction,
     TF_RETURN_IF_ERROR(CheckNestedComputationThreadNameEqual(
         computation, skip_nested_async_op_check));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -1449,7 +1530,7 @@ Status ShapeVerifier::HandleAsyncStart(HloInstruction* async_start) {
           param_shape.tuple_shapes(i).ToString(/*print_layout=*/true));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShapeVerifier::HandleAsyncUpdate(HloInstruction* async_update) {
@@ -1756,11 +1837,11 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const StatusOr<Shape>& inferred_shape_status) {
   if (!inferred_shape_status.ok()) {
     Status s = inferred_shape_status.status();
-    tensorflow::errors::AppendToMessage(&s, ", for instruction ",
-                                        instruction->ToString());
+    tsl::errors::AppendToMessage(&s, ", for instruction ",
+                                 instruction->ToString());
     return s;
   }
-  return CheckShape(instruction, inferred_shape_status.ValueOrDie());
+  return CheckShape(instruction, inferred_shape_status.value());
 }
 
 Status ShapeVerifier::CheckUnaryShape(const HloInstruction* instruction) {
@@ -2468,6 +2549,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
     return OkStatus();
   }
 
+  Status HandleCustomCall(HloInstruction* hlo) override {
+    if (opts_.verify_custom_call_nested_computation_thread_name) {
+      // Allow kCustomCall to contain computations on separate thread.
+      return CheckCallableInstructionThreadName(
+          hlo, /*skip_nested_async_op_check=*/true);
+    }
+    return OkStatus();
+  }
+
   Status Preprocess(HloInstruction* instruction) override {
     auto previous = instructions_by_name_.find(instruction->name());
     TF_RET_CHECK(previous == instructions_by_name_.end())
@@ -2483,13 +2573,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Postprocess(HloInstruction* instruction) override {
     if (!opts_.InstructionCanChangeLayout(instruction) &&
-        LayoutUtil::IsDenseArray(instruction->shape())) {
+        LayoutUtil::IsDenseArray(instruction->shape()) &&
+        instruction->shape().has_layout()) {
       const Shape& result_shape = instruction->shape();
       const Layout& result_layout = result_shape.layout();
       for (HloInstruction* operand : instruction->operands()) {
         const Shape& operand_shape = operand->shape();
         if (LayoutUtil::IsDenseArray(operand_shape) &&
-            operand_shape.rank() == result_shape.rank()) {
+            operand_shape.rank() == result_shape.rank() &&
+            operand_shape.has_layout()) {
           const Layout& operand_layout = operand_shape.layout();
           TF_RET_CHECK(LayoutUtil::Equal(result_layout, operand_layout))
               << "Instruction shouldn't change layouts "
@@ -2532,7 +2624,7 @@ StatusOr<bool> HloVerifier::Run(
         target_metadata_->GetVerifier();
     InstructionVerifier instruction_verifier(
         target_metadata_->GetVerifierOpts());
-    for (auto* computation : module->computations()) {
+    for (auto* computation : module->computations(execution_threads)) {
       TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
       TF_RETURN_IF_ERROR(computation->Accept(&instruction_verifier));
     }
@@ -2559,7 +2651,7 @@ StatusOr<bool> HloVerifier::Run(
     return false;
   }();
   if (status_or_changed.ok()) {
-    return status_or_changed.ValueOrDie();
+    return status_or_changed.value();
   }
   return Status(status_or_changed.status().code(),
                 absl::StrCat("during context [", context_, "]: ",

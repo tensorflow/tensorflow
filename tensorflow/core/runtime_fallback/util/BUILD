@@ -127,9 +127,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     deps = [
         "@tf_runtime//backends/gpu:gpu_device",
         "@tf_runtime//backends/gpu:gpu_config",
@@ -143,8 +144,8 @@ tf_cuda_library(
         "//conditions:default": [
             "//tensorflow/core/common_runtime/eager:tensor_handle",
             "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-            "//tensorflow/stream_executor:platform",
-            "//tensorflow/stream_executor/cuda:cuda_driver",
+            "//tensorflow/compiler/xla/stream_executor:platform",
+            "//tensorflow/compiler/xla/stream_executor/cuda:cuda_driver",
             "//tensorflow/c:tf_tensor",
             "//tensorflow/c:tf_tensor_internal",
         ],

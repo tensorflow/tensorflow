@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 
@@ -493,26 +494,16 @@ class MiniBenchmarkImpl : public MiniBenchmark {
   void CreateValidatorIfNececessary() {
     if (validator_) return;
 
-    const NnApiSLDriverImplFL5* nnapi_sl;
+    ValidatorRunnerOptions options =
+        CreateValidatorRunnerOptionsFrom(*settings_);
     MinibenchmarkStatus get_nnapi_sl_status =
-        GetNnApiSlPointerIfPresent(&nnapi_sl);
+        GetNnApiSlPointerIfPresent(&options.nnapi_sl);
     if (get_nnapi_sl_status != kMinibenchmarkSuccess) {
       LogInitializationFailure(get_nnapi_sl_status);
       return;
     }
+    validator_ = std::make_unique<ValidatorRunner>(options);
 
-    if (settings_->model_file()->fd() <= 0) {
-      validator_ = std::make_unique<ValidatorRunner>(
-          settings_->model_file()->filename()->str(),
-          settings_->storage_paths()->storage_file_path()->str(),
-          settings_->storage_paths()->data_directory_path()->str(), nnapi_sl);
-    } else {
-      validator_ = std::make_unique<ValidatorRunner>(
-          settings_->model_file()->fd(), settings_->model_file()->offset(),
-          settings_->model_file()->length(),
-          settings_->storage_paths()->storage_file_path()->str(),
-          settings_->storage_paths()->data_directory_path()->str(), nnapi_sl);
-    }
     MinibenchmarkStatus status = validator_->Init();
     if (status == kMinibenchmarkValidationEntrypointSymbolNotFound) {
       TFLITE_LOG_PROD_ONCE(TFLITE_LOG_ERROR,

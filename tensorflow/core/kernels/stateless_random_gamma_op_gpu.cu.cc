@@ -159,7 +159,7 @@ struct StatelessRandomGammaFunctor<GPUDevice, T> {
                                 cfg.thread_per_block, 0, d.stream(),
                                 num_samples, num_alphas, samples_per_alpha,
                                 random, samples_flat, alpha_flat));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

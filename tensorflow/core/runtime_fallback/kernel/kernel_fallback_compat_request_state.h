@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/support/pointer_util.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -40,30 +42,33 @@ class FallbackResourceArray {
  public:
   // Sets `tensor` in the array at `index`. `index` should be dense and
   // duplicate indices are not allowed.
-  void SetResource(int index, tensorflow::tfrt_stub::ImmutableTensor tensor);
+  void SetResource(int index, tfrt_stub::ImmutableTensor tensor);
 
   // Returns the resource tensor wrapped in AsyncValue value at `index`.
-  tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>*
-  GetResource(int index) const {
-    return resource_async_values_.at(index).get();
+  tfrt::AsyncValuePtr<tfrt_stub::FallbackTensor> GetResource(int index) const {
+    return resource_async_values_.at(index).AsPtr();
   }
 
   // Returns the resource tensor at `index`.
-  const tensorflow::tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
+  const tfrt_stub::FallbackTensor& GetResourceAsFallbackTensor(
       int index) const {
-    return resource_async_values_.at(index)->get();
+    return GetResource(index).get();
   }
 
  private:
   // `resources_` holds the ownership of all the resource tensors. Note that it
   // may not be a one-to-one mapping between `resources_` and
   // `resource_async_values_`.
-  std::vector<std::unique_ptr<tensorflow::tfrt_stub::ImmutableTensor>>
-      resources_;
+  std::vector<std::unique_ptr<tfrt_stub::ImmutableTensor>> resources_;
+
+  // Storage for async values with manually managed lifetime.
+  std::vector<std::unique_ptr<
+      tfrt::internal::AsyncValueStorage<tfrt_stub::FallbackTensor>>>
+      resource_storage_;
+
   // `resource_async_values_` holds the UnRefCountedAsyncValue of the fallback
   // tensors that can be directly used by fallback kernels in the graph.
-  std::vector<std::unique_ptr<
-      tfrt::UnRefCountedAsyncValue<tensorflow::tfrt_stub::FallbackTensor>>>
+  std::vector<tfrt::AsyncValueOwningRef<tfrt_stub::FallbackTensor>>
       resource_async_values_;
 };
 

@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -57,6 +56,9 @@ namespace cutil = TF::collection_ops_util;
 
 using std::string;
 
+#define GEN_PASS_DEF_TENSORARRAYOPSDECOMPOSITIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // A pass that converts tensor array operations to tensor operations and
 // read/assign ops on local variables. A later resource lifting pass can further
 // remove the local variables.
@@ -67,7 +69,7 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public TF::TensorArrayOpsDecompositionPassBase<
+    : public impl::TensorArrayOpsDecompositionPassBase<
           TensorArrayOpsDecompositionPass> {
   void runOnOperation() override;
 };
@@ -217,8 +219,7 @@ LogicalResult HandleTensorArrayV3Op(
   tensorflow::Tensor scalar_tensor(tensorflow::DT_FLOAT, {});
   scalar_tensor.scalar<float>()() = 0.0f;
   auto flow = builder.create<TF::ConstOp>(
-      ta.getLoc(),
-      tensorflow::ConvertTensor(scalar_tensor, &builder).ValueOrDie());
+      ta.getLoc(), tensorflow::ConvertTensor(scalar_tensor, &builder).value());
   ta.flow().replaceAllUsesWith(flow);
   ta.erase();
   (*stats)[local_var].accumulate_on_write = false;
@@ -314,7 +315,7 @@ LogicalResult HandleTensorArrayConcatV3Op(
   }
   concat.lengths().replaceAllUsesWith(builder.create<TF::ConstOp>(
       concat.getLoc(),
-      tensorflow::ConvertTensor(lengths_tensor, &builder).ValueOrDie()));
+      tensorflow::ConvertTensor(lengths_tensor, &builder).value()));
   concat.erase();
   return success();
 }

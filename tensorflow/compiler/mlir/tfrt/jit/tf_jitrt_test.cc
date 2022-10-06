@@ -22,6 +22,9 @@
 #include "mlir/ExecutionEngine/CRunnerUtils.h"
 #include "testing/base/public/benchmark.h"
 #include <gtest/gtest.h>
+#include "tensorflow/compiler/xla/runtime/results.h"
+#include "tensorflow/compiler/xla/runtime/types.h"
+#include "tfrt/jitrt/results.h"  // from @tf_runtime
 
 namespace tensorflow {
 
@@ -30,22 +33,24 @@ using ::tfrt::DType;
 using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 
-using ::tfrt::jitrt::MemrefType;
 using ::tfrt::jitrt::ReturnStridedMemref;
 using ::tfrt::jitrt::ReturnValueConversion;
-using ::tfrt::jitrt::StaticReturnValueConverter;
+using ::tfrt::jitrt::StaticRemainingResultsConverter;
+
+using ::xla::PrimitiveType;
+using ::xla::runtime::MemrefType;
 
 using ReturnTensorflowTensor =
     ReturnValueConversion<TensorflowConversionContext,
                           ReturnStridedMemref<ConvertTensor>>;
 
-using TensorflowReturnValueConverter =
-    StaticReturnValueConverter<TensorflowConversionContext,
-                               ReturnTensorflowTensor>;
+using TensorflowResultConverter =
+    StaticRemainingResultsConverter<TensorflowConversionContext,
+                                    ReturnTensorflowTensor>;
 
 static void BM_ReturnTensor(benchmark::State& state) {
   auto dims = std::array<int64_t, 4>({1, 2, 3, 4});
-  auto type = std::make_unique<MemrefType>(dims, DType::F32);
+  auto type = std::make_unique<MemrefType>(dims, PrimitiveType::F32);
 
   // Prepare a memref descriptor that will be returned as a tensor.
   StridedMemRefType<float, 4> memref{
@@ -60,7 +65,7 @@ static void BM_ReturnTensor(benchmark::State& state) {
     RemainingResults results(storage);
 
     TensorflowConversionContext context(0, /*num_results=*/1);
-    TensorflowReturnValueConverter converter(results, context);
+    TensorflowResultConverter converter(results, context);
 
     auto converted = converter.ReturnValue(0, type.get(), type.get(), &memref);
     CHECK(mlir::succeeded(converted)) << "Failed to convert memref";

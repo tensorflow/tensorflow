@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/cudnn_vectorize_convolutions.h"
 
+#include <optional>
+#include <vector>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_support_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
 
 namespace xla {
 namespace gpu {
@@ -91,7 +91,7 @@ static StatusOr<HloComputation*> BuilderToHloComputation(
 // after `dim`.
 static XlaOp SplitAtDim(XlaOp instr, int64_t dim, int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
-  Shape shape = b.GetShape(instr).ValueOrDie();
+  Shape shape = b.GetShape(instr).value();
   DimensionVector new_dims(shape.dimensions().begin(),
                            shape.dimensions().end());
   CHECK_EQ(new_dims[dim] % vect_size, 0);
@@ -140,7 +140,7 @@ static XlaOp MoveDim(XlaOp instr, int64_t src, int64_t dst) {
 static XlaOp RevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
                               int64_t vect_size) {
   XlaBuilder& b = *instr.builder();
-  Shape shape = b.GetShape(instr).ValueOrDie();
+  Shape shape = b.GetShape(instr).value();
   auto size = [&](int64_t d) { return shape.dimensions(d); };
 
   CHECK_LE(size(vect_dim), vect_size);
@@ -175,7 +175,7 @@ static XlaOp RevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
 static XlaOp UnrevectorizeInstr(XlaOp instr, int64_t dim, int64_t vect_dim,
                                 int64_t orig_vect_size) {
   XlaBuilder& b = *instr.builder();
-  Shape shape = b.GetShape(instr).ValueOrDie();
+  Shape shape = b.GetShape(instr).value();
   auto size = [&](int64_t d) { return shape.dimensions(d); };
 
   CHECK_GE(size(vect_dim), orig_vect_size);
@@ -309,6 +309,8 @@ static StatusOr<bool> TryRevectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
+
   absl::InlinedVector<XlaOp, 4> new_operands = {
       RevectorizeInstr(Parameter(&b, 0, conv->operand(0)->shape(), "input"),
                        dnums.input_feature_dimension(), *input_vect_dim,
@@ -433,6 +435,7 @@ static StatusOr<bool> TryVectorizeConv(
   // We use XlaBuilder because it's a lot easier to get these tricky
   // reshape/transposes correct using that API.
   XlaBuilder b(absl::StrCat(conv->name(), ".revectorized"));
+  b.SetOpMetadata(conv->metadata());
 
   absl::InlinedVector<XlaOp, 4> new_operands = {
       SplitAtDim(Parameter(&b, 0, conv->operand(0)->shape(), "input"),

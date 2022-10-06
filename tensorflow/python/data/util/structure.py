@@ -17,7 +17,6 @@ import collections
 import functools
 import itertools
 
-import six
 import wrapt
 
 from tensorflow.python.data.util import nest
@@ -27,6 +26,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
@@ -69,6 +69,7 @@ def normalize_element(element, element_signature=None):
 
   * Components matching `SparseTensorSpec` are converted to `SparseTensor`.
   * Components matching `RaggedTensorSpec` are converted to `RaggedTensor`.
+  * Components matching `VariableSpec` are converted to `Tensor`.
   * Components matching `DatasetSpec` or `TensorArraySpec` are passed through.
   * `CompositeTensor` components are passed through.
   * All other components are converted to `Tensor`.
@@ -82,8 +83,8 @@ def normalize_element(element, element_signature=None):
       python types, etc.)
 
   Returns:
-    A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
-    or `TensorArray` objects.
+    A nested structure of `Tensor`, `Variable`, `Dataset`, `SparseTensor`,
+    `RaggedTensor`, or `TensorArray` objects.
   """
   normalized_components = []
   if element_signature is None:
@@ -118,6 +119,9 @@ def normalize_element(element, element_signature=None):
           normalized_components.append(t)
         elif isinstance(spec, NoneTensorSpec):
           normalized_components.append(NoneTensor())
+        elif isinstance(spec, resource_variable_ops.VariableSpec):
+          normalized_components.append(
+              ops.convert_to_tensor(t, name=f"component_{i}", dtype=spec.dtype))
         elif isinstance(t, composite_tensor.CompositeTensor):
           normalized_components.append(t)
         else:
@@ -456,7 +460,7 @@ def type_spec_from_value(element, use_fallback=True):
   if isinstance(element, tuple):
     if hasattr(element, "_fields") and isinstance(
         element._fields, collections_abc.Sequence) and all(
-            isinstance(f, six.string_types) for f in element._fields):
+            isinstance(f, str) for f in element._fields):
       if isinstance(element, wrapt.ObjectProxy):
         element_type = type(element.__wrapped__)
       else:

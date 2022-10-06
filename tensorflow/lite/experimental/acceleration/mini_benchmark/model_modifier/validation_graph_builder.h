@@ -156,16 +156,15 @@ class ValidationGraphBuilder {
     int32_t jpeg_width = -1;
   };
 
-  // Use inline to avoid potential ODR violation.
-  inline static constexpr int32_t kModelVersion = 3;
-  inline static constexpr int32_t kSkippedIndex = -1;
+  static constexpr int32_t kModelVersion = 3;
+  static constexpr int32_t kSkippedIndex = -1;
   // Operator code numbering.
-  inline static constexpr int32_t kCallOperatorCode = 0;
-  inline static constexpr int32_t kDequantizeOperatorCode = 1;
-  inline static constexpr int32_t kDecodeJpegOperatorCode = 2;
+  static constexpr int32_t kCallOperatorCode = 0;
+  static constexpr int32_t kDequantizeOperatorCode = 1;
+  static constexpr int32_t kDecodeJpegOperatorCode = 2;
   // Subgraph numbering.
-  inline static constexpr int32_t kMainSubgraphIndex = 0;
-  inline static constexpr int32_t kValidationSubgraphIndex = 2;
+  static constexpr int32_t kMainSubgraphIndex = 0;
+  static constexpr int32_t kValidationSubgraphIndex = 2;
 
   absl::StatusOr<flatbuffers::Offset<Model>> MakeModel(
       bool intermediate_only, Subgraph* subgraph_with_golden_outputs);

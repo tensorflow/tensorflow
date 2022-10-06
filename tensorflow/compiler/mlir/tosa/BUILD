@@ -3,7 +3,7 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.
@@ -83,9 +83,11 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -111,6 +113,7 @@ gentbl_cc_library(
     td_file = "transforms/tf_legalize_patterns.td",
     deps = [
         ":tosa_ops_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
         "@llvm-project//mlir:FuncTdFiles",
     ],
@@ -135,7 +138,9 @@ cc_library(
         ":legalize_common",
         ":passes_header",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:FuncDialect",
@@ -162,6 +167,7 @@ gentbl_cc_library(
     deps = [
         ":tosa_ops_td_files",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_ops_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantizationOpsTdFiles",
         "@llvm-project//mlir:FuncTdFiles",
     ],
 )
@@ -186,6 +192,7 @@ cc_library(
         ":passes_header",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_quantize",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineTransforms",
         "@llvm-project//mlir:Dialect",

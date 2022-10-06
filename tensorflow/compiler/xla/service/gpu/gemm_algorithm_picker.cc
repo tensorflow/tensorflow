@@ -28,17 +28,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logger.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/cuda/cuda_blas_lt.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/tsl/platform/logger.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -187,7 +187,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     for (const AutotuneResult& result : results) {
       *log.add_results() = result;
     }
-    tensorflow::Logger::GetSingleton()->LogProto(log);
+    tsl::Logger::GetSingleton()->LogProto(log);
   }
 
   StatusOr<AutotuneResult> best = PickBestResult(results, gemm);
@@ -266,7 +266,22 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
   std::optional<se::blas::AlgorithmType> best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
-    TF_ASSIGN_OR_RETURN(auto plan, cublas_lt::MatmulPlan::From(config));
+    bool has_matrix_bias = config.beta != 0.;
+    bool has_vector_bias = gemm_config.epilogue() == GemmBackendConfig::BIAS;
+
+    auto epilogue = has_vector_bias ? se::cuda::BlasLt::Epilogue::kBias
+                                    : se::cuda::BlasLt::Epilogue::kDefault;
+
+    se::DeviceMemoryBase bias_buffer;
+    if (has_vector_bias) {
+      TF_ASSIGN_OR_RETURN(bias_buffer,
+                          CreateBuffer(buffer_allocator,
+                                       *gemm->operand(has_matrix_bias ? 3 : 2),
+                                       autotune_config, rng_state));
+    }
+
+    TF_ASSIGN_OR_RETURN(auto plan,
+                        cublas_lt::MatmulPlan::From(config, epilogue));
     TF_ASSIGN_OR_RETURN(
         std::vector<se::cuda::BlasLt::MatmulAlgorithm> algorithms,
         plan.GetAlgorithms(stream));
@@ -283,7 +298,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
               se::blas::ProfileResult profile_result;
               TF_RETURN_IF_ERROR(plan.ExecuteOnStream(
                   stream, lhs_buffer, rhs_buffer, output_buffer, output_buffer,
-                  algorithm, scratch_allocator, &profile_result));
+                  bias_buffer, algorithm, scratch_allocator, &profile_result));
               return std::move(profile_result);
             }));
 
@@ -330,7 +345,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
                       allocator->GetStream(executor->device_ordinal()));
 
   GemmBackendConfig gemm_config =
-      instr->backend_config<GemmBackendConfig>().ValueOrDie();
+      instr->backend_config<GemmBackendConfig>().value();
 
   TF_ASSIGN_OR_RETURN(std::optional<se::blas::AlgorithmType> gemm_algorithm,
                       DoGemmAutotune(instr, gemm_config, allocator, stream));
@@ -352,7 +367,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
                                 se::DeviceMemoryAllocator* allocator) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr) || IsCublasLtMatmul(*instr)) {
+    if (IsCublasGemm(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, se, allocator));
       changed |= result;
     }

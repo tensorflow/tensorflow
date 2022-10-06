@@ -1,0 +1,8 @@
+// LINT: LEGACY_NAMES
+syntax = "proto3";
+
+package stream_executor.dnn.dummy;
+
+import public "tensorflow/tsl/protobuf/dnn.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/stream_executor";

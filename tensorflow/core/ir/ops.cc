@@ -422,17 +422,17 @@ LogicalResult GraphFuncOp::verifyType() {
 // type and the presence of the (potentially empty) function body.
 LogicalResult GraphFuncOp::verifyBody() {
   FunctionType type = getFunctionType();
+  Block *body = SingleBlock::getBody();
   // Check that the body is terminated with a tfg.return.
-  if (getRegion().empty() || getBody()->empty())
+  if (getRegion().empty() || body->empty())
     return emitOpError() << "expects a non empty body";
 
-  if (getBody()->getNumArguments() != type.getNumInputs())
+  if (body->getNumArguments() != type.getNumInputs())
     return emitOpError() << "function type indicated " << type.getNumInputs()
-                         << " args but block has "
-                         << getBody()->getNumArguments();
+                         << " args but block has " << body->getNumArguments();
 
-  for (auto &arg_types : llvm::enumerate(
-           llvm::zip(type.getInputs(), getBody()->getArgumentTypes()))) {
+  for (auto &arg_types :
+       llvm::enumerate(llvm::zip(type.getInputs(), body->getArgumentTypes()))) {
     Type signature_arg = std::get<0>(arg_types.value());
     Type block_arg = std::get<1>(arg_types.value());
     if (signature_arg != block_arg)
@@ -441,12 +441,12 @@ LogicalResult GraphFuncOp::verifyBody() {
                            << " block arg is " << block_arg;
   }
 
-  if (!isa<ReturnOp>(getBody()->back()))
+  if (!isa<ReturnOp>(body->back()))
     return emitOpError()
            << "expects body to be terminated with a tfg.return, but got: "
-           << getBody()->back().getName().getStringRef();
+           << body->back().getName().getStringRef();
 
-  ReturnOp return_op = cast<ReturnOp>(getBody()->getTerminator());
+  ReturnOp return_op = cast<ReturnOp>(body->getTerminator());
 
   if (type.getNumResults() > return_op->getNumOperands())
     return emitOpError() << "expects " << type.getNumResults()
@@ -456,10 +456,11 @@ LogicalResult GraphFuncOp::verifyBody() {
     Type expected_type = indexed_type.value();
     int res_num = indexed_type.index();
     Type actual_type = return_op->getOperand(res_num).getType();
-    if (expected_type == actual_type) continue;
-    return emitOpError() << "type mismatch for returned value #" << res_num
-                         << ", expected " << expected_type << " but got "
-                         << actual_type;
+    if (!tf_type::AreCastCompatible({expected_type, actual_type})) {
+      return emitOpError() << "type mismatch for returned value #" << res_num
+                           << ", expected " << expected_type << " but got "
+                           << actual_type;
+    }
   }
   Type control_type = getDialect()->getControlType();
   for (auto &indexed_type : llvm::enumerate(llvm::drop_begin(
@@ -475,7 +476,8 @@ LogicalResult GraphFuncOp::verifyBody() {
   }
 
   // Check all ops in the body.
-  if (!all_of(*getBody(), VerifyGenericTFGOperation)) return failure();
+  if (!all_of(*SingleBlock::getBody(), VerifyGenericTFGOperation))
+    return failure();
 
   return success();
 }
@@ -490,8 +492,8 @@ LogicalResult GraphFuncOp::canonicalize(GraphFuncOp func_op,
   bool changed = true;
   while (changed) {
     changed = false;
-    for (Operation &op :
-         llvm::make_early_inc_range(llvm::reverse(*func_op.getBody()))) {
+    for (Operation &op : llvm::make_early_inc_range(
+             llvm::reverse(*func_op.SingleBlock::getBody()))) {
       if (isa<ReturnOp>(op)) continue;
       if (op.getUses().empty()) {
         rewriter.eraseOp(&op);
@@ -659,7 +661,7 @@ void GraphFuncOp::print(OpAsmPrinter &p) {
     p << visibility.getValue() << ' ';
     argIndentSize += visibility.getValue().size() + 1;
   }
-  if (generic()) p << "generic ";
+  if (getGeneric()) p << "generic ";
   auto funcName =
       op->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName())
           .getValue();
@@ -715,7 +717,7 @@ void GraphFuncOp::print(OpAsmPrinter &p) {
   }
   // Print body.
   p << ' ';
-  p.printRegion(body(), /*printEntryBlockArgs=*/false);
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
 
 GraphFuncOp GraphFuncOp::getCalledFunction(Operation *op,
@@ -749,7 +751,7 @@ BlockArgument GraphFuncOp::getDataValue(Region &region, unsigned idx) {
 // for computing the names.
 void GraphFuncOp::getAsmBlockArgumentNames(Region &region,
                                            OpAsmSetValueNameFn set_name_fn) {
-  ArrayRef<BlockArgument> args = getBody()->getArguments();
+  ArrayRef<BlockArgument> args = SingleBlock::getBody()->getArguments();
   ControlType control_ty = ControlType::get(getContext());
   // Sanity checking: this is verified by the op but this may be called before
   // the verifier or in some diagnostic/debug context, let's not crash.
@@ -781,7 +783,7 @@ LogicalResult ReturnOp::verify() {
   ReturnOp op = *this;
   // If the control result attributes are present, there must be the same number
   // of entries as control results.
-  if (op.control_ret_attrs().size() != TFOp(op).getControlOperands().size()) {
+  if (op.getControlRetAttrs().size() != TFOp(op).getControlOperands().size()) {
     return op.emitOpError(
         "expected as many control result attributes as there are control "
         "operands");
@@ -834,7 +836,7 @@ void ReturnOp::print(OpAsmPrinter &printer) {
   if (!ctls.empty()) {
     printer << " [";
     llvm::interleave(
-        llvm::zip(ctls, control_ret_attrs().getAsRange<DictionaryAttr>()),
+        llvm::zip(ctls, getControlRetAttrs().getAsRange<DictionaryAttr>()),
         printer,
         [&](auto it) {
           printer << std::get<0>(it);
@@ -923,7 +925,7 @@ static LogicalResult VerifySignature(GraphFuncOp func, Operation *op,
                        << " results but expected " << results.size());
   }
 
-  if (func.generic()) return success();
+  if (func.getGeneric()) return success();
 
   for (auto &it : llvm::enumerate(operands)) {
     Type arg_type = arguments[it.index() * 2];
@@ -984,13 +986,13 @@ using detect_has_T = llvm::is_detected<has_T, OpT>;
 // use it for both input and output. Otherwise, return separate type arrays.
 template <typename OpT, bool = detect_has_T<OpT>::value>
 struct GetTypeArray {
-  static ArrayAttr getInputTypes(OpT op) { return op.TinAttr(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.ToutAttr(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.getTinAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.getToutAttr(); }
 };
 template <typename OpT>
 struct GetTypeArray<OpT, true> {
-  static ArrayAttr getInputTypes(OpT op) { return op.TAttr(); }
-  static ArrayAttr getOutputTypes(OpT op) { return op.TAttr(); }
+  static ArrayAttr getInputTypes(OpT op) { return op.getTAttr(); }
+  static ArrayAttr getOutputTypes(OpT op) { return op.getTAttr(); }
 };
 }  // namespace detail
 
@@ -1001,13 +1003,13 @@ template <typename OpT>
 static LogicalResult VerifyTypeArrayAttributes(OpT op) {
   using GetTypeArray = typename detail::GetTypeArray<OpT>;
   ValueRange args =
-      SplitDataAndControlValues(op.args(), ControlType::get(op.getContext()))
+      SplitDataAndControlValues(op.getArgs(), ControlType::get(op.getContext()))
           .first;
   return success(
       succeeded(VerifyTypeArray(op, args, GetTypeArray::getInputTypes(op),
                                 "argument")) &&
-      succeeded(VerifyTypeArray(op, op.outs(), GetTypeArray::getOutputTypes(op),
-                                "result")));
+      succeeded(VerifyTypeArray(op, op.getOuts(),
+                                GetTypeArray::getOutputTypes(op), "result")));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1026,13 +1028,13 @@ static LogicalResult VerifyIfLikeOp(IfLikeOp op,
   TypeRange func_args = ins->drop_front();
 
   auto then_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
-      op, op.then_branch().getName());
+      op, op.getThenBranch().getName());
   if (then_func &&
       failed(VerifySignature(then_func, op, func_args, *outs, "then")))
     return failure();
 
   auto else_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
-      op, op.else_branch().getName());
+      op, op.getElseBranch().getName());
   if (else_func &&
       failed(VerifySignature(else_func, op, func_args, *outs, "else")))
     return failure();
@@ -1055,7 +1057,7 @@ static LogicalResult VerifyCaseLikeOp(CaseLikeOp op,
   // The first operand is the branch index and is not passed to the functions.
   TypeRange func_args = ins->drop_front();
 
-  for (auto &it : llvm::enumerate(op.branches())) {
+  for (auto &it : llvm::enumerate(op.getBranches())) {
     SymbolRefAttr func_name = it.value().template cast<FuncAttr>().getName();
     auto func =
         symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(op, func_name);
@@ -1079,17 +1081,17 @@ static LogicalResult VerifyWhileLikeOp(WhileLikeOp op,
   FailureOr<TypeRange> outs = VerifyResults(op);
   if (failed(outs)) return failure();
 
-  SymbolRefAttr body_name = op.body().getName();
+  SymbolRefAttr body_name = op.getBody().getName();
 
   auto cond_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
-      op, op.cond().getName());
+      op, op.getCond().getName());
   auto i1_type = UnrankedTensorType::get(Builder(op.getContext()).getI1Type());
   if (cond_func &&
       failed(VerifySignature(cond_func, op, *ins, i1_type, "cond")))
     return failure();
 
   auto body_func = symbol_table.lookupNearestSymbolFrom<GraphFuncOp>(
-      op, op.body().getName());
+      op, op.getBody().getName());
   if (body_func && failed(VerifySignature(body_func, op, *ins, *outs, "body")))
     return failure();
 
@@ -1106,8 +1108,8 @@ LogicalResult ForOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   FailureOr<TypeRange> outs = VerifyResults(*this);
   if (failed(outs)) return failure();
 
-  auto body_func =
-      symbolTable.lookupNearestSymbolFrom<GraphFuncOp>(*this, body().getName());
+  auto body_func = symbolTable.lookupNearestSymbolFrom<GraphFuncOp>(
+      *this, getBody().getName());
   // The first three arguments are the for-loop indices, but the current loop
   // index is passed in.
   TypeRange func_args = llvm::drop_begin(*ins, /*N=*/2);
@@ -1171,7 +1173,7 @@ static LogicalResult VerifyPreservedAttrs(Operation *op,
 MutableOperandRange YieldOp::getMutableSuccessorOperands(
     Optional<unsigned> index) {
   // Get the subrange of non-control operands.
-  return argsMutable();
+  return getArgsMutable();
 }
 
 static bool TerminatedByYield(Block &block) {
@@ -1190,7 +1192,7 @@ static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
   if (!TerminatedByYield(op.else_block()))
     return op.emitOpError("else region must be terminated by a 'tfg.yield'");
   return VerifyPreservedAttrs(
-      op, {op.then_region_attrsAttr(), op.else_region_attrsAttr()});
+      op, {op.getThenRegionAttrsAttr(), op.getElseRegionAttrsAttr()});
 }
 
 // Given an potentially null attribute that would represent a constant value,
@@ -1219,14 +1221,14 @@ void GetIfLikeRegionOpSuccessorRegions(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else if (auto cond = GetStaticallyKnownBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
-    Region &region = *cond ? op.then_region() : op.else_region();
+    Region &region = *cond ? op.getThenRegion() : op.getElseRegion();
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
   } else {
     // Unknown successor.
-    regions.emplace_back(&op.then_region(),
-                         GetLoopRegionDataArgs(op.then_region()));
-    regions.emplace_back(&op.else_region(),
-                         GetLoopRegionDataArgs(op.else_region()));
+    regions.emplace_back(&op.getThenRegion(),
+                         GetLoopRegionDataArgs(op.getThenRegion()));
+    regions.emplace_back(&op.getElseRegion(),
+                         GetLoopRegionDataArgs(op.getElseRegion()));
   }
 }
 
@@ -1236,19 +1238,20 @@ void GetIfLikeRegionOpSuccessorRegions(
 // Verify a case-like region op.
 template <typename CaseLikeRegionOp>
 static LogicalResult VerifyCaseLikeRegionOp(CaseLikeRegionOp op) {
-  for (auto &it : llvm::enumerate(op.branches())) {
+  for (auto &it : llvm::enumerate(op.getBranches())) {
     if (!TerminatedByYield(it.value().front())) {
       return op.emitOpError("branch region #")
              << it.index() << " is not terminated by a 'tfg.yield' op";
     }
   }
 
-  if (op.branch_attrs() && op.branches().size() != op.branch_attrs()->size()) {
+  if (op.getBranchAttrs() &&
+      op.getBranches().size() != op.getBranchAttrs()->size()) {
     return op.emitOpError("has ")
-           << op.branches().size() << " regions but "
-           << op.branch_attrs()->size() << " branch function attributes";
+           << op.getBranches().size() << " regions but "
+           << op.getBranchAttrs()->size() << " branch function attributes";
   }
-  if (auto region_attrs = op.region_attrsAttr()) {
+  if (auto region_attrs = op.getRegionAttrsAttr()) {
     if (region_attrs.size() != op.getNumRegions()) {
       return op.emitOpError("expected ")
              << op.getNumRegions() << " region attribute(s) but got "
@@ -1284,11 +1287,11 @@ void GetCaseLikeRegionOpSuccessorRegions(
         ResultRange(op->result_begin(), std::prev(op->result_end())));
   } else if (auto branch_index = GetStaticallyKnownCaseBranch(operands[0])) {
     // Add only 1 possible successor if the condition is known.
-    Region &region = op.branches()[*branch_index];
+    Region &region = op.getBranches()[*branch_index];
     regions.emplace_back(&region, GetLoopRegionDataArgs(region));
   } else {
     // Unknown successor. Add all of them.
-    for (Region &branch : op.branches())
+    for (Region &branch : op.getBranches())
       regions.emplace_back(&branch, GetLoopRegionDataArgs(branch));
   }
 }
@@ -1300,7 +1303,7 @@ MutableOperandRange ConditionOp::getMutableSuccessorOperands(
     Optional<unsigned> index) {
   // Get the subrange of non-control operands that are forwarded to the
   // successor region.
-  return argsMutable();
+  return getArgsMutable();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1337,11 +1340,11 @@ static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
   if (!TerminatedByYield(op.body_block()))
     op.emitOpError("body region must be terminated by a 'tfg.yield' op");
 
-  if (failed(VerifyLoopRegionArgs(op, op.cond_region())) ||
-      failed(VerifyLoopRegionArgs(op, op.body_region())))
+  if (failed(VerifyLoopRegionArgs(op, op.getCondRegion())) ||
+      failed(VerifyLoopRegionArgs(op, op.getBodyRegion())))
     return failure();
   if (failed(VerifyPreservedAttrs(
-          op, {op.cond_region_attrsAttr(), op.body_region_attrsAttr()})))
+          op, {op.getCondRegionAttrsAttr(), op.getBodyRegionAttrsAttr()})))
     return failure();
 
   return success();
@@ -1353,20 +1356,21 @@ static void GetWhileLikeRegionOpSuccessorRegions(
     ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor> &regions) {
   // The parent op and the body region always branch to the condion region.
   if (!index || *index == 1) {
-    regions.emplace_back(&op.cond_region(),
-                         GetLoopRegionDataArgs(op.cond_region()));
+    regions.emplace_back(&op.getCondRegion(),
+                         GetLoopRegionDataArgs(op.getCondRegion()));
     return;
   }
   assert(*index == 0 && "invalid region index");
   // The condition regions branches to the loop body or back to the parent.
   // Try to narrow the condition value to a constant.
-  auto condition = cast<ConditionOp>(op.cond_region().front().getTerminator());
+  auto condition =
+      cast<ConditionOp>(op.getCondRegion().front().getTerminator());
   Attribute cond_attr;
-  matchPattern(condition.cond(), m_Constant(&cond_attr));
+  matchPattern(condition.getCond(), m_Constant(&cond_attr));
   Optional<bool> cond = GetStaticallyKnownBranch(cond_attr);
   if (!cond || *cond) {
-    regions.emplace_back(&op.body_region(),
-                         GetLoopRegionDataArgs(op.body_region()));
+    regions.emplace_back(&op.getBodyRegion(),
+                         GetLoopRegionDataArgs(op.getBodyRegion()));
   }
   if (!cond || !*cond) {
     // Drop the control token.
@@ -1394,12 +1398,12 @@ LogicalResult ForRegionOp::verify() {
         "expected first body block argument to be an i32 tensor");
   }
 
-  if (failed(VerifyLoopRegionArgs(*this, body_region()))) return failure();
-  return VerifyPreservedAttrs(*this, {region_attrsAttr()});
+  if (failed(VerifyLoopRegionArgs(*this, getBodyRegion()))) return failure();
+  return VerifyPreservedAttrs(*this, {getRegionAttrsAttr()});
 }
 
 OperandRange ForRegionOp::getSuccessorEntryOperands(Optional<unsigned> index) {
-  return init();
+  return getInit();
 }
 
 void ForRegionOp::getSuccessorRegions(
@@ -1407,8 +1411,8 @@ void ForRegionOp::getSuccessorRegions(
     SmallVectorImpl<RegionSuccessor> &regions) {
   // Both the parent op and the body region branch to the body. Ignore the loop
   // index block argument, as it is not modified by the loop body itself.
-  regions.emplace_back(&body_region(),
-                       GetLoopRegionDataArgs(body_region()).drop_front());
+  regions.emplace_back(&getBodyRegion(),
+                       GetLoopRegionDataArgs(getBodyRegion()).drop_front());
   if (!index) return;
   // The body might branch back to the parent. Drop the control token.
   regions.emplace_back((*this)->getResults().drop_back());

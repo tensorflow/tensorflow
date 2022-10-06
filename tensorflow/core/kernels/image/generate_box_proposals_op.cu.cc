@@ -215,7 +215,7 @@ Status AllocateGenerationTempTensors(
       DataType::DT_INT8, TensorShape({num_images, num_boxes_to_generate}),
       dev_boxes_keep_flags));
   TF_RETURN_IF_ERROR(ResetTensor<int8>(dev_boxes_keep_flags, d));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Allocate workspace for NMS operation
@@ -257,7 +257,7 @@ Status AllocatePreNMSTempTensors(
       DataType::DT_INT32, TensorShape({num_images}), dev_prenms_nboxes));
   TF_RETURN_IF_ERROR(ResetTensor<int32>(dev_prenms_nboxes, d));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Initialize index and offset arrays.
@@ -303,7 +303,7 @@ class GenerateBoundingBoxProposals : public tensorflow::OpKernel {
                                      scalar_tensor.shape().DebugString());
     }
     *value = scalar_tensor.scalar<T>()();
-    return Status::OK();
+    return OkStatus();
   }
 
   void Compute(tensorflow::OpKernelContext* context) override {

@@ -84,6 +84,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -91,8 +92,7 @@ cc_library(
 
 cc_library(
     name = "traceme_recorder_impl",
-    srcs = [
-        "traceme_recorder.cc",
+    hdrs = [
         "traceme_recorder.h",
     ],
     copts = tf_profiler_copts(),
@@ -102,24 +102,10 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder_impl",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = True,
-)
-
-tf_cc_test(
-    name = "traceme_recorder_test",
-    srcs = ["traceme_recorder_test.cc"],
-    deps = [
-        ":traceme_recorder",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/utils:math_utils",
-        "//tensorflow/core/profiler/utils:time_utils",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 cc_library(
