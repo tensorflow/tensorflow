@@ -15,6 +15,18 @@ func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
 
 // -----
 
+func.func @dynamic_broadcast_in_dim_memref(%arg: memref<?x?xf32>,
+                                           %dst: memref<?x?x?xf32>) {
+  thlo.dynamic_broadcast_in_dim
+      ins(%arg: memref<?x?xf32>)
+      outs(%dst: memref<?x?x?xf32>)
+      broadcast_dimensions = [0, 2]
+  func.return
+}
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_memref
+
+// -----
+
 func.func @gather(%arg: tensor<100xf32>,
                   %indices: tensor<42x1xi64>,
                   %dst: tensor<42xf32>) -> tensor<42xf32> {
@@ -24,6 +36,18 @@ func.func @gather(%arg: tensor<100xf32>,
   func.return %gather : tensor<42xf32>
 }
 // CHECK-LABEL: func @gather
+
+// -----
+
+func.func @gather_memref(%arg: memref<100xf32>,
+                         %indices: memref<42x1xi64>,
+                         %dst: memref<42xf32>) {
+  thlo.gather
+      ins(%arg: memref<100xf32>, %indices: memref<42x1xi64>)
+      outs(%dst: memref<42xf32>)
+  func.return
+}
+// CHECK-LABEL: func @gather_memref
 
 // -----
 
@@ -51,7 +75,6 @@ func.func @scatter_memref(%indices: memref<2x2xi32>,
   }
   func.return
 }
-
 // CHECK-LABEL: func @scatter_memref
 
 // -----
@@ -68,15 +91,39 @@ func.func @transpose(%input: tensor<16x32x64xf32>,
 
 // -----
 
-func.func @transpose_unknown_dimentions(%input: tensor<16x?xf32>,
-                                         %init: tensor<64x?xf32>) -> tensor<64x?xf32> {
+func.func @transpose_memref(%input: memref<16x32x64xf32>,
+                            %init: memref<32x64x16xf32>) {
+  thlo.transpose
+      ins(%input:memref<16x32x64xf32>)
+      outs(%init:memref<32x64x16xf32>)
+      permutation = [1, 2, 0]
+  func.return
+}
+// CHECK-LABEL: func @transpose_memref
+
+// -----
+
+func.func @transpose_unknown_dimensions(%input: tensor<16x?xf32>,
+    %init: tensor<64x?xf32>) -> tensor<64x?xf32> {
   %transpose = thlo.transpose
       ins(%input:tensor<16x?xf32>)
       outs(%init:tensor<64x?xf32>)
       permutation = [1, 0]
   func.return %transpose : tensor<64x?xf32>
 }
-// CHECK-LABEL: func @transpose_unknown_dimentions
+// CHECK-LABEL: func @transpose_unknown_dimensions
+
+// -----
+
+func.func @transpose_unknown_dimensions_memref(%input: memref<16x?xf32>,
+                                               %init: memref<64x?xf32>) {
+  thlo.transpose
+      ins(%input:memref<16x?xf32>)
+      outs(%init:memref<64x?xf32>)
+      permutation = [1, 0]
+  func.return
+}
+// CHECK-LABEL: func @transpose_unknown_dimensions_memref
 
 // -----
 
@@ -93,6 +140,22 @@ func.func @reduction(%input: tensor<16x32x64xf32>,
   func.return %reduction : tensor<16x64xf32>
 }
 // CHECK-LABEL: func @reduction
+
+// -----
+
+func.func @reduction_memref(%input: memref<16x32x64xf32>,
+                            %init: memref<16x64xf32>) {
+  thlo.reduction
+      ins(%input:memref<16x32x64xf32>)
+      outs(%init:memref<16x64xf32>)
+      dimensions = [1]
+      (%in: f32, %out: f32) {
+        %0 = arith.addf %in, %out: f32
+        thlo.yield %0: f32
+      }
+  func.return
+}
+// CHECK-LABEL: func @reduction_memref
 
 // -----
 
@@ -114,6 +177,24 @@ func.func @variadic_reduction(%input1: tensor<16x32x64xf32>,
 
 // -----
 
+func.func @variadic_reduction_memref(%input1: memref<16x32x64xf32>,
+    %init1: memref<16x64xf32>, %input2: memref<16x32x64xi64>,
+    %init2: memref<16x64xi64>) {
+  thlo.reduction
+      ins(%input1:memref<16x32x64xf32>, %input2:memref<16x32x64xi64>)
+      outs(%init1:memref<16x64xf32>, %init2:memref<16x64xi64>)
+      dimensions = [1]
+      (%in1: f32, %in2: i64, %out1: f32, %out2: i64) {
+        %0 = arith.addf %in1, %out1: f32
+        %1 = arith.addi %in2, %out2: i64
+        thlo.yield %0, %1: f32, i64
+      }
+  func.return
+}
+// CHECK-LABEL: func @variadic_reduction_memref
+
+// -----
+
 func.func @map_binary(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>,
                       %init: tensor<64xf32>) -> tensor<64xf32> {
    %add = thlo.map
@@ -129,8 +210,22 @@ func.func @map_binary(%lhs: tensor<64xf32>, %rhs: tensor<64xf32>,
 
 // -----
 
-func.func @map_unary(%input: tensor<64xf32>,
-                     %init: tensor<64xf32>) -> tensor<64xf32> {
+func.func @map_binary_memref(%lhs: memref<64xf32>, %rhs: memref<64xf32>,
+                      %init: memref<64xf32>) {
+   thlo.map
+      ins(%lhs:memref<64xf32>, %rhs:memref<64xf32>)
+      outs(%init:memref<64xf32>)
+      (%lhs_elem: f32, %rhs_elem: f32) {
+        %0 = arith.addf %lhs_elem, %rhs_elem: f32
+        thlo.yield %0: f32
+      }
+  func.return
+}
+// CHECK-LABEL: func @map_binary_memref
+
+// -----
+
+func.func @map_unary(%input: tensor<64xf32>, %init: tensor<64xf32>) -> tensor<64xf32> {
    %abs = thlo.map
           ins(%input:tensor<64xf32>)
           outs(%init:tensor<64xf32>)
@@ -141,3 +236,19 @@ func.func @map_unary(%input: tensor<64xf32>,
   func.return %abs : tensor<64xf32>
 }
 // CHECK-LABEL: func @map_unary
+
+// -----
+
+func.func @map_unary_memref(%input: memref<64xf32>, %init: memref<64xf32>) {
+   thlo.map
+      ins(%input:memref<64xf32>)
+      outs(%init:memref<64xf32>)
+      (%input_elem: f32) {
+        %0 = math.absf %input_elem: f32
+        thlo.yield %0: f32
+      }
+  func.return
+}
+// CHECK-LABEL: func @map_unary_memref
+
+// TODO(bchetioui): add tests for concatenate

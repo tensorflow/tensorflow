@@ -65,8 +65,8 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
-    Variadic<AnyTensor>:$inputs,
-    AnyTensor:$init,
+    Variadic<TensorOrMemref>:$inputs,
+    TensorOrMemref:$init,
     I64Attr:$dimension
   );
   let results = (outs AnyTensor:$result);
@@ -79,8 +79,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
 }
 
 def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
-    DeclareOpInterfaceMethods<TilingInterface>,
-    SameOperandsAndResultElementType]> {
+    DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.dynamic_broadcast_in_dim`";
 
   let arguments = (ins
@@ -93,7 +92,7 @@ def THLO_DynamicBroadcastInDimOp : THLO_DstStyleOp<"dynamic_broadcast_in_dim", [
     OptionalAttr<DenseI64ArrayAttr>:$known_expanding_dimensions,
     OptionalAttr<DenseI64ArrayAttr>:$known_nonexpanding_dimensions
   );
-  let results = (outs TensorOrMemref:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
@@ -117,7 +116,7 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
   let arguments = (ins
     // Input args
     TensorOrMemref:$operand,
-    I64Tensor:$start_indices,
+    TensorOrMemrefOf<[I64]>:$start_indices,
     // Output arg
     TensorOrMemref:$init
   );
@@ -154,6 +153,7 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     // Output arg
     TensorOrMemref:$init
   );
+
   let results = (outs Variadic<AnyTensor>:$result);
 
   let regions = (region SizedRegion<1>:$update_computation);
@@ -200,7 +200,7 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", [
 
     DenseI64ArrayAttr:$permutation
   );
-  let results = (outs TensorOrMemref:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
 
   let regions = (region SizedRegion<1>:$region);
 
@@ -260,7 +260,7 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 
     DenseI64ArrayAttr:$dimensions
   );
-  let results = (outs Variadic<TensorOrMemref>);
+  let results = (outs Variadic<AnyTensor>);
   let regions = (region SizedRegion<1>:$combiner);
 
   let extraClassDeclaration = [{
@@ -278,7 +278,6 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 }
 
 def THLO_MapOp : THLO_DstStyleOp<"map", [
-    SameOperandsAndResultShape,
     SingleBlockImplicitTerminator<"YieldOp">,
     DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>
 ]> {
@@ -306,7 +305,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
     // Output arg
     TensorOrMemref:$init
   );
-  let results = (outs AnyTensor:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
   let regions = (region SizedRegion<1>:$mapper);
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{

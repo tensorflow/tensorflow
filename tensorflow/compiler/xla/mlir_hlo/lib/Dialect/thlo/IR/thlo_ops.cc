@@ -592,7 +592,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
 
   // Finally, materialize tiled broadcast.
   auto tileTy = tile.getType();
-  auto resultTy = getResult().getType().cast<RankedTensorType>();
+  auto resultTy = getType(0).cast<RankedTensorType>();
   auto tiledResultTy =
       RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
   return b.create<DynamicBroadcastInDimOp>(
@@ -1186,6 +1186,18 @@ LogicalResult MapOp::verify() {
     if (bbArgType != inputElemType) {
       return emitOpError() << "expected element type of input " << inputElemType
                            << " to match bbArg type " << bbArgType;
+    }
+  }
+
+  // The shape of each input must match the shape of the output.
+  auto outputShape =
+      getOutputs().front().getType().dyn_cast<ShapedType>().getShape();
+  for (Type inputArgType : TypeRange{getInputs()}) {
+    auto inputElemShape = inputArgType.cast<ShapedType>().getShape();
+    if (inputElemShape != outputShape) {
+      return emitOpError() << "expected shape of input (" << inputElemShape
+                           << ") to match shape of output (" << outputShape
+                           << ")";
     }
   }
 
