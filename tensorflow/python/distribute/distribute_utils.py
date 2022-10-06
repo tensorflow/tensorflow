@@ -26,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import nest
 
@@ -99,13 +98,13 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
   if same_id and isinstance(v0, values_lib.DistributedVariable):
     return v0
   # * If v0 is a member of a distributed variable, in which case
-  #   value_container(v0) is not v0 itself, we want to
+  #   hasattr(v0, "_distributed_container") is true, we want to
   #   return the DistributedVariable that contains it using the
   #   _distributed_container logic below. This case can trigger
   #   same_id when there is only one device.
   # * In any other situation, same_id means we return v0 unless `always_wrap` is
   #   true.
-  if same_id and not always_wrap and value_container(v0) is v0:
+  if same_id and not always_wrap and not hasattr(v0, "_distributed_container"):
     return v0
 
   # Detect the case where each device has a parallel component of the
@@ -113,17 +112,15 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
   # want to return the containing MirroredVariable, after a bunch of
   # sanity checking. In particular, each component should have the
   # same container, and the devices of the variables should match the
-  # keys of the per-replica dictionary. For _UnreadVariables, use the wrap_class
-  # path, which calls tf.identity on them.
-  if (not isinstance(v0, resource_variable_ops._UnreadVariable) and  # pylint: disable=protected-access
-      value_container(v0) is not v0):
+  # keys of the per-replica dictionary.
+  if hasattr(v0, "_distributed_container"):
     # pylint: disable=protected-access
     assert not isinstance(v0, values_lib.MirroredVariable), (
         "ids = %s, values = %s" % ([id(v) for v in values], values))
-    distributed_container = value_container(v0)
+    distributed_container = v0._distributed_container()
     assert distributed_container is not None
     for v in values[1:]:
-      assert distributed_container is value_container(v)
+      assert distributed_container is v._distributed_container()
     return distributed_container
   # pylint: enable=protected-access
 
@@ -209,12 +206,11 @@ def value_container(val):
     If value does not belong to any container (including the case of
     container having been destroyed), returns the value itself.
   """
-  # DistributedVariable has _distributed_container defined but we don't want to
-  # return it.
-  if (not isinstance(val, values_lib.DistributedVariable) and
-      hasattr(val, "handle") and
-      hasattr(val.handle, "_distributed_container")):
-    container = val.handle._distributed_container()  # pylint: disable=protected-access
+  if (hasattr(val, "_distributed_container") and
+      # DistributedVariable has _distributed_container defined
+      # but we don't want to return it.
+      not isinstance(val, values_lib.DistributedVariable)):
+    container = val._distributed_container()  # pylint: disable=protected-access
     if container is not None:
       return container
   return val

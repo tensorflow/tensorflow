@@ -492,7 +492,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
     for v in values:
-      v.handle._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
 
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a
@@ -658,7 +658,7 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
       return self._primary.handle
     replica_id = values_util.get_current_replica_id_as_int()
     if replica_id is None:
-      raise AttributeError(
+      raise ValueError(
           "DistributedVariable.handle is not available outside the replica "
           "context or a `tf.distribute.Strategy.update()` call.")
     else:
