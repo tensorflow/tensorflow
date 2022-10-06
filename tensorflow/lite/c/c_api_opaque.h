@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
+#include "tensorflow/lite/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,7 +26,8 @@ extern "C" {
 // --------------------------------------------------------------------------
 /// C API for TensorFlow Lite Opaque Types.
 ///
-/// These APIs are accessors for TFLite Opaque Types.
+/// These APIs are accessors for TFLite Opaque Types.  These APIs are primarily
+/// intended to be used by delegates and custom OP implementations.
 ///
 /// WARNING: This is an experimental API and subject to change.
 
@@ -104,6 +106,36 @@ typedef struct TfLiteIntArray TfLiteIntArray;
 // failure and the `execution_plan` will be left in an unspecified state.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
     TfLiteOpaqueContext* opaque_context, TfLiteIntArray** execution_plan);
+
+// Given the specified 'opaque_context' and 'node_index', load the caller's
+// opaque '*node' and '*registration_external' pointer.  Return 'kTfLiteOk' if
+// both the '*node' as well as the '*registration_external' have been loaded
+// correctly.  Any other return code indicates a failure and both '*node' as
+// well as '*registration_external' will be in an unspecified state.
+//
+// A caller can obtain a node's index by calling
+// 'TfLiteOpaqueContextGetExecutionPlan', which provides an array of node
+// indices, sorted in execution order.  A node index might also come from the
+// data structures passed to the delegate kernel's callback parameters, like the
+// delegate parameters data structure passed to the 'init' callback that
+// contains an array of node indices that are meant to be handled by the
+// delegate kernel.
+//
+// This function is expected to be called from within a delegate callback, like
+// 'Prepare', or a delegate kernel callback (i.e., a callback registered with
+// a 'TfLiteRegistrationExternal' object).
+//
+// The loaded '*node' and '*registration_external' pointers will generally
+// remain valid for the lifetime of the associated 'opaque_context', but can be
+// invalidated through API calls where delegates get un-applied, like API calls
+// that modify the model graph via a delegate, or if input tensors get re-sized.
+//
+// TODO(b/237983452): Further clarify the lifetime guarantees of pointers that
+// are returned to the users and which actions invalidate them.
+TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
+    struct TfLiteOpaqueContext* opaque_context, int node_index,
+    TfLiteOpaqueNode** node,
+    TfLiteRegistrationExternal** registration_external);
 
 #ifdef __cplusplus
 }  // extern "C"

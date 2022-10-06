@@ -28,6 +28,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -310,6 +311,58 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TfLiteInterpreterDelete(interpreter);
+}
+
+TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
+  struct DelegatePrepareStatus {
+    bool prepared;
+  };
+  DelegatePrepareStatus delegate_state{false};
+
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* opaque_context,
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        DelegatePrepareStatus* delegate_state =
+            static_cast<DelegatePrepareStatus*>(data);
+        delegate_state->prepared = true;
+
+        TfLiteIntArray* execution_plan;
+        TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+        EXPECT_EQ(execution_plan->size, 2);
+
+        for (int i = 0; i < execution_plan->size; i++) {
+          TfLiteOpaqueNode* node = nullptr;
+          TfLiteRegistrationExternal* registration_external = nullptr;
+          TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
+                                                    &registration_external);
+          EXPECT_NE(node, nullptr);
+          EXPECT_NE(registration_external, nullptr);
+          EXPECT_EQ(kTfLiteBuiltinAdd, TfLiteRegistrationExternalGetBuiltInCode(
+                                           registration_external));
+          EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
+          EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
+        }
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  TfLiteModelDelete(model);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_state.prepared);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
 TEST(CApiSimple, ValidModel) {

@@ -24,11 +24,13 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/c/common_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/macros.h"
@@ -43,6 +45,10 @@ namespace tflite {
 
 class SingleOpModel;  // Class for friend declarations.
 
+namespace internal {
+class CommonOpaqueConversionUtil;  // Class for friend declarations.
+}
+
 namespace delegates {
 namespace test_utils {
 class TestDelegate;  // Class for friend declarations.
@@ -53,6 +59,7 @@ class Subgraph {
  public:
   friend class Interpreter;
   friend class SingleOpModel;
+  friend class internal::CommonOpaqueConversionUtil;
 
   Subgraph(ErrorReporter* error_reporter,
            TfLiteExternalContext** external_contexts,
@@ -898,6 +905,23 @@ class Subgraph {
   // Mapping between tensor index to the last index of the execution plan that
   // uses this tensor.
   std::map<int, int> tensor_to_last_op_index_;
+
+  // A set of 'TfLiteRegistrationExternal' pointers that are owned by the
+  // subgraph.  The objects pointed to by the 'TfLiteRegistrationExternal'
+  // pointers are deleted in the 'Subgraph' destructor.
+  //
+  // The intended usage of this container is to provide (friend) classes
+  // the option to dynamically allocate 'TfLiteRegistrationExternal' objects
+  // and then tie the lifetime of these objects to a subgraph.
+  //
+  // LINT.IfChange
+  // Ideally we could include c_api.h and use
+  // 'TfLiteRegistrationExternalDelete' as the deleter,  but that would create a
+  // dependency cycle.
+  std::unordered_set<  // NOLINT
+      std::unique_ptr<const TfLiteRegistrationExternal>>
+      registration_externals_;
+  // LINT.ThenChange(//tensorflow/lite/c/c_api.cc)
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;

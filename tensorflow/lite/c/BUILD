@@ -138,6 +138,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api",
         ":c_api_internal",
+        ":c_api_opaque_internal",
         ":c_api_types",
         ":common",
         "//tensorflow/lite:builtin_ops",
@@ -165,6 +166,7 @@ tflite_cc_library_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_internal",
+        ":c_api_opaque_internal",
         ":c_api_types",
         ":c_api_without_op_resolver",
         ":common",
@@ -192,6 +194,7 @@ tflite_cc_library_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_internal",
+        ":c_api_opaque_internal_without_alwayslink",
         ":c_api_types",
         ":c_api_without_op_resolver_without_alwayslink",
         ":common",
@@ -248,6 +251,7 @@ cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_internal",
+        ":c_api_types",
         ":common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
@@ -274,6 +278,7 @@ cc_test(
     ],
     deps = [
         ":c_api_internal",
+        ":c_api_types",
         ":common",
         ":selectively_built_c_api_test_lib",
         "//tensorflow/lite/testing:util",
@@ -344,6 +349,42 @@ cc_library(
     deps = [
         ":c_api_types",
         ":common",
+    ],
+)
+
+cc_library(
+    name = "c_api_opaque_internal",
+    srcs = ["c_api_opaque_internal.cc"],
+    hdrs = ["c_api_opaque_internal.h"],
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+# Same as c_api_opaque_internal, but depends on the
+# '_without_alwayslink' variant of ':c_api_without_op_resolver'.
+cc_library(
+    name = "c_api_opaque_internal_without_alwayslink",
+    srcs = ["c_api_opaque_internal.cc"],
+    hdrs = ["c_api_opaque_internal.h"],
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver_without_alwayslink",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
     ],
 )
 
