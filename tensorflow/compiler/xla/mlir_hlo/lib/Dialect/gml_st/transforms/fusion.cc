@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
+
 #include <memory>
 #include <utility>
 
@@ -155,30 +157,10 @@ void getOrMaterializeMixedOffsetsAndSizes(OpBuilder& b, Location loc,
   }
 }
 
-FailureOr<Value> fuseIntoMaterializeOp(OpBuilder& b, Location loc,
-                                       MaterializeOp materializeOp) {
-  auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
-  if (!tileableOp) return failure();
-
-  Value tile = materializeOp.getSet();
-  if (!tile.getType().isa<TileType>()) return failure();
-
-  SmallVector<OpFoldResult> offsets;
-  SmallVector<OpFoldResult> sizes;
-  getOrMaterializeMixedOffsetsAndSizes(b, loc, tile, offsets, sizes);
-
-  // Tile the producer.
-  OpBuilder::InsertionGuard guard(b);
-  b.setInsertionPoint(materializeOp);
-  FailureOr<Value> tiledProducer =
-      tileableOp.generateResultTileValue(b, /*resultNumber=*/0, offsets, sizes);
-  if (failed(tiledProducer)) return failure();
-  return tiledProducer;
-}
-
 class FusionPattern : public OpRewritePattern<MaterializeOp> {
  public:
-  FusionPattern(MLIRContext* context, OpFilterFn filterFn,
+  FusionPattern(MLIRContext* context,
+                function_ref<LogicalResult(Operation*)> filterFn,
                 mlir::PatternBenefit benefit = 1)
       : OpRewritePattern<MaterializeOp>(context, benefit), filterFn(filterFn) {}
 
@@ -188,8 +170,7 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
     if (failed(filterFn(materializeOp))) return failure();
 
     Location loc = materializeOp.getLoc();
-    FailureOr<Value> fused =
-        fuseIntoMaterializeOp(rewriter, loc, materializeOp);
+    FailureOr<Value> fused = createFusedOp(rewriter, loc, materializeOp);
     if (failed(fused)) return failure();
 
     // Insert cast if needed.
@@ -204,7 +185,7 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
   }
 
  private:
-  OpFilterFn filterFn;
+  function_ref<LogicalResult(Operation*)> filterFn;
 };
 
 struct FusionPass : public impl::FusionPassBase<FusionPass> {
@@ -256,7 +237,30 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
 }  // namespace
 
-void populateFusionPatterns(MLIRContext* ctx, OpFilterFn filterFn,
+FailureOr<Value> createFusedOp(OpBuilder& b, Location loc,
+                               MaterializeOp materializeOp) {
+  auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
+  if (!tileableOp) return failure();
+
+  Value tile = materializeOp.getSet();
+  if (!tile.getType().isa<TileType>()) return failure();
+
+  SmallVector<OpFoldResult> offsets;
+  SmallVector<OpFoldResult> sizes;
+  getOrMaterializeMixedOffsetsAndSizes(b, loc, tile, offsets, sizes);
+
+  // Tile the producer.
+  OpBuilder::InsertionGuard guard(b);
+  b.setInsertionPoint(materializeOp);
+  FailureOr<Value> tiledProducer =
+      tileableOp.generateResultTileValue(b, /*resultNumber=*/0, offsets, sizes);
+  if (failed(tiledProducer)) return failure();
+
+  return tiledProducer;
+}
+
+void populateFusionPatterns(MLIRContext* ctx,
+                            function_ref<LogicalResult(Operation*)> filterFn,
                             RewritePatternSet* patterns) {
   patterns->insert<FusionPattern>(ctx, filterFn);
   // clang-format off
