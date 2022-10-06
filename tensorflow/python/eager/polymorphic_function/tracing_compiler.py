@@ -73,8 +73,7 @@ class TracingCompiler:
                autograph_options=None,
                reduce_retracing=False,
                capture_by_value=None,
-               jit_compile=None,
-               experimental_follow_type_hints=False):
+               jit_compile=None):
     """Initializes a `TracingCompiler`.
 
     Args:
@@ -98,7 +97,6 @@ class TracingCompiler:
         default to False.
       jit_compile: Force-compile the function with XLA, cf.
         tf.function doc on jit_compile.
-      experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -109,8 +107,7 @@ class TracingCompiler:
     self._function_spec = function_spec.FunctionSpec.from_function_and_signature(
         python_function,
         input_signature,
-        is_pure=pure_function,
-        experimental_follow_type_hints=experimental_follow_type_hints)
+        is_pure=pure_function)
     self._name = name
     self._autograph = autograph
     self._autograph_options = autograph_options
@@ -128,7 +125,6 @@ class TracingCompiler:
     # create different functions for each instance.
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._jit_compile = jit_compile
-    self._experimental_follow_type_hints = experimental_follow_type_hints
 
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""

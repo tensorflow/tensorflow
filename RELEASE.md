@@ -115,6 +115,8 @@
         "composite" tensors, such as `tf.RaggedTensor`, as inputs.
     *   Fix device placement issues related to datasets with ragged tensors of
         strings (i.e. variant encoded data with types not supported on GPU).
+    *   'experimental_follow_type_hints' for tf.function has been deprecated.
+        Please use input_signature or reduce_retracing to minimize retracing.
 
 *   `tf.SparseTensor`:
     *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.

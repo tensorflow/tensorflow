@@ -533,8 +533,7 @@ class Function(core.GenericFunction, trackable.Trackable):
                jit_compile=None,
                reduce_retracing=False,
                experimental_implements=None,
-               experimental_autograph_options=None,
-               experimental_follow_type_hints=None):
+               experimental_autograph_options=None):
     """Initializes a `Function`.
 
     Args:
@@ -546,7 +545,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
-      experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -558,7 +556,6 @@ class Function(core.GenericFunction, trackable.Trackable):
         python_function,
         input_signature,
         jit_compile=jit_compile,
-        experimental_follow_type_hints=experimental_follow_type_hints,
     )
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
@@ -569,9 +566,6 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._experimental_autograph_options = experimental_autograph_options
     self._reduce_retracing = reduce_retracing
     self._jit_compile = jit_compile
-    if experimental_follow_type_hints is None:
-      experimental_follow_type_hints = False
-    self._experimental_follow_type_hints = experimental_follow_type_hints
     self._created_variables = None  # GUARDED_BY(self._lock)
     self._variable_creation_fn = None  # GUARDED_BY(self._lock)
     self._no_variable_creation_fn = None  # GUARDED_BY(self._lock)
@@ -710,8 +704,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
-        autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints)
+        autograph_options=self._experimental_autograph_options)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -781,8 +774,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
         experimental_implements=self._implements,
-        experimental_autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints)
+        experimental_autograph_options=self._experimental_autograph_options)
 
     if self._shared_rendezvous:
       f._shared_rendezvous = self._shared_rendezvous  # pylint: disable=protected-access
@@ -1267,16 +1259,21 @@ class Function(core.GenericFunction, trackable.Trackable):
                              "experimental_relax_shapes is deprecated, use "
                              "reduce_retracing instead",
                              "experimental_relax_shapes")
-def function(func=None,
-             input_signature=None,
-             autograph=True,
-             jit_compile=None,
-             reduce_retracing=False,
-             experimental_implements=None,
-             experimental_autograph_options=None,
-             experimental_relax_shapes=None,
-             experimental_compile=None,
-             experimental_follow_type_hints=None) -> core.GenericFunction:
+@deprecation.deprecated_args(None,
+                             "experimental_follow_type_hints is deprecated",
+                             "experimental_follow_type_hints")
+def function(
+    func=None,
+    input_signature=None,
+    autograph=True,
+    jit_compile=None,
+    reduce_retracing=False,
+    experimental_implements=None,
+    experimental_autograph_options=None,
+    experimental_relax_shapes=None,
+    experimental_compile=None,
+    experimental_follow_type_hints=None  # pylint: disable=unused-argument
+) -> core.GenericFunction:
   """Compiles a function into a callable TensorFlow graph.
 
   `tf.function` constructs a `tf.types.experimental.GenericFunction` that
@@ -1518,32 +1515,6 @@ def function(func=None,
   >>> f(2, tf.constant(2))
   <tf.Tensor: shape=(), dtype=int32, numpy=2>
 
-  ## Using type annotations to improve performance
-
-  `experimental_follow_type_hints` can be used along with type annotations to
-  reduce retracing by automatically casting any Python values to `tf.Tensor`
-  (something that is not done by default, unless you use input signatures).
-
-  >>> @tf.function(experimental_follow_type_hints=True)
-  ... def f_with_hints(x: tf.Tensor):
-  ...   print('Tracing')
-  ...   return x
-  >>> @tf.function(experimental_follow_type_hints=False)
-  ... def f_no_hints(x: tf.Tensor):
-  ...   print('Tracing')
-  ...   return x
-  >>> f_no_hints(1)
-  Tracing
-  <tf.Tensor: shape=(), dtype=int32, numpy=1>
-  >>> f_no_hints(2)
-  Tracing
-  <tf.Tensor: shape=(), dtype=int32, numpy=2>
-  >>> f_with_hints(1)
-  Tracing
-  <tf.Tensor: shape=(), dtype=int32, numpy=1>
-  >>> f_with_hints(2)
-  <tf.Tensor: shape=(), dtype=int32, numpy=2>
-
   Args:
     func: The function to be compiled. If `func` is None, `tf.function` returns
       a decorator that can be invoked with a single argument - `func`. In other
@@ -1603,10 +1574,8 @@ def function(func=None,
     experimental_relax_shapes: Deprecated. Use `reduce_retracing`
       instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
-    experimental_follow_type_hints: When True, the function may use type
-      annotations from `func` to optimize the tracing performance. For example,
-      arguments annotated with `tf.Tensor` will automatically be converted
-      to a Tensor.
+    experimental_follow_type_hints: Deprecated. Please use input_signature or
+      reduce_retracing instead.
 
   Returns:
      If `func` is not None, returns a `tf.types.experimental.GenericFunction`.
@@ -1617,9 +1586,6 @@ def function(func=None,
      `ValueError` when attempting to use `jit_compile=True`, but XLA support is
      not available.
   """
-  if experimental_follow_type_hints is None:
-    experimental_follow_type_hints = False
-
   if jit_compile is None and JIT_COMPILE_FUNCTIONS:
     jit_compile = True
 
@@ -1650,8 +1616,7 @@ def function(func=None,
                 jit_compile,
                 "experimental_compile",
                 experimental_compile),
-            experimental_implements=experimental_implements,
-            experimental_follow_type_hints=experimental_follow_type_hints))
+            experimental_implements=experimental_implements))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

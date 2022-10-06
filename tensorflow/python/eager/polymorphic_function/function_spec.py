@@ -49,7 +49,6 @@ class FunctionSpec(object):
   def from_function_and_signature(cls, python_function,
                                   input_signature,
                                   is_pure=False,
-                                  experimental_follow_type_hints=False,
                                   jit_compile=None):
     """Creates a FunctionSpec instance given a python function and signature.
 
@@ -58,7 +57,6 @@ class FunctionSpec(object):
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
-      experimental_follow_type_hints: see `tf.function`
       jit_compile: see `tf.function`
 
     Returns:
@@ -145,7 +143,6 @@ class FunctionSpec(object):
         input_signature,
         is_pure=is_pure,
         jit_compile=jit_compile,
-        experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
   def __init__(self,
@@ -153,7 +150,6 @@ class FunctionSpec(object):
                is_method,
                input_signature,
                is_pure=False,
-               experimental_follow_type_hints=False,
                name=None,
                jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
@@ -164,7 +160,6 @@ class FunctionSpec(object):
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
-      experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
       jit_compile: see `tf.function`.
     """
@@ -172,7 +167,6 @@ class FunctionSpec(object):
     self._is_method = is_method
     self._is_pure = is_pure
     self._jit_compile = jit_compile
-    self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
     self._name = name or "f"
@@ -385,35 +379,6 @@ class FunctionSpec(object):
               f"{len(missing_tensor_specs)} argument(s):"
               f" {missing_tensor_specs}.")
 
-  def _convert_annotated_args_to_tensors(self, args, kwargs):
-    """Attempts to autobox arguments annotated as tf.Tensor."""
-    if self.input_signature is not None:
-      return
-
-    args = list(args)
-    for i, arg in enumerate(args):
-      # See
-      # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
-      if i < len(self._fullargspec.args):
-        annotation_key = self._fullargspec.args[i]
-      else:
-        annotation_key = self._fullargspec.varargs
-      arg_annotation = self._fullargspec.annotations.get(annotation_key, None)
-
-      # TODO(rahulkamat): Change to TensorLike (here ans below)
-      if arg_annotation == ops.Tensor:
-        args[i] = _to_tensor_or_tensor_spec(arg)
-
-    for kw, v in kwargs.items():
-      if kw in self._fullargspec.kwonlyargs or kw in self._fullargspec.args:
-        annotation_key = kw
-      else:
-        annotation_key = self._fullargspec.varkw
-      kwarg_annotation = self._fullargspec.annotations.get(annotation_key, None)
-      if kwarg_annotation == ops.Tensor:
-        kwargs[kw] = _to_tensor_or_tensor_spec(v)
-    return tuple(args), kwargs
-
   def _validate_inputs(self, flat_inputs):
     """Raises an error if inputs contain illegal values."""
     for inp in flat_inputs:
@@ -484,8 +449,7 @@ class FunctionSpec(object):
     kwargs = {key: kwargs[key] for key in kwargs}
     if self._is_pure:
       args, kwargs = _convert_variables_to_tensors(args, kwargs)
-    if self._experimental_follow_type_hints:
-      args, kwargs = self._convert_annotated_args_to_tensors(args, kwargs)
+
     # Pre-calculate to reduce overhead
     arglen = len(args)
     if self._input_signature is not None:
