@@ -3,7 +3,7 @@ load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
 load(
-    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "//tensorflow/tsl/profiler/builds:build_config.bzl",
     "tf_profiler_copts",
 )
 
