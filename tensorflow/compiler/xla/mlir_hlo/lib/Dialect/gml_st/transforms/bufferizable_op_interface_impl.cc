@@ -250,8 +250,15 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
   Location loc = update.getLoc();
 
   Operation *setDefiningOp = set.getDefiningOp();
-  if (isa<SpaceOp>(setDefiningOp))
+  if (isa<SpaceOp>(setDefiningOp)) {
+    if (!update.getType().isa<ShapedType>()) {
+      SmallVector<Value> indices(memref.getType().cast<MemRefType>().getRank(),
+                                 b.create<arith::ConstantIndexOp>(loc, 0));
+      b.create<memref::StoreOp>(loc, update, memref, indices);
+      return success();
+    }
     return options.createMemCpy(b, loc, update, memref);
+  }
 
   // Create subviews or store ops for the set computation.
   auto tile = dyn_cast<TileOp>(setDefiningOp);
