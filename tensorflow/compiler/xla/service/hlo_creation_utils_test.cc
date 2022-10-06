@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -28,6 +30,8 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
+namespace m = match;
 
 class HloCreationUtilsTest : public HloTestBase {
  protected:
@@ -405,6 +409,22 @@ TEST_F(HloCreationUtilsTest, DynamicUpdateSliceVectorStartIndices) {
   });
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloCreationUtilsTest, ExpandDegenerateReshape) {
+  const char* hlo_string = R"(
+    HloModule module
+    ENTRY test {
+      param = f32[12,1,10,32,8] parameter(0)
+      ROOT reshape = f32[1,12,10,1,32,1,8] reshape(param)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  auto expanded =
+      ExpandDegenerateReshape(module->entry_computation()->root_instruction());
+  EXPECT_THAT(expanded, GmockMatch(m::Reshape(m::Reshape(
+                            m::Reshape(m::Reshape(m::Parameter(0)))))));
 }
 
 }  // namespace
