@@ -23,6 +23,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -50,6 +52,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:path",
     ] + if_static(
         extra_deps = [
             "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
