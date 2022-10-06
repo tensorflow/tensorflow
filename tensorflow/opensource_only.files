@@ -9,6 +9,7 @@ tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.b
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
 tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
