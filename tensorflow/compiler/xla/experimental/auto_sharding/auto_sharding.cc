@@ -2569,22 +2569,20 @@ std::string PrintSolutionMemoryUsage(const LivenessSet& liveness_set,
 }
 
 void SaveShardingForInstruction(
-    absl::flat_hash_map<std::string, std::string>& preserve_shardings,
+    absl::flat_hash_map<std::string, std::vector<HloSharding>>&
+        preserve_shardings,
     HloInstruction* inst) {
   if (inst->has_sharding() && !inst->sharding().IsTuple()) {
-    preserve_shardings[inst->name()] = inst->sharding().ToString();
+    preserve_shardings[inst->name()] = {inst->sharding()};
   } else if (inst->has_sharding() && inst->sharding().IsTuple()) {
-    for (size_t i = 0; i < inst->sharding().tuple_elements().size(); i++) {
-      preserve_shardings[absl::StrCat(inst->name(), "-", i)] =
-          inst->sharding().tuple_elements().at(i).ToString();
-    }
+    preserve_shardings[inst->name()] = inst->sharding().tuple_elements();
   }
 }
 // Saves the user shardings that need to be preserved, and check whether they
 // are preserved after this pass.
-absl::flat_hash_map<std::string, std::string> SaveUserShardings(
+absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
     HloModule* module, AutoShardingOption::PreserveShardingsType type) {
-  absl::flat_hash_map<std::string, std::string> preserve_shardings;
+  absl::flat_hash_map<std::string, std::vector<HloSharding>> preserve_shardings;
   if (type == AutoShardingOption::PreserveShardingsType::kKeepAllShardings) {
     // Saves shardings for all instructions.
     for (const auto computation : module->computations()) {
@@ -2604,9 +2602,10 @@ absl::flat_hash_map<std::string, std::string> SaveUserShardings(
     SaveShardingForInstruction(preserve_shardings, inst);
   }
   if (VLOG_IS_ON(1)) {
-    LOG(INFO) << "User shardings that need to be kept: ";
+    LOG(INFO) << "User shardings that need to be kept (printing only the 1st "
+                 "elemenet of tuples): ";
     for (const auto& tmp : preserve_shardings) {
-      LOG(INFO) << tmp.first << ": " << tmp.second;
+      LOG(INFO) << tmp.first << ": " << tmp.second.at(0).ToString();
     }
   }
   return preserve_shardings;
@@ -2615,46 +2614,46 @@ absl::flat_hash_map<std::string, std::string> SaveUserShardings(
 // Check whether the shardings that need to be perserved are preserved.
 void CheckUserShardingPreservation(
     HloModule* module,
-    const absl::flat_hash_map<std::string, std::string>& preserve_shardings) {
+    const absl::flat_hash_map<std::string, std::vector<HloSharding>>&
+        preserve_shardings) {
   for (const auto computation : module->computations()) {
     for (const auto inst : computation->instructions()) {
       if (preserve_shardings.find(inst->name()) != preserve_shardings.end()) {
         if (!inst->has_sharding()) {
           LOG(FATAL) << "User sharding is not preserved! Instruction with name "
-                     << inst->name()
-                     << " should be: " << preserve_shardings.at(inst->name())
+                     << inst->name() << " should be: "
+                     << preserve_shardings.at(inst->name())[0].ToString()
                      << "\nbut it's empty.";
-        } else if (preserve_shardings.at(inst->name()) !=
+        } else if (preserve_shardings.at(inst->name())[0].ToString() !=
                    inst->sharding().ToString()) {
           LOG(FATAL) << "User sharding is not preserved! Instruction with name "
-                     << inst->name()
-                     << " should be: " << preserve_shardings.at(inst->name())
+                     << inst->name() << " should be: "
+                     << preserve_shardings.at(inst->name())[0].ToString()
                      << "\nbut it's: " << inst->sharding().ToString();
         }
       } else if (inst->shape().IsTuple()) {
+        const std::vector<HloSharding>* preserve_shardings_tuple;
+        if (preserve_shardings.find(inst->name()) != preserve_shardings.end()) {
+          preserve_shardings_tuple = &preserve_shardings.at(inst->name());
+        } else {
+          continue;
+        }
+        if (!inst->has_sharding()) {
+          LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
+                        "with name "
+                     << inst->name() << " should be have shardings,"
+                     << " but it's empty.";
+        }
         for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
-          if (preserve_shardings.find(absl::StrCat(inst->name(), "-", i)) !=
-              preserve_shardings.end()) {
-            if (!inst->has_sharding()) {
-              LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
-                            "with name "
-                         << inst->name() << " " << i << "th tuple element "
-                         << " should be: "
-                         << preserve_shardings.at(
-                                absl::StrCat(inst->name(), "-", i))
-                         << "\nbut it's empty.";
-            } else if (preserve_shardings.at(
-                           absl::StrCat(inst->name(), "-", i)) !=
-                       inst->sharding().tuple_elements().at(i).ToString()) {
-              LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
-                            "with name "
-                         << inst->name() << " " << i << "th tuple element "
-                         << " should be: "
-                         << preserve_shardings.at(
-                                absl::StrCat(inst->name(), "-", i))
-                         << "\nbut it's: "
-                         << inst->sharding().tuple_elements().at(i).ToString();
-            }
+          if (preserve_shardings_tuple->at(i).ToString() !=
+              inst->sharding().tuple_elements().at(i).ToString()) {
+            LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
+                          "with name "
+                       << inst->name() << " " << i << "th tuple element "
+                       << " should be: "
+                       << preserve_shardings_tuple->at(i).ToString()
+                       << "\nbut it's: "
+                       << inst->sharding().tuple_elements().at(i).ToString();
           }
         }
       }
@@ -2765,11 +2764,6 @@ StatusOr<bool> AutoSharding::Run(
   bool module_is_changed = false;
   VLOG(1) << "Start auto sharding pass";
 
-  absl::flat_hash_map<std::string, std::string> preserve_shardings;
-  if (VLOG_IS_ON(1)) {
-    preserve_shardings =
-        spmd::SaveUserShardings(module, option_.preserve_shardings);
-  }
   TF_RETURN_IF_ERROR(option_.CheckAndSetup());
   VLOG(1) << "AutoShardingOptions:\n" << option_.ToString();
   // ----- Set options for this pass -----
@@ -2840,6 +2834,10 @@ StatusOr<bool> AutoSharding::Run(
     VLOG(3) << "This workload does not have CustomCalls with "
                "custom_call_target=Sharding.";
   }
+
+  absl::flat_hash_map<std::string, std::vector<HloSharding>>
+      preserve_shardings =
+          spmd::SaveUserShardings(module, option_.preserve_shardings);
 
   // Remove xla sharding annotations, if there is any.
   if (option_.preserve_shardings !=
