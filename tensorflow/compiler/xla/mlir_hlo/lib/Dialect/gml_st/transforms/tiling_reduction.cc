@@ -97,19 +97,21 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
   Value partSpace = rewriter.create<gml_st::SpaceOp>(
       loc, OpFoldResult(rewriter.getIndexAttr(kWarpSize)));
 
+  auto getResult = [](Operation* op) { return op->getResult(0); };
+
   // Create gml_st.parallel initializing the partial result.
-  rewriter.create<gml_st::ParallelOp>(
-      loc, llvm::None, c0, cWarpSize, c1, warpDist,
+  partial = getResult(rewriter.create<gml_st::ParallelOp>(
+      loc, partial.getType(), c0, cWarpSize, c1, warpDist,
       [&](OpBuilder& builder, Location loc, ValueRange ivs) {
         OpFoldResult laneIdx = ivs.front();
         Value partPoint = builder.create<gml_st::TileOp>(
             loc, partSpace, laneIdx, oneAttr, oneAttr);
         builder.create<gml_st::SetYieldOp>(loc, output, partial, partPoint);
-      });
+      }));
 
   // Create gml_st.parallel finalizing the partial result.
-  rewriter.create<gml_st::ParallelOp>(
-      loc, llvm::None, c0, cWarpSize, c1, warpDist,
+  partial = getResult(rewriter.create<gml_st::ParallelOp>(
+      loc, partial.getType(), c0, cWarpSize, c1, warpDist,
       [&](OpBuilder& builder, Location loc, ValueRange ivs) {
         Value laneIdx = ivs.front();
         Value partPoint = builder.create<gml_st::TileOp>(
@@ -139,7 +141,7 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
             });
         builder.create<gml_st::SetYieldOp>(loc, forOp.getResults(), partial,
                                            partPoint);
-      });
+      }));
 
   // Change existing linalg.generic to warp-reduce the partial result.
   partial = rewriter.create<tensor::ExpandShapeOp>(
