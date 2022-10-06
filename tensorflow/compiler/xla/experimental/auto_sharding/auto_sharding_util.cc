@@ -2546,5 +2546,117 @@ double ReshardingCostMixedMeshShape(
   return resharding_costs;
 }
 
+std::optional<HloSharding> AdjustShardingWithPartialMeshShapePerElement(
+    const HloSharding& sharding,
+    const absl::flat_hash_set<int64_t>& valid_shards,
+    int64_t total_num_devices) {
+  if (sharding.TotalNumTiles() > total_num_devices &&
+      VectorGreaterThanOneElementCount(
+          sharding.tile_assignment().dimensions()) > valid_shards.size()) {
+    std::vector<int64_t> new_tile_assignment_dimensions;
+    if (sharding.ReplicateOnLastTileDim()) {
+      // If replicate on valid_shards dimensions, turns this instruction
+      // into replicate.
+      // If two mesh dimensions are the same size, it becomes replicated too.
+      if (valid_shards.find(sharding.tile_assignment().dim(
+              sharding.tile_assignment().num_dimensions() - 1)) !=
+          valid_shards.end()) {
+        HloSharding new_sharding = HloSharding::Replicate();
+        return new_sharding;
+      }
+      // If replicate on other dimensions, remove the
+      // replicate_on_last_tile
+      new_tile_assignment_dimensions = sharding.tile_assignment().dimensions();
+      new_tile_assignment_dimensions.erase(
+          new_tile_assignment_dimensions.end() - 1);
+    } else {
+      new_tile_assignment_dimensions = sharding.tile_assignment().dimensions();
+      absl::flat_hash_set<int64_t> current_shards;
+      for (const auto dim : new_tile_assignment_dimensions) {
+        if (dim > 1) {
+          current_shards.insert(dim);
+        }
+      }
+      if (current_shards.size() == 1) {
+        // Two mesh dimensions are the same size. Keep the first sharded
+        // dimension.
+        for (int32_t i = new_tile_assignment_dimensions.size() - 1; i >= 0;
+             i--) {
+          if (new_tile_assignment_dimensions[i] > 1 &&
+              valid_shards.find(new_tile_assignment_dimensions[i]) !=
+                  valid_shards.end()) {
+            new_tile_assignment_dimensions[i] = 1;
+            break;
+          }
+        }
+      } else {
+        for (size_t i = 0; i < new_tile_assignment_dimensions.size(); i++) {
+          if (new_tile_assignment_dimensions[i] > 1 &&
+              valid_shards.find(new_tile_assignment_dimensions[i]) ==
+                  valid_shards.end()) {
+            new_tile_assignment_dimensions[i] = 1;
+          }
+        }
+      }
+    }
+    Array<int64_t> tile_assignment(new_tile_assignment_dimensions);
+    std::vector<int64_t> device_ids = std::vector<int64_t>(total_num_devices);
+    // Set arbitrary values because it will not be used.
+    std::iota(device_ids.begin(), device_ids.end(), 0);
+    tile_assignment.SetValues(device_ids);
+    HloSharding new_sharding = HloSharding::Tile(std::move(tile_assignment));
+    return new_sharding;
+  }
+  return std::nullopt;
+}
+
+bool AdjustShardingsWithPartialMeshShape(
+    const std::vector<HloInstruction*>& instructions,
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
+  bool changed = false;
+  absl::flat_hash_set<int64_t> valid_shards;
+  for (const auto shape : mesh_shape) {
+    if (shape > 1) {
+      valid_shards.insert(shape);
+    }
+  }
+  for (HloInstruction* inst : instructions) {
+    if (!inst->has_sharding()) {
+      continue;
+    }
+    LOG(INFO) << inst->ToString();
+    if (inst->shape().IsTuple()) {
+      ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
+      std::vector<HloSharding> output_flattened_shardings;
+      for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+        auto shape = inst->shape().tuple_shapes(i);
+        auto sharding = inst->sharding().tuple_elements()[i];
+        std::optional<HloSharding> new_sharding =
+            AdjustShardingWithPartialMeshShapePerElement(sharding, valid_shards,
+                                                         total_num_devices);
+        if (new_sharding.has_value()) {
+          output_flattened_shardings.push_back(*new_sharding);
+        } else {
+          output_flattened_shardings.push_back(sharding);
+        }
+      }
+      size_t i = 0;
+      for (auto& leaf : output_tuple_sharding.leaves()) {
+        leaf.second = output_flattened_shardings[i++];
+      }
+      inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+    } else {
+      std::optional<HloSharding> sharding =
+          AdjustShardingWithPartialMeshShapePerElement(
+              inst->sharding(), valid_shards, total_num_devices);
+      if (sharding.has_value()) {
+        inst->set_sharding(*sharding);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
 }  // namespace spmd
 }  // namespace xla
