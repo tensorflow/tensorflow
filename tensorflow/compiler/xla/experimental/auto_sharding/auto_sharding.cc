@@ -218,8 +218,6 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
     size_t instruction_id, StrategyMap& strategy_map,
     LeafStrategies& leaf_strategies, const ClusterEnvironment& cluster_env,
     bool allow_mixed_mesh_shape) {
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
-  const Array<int64_t>& device_mesh_1d = cluster_env.device_mesh_1d_;
   std::unique_ptr<StrategyVector> strategies;
   if (output_shape.IsTuple()) {
     strategies = CreateTupleStrategyVector(instruction_id);
@@ -231,11 +229,9 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
           strategy_map, leaf_strategies, cluster_env, allow_mixed_mesh_shape));
     }
   } else if (output_shape.IsArray()) {
-    strategies =
-        CreateLeafStrategyVectorWithoutInNodes(instruction_id, leaf_strategies);
+    strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                          leaf_strategies);
     const StrategyVector* src_strategies = strategy_map.at(operand).get();
-    strategies->in_nodes.push_back(src_strategies);
-    strategies->in_nodes.push_back(strategy_map.at(unit).get());
     strategies->following = src_strategies;
     strategies->leaf_vector.reserve(src_strategies->leaf_vector.size());
     // Map operand dims to inst dim
@@ -252,10 +248,11 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
     strategies->following = src_strategies;
 
     for (size_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+      HloSharding input_sharding =
+          src_strategies->leaf_vector[sid].output_sharding;
       const auto& tensor_dim_to_mesh = cluster_env.GetTensorDimToMeshDimWrapper(
-          operand->shape(), src_strategies->leaf_vector[sid].output_sharding);
-      std::vector<int64> tile_tensor_dims, tile_mesh_dims, all_reduce_dims;
-
+          operand->shape(), input_sharding);
+      std::vector<int64> all_reduce_dims;
       for (int64 op_dim = 0; op_dim < operand->shape().rank(); ++op_dim) {
         int64 mesh_dim = tensor_dim_to_mesh[op_dim];
         // Replicates on this mesh dim.
@@ -265,59 +262,7 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
         if (op_dim_to_output_dim[op_dim] == -1) {
           // Reduce on a split dim. Require an allreduce
           all_reduce_dims.push_back(mesh_dim);
-        } else {
-          // Follow a split dim
-          tile_tensor_dims.push_back(op_dim_to_output_dim[op_dim]);
-          tile_mesh_dims.push_back(mesh_dim);
         }
-      }
-      // Check validity
-      bool valid = true;
-      for (int64_t x : tile_mesh_dims) {
-        if (x >= device_mesh.num_dimensions()) {
-          valid = false;
-        }
-      }
-      for (int64_t x : all_reduce_dims) {
-        if (x >= device_mesh.num_dimensions()) {
-          valid = false;
-        }
-      }
-      if (!valid) {
-        continue;
-      }
-
-      std::string name, suffix;
-      HloSharding output_spec = Undefined();
-      if (allow_mixed_mesh_shape &&
-          cluster_env.non_zero_mesh_dims_.size() > 1) {
-        std::vector<int> operand_tensor_dim_to_mesh_dim;
-        int64_t n_dim =
-            NumTileDimensions(src_strategies->leaf_vector[sid].output_sharding);
-
-        if (n_dim == 1) {
-          output_spec = Tile(output_shape, tile_tensor_dims, tile_mesh_dims,
-                             device_mesh_1d);
-          suffix = " 1d";
-        } else {
-          output_spec =
-              Tile(output_shape, tile_tensor_dims, tile_mesh_dims, device_mesh);
-        }
-      } else {
-        output_spec =
-            Tile(output_shape, tile_tensor_dims, tile_mesh_dims, device_mesh);
-      }
-
-      name += ToStringSimple(output_spec);
-      if (!all_reduce_dims.empty()) {
-        name += " (allreduce @ " + ToString(all_reduce_dims) + ")";
-      }
-      name += suffix;
-
-      double compute_cost = 0, communication_cost = 0;
-      double memory_cost = GetBytes(output_shape) / output_spec.NumTiles();
-      for (auto mesh_dim : all_reduce_dims) {
-        communication_cost += cluster_env.AllReduceCost(memory_cost, mesh_dim);
       }
       std::unique_ptr<HloInstruction> operand_clone = operand->Clone();
       std::unique_ptr<HloInstruction> unit_clone = unit->Clone();
@@ -326,28 +271,48 @@ std::unique_ptr<StrategyVector> FollowReduceStrategy(
       auto new_reduce = HloInstruction::CreateReduce(
           output_shape, operand_clone.get(), unit_clone.get(),
           ins->dimensions(), ins->to_apply());
-      new_reduce->set_sharding(output_spec);
+      operand_clone->set_sharding(
+          src_strategies->leaf_vector[sid].output_sharding);
       auto s = new_reduce->ReplaceOperandWith(0, operand_clone.get());
       if (!s.ok()) {
         continue;
       }
-      std::optional<HloSharding> input_sharding =
-          ShardingPropagation::GetShardingFromUser(*operand_clone, *new_reduce,
-                                                   1, true);
-      new_reduce.get_deleter();
-      auto resharding_cost_op = ReshardingCostVector(
-          src_strategies, output_shape, *input_sharding, cluster_env);
-      auto resharding_cost_unit =
-          ReshardingCostVector(strategy_map.at(unit).get(), unit->shape(),
-                               HloSharding::Replicate(), cluster_env);
-      const ShardingStrategy strategy =
-          ShardingStrategy({name,
-                            output_spec,
-                            compute_cost,
-                            communication_cost,
-                            memory_cost,
-                            {resharding_cost_op, resharding_cost_unit},
-                            {}});
+      ShardingPropagation::ComputationMap computation_map;
+      bool changed =
+          InferReduceShardingFromOperand(new_reduce.get(), false, true);
+      CHECK(changed);
+      HloSharding output_spec = new_reduce->sharding();
+      new_reduce.reset();
+      operand_clone.reset();
+      unit_clone.reset();
+
+      std::string name = ToStringSimple(output_spec);
+
+      double compute_cost = 0, communication_cost = 0;
+      double memory_cost = GetBytes(output_shape) / output_spec.NumTiles();
+      for (auto mesh_dim : all_reduce_dims) {
+        communication_cost += cluster_env.AllReduceCost(memory_cost, mesh_dim);
+      }
+      std::vector<std::vector<double>> resharding_costs;
+      for (int64_t k = 0; k < ins->operand_count(); ++k) {
+        auto cur_operand = ins->operand(k);
+        if (ToString(cur_operand->shape().dimensions()) ==
+            ToString(operand->shape().dimensions())) {
+          auto operand_strategies = strategy_map.at(cur_operand).get();
+          resharding_costs.push_back(ReshardingCostVector(
+              operand_strategies, output_shape, input_sharding, cluster_env));
+        } else {
+          resharding_costs.push_back(std::vector<double>(
+              strategy_map.at(cur_operand)->leaf_vector.size(), 0.0));
+        }
+      }
+      const ShardingStrategy strategy = ShardingStrategy({name,
+                                                          output_spec,
+                                                          compute_cost,
+                                                          communication_cost,
+                                                          memory_cost,
+                                                          resharding_costs,
+                                                          {input_sharding}});
       strategies->leaf_vector.push_back(strategy);
     }
   } else {

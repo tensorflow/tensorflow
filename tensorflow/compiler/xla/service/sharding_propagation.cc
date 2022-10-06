@@ -1296,6 +1296,64 @@ std::optional<HloSharding> InferBroadcastOperandSharding(
       dims_to_replicate);
 }
 
+bool InferReduceShardingFromOperand(HloInstruction* instruction,
+                                    bool may_combine_partial_sharding,
+                                    bool is_spmd) {
+  auto get_maybe_tuple_sharding = [&](HloSharding sharding) {
+    if (instruction->shape().IsArray()) {
+      return sharding;
+    }
+    std::vector<HloSharding> tuple(instruction->shape().tuple_shapes_size(),
+                                   std::move(sharding));
+    return HloSharding::Tuple(instruction->shape(), tuple);
+  };
+  auto* reduce = Cast<HloReduceInstruction>(instruction);
+  bool changed = false;
+  for (HloInstruction* operand : reduce->inputs()) {
+    if (!IsSpatiallyPartitioned(operand)) {
+      continue;
+    }
+    if (operand->sharding().IsReplicated() ||
+        (!is_spmd &&
+         absl::c_any_of(instruction->dimensions(), [operand](int64_t dim) {
+           return operand->sharding().tile_assignment().dim(dim) > 1;
+         }))) {
+      // We are reducing along one of the sharded dimensions. We only
+      // support this in SPMD.
+      changed |= MaybeImproveInstructionSharding(
+          get_maybe_tuple_sharding(
+              hlo_sharding_util::ReplicateAllDataDims(operand->sharding())),
+          reduce, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/
+          ComputeNonRootUsers(instruction) == 1);
+      continue;
+    }
+    auto after_partial_replication =
+        operand->sharding().IsReplicated()
+            ? operand->sharding()
+            : hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                  operand->sharding(), reduce->dimensions());
+    if (after_partial_replication.IsReplicated()) {
+      changed |= MaybeImproveInstructionSharding(
+          get_maybe_tuple_sharding(after_partial_replication), reduce,
+          may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/
+          ComputeNonRootUsers(instruction) == 1);
+      continue;
+    }
+    // Use the same sharding for all tuple elements, because they are part
+    // of the same reduce instruction.
+    HloSharding new_sharding =
+        get_maybe_tuple_sharding(hlo_sharding_util::RemoveShapeDimensions(
+            after_partial_replication, reduce->dimensions()));
+    changed |= MaybeImproveInstructionSharding(
+        std::move(new_sharding), reduce, may_combine_partial_sharding,
+        /*allow_aggressive_resharding=*/
+        ComputeNonRootUsers(reduce) == 1);
+  }
+  return changed;
+}
+
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
 // copy node for reshard.
@@ -1342,6 +1400,17 @@ StatusOr<bool> ProcessShardingInstruction(
     }
   }
   return changed;
+}
+
+// Compute the number of users that are only internal to the computation.
+int64_t ComputeNonRootUsers(const HloInstruction* instr) {
+  int64_t non_root_users = instr->users().size();
+  for (int i = 0; i < instr->users().size(); ++i) {
+    if (instr->users()[i] == instr->parent()->root_instruction()) {
+      --non_root_users;
+    }
+  }
+  return non_root_users;
 }
 
 /*static*/ Status ShardingPropagation::NormalizeDomain(
@@ -1683,17 +1752,6 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
   }
 }
 
-// Compute the number of users that are only internal to the computation.
-int64_t ComputeNonRootUsers(const HloInstruction* instr) {
-  int64_t non_root_users = instr->users().size();
-  for (int i = 0; i < instr->users().size(); ++i) {
-    if (instr->users()[i] == instr->parent()->root_instruction()) {
-      --non_root_users;
-    }
-  }
-  return non_root_users;
-}
-
 // Only pass through sharding annotation at the first iteration when:
 //  1. Operand is sharded;  2. Only non-concat dim is sharded;
 //  3. Concat is for params in the repeated layers which follows the
@@ -1936,51 +1994,8 @@ bool ShardingPropagation::InferShardingFromOperands(
       // Reduce could have a tuple shape, where the first half of operands are
       // the arrays to reduce, and the second half of operands are the init
       // values.
-      bool changed = false;
-      auto* reduce = Cast<HloReduceInstruction>(instruction);
-      for (HloInstruction* operand : reduce->inputs()) {
-        if (!IsSpatiallyPartitioned(operand)) {
-          continue;
-        }
-        if (operand->sharding().IsReplicated() ||
-            (!is_spmd_ &&
-             absl::c_any_of(instruction->dimensions(), [operand](int64_t dim) {
-               return operand->sharding().tile_assignment().dim(dim) > 1;
-             }))) {
-          // We are reducing along one of the sharded dimensions. We only
-          // support this in SPMD.
-          changed |= MaybeImproveInstructionSharding(
-              get_maybe_tuple_sharding(
-                  hlo_sharding_util::ReplicateAllDataDims(operand->sharding())),
-              reduce, may_combine_partial_sharding,
-              /*allow_aggressive_resharding=*/
-              ComputeNonRootUsers(instruction) == 1);
-          continue;
-        }
-        auto after_partial_replication =
-            operand->sharding().IsReplicated()
-                ? operand->sharding()
-                : hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
-                      operand->sharding(), reduce->dimensions());
-        if (after_partial_replication.IsReplicated()) {
-          changed |= MaybeImproveInstructionSharding(
-              get_maybe_tuple_sharding(after_partial_replication), reduce,
-              may_combine_partial_sharding,
-              /*allow_aggressive_resharding=*/
-              ComputeNonRootUsers(instruction) == 1);
-          continue;
-        }
-        // Use the same sharding for all tuple elements, because they are part
-        // of the same reduce instruction.
-        HloSharding new_sharding =
-            get_maybe_tuple_sharding(hlo_sharding_util::RemoveShapeDimensions(
-                after_partial_replication, reduce->dimensions()));
-        changed |= MaybeImproveInstructionSharding(
-            std::move(new_sharding), reduce, may_combine_partial_sharding,
-            /*allow_aggressive_resharding=*/
-            ComputeNonRootUsers(instruction) == 1);
-      }
-      return changed;
+      return InferReduceShardingFromOperand(
+          instruction, may_combine_partial_sharding, is_spmd_);
     }
     case HloOpcode::kBroadcast: {
       // Make forward propagation through broadcast low priority to avoid
