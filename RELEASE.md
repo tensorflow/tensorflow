@@ -102,6 +102,12 @@
         `experimental_enable_variable_lifting=False` only works on non-XLA
         devices (e.g. under `@tf.function(jit_compile=False)`).
 
+*   TF SavedModel:
+    *   Added `fingerprint.pb` to the SavedModel directory. The `fingerprint.pb`
+        file is a protobuf containing the "fingerprint" of the SavedModel. See
+        the [RFC](https://github.com/tensorflow/community/pull/415) for more
+        details regarding its design and properties.
+
 ## Bug Fixes and Other Changes
 
 *   `tf.image`
