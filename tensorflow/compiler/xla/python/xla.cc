@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/mlir.h"
+#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/pjit.h"
@@ -93,6 +94,7 @@ bool IsOptimizedBuild() {
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
+  ImportNumpy();
   CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Exceptions

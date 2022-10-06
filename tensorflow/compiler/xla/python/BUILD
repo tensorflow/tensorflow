@@ -255,6 +255,16 @@ cc_library(
 )
 
 cc_library(
+    name = "numpy",
+    srcs = ["numpy.cc"],
+    hdrs = ["numpy.h"],
+    deps = [
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
     name = "py_client",
     srcs = [
         "callback.cc",
@@ -289,6 +299,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        ":numpy",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -322,7 +333,6 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/python/lib/core:numpy_lib",
         "//tensorflow/tsl/platform:fingerprint",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -805,6 +815,7 @@ pybind_extension(
         ":custom_call_sharding",
         ":jax_jit",
         ":mlir",
+        ":numpy",
         ":ops",
         ":pmap_lib",
         ":pjit",
