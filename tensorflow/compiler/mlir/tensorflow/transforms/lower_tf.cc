@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -103,6 +104,36 @@ static APFloat ConvertToAPFloat(double val, Type type) {
   }
 
   return APFloat(val);
+}
+
+// Performs the operation of `Shape(input)[idx]`.
+static Value GetDimensionSize(OpBuilder *builder, Location loc, Value input,
+                              int32_t idx, BoolAttr use_32bit) {
+  if (auto ranked_ty = input.getType().dyn_cast_or_null<RankedTensorType>()) {
+    // Canonicalize negative index.
+    if (idx < 0) {
+      idx += ranked_ty.getRank();
+    }
+    // Return a ConstOp if it's static dimension.
+    if (!ranked_ty.isDynamicDim(idx)) {
+      return builder->create<TF::ConstOp>(
+          loc, GetScalarOfType(
+                   builder->getIntegerType(use_32bit.getValue() ? 32 : 64),
+                   ranked_ty.getDimSize(idx)));
+    }
+  }
+
+  auto shape = builder->create<TF::ShapeOp>(loc, input, use_32bit);
+  return builder->create<TF::StridedSliceOp>(
+      loc, mlir::RankedTensorType::get({}, getElementTypeOrSelf(shape)), shape,
+      /*begin=*/
+      builder->create<TF::ConstOp>(loc, builder->getI32TensorAttr({idx})),
+      /*end=*/
+      builder->create<TF::ConstOp>(loc, builder->getI32TensorAttr({idx + 1})),
+      /*strides=*/
+      builder->create<TF::ConstOp>(loc, builder->getI32TensorAttr({1})),
+      /*begin_mask=*/0, /*end_mask=*/0, /*ellipsis_mask=*/0,
+      /*new_axis_mask=*/0, /*shrink_axis_mask=*/1);
 }
 
 // Return true if the passed quantized type is unsigned.
@@ -1784,6 +1815,7 @@ void PopulateTFLoweringBeforeHLOPatterns(MLIRContext *context,
       LowerIsNanOp,
       LowerL2LossOp,
       LowerMulNoNanOp,
+      LowerMatrixBandPartOp,
       LowerPadOp,
       LowerReciprocal,
       LowerRintOp,
