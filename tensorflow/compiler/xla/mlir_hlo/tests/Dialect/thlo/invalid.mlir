@@ -1,5 +1,18 @@
 // RUN: mlir-hlo-opt %s -verify-diagnostics -split-input-file
 
+func.func @concatenate(%arg1: tensor<?x?xf32>,
+                       %arg2: tensor<?x?xi32>,
+                       %dst: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // expected-error @+1 {{thlo.concatenate' op expected element type of input 'i32' to match output element type 'f32'}}
+  %cat = thlo.concatenate
+      ins(%arg1: tensor<?x?xf32>, %arg2: tensor<?x?xi32>)
+      outs(%dst: tensor<?x?xf32>)
+      { dimension = 0 : i64 }
+  func.return %cat : tensor<?x?xf32>
+}
+
+// -----
+
 func.func @transpose_invalid_permutation(%input: tensor<16x32x64xf32>,
     %init: tensor<32x64x16xf32>) -> tensor<32x64x16xf32> {
   // expected-error @+1 {{'thlo.transpose' op permutation is not valid}}

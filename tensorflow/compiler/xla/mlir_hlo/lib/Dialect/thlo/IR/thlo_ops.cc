@@ -236,7 +236,7 @@ namespace {
 Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
                                    Location loc, Value tile) {
   uint64_t concatDim = op.getDimension();
-  auto resultTy = op.getResult().getType().cast<RankedTensorType>();
+  RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t rank = resultTy.getRank();
   OperandRange allOperands = op.getInputs();
   Value anyOperand = allOperands.front();
@@ -334,8 +334,10 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
       builder.create<gml_st::MaterializeOp>(loc, op.getInit(), tile);
   auto subResultType =
       RankedTensorType::get(tileType.getShape(), resultTy.getElementType());
-  return builder.create<thlo::ConcatenateOp>(loc, subResultType, subOperands,
-                                             subInit, concatDim);
+  return builder
+      .create<thlo::ConcatenateOp>(loc, subResultType, subOperands, subInit,
+                                   concatDim)
+      ->getResult(0);
 }
 
 Value fuseConcatenateOpThroughPointRecursively(
@@ -405,7 +407,7 @@ Value fuseConcatenateOpThroughPointRecursively(
 
 Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
                                     Location loc, Value subset) {
-  auto resultTy = op.getType().cast<RankedTensorType>();
+  auto resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t resultRank = resultTy.getRank();
   uint64_t concatDim = op.getDimension();
 
@@ -449,6 +451,19 @@ ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
 void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
+  Type outputElementType =
+      getOutputs().front().getType().cast<ShapedType>().getElementType();
+
+  for (Type inputArgType : TypeRange{getInputs()}) {
+    Type inputArgElementType = inputArgType.cast<ShapedType>().getElementType();
+    if (inputArgElementType != outputElementType) {
+      return emitOpError() << "expected element type of input "
+                           << inputArgElementType
+                           << " to match output element type "
+                           << outputElementType;
+    }
+  }
+
   return verifyDestinationStyleOp(getOperation());
 }
 

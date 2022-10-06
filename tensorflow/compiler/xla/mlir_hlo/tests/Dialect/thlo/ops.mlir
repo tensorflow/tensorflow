@@ -3,6 +3,32 @@
 // RUN:     --allow-unregistered-dialect | \
 // RUN: FileCheck %s
 
+func.func @concatenate(%arg1: tensor<?x?xf32>,
+                       %arg2: tensor<?x?xf32>,
+                       %dst: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %cat = thlo.concatenate
+      ins(%arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?xf32>)
+      { dimension = 0 : i64 }
+  func.return %cat : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @concatenate
+
+// -----
+
+func.func @concatenate_memref(%arg1: memref<?x?xf32>,
+                              %arg2: memref<?x?xf32>,
+                              %dst: memref<?x?xf32>) {
+  thlo.concatenate
+      ins(%arg1: memref<?x?xf32>, %arg2: memref<?x?xf32>)
+      outs(%dst: memref<?x?xf32>)
+      { dimension = 0 : i64 }
+  func.return
+}
+// CHECK-LABEL: func @concatenate_memref
+
+// -----
+
 func.func @dynamic_broadcast_in_dim(%arg: tensor<?x?xf32>,
                                     %dst: tensor<?x?x?xf32>) {
   %bcast = thlo.dynamic_broadcast_in_dim
@@ -250,5 +276,3 @@ func.func @map_unary_memref(%input: memref<64xf32>, %init: memref<64xf32>) {
   func.return
 }
 // CHECK-LABEL: func @map_unary_memref
-
-// TODO(bchetioui): add tests for concatenate

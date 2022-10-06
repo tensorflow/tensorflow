@@ -61,7 +61,6 @@ def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
 }
 
 def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
-    SameOperandsAndResultElementType,
     DeclareOpInterfaceMethods<TilingInterface>]> {
   let summary = "Destination-style twin for `mhlo.concatenate`";
   let arguments = (ins
@@ -69,7 +68,7 @@ def THLO_ConcatenateOp : THLO_DstStyleOp<"concatenate", [
     TensorOrMemref:$init,
     I64Attr:$dimension
   );
-  let results = (outs AnyTensor:$result);
+  let results = (outs Variadic<AnyTensor>:$result);
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     // Implement functions necessary for DestinationStyleOpInterface.
