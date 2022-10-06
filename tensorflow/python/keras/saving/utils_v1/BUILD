@@ -16,8 +16,6 @@
 # Description:
 #   Keras saving and loading libraries.
 
-# buildifier: disable=same-origin-load
-
 package(
     default_visibility = [
         "//tensorflow/python/keras:__subpackages__",
