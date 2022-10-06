@@ -527,11 +527,28 @@ class ClusterEnvironment {
     if (dst_spec.IsTiled()) {
       dst_rank = dst_spec.TiledDataRank();
     }
-    std::vector<int64_t> src_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_);
-    std::vector<int64_t> dst_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_);
-
+    std::vector<int64_t> src_tensor_dim_to_mesh_dim;
+    if (VectorGreaterThanOneElementCount(
+            src_spec.tile_assignment().dimensions()) == 1 &&
+        VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
+      // src spec is 1D and device_mesh is 2D or 3D
+      src_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_1d_);
+    } else {
+      src_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_);
+    }
+    std::vector<int64_t> dst_tensor_dim_to_mesh_dim;
+    if (VectorGreaterThanOneElementCount(
+            dst_spec.tile_assignment().dimensions()) == 1 &&
+        VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
+      // src spec is 1D and device_mesh is 2D or 3D
+      dst_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_1d_);
+    } else {
+      dst_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_);
+    }
     if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
       return ReshardingCostMixedMeshShape(
           shape, src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim,
