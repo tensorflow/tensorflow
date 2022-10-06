@@ -228,9 +228,11 @@ class CoordinateTwoTasksTest : public ::testing::Test {
 
   CoordinatedTask task_0_;
   const uint64_t incarnation_0_ = random::New64();
+  const uint64_t incarnation_0_new_ = random::New64();
   TestCoordinationClient client_0_;
   CoordinatedTask task_1_;
   const uint64_t incarnation_1_ = random::New64();
+  const uint64_t incarnation_1_new_ = random::New64();
   TestCoordinationClient client_1_;
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
 };
@@ -1397,8 +1399,32 @@ TEST_F(CoordinateTwoTasksTest,
 
   // Reset and register the error task again, both tasks should be healthy.
   TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
   TF_EXPECT_OK(client_1_.GetStatus());
 }
+
+TEST_F(CoordinateTwoTasksTest,
+       RecoverableTaskHeartbeatTimeoutAndRegisterAgain) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+
+  EXPECT_TRUE(errors::IsUnavailable(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  EXPECT_TRUE(errors::IsUnavailable(
+      coord_service_->RecordHeartbeat(task_1_, incarnation_1_)));
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_new_));
+}
+
 }  // namespace tensorflow

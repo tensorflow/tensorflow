@@ -534,7 +534,9 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
           "Unexpected task registered with task_name=", task_name));
     }
     if (cluster_state_[task_name]->GetState() ==
-        CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
+            CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
+        (errors::IsUnavailable(cluster_state_[task_name]->GetStatus()) &&
+         isRecoverableJob(task.job_name()))) {
       // This task is currently disconnected (registering for the first time or
       // has called ResetTask() previously).
       cluster_state_[task_name]->SetConnected(incarnation);
