@@ -499,7 +499,7 @@ void EnumerateAll2DPartition(const HloInstruction* ins, const Shape& shape,
   // Fully tile the buffer to 2-d mesh
   for (int64_t i = 0; i < shape.rank(); ++i) {
     for (int64_t j = 0; j < shape.rank(); ++j) {
-      if ((batch_dim != -1 && batch_dim != i) || i == j) {
+      if ((batch_dim != -1 && !(batch_dim == i || batch_dim == j)) || i == j) {
         continue;
       }
       if (shape.dimensions(i) < device_mesh.dim(shardable_mesh_dims[0]) ||
@@ -615,7 +615,7 @@ void Enumerate2DPartitionReshape(const HloInstruction* ins,
   // Split batch dim + another dim
   for (int64_t i = 0; i < ins->shape().rank(); ++i) {
     for (int64_t j = 0; j < ins->shape().rank(); ++j) {
-      if ((batch_dim != -1 && batch_dim != i) || i == j) {
+      if ((batch_dim != -1 && !(batch_dim == i || batch_dim == j)) || i == j) {
         continue;
       }
       if (ins->shape().dimensions(i) <
@@ -828,7 +828,8 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
                               cluster_env, strategy_map, strategies, true,
                               " 1d");
     }
-    if (solver_option.allow_replicated_parameters) {
+    if (solver_option.allow_replicated_parameters ||
+        strategies->leaf_vector.empty()) {
       AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategies,
                             replicated_penalty);
     }
@@ -1182,6 +1183,11 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
           EnumerateAll2DPartition(ins, ins->shape(), cluster_env.device_mesh_,
                                   cluster_env, strategy_map, strategies,
                                   batch_dim_map, true);
+          if (solver_option.allow_mixed_mesh_shape) {
+            EnumerateAll1DPartition(ins, ins->shape(),
+                                    cluster_env.device_mesh_1d_, cluster_env,
+                                    strategy_map, strategies, true, "1d");
+          }
         }
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                               strategies, replicated_penalty);
@@ -1480,16 +1486,15 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
 
         // Get all possible sharding specs from operands
         for (int64_t i = 0; i < ins->operand_count(); ++i) {
-          const StrategyVector* src_strategies =
-              strategy_map.at(ins->operand(i)).get();
-          CHECK(!src_strategies->is_tuple);
-
-          if (strategies->following != nullptr &&
-              strategies->following != src_strategies) {
+          if (strategies->following != nullptr && i != follow_idx) {
             // If ins follows one operand, do not consider sharding specs from
             // other operands.
             continue;
           }
+
+          const StrategyVector* src_strategies =
+              strategy_map.at(ins->operand(i)).get();
+          CHECK(!src_strategies->is_tuple);
 
           for (int64_t sid = 0; sid < src_strategies->leaf_vector.size();
                ++sid) {
@@ -1564,17 +1569,18 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       case HloOpcode::kIota: {
         strategies = CreateLeafStrategyVectorWithoutInNodes(instruction_id,
                                                             leaf_strategies);
-
+        if (cluster_env.IsDeviceMesh1D()) {
+          EnumerateAll1DPartition(ins, ins->shape(), device_mesh, cluster_env,
+                                  strategy_map, strategies, false, "");
+        }
         if (cluster_env.IsDeviceMesh2D()) {
           // Split 2 dims
           EnumerateAll2DPartition(ins, ins->shape(), device_mesh, cluster_env,
                                   strategy_map, strategies, batch_dim_map,
                                   false);
         }
-        if (cluster_env.IsDeviceMesh1D() ||
-            (cluster_env.IsDeviceMesh2D() &&
-             solver_option.allow_mixed_mesh_shape &&
-             cluster_env.non_zero_mesh_dims_.size() > 1)) {
+        if (cluster_env.IsDeviceMesh2D() &&
+            solver_option.allow_mixed_mesh_shape) {
           // Split 1 dim, but for 1d flattened version of the 2d mesh
           // For example, when the mesh shape is (2, 4), we add strategies for
           // mesh shape (1, 8) here in addition.
