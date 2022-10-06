@@ -150,7 +150,7 @@ function install_ubuntu_16_python_pip_deps {
   done
 
   # First, upgrade pypi wheels
-  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel
+  ${PIP_CMD} install --user --upgrade 'setuptools' pip wheel virtualenv
 
   # LINT.IfChange(linux_pip_installations)
   # Remove any historical keras package if they are installed.
