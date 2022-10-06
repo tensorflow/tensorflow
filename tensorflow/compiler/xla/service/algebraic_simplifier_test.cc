@@ -7839,14 +7839,14 @@ TEST_F(AlgebraicSimplifierTest, ScalarCompareMaximumSimplification) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
   SCOPED_TRACE("before: " + m->ToString());
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   SCOPED_TRACE("after: " + m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))));
   // Numerically unstable transformation shouldn't be applied to floating types.
   std::string module_string_f32 =
       absl::StrReplaceAll(module_string, {{"s32", "f32"}});
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, CompareMaximumSimplification) {
@@ -7861,14 +7861,14 @@ TEST_F(AlgebraicSimplifierTest, CompareMaximumSimplification) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
   SCOPED_TRACE("before: " + m->ToString());
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   SCOPED_TRACE("after: " + m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))));
   // Numerically unstable transformation shouldn't be applied to floating types.
   std::string module_string_f32 =
       absl::StrReplaceAll(module_string, {{"s32", "f32"}});
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
