@@ -1096,6 +1096,37 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "hlo_computation_deduplicator",
+    srcs = ["hlo_computation_deduplicator.cc"],
+    hdrs = ["hlo_computation_deduplicator.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_computation_deduplicator_test",
+    size = "small",
+    srcs = ["hlo_computation_deduplicator_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_computation_deduplicator",
+        ":hlo_matchers",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "flatten_call_graph_test",
     srcs = ["flatten_call_graph_test.cc"],
