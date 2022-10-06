@@ -60,12 +60,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -521,9 +521,9 @@ StatusOr<std::string> CompileToPtx(
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
   {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     // If the module has no functions or globals, there's nothing to compile.
@@ -914,9 +914,9 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
   }
   str += hlo_module_config.compilation_cache_key();
   {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     auto compute_capability =

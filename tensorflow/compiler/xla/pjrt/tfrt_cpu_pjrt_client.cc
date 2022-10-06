@@ -338,7 +338,7 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuClient::Compile");
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::Compile");
   ExecutableBuildOptions& build_options = options.executable_build_options;
 
   int num_replicas;
@@ -486,8 +486,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateViewOfDeviceBuffer(
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::CreateUninitializedBuffer(
     const Shape& shape, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme(
-      "TfrtCpuClient::CreateUninitializedBuffer");
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::CreateUninitializedBuffer");
   VLOG(1) << "TfrtCpuClient::CreateUninitializedBuffer: shape: "
           << shape.DebugString() << " device: " << device->DebugString();
   return AllocateDestinationBuffer(
@@ -500,7 +499,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostBuffer");
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostBuffer");
   Shape shape = ShapeUtil::MakeShape(type, dims);
   VLOG(2) << "TfrtCpuClient::BufferFromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
@@ -570,7 +569,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
                      data, byte_size, copy_event = std::move(copy_event),
                      on_done_with_host_buffer =
                          std::move(on_done_with_host_buffer)]() mutable {
-                      tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+                      tsl::profiler::TraceMe traceme("H2D Dispatch");
                       std::memcpy(dst_data_ptr, data, byte_size);
                       if (on_done_with_host_buffer) {
                         on_done_with_host_buffer();
@@ -592,7 +591,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostBuffer(
 
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     const LiteralSlice& literal, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostLiteral");
+  tsl::profiler::TraceMe traceme("TfrtCpuClient::BufferFromHostLiteral");
   VLOG(1) << "TfrtCpuClient::BufferFromHostLiteral: shape: "
           << literal.shape().DebugString()
           << " device: " << device->DebugString();
@@ -622,7 +621,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
     // deleted until all the usage holds have gone away.
     EnqueueWork(pjrt_client_thread_pool(), [literal, av = avs[0].CopyRef(),
                                             device_buffer, shape]() mutable {
-      tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+      tsl::profiler::TraceMe traceme("H2D Dispatch");
       const std::shared_ptr<MaybeOwningCpuMemory>& b =
           device_buffer->Buffers()[0];
       CHECK_EQ(literal.size_bytes(), b->size());
@@ -637,7 +636,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuClient::BufferFromHostLiteral(
       // be deleted until all the usage holds have gone away.
       EnqueueWork(pjrt_client_thread_pool(), [i, literal, av = avs[i].CopyRef(),
                                               shape, device_buffer]() mutable {
-        tensorflow::profiler::TraceMe traceme("H2D Dispatch");
+        tsl::profiler::TraceMe traceme("H2D Dispatch");
         auto slice = LiteralSlice(literal, {i});
         const std::shared_ptr<MaybeOwningCpuMemory>& b =
             device_buffer->Buffers()[i];
@@ -913,7 +912,7 @@ static std::vector<tfrt::RCReference<tfrt::AsyncValue>> CopyAsyncValues(
 }
 
 PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuBuffer::ToLiteral");
+  tsl::profiler::TraceMe traceme("TfrtCpuBuffer::ToLiteral");
   if (IsEmptyTuple()) {
     return PjRtFuture<Status>(
         InvalidArgument("ToLiteral called on empty tuple"));
@@ -960,7 +959,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
         [this, device_buffer_wait_avs = std::move(device_buffer_wait_avs_copy),
          literal, ready_event = ready_event.CopyRef(), device_buffer,
          ready_on_exit = std::move(ready_on_exit)]() mutable {
-          tensorflow::profiler::TraceMe traceme("D2H Dispatch");
+          tsl::profiler::TraceMe traceme("D2H Dispatch");
           // Errors in src buffer are surfaced to user.
           for (const auto& av : device_buffer_wait_avs) {
             if (auto* error = av->GetErrorIfPresent()) {
@@ -1009,7 +1008,7 @@ PjRtFuture<Status> TfrtCpuBuffer::ToLiteral(MutableLiteralBase* literal) {
 // multiple pmap replicas to the same CPU device for multi-CPU pmap testing.
 StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
     PjRtDevice* dst_device) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuBuffer::CopyToDevice");
+  tsl::profiler::TraceMe traceme("TfrtCpuBuffer::CopyToDevice");
   // TODO(zhangqiaorjc): Remove this restriction after removing the test that
   // explicitly asserts this.
   if (dst_device == device_) {
@@ -1068,7 +1067,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> TfrtCpuBuffer::CopyToDevice(
                     dst_buffers_copies = dst_buffers, dst_definition_events,
                     src_definition_event,
                     ready_on_exit = std::move(ready_on_exit)]() mutable {
-    tensorflow::profiler::TraceMe traceme("D2D Dispatch");
+    tsl::profiler::TraceMe traceme("D2D Dispatch");
     if (auto* error = src_definition_event.GetErrorIfPresent()) {
       for (int i = 0; i < num_leaf_buffers; ++i) {
         // Any error discovered in src buffer are propagated to dst buffer
@@ -1301,7 +1300,7 @@ StatusOr<PjRtLoadedExecutable::Result> TfrtCpuExecutable::ExecuteHelper(
     const RunId& run_id, const ExecuteOptions& options,
     tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
     bool fill_future, TfrtCpuDevice* device) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
+  tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteHelper");
 
   std::shared_ptr<DeviceAssignment> device_assignment;
   if (device == nullptr) {
@@ -1621,7 +1620,7 @@ TfrtCpuExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
     std::optional<std::vector<PjRtFuture<Status>>>& returned_futures) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::Execute");
+  tsl::profiler::TraceMe traceme("TfrtCpuExecutable::Execute");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("Execute expects a non-null device_assignment");
   }
@@ -1739,7 +1738,7 @@ TfrtCpuExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteSharded");
+  tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecuteSharded");
   if (device_assignment_ == nullptr) {
     return InvalidArgument("ExecuteShard expects a non-null device_assignment");
   }
@@ -1770,7 +1769,7 @@ TfrtCpuExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
     const ExecuteOptions& options,
     std::optional<PjRtFuture<Status>>& returned_future, bool fill_future) {
-  tensorflow::profiler::TraceMe traceme("TfrtCpuExecutable::ExecutePortable");
+  tsl::profiler::TraceMe traceme("TfrtCpuExecutable::ExecutePortable");
   if (device_assignment_ != nullptr) {
     return InvalidArgument("ExecutePortable gets a non-portable executable");
   }
