@@ -282,18 +282,20 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":checkpoint_view",
+        ":functional_saver",
         ":saveable_compat",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:platform",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:constants",
         "//tensorflow/python/trackable:python_state",
         "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util",
     ],
 )
 
