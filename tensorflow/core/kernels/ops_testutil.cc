@@ -72,17 +72,17 @@ OpsTestBase::OpsTestBase() : device_type_(DEVICE_CPU) {
   auto device = DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0");
   CHECK(device) << "Could not create CPU device";
 
-  thread_pool_ = absl::make_unique<thread::ThreadPool>(
+  thread_pool_ = std::make_unique<thread::ThreadPool>(
       Env::Default(), /*name=*/"default", /*num_threads=*/1);
 
   device_ = device.get();
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(device));
 
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 
-  flib_def_ = absl::make_unique<FunctionLibraryDefinition>(
+  flib_def_ = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), FunctionDefLibrary{});
-  pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions());
 }
@@ -105,12 +105,6 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
   CHECK(device_) << "No device provided";
 
   device_ = device.get();
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(device));
-  pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
-      thread_pool_.get());
-
   device_type_ = device_type;
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (device_type == DEVICE_GPU) {
@@ -126,6 +120,12 @@ void OpsTestBase::SetDevice(const DeviceType& device_type,
          "TENSORFLOW_USE_ROCM.";
   allocator_ = device_->GetAllocator(AllocatorAttributes());
 #endif
+
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(std::move(device));
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
+      device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+      TF_GRAPH_DEF_VERSION, flib_def_.get(), OptimizerOptions(),
+      thread_pool_.get());
 }
 
 void OpsTestBase::set_node_def(const NodeDef& node_def) {
@@ -148,7 +148,7 @@ Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
       device_->resource_manager(), props, graph_def_version, &kernel));
   kernel_.reset(kernel);
   input_types_ = kernel_->input_types();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status OpsTestBase::RunOpKernel() {
@@ -166,7 +166,7 @@ Status OpsTestBase::RunOpKernel() {
   params_.reset(new OpKernelContext::Params);
   params_->device = device_;
   params_->frame_iter = FrameAndIter(0, 0);
-  params_->inputs = &inputs_;
+  params_->inputs = inputs_;
   params_->op_kernel = kernel_.get();
   step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
   params_->step_container = step_container_.get();

@@ -1,16 +1,6 @@
 # python/lib/core package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_py_test", "tf_python_pybind_extension")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -48,11 +38,18 @@ cc_library(
 
 cc_library(
     name = "bfloat16_lib",
-    srcs = ["bfloat16.cc"],
-    hdrs = ["bfloat16.h"],
+    srcs = [
+        "bfloat16.cc",
+        "float8_e4m3b11.cc",
+    ],
+    hdrs = [
+        "bfloat16.h",
+        "float8_e4m3b11.h",
+    ],
     deps = [
         ":numpy_lib",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
         "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
         "@com_google_absl//absl/strings",
@@ -63,7 +60,6 @@ tf_python_pybind_extension(
     name = "_pywrap_bfloat16",
     srcs = ["bfloat16_wrapper.cc"],
     hdrs = ["bfloat16.h"],
-    module_name = "_pywrap_bfloat16",
     deps = [
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -82,6 +78,7 @@ cc_library(
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
+        ":py_util",
         "//tensorflow/c:c_api_no_xla",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -236,7 +233,6 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_py_func",
     srcs = ["py_func_wrapper.cc"],
-    module_name = "_pywrap_py_func",
     deps = [
         "//tensorflow/python:py_func_headers_lib",
         "//third_party/python_runtime:headers",

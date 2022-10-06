@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -47,7 +47,7 @@ TEST(SemaphoreTest, UnthreadedTests) {
 }
 
 TEST(SemaphoreTest, ConcurrentTest) {
-  tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "test", 2);
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 2);
   Semaphore semaphore(2);
   semaphore.Acquire(1);
 

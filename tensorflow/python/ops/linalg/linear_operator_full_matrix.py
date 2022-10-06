@@ -174,6 +174,11 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
       raise ValueError(f"Argument `matrix` must have at least 2 dimensions. "
                        f"Received: {matrix}.")
 
+  @property
+  def matrix(self):
+    """The matrix defining this operator."""
+    return self._matrix
+
   def _shape(self):
     return self._matrix.shape
 
@@ -193,3 +198,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   @property
   def _composite_tensor_fields(self):
     return ("matrix",)
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"matrix": 2}

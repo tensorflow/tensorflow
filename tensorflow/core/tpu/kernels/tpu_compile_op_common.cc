@@ -28,8 +28,10 @@ limitations under the License.
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 #include "tensorflow/core/protobuf/tpu/compilation_result.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -102,7 +104,7 @@ void CompileOpImplFactory::Register(CompileOpImplFactory* factory) {
     TF_RETURN_IF_ERROR(
         tpu::ShapeTensorToTensorShape(dynamic_shapes[i], &(*shapes)[i]));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
@@ -158,6 +160,21 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
 }
 
 Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCache(
+    FunctionLibraryRuntime* flib_runtime,
+    const SessionMetadata* session_metadata,
+    const TpuMeshStateInterface* mesh_state,
+    const std::vector<TensorShape>& dynamic_shapes,
+    const OpInputList& guaranteed_constants, const TpuCompilationCacheKey& key,
+    TpuProgramGroupInterface* tpu_program_group) {
+  Status status = CompileLocallyAndFillHostCacheInternal(
+      flib_runtime, session_metadata, mesh_state, dynamic_shapes,
+      guaranteed_constants, key, tpu_program_group);
+  OkOrSetErrorCounterPayload(
+      tensorflow::core::platform::ErrorSourceProto::TPU_COMPILE_OP, status);
+  return status;
+}
+
+Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
     FunctionLibraryRuntime* flib_runtime,
     const SessionMetadata* session_metadata,
     const TpuMeshStateInterface* mesh_state,
@@ -260,7 +277,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
           ctx->resource_manager(), "ref_holder", &ref_holder,
           [cache](CompilationRefHolder** h) {
             *h = cache->MakePerStepRefHolder();
-            return Status::OK();
+            return OkStatus();
           }));
   core::ScopedUnref ref_holder_unref(ref_holder);
 
@@ -329,7 +346,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
                 kCompilationCacheUnloaderResourceName, &unloader,
                 [cache](TpuCompilationCacheEntryUnloader** new_unloader) {
                   *new_unloader = new TpuCompilationCacheEntryUnloader(cache);
-                  return Status::OK();
+                  return OkStatus();
                 }));
     // Note that LookupOrCreate puts two refcounts on unloader.
     core::ScopedUnref unloader_unref(unloader);
@@ -461,7 +478,7 @@ Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
         rm->default_container(), tpu::kFingerprintLookupResourceName,
         &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
           *new_lookup = tpu::TpuFingerprintLookup::Create();
-          return Status::OK();
+          return OkStatus();
         }));
     uint64 tf_fingerprint =
         tpu::CreateFingerprintWithNameAndShapes(fingerprint, arg_shapes);
@@ -471,7 +488,7 @@ Status TpuCompileOpKernelCommon::RegisterXLAFingerprints(
     fingerprint_lookup->RegisterIntermediateAndValuePair(
         tf_fingerprint, std::move(xla_fingerprint));
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tpu
 }  // namespace tensorflow

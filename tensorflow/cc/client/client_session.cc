@@ -99,7 +99,7 @@ Status ClientSession::Impl::MaybeExtendGraph() const {
     last_num_graph_nodes_ = num_nodes;
     return session_->Extend(graph_def);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ClientSession::Run(const RunOptions& run_options, const FeedType& inputs,

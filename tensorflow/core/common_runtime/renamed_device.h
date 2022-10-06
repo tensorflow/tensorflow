@@ -55,11 +55,6 @@ class RenamedDevice : public Device {
     return underlying_device_->tensorflow_accelerator_device_info();
   }
 
-  const DeviceBase::AcceleratorDeviceInfo* tensorflow_gpu_device_info()
-      const override {
-    return underlying_device_->tensorflow_gpu_device_info();
-  }
-
   Allocator* GetAllocator(AllocatorAttributes attr) override {
     return underlying_device_->GetAllocator(attr);
   }

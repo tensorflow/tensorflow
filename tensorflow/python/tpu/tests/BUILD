@@ -1,6 +1,6 @@
 # Description: Tests defined for Cloud TPUs
 
-load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
@@ -317,5 +317,24 @@ tpu_py_test(
     tags = ["no_oss"],
     deps = [
         ":tpu_embedding_base_test",
+    ],
+)
+
+tpu_py_test(
+    name = "tpu_initialization_test",
+    srcs = [
+        "tpu_initialization_test.py",
+    ],
+    disable_mlir_bridge = False,
+    disable_tfrt = False,
+    disable_v3_4chips = False,
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "noasan",
+    ],
+    deps = [
+        "//tensorflow/python/tpu:tpu_py",
     ],
 )

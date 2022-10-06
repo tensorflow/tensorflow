@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -141,7 +141,7 @@ struct CastToArrayResult {
   const char* buf_ptr;
   xla::Shape shape;
 };
-absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
+std::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 
 }  // namespace xla
 
@@ -247,17 +247,17 @@ struct type_caster<xla::ConvolutionDimensionNumbers> {
     dims = getattr(handle, "input_spatial_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_input_spatial_dimensions()));
     dims = getattr(handle, "kernel_spatial_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_kernel_spatial_dimensions()));
     dims = getattr(handle, "output_spatial_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_output_spatial_dimensions()));
     return true;
   }
@@ -274,20 +274,20 @@ struct type_caster<xla::DotDimensionNumbers> {
     dims = getattr(handle, "lhs_contracting_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_lhs_contracting_dimensions()));
     dims = getattr(handle, "rhs_contracting_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_rhs_contracting_dimensions()));
     dims = getattr(handle, "lhs_batch_dimensions").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_lhs_batch_dimensions()));
     dims = getattr(handle, "rhs_batch_dimensions").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_rhs_batch_dimensions()));
     return true;
   }
@@ -303,16 +303,16 @@ struct type_caster<xla::GatherDimensionNumbers> {
   bool load(handle handle, bool) {
     std::vector<int64_t> dims;
     dims = getattr(handle, "offset_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_offset_dims()));
+    std::copy(
+        dims.begin(), dims.end(),
+        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_offset_dims()));
     dims = getattr(handle, "collapsed_slice_dims").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_collapsed_slice_dims()));
     dims = getattr(handle, "start_index_map").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_start_index_map()));
     value.set_index_vector_dim(
         getattr(handle, "index_vector_dim").cast<int64_t>());
@@ -331,16 +331,16 @@ struct type_caster<xla::ScatterDimensionNumbers> {
     std::vector<int64_t> dims;
     dims = getattr(handle, "update_window_dims").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_update_window_dims()));
     dims = getattr(handle, "inserted_window_dims").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_inserted_window_dims()));
     dims = getattr(handle, "scatter_dims_to_operand_dims")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_scatter_dims_to_operand_dims()));
     value.set_index_vector_dim(
         getattr(handle, "index_vector_dim").cast<int64_t>());
@@ -357,9 +357,9 @@ struct type_caster<xla::ReplicaGroup> {
   bool load(handle handle, bool) {
     std::vector<int64_t> dims;
     dims = getattr(handle, "replica_ids").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_replica_ids()));
+    std::copy(
+        dims.begin(), dims.end(),
+        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_replica_ids()));
     return true;
   }
 };

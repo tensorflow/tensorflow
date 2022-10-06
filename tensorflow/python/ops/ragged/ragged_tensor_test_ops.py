@@ -15,6 +15,7 @@
 """It lists ops of RaggedTensor for the interest of test."""
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
@@ -165,4 +166,20 @@ BINARY_INT_OPS = [
     gen_bitwise_ops.right_shift,
     math_ops.truncatediv,
     math_ops.truncatemod,
+]
+BINARY_ASSERT_OPS = [
+    check_ops.assert_equal,
+    check_ops.assert_equal_v2,
+    check_ops.assert_near,
+    check_ops.assert_near_v2,
+    check_ops.assert_none_equal,
+    check_ops.assert_none_equal_v2,
+    check_ops.assert_greater,
+    check_ops.assert_greater_v2,
+    check_ops.assert_greater_equal,
+    check_ops.assert_greater_equal_v2,
+    check_ops.assert_less,
+    check_ops.assert_less_v2,
+    check_ops.assert_less_equal,
+    check_ops.assert_less_equal_v2,
 ]

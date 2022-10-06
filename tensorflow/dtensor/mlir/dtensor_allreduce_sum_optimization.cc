@@ -28,14 +28,16 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCESUMOPTIMIZATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr int kMaxIteration = 10;
 
@@ -484,7 +486,7 @@ void CollectOptimizationCandidates(
 
 // MLIR pass that folds constants that can be removed or deduplicated away.
 struct DTensorAllReduceSumOptimization
-    : public DTensorAllReduceSumOptimizationBase<
+    : public impl::DTensorAllReduceSumOptimizationBase<
           DTensorAllReduceSumOptimization> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();

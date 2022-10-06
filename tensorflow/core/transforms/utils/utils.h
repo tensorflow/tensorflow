@@ -23,12 +23,16 @@ limitations under the License.
 namespace mlir {
 
 class Operation;
+class NamedAttrList;
 
 namespace tfg {
 namespace util {
 
-// Returns if the requested device is CPU.
-bool NodeIsOnCpu(Operation *op);
+// Returns true if the op has the requested device attribute.
+bool OpHasDevice(Operation *op, const char *device_name);
+
+// Erase the attribute starts with "_".
+void EraseRegularNodeAttributes(NamedAttrList &attr_list);
 
 // When rewriting an operation 1-to-1, intrinsic attributes are manually
 // forwarded, modified, or dropped. For example, when `If` is rewritten to

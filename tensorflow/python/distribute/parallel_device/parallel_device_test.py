@@ -17,7 +17,8 @@ import os
 import threading
 
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as tracking
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import backprop
@@ -39,8 +40,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as tracking
 from tensorflow.python.util import nest
 
 # When running collectives asynchronously, we need to give each parallel device

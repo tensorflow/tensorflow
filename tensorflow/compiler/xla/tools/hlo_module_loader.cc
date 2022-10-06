@@ -29,11 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
@@ -42,7 +42,7 @@ Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
                       HloModuleConfig* config) {
   config->set_replica_count(ovr_config.num_replicas);
   config->set_num_partitions(ovr_config.num_partitions);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -90,10 +90,10 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         return InvalidArgument("Failed to parse input as HLO protobuf binary");
       }
     } else if (format == "pbtxt") {
-      if (!tensorflow::protobuf::TextFormat::ParseFromString(data, &proto) &&
-          !tensorflow::protobuf::TextFormat::ParseFromString(
-              data, proto.mutable_hlo()) &&
-          !tensorflow::protobuf::TextFormat::ParseFromString(
+      if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
+          !tsl::protobuf::TextFormat::ParseFromString(data,
+                                                      proto.mutable_hlo()) &&
+          !tsl::protobuf::TextFormat::ParseFromString(
               data, proto.mutable_hlo()->mutable_hlo_module())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
@@ -122,10 +122,9 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
     const std::function<void(HloModuleConfig*)>& config_modifier_hook) {
   std::string data;
   if (format.empty()) {
-    format = std::string(tensorflow::io::Extension(path));
+    format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(
-      tensorflow::ReadFileToString(tensorflow::Env::Default(), path, &data));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook);
 }
 

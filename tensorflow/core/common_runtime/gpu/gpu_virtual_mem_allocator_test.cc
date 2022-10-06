@@ -38,26 +38,26 @@ std::unique_ptr<GpuVirtualMemAllocator> CreateAllocator() {
   PlatformDeviceId gpu_id(0);
   auto executor =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
+          .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
       executor->implementation()->GpuContextHack());
   return GpuVirtualMemAllocator::Create(
              {}, {}, *gpu_context, gpu_id,
              /*virtual_address_space_size=*/4 * k2MiB, {})
-      .ValueOrDie();
+      .value();
 }
 
 TEST(GpuVirtualMemAllocatorTest, SimpleAlloc) {
   PlatformDeviceId gpu_id(0);
   auto executor =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
+          .value();
   GpuContext* gpu_context = reinterpret_cast<GpuContext*>(
       executor->implementation()->GpuContextHack());
   auto allocator = GpuVirtualMemAllocator::Create(
                        {}, {}, *gpu_context, gpu_id,
                        /*virtual_address_space_size=*/4 * k2MiB, {})
-                       .ValueOrDie();
+                       .value();
   size_t bytes_received;  // Ignored in this test.
   void* gpu_block =
       allocator->Alloc(/*alignment=*/0, /*num_bytes=*/k2MiB, &bytes_received);

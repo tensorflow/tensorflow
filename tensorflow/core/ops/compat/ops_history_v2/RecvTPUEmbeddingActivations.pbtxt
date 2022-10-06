@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RecvTPUEmbeddingActivations"
   output_arg {
     name: "outputs"

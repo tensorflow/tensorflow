@@ -1,6 +1,6 @@
 # Tests of TensorFlow sparse linear algebra kernels using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],

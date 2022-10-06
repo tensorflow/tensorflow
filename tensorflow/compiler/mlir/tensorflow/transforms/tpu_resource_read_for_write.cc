@@ -26,16 +26,19 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
+
+#define GEN_PASS_DEF_TPURESOURCEREADFORWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // A pass that finds TPU clusters with write only resource access and adds an
 // associated resource read, so the resource can later be fused into TPUExecute.
 namespace {
 struct TPUResourceReadForWritePass
-    : public TF::TPUResourceReadForWritePassBase<TPUResourceReadForWritePass> {
+    : public impl::TPUResourceReadForWritePassBase<
+          TPUResourceReadForWritePass> {
   void runOnOperation() override;
 };
 
@@ -115,7 +118,7 @@ void TPUResourceReadForWritePass::runOnOperation() {
     auto new_cluster_func = builder.create<tf_device::ClusterFuncOp>(
         loc, cluster_func.getResultTypes(), operands, cluster_func->getAttrs());
     cluster_func.replaceAllUsesWith(new_cluster_func);
-    FuncOp func = cluster_func.getFunc();
+    func::FuncOp func = cluster_func.getFuncOp();
     Block& block = func.front();
     for (Value read_operand : read_operands)
       block.addArgument(read_operand.getType(), loc);

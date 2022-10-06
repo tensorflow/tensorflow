@@ -21,10 +21,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/platform/bfloat16.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/tsl/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -51,14 +53,14 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
   // layouts, so the check to rule out tiling has to come /before/ the
   // early-return branch, or we'd miss tiled monotonic layouts.
   if (!shape.layout().tiles().empty()) {
-    return tensorflow::errors::Internal("Tiled layouts are not yet supported");
+    return tsl::errors::Internal("Tiled layouts are not yet supported");
   }
   if (!shape.has_layout() ||
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return AffineMap();
   }
   if (!shape.is_static()) {
-    return tensorflow::errors::Internal(
+    return tsl::errors::Internal(
         "Permutations for dynamic shapes are not yet supported");
   }
   int64_t accumulated_stride = 1;
@@ -98,8 +100,8 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
   auto permutation_or = GetPermutationIfAvailable(shape, builder);
   if (!permutation_or.ok()) return permutation_or.status();
-  return MemRefType::get(array, element_type_or.ValueOrDie(),
-                         permutation_or.ValueOrDie());
+  return MemRefType::get(array, element_type_or.value(),
+                         permutation_or.value());
 }
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
@@ -142,7 +144,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     case PrimitiveType::C128:
       return CreateDenseAttrFromLiteral<complex128>(type, literal);
     default:
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
 }
@@ -154,51 +156,51 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   // TODO(hinsu): Support remaining XLA primitive types.
   if (element_type.isInteger(1)) {
     CopyDenseElementsBy<bool>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isInteger(8)) {
     CopyDenseElementsBy<uint8_t>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isInteger(16)) {
     CopyDenseElementsBy<uint16_t>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isInteger(32)) {
     CopyDenseElementsBy<uint32_t>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isInteger(64)) {
     CopyDenseElementsBy<uint64_t>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isBF16()) {
     CopyDenseElementsBy<bfloat16>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isF16()) {
     CopyDenseElementsBy<half>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isF32()) {
     CopyDenseElementsBy<float>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (element_type.isF64()) {
     CopyDenseElementsBy<double>(data, output);
-    return Status::OK();
+    return ::tsl::OkStatus();
   }
   if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     if (complex_type.getElementType().isF32()) {
       CopyDenseElementsBy<complex64>(data, output);
-      return Status::OK();
+      return ::tsl::OkStatus();
     }
     if (complex_type.getElementType().isF64()) {
       CopyDenseElementsBy<complex128>(data, output);
-      return Status::OK();
+      return ::tsl::OkStatus();
     }
   }
-  return tensorflow::errors::Internal(
+  return tsl::errors::Internal(
       "Unsupported type in CopyDenseElementsDataToXlaFormat");
 }
 
@@ -260,7 +262,7 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return mlir::ComplexType::get(builder.getF64Type());
     // TODO(b/130356985): Support unsigned primitive types.
     default:
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
 }
@@ -279,7 +281,7 @@ mlir::mhlo::GatherDimensionNumbersAttr CreateGatherDimensionNumbers(
 StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   using mlir::isa;
 
-  if (isa<mlir::mhlo::ConstOp, mlir::lmhlo::ConstOp>(op)) {
+  if (isa<mlir::mhlo::ConstantOp, mlir::lmhlo::ConstantOp>(op)) {
     return xla::HloOpcode::kConstant;
   } else if (isa<mlir::mhlo::IotaOp, mlir::lmhlo::IotaOp>(op)) {
     return xla::HloOpcode::kIota;
@@ -309,7 +311,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
   } else if (isa<mlir::mhlo::ShiftRightLogicalOp,
                  mlir::lmhlo::ShiftRightLogicalOp>(op)) {
     return xla::HloOpcode::kShiftRightLogical;
-  } else if (isa<mlir::mhlo::SubOp, mlir::lmhlo::SubOp>(op)) {
+  } else if (isa<mlir::mhlo::SubtractOp, mlir::lmhlo::SubtractOp>(op)) {
     return xla::HloOpcode::kSubtract;
   } else if (isa<mlir::mhlo::XorOp, mlir::lmhlo::XorOp>(op)) {
     return xla::HloOpcode::kXor;
@@ -351,7 +353,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kClamp;
   } else if (isa<mlir::mhlo::ConcatenateOp, mlir::lmhlo::ConcatenateOp>(op)) {
     return xla::HloOpcode::kConcatenate;
-  } else if (isa<mlir::mhlo::ConvOp, mlir::lmhlo::ConvOp>(op)) {
+  } else if (isa<mlir::mhlo::ConvolutionOp, mlir::lmhlo::ConvolutionOp>(op)) {
     return xla::HloOpcode::kConvolution;
   } else if (isa<mlir::mhlo::SortOp, mlir::lmhlo::SortOp>(op)) {
     return xla::HloOpcode::kSort;
@@ -371,7 +373,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kCeil;
   } else if (isa<mlir::mhlo::ClzOp, mlir::lmhlo::ClzOp>(op)) {
     return xla::HloOpcode::kClz;
-  } else if (isa<mlir::mhlo::CosOp, mlir::lmhlo::CosOp>(op)) {
+  } else if (isa<mlir::mhlo::CosineOp, mlir::lmhlo::CosineOp>(op)) {
     return xla::HloOpcode::kCos;
   } else if (isa<mlir::mhlo::ExpOp, mlir::lmhlo::ExpOp>(op)) {
     return xla::HloOpcode::kExp;
@@ -400,11 +402,14 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kReal;
   } else if (isa<mlir::mhlo::RoundOp, mlir::lmhlo::RoundOp>(op)) {
     return xla::HloOpcode::kRoundNearestAfz;
+  } else if (isa<mlir::mhlo::RoundNearestEvenOp,
+                 mlir::lmhlo::RoundNearestEvenOp>(op)) {
+    return xla::HloOpcode::kRoundNearestEven;
   } else if (isa<mlir::mhlo::RsqrtOp, mlir::lmhlo::RsqrtOp>(op)) {
     return xla::HloOpcode::kRsqrt;
   } else if (isa<mlir::mhlo::SignOp, mlir::lmhlo::SignOp>(op)) {
     return xla::HloOpcode::kSign;
-  } else if (isa<mlir::mhlo::SinOp, mlir::lmhlo::SinOp>(op)) {
+  } else if (isa<mlir::mhlo::SineOp, mlir::lmhlo::SineOp>(op)) {
     return xla::HloOpcode::kSin;
   } else if (isa<mlir::mhlo::SqrtOp, mlir::lmhlo::SqrtOp>(op)) {
     return xla::HloOpcode::kSqrt;
@@ -486,7 +491,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
       llvm::raw_string_ostream os(s);
       op->print(os);
     }
-    return tensorflow::errors::Unimplemented(
+    return tsl::errors::Unimplemented(  // NOLINT
         "Unimplemented MHLO -> HloOpcode: ", s);
   }
 }

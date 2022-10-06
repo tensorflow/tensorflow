@@ -24,13 +24,11 @@ namespace tensorflow {
 
 REGISTER6(BinaryOp, CPU, "Add", functor::add, int8, int16, complex64, uint8,
           complex128, tstring);
-#if !defined(MLIR_GENERATED_CPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_EXPERIMENTAL_KERNELS_ENABLED)
+
 // Notice: String is excluded to allow marking AddV2 is_commutative and
 // is_aggregate.
 REGISTER8(BinaryOp, CPU, "AddV2", functor::add, int8, int16, complex64, uint8,
           uint16, uint32, uint64, complex128);
-#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)

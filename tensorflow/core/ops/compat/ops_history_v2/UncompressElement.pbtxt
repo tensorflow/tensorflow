@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "UncompressElement"
   input_arg {
     name: "compressed"

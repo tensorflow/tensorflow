@@ -42,7 +42,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -61,7 +61,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
                                            int* num_boxes) {
   if (boxes.NumElements() == 0 && box_index.NumElements() == 0) {
     *num_boxes = 0;
-    return Status::OK();
+    return OkStatus();
   }
   // The shape of 'boxes' is [num_boxes, 4].
   if (boxes.dims() != 2) {
@@ -80,7 +80,7 @@ static inline Status ParseAndCheckBoxSizes(const Tensor& boxes,
   if (box_index.dim_size(0) != *num_boxes) {
     return errors::InvalidArgument("box_index has incompatible shape");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Conditionally calls the compute callback if all values in box_index are in

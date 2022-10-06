@@ -194,7 +194,7 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
   // Invoke will run the delegate graph.
   // Prepare for prearing the delegate.
   // Free for any cleaning needed by the delegate.
-  TfLiteRegistration kernel_registration;
+  TfLiteRegistration kernel_registration{};
   kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
   kernel_registration.custom_name = "TfLiteCoreMlDelegate";

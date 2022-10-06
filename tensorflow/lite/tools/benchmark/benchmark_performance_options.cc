@@ -18,10 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <iomanip>
 #include <memory>
+#include <random>
 #include <sstream>
+#include <string>
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
@@ -32,6 +35,15 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if (TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR) || \
+    (TARGET_OS_OSX && TARGET_CPU_ARM64)
+// Only enable coreml delegate when using a real iPhone device or Apple Silicon.
+#define REAL_IPHONE_DEVICE
+#endif
+#endif
 
 namespace tflite {
 namespace benchmark {
@@ -48,7 +60,7 @@ std::string MultiRunStatsRecorder::PerfOptionName(
 #endif
 
   if (params.Get<bool>("use_gpu")) {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
       return "gpu-fp16";
     } else {
@@ -62,6 +74,12 @@ std::string MultiRunStatsRecorder::PerfOptionName(
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
     return "dsp w/ hexagon";
+  }
+#endif
+
+#if defined(REAL_IPHONE_DEVICE)
+  if (params.Get<bool>("use_coreml")) {
+    return "coreml";
   }
 #endif
 
@@ -147,14 +165,14 @@ std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
   };
 }
 
-bool BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
+TfLiteStatus BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
       Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   if (!parse_result) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
-    return false;
+    return kTfLiteError;
   }
 
   // Parse the value of --perf_options_list to find performance options to be
@@ -162,14 +180,14 @@ bool BenchmarkPerformanceOptions::ParseFlags(int* argc, char** argv) {
   return ParsePerfOptions();
 }
 
-bool BenchmarkPerformanceOptions::ParsePerfOptions() {
+TfLiteStatus BenchmarkPerformanceOptions::ParsePerfOptions() {
   const auto& perf_options_list = params_.Get<std::string>("perf_options_list");
   if (!util::SplitAndParse(perf_options_list, ',', &perf_options_)) {
     TFLITE_LOG(ERROR) << "Cannot parse --perf_options_list: '"
                       << perf_options_list
                       << "'. Please double-check its value.";
     perf_options_.clear();
-    return false;
+    return kTfLiteError;
   }
 
   const auto valid_options = GetValidPerfOptions();
@@ -192,22 +210,22 @@ bool BenchmarkPerformanceOptions::ParsePerfOptions() {
         << perf_options_list << "'. Valid perf options are: ["
         << valid_options_str << "]";
     perf_options_.clear();
-    return false;
+    return kTfLiteError;
   }
 
   if (HasOption("none") && perf_options_.size() > 1) {
     TFLITE_LOG(ERROR) << "The 'none' option can not be used together with "
                          "other perf options in --perf_options_list!";
     perf_options_.clear();
-    return false;
+    return kTfLiteError;
   }
-  return true;
+  return kTfLiteOk;
 }
 
 std::vector<std::string> BenchmarkPerformanceOptions::GetValidPerfOptions()
     const {
-  std::vector<std::string> valid_options = {"all", "cpu", "gpu", "nnapi",
-                                            "none"};
+  std::vector<std::string> valid_options = {"all",   "cpu",    "gpu",
+                                            "nnapi", "coreml", "none"};
 #if defined(TFLITE_ENABLE_HEXAGON)
   valid_options.emplace_back("dsp");
 #endif
@@ -232,6 +250,10 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
 #endif
 #if defined(TFLITE_ENABLE_HEXAGON)
   single_option_run_params_->Set<bool>("use_hexagon", false);
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+  single_option_run_params_->Set<bool>("use_coreml", false);
+  single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
 #endif
   single_option_run_params_->Set<bool>("use_xnnpack", false);
 }
@@ -317,13 +339,23 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
     all_run_params_.emplace_back(std::move(params));
   }
 #endif
+
+#if defined(REAL_IPHONE_DEVICE)
+  if (benchmark_all || HasOption("coreml")) {
+    BenchmarkParams params;
+    params.AddParam("use_coreml", BenchmarkParam::Create<bool>(true));
+    all_run_params_.emplace_back(std::move(params));
+  }
+#endif
 }
 
-void BenchmarkPerformanceOptions::Run() {
+TfLiteStatus BenchmarkPerformanceOptions::Run() {
   CreatePerformanceOptions();
 
   if (params_.Get<bool>("random_shuffle_benchmark_runs")) {
-    std::random_shuffle(all_run_params_.begin(), all_run_params_.end());
+    std::random_device rd;
+    std::mt19937 generator(rd());
+    std::shuffle(all_run_params_.begin(), all_run_params_.end(), generator);
   }
 
   // We need to clean *internally* created benchmark listeners, like the
@@ -348,26 +380,40 @@ void BenchmarkPerformanceOptions::Run() {
     single_option_run_->RemoveListeners(num_external_listeners);
 
     all_run_stats_->MarkBenchmarkStart(*single_option_run_params_);
-    single_option_run_->Run();
+    if (TfLiteStatus status = single_option_run_->Run(); status != kTfLiteOk) {
+      TFLITE_LOG(ERROR) << "Error while running a single-option run: "
+                        << status;
+      return status;
+    }
   }
 
   all_run_stats_->OutputStats();
+  return kTfLiteOk;
 }
 
-void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
+TfLiteStatus BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // Parse flags that are supported by this particular binary first.
-  if (!ParseFlags(&argc, argv)) return;
+  if (TfLiteStatus status = ParseFlags(&argc, argv); status != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Error while parsing the flags for multi-option runs: "
+                      << status;
+    return status;
+  }
 
   // Then parse flags for single-option runs to get information like parameters
   // of the input model etc.
-  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
+  if (TfLiteStatus status = single_option_run_->ParseFlags(&argc, argv);
+      status != kTfLiteOk) {
+    TFLITE_LOG(ERROR)
+        << "Error while parsing the flags for single-option runs: " << status;
+    return status;
+  }
 
   // Now, the remaining are unrecognized flags and we simply print them out.
   for (int i = 1; i < argc; ++i) {
     TFLITE_LOG(WARN) << "WARNING: unrecognized commandline flag: " << argv[i];
   }
 
-  Run();
+  return Run();
 }
 }  // namespace benchmark
 }  // namespace tflite

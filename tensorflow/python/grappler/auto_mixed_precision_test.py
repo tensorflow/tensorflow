@@ -245,7 +245,7 @@ def _get_config(auto_mixed_precision_mode):
   if auto_mixed_precision_mode == 'cuda':
     rewrite_config.auto_mixed_precision = rewriter_config_pb2.RewriterConfig.ON
   elif auto_mixed_precision_mode == 'mkl':
-    rewrite_config.auto_mixed_precision_mkl = (
+    rewrite_config.auto_mixed_precision_onednn_bfloat16 = (
         rewriter_config_pb2.RewriterConfig.ON)
   else:
     assert auto_mixed_precision_mode is None
@@ -697,7 +697,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
       self._assert_output_f16(mode, node_map, 'Relu' + suffix)
       self._assert_output_f16(mode, node_map, 'MaxPool' + suffix)
     self._assert_output_f16(mode, node_map, 'concat')
-    self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+    atol = 1e-2 if test.is_built_with_rocm() else 1e-3
+    self.assertAllClose(output_val_ref, output_val, atol=atol, rtol=1e-3)
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
@@ -728,7 +729,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
       # Bump up the tolerance for the ROCm platform
       # The default tolerance (1e-3) results in a tiny fraction (<1%) of
       # miscompares on ROCm platform, and hence the tolerance bump
-      tol = 2e-3
+      tol = 1e-2
     else:
       tol = 1e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
@@ -836,7 +837,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
     self._assert_output_f16(mode, node_map, 'MatMul')
     tol = 1e-2 if mode == 'mkl' else 1e-3
-    self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+    atol = 1e-2 if test.is_built_with_rocm() else tol
+    self.assertAllClose(output_val_ref, output_val, atol=atol, rtol=tol)
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1

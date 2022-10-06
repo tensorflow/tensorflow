@@ -91,7 +91,7 @@ REGISTER_OP("_ConfigureDistributedTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that sets up the centralized structures for a distributed TPU
@@ -122,7 +122,7 @@ REGISTER_OP("_WaitForDistributedTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &input));
       }
       c->set_output(0, c->Scalar());
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that blocks execution until a distributed TPU system has
@@ -144,7 +144,7 @@ REGISTER_OP("_SetGlobalTPUArray")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that informs a host of the global ids of all the of TPUs in the
@@ -178,7 +178,7 @@ REGISTER_OP("_InitializeHostForDistributedTPU")
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return ::tensorflow::Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 An op that connects each chip on the host to a centralized UberDriver to allow

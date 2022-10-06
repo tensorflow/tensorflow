@@ -73,7 +73,7 @@ TEST(Test1, TestFunctionCall) {
   TaggedValue args = TaggedValue::Tuple();
   args.tuple().emplace_back(TaggedValue(1.f));
   args.tuple().emplace_back(TaggedValue(2.f));
-  TaggedValue c = f32.func()(args, TaggedValue::None()).ValueOrDie();
+  TaggedValue c = f32.func()(args, TaggedValue::None()).value();
   ASSERT_EQ(c, TaggedValue(3.f));
 }
 

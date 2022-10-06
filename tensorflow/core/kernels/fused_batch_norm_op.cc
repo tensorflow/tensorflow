@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -70,11 +70,11 @@ Status ParseActivationMode(OpKernelConstruction* context,
 
   if (activation_mode_str == "Identity") {
     *activation_mode = FusedBatchNormActivationMode::kIdentity;
-    return Status::OK();
+    return OkStatus();
   }
   if (activation_mode_str == "Relu") {
     *activation_mode = FusedBatchNormActivationMode::kRelu;
-    return Status::OK();
+    return OkStatus();
   }
   return errors::InvalidArgument("Unsupported activation mode: ",
                                  activation_mode_str);
@@ -822,7 +822,7 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
         Tensor* dummy_reserve_space = nullptr;
         return context->allocate_output(5, {}, &dummy_reserve_space);
       }
-      return Status::OK();
+      return OkStatus();
     };
 
     // If input is empty, return NaN mean/variance

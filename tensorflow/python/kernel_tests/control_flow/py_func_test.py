@@ -16,10 +16,10 @@
 """Tests for py_func op."""
 
 import gc
+import queue
 import re
 
 import numpy as np
-from six.moves import queue
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
@@ -415,7 +415,7 @@ class PyFuncTest(PyFuncTestBase):
 
   def testNoReturnValueStateful(self):
 
-    class State(object):
+    class State:
 
       def __init__(self):
         self._value = np.array([1], np.int64)

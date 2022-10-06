@@ -70,11 +70,11 @@ struct DistRemoteRunEncapsulatePass
   }
 };
 
-LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
+LogicalResult EncapsulateFuncAndSerialize(func::FuncOp entry_func,
                                           std::string* serialized_func_module) {
   ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
-  SmallVector<FuncOp, 4> referenced({entry_func});
+  SmallVector<func::FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningOpRef<mlir::ModuleOp> module_for_func =
@@ -82,10 +82,10 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   SymbolTable symbol_table(module_for_func.get());
 
   while (!referenced.empty()) {
-    FuncOp func = referenced.pop_back_val();
+    func::FuncOp func = referenced.pop_back_val();
 
     // Skip functions that have already been cloned into new module.
-    if (symbol_table.lookup<FuncOp>(func.getName())) continue;
+    if (symbol_table.lookup<func::FuncOp>(func.getName())) continue;
 
     // Find any SymbolRefAttr in func that maps to a FuncOp. We need to clone
     // all found FuncOps to new_module to make sure new_module is
@@ -93,7 +93,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+      func::FuncOp referenced_func = entry_module_table.lookup<func::FuncOp>(
           use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
@@ -102,7 +102,7 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       referenced.emplace_back(referenced_func);
     }
 
-    FuncOp clone = func.clone();
+    func::FuncOp clone = func.clone();
     if (clone.getName() == entry_func.getName()) {
       clone.setPublic();
     } else {
@@ -124,8 +124,8 @@ void DistRemoteRunEncapsulatePass::runOnOperation() {
   Type remote_object_id_ty = tfrt::dist::RemoteObjectIdType::get(&getContext());
   Type tensor_handle_ty = tfrt::corert::TensorHandleType::get(&getContext());
   module.walk([&](tfrt::dist::RemoteExecuteFuncOp remote_exec_op) {
-    FlatSymbolRefAttr callee_sym = remote_exec_op.calleeAttr();
-    FuncOp callee = symtab.lookup<FuncOp>(callee_sym.getValue());
+    FlatSymbolRefAttr callee_sym = remote_exec_op.getCalleeAttr();
+    func::FuncOp callee = symtab.lookup<func::FuncOp>(callee_sym.getValue());
     if (!callee) {
       remote_exec_op.emitOpError("callee function ")
           << callee_sym.getValue() << " is not found";
@@ -144,14 +144,14 @@ void DistRemoteRunEncapsulatePass::runOnOperation() {
         StringAttr::get(&getContext(), callee_sym.getValue());
     OpBuilder builder(remote_exec_op);
     auto register_op = builder.create<tfrt::dist::RegisterTFRTFunctionOp>(
-        loc, chain_type, remote_exec_op.in_op_chain(), remote_exec_op.context(),
-        remote_exec_op.remote_task(),
+        loc, chain_type, remote_exec_op.getInOpChain(),
+        remote_exec_op.getContext(), remote_exec_op.getRemoteTask(),
         StringAttr::get(&getContext(), txt_module), callee_name);
 
     // Build the device assignment for the results
     // TODO(tfrt-devs): Define properly MLIR types and operations
     SmallVector<Attribute, 8> result_devices;
-    for (const auto& result : llvm::enumerate(remote_exec_op.results())) {
+    for (const auto& result : llvm::enumerate(remote_exec_op.getResults())) {
       StringAttr device =
           callee.getResultAttrOfType<StringAttr>(result.index(), kTFRTDevice);
       if (!device) {
@@ -178,18 +178,18 @@ void DistRemoteRunEncapsulatePass::runOnOperation() {
     Type remote_spec_ty = tfrt::dist::RemoteExecuteSpecType::get(&getContext());
     auto result_devices_attr = ArrayAttr::get(&getContext(), result_devices);
     auto remote_spec = builder.create<tfrt::dist::CreateRemoteExecuteSpecOp>(
-        loc, remote_spec_ty, remote_exec_op.context(), result_devices_attr);
+        loc, remote_spec_ty, remote_exec_op.getContext(), result_devices_attr);
     // If original argument is already tfrt_dist.remote_object_id, use it
     // directly. If it is TensorHandle, insert an op to extract the
     // tfrt_dist.remote_object_id from it. Otherwise, emit an error.
     SmallVector<Value, 4> arguments;
-    for (Value value : remote_exec_op.callee_args()) {
+    for (Value value : remote_exec_op.getCalleeArgs()) {
       if (value.getType().isa<tfrt::dist::RemoteObjectIdType>()) {
         arguments.push_back(value);
       } else if (value.getType().isa<tfrt::corert::TensorHandleType>()) {
         auto new_op = builder.create<tfrt::dist::GetRemoteObjectIdFromTHOp>(
             loc, remote_object_id_ty, value);
-        arguments.push_back(new_op.result());
+        arguments.push_back(new_op.getResult());
       } else {
         remote_exec_op.emitOpError(
             "callee argument type should be either "
@@ -201,7 +201,7 @@ void DistRemoteRunEncapsulatePass::runOnOperation() {
     // Result types are 1 chain, followed by `num_th_results + 1`
     // tfrt_dist.remote_object_id results, followed by `num_th_results`
     // corert.tensorhandle results.
-    int32_t num_th_results = remote_exec_op.results().size() - 1;
+    int32_t num_th_results = remote_exec_op.getResults().size() - 1;
     SmallVector<Type, 8> result_types;
     result_types.push_back(chain_type);
     for (int count : llvm::seq<int>(0, num_th_results + 1)) {
@@ -213,9 +213,10 @@ void DistRemoteRunEncapsulatePass::runOnOperation() {
       result_types.push_back(tensor_handle_ty);
     }
     auto new_remote_exec_th_op = builder.create<tfrt::dist::RemoteExecuteTHOp>(
-        loc, result_types, register_op.out_op_chain(), remote_exec_op.context(),
-        remote_exec_op.remote_task(), remote_spec, num_th_results,
-        callee_name.getValue(), std::move(arguments));
+        loc, result_types, register_op.getOutOpChain(),
+        remote_exec_op.getContext(), remote_exec_op.getRemoteTask(),
+        remote_spec, num_th_results, callee_name.getValue(),
+        std::move(arguments));
     // The part of the new results to replace the original results are 2 chains,
     // followed `num_th_results` corert.tesnorhandle results from the callee
     // function.

@@ -1,6 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/tools/test:performance.bzl", "tf_py_logged_benchmark")
 
 package(
@@ -543,6 +543,7 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:string_ops",
@@ -581,7 +582,22 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:type_utils",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_math_ops_test",
+    size = "medium",
+    srcs = ["ragged_math_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":ragged",  # fixdeps: keep
+        ":ragged_factory_ops",
+        ":ragged_math_ops",
+        "//tensorflow/python:framework_test_lib",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1306,7 +1322,7 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "ragged_dynamic_partition_op_test",
     srcs = ["ragged_dynamic_partition_op_test.py"],
     python_version = "PY3",
@@ -1448,6 +1464,8 @@ py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:extension_type",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -1489,11 +1507,7 @@ py_test(
 
 cuda_py_test(
     name = "ragged_factory_ops_test",
-    size = "small",
     srcs = ["ragged_factory_ops_test.py"],
-    tags = [
-        "no_gpu",  # TODO(b/213596871): times out
-    ],
     deps = [
         ":ragged_functional_ops",
         "//tensorflow/python:map_fn",

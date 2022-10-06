@@ -1,6 +1,5 @@
 # copybara:uncomment_begin(oss-unused)
 # load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
-# load("//net/grpc/python:py_grpc_library.bzl", "py_grpc_library")
 # load("//net/grpc:cc_grpc_library.bzl", "cc_grpc_library")
 # copybara:uncomment_end
 
@@ -30,7 +29,6 @@ COMMON_PROTO_SRCS = [
     "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
-    "coordination_config.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
@@ -65,9 +63,9 @@ COMMON_PROTO_SRCS = [
 tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
+    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
 )
 
 tf_proto_library(
@@ -76,7 +74,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -124,10 +122,16 @@ tf_proto_library(
     srcs = ["eager_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
+    create_grpc_library = True,
     create_service = True,
     protodeps = tf_additional_all_protos(),
+)
+
+tf_proto_library(
+    name = "coordination_config_proto",
+    srcs = ["coordination_config.proto"],
+    cc_api_version = 2,
 )
 
 tf_proto_library(
@@ -135,8 +139,8 @@ tf_proto_library(
     srcs = ["coordination_service.proto"],
     has_services = 1,
     cc_api_version = 2,
-    cc_grpc_version = 1,
     cc_stubby_versions = ["2"],
+    create_grpc_library = True,
     create_service = True,
     protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
                 tf_additional_all_protos(),
@@ -154,8 +158,9 @@ tf_proto_library(
 tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(
@@ -183,6 +188,8 @@ exports_files(
         "trackable_object_graph.proto",
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
+        "core_platform_payloads.proto",
+        "fingerprint.proto",
     ],
 )
 
@@ -215,10 +222,13 @@ tf_proto_library(
         "trackable_object_graph.proto",
         "transport_options.proto",
         "distributed_runtime_payloads.proto",
+        "core_platform_payloads.proto",
+        "fingerprint.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
+        ":coordination_config_proto",
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
     ],

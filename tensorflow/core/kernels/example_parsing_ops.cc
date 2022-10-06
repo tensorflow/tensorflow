@@ -107,7 +107,7 @@ class ParseExampleOp : public OpKernel {
     for (int i = 0; i < keys_flat.size(); ++i) {
       keys->push_back(keys_flat(i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Copies keys from OpInputList of scalar to std::vector<string>.
@@ -119,7 +119,7 @@ class ParseExampleOp : public OpKernel {
     for (const auto& key : key_list) {
       keys->push_back(key.scalar<tstring>()());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Validates the shapes of input tensors.
@@ -201,7 +201,7 @@ class ParseExampleOp : public OpKernel {
             "] == ", DataTypeString(attrs_.dense_types[d]));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Populates the FastParseExampleConfig from keys & defaults.
@@ -280,7 +280,7 @@ class ParseExampleOp : public OpKernel {
         ragged_splits.set(d, result.ragged_splits[d]);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   ParseExampleAttrs attrs_;
@@ -562,7 +562,7 @@ class ParseSequenceExampleOp : public OpKernel {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   example::FastParseExampleConfig MakeContextConfig(
@@ -761,7 +761,7 @@ class ParseSequenceExampleOp : public OpKernel {
             d, feature_list_result.ragged_splits[d]);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   ParseSequenceExampleAttrs attrs_;

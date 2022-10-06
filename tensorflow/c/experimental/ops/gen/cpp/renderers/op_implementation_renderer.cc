@@ -47,7 +47,7 @@ void OpImplementationRenderer::RenderInitialization() {
   Statement("AbstractOperationPtr $0(ctx->CreateOperation())",
             op_.VariableName());
   TFStatement(Call(op_.VariableName(), "Reset",
-                   {op_.OpNameString(), "/*raw_device_name=*/nullptr"}));
+                   {op_.OpNameString(), "raw_device_name"}));
   TFStatement(Call("MaybeSetOpName", {op_.VariableName() + ".get()", "name"}));
   // Set each input
   for (const ArgView& ar : op_.Inputs()) {
@@ -60,7 +60,6 @@ void OpImplementationRenderer::RenderInitialization() {
 }
 
 void OpImplementationRenderer::RenderExecutionListOp() {
-  ArgView input_arg = op_.OnlyInput();
   ArgView output_arg = op_.OnlyOutput();
   Statement("int num_retvals = $0.size()", output_arg.VariableName());
   Statement("return " + Call(op_.VariableName(), "Execute",

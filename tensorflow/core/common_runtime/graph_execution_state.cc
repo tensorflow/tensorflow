@@ -94,7 +94,7 @@ GraphExecutionState::~GraphExecutionState() {
   VLOG(4) << "Graph proto is \n" << graph_def.DebugString();
 #endif  // __ANDROID__
 
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), graph_def.library());
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&graph_def, *flib_def, 0));
@@ -103,14 +103,14 @@ GraphExecutionState::~GraphExecutionState() {
       !options.session_options->config.experimental()
            .optimize_for_static_graph()) {
     auto ret = absl::WrapUnique(new GraphExecutionState(
-        absl::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
+        std::make_unique<GraphDef>(std::move(graph_def)), std::move(flib_def),
         options));
 
     // When place_pruned_graph is true, a different Graph* will be initialized
     // each time we prune the original graph, so there is no need to
     // construct a Graph* in this case.
     if (!options.session_options->config.graph_options().place_pruned_graph()) {
-      auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+      auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
       TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *ret->original_graph_def_,
                                                 base_graph.get()));
       TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
@@ -119,13 +119,13 @@ GraphExecutionState::~GraphExecutionState() {
   } else {
     auto ret = absl::WrapUnique(
         new GraphExecutionState(nullptr, std::move(flib_def), options));
-    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(
         ConvertGraphDefToGraph({}, std::move(graph_def), base_graph.get()));
     TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
     *out_state = std::move(ret);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ Status GraphExecutionState::MakeForPrunedGraph(
@@ -158,13 +158,13 @@ GraphExecutionState::~GraphExecutionState() {
   // also that the previous version used `Extend()`, which is strictly
   // more expensive than copying a `GraphDef`.)
   GraphDef temp(*base_execution_state.original_graph_def_);
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), temp.library());
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&temp, *flib_def, 0));
   auto ret = absl::WrapUnique(
       new GraphExecutionState(nullptr, std::move(flib_def), options));
 
-  auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+  auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph({}, std::move(temp), base_graph.get()));
 
@@ -175,7 +175,7 @@ GraphExecutionState::~GraphExecutionState() {
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(std::move(base_graph)));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::Extend(
@@ -264,14 +264,14 @@ Status GraphExecutionState::Extend(
   combined_options.stateful_placements = stateful_placements_;
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&gdef, *flib_def_, 0));
-  auto flib_def = absl::make_unique<FunctionLibraryDefinition>(
+  auto flib_def = std::make_unique<FunctionLibraryDefinition>(
       OpRegistry::Global(), gdef.library());
   auto new_execution_state = absl::WrapUnique(
-      new GraphExecutionState(absl::make_unique<GraphDef>(std::move(gdef)),
+      new GraphExecutionState(std::make_unique<GraphDef>(std::move(gdef)),
                               std::move(flib_def), combined_options));
 
   if (!session_options_->config.graph_options().place_pruned_graph()) {
-    auto base_graph = absl::make_unique<Graph>(OpRegistry::Global());
+    auto base_graph = std::make_unique<Graph>(OpRegistry::Global());
     TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
         {}, *new_execution_state->original_graph_def_, base_graph.get()));
     TF_RETURN_IF_ERROR(
@@ -282,7 +282,7 @@ Status GraphExecutionState::Extend(
   // NOTE(mrry): Extend() is likely to be used for non-throughput-sensitive
   // interactive workloads, but in future we may want to transfer other
   // parts of the placement and/or cost model.
-  return Status::OK();
+  return OkStatus();
 }
 
 void GraphExecutionState::SaveStatefulNodes(Graph* graph) {
@@ -341,7 +341,7 @@ class TensorConnectionPruneRewrite : public subgraph::PruneRewrite {
 
     (*out_node)->set_assigned_device_name(
         feed_tensor.node->assigned_device_name());
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -355,12 +355,12 @@ Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
   *out_device_attrs = nullptr;
   if (tensor2device.empty()) {
     *out_device_attrs = &device_set.client_device()->attributes();
-    return Status::OK();
+    return OkStatus();
   }
   const auto it = tensor2device.find(tensor_name);
   if (it == tensor2device.end()) {
     *out_device_attrs = &device_set.client_device()->attributes();
-    return Status::OK();
+    return OkStatus();
   }
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(it->second, &parsed_name)) {
@@ -376,7 +376,7 @@ Status LookupDevice(const DeviceSet& device_set, const string& tensor_name,
                                    "' in CallableOptions does not exist");
   }
   *out_device_attrs = &device->attributes();
-  return Status::OK();
+  return OkStatus();
 }
 
 struct TensorAndDevice {
@@ -428,7 +428,7 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
 Status ValidateFeedAndFetchDevices(
     const Graph& graph,
     const std::vector<TensorAndDevice>& tensors_and_devices) {
-  if (tensors_and_devices.empty()) return Status::OK();
+  if (tensors_and_devices.empty()) return OkStatus();
   std::vector<bool> found(tensors_and_devices.size(), false);
   for (const Node* node : graph.nodes()) {
     // Linearly looping through all nodes and then all feed+fetch tensors isn't
@@ -460,7 +460,7 @@ Status ValidateFeedAndFetchDevices(
           "in the Graph");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
@@ -495,7 +495,7 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
     return errors::InvalidArgument("Could not determine shape for feed node: ",
                                    node.name(), " of type ", node.op());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -603,7 +603,7 @@ Status GraphExecutionState::PruneGraph(
   for (int i = 0; i < options.callable_options.tensor_connection_size(); ++i) {
     out_rewrite_metadata->feed_types.pop_back();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
@@ -639,7 +639,7 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
 
   SaveStatefulNodes(new_graph.get());
   graph_ = new_graph.release();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphExecutionState::OptimizeGraph(
@@ -842,7 +842,7 @@ Status GraphExecutionState::OptimizeGraph(
     for (Node* node : optimized_graph->get()->nodes()) {
       node->set_assigned_device_name(node->requested_device());
     }
-    return Status::OK();
+    return OkStatus();
   } else {
     return errors::InvalidArgument("Meta Optimizer disabled");
   }
@@ -967,7 +967,7 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
   // TODO(vrv): We should check invariants of the graph here.
   metrics::UpdateGraphBuildTime(Env::Default()->NowMicros() - start_time_usecs);
   *out = std::move(dense_copy);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

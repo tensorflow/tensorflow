@@ -584,11 +584,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* fw_scratch_buffer_size = TfLiteIntArrayCreate(2);
   fw_scratch_buffer_size->data[0] = n_batch;
   if (fw_use_cifg) {
-    // Reserving space for Cell, Forget, Output gates
-    fw_scratch_buffer_size->data[1] = n_fw_cell * 3;
+    // Reserving space for Cell, Forget, Output gates and scratch accumulation
+    // buffer and an extra 16 bytes to avoid internal ruy copies.
+    fw_scratch_buffer_size->data[1] = n_fw_cell * 4 + 16;
   } else {
-    // Reserving space for Input, Cell, Forget, Output gates
-    fw_scratch_buffer_size->data[1] = n_fw_cell * 4;
+    // Reserving space for Input, Cell, Forget, Output gates and scratch
+    // accumulation buffer and an extra 16 bytes to avoid internal ruy copies.
+    fw_scratch_buffer_size->data[1] = n_fw_cell * 5 + 16;
   }
   TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, fw_scratch_buffer,
                                                    fw_scratch_buffer_size));
@@ -646,11 +648,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* bw_scratch_buffer_size = TfLiteIntArrayCreate(2);
   bw_scratch_buffer_size->data[0] = n_batch;
   if (bw_use_cifg) {
-    // Reserving space for Cell, Forget, Output gates
-    bw_scratch_buffer_size->data[1] = n_bw_cell * 3;
-  } else {
-    // Reserving space for Input, Cell, Forget, Output gates
+    // Reserving space for Cell, Forget, Output gates and scratch accumulation
+    // buffer and an extra 16 bytes to avoid internal ruy copies.
     bw_scratch_buffer_size->data[1] = n_bw_cell * 4;
+  } else {
+    // Reserving space for Input, Cell, Forget, Output gates and scratch
+    // accumulation buffer and an extra 16 bytes to avoid internal ruy copies.
+    bw_scratch_buffer_size->data[1] = n_bw_cell * 5;
   }
   TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, bw_scratch_buffer,
                                                    bw_scratch_buffer_size));
@@ -1189,7 +1193,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           fw_output_gate_bias, fw_projection_weights, fw_projection_bias,
           &lstm_params,
           /*forward_sequence=*/true, time_major, /*output_offset=*/0,
-          fw_scratch_buffer, fw_activation_state, fw_cell_state, fw_output);
+          fw_scratch_buffer, fw_activation_state, fw_cell_state, fw_output,
+          CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, fw_pass_status);
 
       TfLiteStatus bw_pass_status = lstm_eval::EvalFloat(
@@ -1210,7 +1215,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &lstm_params,
           /*forward_sequence=*/false, time_major, bw_output_offset,
           bw_scratch_buffer, bw_activation_state, bw_cell_state,
-          actual_bw_output);
+          actual_bw_output, CpuBackendContext::GetFromContext(context));
       TF_LITE_ENSURE_OK(context, bw_pass_status);
       return kTfLiteOk;
     }

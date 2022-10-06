@@ -41,18 +41,20 @@ mlir_tf_tools_dirs = [
     'tensorflow/core/ir/tests/',
     'tensorflow/core/transforms/',
     'tensorflow/compiler/mlir',
-    'tensorflow/compiler/mlir/hlo',
+    'tensorflow/compiler/xla/mlir_hlo',
+    'tensorflow/compiler/xla/mlir_hlo/tosa',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
     'tensorflow/compiler/mlir/quantization/tensorflow',
     'tensorflow/compiler/mlir/tensorflow',
-    'tensorflow/compiler/mlir/tfjs',
     'tensorflow/compiler/mlir/tfrt',
     'tensorflow/compiler/mlir/xla',
     'tensorflow/compiler/mlir/tools/kernel_gen',
     'tensorflow/compiler/aot',
     'tensorflow/compiler/xla/service/mlir_gpu',
     'tensorflow/compiler/xla/service/gpu/tests',
+    'tensorflow/compiler/xla/mlir/tools',
+    'tensorflow/compiler/mlir/lite/stablehlo',
 ]
 config.mlir_tf_tools_dirs = [
     os.path.join(real_test_srcdir, os.environ['TEST_WORKSPACE'], s)

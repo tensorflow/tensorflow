@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <fstream>
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -41,7 +42,7 @@ int32_t GetOrInsertOpCodeIndex(ModelT* model, const BuiltinOperator& op_code,
       return i;
     }
   }
-  model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
+  model->operator_codes.push_back(std::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = op_code;
   model->operator_codes[op_code_idx]->deprecated_builtin_code =
@@ -103,7 +104,7 @@ void MakeTensorWithQuantParam(const string& name,
                               int64_t zero_point,
                               std::unique_ptr<TensorT>* tensor) {
   MakeTensor(name, shape, shape_signature, type, tensor);
-  (*tensor)->quantization = absl::make_unique<QuantizationParametersT>();
+  (*tensor)->quantization = std::make_unique<QuantizationParametersT>();
   (*tensor)->quantization->scale.push_back(scale);
   (*tensor)->quantization->zero_point.push_back(zero_point);
 }
@@ -172,7 +173,7 @@ std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
   auto fb_model =
       tflite::FlatBufferModel::BuildFromFile(model_filepath.c_str());
   auto tflite_model = fb_model->GetModel();
-  auto copied_model = absl::make_unique<tflite::ModelT>();
+  auto copied_model = std::make_unique<tflite::ModelT>();
   tflite_model->UnPackTo(copied_model.get(), nullptr);
   return copied_model;
 }

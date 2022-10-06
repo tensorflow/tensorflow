@@ -34,6 +34,39 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+#if defined(PLATFORM_GOOGLE)
+using ::testing::EqualsProto;
+#endif
+
+void AddTensorFlowTpuOpEvent(std::string&& name, std::string&& tf_op_fullname,
+                             int64_t start_timestamp_ns, int64_t duration_ns,
+                             std::string&& hlo_category, uint64 flops,
+                             uint64 bytes_accessed, int64_t occurences,
+                             int64_t self_duration, int64_t program_id,
+                             int64_t symbol_id, XPlaneBuilder* plane,
+                             XLineBuilder* line) {
+  XEventBuilder event = line->AddEvent(*plane->GetOrCreateEventMetadata(name));
+  event.SetTimestampNs(start_timestamp_ns);
+  event.SetDurationNs(duration_ns);
+  event.SetNumOccurrences(occurences);
+  XStatsBuilder<XEventMetadata> event_metadata(
+      plane->GetOrCreateEventMetadata(name), plane);
+  event_metadata.AddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
+      tf_op_fullname);
+  event_metadata.AddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kHloCategory)),
+      hlo_category);
+  event_metadata.AddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kFlops)), flops);
+  event_metadata.AddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kSymbolId)),
+      symbol_id);
+  event_metadata.AddStatValue(
+      *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProgramId)),
+      program_id);
+}
+
 void AddTensorFlowOpEvent(std::string&& tf_op_fullname,
                           int64_t start_timestamp_ns, int64_t duration_ns,
                           bool on_device, absl::string_view kernel_name,
@@ -174,6 +207,39 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   EXPECT_EQ(kIdle, idle.category());
   // GPU is always busy in this example.
   EXPECT_EQ(NanoToPico(0), idle.time_ps());
+}
+
+TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
+  XSpace xspace;
+  XPlane* xplane = GetOrCreateTpuXPlane(&xspace, /*device_ordinal=*/0, "TPU V4",
+                                        /*peak_tera_flops_per_second=*/0,
+                                        /*peak_hbm_bw_gigabytes_per_second=*/0);
+  XPlaneBuilder device_plane(xplane);
+  device_plane.AddStatValue(
+      *device_plane.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kTotalProfileDurationPs)),
+      1000);
+  XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
+  AddTensorFlowTpuOpEvent("MatMul", "while:MatMul", 0, 10, "MatMul", 34, 45, 2,
+                          5, 1, 1, &device_plane, &stream1);
+  OpMetricsDb op_metrics = ConvertTpuDeviceTraceXPlaneToOpMetricsDb(*xplane);
+#if defined(PLATFORM_GOOGLE)
+  EXPECT_THAT(op_metrics,
+              EqualsProto(R"pb(metrics_db {
+                                 self_time_ps: 10000
+                                 flops: 68
+                                 occurrences: 2
+                                 name: "MatMul"
+                                 time_ps: 10000
+                                 category: "MatMul"
+                                 provenance: "while:MatMul"
+                                 min_time_ps: 10000
+                               }
+                               metrics_db { name: "IDLE" category: "IDLE" }
+                               total_time_ps: 10000
+                               total_op_time_ps: 10000
+              )pb"));
+#endif
 }
 
 }  // namespace

@@ -32,10 +32,6 @@ tf_module {
     name: "TrackableReference"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "TrackableSaver"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "no_automatic_dependency_tracking"
     argspec: "args=[\'method\'], varargs=None, keywords=None, defaults=None"

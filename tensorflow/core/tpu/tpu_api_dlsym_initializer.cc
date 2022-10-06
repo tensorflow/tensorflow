@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 #if !defined(PLATFORM_GOOGLE)
-static bool tpu_library_finder = FindAndLoadTpuLibrary();
+static Status tpu_library_finder = FindAndLoadTpuLibrary();
 #endif
 }  // namespace
 }  // namespace tpu

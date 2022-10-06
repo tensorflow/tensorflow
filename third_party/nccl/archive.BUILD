@@ -55,6 +55,7 @@ cuda_rdc_library(
     name = "device",
     srcs = [
         "src/collectives/device/functions.cu.cc",
+        "src/collectives/device/onerank_reduce.cu.cc",
         ":device_srcs",
     ] + glob([
         # Required for header inclusion checking, see below for details.
@@ -69,12 +70,23 @@ cuda_rdc_library(
     ],
 )
 
-# Primary NCCL target.
-#
-# This needs to be cuda_library instead of cc_library so that clang uses the
-# correct name for kernel host stubs (function pointers to initialize ncclKerns
-# in enqueue.cc) after https://reviews.llvm.org/D68578.
-cuda_library(
+cc_library(
+    name = "net",
+    srcs = [
+        "src/transport/coll_net.cc",
+        "src/transport/net.cc",
+    ],
+    linkopts = select({
+        "@org_tensorflow//tensorflow:macos": [],
+        "//conditions:default": ["-lrt"],
+    }),
+    deps = [
+        ":include_hdrs",
+        ":src_hdrs",
+    ],
+)
+
+cc_library(
     name = "nccl",
     srcs = glob(
         include = [
@@ -83,7 +95,11 @@ cuda_library(
             "src/graph/*.h",
         ],
         # Exclude device-library code.
-        exclude = ["src/collectives/device/**"],
+        exclude = [
+            "src/collectives/device/**",
+            "src/transport/coll_net.cc",
+            "src/transport/net.cc",
+        ],
     ) + [
         # Required for header inclusion checking (see
         # http://docs.bazel.build/versions/master/be/c-cpp.html#hdrs).
@@ -103,6 +119,7 @@ cuda_library(
     deps = [
         ":device",
         ":include_hdrs",
+        ":net",
         ":src_hdrs",
     ],
 )

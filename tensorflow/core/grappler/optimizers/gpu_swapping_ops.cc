@@ -34,7 +34,7 @@ REGISTER_OP("_CopyFromGpuToHost")
       if (handle_data != nullptr) {
         c->set_output_handle_shapes_and_types(0, *handle_data);
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc("Copies the input tensor from gpu to the host.");
 
@@ -50,7 +50,7 @@ REGISTER_OP("_CopyFromHostToGpu")
       if (handle_data != nullptr) {
         c->set_output_handle_shapes_and_types(0, *handle_data);
       }
-      return Status::OK();
+      return OkStatus();
     })
     .Doc("Copies the input tensor from the host to the GPU.");
 

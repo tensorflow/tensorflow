@@ -103,11 +103,14 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
     }
 
     uint64_t alg_value = ((*alg_constant.value_begin<APInt>()).getZExtValue());
-    tensorflow::Algorithm alg;
+    tensorflow::ConcreteRngAlgorithm alg;
     if (tensorflow::RNG_ALG_PHILOX == alg_value) {
-      alg = tensorflow::RNG_ALG_PHILOX;
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_PHILOX;
     } else if (tensorflow::RNG_ALG_THREEFRY == alg_value) {
-      alg = tensorflow::RNG_ALG_THREEFRY;
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_THREEFRY;
+    } else if (tensorflow::RNG_ALG_AUTO_SELECT == alg_value) {
+      // For AUTO_SELECT, we'll manage the counter as if it's for Philox.
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_PHILOX;
     } else {
       return rewriter.notifyMatchFailure(op, "unsupported alg");
     }

@@ -104,7 +104,7 @@ GraphView::GraphView(const GraphDef* graph, Status* status)
       return;
     }
   }
-  *status = Status::OK();
+  *status = OkStatus();
 }
 
 bool GraphView::AddUniqueNodeInternal(const NodeDef* node) {
@@ -165,7 +165,7 @@ Status GraphView::CheckAndAddFaninsInternal(NodeView* node_view) {
       node_view->fanins_set_.emplace(fanin_node_view.node(), fanin_id.index());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 MutableFaninView::MutableFaninView(MutableNodeView* node_view, int index)
@@ -257,7 +257,7 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, Status* status) {
   mutation_node.regular_fanins = std::move(regular_fanins);
   mutation_node.num_regular_fanins = mutation_node.regular_fanins.size();
   mutation_node.controlling_fanins = std::move(controlling_fanins);
-  *status = Status::OK();
+  *status = OkStatus();
   return MutationNewNode(this, mutation_counter_, new_nodes_.size() - 1);
 }
 
@@ -484,7 +484,7 @@ MutableGraphView::MutableGraphView(GraphDef* graph, Status* status)
   }
   AddFaninsInternal(&fanins);
   mutation_.ResetInternal();
-  *status = Status::OK();
+  *status = OkStatus();
 }
 
 Mutation* MutableGraphView::GetMutationBuilder() { return &mutation_; }
@@ -534,7 +534,7 @@ Status MutableGraphView::CheckFaninsInternal(
     }
     fanins->push_back(std::move(node_fanins));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MutableGraphView::AddFaninsInternal(
@@ -686,7 +686,7 @@ Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
@@ -764,7 +764,7 @@ Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableGraphView::CheckNodeNamesAndFanins(
@@ -801,7 +801,7 @@ Status MutableGraphView::CheckNodeNamesAndFanins(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableGraphView::CheckKernelRegisteredForNodes() {
@@ -849,7 +849,7 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
       LOG(WARNING) << s.error_message();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -1617,7 +1617,7 @@ Status MutableGraphView::SortTopologically(
   // Permute graph NodeDefs.
   PermuteNodesInPlace(graph_, &order, /*invert_permutation=*/false);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 inline Status MutableGraphView::ValidateInternal(
@@ -1637,7 +1637,7 @@ inline Status MutableGraphView::ValidateInternal(
   // Check if nodes after mutation have kernels registered.
   TF_RETURN_IF_ERROR(CheckKernelRegisteredForNodes());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MutableGraphView::ApplyMutationInternal() {
@@ -1701,7 +1701,7 @@ Status MutableGraphView::ApplyMutationInternal() {
 
   mutation_.mutation_counter_++;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace utils

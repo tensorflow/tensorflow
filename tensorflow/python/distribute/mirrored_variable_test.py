@@ -14,6 +14,7 @@
 # ==============================================================================
 """Test MirroredVariable in MirroredStrategy and MultiWorkerMirroredStrategy."""
 
+from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_utils
@@ -39,7 +40,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import util as tracking_util
 
 
 def _replica_id():

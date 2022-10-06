@@ -28,18 +28,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
 
 namespace xla {
 
 enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 
 // Attempts to match instruction to one of the possible cases for ReductionKind.
-absl::optional<ReductionKind> MatchReductionInstruction(
+std::optional<ReductionKind> MatchReductionInstruction(
     const HloInstruction* hlo);
 
 // Attempts to match computation to one of the possible cases in ReductionKind.
-absl::optional<ReductionKind> MatchReductionComputation(
+std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
 // Figures out which IDs are participating in the collective subgroup.
@@ -47,7 +47,7 @@ absl::optional<ReductionKind> MatchReductionComputation(
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
 // groups cannot be empty, so `total_participant_count` is an optional.
 StatusOr<std::vector<int>> GetParticipatingIDs(
-    int current_id, absl::optional<int> total_participant_count,
+    int current_id, std::optional<int> total_participant_count,
     absl::Span<const ReplicaGroup> groups);
 
 // There are broadly 4 modes that collective communication ops use to describe
@@ -96,7 +96,7 @@ absl::string_view CollectiveOpGroupModeToString(
 // Returns the group formation mode implied by (a) whether the operation has
 // channel_id and (b) if it has use_global_device_ids and if yes, its value.
 StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
-    bool has_channel_id, absl::optional<bool> use_global_device_ids);
+    bool has_channel_id, std::optional<bool> use_global_device_ids);
 
 // Figures out subgroups of participating devices from given replica_groups and
 // group_mode.
@@ -125,6 +125,13 @@ StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 // Returns true if the two replica group are orthogonal.
 bool ReplicaGroupsOrthogonal(absl::Span<const ReplicaGroup> first,
                              absl::Span<const ReplicaGroup> second);
+
+// A custom call target that can be used to create a nop that can legally
+// replace a collective op.
+constexpr char kNopCustomCallTarget[] = "AllocateBuffer";
+
+// Returns true if instruction is a collective op or a collective fusion.
+bool IsCollective(const HloInstruction* instruction);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -205,8 +212,7 @@ struct RendezvousKey {
 };
 
 template <typename DescFn>
-void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
-                       const DescFn& desc_fn) {
+void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
   VLOG(3) << "Begin: " << desc_fn();
   const std::chrono::milliseconds timeout(5000);
   bool ok = counter->WaitFor(timeout);
@@ -310,7 +316,7 @@ class Rendezvous {
     // An alternative way of accomplishing this goal would be to implement
     // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
     // erase() is deceptively complex to implement correctly.
-    std::shared_ptr<tensorflow::BlockingCounter> blocking_counter = p.second;
+    std::shared_ptr<tsl::BlockingCounter> blocking_counter = p.second;
     rendezvous.reset();
     blocking_counter->DecrementCount();
     xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
@@ -350,7 +356,7 @@ class Rendezvous {
   //  - a BlockingCounter initialized to the number of participants, so that
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
+  StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
   SubmitParticipant(const I& participant) {
     {
       absl::MutexLock lock(&mu_);
@@ -383,13 +389,11 @@ class Rendezvous {
 
   const RendezvousKey key_;
 
-  tensorflow::BlockingCounter all_participants_present_{
-      key_.num_local_participants};
+  tsl::BlockingCounter all_participants_present_{key_.num_local_participants};
 
-  // tensorflow::BlockingCounter returned by SubmitParticipant.
-  std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{
-      std::make_shared<tensorflow::BlockingCounter>(
-          key_.num_local_participants)};
+  // tsl::BlockingCounter returned by SubmitParticipant.
+  std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
+      std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
 }  // end namespace xla

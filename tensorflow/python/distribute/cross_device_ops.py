@@ -113,11 +113,7 @@ def reduce_non_distributed_value(reduce_op,
 
 def _make_tensor_into_per_replica(input_tensor):
   """Converts a single tensor into a PerReplica object."""
-  if isinstance(input_tensor, (tuple, list)):
-    raise ValueError("Cannot convert `input_tensor` to a `PerReplica` object, "
-                     "got %r but expected a object that is not a tuple or list."
-                     % (input_tensor,))
-  if isinstance(input_tensor, value_lib.PerReplica):
+  if isinstance(input_tensor, value_lib.DistributedValues):
     return input_tensor
 
   # If input is not a Tensor, convert it to a Tensor first.
@@ -303,8 +299,8 @@ class CrossDeviceOps(object):
     """
     if options is None:
       options = collective_util.Options()
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -352,8 +348,7 @@ class CrossDeviceOps(object):
     if options is None:
       options = collective_util.Options()
 
-    if not isinstance(per_replica_value, value_lib.DistributedValues):
-      per_replica_value = _make_tensor_into_per_replica(per_replica_value)
+    per_replica_value = _make_tensor_into_per_replica(per_replica_value)
 
     validate_destinations(destinations)
 
@@ -941,10 +936,11 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
 
   def _gather_implementation(self, per_replica_value, destinations, axis,
                              options):
-    logging.warning("gather/all_gather with NCCL or HierarchicalCopy is not "
-                    "supported. Falling back to gather on one device and "
-                    "then broadcast. We're working on a more efficient "
-                    "implementation.")
+    logging.log_first_n(
+        logging.WARN,
+        "gather/all_gather with NCCL or HierarchicalCopy is not supported. "
+        "Falling back to gather on one device and then broadcast. We're working"
+        " on a more efficient implementation.", 3)
     return ReductionToOneDevice()._gather(per_replica_value, destinations, axis,  # pylint: disable=protected-access
                                           options)
 
@@ -1106,8 +1102,6 @@ class CollectiveAllReduce(CrossDeviceOps):
       if not launcher.can_order_nccl():
         self._limited_nccl = True
 
-    self._pool = multiprocessing.pool.ThreadPool(len(self._devices))
-
     super(CollectiveAllReduce, self).__init__()
     self._canonicalize_devices = canonicalize_devices
 
@@ -1207,7 +1201,9 @@ class CollectiveAllReduce(CrossDeviceOps):
                                   device_id, options)
 
       with self._lock:
-        outputs_by_device = self._pool.map(thread_fn, list(range(num_devices)))
+        pool = multiprocessing.pool.ThreadPool(len(self._devices))
+        outputs_by_device = pool.map(thread_fn, list(range(num_devices)))
+        pool.close()
     else:
       outputs_by_device = []
       with self._lock:

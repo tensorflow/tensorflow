@@ -21,7 +21,6 @@ import functools
 import inspect
 
 import numpy as np
-import six
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
@@ -405,7 +404,7 @@ def _tf_py_func_print(objects, kwargs):
     # py_func. This causes the print to add a "b'" wrapper to the output,
     # which is probably never what you want.
     vals = tuple(v.decode('utf-8') if isinstance(v, bytes) else v for v in vals)
-    six.print_(*vals, **override_kwargs)
+    print(*vals, **override_kwargs)
 
   return py_func.wrap_py_func(
       print_wrapper, None, objects, use_dummy_return=True)

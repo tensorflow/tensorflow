@@ -46,19 +46,26 @@ namespace xla {
 // tuple trivially loop invariant.  WhileLoopSimplifier will later get rid of
 // `v`.
 //
-// TODO(b/79121449):  We should also sink broadcasts of constants.
 class WhileLoopConstantSinking : public HloModulePass {
  public:
+  explicit WhileLoopConstantSinking(bool sink_broadcast_of_constants = false)
+      : sink_broadcast_of_constants_(sink_broadcast_of_constants) {}
+
   ~WhileLoopConstantSinking() override = default;
 
   absl::string_view name() const override {
     return "while-loop-constant-sinking";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   StatusOr<bool> TrySinkingConstantsIntoWhileLoop(HloInstruction* while_instr);
+
+  const bool sink_broadcast_of_constants_;
 };
 }  // namespace xla
 

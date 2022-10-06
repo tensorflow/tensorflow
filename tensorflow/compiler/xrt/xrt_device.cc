@@ -57,7 +57,7 @@ class ResourceMgrArena {
   const XlaDevice::Metadata* metadata;
   TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
   *rm = ResourceMgrArena::Get()->GetResourceMgr(metadata->platform()->Name());
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ xla::StatusOr<RefPtr<XRTCompilationCache>>
@@ -79,7 +79,7 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
   }
   scoped_ref->Acquire(metadata->client(), device_ordinal,
                       metadata->platform()->Name(), ctx);
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTGenericDeviceAccessor::InitScopedRef(
@@ -88,7 +88,7 @@ XRTGenericDeviceAccessor::GetOrCreateCompilationCache(
   TF_RETURN_IF_ERROR(XlaDevice::GetMetadata(ctx, &metadata));
   scoped_ref->Acquire(metadata->client(), metadata->device_ordinal(),
                       metadata->platform()->Name(), ctx);
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */ tensorflow::mutex

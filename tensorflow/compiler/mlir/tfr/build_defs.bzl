@@ -1,7 +1,7 @@
 """BUILD extension for TF composition project."""
 
 load("//tensorflow:tensorflow.bzl", "py_binary", "tf_custom_op_library", "tf_gen_op_wrapper_py")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
 def gen_op_libraries(
         name,
@@ -144,7 +144,6 @@ def gen_op_bindings(name):
         name = name + "_ops",
         dso = [":" + name + "_ops.so"],
         kernels = [":" + name + "_ops_cc"],
-        visibility = ["//visibility:public"],
         deps = [
             ":gen_" + name + "_ops",
         ],

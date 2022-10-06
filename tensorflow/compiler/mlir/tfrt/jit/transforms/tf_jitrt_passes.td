@@ -118,6 +118,26 @@ def TileReduction : Pass<"tf-jitrt-tile-reduction", "mlir::func::FuncOp"> {
   ];
 }
 
+def TileMatmul : Pass<"tf-jitrt-tile-matmul", "mlir::func::FuncOp"> {
+  let summary = "Tile and fuse linalg.matmul on tensors.";
+  let constructor = "tensorflow::CreateTileMatmulPass()";
+  let dependentDialects = [
+    "mlir::gml_st::GmlStDialect",
+    "mlir::linalg::LinalgDialect",
+    "mlir::memref::MemRefDialect",
+    "mlir::scf::SCFDialect"
+  ];
+
+  let description = [{
+    Performs tiling for vectorization and fusion of linalg.matmul.
+  }];
+
+  let options = [
+    ListOption<"matmul_tile_sizes", "matmul-tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.matmul`.">,
+  ];
+}
+
 def FuseFillIntoTiledReduction
     : Pass<"tf-jitrt-fuse-fill-into-tiled-reduction", "mlir::func::FuncOp"> {
   let summary = "Fuse `linalg.fill` into `linalg.tiled_loop` with a reduction.";
@@ -208,12 +228,6 @@ def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
                "Alternatively use 'tier1', ..., 'all' to allow clustering for "
                "all operations included in the given clustering tier.">
   ];
-}
-
-def VectorizeTiledOps : Pass<"tf-jitrt-vectorize-tiled-ops", "mlir::func::FuncOp"> {
-  let summary = "Vectorize tiled Linalg ops inside `tiled_loop`";
-  let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
 }
 
 def TileTranspose : Pass<"tf-jitrt-tile-transpose", "mlir::func::FuncOp"> {

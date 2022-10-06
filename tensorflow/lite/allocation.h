@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace tflite {
 
-// A memory allocation handle. This could be a mmap or shared memory.
+/// A memory allocation handle. This could be a mmap or shared memory.
 class Allocation {
  public:
   virtual ~Allocation() {}
@@ -38,13 +38,13 @@ class Allocation {
     kMemory,
   };
 
-  // Base pointer of this allocation
+  /// Base pointer of this allocation
   virtual const void* base() const = 0;
-  // Size in bytes of the allocation
+  /// Size in bytes of the allocation
   virtual size_t bytes() const = 0;
-  // Whether the allocation is valid
+  /// Whether the allocation is valid
   virtual bool valid() const = 0;
-  // Return the type of the Allocation.
+  /// Return the type of the Allocation.
   Type type() const { return type_; }
 
  protected:
@@ -56,26 +56,26 @@ class Allocation {
   const Type type_;
 };
 
-// Note that not all platforms support MMAP-based allocation.
-// Use `IsSupported()` to check.
+/// Note that not all platforms support MMAP-based allocation.
+/// Use `IsSupported()` to check.
 class MMAPAllocation : public Allocation {
  public:
-  // Loads and maps the provided file to a memory region.
+  /// Loads and maps the provided file to a memory region.
   MMAPAllocation(const char* filename, ErrorReporter* error_reporter);
 
-  // Maps the provided file descriptor to a memory region.
-  // Note: The provided file descriptor will be dup'ed for usage; the caller
-  // retains ownership of the provided descriptor and should close accordingly.
+  /// Maps the provided file descriptor to a memory region.
+  /// Note: The provided file descriptor will be dup'ed for usage; the caller
+  /// retains ownership of the provided descriptor and should close accordingly.
   MMAPAllocation(int fd, ErrorReporter* error_reporter);
 
-  // Maps the provided file descriptor, with the given offset and length (both
-  // in bytes), to a memory region.
-  // Note: The provided file descriptor will be dup'ed for usage; the caller
-  // retains ownership of the provided descriptor and should close accordingly.
+  /// Maps the provided file descriptor, with the given offset and length (both
+  /// in bytes), to a memory region.
+  /// Note: The provided file descriptor will be dup'ed for usage; the caller
+  /// retains ownership of the provided descriptor and should close accordingly.
   MMAPAllocation(int fd, size_t offset, size_t length,
                  ErrorReporter* error_reporter);
 
-  virtual ~MMAPAllocation();
+  ~MMAPAllocation() override;
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
@@ -104,9 +104,9 @@ class MMAPAllocation : public Allocation {
 
 class FileCopyAllocation : public Allocation {
  public:
-  // Loads the provided file into a heap memory region.
+  /// Loads the provided file into a heap memory region.
   FileCopyAllocation(const char* filename, ErrorReporter* error_reporter);
-  virtual ~FileCopyAllocation();
+  ~FileCopyAllocation() override;
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;
@@ -118,12 +118,13 @@ class FileCopyAllocation : public Allocation {
 
 class MemoryAllocation : public Allocation {
  public:
-  // Provides a (read-only) view of the provided buffer region as an allocation.
-  // Note: The caller retains ownership of `ptr`, and must ensure it remains
-  // valid for the lifetime of the class instance.
+  /// Provides a (read-only) view of the provided buffer region as an
+  /// allocation.
+  /// Note: The caller retains ownership of `ptr`, and must ensure it remains
+  /// valid for the lifetime of the class instance.
   MemoryAllocation(const void* ptr, size_t num_bytes,
                    ErrorReporter* error_reporter);
-  virtual ~MemoryAllocation();
+  ~MemoryAllocation() override;
   const void* base() const override;
   size_t bytes() const override;
   bool valid() const override;

@@ -223,7 +223,7 @@ xla::XlaOp BroadcastSpatialDimensions(xla::XlaBuilder* builder,
   if (!broadcast_shape_or_status.ok()) {
     return builder->ReportError(broadcast_shape_or_status.status());
   }
-  xla::Shape broadcast_shape = broadcast_shape_or_status.ValueOrDie();
+  xla::Shape broadcast_shape = broadcast_shape_or_status.value();
   for (int32_t i = 0; i < in_size.size(); ++i) {
     if (in_size[i] == 1 && out_size[i] > 1) {
       broadcast_shape.set_dimensions(spatial_dimensions_offset + i,
@@ -301,7 +301,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(
     num_extended[1] = upper_padding[1] / (dims.kernel_size[1]);
 
     const int64_t batch_dim_size =
-        builder->GetShape(input).ValueOrDie().dimensions(0);
+        builder->GetShape(input).value().dimensions(0);
     if (num_extended[0] > 0) {
       auto slice = xla::Slice(
           input_data, {0, in_size[0] - 1, 0, 0},
@@ -512,8 +512,7 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners_,
     input = xla::ConvertElementType(input, xla::F32);
     input_type = xla::F32;
   }
-  DataType output_dtype =
-      EncodePrimitiveTypeAsDataType(input_type).ValueOrDie();
+  DataType output_dtype = EncodePrimitiveTypeAsDataType(input_type).value();
 
   xla::XlaOp scalar_one_op =
       xla::ConvertElementType(xla::ConstantR0(b, 1), input_type);
@@ -708,14 +707,21 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
     : XlaOpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
-  OP_REQUIRES(
-      ctx, align_corners_ == true,
-      errors::Unimplemented("ResizeBilinearGrad with align_corners=False is "
-                            "not yet implemented"));
-  OP_REQUIRES(ctx, half_pixel_centers_ == false,
-              errors::Unimplemented(
-                  "ResizeBilinearGrad with half_pixel_centers=True is "
-                  "not yet implemented"));
+
+  if ((!align_corners_ || half_pixel_centers_)) {
+    if (ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT) {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      // Use light outside compilation on GPU only.
+      fallback_tf_kernel_.emplace(ctx);
+      return;
+#endif
+    }
+
+    OP_REQUIRES(ctx, false,
+                errors::Unimplemented(
+                    "ResizeBilinearGrad with align_corners=False or "
+                    "half_pixel_centers=True is not yet implemented"));
+  }
 
   DataType output_dtype;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
@@ -723,8 +729,14 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
 }
 
 void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
-  xla::XlaBuilder* b = ctx->builder();
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  if (fallback_tf_kernel_.has_value()) {
+    fallback_tf_kernel_->Compile(ctx);
+    return;
+  }
+#endif
 
+  xla::XlaBuilder* b = ctx->builder();
   TensorShape input_shape = ctx->InputShape(1);
   OP_REQUIRES(ctx, input_shape.dims() == 4,
               errors::InvalidArgument("input must be 4-dimensional",

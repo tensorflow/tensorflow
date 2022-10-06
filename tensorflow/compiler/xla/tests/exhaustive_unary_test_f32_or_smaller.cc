@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <fenv.h>  // NOLINT
+
 #include <cmath>
 #include <limits>
 
@@ -658,6 +660,14 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Round, { Run(Round, std::round); })
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(RoundNearestEven, {
+  ErrorSpecGen error_spec_gen = +[](NativeT) { return ErrorSpec{0.0, 0.0}; };
+  int curr_direction = fegetround();
+  fesetround(FE_TONEAREST);
+  Run(RoundNearestEven, std::nearbyint, error_spec_gen);
+  fesetround(curr_direction);
+})
 
 INSTANTIATE_TEST_SUITE_P(F32, ExhaustiveF32UnaryTest,
                          ::testing::ValuesIn(CreateExhaustiveF32Ranges()));

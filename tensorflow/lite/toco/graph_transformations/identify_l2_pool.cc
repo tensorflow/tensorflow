@@ -30,7 +30,7 @@ namespace toco {
   const auto sqrt_it = model->operators.begin() + op_index;
   const auto* sqrt_op = sqrt_it->get();
   if (sqrt_op->type != OperatorType::kSqrt) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(sqrt_op->inputs.size(), 1);
@@ -44,7 +44,7 @@ namespace toco {
     AddMessageF(
         "Giving up trying to identify L2Pool subgraph: "
         "expected AveragePool op, but Sqrt op has no preceding op");
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (prev_to_sqrt_op->type != OperatorType::kAveragePool) {
@@ -52,7 +52,7 @@ namespace toco {
         "Giving up trying to identify L2Pool subgraph: "
         "expected AveragePool op, got %s",
         LogName(*prev_to_sqrt_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   avpool_op = static_cast<const AveragePoolOperator*>(prev_to_sqrt_op);
@@ -65,7 +65,7 @@ namespace toco {
         "Giving up trying to identify L2Pool subgraph: "
         "expected Square op, got %s",
         LogName(*square_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Create and emplace L2Pool node.
@@ -91,7 +91,7 @@ namespace toco {
   DeleteOpAndArrays(model, sqrt_op);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

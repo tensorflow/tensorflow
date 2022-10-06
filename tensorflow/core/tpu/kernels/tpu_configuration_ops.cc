@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -41,8 +43,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace {
@@ -54,7 +54,7 @@ Status GetTpuMeshStateInterface(const ResourceMgr* rmgr,
     return errors::FailedPrecondition(
         "GetTpuMeshStateInterface: The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
@@ -64,11 +64,11 @@ Status CreateTpuFingerprintLookup(ResourceMgr* rmgr) {
       rmgr->default_container(), tpu::kFingerprintLookupResourceName,
       &fingerprint_lookup, [&](tpu::TpuFingerprintLookup** new_lookup) {
         *new_lookup = tpu::TpuFingerprintLookup::Create();
-        return Status::OK();
+        return OkStatus();
       }));
 
   core::ScopedUnref fingerprint_lookup_ref(fingerprint_lookup);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Attempt to delete resource_name from resource_manager's default_container.
@@ -82,11 +82,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -99,7 +99,7 @@ Status CreateTpuCompilationCache(
       rmgr->default_container(), tpu::kCompilationCacheResourceName,
       compilation_cache, [&](tpu::TpuCompilationCacheInterface** new_cache) {
         *new_cache = tpu::GetCompilationCacheCreateFn()();
-        return Status::OK();
+        return OkStatus();
       });
 }
 
@@ -416,11 +416,11 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
       if (device_parsed_name.type == "TPU" &&
           DeviceNameUtils::IsSameAddressSpace(tpu_system_name,
                                               device_parsed_name)) {
-        const DeviceBase::AcceleratorDeviceInfo* gpu_device_info =
+        const DeviceBase::AcceleratorDeviceInfo* accelerator_device_info =
             device->tensorflow_accelerator_device_info();
-        if (gpu_device_info && gpu_device_info->stream) {
+        if (accelerator_device_info && accelerator_device_info->stream) {
           int device_ordinal =
-              gpu_device_info->stream->parent()->device_ordinal();
+              accelerator_device_info->stream->parent()->device_ordinal();
           if (device_ordinal >= device_id_output_size) {
             OP_REQUIRES_OK(ctx,
                            errors::Internal(absl::StrCat(

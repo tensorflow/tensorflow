@@ -403,7 +403,7 @@ class DummyDeviceContext : public DeviceContext {
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
                               StatusCallback done) const override {
-    done(Status::OK());
+    done(OkStatus());
   }
 
  private:

@@ -140,6 +140,12 @@ tf_proto {
           label: LABEL_REPEATED
           type: TYPE_INT32
         }
+        field {
+          name: "device_ordinal"
+          number: 3
+          label: LABEL_REPEATED
+          type: TYPE_INT32
+        }
       }
     }
   }

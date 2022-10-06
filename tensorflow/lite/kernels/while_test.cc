@@ -18,8 +18,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 
 namespace tflite {
 
@@ -39,7 +40,7 @@ class WhileTest : public ControlFlowOpTest {};
 TEST_F(WhileTest, TestTriangularNumberSequence) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -68,7 +69,7 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
 TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
   const std::vector<int> expected = {1, 3, 6, 10, 15, 21, 28};
   for (int i = 0; i < expected.size(); ++i) {
-    interpreter_.reset(new Interpreter);
+    interpreter_ = std::make_unique<Interpreter>();
     AddSubgraphs(2);
     builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), i);
     builder_->BuildAccumulateLoopBodySubgraph(interpreter_->subgraph(2));
@@ -77,19 +78,30 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
     interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
     // Use 4MB inputs to test shallow copy.
     interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1000000});
+    // Apply DynamicAllocationForLargeTensors option to enable shallow copy.
+    InterpreterOptions options;
+    options.OptimizeMemoryForLargeTensors(1000000);
+    ASSERT_EQ(interpreter_->ApplyOptions(&options), kTfLiteOk);
+    const size_t initial_mem_usage =
+        profiling::memory::GetMemoryUsage().mem_footprint_kb;
     ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+    // Memory usage shouldn't exceed 9MB (2 x inputs + margin).
+    ASSERT_LE(profiling::memory::GetMemoryUsage().mem_footprint_kb -
+                  initial_mem_usage,
+              9000);
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
     const std::vector<int> input_vector(1000000, 1);
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]),
                   input_vector);
     auto body_subgraph = interpreter_->subgraph(2);
 
+    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
     // While BODY inputs are dynamic tensors with shallow copy.
     TfLiteTensor* subgraph_input2 =
         body_subgraph->tensor(body_subgraph->inputs()[1]);
     ASSERT_EQ(subgraph_input2->allocation_type, kTfLiteDynamic);
 
-    ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
     TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
     CheckIntTensor(output1, {1}, {i + 1});
     TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
@@ -99,7 +111,7 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
 }
 
 TEST_F(WhileTest, TestPadLoop) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
@@ -125,7 +137,7 @@ TEST_F(WhileTest, TestPadLoop) {
 }
 
 TEST_F(WhileTest, TestPadLoopWithShallowCopy) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraph(interpreter_->subgraph(1), 3);
   builder_->BuildPadLoopBodySubgraph(interpreter_->subgraph(2), {1, 2});
@@ -158,7 +170,7 @@ TEST_F(WhileTest, TestPadLoopWithShallowCopy) {
 }
 
 TEST_F(WhileTest, TestWhileLoopWithDynamicTensor) {
-  interpreter_.reset(new Interpreter);
+  interpreter_ = std::make_unique<Interpreter>();
   AddSubgraphs(2);
   builder_->BuildLessEqualCondSubgraphWithDynamicTensor(
       interpreter_->subgraph(1), 3);

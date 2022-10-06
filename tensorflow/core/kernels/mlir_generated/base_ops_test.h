@@ -283,6 +283,17 @@ template <typename T,
           std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
                                            std::complex<double>>::value,
                            bool> = true>
+absl::InlinedVector<T, 10> DefaultInputGreaterOrEqualToZero() {
+  auto real = test::DefaultInputGreaterOrEqualToZero<typename T::value_type>();
+  auto imag = real;
+  std::reverse(imag.begin(), imag.end());
+  return test::ComplexInputFromValues<T>(real, imag);
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
 absl::InlinedVector<T, 10> NearZeroInfAndNanInput() {
   using ElementType = typename T::value_type;
   auto input = test::NearZeroInfAndNanInput<ElementType>();

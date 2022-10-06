@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -78,7 +78,7 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
                           target_element_generator(array_index));
       target_arrays_vec[0].EmitWriteArrayElement(array_index, target_element,
                                                  b);
-      return Status::OK();
+      return OkStatus();
     };
   }
 
@@ -95,7 +95,7 @@ BodyEmitter MakeBodyEmitter(const ElementGenerator& target_element_generator,
       target_arrays_vec[i].EmitWriteArrayElement(
           array_index, b->CreateExtractValue(target_element, i), b);
     }
-    return Status::OK();
+    return OkStatus();
   };
 }
 
@@ -187,7 +187,7 @@ Status LoopEmitter::EmitLoop(absl::string_view loop_name,
   if (exit_bb_ != nullptr) {
     b_->SetInsertPoint(exit_bb_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace llvm_ir

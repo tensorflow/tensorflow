@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -37,8 +37,8 @@ class RoundTripTransferTest : public ClientLibraryTestBase {
  protected:
   void RoundTripTest(const Literal& original) {
     std::unique_ptr<GlobalData> data =
-        client_->TransferToServer(original).ConsumeValueOrDie();
-    Literal result = client_->Transfer(*data).ConsumeValueOrDie();
+        client_->TransferToServer(original).value();
+    Literal result = client_->Transfer(*data).value();
     EXPECT_TRUE(LiteralTestUtil::Equal(original, result));
   }
 };

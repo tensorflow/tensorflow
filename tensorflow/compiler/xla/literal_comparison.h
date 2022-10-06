@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace literal_comparison {
@@ -76,7 +76,7 @@ using MiscompareCallback = std::function<void(
 // If miscompare_callback is nullptr, Near will return an error on the first
 // detected mismatch.
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, absl::optional<bool> detailed_message,
+            const ErrorSpec& error, std::optional<bool> detailed_message,
             const MiscompareCallback& miscompare_callback);
 
 // Calling ToString on a literal with over 100 million elements takes around

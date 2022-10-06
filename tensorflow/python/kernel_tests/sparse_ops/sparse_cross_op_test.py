@@ -873,6 +873,14 @@ class SparseCrossV2OpTest(BaseSparseCrossOpTest):
     with self.cached_session():
       self._assert_sparse_tensor_empty(self.evaluate(out))
 
+  def testNonScalarInput(self):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                'Input separator should be a scalar.'):
+      self.evaluate(sparse_ops.sparse_cross(
+          inputs=[],
+          name='a',
+          separator=constant_op.constant(['a', 'b'], dtype=dtypes.string)))
+
 
 class SparseCrossHashedOpTest(BaseSparseCrossOpTest):
 

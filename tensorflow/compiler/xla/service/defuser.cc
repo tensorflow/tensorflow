@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -80,7 +80,7 @@ Status Defuse(HloInstruction* fusion_instruction) {
   TF_RETURN_IF_ERROR(fusion_instruction->ReplaceAllUsesWith(
       defused_instructions.at(fusion_instruction->fused_expression_root())));
 
-  HloModule* module = fusion_instruction->parent()->parent();
+  HloModule* module = fusion_instruction->GetModule();
   TF_RETURN_IF_ERROR(
       fusion_instruction->parent()->RemoveInstruction(fusion_instruction));
   return module->RemoveEmbeddedComputation(fused_computation);
@@ -88,7 +88,9 @@ Status Defuse(HloInstruction* fusion_instruction) {
 
 }  // namespace
 
-StatusOr<bool> Defuser::Run(HloModule* module) {
+StatusOr<bool> Defuser::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(1) << "Defusing module " << module->name();
   XLA_VLOG_LINES(2, "Before defusion:\n" + module->ToString());
 
@@ -103,7 +105,7 @@ StatusOr<bool> Defuser::Run(HloModule* module) {
           TF_RETURN_IF_ERROR(Defuse(fusion_instruction));
           changed = true;
         }
-        return Status::OK();
+        return OkStatus();
       },
       /*visit_unreachable_nodes=*/true));
 

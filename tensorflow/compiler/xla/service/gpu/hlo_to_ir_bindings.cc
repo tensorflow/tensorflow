@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -103,11 +103,13 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr), b_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr),
+        llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr), b_);
+      EmitGetTupleElement(gte->operand(0), base_ptr),
+      llvm_ir::ShapeToIrType(gte->operand(0)->shape(), module_), b_);
 }
 
 // Returns true if `value` has a name that should not be changed.

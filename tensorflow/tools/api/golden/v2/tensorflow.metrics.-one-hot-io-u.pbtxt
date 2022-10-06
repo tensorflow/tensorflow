@@ -6,8 +6,8 @@ tf_class {
   is_instance: "<class \'keras.metrics.base_metric.Metric\'>"
   is_instance: "<class \'keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.autotrackable.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -132,7 +132,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'num_classes\', \'target_class_ids\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'num_classes\', \'target_class_ids\', \'name\', \'dtype\', \'ignore_class\', \'sparse_y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'False\', \'-1\'], "
   }
   member_method {
     name: "add_loss"

@@ -25,7 +25,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.grpc.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
+
+namespace tensorflow {
+class CoordinationServiceAgent;
+}  // namespace tensorflow
 
 namespace xla {
 
@@ -36,7 +40,7 @@ class DistributedRuntimeClient {
     int32_t node_id = -1;
 
     // Environment used for starting threads.
-    tensorflow::Env* env = tensorflow::Env::Default();
+    tsl::Env* env = tsl::Env::Default();
 
     // RPC timeout used for RPC that don't have their own timeouts.
     absl::Duration rpc_timeout = absl::Seconds(120);
@@ -112,12 +116,23 @@ class DistributedRuntimeClient {
       std::string key, absl::Duration timeout) = 0;
 
   virtual xla::Status KeyValueSet(std::string key, std::string value) = 0;
+
+  // Blocks until all nodes are at the barrier or the barrier times out.
+  // `barrier_id` should be unique across barriers.
+  virtual xla::Status WaitAtBarrier(std::string barrier_id,
+                                    absl::Duration timeout) = 0;
+
+  // Returns pointer to coordination service agent, or InternalError if the
+  // client does not use coordination service.
+  virtual StatusOr<tensorflow::CoordinationServiceAgent*>
+  GetCoordinationServiceAgent() = 0;
 };
 
 // Creates a distributed runtime client.
 std::unique_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
     std::shared_ptr<::grpc::Channel> channel,
-    const DistributedRuntimeClient::Options& options);
+    const DistributedRuntimeClient::Options& options,
+    bool use_coordination_service);
 
 }  // namespace xla
 

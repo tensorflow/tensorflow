@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_UTILS_EVAL_UTILS_H_
-#define TENSORFLOW_CORE_IR_UTILS_EVAL_UTILS_H_
+#ifndef TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_
+#define TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_
 
 #include <memory>
 
@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
 namespace Eigen {
@@ -51,10 +50,6 @@ class SimpleDevice : public tensorflow::DeviceBase {
       tensorflow::AllocatorAttributes attr) override;
 
  private:
-  // The SimpleDevice is supposed to be used for evaluating single operation. To
-  // avoid the overhead of thread creation. Set a small and conservative number
-  // as the default.
-  static constexpr int kThreads = 2;
   std::unique_ptr<tensorflow::thread::ThreadPool> eigen_worker_;
   tensorflow::DeviceBase::CpuWorkerThreads eigen_worker_threads_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
@@ -62,13 +57,13 @@ class SimpleDevice : public tensorflow::DeviceBase {
 
 // Attempts to evaluates an MLIR Operation with the op registered kernel. The op
 // is always executed on the local host CPU irrespective of the device attribute
-// of the given op. The results will be filled in the results vecotr.
+// of the given op. The results will be filled in the results vector.
 LogicalResult EvaluateOperation(tensorflow::DeviceBase* cpu_device,
                                 tensorflow::ResourceMgr* resource_mgr, TFOp op,
                                 ArrayRef<ElementsAttr> operands,
-                                SmallVectorImpl<Attribute>& results);
+                                SmallVectorImpl<TypedAttr>& results);
 }  // namespace util
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_IR_UTILS_EVAL_UTILS_H_
+#endif  // TENSORFLOW_CORE_TRANSFORMS_UTILS_EVAL_UTILS_H_

@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/nvptx_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
+      []() { return std::make_unique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

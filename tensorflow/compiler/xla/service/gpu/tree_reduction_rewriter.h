@@ -84,7 +84,10 @@ class GpuTreeReductionRewriter : public HloModulePass {
     return "gpu-tree-reduction-rewriter";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   se::CudaComputeCapability cuda_compute_capability_;

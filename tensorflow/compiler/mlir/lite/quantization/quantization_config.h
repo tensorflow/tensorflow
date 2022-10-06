@@ -112,6 +112,10 @@ struct QuantizationSpecs {
   std::vector<std::pair<llvm::Optional<double>, llvm::Optional<double>>>
       input_ranges;
 
+  // Whether to disable setting the quantization parameters of the input nodes
+  // using input ranges.
+  bool disable_set_input_nodes_quantization_params = false;
+
   // The default ranges can be used when a tensor doesn't have quantization
   // parameters and couldn't be quantized. Used only for latency tests.
   std::pair<llvm::Optional<double>, llvm::Optional<double>> default_ranges;

@@ -117,6 +117,17 @@ StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
 StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
     mlir::TF::DTensorRecv dtensor_recv, mlir::Type output_type);
 
+// Lowers DTensorRecv Op to either XlaRecvAtHost or XlaRecvFromHost.
+StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
+    const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv,
+    mlir::Type output_type);
+
+// Lowers DTensorRecv Op to a single TF HostRecv op.
+// GPU counterpart to LowerDTensorRecvToXlaOp (TPU).
+StatusOr<mlir::Operation*> LowerDTensorRecvToTFOp(
+    const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv,
+    mlir::Type output_type);
+
 // Lowers DTensorSend Op to either one of XlaSendFromHost op or XlaSendToHost,
 // depending on the src mesh cluster. `send_from_device_zero` should be set if
 // control flow needs to be inserted to gather data onto and only sent from the
@@ -125,14 +136,34 @@ StatusOr<mlir::Operation*> LowerDTensorSendToXlaOp(
     const Layout& send_input_layout, mlir::Value send_input,
     mlir::TF::DTensorSend dtensor_send, bool send_from_device_zero);
 
-// Lowers DTensorSend Op to a TF HostSend op.
+// Lowers DTensorSend Op to a single TF HostSend op.
+// GPU counterpart to LowerDTensorSendToXlaOp (TPU).
+StatusOr<mlir::Operation*> LowerDTensorSendToTFOp(
+    const Layout& send_input_layout, mlir::Value send_input,
+    mlir::TF::DTensorSend dtensor_send);
+
+// Lowers DTensorSend Op to one or more TF HostSend op(s);
+// one for each receiving device, all sends from sender 0.
 StatusOr<mlir::Operation*> LowerDTensorSendFromCPUToTFOp(
     const Layout& send_input_layout, mlir::Value send_input,
     mlir::TF::DTensorSend dtensor_send);
 
-// Lowers DTensorSend Op to a TF HostRecv op.
+// Lowers DTensorRecv Op to one or more TF HostRecv op(s);
+// one for each receiving device, all sends from sender 0.
 StatusOr<mlir::Operation*> LowerDTensorRecvFromCPUToTFOp(
     const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv);
+
+// Half of the lowering process for one-to-one send/recvs, used for GPUs.
+// (Generates a CaseOp with send ops for each device pair.)
+StatusOr<mlir::Operation*> LowerOneToOneDTensorSendToTFHostSend(
+    const Layout& send_layout, const Mesh& recv_mesh,
+    mlir::TF::DTensorSend dtensor_send);
+
+// Half of the lowering process for one-to-one send/recvs, used for GPUs.
+// (Generates a CaseOp with recv ops for each device pair.)
+StatusOr<mlir::Operation*> LowerOneToOneDTensorRecvToTFHostRecv(
+    const Mesh& send_mesh, const Layout& recv_layout,
+    mlir::TF::DTensorRecv dtensor_recv);
 
 }  // namespace dtensor
 }  // namespace tensorflow

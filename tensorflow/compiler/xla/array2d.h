@@ -25,12 +25,10 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
@@ -99,7 +97,7 @@ class Array2D : public Array<T> {
 template <typename NativeT = float>
 std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
                                                       int64_t n1, int64_t n2) {
-  auto array = absl::make_unique<Array2D<NativeT>>(n1, n2);
+  auto array = std::make_unique<Array2D<NativeT>>(n1, n2);
   int64_t count = n1 * n2;
   NativeT step =
       static_cast<NativeT>((count > 1) ? (to - from) / (count - 1) : 0);

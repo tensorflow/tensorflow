@@ -29,9 +29,11 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -42,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -51,7 +52,6 @@ using llvm::SmallVector;
 using mlir::Builder;
 using mlir::DenseStringElementsAttr;
 using mlir::ElementsAttr;
-using mlir::OpaqueElementsAttr;
 using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
@@ -90,17 +90,13 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
                                    input_tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
-  return mlir::DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
@@ -156,11 +152,9 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
     default:
-      // TODO(shpeisman): restructure code to reuse dialect pointer across
-      // calls.
-      auto* dialect = builder->getContext()->getLoadedDialect("tf");
+      // TODO(hinsu): Remove mangling now that there is a special attribute.
       return ElementsAttr(
-          OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor)));
+          mlir::TF::TensorProtoAttr::get(type, MangleTensor(input_tensor)));
   }
 
 #undef CONVERT_FLAT
@@ -309,15 +303,12 @@ void ConvertComplexElementsAttr(const mlir::DenseElementsAttr attr,
   }
 }
 
-// Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
-Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
-                                 TensorProto* output_tensor) {
-  if (attr.isa<OpaqueElementsAttr>()) {
-    auto mangled_tensor = attr.cast<OpaqueElementsAttr>().getValue();
-    absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
-    return mangling_util::DemangleTensor(tensor_view, output_tensor);
-  }
-  return InvalidArgument("Unexpected elements attribute type from MLIR.");
+// Converts an Tensor proto attribute to a TensorFlow tensor proto.
+Status ConvertTensorProtoAttr(const mlir::TF::TensorProtoAttr attr,
+                              TensorProto* output_tensor) {
+  auto mangled_tensor = attr.getValue();
+  absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
+  return mangling_util::DemangleTensor(tensor_view, output_tensor);
 }
 
 template <typename T>
@@ -408,8 +399,8 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   output->set_dtype(output_dtype);
   ConvertToTensorShapeProto(shape, output->mutable_tensor_shape());
 
-  if (attr.isa<OpaqueElementsAttr>())
-    return ConvertOpaqueElementsAttr(attr.cast<OpaqueElementsAttr>(), output);
+  if (auto tensor_attr = attr.dyn_cast<mlir::TF::TensorProtoAttr>())
+    return ConvertTensorProtoAttr(tensor_attr, output);
 
   auto dense_attr = attr.dyn_cast<mlir::DenseElementsAttr>();
   if (!dense_attr) return errors::InvalidArgument("Unsupported elements attr");
@@ -484,7 +475,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return errors::Unimplemented(absl::StrCat("Unimplemented data type ",
                                                 DataTypeString(output_dtype)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
@@ -493,17 +484,7 @@ Status ConvertToTensor(const mlir::ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return Status::OK();
-}
-
-StatusOr<mlir::ElementsAttr> DecodeOpaqueTensor(
-    const mlir::OpaqueElementsAttr input_attr, mlir::Builder builder) {
-  // TODO(antiagainst): The following logic, albeit simple, involves copying the
-  // tensor content multiple times, which is bad. Figure out a better way to
-  // achieve the purpose.
-  Tensor tensor;
-  TF_RETURN_IF_ERROR(ConvertToTensor(input_attr, &tensor));
-  return ConvertTensor(tensor, &builder);
+  return OkStatus();
 }
 
 }  // namespace tensorflow

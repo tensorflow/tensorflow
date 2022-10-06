@@ -53,7 +53,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     if (options.graph == nullptr) {
       // TODO(apassos) returning OK feels weird here as we can't do anything
       // without a graph, but some tests require this.
-      return Status::OK();
+      return OkStatus();
     }
 
     Graph* g = options.graph->get();
@@ -70,7 +70,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
         matches.push_back(n);
       }
     }
-    if (matches.empty()) return Status::OK();
+    if (matches.empty()) return OkStatus();
 
     std::vector<ControlFlowInfo> control_flow_info;
     TF_RETURN_IF_ERROR(BuildControlFlowInfo(g, &control_flow_info));
@@ -98,7 +98,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
         TF_RETURN_IF_ERROR(RewriteIntoTempVariable(n, g));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RewriteIntoTempVariable(Node* n, Graph* g) {
@@ -226,7 +226,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     // using its incoming/outgoing edge sets.
     g->RemoveNode(n);
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RewriteIntoAddN(Node* n, Graph* g) {
@@ -281,7 +281,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     // using its incoming/outgoing edge sets.
     g->RemoveNode(n);
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,

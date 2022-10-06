@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -26,7 +27,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/lib/io/path.h"
 
 namespace mlir {
@@ -36,10 +37,13 @@ namespace {
 static constexpr int kTextFileIndex_WholeLine = -2;
 static constexpr int kTextFileIndex_LineNumber = -1;
 
+#define GEN_PASS_DEF_INITTEXTFILETOIMPORTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // InitTextFileToImportPass converts InitializeTableFromTextFileV2Op to the
 // corresponding LookupTableImportV2Op if possible.
 class InitTextFileToImportPass
-    : public InitTextFileToImportPassBase<InitTextFileToImportPass> {
+    : public impl::InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
   InitTextFileToImportPass() {}
   InitTextFileToImportPass(const InitTextFileToImportPass&) {}
@@ -140,7 +144,7 @@ class ConvertInitializeTableFromTextFileV2
 void InitTextFileToImportPass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   MLIRContext* context = &getContext();
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   patterns.add<ConvertInitializeTableFromTextFileV2>(
       context, StringRef(saved_model_dir_));
@@ -150,11 +154,10 @@ void InitTextFileToImportPass::runOnOperation() {
 }  // namespace
 
 // Replace InitializeTableFromTextFileV2Ops with LookupTableImportV2Ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateInitTextFileToImportPass(
     std::string saved_model_dir) {
   return std::make_unique<InitTextFileToImportPass>(saved_model_dir);
 }
-
 
 }  // namespace TF
 }  // namespace mlir

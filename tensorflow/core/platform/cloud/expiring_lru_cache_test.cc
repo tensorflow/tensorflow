@@ -95,7 +95,7 @@ TEST(ExpiringLRUCacheTest, LookupOrCompute) {
       [&num_compute_calls](const string& key, int* value) {
         *value = num_compute_calls;
         num_compute_calls++;
-        return Status::OK();
+        return OkStatus();
       };
   ExpiringLRUCache<int> cache1(0, 4);
 

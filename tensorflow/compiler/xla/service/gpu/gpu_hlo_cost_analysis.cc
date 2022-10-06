@@ -22,7 +22,7 @@ namespace xla {
 namespace gpu {
 
 Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
-  if (custom_call->custom_call_target() == gpu::kGemmCallTarget) {
+  if (IsCublasGemm(*custom_call)) {
     // The naming conventions and meanings of gemm parameters are documented
     // here:
     // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-gemm
@@ -49,7 +49,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
     current_properties_[kFlopsKey] =
         GetDotFlops(custom_call->operand(0)->shape(), custom_call->shape(),
                     gemm_config.dot_dimension_numbers());
-    return Status::OK();
+    return OkStatus();
   }
 
   if (IsCustomCallToDnnConvolution(*custom_call)) {
@@ -75,7 +75,7 @@ Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
       SetOutputBytesAccessed(
           options_.shape_size(custom_call->shape().tuple_shapes(0)));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   return HloCostAnalysis::HandleCustomCall(custom_call);

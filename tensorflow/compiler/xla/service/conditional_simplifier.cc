@@ -94,14 +94,14 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
 
   // Create a new tuple shape based on the indices actually used by this
   // computation branch.
-  std::vector<Shape> new_tuple_shapes;
+  std::vector<const Shape*> new_tuple_shapes;
   new_tuple_shapes.reserve(tuple_indices_to_keep.size());
   std::vector<int64_t> map(old_tuple_element_count, -1);
   for (int64_t i : tuple_indices_to_keep) {
     map[i] = new_tuple_shapes.size();
-    new_tuple_shapes.push_back(param->shape().tuple_shapes(i));
+    new_tuple_shapes.push_back(&param->shape().tuple_shapes(i));
   }
-  Shape tuple_shape = ShapeUtil::MakeTupleShape(new_tuple_shapes);
+  Shape tuple_shape = ShapeUtil::MakeTupleShapeWithPtrs(new_tuple_shapes);
   // Clone the computation in case it is called by another non-conditional
   // instruction.
   HloComputation* new_computation =
@@ -245,13 +245,13 @@ bool RemoveUnusedTupleElements(HloInstruction* conditional_op) {
 
   // Create new tuple shape, only keep active indices.
   const Shape old_shape = conditional_op->shape();
-  std::vector<Shape> new_tuple_shapes;
+  std::vector<const Shape*> new_tuple_shapes;
   new_tuple_shapes.reserve(new_tuple_shapes_size);
   for (int new_index = 0; new_index < new_tuple_shapes_size; ++new_index) {
     new_tuple_shapes.push_back(
-        old_shape.tuple_shapes(new_to_old_mapping[new_index]));
+        &old_shape.tuple_shapes(new_to_old_mapping[new_index]));
   }
-  const Shape new_shape = ShapeUtil::MakeTupleShape(new_tuple_shapes);
+  const Shape new_shape = ShapeUtil::MakeTupleShapeWithPtrs(new_tuple_shapes);
 
   // Double-check the old branch root shape is compatible (tuple-like).
   for (HloComputation* branch : conditional_op->branch_computations()) {
@@ -603,7 +603,9 @@ static bool InstructionCallsChannelInstructions(
   return false;
 }
 
-StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
+StatusOr<bool> ConditionalSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       3, "ConditionalSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
@@ -612,7 +614,7 @@ StatusOr<bool> ConditionalSimplifier::Run(HloModule* module) {
   // we don't have to worry about mutating the lists of computations or
   // instructions as we iterate.
   std::vector<HloInstruction*> conditional_ops;
-  for (auto* comp : module->computations()) {
+  for (auto* comp : module->computations(execution_threads)) {
     for (auto* instr : comp->MakeInstructionPostOrder()) {
       if (instr->opcode() == HloOpcode::kConditional) {
         // Verifier wants a single send/recv with a given channel. This pass

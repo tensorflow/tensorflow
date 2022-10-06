@@ -16,10 +16,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -39,7 +39,7 @@ HloRunner::HloRunner(se::Platform* platform, int intra_op_parallelism_threads) {
   backend_options.set_platform(platform);
   backend_options.set_intra_op_parallelism_threads(
       intra_op_parallelism_threads);
-  backend_ = Backend::CreateBackend(backend_options).ConsumeValueOrDie();
+  backend_ = Backend::CreateBackend(backend_options).value();
   device_shape_representation_fn_ = [this](const Shape& shape) {
     return backend_->compiler()->DefaultDeviceShapeRepresentation(shape);
   };
@@ -238,7 +238,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         (*device_assignment)(i / num_partitions, i % num_partitions);
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                         backend().stream_executor(device));
-    streams.push_back(absl::make_unique<se::Stream>(executor));
+    streams.push_back(std::make_unique<se::Stream>(executor));
     streams.back()->Init();
     service_run_options.emplace_back(GetServiceRunOptionsForDevice(
         device, streams.back().get(), device_assignment, run_id));
@@ -262,7 +262,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         &argument_buffer_ptrs[index - argument_count], argument_count);
   }
 
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tsl::thread::ThreadPool> pool;
   TF_RET_CHECK(options.infeed_values.empty() ||
                options.infeed_values.size() == options.num_replicas);
   int64_t num_threads = options.infeed_values.size();
@@ -270,8 +270,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     num_threads += options.num_replicas;
   }
   if (num_threads > 0) {
-    pool = absl::make_unique<tensorflow::thread::ThreadPool>(
-        tensorflow::Env::Default(), "infeed_outfeed",
+    pool = std::make_unique<tsl::thread::ThreadPool>(
+        tsl::Env::Default(), "infeed_outfeed",
         /*num_threads=*/num_threads);
   }
   if (!options.infeed_values.empty()) {
@@ -280,7 +280,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
-            backend().stream_executor(device).ValueOrDie();
+            backend().stream_executor(device).value();
         VLOG(1) << "Starting infeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
@@ -302,7 +302,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
           (*device_assignment)(i / num_partitions, i % num_partitions);
       pool->Schedule([this, device, &options, i]() {
         se::StreamExecutor* executor =
-            backend().stream_executor(device).ValueOrDie();
+            backend().stream_executor(device).value();
         VLOG(1) << "Starting outfeed on device " << device;
         for (int64_t step = 1;
              options.infeed_steps < 0 || step <= options.infeed_steps; ++step) {
@@ -358,8 +358,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           {
             LOG(INFO) << "Creating thread pool for " << options.num_replicas
                       << " replicas";
-            tensorflow::thread::ThreadPool pool(
-                tensorflow::Env::Default(), "replicas", options.num_replicas);
+            tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
+                                         options.num_replicas);
             for (int64_t i = 0; i < options.num_replicas; ++i) {
               pool.Schedule([&, i] {
                 auto result = executable->ExecuteOnStream(
@@ -377,7 +377,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
             if (!thread_result.ok()) {
               return thread_result.status();
             }
-            results.push_back(std::move(thread_result).ValueOrDie());
+            results.push_back(std::move(thread_result).value());
           }
         }
         return results;
@@ -414,8 +414,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         {
           LOG(INFO) << "Creating thread pool for " << options.num_replicas
                     << " replicas";
-          tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(),
-                                              "replicas", options.num_replicas);
+          tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
+                                       options.num_replicas);
           for (int64_t i = 0; i < options.num_replicas; ++i) {
             for (const auto& arg : argument_buffer_slices[i]) {
               TF_RET_CHECK(arg != nullptr);
@@ -435,7 +435,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           if (!thread_result.ok()) {
             return thread_result.status();
           }
-          results.push_back(std::move(thread_result).ValueOrDie());
+          results.push_back(std::move(thread_result).value());
         }
         return results;
       },
@@ -456,7 +456,7 @@ StatusOr<std::unique_ptr<Executable>> HloRunner::CreateExecutable(
   xla::UpdateEntryComputationLayout(module.get(),
                                     device_shape_representation_fn_);
   if (run_hlo_passes) {
-    auto module_group = absl::make_unique<HloModuleGroup>(std::move(module));
+    auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
     TF_ASSIGN_OR_RETURN(
         auto executables,
         backend().compiler()->Compile(std::move(module_group),
@@ -487,7 +487,7 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
 
 Backend& HloRunner::backend() {
   if (!backend_) {
-    backend_ = Backend::CreateDefaultBackend().ConsumeValueOrDie();
+    backend_ = Backend::CreateDefaultBackend().value();
     VLOG(1) << "Executing on platform " << backend().platform()->Name();
   }
   return *backend_;

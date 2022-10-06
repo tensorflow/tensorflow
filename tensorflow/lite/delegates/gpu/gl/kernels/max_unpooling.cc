@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/max_unpooling.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -36,7 +39,7 @@ class MaxUnpooling : public NodeShader {
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
     const auto& attr =
-        absl::any_cast<const MaxUnpooling2DAttributes&>(ctx.op_attr);
+        std::any_cast<const MaxUnpooling2DAttributes&>(ctx.op_attr);
     std::vector<Variable> parameters = {
         {"stride", int2(attr.strides.w, attr.strides.h)},
         {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
@@ -73,7 +76,7 @@ class MaxUnpooling : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewMaxUnpoolingNodeShader() {
-  return absl::make_unique<MaxUnpooling>();
+  return std::make_unique<MaxUnpooling>();
 }
 
 }  // namespace gl

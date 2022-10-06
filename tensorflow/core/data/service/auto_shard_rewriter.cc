@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/auto_shard_rewriter.h"
 
+#include <cstdlib>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -120,7 +121,7 @@ StatusOr<GraphDef> AutoShardRewriter::ApplyAutoShardRewrite(
 }
 
 AutoShardRewriter::AutoShardRewriter(AutoShardPolicy auto_shard_policy,
-                                     int64 num_workers, int64 worker_index)
+                                     int64_t num_workers, int64_t worker_index)
     : auto_shard_policy_(auto_shard_policy),
       num_workers_(num_workers),
       worker_index_(worker_index) {}
@@ -144,13 +145,13 @@ AutoShardRewriter::GetRewriteConfig() const {
 Status WorkerIndexResolver::ValidateWorker(
     absl::string_view worker_address) const {
   if (worker_addresses_.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   for (absl::string_view config_address : worker_addresses_) {
     if (config_address == worker_address ||
         ShouldReplaceDynamicPort(config_address, worker_address)) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 

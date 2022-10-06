@@ -85,10 +85,10 @@ bool ProcessLinearOperator(Model* model, Operator* op) {
     if (ProcessLinearOperator(model, op)) {
       AddMessageF("Added bias vector to %s as %s", LogName(*op), op->inputs[2]);
       *modified = true;
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -100,7 +101,8 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
       # (or other host memory types). Then RemoteCall can
       # appropriately set AllocatorAttributes to control copies so
       # strings/host memory types stay on CPU.
-      fulltype = structure.full_type_from_spec(self._element_spec)
+      fulltype_list = type_utils.fulltypes_for_flat_tensors(self._element_spec)
+      fulltype = type_utils.fulltype_list_to_product(fulltype_list)
       for return_value in return_values:
         return_value.op.experimental_set_type(fulltype)
       return return_values
@@ -214,7 +216,7 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
   return ds
 
 
-class MultiDeviceIterator(object):
+class MultiDeviceIterator:
   """An iterator over multiple devices."""
 
   def __init__(self,

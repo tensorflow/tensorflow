@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_REWRITE_UTIL_H_
 
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 
 namespace mlir {
@@ -44,6 +45,30 @@ DenseElementsAttr GetScalarOfType(Type ty, T raw_value) {
   }
   llvm_unreachable("unsupported type");
 }
+
+// Returns true if `value` is compile-time constant and its splat value equals
+// to `raw_value`.
+template <typename T>
+bool IsConstantValueOf(Value value, T raw_value) {
+  auto element_type = value.getType().cast<ShapedType>().getElementType();
+  if (element_type.isa<FloatType>()) {
+    DenseFPElementsAttr float_attr;
+    if (matchPattern(value, m_Constant(&float_attr)) && float_attr.isSplat() &&
+        float_attr.getSplatValue<APFloat>().isExactlyValue(raw_value))
+      return true;
+  } else if (element_type.isa<IntegerType>()) {
+    DenseIntElementsAttr int_attr;
+    if (matchPattern(value, m_Constant(&int_attr)) && int_attr.isSplat() &&
+        int_attr.getSplatValue<APInt>() == raw_value)
+      return true;
+  }
+
+  return false;
+}
+
+// Returns true if `op` is placed on GPU device, and false if it's on other
+// devices or the device is not specified.
+bool IsOnGpuDevice(mlir::Operation *op);
 
 }  // namespace TF
 }  // namespace mlir

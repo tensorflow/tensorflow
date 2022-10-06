@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MapUnstageNoKey"
   input_arg {
     name: "indices"

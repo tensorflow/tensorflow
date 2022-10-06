@@ -16,16 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_
 
-#include "tensorflow/stream_executor/platform/platform.h"
-
-// Include appropriate platform-dependent implementations
-#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_CHROMIUMOS)
-#include "tensorflow/stream_executor/platform/google/dso_loader.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
-#include "tensorflow/stream_executor/platform/default/dso_loader.h"
-#else
-#error Define the appropriate PLATFORM_<foo> macro for this platform
-#endif
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DSO_LOADER_H_

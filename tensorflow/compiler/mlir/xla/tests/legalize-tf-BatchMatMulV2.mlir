@@ -74,13 +74,13 @@ func.func @batchmatmulv2_adj_real(%arg0: tensor<2x5xf32>, %arg1: tensor<4x2xf32>
 func.func @batchmatmulv2_adj_complex(%arg0: tensor<2x5xcomplex<f32>>, %arg1: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
 // CHECK-LABEL:   func @batchmatmulv2_adj_complex(
 // CHECK-SAME:                                    [[LHS:%.*]]: tensor<2x5xcomplex<f32>>, [[RHS:%.*]]: tensor<4x2xcomplex<f32>>) -> tensor<5x4xcomplex<f32>> {
-// CHECK:           [[LHSRE:%.*]] = "mhlo.real"([[LHS]])
-// CHECK:           [[LHSIM:%.*]] = "mhlo.imag"([[LHS]])
-// CHECK:           [[LHSIMNEG:%.*]] = "mhlo.negate"([[LHSIM]])
+// CHECK:           [[LHSRE:%.*]] = mhlo.real([[LHS]])
+// CHECK:           [[LHSIM:%.*]] = mhlo.imag([[LHS]])
+// CHECK:           [[LHSIMNEG:%.*]] = mhlo.negate [[LHSIM]]
 // CHECK:           [[LHSCONJ:%.*]] = mhlo.complex([[LHSRE]], [[LHSIMNEG]])
-// CHECK:           [[RHSRE:%.*]] = "mhlo.real"([[RHS]])
-// CHECK:           [[RHSIM:%.*]] = "mhlo.imag"([[RHS]])
-// CHECK:           [[RHSIMNEG:%.*]] = "mhlo.negate"([[RHSIM]])
+// CHECK:           [[RHSRE:%.*]] = mhlo.real([[RHS]])
+// CHECK:           [[RHSIM:%.*]] = mhlo.imag([[RHS]])
+// CHECK:           [[RHSIMNEG:%.*]] = mhlo.negate [[RHSIM]]
 // CHECK:           [[RHSCONJ:%.*]] = mhlo.complex([[RHSRE]], [[RHSIMNEG]])
 // CHECK:           shape.shape_of [[LHSCONJ]]
 // CHECK:           shape.shape_of [[RHSCONJ]]

@@ -174,7 +174,7 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     OpKernelContext::Params params;
     params.device = device.get();
     params.frame_iter = FrameAndIter(0, 0);
-    params.inputs = &inputs;
+    params.inputs = inputs;
     params.op_kernel = op.get();
     std::vector<AllocatorAttributes> attrs;
     test::SetOutputAttrs(&params, &attrs);
@@ -419,7 +419,7 @@ TEST_F(RestoreSliceOpTest, RestoreInt) {
     OpKernelContext::Params params;
     params.device = device.get();
     params.frame_iter = FrameAndIter(0, 0);
-    params.inputs = &inputs;
+    params.inputs = inputs;
     params.op_kernel = op.get();
     std::vector<AllocatorAttributes> attrs;
     test::SetOutputAttrs(&params, &attrs);

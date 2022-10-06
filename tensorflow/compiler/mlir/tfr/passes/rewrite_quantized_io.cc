@@ -45,7 +45,7 @@ class RewriteQuantizedIOPass
 void RewriteQuantizedIOPass::runOnOperation() {
   ModuleOp module = getOperation();
   OpBuilder builder(module);
-  module.walk([&](FuncOp func) {
+  module.walk([&](func::FuncOp func) {
     Block& block = func.front();
     Operation* terminator = block.getTerminator();
 
@@ -87,8 +87,8 @@ void RewriteQuantizedIOPass::runOnOperation() {
         auto new_type = returned_type.clone(returned_type.getElementType()
                                                 .cast<quant::QuantizedType>()
                                                 .getStorageType());
-        auto new_op = builder.create<TFR::CastOp>(returned_op->getLoc(),
-                                                  new_type, returned_op.arg());
+        auto new_op = builder.create<TFR::CastOp>(
+            returned_op->getLoc(), new_type, returned_op.getArg());
         returned_value.set(new_op.getResult());
         if (returned_op.use_empty()) {
           returned_op.erase();

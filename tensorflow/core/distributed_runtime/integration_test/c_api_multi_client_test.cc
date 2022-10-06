@@ -22,9 +22,6 @@ limitations under the License.
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
@@ -45,11 +42,11 @@ void StartWorkers(int cluster_size,
                      ->mutable_coordination_config();
   config->set_service_type("standalone");
   config->set_service_leader("/job:worker/replica:0/task:0");
+  // Use shutdown barrier to make sure that worker/0 thread (leader that starts
+  // the coordination service instance) does not exit early while other workers
+  // are still interacting with the coordination service.
+  config->set_shutdown_barrier_timeout_in_ms(3 * 1000);  // 3 seconds
 
-  // The blocking counter makes sure that worker/0 thread (leader that starts
-  // the coordination service) does not exit early while other workers are still
-  // interacting with the coordination service.
-  tensorflow::BlockingCounter counter(cluster_size);
   auto worker_thread_fn = [&](int worker_id) {
     tensorflow::ServerDef server_def_copy = server_def;
     // By default, server_def has task index set to 0.
@@ -74,8 +71,6 @@ void StartWorkers(int cluster_size,
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     fn(ctx, status, worker_id, cluster_size);
-    counter.DecrementCount();
-    counter.Wait();
 
     // Since we created an async EagerContext, wait for all pending operations
     // to finish before deleting the context.

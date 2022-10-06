@@ -150,7 +150,7 @@ tensorflow::Status DistributedManagerContextImpl::SetOrUpdateServerDef(
   }
   tf_devices_ =
       std::make_unique<tensorflow::StaticDeviceMgr>(std::move(tf_devices));
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 #endif  // PLATFORM_GOOGLE
   return tensorflow::errors::Unimplemented(
       "SetOrUpdateServerDef in open source is not yet implemented.");
@@ -176,7 +176,7 @@ tensorflow::Status DistributedManagerContextImpl::EnableCollectiveOps(
       });
   n.WaitForNotification();
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 #endif  // PLATFORM_GOOGLE
   return tensorflow::errors::Unimplemented(
       "EnableCollectiveOps in open source is not yet implemented.");

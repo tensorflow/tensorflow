@@ -95,7 +95,7 @@ IfRegionSPMDExpander::ComputeLayoutForward(
 StatusOr<llvm::DenseMap<int, Layout>>
 IfRegionSPMDExpander::ComputeLayoutBackward(
     mlir::Operation* op, const llvm::DenseMap<int, Layout>& output_layouts) {
-  // Layout propagation for for TF::IfRegion op is no-op. Actual layout
+  // Layout propagation for TF::IfRegion op is no-op. Actual layout
   // propagation logic depends on layout propgation of ops inside the
   // then/else regions of the IfRegion op.
   TF_ASSIGN_OR_RETURN(const Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));

@@ -54,7 +54,7 @@ Status ValidateTensorId(const tf2xla::TensorId& id) {
   if (id.output_index() < 0) {
     return errors::InvalidArgument("TensorId output_index must be positive");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckNameDuplicates(const string& kind, const string& name,
@@ -64,7 +64,7 @@ Status CheckNameDuplicates(const string& kind, const string& name,
       return errors::InvalidArgument("duplicate ", kind, " name: ", name);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CheckFeedFetchNameConflicts(const string& kind,
@@ -78,7 +78,7 @@ Status CheckFeedFetchNameConflicts(const string& kind,
                                      " and ", name_data);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For graph `g`, copy all function call nodes' FunctionDef from `lookup_fld` to
@@ -107,7 +107,7 @@ Status CopyAssociatedFunctions(Graph* g,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replaces the single edge feeding into {dst,dst_input} with a new
@@ -161,7 +161,7 @@ Status ReplaceSrcOutputUsageWithNode(Graph* g, Node* src, int src_output,
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For graph `g`, replaces _Arg nodes whose "index" attribute is in
@@ -189,7 +189,7 @@ Status ReplaceArgUsageWithConstNode(
     TF_RETURN_IF_ERROR(
         ReplaceSrcOutputUsageWithNode(g, arg_node, 0, const_node));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replaces the single input to _Retval nodes with an index in the keys of
@@ -219,7 +219,7 @@ Status ReplaceRetvalInputWithArg(
         ReplaceEdge(g, ret_nodes[arg_index], 0, arg_nodes[arg_index], 0)
             .status());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // For a node's function attr (e.g. then/else branch for "If" nodes), rewrites
@@ -273,7 +273,7 @@ Status PropagateConstIntoFuncAttr(
   // Copy associated functions.
   TF_RETURN_IF_ERROR(CopyAssociatedFunctions(func_graph, lookup_fld, fld));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // For an "If" node in graph `g`, if it has Const node inputs, rewrite its
@@ -292,7 +292,7 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
     }
   }
   if (const_input_index_to_node.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Rewrite "then_branch" and "else_branch" function, replace usage of those
@@ -303,7 +303,7 @@ Status PropagateConstIntoIfNode(Graph* g, Node* if_node,
         if_node, attr_name, const_input_index_to_node, lookup_fld, fld));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 using GraphCache = absl::flat_hash_map<string, std::unique_ptr<FunctionBody>>;
@@ -453,7 +453,7 @@ Status PropagateConstIntoAndAroundWhileNode(
     const_input_index_to_node[i] = input_edge->src();
   }
   if (const_input_index_to_node.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Rewrite "cond" and "body" function, replace usage of those _Arg nodes with
@@ -470,7 +470,7 @@ Status PropagateConstIntoAndAroundWhileNode(
     TF_RETURN_IF_ERROR(
         ReplaceSrcOutputUsageWithNode(g, while_node, it.first, it.second));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -481,9 +481,6 @@ StatusOr<bool> IsLoopInvariant(const FunctionBody* loop_body, int index,
   return IsLoopInvariant(loop_body, index, lookup_fld,
                          /*fallback_fld=*/nullptr, &cache);
 }
-
-const char kTpuReplicateAttrName[] = "_tpu_replicate";
-const char kXlaOutsideCompilationAttrName[] = "_xla_outside_compilation";
 
 Status ValidateConfig(const tf2xla::Config& config) {
   std::set<string> names;
@@ -502,7 +499,7 @@ Status ValidateConfig(const tf2xla::Config& config) {
   if (config.fetch().empty()) {
     return errors::InvalidArgument("fetches must be specified");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddPlaceholdersForFeeds(
@@ -599,7 +596,7 @@ Status AddPlaceholdersForFeeds(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
@@ -664,7 +661,7 @@ Status PruneGraphDefInto(const tf2xla::Config& config, const GraphDef& in,
       *out->add_node() = node;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 string TensorIdToString(const tf2xla::TensorId& id) {
@@ -678,7 +675,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
     if (edge->IsControlEdge()) continue;
     const Node* possible_match = out_edges ? edge->dst() : edge->src();
     TF_ASSIGN_OR_RETURN(
-        absl::optional<xla::OpSharding> sharding,
+        std::optional<xla::OpSharding> sharding,
         ParseShardingFromDevice(
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max(),
@@ -695,7 +692,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
     n->set_assigned_device_name(matching_node->assigned_device_name());
     n->set_requested_device(matching_node->requested_device());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void AddDtypeToKernelDefConstraint(absl::string_view name, DataType dtype,
@@ -858,7 +855,7 @@ Status RewriteAssociatedFunction(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CachedFunctionHandles::GetOrInstantiate(
@@ -868,12 +865,12 @@ Status CachedFunctionHandles::GetOrInstantiate(
   auto iter = handles_.find(canonicalized_name);
   if (iter != handles_.end()) {
     *handle = iter->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   TF_RETURN_IF_ERROR(flr_->Instantiate(func_name, attrs, handle));
   handles_[canonicalized_name] = *handle;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CachedFunctionHandles::ReleaseAllHandles() {
@@ -919,7 +916,7 @@ StatusOr<Node*> ReplaceNode(Graph* g, Node* n, const NodeDef& node_def) {
 
 StatusOr<Node*> BuildIdentityNode(Graph* graph, const string& node_name,
                                   DataType dtype, const Node* input,
-                                  absl::optional<string> requested_device) {
+                                  std::optional<string> requested_device) {
   // Create identity node.
   NodeDef ndef;
   ndef.set_name(node_name);
@@ -965,7 +962,7 @@ Status PropagateConstIntoFunctionalNodes(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PruneUnreachableFunctionsFromGraph(const Graph& g,
@@ -979,7 +976,7 @@ Status PruneUnreachableFunctionsFromGraph(const Graph& g,
       TF_RETURN_IF_ERROR(fld->RemoveFunction(func_name));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RewriteTensorListWithConstElement(Graph* g,
@@ -1116,7 +1113,7 @@ Status RewriteTensorListWithConstElement(Graph* g,
     bwd_while->ClearAttr("body");
     bwd_while->AddAttr("body", bwd_body_attr);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

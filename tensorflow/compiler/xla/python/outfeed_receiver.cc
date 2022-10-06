@@ -22,7 +22,6 @@ limitations under the License.
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -221,7 +220,7 @@ class OutfeedReceiverImpl {
       ABSL_GUARDED_BY(mu_);
   // The threadpool must come last to ensure the queue exists
   // when the pool destructor is called.
-  std::unique_ptr<tensorflow::thread::ThreadPool> threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> threads_;
 };
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
@@ -251,8 +250,8 @@ void OutfeedReceiverImpl::Start() {
   }
 
   int num_threads = 2 * devices_.size();
-  threads_ = absl::make_unique<tensorflow::thread::ThreadPool>(
-      tensorflow::Env::Default(), "outfeed_receiver", num_threads);
+  threads_ = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "outfeed_receiver", num_threads);
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
         [this, device_idx]() { DeviceListenerThreadLoop(device_idx); });
@@ -291,7 +290,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
   while (true) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
-        ReceiveRawFromOutfeed(device, header_shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, header_shape).value();
     absl::Span<uint32_t> header_data = header->data<uint32_t>();
     CHECK_EQ(header_data.size(), kOutfeedHeaderWords);
     CHECK_EQ(header_data[0], kOutfeedHeaderStart);
@@ -309,7 +308,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       }
       shape = registered_shape->second;
     }
-    auto received = absl::make_unique<OutfeedData>(device, consumer_id, shape);
+    auto received = std::make_unique<OutfeedData>(device, consumer_id, shape);
     VLOG(2) << "Listener received header " << received->DebugString();
     if (consumer_id == kOutfeedCidShutdown) {
       VLOG(2) << "[" << device->DebugString()
@@ -321,7 +320,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       return;
     }
     std::unique_ptr<Literal> data =
-        ReceiveRawFromOutfeed(device, shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, shape).value();
     received->SetLiteral(std::move(data));
     absl::MutexLock lock(&mu_);
     EnqueueReceivedData(device_idx, std::move(received));
@@ -401,8 +400,8 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
       absl::StrFormat("special_outfeed_header_%d_%d", consumer_id, device_idx));
   XlaOp send =
       AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {})
-          .ValueOrDie();
-  XlaComputation computation = builder.Build(send).ValueOrDie();
+          .value();
+  XlaComputation computation = builder.Build(send).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -412,21 +411,21 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       devices_[device_idx]->client()->Compile(
                           computation, std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
     std::vector<XlaOp> arrays) {
   XlaOp data = Tuple(builder, std::move(arrays));
-  Shape shape_with_layout = builder->GetShape(data).ValueOrDie();
+  Shape shape_with_layout = builder->GetShape(data).value();
   ShapeUtil::ForEachMutableSubshape(
       &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
         if (!subshape->has_layout()) {
@@ -468,7 +467,7 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 OutfeedReceiver::OutfeedReceiver(Callback callback,
                                  absl::Span<PjRtClient* const> clients,
                                  ssize_t max_callback_queue_size_bytes) {
-  p_impl_ = absl::make_unique<OutfeedReceiverImpl>(
+  p_impl_ = std::make_unique<OutfeedReceiverImpl>(
       callback, clients, max_callback_queue_size_bytes);
 }
 

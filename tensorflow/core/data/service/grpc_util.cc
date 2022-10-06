@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/grpc_util.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"

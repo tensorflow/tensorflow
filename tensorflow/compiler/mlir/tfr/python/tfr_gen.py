@@ -402,7 +402,7 @@ class TFRTypeResolver(type_inference.Resolver):
     if value is None:
       return {TFRTypes.NONE}
     if value in (TFRTypes.SHAPE, TFRTypes.TF_TENSOR_SHAPE_FUNC):
-      # See TFRTypes.__getattrbute__.
+      # See TFRTypes.__getattribute__.
       # TODO(mdan): Replacing the enum with classes would avoid this overlap.
       return {value}
     # TODO(mdan): Index more efficiently. Could do a name check instead.

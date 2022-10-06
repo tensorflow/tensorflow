@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RequantizePerChannel"
   input_arg {
     name: "input"

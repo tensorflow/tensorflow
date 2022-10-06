@@ -110,7 +110,7 @@ class ShapeInference {
       const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
       int64_t batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
-      absl::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static StatusOr<Shape> InferFftShape(const Shape& in, FftType fft_type,
@@ -313,6 +313,13 @@ class ShapeInference {
   static StatusOr<Shape> InferBitcastConvertShape(
       const Shape& operand_shape, PrimitiveType new_element_type);
 
+  // Helper that validates the given operand shape can be converted to the
+  // target output_shape via a stochastic convert instruction -- the requirement
+  // is that the shape is identical except for the element type.
+  static StatusOr<Shape> InferStochasticConvertShape(
+      const Shape& operand_shape, const Shape& random_shape,
+      PrimitiveType new_element_type);
+
   // Helper that validates the input data type for a reduce-precision operation,
   // and returns the result shape.
   static StatusOr<Shape> InferReducePrecisionShape(const Shape& operand_shape,
@@ -336,7 +343,7 @@ class ShapeInference {
   static StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers,
-      absl::optional<PrimitiveType> preferred_element_type);
+      std::optional<PrimitiveType> preferred_element_type);
 
   // Helper that infers the shape of the tensor produced by a gather operation
   // with the given input shape, gather indices shape and gather dimension
@@ -350,8 +357,8 @@ class ShapeInference {
   // shape, and scatter dimension numbers that constitute a scatter operation,
   // and returns the result shape of the scatter operation.
   static StatusOr<Shape> InferScatterShape(
-      const Shape& operand_shape, const Shape& scatter_indices_shape,
-      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      absl::Span<const Shape* const> arg_shapes,
+      const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
   // Helper that validates the given input shape to GetDimensionSize.
@@ -370,7 +377,8 @@ class ShapeInference {
       absl::Span<const int64_t> window_strides,
       absl::Span<const std::pair<int64_t, int64_t>> padding,
       absl::Span<const int64_t> lhs_dilation,
-      absl::Span<const int64_t> rhs_dilation);
+      absl::Span<const int64_t> rhs_dilation,
+      std::optional<std::vector<bool>> window_reversal = std::nullopt);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary
@@ -390,10 +398,6 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
-  // Helper for inferring the shape of TupleSelect ops.
-  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
-                                               const Shape& on_true,
-                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast

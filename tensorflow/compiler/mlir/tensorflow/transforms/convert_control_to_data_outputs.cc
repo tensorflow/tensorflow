@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
 namespace mlir {
@@ -48,8 +47,11 @@ static constexpr ResourceId kInvalidResourceId =
 using OperationSetTy = SmallPtrSet<Operation*, 4>;
 using ResourceToOpsMapTy = DenseMap<ResourceId, OperationSetTy>;
 
+#define GEN_PASS_DEF_EXECUTORCONVERTCONTROLTODATAOUTPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class ConvertControlToDataOutputsPass
-    : public TF::ExecutorConvertControlToDataOutputsPassBase<
+    : public impl::ExecutorConvertControlToDataOutputsPassBase<
           ConvertControlToDataOutputsPass> {
  public:
   void runOnOperation() override;
@@ -57,7 +59,7 @@ class ConvertControlToDataOutputsPass
 
 // Returns a vector of all tf.WhileOp(s) which use func as while body. If any of
 // the uses is as a while condition, an empty vector is returned.
-SmallVector<TF::WhileOp> GetWhileCallers(FuncOp func,
+SmallVector<TF::WhileOp> GetWhileCallers(func::FuncOp func,
                                          SymbolUserMap& symbol_map) {
   SmallVector<TF::WhileOp> while_callers;
   for (auto user : symbol_map.getUsers(func)) {
@@ -77,7 +79,7 @@ SmallVector<TF::WhileOp> GetWhileCallers(FuncOp func,
 // `resource_equivalence_classes`. Resources are equivalent if they are accessed
 // by a common op, and equivalent resources will be assigned to the same chain.
 void CollectChainResources(
-    FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
+    func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   auto graph_op = cast<GraphOp>(func.front().front());
@@ -138,14 +140,14 @@ bool IsNoOpControlBarrier(Value control) {
   // All islands perfectly wrap a single op is an invariant of this pass and
   // is checked at the very beginning of the pass.
   assert(control_island.WrapsSingleOp());
-  return control_island.outputs().empty() &&
+  return control_island.getOutputs().empty() &&
          isa<TF::NoOp>(control_island.GetBody().front());
 }
 
 // Remove all control outputs of the function. Traverses NoOp control barrier
 // chains from FetchOp to all NoOp control barriers. Returns true
 // iff at least one control output is deleted.
-bool RemoveAllControlOutputs(FuncOp func) {
+bool RemoveAllControlOutputs(func::FuncOp func) {
   auto graph_op = cast<GraphOp>(func.front().front());
 
   FetchOp fetch = graph_op.GetFetch();
@@ -154,13 +156,13 @@ bool RemoveAllControlOutputs(FuncOp func) {
 
   std::queue<Value> control_barrier_worklist;
   for (Value control_output :
-       fetch.fetches().drop_front(graph_op->getNumResults())) {
+       fetch.getFetches().drop_front(graph_op->getNumResults())) {
     if (IsNoOpControlBarrier(control_output))
       control_barrier_worklist.push(control_output);
   }
 
   // Erase all control outputs at the end from fetch.
-  fetch.fetchesMutable().erase(
+  fetch.getFetchesMutable().erase(
       graph_op.getNumResults(),
       fetch.getNumOperands() - graph_op.getNumResults());
 
@@ -176,7 +178,7 @@ bool RemoveAllControlOutputs(FuncOp func) {
     // Only values defined by IslandOp were inserted in the worklist.
     IslandOp current_island = cast<IslandOp>(control_barrier.getDefiningOp());
 
-    for (auto control_input : current_island.controlInputs()) {
+    for (auto control_input : current_island.getControlInputs()) {
       if (IsNoOpControlBarrier(control_input))
         control_barrier_worklist.push(control_input);
     }
@@ -187,7 +189,7 @@ bool RemoveAllControlOutputs(FuncOp func) {
 
 // Appends function arguments with `num_resources` number of arguments of
 // requested type.
-void AppendFunctionArguments(FuncOp func, int num_resources,
+void AppendFunctionArguments(func::FuncOp func, int num_resources,
                              ShapedType chaining_data_type) {
   for (int i = 0; i < num_resources; ++i) {
     func.getRegion().addArgument(chaining_data_type, func.getLoc());
@@ -201,7 +203,7 @@ void AppendFunctionArguments(FuncOp func, int num_resources,
 
 // Appends function results with `num_resources` number of results of requested
 // type.
-void AppendFunctionResults(FuncOp func, int num_resources,
+void AppendFunctionResults(func::FuncOp func, int num_resources,
                            ShapedType chaining_data_type) {
   Block& block = func.front();
   auto graph_op = cast<GraphOp>(block.front());
@@ -244,10 +246,10 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
   auto control_type = ControlType::get(builder.getContext());
   auto island = builder.create<IslandOp>(
       sub_op->getLoc(), sub_op->getResultTypes(), control_type, control_inputs);
-  island.body().push_back(new Block);
-  Block* block = &island.body().back();
+  island.getBody().push_back(new Block);
+  Block* block = &island.getBody().back();
   builder.setInsertionPointToEnd(block);
-  sub_op->replaceAllUsesWith(island.outputs());
+  sub_op->replaceAllUsesWith(island.getOutputs());
   sub_op->moveBefore(block, block->begin());
   builder.create<YieldOp>(sub_op->getLoc(), sub_op->getResults());
   return island;
@@ -260,7 +262,7 @@ IslandOp CreateIsland(Operation* sub_op, ValueRange control_inputs,
 // equivalence class, and (2) a control dependency from all the operations that
 // read/write to a resource of the class to the chain_sink operation.
 void ChainResourceOps(
-    FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
+    func::FuncOp func, ResourceToOpsMapTy& chain_resource_to_ops_map,
     llvm::EquivalenceClasses<ResourceId>& resource_equivalence_classes,
     int num_old_outputs) {
   assert(num_old_outputs + resource_equivalence_classes.getNumClasses() ==
@@ -293,7 +295,7 @@ void ChainResourceOps(
         CreateIsland(sink_identity, {}, builder_chain_sink);
 
     // Add the chain sink data output to fetch.
-    fetch.fetchesMutable().append(chain_sink_island.outputs().front());
+    fetch.getFetchesMutable().append(chain_sink_island.getOutputs().front());
 
     // Iterate over all members of the current equivalence class (represented
     // by `class_iter`). Keep track of ops that have already been processed.
@@ -314,8 +316,9 @@ void ChainResourceOps(
 
         IslandOp wrapper = op->getParentOfType<IslandOp>();
         assert(wrapper);
-        wrapper.controlInputsMutable().append(chain_src_island.control());
-        chain_sink_island.controlInputsMutable().append(wrapper.control());
+        wrapper.getControlInputsMutable().append(chain_src_island.getControl());
+        chain_sink_island.getControlInputsMutable().append(
+            wrapper.getControl());
         processed_ops.insert(op);
       }
     }
@@ -350,7 +353,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   // Get new operand and result types.
   auto new_operands = llvm::to_vector<4>(while_op->getOperands());
   auto new_result_types = llvm::to_vector<4>(while_op->getResultTypes());
-  Value const_output = const_wrapper.outputs()[0];
+  Value const_output = const_wrapper.getOutputs()[0];
   for (int i = 0; i < num_resource_inputs; ++i) {
     new_operands.push_back(const_output);
     new_result_types.push_back(const_output.getType());
@@ -360,12 +363,12 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
   auto new_while_op = builder.create<TF::WhileOp>(
       while_op.getLoc(), new_result_types, new_operands, while_op->getAttrs());
   auto new_while_wrapper =
-      CreateIsland(new_while_op, while_wrapper.controlInputs(), builder);
-  for (auto result : while_wrapper.outputs()) {
+      CreateIsland(new_while_op, while_wrapper.getControlInputs(), builder);
+  for (auto result : while_wrapper.getOutputs()) {
     result.replaceAllUsesWith(
-        new_while_wrapper.outputs()[result.getResultNumber()]);
+        new_while_wrapper.getOutputs()[result.getResultNumber()]);
   }
-  while_wrapper.control().replaceAllUsesWith(new_while_wrapper.control());
+  while_wrapper.getControl().replaceAllUsesWith(new_while_wrapper.getControl());
   while_wrapper.erase();
   return new_while_op;
 }
@@ -373,7 +376,7 @@ TF::WhileOp RewriteWhileOp(TF::WhileOp while_op, int num_resource_inputs,
 // Converts the control outputs of the while body to data outputs, thus
 // removing control barrier at the end of while loop body.
 void ConvertControlToDataOutputs(
-    FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
+    func::FuncOp while_body, SmallVectorImpl<TF::WhileOp>& while_callers,
     OperationSetTy& recompute_analysis_for_funcs,
     const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   if (while_callers.empty()) return;
@@ -431,8 +434,9 @@ void ConvertControlToDataOutputs(
     // If the while callers are modified as part of the optimization, then the
     // side effect analysis of their parent functions are invalidated. They
     // need to be recomputed.
-    recompute_analysis_for_funcs.insert(while_op->getParentOfType<FuncOp>());
-    FuncOp while_cond = while_op.cond_function();
+    recompute_analysis_for_funcs.insert(
+        while_op->getParentOfType<func::FuncOp>());
+    func::FuncOp while_cond = while_op.cond_function();
     // Rewrite while op with extra chaining arguments and results.
     while_op = RewriteWhileOp(while_op, num_chains, chaining_data_type);
     bool first_visit = visited.insert(while_cond).second;
@@ -455,13 +459,13 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
 
   SymbolTableCollection table;
   SymbolUserMap symbol_map(table, module);
-  llvm::SmallDenseMap<FuncOp, SmallVector<TF::WhileOp>>
+  llvm::SmallDenseMap<func::FuncOp, SmallVector<TF::WhileOp>>
       while_body_func_to_while_ops;
 
   // Get all the while body functions and the corresponding while ops first
   // because the symbol user map is invalidated once we start deleting while
   // ops.
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     if (func.isExternal()) continue;
     SmallVector<TF::WhileOp> while_callers = GetWhileCallers(func, symbol_map);
     if (while_callers.empty()) continue;
@@ -472,7 +476,7 @@ void ConvertControlToDataOutputsPass::runOnOperation() {
   OperationSetTy recompute_analysis_for_funcs;
 
   for (auto& entry : while_body_func_to_while_ops) {
-    FuncOp while_body = entry.getFirst();
+    func::FuncOp while_body = entry.getFirst();
     SmallVector<TF::WhileOp>& while_callers = entry.getSecond();
     if (recompute_analysis_for_funcs.contains(while_body)) {
       // TODO(b/202540801): Recomputing side effect analysis for the entire

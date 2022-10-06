@@ -105,7 +105,7 @@ Optional<ValueConstraint> ValuesConstraintSet::GetConstraint(
 }
 
 bool ValuesConstraintSet::HasConstraint(Value value) const {
-  return GetConstraint(value).hasValue();
+  return GetConstraint(value).has_value();
 }
 
 void ValuesConstraintSet::MergeAll(const ValuesConstraintSet &other) {
@@ -572,7 +572,7 @@ tf_device::ClusterOp CreateClusterOp(Cluster &cluster, StringAttr policy) {
 
   // Create block in cluster_op's region and move 'cluster.operations' into
   // it.
-  auto block = builder.createBlock(&cluster_op.body());
+  auto block = builder.createBlock(&cluster_op.getBody());
   auto block_end = block->end();
   for (auto op : cluster.operations) op->moveBefore(block, block_end);
 
@@ -705,7 +705,7 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet &constraints) {
   });
 }
 
-void EmitInputsConstraintsRemarks(FuncOp func,
+void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet &constraints) {
   constraints.Walk([&](Value value, ValueConstraint constraint) {
     if (auto arg = value.dyn_cast<BlockArgument>())
@@ -716,7 +716,7 @@ void EmitInputsConstraintsRemarks(FuncOp func,
 }
 
 LogicalResult InferFunctionBodyValuesConstraints(
-    FuncOp func, ValuesConstraintSet &constraints) {
+    func::FuncOp func, ValuesConstraintSet &constraints) {
   for (unsigned i = 0; i < func.getNumResults(); ++i) {
     auto str = func.getResultAttrOfType<StringAttr>(i, "tf.constraint");
     if (!str) continue;

@@ -105,7 +105,7 @@ static const char kLargeTensorMessage[] = "Tensor shape is too large";
 
 TEST(NumElementsTest, Int) {
   int count;
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = ::tensorflow::OkStatus();
 
   status = NumElements(std::vector<int>{1024, 1024, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -124,7 +124,7 @@ TEST(NumElementsTest, Int) {
 
 TEST(NumElementsTest, Int32) {
   int32_t count;
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = ::tensorflow::OkStatus();
 
   status = NumElements(std::vector<int32_t>{1024, 1024, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -139,7 +139,7 @@ TEST(NumElementsTest, Int32) {
 
 TEST(NumElementsTest, Int64) {
   int64_t count;
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = ::tensorflow::OkStatus();
 
   status = NumElements(std::vector<int64_t>{16777216, 16777216, 32767}, &count);
   EXPECT_TRUE(status.ok());
@@ -154,7 +154,7 @@ TEST(NumElementsTest, Int64) {
 
 TEST(NumElementsTest, UnsignedInt32) {
   uint32_t count;
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = ::tensorflow::OkStatus();
 
   status = NumElements(std::vector<uint32_t>{1024, 2048, 2047}, &count);
   EXPECT_TRUE(status.ok());
@@ -169,7 +169,7 @@ TEST(NumElementsTest, UnsignedInt32) {
 
 TEST(NumElementsTest, UnsignedInt64) {
   uint64_t count;
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = ::tensorflow::OkStatus();
 
   status =
       NumElements(std::vector<uint64_t>{16777216, 16777216, 65535}, &count);
@@ -185,7 +185,7 @@ TEST(NumElementsTest, UnsignedInt64) {
 }
 
 TEST(NumElementsTest, Scalar) {
-  tensorflow::Status status = tensorflow::Status::OK();
+  tensorflow::Status status = ::tensorflow::OkStatus();
 
   int32_t count;
   status = NumElements(std::vector<int32_t>{}, &count);

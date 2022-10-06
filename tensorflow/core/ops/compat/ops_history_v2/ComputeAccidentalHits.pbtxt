@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ComputeAccidentalHits"
   input_arg {
     name: "true_classes"

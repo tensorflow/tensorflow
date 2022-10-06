@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 
@@ -47,6 +48,9 @@ void PopulateLegalizeXLAFrameworkToLLVMPatterns(llvm::StringRef device_type,
                                                 bool prefer_tf2xla = false);
 
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_LEGALIZEXLAFRAMEWORKTOLLVM
+#define GEN_PASS_DECL_OUTLINEWITHXLAFRAMEWORK
+#define GEN_PASS_DECL_PREPAREFOREXPORTPASS
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
 
 }  // namespace mhlo

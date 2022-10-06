@@ -52,7 +52,7 @@ static Status ProcessMemoryTypes(
   if (device_type != DEVICE_GPU &&
       !DeviceFactory::IsPluggableDevice(device_type.type_string())) {
     // On non-GPU devices, HOST_MEMORY and DEVICE_MEMORY are always compatible.
-    return Status::OK();
+    return OkStatus();
   }
   // For GPU, HOST_MEMORY and DEVICE_MEMORY is not compatible. I.e., a
   // conversion/transfer must be done.
@@ -89,14 +89,14 @@ static Status ProcessMemoryTypes(
             << dm;
     TF_RETURN_IF_ERROR(fn(e, sm, dm));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ValidateMemoryTypes(const DeviceType& device_type, const Graph* g) {
   return ProcessMemoryTypes(
       device_type, g, [](const Edge* e, MemoryType sm, MemoryType dm) {
         if (sm == dm) {
-          return Status::OK();
+          return OkStatus();
         }
         return errors::Internal("Memory type mismatch (", sm, " ", dm,
                                 ") between :", e->src()->id(), ":",
@@ -164,12 +164,12 @@ Status EnsureMemoryTypes(const DeviceType& device_type,
   TF_RETURN_IF_ERROR(ProcessMemoryTypes(
       device_type, g, [&edges](const Edge* e, MemoryType sm, MemoryType dm) {
         if (sm == dm) {
-          return Status::OK();
+          return OkStatus();
         }
         if (((sm == HOST_MEMORY) && (dm == DEVICE_MEMORY)) ||
             ((sm == DEVICE_MEMORY) && (dm == HOST_MEMORY))) {
           edges.push_back({e, sm, dm});
-          return Status::OK();
+          return OkStatus();
         }
         return errors::Internal("Unexpected memory type pair on an edge: ", sm,
                                 " vs. ", dm);
@@ -226,7 +226,7 @@ Status MemoryTypeForOutput(const DeviceType& device_type, const Graph* g,
                             " that has only ", out_mvec.size(), " outputs");
   }
   *memory_type = out_mvec[index];
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace tensorflow

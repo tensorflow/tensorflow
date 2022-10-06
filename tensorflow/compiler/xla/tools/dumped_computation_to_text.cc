@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
@@ -27,9 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -40,19 +41,18 @@ void RealMain(absl::Span<char* const> args, bool compile) {
       ClientLibrary::GetXlaService(client->platform());
   for (char* arg : args) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg,
-                                            &snapshot));
+    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &snapshot));
     auto computation_status = client->LoadSnapshot(snapshot);
     if (!computation_status.ok()) {
       fprintf(stderr, "could not load snapshot for %s: %s\n", arg,
               computation_status.status().ToString().c_str());
       continue;
     }
-    XlaComputation computation = computation_status.ConsumeValueOrDie();
+    XlaComputation computation = std::move(computation_status).value();
 
     if (compile) {
       std::unique_ptr<ProgramShape> program_shape =
-          client->GetComputationShape(computation).ConsumeValueOrDie();
+          client->GetComputationShape(computation).value();
 
       std::vector<const Shape*> layouts;
       layouts.reserve(program_shape->parameters_size());
@@ -65,7 +65,7 @@ void RealMain(absl::Span<char* const> args, bool compile) {
       build_options.set_result_layout(program_shape->result());
       auto executables =
           local_service->CompileExecutables(computation, layouts, build_options)
-              .ConsumeValueOrDie();
+              .value();
       CHECK_EQ(executables.size(), 1);
       const HloModule& module = executables[0]->module();
 
@@ -75,10 +75,9 @@ void RealMain(absl::Span<char* const> args, bool compile) {
     } else {
       auto config = HloModule::CreateModuleConfigFromProto(computation.proto(),
                                                            DebugOptions())
-                        .ConsumeValueOrDie();
+                        .value();
       std::unique_ptr<HloModule> module =
-          HloModule::CreateFromProto(computation.proto(), config)
-              .ConsumeValueOrDie();
+          HloModule::CreateFromProto(computation.proto(), config).value();
 
       fprintf(stdout, "%s\n",
               module->ToString(HloPrintOptions::ShortParsable()).c_str());
@@ -91,16 +90,16 @@ void RealMain(absl::Span<char* const> args, bool compile) {
 
 int main(int argc, char** argv) {
   bool compile = false;
-  std::vector<tensorflow::Flag> flag_list = {
+  std::vector<tsl::Flag> flag_list = {
       {"compile", &compile,
        "If true, compile the computation using the default client before "
        "dumping the HLO. Otherwise dump the raw (uncompiled) HLO."},
   };
-  const std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  const std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parsed_flags_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
 
-  tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
+  tsl::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc > 1) << "\nERROR: must specify at least one module\n" << usage;
 
   absl::Span<char* const> args(argv, argc);

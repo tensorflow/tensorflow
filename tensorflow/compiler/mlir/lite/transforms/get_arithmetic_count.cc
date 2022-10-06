@@ -29,26 +29,19 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct GetArithmeticCountPass
-    : public PassWrapper<GetArithmeticCountPass, OperationPass<FuncOp>> {
+    : public GetArithmeticCountPassBase<GetArithmeticCountPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GetArithmeticCountPass)
 
   void runOnOperation() override;
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-get-arithmetic-count";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Calculate arithmetic count for tfl operations.";
-  }
 };
 
 void GetArithmeticCountPass::runOnOperation() {
@@ -67,11 +60,9 @@ void GetArithmeticCountPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect GetArithmeticCount
 /// pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateGetArithmeticCountPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateGetArithmeticCountPass() {
   return std::make_unique<GetArithmeticCountPass>();
 }
-
-static PassRegistration<GetArithmeticCountPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir
