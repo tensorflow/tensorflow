@@ -338,7 +338,6 @@ py_library(
         ":checkpoint_options",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:trackable_utils",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
     ],
