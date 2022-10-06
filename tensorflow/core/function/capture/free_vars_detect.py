@@ -47,6 +47,60 @@ def _parse_and_analyze(func):
   return node
 
 
+def _get_self_obj_from_closure(fn):
+  """Get the object that `self` keyword refers to within a function.
+
+  Args:
+    fn: A python function object
+
+  Returns:
+    A class object that `self` refers to. Return None if not found.
+
+  Here is an example demonstrating how this helper function works.
+
+  ```
+  class Foo():
+
+    def __init__(self):
+      self.val = 1
+
+    def bar(self):
+      x = 2
+
+      def fn():
+        return self.val + x
+
+      return fn
+
+  foo = Foo()
+  fn = foo.bar()
+  self_obj = _get_self_obj_from_closure(fn)
+  assert self_obj is foo
+  ```
+
+  The goal is to get the `self_obj` (foo) from `fn`, so that it's feasible to
+  access attributes of `foo`, like self.val in this case.
+
+  This function first parses fn.qual_name, "Foo.bar.<locals>.fn", and finds the
+  closure whose class name appear in fn.qual_name first.
+  """
+  assert hasattr(fn, "__closure__")
+  qual_name = fn.__qualname__.split(".")
+  # Search from the right to left
+  qual_name = qual_name[::-1]
+
+  if fn.__closure__:
+    for cls_name in qual_name:
+      for cell in fn.__closure__:
+        closure = cell.cell_contents
+        if inspect.isclass(type(closure)):
+          if type(closure).__name__ == cls_name:
+            obj = closure
+            return obj
+
+  return None
+
+
 def _search_callable_free_vars(fn):
   """Search free vars from a callable object."""
   node = _parse_and_analyze(fn)
@@ -81,11 +135,16 @@ def _search_callable_free_vars(fn):
         # Otherwise, only process `f`.
         if not var.qn[0].is_composite() and base == "self":
           attr = str(var.qn[1])
+          # For method, access the object that `self` refers to via __self__
           if hasattr(fn, "__self__"):
             obj = getattr(fn.__self__, attr)
           # For function (not method) `self` usage under enclosing class scope
           elif hasattr(fn, "__closure__"):
-            obj = getattr(fn.__closure__[0].cell_contents, attr)
+            self_obj = _get_self_obj_from_closure(fn)
+            if self_obj:
+              obj = getattr(self_obj, attr, None)
+            else:
+              continue
           else:
             continue
         else:
