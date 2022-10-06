@@ -28,7 +28,7 @@ namespace op = xla::testing::opcode_matchers;
 class GpuCompilerTest : public HloTestBase {
  public:
   GpuCompilerTest()
-      : HloTestBase(PlatformUtil::GetPlatform("CUDA").value(),
+      : HloTestBase(PlatformUtil::GetDefaultPlatform().value(),
                     GetReferencePlatform()) {}
 };
 
