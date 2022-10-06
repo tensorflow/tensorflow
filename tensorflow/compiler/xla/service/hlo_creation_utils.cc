@@ -420,6 +420,19 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
       metadata);
 }
 
+StatusOr<HloInstruction*> MakeReduceWindowHlo(
+    HloInstruction* operand, HloInstruction* init_value, const Window& window,
+    HloComputation* reduce_computation, const OpMetadata* metadata) {
+  TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                      ShapeInference::InferReduceWindowShape(
+                          operand->shape(), init_value->shape(), window,
+                          reduce_computation->ComputeProgramShape()));
+  return operand->parent()->AddInstruction(
+      HloInstruction::CreateReduceWindow(inferred_shape, operand, init_value,
+                                         window, reduce_computation),
+      metadata);
+}
+
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
                                         absl::Span<const int64_t> dimensions,

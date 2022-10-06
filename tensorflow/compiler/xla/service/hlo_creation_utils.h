@@ -184,6 +184,10 @@ HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
                                        int exponent_bits, int mantissa_bits,
                                        const OpMetadata* metadata = nullptr);
 
+StatusOr<HloInstruction*> MakeReduceWindowHlo(
+    HloInstruction* operand, HloInstruction* init_value, const Window& window,
+    HloComputation* reduce_computation, const OpMetadata* metadata = nullptr);
+
 // Creates a Reduce HLO instruction and adds it to the computation containing
 // the operand. This will create the sub-computation needed for the reduction in
 // the given module. binary_opcode should represent a binary operation.
