@@ -510,6 +510,15 @@ int64_t GetShardedInstructionSize(
 
 HloInstruction* FindInstruction(
     const std::vector<HloInstruction*>& instructions, absl::string_view name);
+double AllToAllCostUtil(double num_bytes, int mesh_dim, int64_t num_devices,
+                        const std::vector<double>& mesh_alpha,
+                        const std::vector<double>& mesh_beta);
+
+double ReshardingCostMixedMeshShape(
+    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
+    std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t num_devices,
+    const std::vector<double>& mesh_alpha,
+    const std::vector<double>& mesh_beta);
 }  // namespace spmd
 }  // namespace xla
 

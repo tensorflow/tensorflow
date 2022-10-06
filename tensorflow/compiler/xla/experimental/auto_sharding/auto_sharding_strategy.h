@@ -464,14 +464,9 @@ class ClusterEnvironment {
       return kInfinityCost;
     }
 
-    // A penalty factor to make the theoretical cost match the
-    // empirical cost on v100 + nvlink.
     int64_t num_devices = device_mesh_.dim(mesh_dim);
-    double penalty_factor = static_cast<double>(num_devices) / 2.0;
-    return (round(mesh_alpha_[mesh_dim] +
-                  mesh_beta_[mesh_dim] * (num_devices - 1) / num_devices /
-                      num_devices * num_bytes * penalty_factor) +
-            0.001);
+    return AllToAllCostUtil(num_bytes, mesh_dim, num_devices, mesh_alpha_,
+                            mesh_beta_);
   }
 
   double DotCost(const Shape& lhs_shape, const Shape& rhs_shape,
@@ -528,8 +523,8 @@ class ClusterEnvironment {
 
     if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
       return ReshardingCostMixedMeshShape(
-          shape, src_spec, dst_spec, src_tensor_dim_to_mesh_dim,
-          dst_tensor_dim_to_mesh_dim, src_n_dim, dst_n_dim);
+          shape, src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim,
+          device_mesh_.num_elements(), mesh_alpha_, mesh_beta_);
     }
 
     AdjustTensorMeshDimMapping(src_tensor_dim_to_mesh_dim, src_n_dim);
@@ -587,102 +582,6 @@ class ClusterEnvironment {
       cost += AllGatherCost(bytes, dim);
     }
     return cost;
-  }
-
-  double ReshardingCostMixedMeshShape(
-      const Shape& shape, const HloSharding& src_spec,
-      const HloSharding& dst_spec,
-      std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-      std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t src_n_dim,
-      int64_t dst_n_dim) const {
-    // The type, volume, and mesh dim of the required communications
-    std::vector<int> comm_type;  // 0: slice,  1: all-to-all,  2: all-gather
-    std::vector<double> comm_bytes;
-    std::vector<double> comm_mesh_dim;
-
-    // Generate required communication primitives.
-    // lhs is the mesh with 2d shape and rhs is the mesh with 1d shape
-    bool compatible = true;
-    auto generate_comm =
-        [&](absl::Span<const int64_t> lhs_tensor_dim_to_mesh_dim,
-            absl::Span<const int64_t> rhs_tensor_dim_to_mesh_dim) {
-          double bytes = GetBytes(shape) / total_devices_;
-
-          for (size_t i = 0; i < shape.rank(); ++i) {
-            int64_t lhs_mesh_dim = lhs_tensor_dim_to_mesh_dim[i];
-            int64_t rhs_mesh_dim = rhs_tensor_dim_to_mesh_dim[i];
-
-            if (lhs_mesh_dim == 1 && rhs_mesh_dim == -1) {
-              comm_type.push_back(1);  // all-to-all
-              comm_bytes.push_back(
-                  bytes);  // FIXME(zhuohan): this bytes is wrong
-              comm_mesh_dim.push_back(1);
-            } else if (lhs_mesh_dim == -1) {
-              if (rhs_mesh_dim == -1) {
-                // do nothing
-              } else {
-                comm_type.push_back(0);  // slice
-                comm_bytes.push_back(bytes);
-                comm_mesh_dim.push_back(0);
-              }
-            } else if (lhs_mesh_dim == rhs_mesh_dim) {
-              continue;
-            } else {
-              compatible = false;
-              break;
-            }
-          }
-
-          if (comm_type.empty()) {
-            comm_type.push_back(0);  // slice
-            comm_bytes.push_back(bytes);
-            comm_mesh_dim.push_back(1);
-          }
-        };
-
-    if (src_n_dim == 2) {
-      generate_comm(src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim);
-    } else {
-      generate_comm(dst_tensor_dim_to_mesh_dim, src_tensor_dim_to_mesh_dim);
-
-      // Reverse communication pattern
-      for (size_t i = 0; i < comm_type.size(); ++i) {
-        if (comm_type[i] == 0) {  // if is slice, reverse it to all-gather
-          comm_type[i] = 2;
-        } else if (comm_type[i] ==
-                   2) {  // if is all-gather, reverse it to slice
-          comm_type[i] = 0;
-        }
-      }
-    }
-
-    double ret = 0;
-    if (compatible) {
-      // Sum up communication cost
-      int n_comm = 0;
-      for (int i = 0; i < comm_type.size(); ++i) {
-        if (comm_type[i] == 0) {  // slice
-          ret += 0;
-        } else if (comm_type[i] == 1) {  // all-to-all
-          ret += AllToAllCost(comm_bytes[i], comm_mesh_dim[i]);
-          n_comm += 1;
-        } else if (comm_type[i] == 2) {  // all-gather
-          ret += AllGatherCost(comm_bytes[i], comm_mesh_dim[i]);
-          n_comm += 1;
-        } else {
-          LOG(FATAL) << "Invalid communication type";
-        }
-      }
-
-      if (n_comm > 1) {
-        // Currently, SPMD partitioner do not support all-to-all + all-gather;
-        ret = kInfinityCost;
-      }
-    } else {
-      ret = kInfinityCost;
-    }
-
-    return ret;
   }
 
   // Print the information of this device mesh.
