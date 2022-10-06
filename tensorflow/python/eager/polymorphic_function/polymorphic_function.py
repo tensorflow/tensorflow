@@ -973,6 +973,13 @@ class Function(core.GenericFunction, trackable.Trackable):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
+    # TODO(b/216870587) Note that this path is not currently supported for XLA.
+    if self._jit_compile:
+      raise errors.UnimplementedError(
+          None, None,
+          "We failed to lift variable creations out of this tf.function, "
+          "so this tf.function cannot be run on XLA. A possible workaround is "
+          "to move variable creation outside of the XLA compiled function.")
     canon_args, canon_kwds, filtered_flat_args = (
         self._variable_creation_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             args, kwds))
