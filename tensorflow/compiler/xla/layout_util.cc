@@ -232,13 +232,16 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     int64_t dim = layout.minor_to_major(i);
     if (dim < 0 || dim >= shape.rank()) {
       return InvalidArgument(
-          "layout minor_to_major field has out-of-bounds value: %s",
-          HumanString(layout));
+          "layout minor_to_major field has out-of-bounds value: {%s}; shape: "
+          "%s",
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
     if (dimensions_in_layout[dim]) {
       return InvalidArgument(
-          "layout minor_to_major field has duplicate values: {%s}",
-          HumanString(layout));
+          "layout minor_to_major field has duplicate values: {%s}; shape: %s",
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
     dimensions_in_layout[dim] = true;
   }

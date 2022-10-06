@@ -197,6 +197,7 @@ class PrimitiveTypeNameGenerator {
     }
   }
   const std::string& LowercaseName(PrimitiveType t) {
+    CHECK_LT(t, PrimitiveType_ARRAYSIZE);
     return lowercase_name_[static_cast<int>(t)];
   }
 

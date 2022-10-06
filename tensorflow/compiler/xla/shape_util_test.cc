@@ -846,6 +846,41 @@ TEST(ShapeUtilTest, B_250640044) {
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
+TEST(ShapeUtilTest, B_251055887) {
+  // This case failed the fuzzer; see b/251055887.
+  ShapeProto proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        element_type: S8
+        dimensions: 0
+        dimensions: 8
+        dimensions: 0
+        dimensions: 0
+        dimensions: 4
+        dimensions: 1
+        dimensions: 1
+        dimensions: 6
+        dimensions: 281474976710657
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 3
+          minor_to_major: 0
+          minor_to_major: 5
+          minor_to_major: 4
+          minor_to_major: 6
+          minor_to_major: 8
+          minor_to_major: 7
+          minor_to_major: 6
+          minor_to_major: 9
+          element_size_in_bits: 4
+          physical_shape { element_type: -562 }
+        })pb",
+      &proto));
+  Shape shape(proto);
+  EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+}
+
 TEST(Transpose021Test, NoTranspose) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 64}, {1, 0});
   Shape transposed = ShapeUtil::MakeShapeWithLayout(F32, {64, 128}, {0, 1});
