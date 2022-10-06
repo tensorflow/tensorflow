@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
-#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
+#ifndef TENSORFLOW_CORE_UTIL_BYTE_SWAP_ARRAY_H_
+#define TENSORFLOW_CORE_UTIL_BYTE_SWAP_ARRAY_H_
 
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/errors.h"
@@ -101,4 +101,4 @@ Status ByteSwapArray(char *array, size_t bytes_per_elem, int array_len);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_BYTE_SWAP_ARRAY_H_
+#endif  // TENSORFLOW_CORE_UTIL_BYTE_SWAP_ARRAY_H_

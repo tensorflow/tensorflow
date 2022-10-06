@@ -69,6 +69,8 @@ exports_files(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "byte_swap_array.cc",
+        "byte_swap_array.h",
         "overflow.h",
         "padding.cc",
         "padding.h",
@@ -147,6 +149,7 @@ filegroup(
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
+        "byte_swap_array.h",
         "command_line_flags.h",
         "debug_events_writer.h",
         "device_name_utils.h",
@@ -497,6 +500,18 @@ cc_library(
         "//tensorflow/python/util:__pkg__",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "byteswaparray",
+    srcs = ["byte_swap_array.cc"],
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

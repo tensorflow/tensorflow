@@ -59,7 +59,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
+#include "tensorflow/core/util/byte_swap_array.h"
 
 namespace tensorflow {
 
