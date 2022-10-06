@@ -5525,29 +5525,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_subcomputation_unification",
-    srcs = ["hlo_subcomputation_unification.cc"],
-    hdrs = ["hlo_subcomputation_unification.h"],
-    deps = [
-        ":hlo_pass",
-    ],
-)
-
-tf_cc_test(
-    name = "hlo_subcomputation_unification_test",
-    srcs = ["hlo_subcomputation_unification_test.cc"],
-    deps = [
-        ":hlo",
-        ":hlo_graph_dumper",
-        ":hlo_subcomputation_unification",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-    ],
-)
-
-cc_library(
     name = "hlo_graph_dumper",
     srcs = ["hlo_graph_dumper.cc"],
     hdrs = ["hlo_graph_dumper.h"],
