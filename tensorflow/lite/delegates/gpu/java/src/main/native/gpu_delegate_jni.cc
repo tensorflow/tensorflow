@@ -40,6 +40,11 @@ using tflite::TFLiteSettingsBuilder;
 
 extern "C" {
 
+JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_nativeDoNothing(
+    JNIEnv* env, jclass /*clazz*/) {
+  // Do nothing.
+}
+
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
     jboolean quantized_models_allowed, jint inference_preference,
