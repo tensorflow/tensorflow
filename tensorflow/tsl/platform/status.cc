@@ -27,7 +27,6 @@ limitations under the License.
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/protobuf/status.pb.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/stacktrace.h"
 #include "tensorflow/tsl/platform/str_util.h"
