@@ -3099,6 +3099,47 @@ func.func @conv_transpose_2d(%arg0: tensor<2x9x10x3xf32>,
 
 // -----
 
+func.func @conv_different_batch_dim_in_out(%arg0: tensor<1x1x1xf64>,
+                                           %arg1: tensor<1x1x1xf64>)
+  -> tensor<1x1x1xf64> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [f, 0, b]x[i, o, 0]->[f, b, 0],
+    window = {stride = [1], pad = [[0, 0]], lhs_dilate = [1],
+             rhs_dilate = [1]}
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 1 : i64,
+      precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]
+    } : (tensor<1x1x1xf64>, tensor<1x1x1xf64>) -> tensor<1x1x1xf64>
+  return %0 : tensor<1x1x1xf64>
+}
+
+// Just check that this lowers successfully.
+// CHECK-LABEL: func @conv_different_batch_dim_in_out
+
+// -----
+
+func.func @conv_different_batch_dim_in_out_with_feature_group_count(
+    %arg0: tensor<4x6x7x1xf64>, %arg1: tensor<2x6x3x2xf64>)
+  -> tensor<1x2x1x2xf64> {
+  %0 = mhlo.convolution(%arg0, %arg1)
+    dim_numbers = [f, 0, 1, b]x[i, 0, 1, o]->[0, 1, b, f],
+    window = {stride = [1, 1], pad = [[0, 0], [0, -1]],
+              lhs_dilate = [1, 1], rhs_dilate = [1, 2],
+              reverse = [0, 0]}
+    {
+      batch_group_count = 1 : i64,
+      feature_group_count = 2 : i64,
+      precision_config = [#mhlo<precision HIGHEST>, #mhlo<precision HIGHEST>]
+    } : (tensor<4x6x7x1xf64>, tensor<2x6x3x2xf64>) -> tensor<1x2x1x2xf64>
+  return %0 : tensor<1x2x1x2xf64>
+}
+
+// Just check that this lowers successfully.
+// CHECK-LABEL: func @conv_different_batch_dim_in_out_with_feature_group_count
+
+// -----
+
 func.func @conv_3d_ndhwc_dhwcf(%arg0: tensor<?x8x8x8x?xf32>, %arg1: tensor<2x2x2x?x?xf32>)
   -> tensor<?x7x7x7x?xf32> {
   %0 = "mhlo.convolution"(%arg0, %arg1) {

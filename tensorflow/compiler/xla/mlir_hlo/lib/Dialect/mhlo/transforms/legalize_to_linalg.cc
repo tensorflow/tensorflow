@@ -2024,6 +2024,7 @@ struct ConvolutionOpGeneralConversion
     auto kernelSpatialDimensions =
         dimensionNumbers.getKernelSpatialDimensions();
 
+    auto outputBatchDimension = dimensionNumbers.getOutputBatchDimension();
     auto outputFeatureDimension = dimensionNumbers.getOutputFeatureDimension();
     auto outputSpatialDimensions =
         dimensionNumbers.getOutputSpatialDimensions();
@@ -2237,7 +2238,7 @@ struct ConvolutionOpGeneralConversion
       auto batchDim = mlir::getAffineDimExpr(nextDim++, ctx);
 
       srcExprs[lhsIndexMapping[inputBatchDimension]] = batchDim;
-      dstExprs[resultIndexMapping[inputBatchDimension]] = batchDim;
+      dstExprs[resultIndexMapping[outputBatchDimension]] = batchDim;
     }
 
     // Finally, create the computation
