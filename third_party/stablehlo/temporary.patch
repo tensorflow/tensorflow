@@ -1,46 +1,33 @@
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -65,7 +65,7 @@
-   LINK_LIBS PUBLIC
-   StablehloBase
-   StablehloBroadcastUtils
--  MLIRArithmeticDialect
-+  MLIRArithDialect
-   MLIRControlFlowInterfaces
-   MLIRInferTypeOpInterface
-   MLIRIR
-@@ -105,7 +105,7 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -108,9 +108,9 @@
+   return etp1 == etp2;
+ }
  
-   LINK_LIBS PUBLIC
-   StablehloBase
--  MLIRArithmeticDialect
-+  MLIRArithDialect
-   MLIRInferTypeOpInterface
-   MLIRIR
-   MLIRQuantDialect
+-bool isCompatibleForHloTypeInference(TypeRange l, TypeRange r) {
+-  if (l.size() != r.size()) return false;
+-  for (auto [lt, rt] : llvm::zip(l, r))
++bool isCompatibleForHloTypeInference(TypeRange tp1, TypeRange tp2) {
++  if (tp1.size() != tp2.size()) return false;
++  for (auto [lt, rt] : llvm::zip(tp1, tp2))
+     if (!isCompatibleForHloTypeInference(lt, rt)) return false;
+   return true;
+ }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -45,7 +45,7 @@
- #include "llvm/Support/FormatVariadic.h"
- #include "llvm/Support/MathExtras.h"
- #include "llvm/Support/Regex.h"
--#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-+#include "mlir/Dialect/Arith/IR/Arith.h"
- #include "mlir/Dialect/Complex/IR/Complex.h"
- #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
- #include "mlir/Dialect/Tensor/IR/Tensor.h"
-diff --ruN a/stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp b/stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
---- stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
-+++ stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
-@@ -22,7 +22,7 @@
- namespace mlir {
+@@ -641,9 +641,9 @@
+     return failure();
  
- TranslateFromMLIRRegistration stablehlo_interpreter(
--    "interpret",
-+    "interpret", "interpret stable hlo",
-     [](ModuleOp module, raw_ostream &os) {
-       auto walkResult = module.walk([&](func::FuncOp funcOp) {
-         os << "\nEvaluated results of function: " << funcOp.getSymName()
+   return verifyReduceScatter(*this,
+-                             /*operand_types=*/{getOperand().getType()},
+-                             /*result_types=*/{getType()},
+-                             /*scatter_dimension=*/getScatterDimension());
++                             /*operandTypes=*/{getOperand().getType()},
++                             /*resultTypes=*/{getType()},
++                             /*scatterDimension=*/getScatterDimension());
+ }
+ 
+ //===----------------------------------------------------------------------===//
 

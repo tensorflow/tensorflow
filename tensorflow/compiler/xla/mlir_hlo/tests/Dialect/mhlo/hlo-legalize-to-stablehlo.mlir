@@ -229,7 +229,7 @@ func.func @attr_precision_config_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<
 
 func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
-    // CHECK: rng_algorithm = #stablehlo.rng_algorithm<DEFAULT>
+    // CHECK: rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
     rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -238,7 +238,7 @@ func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tenso
 
 func.func @attr_rng_algorithm_three_fry(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
-    // CHECK: rng_algorithm = #stablehlo.rng_algorithm<THREE_FRY>
+    // CHECK: rng_algorithm = #stablehlo<rng_algorithm THREE_FRY>
     rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -247,7 +247,7 @@ func.func @attr_rng_algorithm_three_fry(%arg0: tensor<f32>) -> (tensor<f32>, ten
 
 func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
-    // CHECK: rng_algorithm = #stablehlo.rng_algorithm<PHILOX>
+    // CHECK: rng_algorithm = #stablehlo<rng_algorithm PHILOX>
     rng_algorithm = #mhlo.rng_algorithm<PHILOX>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -256,7 +256,7 @@ func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor
 
 func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
-    // CHECK: rng_distribution = #stablehlo.rng_distribution<UNIFORM>
+    // CHECK: rng_distribution = #stablehlo<rng_distribution UNIFORM>
     rng_distribution = #mhlo.rng_distribution<UNIFORM>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
@@ -265,7 +265,7 @@ func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>,
 
 func.func @attr_rng_distribution_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
-    // CHECK: rng_distribution = #stablehlo.rng_distribution<NORMAL>
+    // CHECK: rng_distribution = #stablehlo<rng_distribution NORMAL>
     rng_distribution = #mhlo.rng_distribution<NORMAL>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
@@ -1266,7 +1266,7 @@ func.func @op_reverse(%arg0: tensor<16xf32>) -> tensor<16xf32> {
 
 func.func @op_rng_bit_generator(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   //      CHECK: "stablehlo.rng_bit_generator"(%arg0) {
-  // CHECK-SAME:   rng_algorithm = #stablehlo.rng_algorithm<PHILOX>
+  // CHECK-SAME:   rng_algorithm = #stablehlo<rng_algorithm PHILOX>
   // CHECK-SAME: } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
     rng_algorithm = #mhlo.rng_algorithm<PHILOX>
@@ -1277,7 +1277,7 @@ func.func @op_rng_bit_generator(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>
 
 func.func @op_rng(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   //      CHECK: "stablehlo.rng"(%arg0, %arg1, %arg2) {
-  // CHECK-SAME:   rng_distribution = #stablehlo.rng_distribution<NORMAL>
+  // CHECK-SAME:   rng_distribution = #stablehlo<rng_distribution NORMAL>
   // CHECK-SAME: } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
     rng_distribution = #mhlo.rng_distribution<NORMAL>
