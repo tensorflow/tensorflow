@@ -23,33 +23,33 @@ namespace jax {
 
 namespace py = pybind11;
 
-size_t ShardingHash(const pybind11::object& obj) {
-  auto* sharding = py::cast<jax::Sharding*>(obj);
+size_t ShardingHash(const pybind11::object& sharding) {
+  auto type = sharding.get_type();
 
-  if (sharding->type() == ShardingType::kMeshPspecSharding) {
-    const auto* mesh_sharding = static_cast<const MeshPspecSharding*>(sharding);
+  if (type.is(MeshPspecSharding::type())) {
+    const auto* mesh_sharding = py::cast<jax::MeshPspecSharding*>(sharding);
     return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
   }
 
-  if (sharding->type() == ShardingType::kOpShardingSharding) {
-    auto* op_sharding = static_cast<OpShardingSharding*>(sharding);
+  if (type.is(OpShardingSharding::type())) {
+    auto* op_sharding = py::cast<OpShardingSharding*>(sharding);
     return op_sharding->Hash();
   }
 
-  return py::hash(obj);
+  return py::hash(sharding);
 }
 
 bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
   if (a.ptr() == b.ptr()) return true;
 
-  auto* a_sharding = py::cast<jax::Sharding*>(a);
-  auto* b_sharding = py::cast<jax::Sharding*>(b);
+  auto a_type = a.get_type();
+  auto b_type = b.get_type();
 
-  if (a_sharding->type() != b_sharding->type()) return false;
+  if (!a_type.is(b_type)) return false;
 
-  if (a_sharding->type() == ShardingType::kMeshPspecSharding) {
-    auto* a_mesh_sharding = static_cast<const MeshPspecSharding*>(a_sharding);
-    auto* b_mesh_sharding = static_cast<const MeshPspecSharding*>(b_sharding);
+  if (a_type.is(MeshPspecSharding::type())) {
+    auto* a_mesh_sharding = py::cast<const MeshPspecSharding*>(a);
+    auto* b_mesh_sharding = py::cast<const MeshPspecSharding*>(b);
 
     return a_mesh_sharding->mesh().ptr() == b_mesh_sharding->mesh().ptr() &&
            a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
@@ -60,11 +60,10 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
 
 MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
                                      py::object parsed_pspec)
-    : XLACompatibleSharding(ShardingType::kMeshPspecSharding, /*num_devices=*/
-                            [&mesh]() {
-                              py::array devices = mesh.attr("devices");
-                              return devices.size();
-                            }()),
+    : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
+        py::array devices = mesh.attr("devices");
+        return devices.size();
+      }()),
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       parsed_pspec_(std::move(parsed_pspec)) {
