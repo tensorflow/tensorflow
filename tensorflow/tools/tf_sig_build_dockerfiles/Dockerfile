@@ -24,6 +24,10 @@ FROM nvidia/cuda:11.2.2-base-ubuntu20.04 as devel
 COPY --from=builder /dt7 /dt7
 COPY --from=builder /dt9 /dt9
 
+# Install LLVM/Clang at HEAD
+COPY setup.clang.sh /setup.clang.sh
+RUN /setup.clang.sh
+
 # Install required development packages but delete unneeded CUDA bloat
 # CUDA must be cleaned up in the same command to prevent Docker layer bloating
 COPY setup.sources.sh /setup.sources.sh
