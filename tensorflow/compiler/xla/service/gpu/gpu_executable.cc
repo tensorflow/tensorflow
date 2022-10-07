@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Parser/Parser.h"       // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
@@ -367,6 +367,18 @@ Status ExecuteThunks(const std::string& module_name,
         async_comms_stream.ok() ? async_comms_stream->get() : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
   }
+
+  // Synchronize async_comms_stream to avoid race condition with temporary
+  // buffer teardown when the allocator allows asynchronous deallocation (e.g.
+  // bfc_allocator).
+  if (async_comms_stream.ok() &&
+      run_options->allocator()->AllowsAsynchronousDeallocation()) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        async_comms_stream->get()->BlockHostUntilDone(),
+        absl::StrFormat("Failed to complete all kernels launched on stream %p",
+                        async_comms_stream->get()));
+  }
+
   return MaybeSyncAndProfile(run_options, start_micros,
                              block_host_until_done ? main_stream : nullptr);
 }
