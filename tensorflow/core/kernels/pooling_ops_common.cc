@@ -198,16 +198,18 @@ PoolParameters::PoolParameters(OpKernelContext* context,
   }
 }
 
-TensorShape PoolParameters::forward_output_shape() {
+Status PoolParameters::forward_output_shape(TensorShape *shape) {
   if (depth_window == 1) {
     // Spatial pooling
-    return ShapeFromFormat(data_format, tensor_in_batch, out_height, out_width,
-                           depth);
+    return ShapeFromFormatWithStatus(
+        data_format, tensor_in_batch, out_height, out_width,
+        depth, shape);
   } else {
     // Depthwise pooling
-    return TensorShape(
+    *shape = TensorShape(
         {tensor_in_batch, tensor_in_rows, tensor_in_cols, out_depth});
   }
+  return Status::OK();
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -462,12 +464,16 @@ void DnnPoolingGradOp<T>::Compute(
     return;
   }
   if (tensor_out) {
-    OP_REQUIRES(context, tensor_out->shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES(context, params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out->shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
                                         params.forward_output_shape(),
                                         ", but got ", tensor_out->shape()));
   }
-  OP_REQUIRES(context, out_backprop.shape() == params.forward_output_shape(),
+  TensorShape params_forward_output_shape;
+  OP_REQUIRES(context, params.forward_output_shape(&params_forward_output_shape));
+  OP_REQUIRES(context, out_backprop.shape() == params_forward_output_shape,
               errors::InvalidArgument("Expected grad shape to be ",
                                       params.forward_output_shape(),
                                       ", but got ", out_backprop.shape()));
@@ -480,8 +486,10 @@ void DnnPoolingGradOp<T>::Compute(
   Tensor transformed_input;
   TensorShape transformed_input_shape;
   if (data_format == FORMAT_NHWC || !tensor_in) {
-    transformed_input_shape =
-        ShapeFromFormat(FORMAT_NCHW, tensor_in_shape, data_format);
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, tensor_in_shape, data_format, &transformed_input_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                    transformed_input_shape,
                                                    &transformed_input));
@@ -491,8 +499,10 @@ void DnnPoolingGradOp<T>::Compute(
   Tensor transformed_output;
   TensorShape transformed_output_shape;
   if (data_format == FORMAT_NHWC || !tensor_out) {
-    transformed_output_shape =
-        ShapeFromFormat(FORMAT_NCHW, out_backprop.shape(), data_format);
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, out_backprop.shape(), data_format, transformed_output_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
                                                    transformed_output_shape,
                                                    &transformed_output));
@@ -619,18 +629,29 @@ void DnnPoolingGradOp<T>::Compute(
             << params.window_rows << " kernel_col" << params.window_cols
             << " stride_rows" << params.row_stride;
 
+    TensorShape padded_input_shape;
+    OP_REQUIRES_OK(
+        context,
+	ShapeFromFormatWithStatus(
+            transformed_input_data_format, batch_size,
+            new_in_rows, new_in_cols, depth, &padded_input_shape));
     OP_REQUIRES_OK(
         context, context->allocate_temp(
                      DataTypeToEnum<T>::value,
-                     ShapeFromFormat(transformed_input_data_format, batch_size,
-                                     new_in_rows, new_in_cols, depth),
+                     padded_input_shape,
                      &padded_input));
 
+    TensorShape transformed_and_padded_input_backprop_shape;
+    OP_REQUIRES_OK(
+        context,
+	ShapeFromFormatWithStatus(
+            transformed_input_data_format, batch_size,
+            new_in_rows, new_in_cols, depth,
+            &transformed_and_padded_input_backprop_shape));
     OP_REQUIRES_OK(
         context, context->allocate_temp(
                      DataTypeToEnum<T>::value,
-                     ShapeFromFormat(transformed_input_data_format, batch_size,
-                                     new_in_rows, new_in_cols, depth),
+                     transformed_and_padded_input_backprop_shape,
                      &transformed_and_padded_input_backprop));
 
     input_pad_top = params.pad_top - common_padding_rows;
