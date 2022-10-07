@@ -1,13 +1,13 @@
 # Contains targets that expose client session APIs
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -45,7 +45,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:numpy_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_tf_session",
     deps = [
         "//third_party/eigen3",
         "//tensorflow/python/lib/core:pybind11_lib",
@@ -59,6 +58,7 @@ tf_python_pybind_extension(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/config:flags_headers",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/util:version_info",
         "@com_google_absl//absl/types:optional",
@@ -83,7 +83,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_debug_events_writer",
     srcs = ["debug_events_writer_wrapper.cc"],
-    module_name = "_pywrap_debug_events_writer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -100,7 +99,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_events_writer",
     srcs = ["events_writer_wrapper.cc"],
-    module_name = "_pywrap_events_writer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -165,7 +163,6 @@ py_library(
 tf_python_pybind_extension(
     name = "_pywrap_device_lib",
     srcs = ["device_lib_wrapper.cc"],
-    module_name = "_pywrap_device_lib",
     deps = [
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -216,6 +213,8 @@ tf_cuda_library(
         ":session_ref",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_buffer",
+        "//tensorflow/c:tf_buffer_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",

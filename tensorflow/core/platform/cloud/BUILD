@@ -22,6 +22,7 @@ package_group(
         "//learning/brain/tfrc/...",
         "//tensorflow/...",
         "//third_party/gsmemcachedfs/...",
+        "//third_party/py/tensorflow_io/...",
     ],
 )
 

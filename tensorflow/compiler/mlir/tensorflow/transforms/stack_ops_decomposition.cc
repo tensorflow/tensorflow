@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,8 +54,11 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
+#define GEN_PASS_DEF_STACKOPSDECOMPOSITIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct StackOpsDecompositionPass
-    : public TF::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
+    : public impl::StackOpsDecompositionPassBase<StackOpsDecompositionPass> {
   void runOnOperation() final;
 };
 
@@ -97,7 +99,7 @@ void ModifyFunctionSignature(
   int64_t original_arg_count = new_input_types.size();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto stack_type = arg_to_stack_type(i);
-    if (!stack_type.hasValue()) continue;
+    if (!stack_type.has_value()) continue;
     func.getArgument(i).setType(*stack_type);
     new_input_types[i] = *stack_type;
     auto size_arg = func.front().addArgument(size_var_type, func.getLoc());
@@ -358,7 +360,7 @@ LogicalResult HandleStackV2Op(
         if (!push) return llvm::None;
         return push.elem().getType();
       });
-  if (!elem_type.hasValue()) {
+  if (!elem_type.has_value()) {
     return stack.emitOpError("cannot infer element shape of stack");
   }
   OpBuilder builder(stack);

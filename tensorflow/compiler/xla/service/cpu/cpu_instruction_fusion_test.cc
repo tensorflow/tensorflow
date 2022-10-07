@@ -62,7 +62,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -81,7 +81,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -102,7 +102,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -124,7 +124,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
@@ -143,7 +143,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).value());
   EXPECT_EQ(dot, computation->root_instruction());
 }
 
@@ -162,7 +162,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
-  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).value());
   EXPECT_EQ(dot, computation->root_instruction());
 }
 
@@ -183,13 +183,7 @@ ENTRY DotOperationFusion_TransposeFusion {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      TransposeFolding::NeverFoldTranspose);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -213,13 +207,7 @@ ENTRY DotOperationFusion_TransposeFusion {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      TransposeFolding::NeverFoldTranspose);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -244,13 +232,7 @@ ENTRY DotOperationFusion_TransposeFusion {
                           ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
-  TransposeFolding transpose_folding(
-      [](const HloInstruction& dot,
-         const TransposeFolding::OperandIndices& candidate_operands) {
-        return candidate_operands;
-      },
-      TransposeFolding::NeverFoldTranspose);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, transpose_folding.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, TransposeFolding().Run(module.get()));
   ASSERT_TRUE(changed);
   ASSERT_THAT(computation->root_instruction(),
               op::Dot(op::Parameter(0), op::Exp(op::Parameter(1)),
@@ -268,7 +250,7 @@ class OpcodeFusionTest : public InstructionFusionTest {
     auto computation = module->entry_computation();
     auto did_fusion = CpuInstructionFusion().Run(module);
     ASSERT_TRUE(did_fusion.ok());
-    EXPECT_TRUE(did_fusion.ValueOrDie());
+    EXPECT_TRUE(did_fusion.value());
 
     HloInstruction* root = computation->root_instruction();
     ASSERT_THAT(root, op::Fusion());

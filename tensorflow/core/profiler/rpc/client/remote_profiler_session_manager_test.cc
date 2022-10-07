@@ -38,6 +38,10 @@ using ::tensorflow::profiler::test::StartServer;
 using ::tensorflow::testing::TmpDir;
 using Response = tensorflow::profiler::RemoteProfilerSessionManager::Response;
 
+// Tests have intemittently failed with 2s grace period, so setting this to
+// a large enough value.
+constexpr double kGracePeriodSeconds = 10.0;
+
 // Copied from capture_profile to not introduce a dependency.
 ProfileRequest PopulateProfileRequest(
     absl::string_view repository_root, absl::string_view session_id,
@@ -71,7 +75,7 @@ TEST(RemoteProfilerSessionManagerTest, Simple) {
   auto server = StartServer(duration, &service_address);
   options.add_service_addresses(service_address);
   absl::Time approx_start = absl::Now();
-  absl::Duration grace = absl::Seconds(1);
+  absl::Duration grace = absl::Seconds(kGracePeriodSeconds);
   absl::Duration max_duration = duration + grace;
   options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
   options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));
@@ -102,7 +106,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   std::string service_address;
   auto server = StartServer(duration, &service_address);
   options.add_service_addresses(service_address);
-  absl::Duration grace = absl::Seconds(1);
+  absl::Duration grace = absl::Seconds(kGracePeriodSeconds);
   absl::Duration max_duration = duration + grace;
   options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
   // This will create a deadline in the past.
@@ -137,7 +141,7 @@ TEST(RemoteProfilerSessionManagerTest, LongSession) {
   options.add_service_addresses(service_address);
   absl::Time approx_start = absl::Now();
   // Empirically determined value.
-  absl::Duration grace = absl::Seconds(20);
+  absl::Duration grace = absl::Seconds(kGracePeriodSeconds);
   absl::Duration max_duration = duration + grace;
   options.set_max_session_duration_ms(absl::ToInt64Milliseconds(max_duration));
   options.set_session_creation_timestamp_ns(absl::ToUnixNanos(approx_start));

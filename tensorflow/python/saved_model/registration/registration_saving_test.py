@@ -20,22 +20,25 @@ import tempfile
 from absl.testing import parameterized
 
 from google.protobuf import wrappers_pb2
+from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import registration
 from tensorflow.python.saved_model import save
-from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import util
+from tensorflow.python.trackable import autotrackable
 
 
 @registration.register_serializable()
@@ -56,7 +59,7 @@ class Part(resource_variable_ops.ResourceVariable):
 
 
 @registration.register_serializable()
-class Stack(tracking.AutoTrackable):
+class Stack(autotrackable.AutoTrackable):
 
   def __init__(self, parts=None):
     self.parts = parts
@@ -136,7 +139,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
   def test_registered_serializable(self, cycles):
 
     @registration.register_serializable(name=f"SaveAndLoad{cycles}")
-    class Module(tracking.AutoTrackable):
+    class Module(autotrackable.AutoTrackable):
 
       def __init__(self, name="module"):
         self.v = variables.Variable(1.)
@@ -166,7 +169,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
   def test_none_proto(self, cycles):
 
     @registration.register_serializable(name=f"NoneProto{cycles}")
-    class Module(tracking.AutoTrackable):
+    class Module(autotrackable.AutoTrackable):
 
       def __init__(self, name="module"):
         self.v = variables.Variable(1.)
@@ -188,7 +191,7 @@ class SavedModelTest(test.TestCase, parameterized.TestCase):
 
   def test_deserialization_dependencies(self, cycles):
     @registration.register_serializable(name=f"Dependency{cycles}")
-    class Module(tracking.AutoTrackable):
+    class Module(autotrackable.AutoTrackable):
 
       def __init__(self, v=None):
         self.v = v if v is not None else variables.Variable(1.)
@@ -273,6 +276,142 @@ class SingleCycleTest(test.TestCase):
       metagraph = loader.load(sess, ["serve"], save_path)
       value_output = metagraph.signature_def["serving_default"].outputs["value"]
       self.assertAllEqual(exported_value, sess.run(value_output.name))
+
+  def test_non_strict_predicate(self):
+    class NonStrictPredicateClass(autotrackable.AutoTrackable):
+      pass
+    registration.register_checkpoint_saver(
+        name="NonStrictPredicate",
+        predicate=lambda x: isinstance(x, NonStrictPredicateClass),
+        save_fn=lambda **kwargs: [],
+        restore_fn=lambda **kwargs: None,
+        strict_predicate_restore=False)
+
+    root = NonStrictPredicateClass()
+    ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+    util.Checkpoint(root).write(ckpt_path)
+
+    root2 = autotrackable.AutoTrackable()
+    # This should run without throwing an error.
+    util.Checkpoint(root2).read(ckpt_path)
+
+  def test_strict_predicate(self):
+    class StrictPredicateClass(autotrackable.AutoTrackable):
+      pass
+    registration.register_checkpoint_saver(
+        name="StrictPredicate",
+        predicate=lambda x: isinstance(x, StrictPredicateClass),
+        save_fn=lambda **kwargs: [],
+        restore_fn=lambda **kwargs: None,
+        strict_predicate_restore=True)
+
+    root = StrictPredicateClass()
+    ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+    util.Checkpoint(root).write(ckpt_path)
+
+    root2 = autotrackable.AutoTrackable()
+    with self.assertRaisesRegex(ValueError, "saver cannot be used"):
+      util.Checkpoint(root2).read(ckpt_path)
+
+  def test_registered_saver_is_called_before_save_after_load(self):
+    if not context.executing_eagerly():
+      self.skipTest("This test must run under eager mode.")
+
+    class RestoreClass(autotrackable.AutoTrackable):
+      pass
+    def save_fn(trackables, file_prefix):
+      del trackables  # Unused.
+      # Check that directory is empty
+      files = gfile.ListDirectory(os.path.dirname(file_prefix.numpy()))
+      self.assertEmpty(files)
+
+    def restore_fn(trackables, merged_prefix):
+      del merged_prefix  # Unused.
+      root = next(trackables.values())
+      self.assertEqual(root.v.numpy(), 123)
+
+    registration.register_checkpoint_saver(
+        name="OptionalRestore",
+        predicate=lambda x: isinstance(x, RestoreClass),
+        save_fn=save_fn,
+        restore_fn=restore_fn)
+
+    root = RestoreClass()
+    root.v = variables.Variable(123.0)
+
+    ckpt_path = os.path.join(self.get_temp_dir(), "ckpt")
+    util.Checkpoint(root).write(ckpt_path)
+
+  def test_migration_backwards_compatibility(self):
+    # Tests that objects migrated to using the advanced saver registration can
+    # use pre-migration checkpoints.
+
+    class NoRegisteredSaver(autotrackable.AutoTrackable):
+
+      def __init__(self, name):
+        self.name = name
+
+      def _serialize_to_tensors(self):
+        return {"name": constant_op.constant(self.name)}
+
+    class RegisteredSaver(autotrackable.AutoTrackable):
+
+      def __init__(self, name):
+        self.name = name
+
+    def _get_tensors(trackables, append_name=True):
+      tensor_names = []
+      shapes_and_slices = []
+      tensors = []
+      restored_trackables = []
+      for obj_prefix, obj in trackables.items():
+        tensor_names.append(obj_prefix + "name" if append_name else obj_prefix)
+        shapes_and_slices.append("")
+        tensors.append(constant_op.constant(obj.name))
+        restored_trackables.append(obj)
+      return tensor_names, shapes_and_slices, tensors, restored_trackables
+
+    def save_fn(trackables, file_prefix):
+      tensor_names, shapes_and_slices, tensors, _ = _get_tensors(trackables)
+      io_ops.save_v2(file_prefix, tensor_names, shapes_and_slices, tensors)
+      return file_prefix
+
+    def restore_fn(trackables, merged_prefix):
+      tensor_names, shapes_and_slices, tensors, restored_trackables = (
+          _get_tensors(trackables))
+      dtypes = [t.dtype for t in tensors]
+      try:
+        restored_tensors = io_ops.restore_v2(merged_prefix, tensor_names,
+                                             shapes_and_slices, dtypes)
+      except errors_impl.NotFoundError:
+        # If a NotFoundError is caught, then it means that the checkpoint
+        # was written prior to the saver registration migration.
+        tensor_names, shapes_and_slices, tensors, restored_trackables = (
+            _get_tensors(trackables, append_name=False))
+        restored_tensors = io_ops.restore_v2(merged_prefix, tensor_names,
+                                             shapes_and_slices, dtypes)
+      for trackable, name_tensor in zip(restored_trackables, restored_tensors):
+        trackable.name = name_tensor
+
+    registration.register_checkpoint_saver(
+        name="MigratedSaver",
+        predicate=lambda x: isinstance(x, RegisteredSaver),
+        save_fn=save_fn,
+        restore_fn=restore_fn,
+    )
+
+    before = NoRegisteredSaver("before")
+    after = RegisteredSaver("after")
+    before_ckpt_path = os.path.join(self.get_temp_dir(), "before_ckpt")
+    util.Checkpoint(before).write(before_ckpt_path)
+
+    after_ckpt = util.Checkpoint(after)
+    after_ckpt_path = os.path.join(self.get_temp_dir(), "after_ckpt")
+    after_ckpt.write(after_ckpt_path)
+
+    # Try loading the pre-migrated checkpoint to the migrated object.
+    after_ckpt.read(before_ckpt_path)
+    self.assertEqual(b"before", self.evaluate(after.name))
 
 
 if __name__ == "__main__":

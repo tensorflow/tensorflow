@@ -60,9 +60,9 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
                                       input.data());
 }
 
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(rank);
-  for (size_t i = 0; i < rank; i++) {
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
+  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
+  for (size_t i = 0; i < ndims; i++) {
     output->data[i] = dims[i];
   }
   return output;

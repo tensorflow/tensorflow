@@ -62,14 +62,14 @@ class CuptiErrorManagerTest : public ::testing::Test {
 
   void SetUp() override {
     ASSERT_GT(CuptiTracer::NumGpus(), 0) << "No devices found";
-    auto mock_cupti = absl::make_unique<StrictMock<MockCupti>>();
+    auto mock_cupti = std::make_unique<StrictMock<MockCupti>>();
     mock_ = mock_cupti.get();
     cupti_error_manager_ =
-        absl::make_unique<CuptiErrorManager>(std::move(mock_cupti));
+        std::make_unique<CuptiErrorManager>(std::move(mock_cupti));
 
     cupti_tracer_ =
-        absl::make_unique<TestableCuptiTracer>(cupti_error_manager_.get());
-    cupti_wrapper_ = absl::make_unique<CuptiWrapper>();
+        std::make_unique<TestableCuptiTracer>(cupti_error_manager_.get());
+    cupti_wrapper_ = std::make_unique<CuptiWrapper>();
 
     CuptiTracerCollectorOptions collector_options;
     collector_options.num_gpus = CuptiTracer::NumGpus();

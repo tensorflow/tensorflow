@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_ERROR_PAYLOADS_H_
 #define TENSORFLOW_CORE_PLATFORM_ERROR_PAYLOADS_H_
 
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/core_platform_payloads.pb.h"
 // This file contains macros and payload keys for the error counter in
 // EagerClient.
 
-namespace tensorflow {
+namespace tsl {
 
 // Proto: tensorflow::core::platform::ErrorSourceProto
 // Location: tensorflow/core/protobuf/core_platform_payloads.proto
@@ -29,5 +31,19 @@ namespace tensorflow {
 constexpr char kErrorSource[] =
     "type.googleapis.com/tensorflow.core.platform.ErrorSourceProto";
 
+// Set payload when status is not ok and ErrorSource payload hasn't been set.
+// The code below will be used at every place where we would like to catch
+// the error for the error counter in EagerClient.
+
+void OkOrSetErrorCounterPayload(
+    const tensorflow::core::platform::ErrorSourceProto::ErrorSource&
+        error_source,
+    tensorflow::Status& status);
+}  // namespace tsl
+
+namespace tensorflow {
+using tsl::kErrorSource;                // NOLINT
+using tsl::OkOrSetErrorCounterPayload;  // NOLINT
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_PLATFORM_ERROR_PAYLOADS_H_

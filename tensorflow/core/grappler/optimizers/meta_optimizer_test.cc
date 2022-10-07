@@ -53,14 +53,14 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     optimized_ = true;
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -83,7 +83,7 @@ class TestOptimizerWithParams : public TestOptimizer {
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     CHECK(config != nullptr);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -107,7 +107,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -116,7 +116,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
     if (optimization_options_) {
       optimization_options_->insert({item.id, item.optimization_options()});
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -711,7 +711,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -720,7 +720,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
     Env::Default()->SleepForMicroseconds(1000000);
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     optimized_graph->add_node();
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -896,7 +896,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnInvalidGraph) {
   MetaOptimizer optimizer_with_post_verifiers(nullptr, config_proto);
   Status status =
       optimizer_with_post_verifiers.Optimize(nullptr, item, &output);
-  EXPECT_EQ(status.code(), errors::Code::INVALID_ARGUMENT);
+  EXPECT_TRUE(errors::IsInvalidArgument(status));
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
@@ -1062,11 +1062,6 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
 
   AttrValue branches;
   branches.mutable_list()->add_func()->set_name("branch_func");
-  AttrValue Tin;
-  Tin.mutable_list()->add_type(DT_FLOAT);
-  Tin.mutable_list()->add_type(DT_FLOAT);
-  AttrValue Tout;
-  Tout.mutable_list()->add_type(DT_FLOAT);
   AttrValue output_shapes;
   output_shapes.mutable_list()->add_shape();
   item.graph = test::function::GDef(
@@ -1076,8 +1071,8 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
        // Calls into function library
        NDef("case", "Case", {"idx", "x", "y"},
             {{"branches", std::move(branches)},
-             {"Tin", std::move(Tin)},
-             {"Tout", std::move(Tout)},
+             {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+             {"Tout", DataTypeSlice{DT_FLOAT}},
              {"output_shapes", std::move(output_shapes)}},
             kDevice)},
       /*funcs=*/
@@ -1086,6 +1081,11 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
 
   GraphDef output;
   ConfigProto config_proto;
+  // Disable conditional code motion to prevent placeholders from being sunk
+  // into branch_func (would result in zero parameters for it).
+  config_proto.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_experimental_conditional_code_motion(RewriterConfig::OFF);
 
   MetaOptimizer optimizer(nullptr, config_proto);
   Status status = optimizer.Optimize(nullptr, item, &output);
@@ -1095,6 +1095,90 @@ TEST_F(MetaOptimizerTest, TestTFGRemoveDeadArguments) {
   auto& func = output.library().function(0);
   EXPECT_EQ(func.signature().input_arg_size(), 1);
   EXPECT_EQ(func.signature().input_arg(0).name(), "x_tfg_result_0");
+}
+
+TEST_F(MetaOptimizerTest, TestTFGControlFlowSink) {
+  using test::function::NDef;
+
+  gtl::FlatMap<string, GrapplerItem::OptimizationOptions> optimization_options;
+  GrapplerItemPropertiesAccumulator::SetOptimizationOptions(
+      &optimization_options);
+
+  // Define a branch function.
+  //   def branch_func(x, y):
+  //     z = tf.Mul(x, y)
+  //     return z
+  FunctionDef case_func = FunctionDefHelper::Create(
+      "branch_func", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
+
+  // Define a function with a control-flow op.
+  //   def Foo(idx, a, b):
+  //     x_foo = Add(a, b)
+  //     y_foo = Mul(a, b)
+  //     case = Case(idx, x_foo, y_foo, branches=[branch_func[)
+  //     return case
+  AttrValue branches;
+  branches.mutable_list()->add_func()->set_name("branch_func");
+  AttrValue output_shapes;
+  output_shapes.mutable_list()->add_shape();
+  FunctionDef foo_func = FunctionDefHelper::Create(
+      "Foo", {"idx:int32", "a:float", "b:float"}, {"c:float"}, {},
+      {{{"add"}, "Add", {"a", "b"}, {{"T", DT_FLOAT}}},
+       {{"mul"}, "Mul", {"a", "b"}, {{"T", DT_FLOAT}}},
+       {{"case"},
+        "Case",
+        {"idx", "add:z:0", "mul:z:0"},
+        {{"branches", std::move(branches)},
+         {"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
+         {"Tout", DataTypeSlice{DT_FLOAT}},
+         {"output_shapes", std::move(output_shapes)}}}},
+      /*ret_def=*/
+      {{"c", "case:output:0"}});
+  (*foo_func.mutable_attr())["_noinline"].set_b(true);
+
+  // Tensorflow graph:
+  //
+  //   idx = tf.Placeholder(tf.int32);
+  //   a = tf.Placeholder(tf.float);
+  //   b = tf.Placeholder(tf.float);
+  //
+  //   foo_val = Foo(idx, a, b)
+  GrapplerItem item;
+  item.id = "main";
+
+  item.graph = test::function::GDef(
+      {NDef("idx", "Placeholder", {}, {{"dtype", DT_INT32}}, kDevice),
+       NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
+       // Calls into function library
+       NDef("foo", "Foo", {"idx", "a", "b"}, {}, kDevice)},
+      /*funcs=*/
+      {case_func, foo_func});
+  item.fetch = {"foo"};
+
+  GraphDef output;
+  ConfigProto config_proto;
+
+  MetaOptimizer optimizer(nullptr, config_proto);
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(output.library().function_size(), 2);
+
+  const FunctionDef* optimized_foo_func = nullptr;
+  const FunctionDef* specialized_branch_func = nullptr;
+  for (const FunctionDef& func : output.library().function()) {
+    if (func.signature().name() == "Foo")
+      optimized_foo_func = &func;
+    else if (absl::StartsWith(func.signature().name(), "branch_func"))
+      specialized_branch_func = &func;
+  }
+  ASSERT_TRUE(optimized_foo_func);
+  EXPECT_EQ(optimized_foo_func->node_def_size(), 1);
+  ASSERT_TRUE(specialized_branch_func);
+  EXPECT_EQ(specialized_branch_func->node_def_size(), 3);
 }
 
 // Tests for checking expected behavior when skipping tf.data functions in
@@ -1117,14 +1201,14 @@ class TfDataTestOptimizer : public CustomGraphOptimizer {
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     ++count_;
     *optimized_graph = item.graph;
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

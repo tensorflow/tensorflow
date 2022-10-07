@@ -42,7 +42,7 @@ Status StatefulRngSpmdPartitioningVisitor::HandleRngGetAndUpdateState(
   SetPartitionedHlo(
       hlo, spmd::PartitionedHlo(clone, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<spmd::SpmdPartitioningVisitor>
@@ -51,15 +51,17 @@ StatefulRngSpmdPartitioner::CreateVisitor(
     const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, spmd::SpmdLogger* logger,
     spmd::SpmdPartitionerOptions options) {
-  return absl::make_unique<StatefulRngSpmdPartitioningVisitor>(
+  return std::make_unique<StatefulRngSpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
       next_channel_id, logger, std::move(options), this);
 }
 
-Status StatefulRngSpmdPartitioner::PreprocessSharding(HloModule* module) {
+Status StatefulRngSpmdPartitioner::PreprocessSharding(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // For rng-get-and-update-status with no sharding, set sharding to be
   // replicated.
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     for (HloInstruction* hlo : computation->instructions()) {
       if (hlo->opcode() == HloOpcode::kRngGetAndUpdateState &&
           !hlo->has_sharding()) {
@@ -67,7 +69,7 @@ Status StatefulRngSpmdPartitioner::PreprocessSharding(HloModule* module) {
       }
     }
   }
-  return spmd::SpmdPartitioner::PreprocessSharding(module);
+  return spmd::SpmdPartitioner::PreprocessSharding(module, execution_threads);
 }
 
 bool StatefulRngSpmdPartitioner::CanSideEffectingHaveReplicatedSharding(

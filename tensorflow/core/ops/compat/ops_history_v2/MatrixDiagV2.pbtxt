@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MatrixDiagV2"
   input_arg {
     name: "diagonal"

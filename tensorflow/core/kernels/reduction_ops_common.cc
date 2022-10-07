@@ -76,7 +76,7 @@ Status SimplifyHelper(const Tensor& data, const Tensor& axis,
     }
     bitmap[index] = true;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
@@ -154,7 +154,7 @@ Status ReductionHelper::Simplify(const Tensor& data, const Tensor& axis,
   VLOG(1) << "data reshape: " << absl::StrJoin(data_reshape_, ",");
   VLOG(1) << "out  reshape: " << absl::StrJoin(out_reshape_, ",");
   VLOG(1) << "out    shape: " << absl::StrJoin(out_shape_, ",");
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

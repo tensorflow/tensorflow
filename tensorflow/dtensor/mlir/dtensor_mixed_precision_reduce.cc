@@ -24,14 +24,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORMIXEDPRECISIONREDUCE
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Extracts the reduction group size from the group_assignment operand of the
 // reduce op. group_assignment is a 2-dimensional array where each element is
@@ -140,7 +142,8 @@ mlir::LogicalResult TryMixedPrecisionReduce(mlir::func::FuncOp function,
 
 // MLIR pass that enables tensor upcasting within mixed-precision reduction.
 struct DTensorMixedPrecisionReducePass
-    : public DTensorMixedPrecisionReduceBase<DTensorMixedPrecisionReducePass> {
+    : public impl::DTensorMixedPrecisionReduceBase<
+          DTensorMixedPrecisionReducePass> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();
 

@@ -16,13 +16,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -52,23 +52,18 @@ namespace {
 constexpr int64_t i32BitLimit = 4294967296;
 using shape::ShapeOfOp;
 
-bool IsTFOperation(Operation *op) {
-  return op != nullptr &&
-         op->getDialect() ==
-             op->getContext()->getLoadedDialect<TF::TensorFlowDialect>();
+bool IsSingleResultTFOperation(Operation *op) {
+  assert(op != nullptr && "expect op");
+  if (op->getDialect() !=
+      op->getContext()->getLoadedDialect<TF::TensorFlowDialect>())
+    return false;
+  if (op->getNumResults() != 1) return false;
+  return true;
 }
 
 bool IsUnaryTFOperation(Operation *op) {
-  return IsTFOperation(op) && op->getNumOperands() == 1;
+  return IsSingleResultTFOperation(op) && op->getNumOperands() == 1;
 }
-
-struct ModuleParameters {
-  llvm::ArrayRef<int64_t> tile_sizes;
-  llvm::ArrayRef<int64_t> unroll_factors;
-  int64_t max_supported_rank;
-  bool index_64bit;
-  bool cpu_codegen;
-};
 
 struct TFToJITInvocationsPattern : public RewritePattern {
   explicit TFToJITInvocationsPattern(MLIRContext *ctx)
@@ -76,186 +71,43 @@ struct TFToJITInvocationsPattern : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // Apply to all TF ops except those that are already in a JIT-compiled
-    // region.
-    if (!IsTFOperation(op) || op->getParentOfType<tf_framework::JITCompileOp>())
+    // Apply to all single result TF ops except those that are already in a
+    // JIT-compiled region.
+    if (!IsSingleResultTFOperation(op) ||
+        op->getParentOfType<tf_framework::JITCompileOp>())
       return failure();
 
-    // Find last TF op.
-    while (IsTFOperation(op->getNextNode())) op = op->getNextNode();
-
-    // Find JIT compile region operands and results.
-    SmallVector<Operation *, 16> cluster;
-    llvm::SmallPtrSet<Value, 16> operand_set, result_set;
-    Operation *it = op;
-    while (IsTFOperation(it)) {
-      // Find results that escape the JIT compile region.
-      for (auto &use : it->getUses()) {
-        if (!llvm::is_contained(cluster, use.getOwner()))
-          result_set.insert(use.get());
-      }
-
-      // Update JIT region operands and results.
-      for (Value v : it->getResults()) operand_set.erase(v);
-      for (Value v : it->getOperands()) operand_set.insert(v);
-
-      cluster.push_back(it);
-      it = it->getPrevNode();
-    }
-
-    // Introduce order to the operands and results.
-    auto operands = llvm::to_vector<16>(operand_set);
-    auto results = llvm::to_vector<16>(result_set);
-    auto operand_types = llvm::to_vector<16>(
-        llvm::map_range(operands, [](Value v) { return v.getType(); }));
-    auto result_types = llvm::to_vector<16>(
-        llvm::map_range(results, [](Value v) { return v.getType(); }));
+    Location loc = op->getLoc();
+    Value op_result = op->getResults().front();
 
     // Create the JIT compile op.
-    auto loc = op->getLoc();
     auto jit_compile_op = rewriter.create<tf_framework::JITCompileOp>(
-        loc, rewriter.getType<tf_framework::JITCallableType>(), llvm::None);
+        loc, rewriter.getType<tf_framework::JITCallableType>(),
+        /*ctx=*/llvm::None);
 
-    // Move the TF operations into the new op's body.
-    BlockAndValueMapping bvm;
+    // Move the TF operation into the body.
     {
       OpBuilder::InsertionGuard guard(rewriter);
-      Block *block =
-          rewriter.createBlock(&jit_compile_op.body(), {}, operand_types,
-                               SmallVector<Location>(operands.size(), loc));
-      for (auto it : llvm::zip(operands, block->getArguments()))
+      llvm::SmallVector<Location> locs(op->getNumOperands(), loc);
+      Block *block = rewriter.createBlock(&jit_compile_op.getBody(), {},
+                                          op->getOperandTypes(), locs);
+
+      // Map operands.
+      BlockAndValueMapping bvm;
+      for (auto it : llvm::zip(op->getOperands(), block->getArguments()))
         bvm.map(std::get<0>(it), std::get<1>(it));
+
       rewriter.setInsertionPointToStart(block);
-      for (Operation *it : llvm::reverse(cluster)) rewriter.clone(*it, bvm);
-      auto mapped_results = llvm::to_vector<16>(
-          llvm::map_range(results, [&](Value v) { return bvm.lookup(v); }));
-      rewriter.create<tf_framework::JITCompileYieldOp>(loc, TypeRange{},
-                                                       mapped_results);
+      rewriter.clone(*op, bvm);
+      rewriter.create<tf_framework::JITCompileYieldOp>(loc,
+                                                       bvm.lookup(op_result));
     }
 
     // Create JIT execute op.
-    auto jit_execute_op = rewriter.create<tf_framework::JITExecuteOp>(
-        loc, result_types, Value(), jit_compile_op.result(), operands);
-
-    // Replace old TF ops with the new results.
-    for (auto it : llvm::zip(results, jit_execute_op.results()))
-      bvm.map(std::get<0>(it), std::get<1>(it));
-    for (Operation *it : cluster) {
-      if (it->getUses().empty()) {
-        rewriter.eraseOp(it);
-        continue;
-      }
-      auto replacements = llvm::to_vector<16>(llvm::map_range(
-          it->getResults(), [&](Value v) { return bvm.lookup(v); }));
-      rewriter.replaceOp(it, replacements);
-    }
-
+    rewriter.replaceOpWithNewOp<tf_framework::JITExecuteOp>(
+        op, op_result.getType(), /*ctx=*/Value(), jit_compile_op.getResult(),
+        op->getOperands());
     return success();
-  }
-};
-
-struct PackJITCompileOpPattern
-    : public OpRewritePattern<tf_framework::JITCompileOp> {
-  using OpRewritePattern<tf_framework::JITCompileOp>::OpRewritePattern;
-
-  explicit PackJITCompileOpPattern(MLIRContext *ctx,
-                                   llvm::ArrayRef<int64_t> tile_sizes,
-                                   llvm::ArrayRef<int64_t> unroll_factors,
-                                   int64_t max_supported_rank, bool enable_ftz,
-                                   bool index_64bit_if_jit_compiling,
-                                   bool cpu_codegen)
-      : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
-        tile_sizes(tile_sizes),
-        unroll_factors(unroll_factors),
-        max_supported_rank(max_supported_rank),
-        enable_ftz(enable_ftz),
-        index_64bit_if_jit_compiling(index_64bit_if_jit_compiling),
-        cpu_codegen(cpu_codegen) {}
-
-  LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
-                                PatternRewriter &rewriter) const override {
-    Block *body = op.getBody();
-    auto yield_op =
-        llvm::cast<tf_framework::JITCompileYieldOp>(body->getTerminator());
-
-    // Temporarily, build the module that would be JIT-compiled. This is only to
-    // obtain the serialized code attribute.
-    auto loc = op->getLoc();
-    OpBuilder tmp_module_builder(getContext(), rewriter.getListener());
-    auto jit_module = tmp_module_builder.create<ModuleOp>(loc);
-    tmp_module_builder.setInsertionPointToStart(jit_module.getBody());
-    auto jit_function = tmp_module_builder.create<func::FuncOp>(
-        loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
-        tmp_module_builder.getFunctionType(body->getArgumentTypes(),
-                                           yield_op->getOperandTypes()));
-    jit_function->setAttr(tf_framework::TFFrameworkDialect::kTFEntryAttrName,
-                          tmp_module_builder.getUnitAttr());
-    jit_function.getBody().takeBody(op.getBodyRegion());
-    tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
-    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.result());
-    rewriter.eraseOp(yield_op);
-
-    // Serialize JIT module.
-    std::string code;
-    llvm::raw_string_ostream ss(code);
-    jit_module.print(ss);
-
-    // Finally, create the new JIT compile op.
-    rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
-        op, op->getResultTypes(), op.ctx(), rewriter.getStringAttr(code),
-        rewriter.getI64ArrayAttr(tile_sizes),
-        rewriter.getI64ArrayAttr(unroll_factors),
-        rewriter.getI64IntegerAttr(max_supported_rank),
-        rewriter.getBoolAttr(enable_ftz),
-        rewriter.getBoolAttr(index_64bit_if_jit_compiling),
-        rewriter.getBoolAttr(cpu_codegen));
-
-    return success();
-  }
-
- private:
-  llvm::ArrayRef<int64_t> tile_sizes;
-  llvm::ArrayRef<int64_t> unroll_factors;
-  int64_t max_supported_rank;
-  bool enable_ftz;
-  bool index_64bit_if_jit_compiling;
-  bool cpu_codegen;
-};
-
-#define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
-
-struct TFToJITInvocationPass
-    : public TFToJITInvocationPassBase<TFToJITInvocationPass> {
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect,
-                    scf::SCFDialect, shape::ShapeDialect>();
-  }
-  explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
-                                 llvm::ArrayRef<int64_t> unroll_factors,
-                                 int64_t max_supported_rank, bool enable_ftz,
-                                 bool index_64bit, bool cpu_codegen,
-                                 bool jit_i64_indexed_for_large_tensors) {
-    tile_sizes_ = tile_sizes;
-    unroll_factors_ = unroll_factors;
-    max_supported_rank_ = max_supported_rank;
-    enable_ftz_ = enable_ftz;
-    index_64bit_ = index_64bit;
-    cpu_codegen_ = cpu_codegen;
-    jit_i64_indexed_for_large_tensors_ = jit_i64_indexed_for_large_tensors;
-  }
-
-  void runOnOperation() override {
-    MLIRContext *ctx = &getContext();
-    RewritePatternSet patterns(ctx);
-    PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
-                                      unroll_factors_, max_supported_rank_,
-                                      enable_ftz_, index_64bit_, cpu_codegen_,
-                                      jit_i64_indexed_for_large_tensors_);
-    if (failed(applyPatternsAndFoldGreedily(getOperation(),
-                                            std::move(patterns)))) {
-      return signalPassFailure();
-    }
   }
 };
 
@@ -300,7 +152,7 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   {
                     OpBuilder::InsertionGuard guard(rewriter);
                     Block *block = rewriter.createBlock(
-                        &jit_compile_op.body(), {}, operand_types,
+                        &jit_compile_op.getBody(), {}, operand_types,
                         SmallVector<Location>(operand_types.size(), loc));
                     for (auto it :
                          llvm::zip(op->getOperands(), block->getArguments()))
@@ -313,9 +165,9 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
                   }
                   auto jit_execute_op =
                       rewriter.create<tf_framework::JITExecuteOp>(
-                          loc, result_types, Value(), jit_compile_op.result(),
-                          op->getOperands());
-                  b.create<scf::YieldOp>(l, jit_execute_op.results());
+                          loc, result_types, Value(),
+                          jit_compile_op.getResult(), op->getOperands());
+                  b.create<scf::YieldOp>(l, jit_execute_op.getResult());
                 },
                 [&](OpBuilder &b, Location l) {
                   auto new_op = rewriter.clone(*op);
@@ -327,6 +179,113 @@ struct TFToI64JITInvocationForLargeTensorsPattern : public RewritePattern {
     return success();
   }
 };
+
+struct PackJITCompileOpPattern
+    : public OpRewritePattern<tf_framework::JITCompileOp> {
+  using OpRewritePattern<tf_framework::JITCompileOp>::OpRewritePattern;
+
+  explicit PackJITCompileOpPattern(MLIRContext *ctx,
+                                   llvm::ArrayRef<int64_t> tile_sizes,
+                                   llvm::ArrayRef<int64_t> unroll_factors,
+                                   int64_t max_supported_rank, bool enable_ftz,
+                                   bool index_64bit_if_jit_compiling,
+                                   bool cpu_codegen)
+      : OpRewritePattern<tf_framework::JITCompileOp>(ctx),
+        tile_sizes(tile_sizes),
+        unroll_factors(unroll_factors),
+        max_supported_rank(max_supported_rank),
+        enable_ftz(enable_ftz),
+        index_64bit_if_jit_compiling(index_64bit_if_jit_compiling),
+        cpu_codegen(cpu_codegen) {}
+
+  LogicalResult matchAndRewrite(tf_framework::JITCompileOp op,
+                                PatternRewriter &rewriter) const override {
+    Block *body = op.SingleBlock::getBody();
+    auto yield_op =
+        llvm::cast<tf_framework::JITCompileYieldOp>(body->getTerminator());
+
+    // Temporarily, build the module that would be JIT-compiled. This is only to
+    // obtain the serialized code attribute.
+    auto loc = op->getLoc();
+    OpBuilder tmp_module_builder(getContext(), rewriter.getListener());
+    auto jit_module = tmp_module_builder.create<ModuleOp>(loc);
+    tmp_module_builder.setInsertionPointToStart(
+        jit_module.SingleBlock::getBody());
+    auto jit_function = tmp_module_builder.create<func::FuncOp>(
+        loc, tf_framework::JITCompileFromStrOp::kJITEntryFunctionName,
+        tmp_module_builder.getFunctionType(body->getArgumentTypes(),
+                                           yield_op->getOperandTypes()));
+    jit_function->setAttr(tf_framework::TFFrameworkDialect::kTFEntryAttrName,
+                          tmp_module_builder.getUnitAttr());
+    jit_function.getBody().takeBody(op.getBodyRegion());
+    tmp_module_builder.setInsertionPointToEnd(&jit_function.getBody().front());
+    tmp_module_builder.create<func::ReturnOp>(loc, yield_op.getResult());
+    rewriter.eraseOp(yield_op);
+
+    // Serialize JIT module.
+    std::string code;
+    llvm::raw_string_ostream ss(code);
+    jit_module.print(ss);
+
+    // Finally, create the new JIT compile op.
+    rewriter.replaceOpWithNewOp<tf_framework::JITCompileFromStrOp>(
+        op, op->getResultTypes(), op.getCtx(), rewriter.getStringAttr(code),
+        rewriter.getI64ArrayAttr(tile_sizes),
+        rewriter.getI64ArrayAttr(unroll_factors),
+        rewriter.getI64IntegerAttr(max_supported_rank),
+        rewriter.getBoolAttr(enable_ftz),
+        rewriter.getBoolAttr(index_64bit_if_jit_compiling),
+        rewriter.getBoolAttr(cpu_codegen));
+
+    return success();
+  }
+
+ private:
+  llvm::ArrayRef<int64_t> tile_sizes;
+  llvm::ArrayRef<int64_t> unroll_factors;
+  int64_t max_supported_rank;
+  bool enable_ftz;
+  bool index_64bit_if_jit_compiling;
+  bool cpu_codegen;
+};
+
+#define GEN_PASS_DEF_TFTOJITINVOCATIONPASS
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
+
+struct TFToJITInvocationPass
+    : public impl::TFToJITInvocationPassBase<TFToJITInvocationPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect,
+                    scf::SCFDialect, shape::ShapeDialect>();
+  }
+  explicit TFToJITInvocationPass(llvm::ArrayRef<int64_t> tile_sizes,
+                                 llvm::ArrayRef<int64_t> unroll_factors,
+                                 int64_t max_supported_rank, bool enable_ftz,
+                                 bool index_64bit, bool cpu_codegen,
+                                 bool jit_i64_indexed_for_large_tensors) {
+    tile_sizes_ = tile_sizes;
+    unroll_factors_ = unroll_factors;
+    max_supported_rank_ = max_supported_rank;
+    enable_ftz_ = enable_ftz;
+    index_64bit_ = index_64bit;
+    cpu_codegen_ = cpu_codegen;
+    jit_i64_indexed_for_large_tensors_ = jit_i64_indexed_for_large_tensors;
+  }
+
+  void runOnOperation() override {
+    MLIRContext *ctx = &getContext();
+    RewritePatternSet patterns(ctx);
+    PopulateTFToJITInvocationPatterns(ctx, &patterns, tile_sizes_,
+                                      unroll_factors_, max_supported_rank_,
+                                      enable_ftz_, index_64bit_, cpu_codegen_,
+                                      jit_i64_indexed_for_large_tensors_);
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
+  }
+};
+
 }  // namespace
 
 void PopulateTFToJITInvocationPatterns(

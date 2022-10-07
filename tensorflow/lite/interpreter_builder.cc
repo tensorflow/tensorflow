@@ -31,10 +31,10 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/internal/signature_def.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model_builder.h"
 #include "tensorflow/lite/profiling/platform_profiler.h"
@@ -153,7 +153,7 @@ inline bool ShouldCreateLazyDelegateProviders(int num_fp32_tensors) {
 
 }  // namespace
 
-const char* kEmptyTensorName = "";
+constexpr const char* kEmptyTensorName = "";
 
 // Using weak symbols to create a delegate allows automatic injection of the
 // delegate simply by adding it as a dependency.
@@ -603,11 +603,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       }
       if (auto* buffer = (*buffers)[tensor->buffer()]) {
         if (auto* array = buffer->data()) {
-          if (size_t size = array->size()) {
-            *buffer_size = size;
-            *buffer_data = reinterpret_cast<const char*>(array->data());
-            return kTfLiteOk;
-          }
+          *buffer_size = array->size();
+          *buffer_data = reinterpret_cast<const char*>(array->data());
+          return kTfLiteOk;
         }
       }
       return kTfLiteOk;
@@ -758,7 +756,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
-  interpreter->reset(new Interpreter(error_reporter_));
+  *interpreter = std::make_unique<Interpreter>(error_reporter_);
   if (subgraphs->size() > 1) {
     (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
@@ -832,6 +830,11 @@ TfLiteStatus InterpreterBuilder::operator()(
   TfLiteStatus status = ApplyDelegates(interpreter->get());
   if (status != kTfLiteOk) {
     interpreter->reset();
+  }
+
+  // Apply Interpreter options again for dynamic allocation.
+  if (options_.GetDynamicAllocationForLargeTensors()) {
+    (*interpreter)->ApplyOptionsImpl(&options_);
   }
   return status;
 }

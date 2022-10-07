@@ -39,11 +39,12 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 
-using ::tfrt::jitrt::Executable;
-using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::RemainingResultsConverter;
+
+using ::xla::runtime::Executable;
+using ::xla::runtime::HostContextAsyncTaskRunner;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 // Returns random tensors generated based on the input specs.
 static llvm::SmallVector<Tensor> GetInputTensors(
@@ -113,16 +114,17 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   }
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable: " << tfrt::StrCat(err);
+  if (!executable.ok())
+    LOG(FATAL) << "Failed to specialize executable: "
+               << executable.status().message();
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << tfrt::StrCat(executable->GetError());
+      << "Failed to get executable: " << executable->GetError().message();
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Placeholders for returned values.
@@ -132,12 +134,13 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
 
   // Free memory owned by the returned memrefs.
   ResultConversionCtx result_ctx(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
+  RemainingResultsConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
+  if (auto st = (*executable)->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   // Execute async tasks in the HostContext work queue.
@@ -149,7 +152,8 @@ void RunJitRtBenchmark(::testing::benchmark::State& state,
   auto execute = [&]() {
     call_frame.args[0] = nullptr;  // reset kernel context argument
     (*executable)->Execute(call_frame, opts);
-    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
+    if (auto st = (*executable)->ReturnResults(converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   };
 

@@ -108,14 +108,14 @@ Status FakeInputImpl::AddInputToBuilder() {
             "': ", status.error_message());
       }
       SourceList(dts);
-      return Status::OK();
+      return OkStatus();
     }
 
     DataType dt;
     TF_RETURN_IF_ERROR(GetDataType(&dt));
     builder_->Input(in_node_, 0, dt);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // static
@@ -135,13 +135,13 @@ Status FakeInputImpl::GetN(int* n) const {
                                      "': ", status.error_message());
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (dt_specified_) {
     *dt = dt_;
-    return Status::OK();  // Ignore is_ref field of arg_.
+    return OkStatus();  // Ignore is_ref field of arg_.
   } else if (arg_->type() != DT_INVALID) {
     *dt = arg_->type();
   } else if (!arg_->type_attr().empty()) {
@@ -164,7 +164,7 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
   if (arg_->is_ref()) {
     *dt = MakeRefType(*dt);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void FakeInputImpl::NSources(int n, DataType dt) const {

@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
@@ -142,12 +142,12 @@ class PyBuffer {
     TF_RET_CHECK(sticky_device == nullptr ||
                  sticky_device == buffer_->device());
     sticky_device_ = sticky_device;
-    return Status::OK();
+    return OkStatus();
   }
   PjRtDevice* sticky_device() const { return sticky_device_; }
 
-  void set_weak_type(absl::optional<bool> weak_type) { weak_type_ = weak_type; }
-  absl::optional<bool> weak_type() const { return weak_type_; }
+  void set_weak_type(std::optional<bool> weak_type) { weak_type_ = weak_type; }
+  std::optional<bool> weak_type() const { return weak_type_; }
 
   StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
 
@@ -192,14 +192,69 @@ class PyBuffer {
   // measure for older Python code that does not set weak_type explicitly.
   // TODO(phawkins): drop support for older jax Python versions and make
   // weak_type mandatory.
-  absl::optional<bool> weak_type_ = absl::nullopt;
+  std::optional<bool> weak_type_ = std::nullopt;
 
-  absl::optional<Shape> dynamic_shape_ = absl::nullopt;
+  std::optional<Shape> dynamic_shape_ = std::nullopt;
   // Doubly-linked list of all PyBuffers known to the client. Protected by the
   // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
   // duplicate PjRtBuffers in this list.
   PyBuffer* next_;
   PyBuffer* prev_;
+};
+
+// A batched version of python wrapper around a list of PjRtBuffers.
+class PyShardedBuffer {
+ public:
+  static PyShardedBuffer CreateFromPyBuffers(
+      absl::Span<const PyBuffer::object> py_buffers);
+
+  PyShardedBuffer(std::shared_ptr<PyClient> client,
+                  std::vector<std::shared_ptr<PjRtBuffer>> buffers,
+                  std::shared_ptr<Traceback> traceback, bool sticky = false)
+      : client_(std::move(client)),
+        buffers_(std::move(buffers)),
+        traceback_(std::move(traceback)),
+        sticky_(sticky) {}
+
+  std::vector<PyBuffer::object> GetPyBuffers() const {
+    std::vector<PyBuffer::object> results;
+    results.reserve(buffers_.size());
+    for (const auto& pjrt_buffer : buffers_) {
+      auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+      if (sticky_) {
+        TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+      }
+      results.push_back(std::move(py_buffer));
+    }
+    return results;
+  }
+
+  PyBuffer::object GetPyBuffer(int device_id) const {
+    const auto& pjrt_buffer = buffers_.at(device_id);
+    auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+    if (sticky_) {
+      TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+    }
+    return py_buffer;
+  }
+
+  PrimitiveType dtype() const {
+    return buffers_.at(0)->on_device_shape().element_type();
+  }
+
+  PjRtBuffer* GetPjRtBuffer(int device_id) const {
+    return buffers_.at(device_id).get();
+  }
+
+  int num_devices() const { return buffers_.size(); }
+
+  Status BlockHostUntilReady();
+
+ private:
+  std::shared_ptr<PyClient> client_;
+  std::vector<std::shared_ptr<PjRtBuffer>> buffers_;
+  std::shared_ptr<Traceback> traceback_;
+  bool sticky_ = false;
 };
 
 }  // namespace xla

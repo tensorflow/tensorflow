@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/c_test_util.h"
+#include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
@@ -246,7 +247,7 @@ void TestEncodeDecode(int line, const std::vector<string>& data) {
 
     // Convert back to a C++ Tensor and ensure we get expected output.
     Tensor output;
-    ASSERT_EQ(Status::OK(), TF_TensorToTensor(dst, &output)) << line;
+    ASSERT_EQ(OkStatus(), TF_TensorToTensor(dst, &output)) << line;
     ASSERT_EQ(src.NumElements(), output.NumElements()) << line;
     for (int64_t i = 0; i < src.NumElements(); ++i) {
       ASSERT_EQ(data[i], output.flat<tstring>()(i)) << line;

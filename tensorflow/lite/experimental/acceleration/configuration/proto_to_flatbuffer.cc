@@ -351,7 +351,8 @@ Offset<TFLiteSettings> ConvertTfliteSettings(
       /*max_delegated_partitions=*/settings.max_delegated_partitions(),
       ConvertEdgeTpuSettings(settings.edgetpu_settings(), builder),
       ConvertCoralSettings(settings.coral_settings(), builder),
-      ConvertFallbackSettings(settings.fallback_settings(), builder));
+      ConvertFallbackSettings(settings.fallback_settings(), builder),
+      settings.disable_default_delegates());
 }
 
 Offset<ModelFile> ConvertModelFile(const proto::ModelFile& model_file,

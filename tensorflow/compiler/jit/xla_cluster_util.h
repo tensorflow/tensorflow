@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -61,7 +61,7 @@ StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
 
 // Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
 // otherwise returns nullopt.
-absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
+std::optional<absl::string_view> GetXlaClusterForNode(const Node& node);
 
 // Removes `node_def` its XLA cluster (by clearing its _XlaCluster attribute).
 void RemoveFromXlaCluster(NodeDef* node_def);

@@ -40,11 +40,15 @@ class AutotuneAlgorithm(enum.Enum):
 
   MAX_PARALLELISM: Similar to HILL_CLIMB but uses a relaxed stopping condition,
   allowing the optimization to oversubscribe the CPU.
+
+  STAGE_BASED: In each optimization step, this algorithm chooses the worst
+  bottleneck parameter and increases its value by 1.
   """
   DEFAULT = 0
   HILL_CLIMB = 1
   GRADIENT_DESCENT = 2
   MAX_PARALLELISM = 3
+  STAGE_BASED = 4
 
   @classmethod
   def _to_proto(cls, obj):
@@ -56,9 +60,11 @@ class AutotuneAlgorithm(enum.Enum):
       return model_pb2.AutotuneAlgorithm.GRADIENT_DESCENT
     if obj == cls.MAX_PARALLELISM:
       return model_pb2.AutotuneAlgorithm.MAX_PARALLELISM
+    if obj == cls.STAGE_BASED:
+      return model_pb2.AutotuneAlgorithm.STAGE_BASED
     raise ValueError(
-        f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` and "
-        f"`GRADIENT_DESCENT`. Got {obj.name}.")
+        f"Invalid `obj.` Supported values include `DEFAULT`, `HILL_CLIMB` "
+        f"`GRADIENT_DESCENT`, and `STAGE_BASED`. Got {obj.name}.")
 
   @classmethod
   def _from_proto(cls, pb):
@@ -70,8 +76,11 @@ class AutotuneAlgorithm(enum.Enum):
       return cls.GRADIENT_DESCENT
     if pb == model_pb2.AutotuneAlgorithm.MAX_PARALLELISM:
       return cls.MAX_PARALLELISM
-    raise ValueError(f"Invalid `pb.` Supported values include `DEFAULT`, "
-                     f"`HILL_CLIMB` and `GRADIENT_DESCENT`. Got {pb}.")
+    if pb == model_pb2.AutotuneAlgorithm.STAGE_BASED:
+      return cls.STAGE_BASED
+    raise ValueError(
+        f"Invalid `pb.` Supported values include `DEFAULT`, `HILL_CLIMB`, "
+        f"`GRADIENT_DESCENT` and `STAGE_BASED`. Got {pb}.")
 
 
 @tf_export("data.experimental.AutoShardPolicy")
@@ -258,7 +267,7 @@ class DistributeOptions(options_lib.OptionsBase):
 
   ```python
   options = tf.data.Options()
-  options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
+  options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
   dataset = dataset.with_options(options)
   ```
   """
@@ -325,6 +334,14 @@ class OptimizationOptions(options_lib.OptionsBase):
       "Whether to parallelize stateless filter transformations. If None, "
       "defaults to False.")
 
+  inject_prefetch = options_lib.create_option(
+      name="inject_prefetch",
+      ty=bool,
+      docstring=
+      "Whether to inject prefetch transformation as the last transformation "
+      "when the last transformation is a synchronous transformation. If None, "
+      "defaults to False.")
+
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",
       ty=bool,
@@ -378,6 +395,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       pb.filter_fusion = self.filter_fusion
     if self.filter_parallelization is not None:
       pb.filter_parallelization = self.filter_parallelization
+    if self.inject_prefetch is not None:
+      pb.inject_prefetch = self.inject_prefetch
     if self.map_and_batch_fusion is not None:
       pb.map_and_batch_fusion = self.map_and_batch_fusion
     if self.map_and_filter_fusion is not None:
@@ -401,6 +420,8 @@ class OptimizationOptions(options_lib.OptionsBase):
       self.filter_fusion = pb.filter_fusion
     if pb.WhichOneof("optional_filter_parallelization") is not None:
       self.filter_parallelization = pb.filter_parallelization
+    if pb.WhichOneof("optional_inject_prefetch") is not None:
+      self.inject_prefetch = pb.inject_prefetch
     if pb.WhichOneof("optional_map_and_batch_fusion") is not None:
       self.map_and_batch_fusion = pb.map_and_batch_fusion
     if pb.WhichOneof("optional_map_and_filter_fusion") is not None:

@@ -82,7 +82,7 @@ Status AddMetrics(xrt::MetricsReport* report,
       metrics->set_int64_value(point->int64_value);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

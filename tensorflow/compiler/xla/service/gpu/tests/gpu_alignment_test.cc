@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/alias_analysis.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -45,7 +45,7 @@ ENTRY main {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-CHECK: @fusion(i8* noalias align 16 dereferenceable(400) %alloc0, i8* noalias align 128 dereferenceable(600) %alloc1, i8* noalias align 128 dereferenceable(928) %temp_buf)
+CHECK: @fusion(ptr noalias align 16 dereferenceable(400) %alloc0, ptr noalias align 128 dereferenceable(600) %alloc1, ptr noalias align 128 dereferenceable(928) %temp_buf)
 )");
 }
 

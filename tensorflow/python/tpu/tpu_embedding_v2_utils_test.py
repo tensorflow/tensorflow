@@ -60,6 +60,19 @@ class TPUEmbeddingOptimizerTest(parameterized.TestCase, test.TestCase):
     self.assertIsNone(opt.clip_gradient_min)
     self.assertEqual(1., opt.clip_gradient_max)
 
+  @parameterized.parameters(tpu_embedding_v2_utils.SGD,
+                            tpu_embedding_v2_utils.Adagrad,
+                            tpu_embedding_v2_utils.Adam,
+                            tpu_embedding_v2_utils.FTRL)
+  def test_equal_and_hash_function(self, optimizer):
+    opt1 = optimizer(0.1)
+    opt2 = optimizer(0.1)
+    opt3 = optimizer(0.2)
+    self.assertEqual(opt1, opt2)
+    self.assertEqual(hash(opt1), hash(opt2))
+    self.assertNotEqual(opt1, opt3)
+    self.assertNotEqual(hash(opt1), hash(opt3))
+
 
 class ConfigTest(test.TestCase):
 

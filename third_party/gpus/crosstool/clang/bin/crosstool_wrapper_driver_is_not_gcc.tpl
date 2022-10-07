@@ -248,6 +248,8 @@ def InvokeNvcc(argv, log=False):
   nvccopts += std_options
   nvccopts += m_options
   nvccopts += warning_options
+  # Force C++17 dialect (note, everything in just one string!)
+  nvccopts += ' --std c++17 '
   nvccopts += fatbin_options
 
   if depfiles:

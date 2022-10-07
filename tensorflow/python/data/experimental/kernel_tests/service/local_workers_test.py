@@ -210,8 +210,8 @@ class LocalWorkersTest(data_service_test_base.TestBase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
-        "but there is already an existing job with that name using "
-        "target_workers <AUTO>."):
+        "but found an existing job with different parameters: "
+        "Existing target workers: <AUTO>"):
       for dataset in datasets:
         self.getDatasetOutput(dataset)
 

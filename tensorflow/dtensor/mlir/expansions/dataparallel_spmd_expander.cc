@@ -46,14 +46,6 @@ namespace dtensor {
 
 namespace {
 
-// Checks that all layouts are fully replicated
-bool AllReplicated(const std::vector<Layout>& layouts) {
-  for (const auto& layout : layouts) {
-    if (!layout.IsFullyReplicated()) return false;
-  }
-  return true;
-}
-
 // Check all tensors are batch parallel
 bool AllBatchParallel(const std::vector<Layout>& layouts,
                       const llvm::DenseMap<int, int>& batchable_indices) {

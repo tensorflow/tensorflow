@@ -25,17 +25,19 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
+#define GEN_PASS_DEF_TPUCOLOCATECOMPOSITERESOURCEOPSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Pass that co-locates resource ops that use composite device resources
 // (packed tensors) with the underlying physical TPU device.
 struct TPUColocateCompositeResourceOps
-    : public TF::TPUColocateCompositeResourceOpsPassBase<
+    : public impl::TPUColocateCompositeResourceOpsPassBase<
           TPUColocateCompositeResourceOps> {
   void runOnOperation() override;
 };
@@ -46,7 +48,7 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
   builder->setInsertionPoint(op);
   auto launch = builder->create<tf_device::LaunchOp>(
       loc, builder->getStringAttr(device), op->getResultTypes());
-  launch.body().push_back(new Block);
+  launch.getBody().push_back(new Block);
   op->replaceAllUsesWith(launch);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
@@ -93,7 +95,7 @@ llvm::SmallVector<Operation*, 4> GetResourceOpsUsingCompositeArgsInReplicate(
 
 void ColocateCompositeResourceOpsInReplicate(
     tf_device::ReplicateOp replicate_op, OpBuilder* builder) {
-  auto devices = replicate_op.devices();
+  auto devices = replicate_op.getDevices();
   if (!devices) return;
   if (!devices.getValue().get(tensorflow::GetDeviceAliasForLogicalCore(0)))
     return;

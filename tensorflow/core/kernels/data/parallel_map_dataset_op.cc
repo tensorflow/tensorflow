@@ -108,7 +108,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
@@ -156,7 +156,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -228,7 +228,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
          std::make_pair(2, num_parallel_calls)},  // Single tensor inputs.
         {std::make_pair(1, other_arguments)},     // Tensor list inputs.
         attrs, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -258,7 +258,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
       }
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
@@ -341,7 +341,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
               writer->WriteScalar(element_prefix, kEndOfInput, ""));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -382,7 +382,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -519,7 +519,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
       if (errors::IsOutOfRange(result->status)) {
         if (preserve_cardinality_) {
@@ -533,7 +533,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
       }
       *end_of_sequence = result->end_of_input;
@@ -648,7 +648,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(key, kErrorMessage, status.error_message()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
@@ -663,9 +663,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(key, kErrorMessage, &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = Status::OK();
+        *status = OkStatus();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Used for coordination between the main thread and the runner thread.
@@ -788,7 +788,7 @@ std::unique_ptr<DatasetBase> MakeDataServiceUncompressDataset(
   DatasetContext::Params param;
   param.type_string = kParallelMapDatasetV2;
   param.node_name = kParallelMapDatasetV2;
-  return absl::make_unique<ParallelMapDatasetOp::Dataset>(
+  return std::make_unique<ParallelMapDatasetOp::Dataset>(
       DatasetContext(std::move(param)), input,
       /*num_parallel_calls=*/model::kAutotune, output_types, output_shapes,
       DeterminismPolicy(DeterminismPolicy::Type::kDefault),

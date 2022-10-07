@@ -324,7 +324,6 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
   Its value must be fed using the `feed_dict` optional argument to
   `Session.run()`, `Tensor.eval()`, or `Operation.run()`.
 
-  @compatibility{eager} Placeholders are not compatible with eager execution.
 
   Args:
     dtype: The data type for the `RaggedTensor`.
@@ -338,6 +337,20 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
 
   Raises:
     RuntimeError: if eager execution is enabled
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In TF2, you can just pass tensors directly
+  into ops and layers. If you want to explicitly set up your inputs, also see
+  [Keras functional API](https://www.tensorflow.org/guide/keras/functional) on
+  how to use `tf.keras.Input` to replace `tf.compat.v1.ragged.placeholder`.
+  `tf.function` arguments also do the job of `tf.compat.v1.ragged.placeholder`.
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
   """
   if ragged_rank == 0:
     return array_ops.placeholder(dtype, value_shape, name)

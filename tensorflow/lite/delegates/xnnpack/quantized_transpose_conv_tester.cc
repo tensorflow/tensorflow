@@ -71,6 +71,10 @@ void QuantizedTransposeConvTester::Test(TfLiteDelegate* delegate) const {
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
 

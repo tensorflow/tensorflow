@@ -28,27 +28,13 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Legalize TF While to TFL While with calls to the original functions from the
 // cond and body regions.
-struct LegalizeWhile
-    : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeWhile)
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect>();
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-legalize-tf-while";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Legalize from TensorFlow While to TensorFlow Lite While";
-  }
-
+struct LegalizeWhilePass : public LegalizeWhilePassBase<LegalizeWhilePass> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeWhilePass)
   void RunOnFunction(func::FuncOp func);
 
   void runOnOperation() override {
@@ -85,17 +71,17 @@ void RunOnWhile(TF::WhileOp while_op) {
   op->erase();
 }
 
-void LegalizeWhile::RunOnFunction(func::FuncOp func) {
+void LegalizeWhilePass::RunOnFunction(func::FuncOp func) {
   // Convert all TF WhileOps inside the function body to TFL While ops.
   func.getBody().walk([](TF::WhileOp while_op) { RunOnWhile(while_op); });
 }
 
 // Creates an instance of the TensorFlow While to TFLite While pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass() {
-  return std::make_unique<LegalizeWhile>();
+  return std::make_unique<LegalizeWhilePass>();
 }
 
-static PassRegistration<LegalizeWhile> pass;
+static PassRegistration<LegalizeWhilePass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

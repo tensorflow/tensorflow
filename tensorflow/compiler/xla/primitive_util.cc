@@ -16,14 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 #include <limits>
+#include <string>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace primitive_util {
@@ -178,11 +178,6 @@ PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
   }
 }
 
-bool IsArrayType(PrimitiveType primitive_type) {
-  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
-         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN;
-}
-
 // Class to memoize the computation of
 //   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"
@@ -202,6 +197,7 @@ class PrimitiveTypeNameGenerator {
     }
   }
   const std::string& LowercaseName(PrimitiveType t) {
+    CHECK_LT(t, PrimitiveType_ARRAYSIZE);
     return lowercase_name_[static_cast<int>(t)];
   }
 
@@ -240,7 +236,7 @@ GetPrimitiveTypeStringMap() {
 
 StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(std::string(name));
+  auto found = map.find(name);
   if (found == map.end()) {
     return InvalidArgument("Invalid element type string: \"%s\".", name);
   }
@@ -249,7 +245,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(absl::string_view name) {
 
 bool IsPrimitiveTypeName(absl::string_view name) {
   const auto& map = GetPrimitiveTypeStringMap();
-  auto found = map.find(std::string(name));
+  auto found = map.find(name);
   return found != map.end();
 }
 

@@ -64,8 +64,8 @@ class DispatchContext(object):
         cluster_coordinator._maybe_rebuild_remote_values(  # pylint: disable=protected-access
             self._worker, remote_value))
     if e:
-      if not isinstance(e, cluster_coordinator.InputError):
-        e = cluster_coordinator.InputError(e)
+      if not isinstance(e, cluster_coordinator.ClosureInputError):
+        e = cluster_coordinator.ClosureInputError(e)
       raise e
 
   def maybe_get_remote_value(self, ret):

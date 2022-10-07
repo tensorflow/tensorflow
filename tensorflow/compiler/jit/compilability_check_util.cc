@@ -86,7 +86,7 @@ Status MakeCallNodeFromAttribute(const Node& node, const std::string& attr_name,
   TF_RETURN_IF_ERROR(GetNodeAttr(node.attrs(), attr_name, &name_attr));
   node_def->set_op(name_attr->name());
   *(node_def->mutable_attr()) = name_attr->attr();
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<NodeDef>> MakeCallNodesFromAttribute(
@@ -488,6 +488,14 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
+  if (!op_filter_.allow_where_op && node.type_string() == "Where") {
+    absl::string_view uncompilable_reason = "Where op";
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              encapsulating_function, uncompilable_nodes);
+    LogNotCompilable(node, uncompilable_reason);
+    return false;
+  }
+
   if (!op_filter_.allow_unique_op && node.type_string() == "Unique") {
     absl::string_view uncompilable_reason = "Unique op";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
@@ -652,7 +660,7 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 tensorflow::MemoryTypeVector GetInputMemoryTypes(
@@ -695,6 +703,7 @@ tensorflow::MemoryTypeVector GetOutputMemoryTypes(
 
 static auto const ops_triggering_xla_compilation =
     new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
+                                         "XlaCallModule",
                                          "XlaConv",
                                          "XlaConvV2",
                                          "XlaDequantize",

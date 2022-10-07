@@ -20,9 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -47,7 +47,7 @@ void VerifiedHloModule::VerifyOrAddFailure(absl::string_view message) {
 Status VerifiedHloModule::Verify() {
   if (computation_count() == 0) {
     // The computation was never built. Nothing to verify.
-    return Status::OK();
+    return OkStatus();
   }
   return verifier_.Run(this).status();
 }

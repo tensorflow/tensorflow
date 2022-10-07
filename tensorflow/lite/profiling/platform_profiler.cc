@@ -26,6 +26,8 @@ limitations under the License.
 #define SIGNPOST_PLATFORM_PROFILER
 #include "tensorflow/lite/profiling/signpost_profiler.h"
 #endif
+#elif defined(ENABLE_TFLITE_PERFETTO_PROFILER)
+#include "tensorflow/lite/experimental/perfetto_profiling/perfetto_profiler.h"
 #endif
 
 namespace tflite {
@@ -36,6 +38,8 @@ std::unique_ptr<tflite::Profiler> MaybeCreatePlatformProfiler() {
   return MaybeCreateATraceProfiler();
 #elif defined(SIGNPOST_PLATFORM_PROFILER)
   return MaybeCreateSignpostProfiler();
+#elif defined(ENABLE_TFLITE_PERFETTO_PROFILER)
+  return std::make_unique<tflite::profiling::PerfettoProfiler>();
 #else
   return nullptr;
 #endif

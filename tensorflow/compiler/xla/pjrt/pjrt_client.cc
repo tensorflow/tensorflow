@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 
 #include <string>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -50,5 +52,12 @@ std::string CompiledMemoryStats::DebugString() const {
       generated_code_size_in_bytes, argument_size_in_bytes,
       output_size_in_bytes, alias_size_in_bytes, temp_size_in_bytes);
 }
+
+// Defining the first virtual non-pure method, which is usually the virtual
+// destructor, makes it a key function. This reduces the program size and takes
+// fewer linker resources.
+PjRtHostMemoryForDeviceManager::~PjRtHostMemoryForDeviceManager() = default;
+
+CopyToDeviceStream::~CopyToDeviceStream() = default;
 
 }  // namespace xla

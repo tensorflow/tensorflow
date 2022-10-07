@@ -13,6 +13,19 @@ message CoordinatedTask {
   int32 task_id = 2;
 }
 
+// Represents the state of a remote worker
+enum CoordinatedTaskState {
+  // TASKSTATE_UNSPECIFIED is an invalid state such that indicates a bug.
+  TASKSTATE_UNSPECIFIED = 0;
+  // TASKSTATE_UNINITIALIZED is an agent-only state. While the agent is
+  // disconnected, the service has no way of knowing if the task is
+  // initialized/uninitialized.
+  TASKSTATE_UNINITIALIZED = 1;
+  TASKSTATE_DISCONNECTED = 2;
+  TASKSTATE_CONNECTED = 3;
+  TASKSTATE_ERROR = 4;
+}
+
 // Status payload for all coordination service errors.
 // Note: an empty proto may be set if the error is triggered by the task's own
 // agent calls (i.e. not propagated by the service from another remote task).
@@ -25,6 +38,14 @@ message CoordinationServiceError {
   // Denotes which task hit the error. If unset, the error originated from the
   // same task that is processing this error.
   CoordinatedTask source_task = 4;
+}
+
+message CoordinatedTaskStateInfo {
+  CoordinatedTask task = 1;
+  CoordinatedTaskState state = 2;
+  int32 error_code = 3;
+  string error_message = 4;
+  CoordinationServiceError error_payload = 5;
 }
 
 // Represent device information from different runtimes.
@@ -128,6 +149,15 @@ message ReportErrorToServiceRequest {
 
 message ReportErrorToServiceResponse {}
 
+// Request and response messages for getting state of a remote task.
+message GetTaskStateRequest {
+  repeated CoordinatedTask source_task = 1;
+}
+
+message GetTaskStateResponse {
+  repeated CoordinatedTaskStateInfo task_state = 1;
+}
+
 // Message for configuration key value.
 // Key is structured like Unix file system, with multiple levels of directory
 // names separated by the slash ('/') characters.
@@ -150,6 +180,23 @@ message GetKeyValueRequest {
 
 message GetKeyValueResponse {
   KeyValueEntry kv = 1;
+}
+
+message TryGetKeyValueRequest {
+  string key = 1;
+}
+
+message TryGetKeyValueResponse {
+  KeyValueEntry kv = 1;
+}
+
+message GetKeyValueDirRequest {
+  string directory_key = 1;
+}
+
+message GetKeyValueDirResponse {
+  string directory_key = 1;
+  repeated KeyValueEntry kv = 2;
 }
 
 // Request and response messages for deleting configuration key-value data.
@@ -228,6 +275,11 @@ service CoordinationService {
   rpc ReportErrorToService(ReportErrorToServiceRequest)
       returns (ReportErrorToServiceResponse);
 
+  // Get the state of a remote task. Specifically, RPC returns a
+  // CoordinatedTaskState, and if the task is in an error status, returns a
+  // non-OK error code, non-empty error message and error payload.
+  rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
+
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The
   // coordination service key-value store should only be used for cluster
@@ -237,6 +289,14 @@ service CoordinationService {
   // Get configuration key-value. The request blocks until the key-value data
   // becomes available (i.e., set by a task in the cluster).
   rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse);
+
+  // Get configuration key-value. The request does not block, but returns an
+  // error if the requested key does not exist.
+  rpc TryGetKeyValue(TryGetKeyValueRequest) returns (TryGetKeyValueResponse);
+
+  // Same as GetKeyValue, but returns all values that have keys which are
+  // prefixed with the directory key.
+  rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse);
 
   // Delete configuration key-value. If is_directory is set in request,
   // recursively clean up all key-values under the path specified by `key`.
@@ -276,6 +336,5 @@ service CoordinationService {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  //   - NotFound: No barrier with the specified id is found.
   rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
 }

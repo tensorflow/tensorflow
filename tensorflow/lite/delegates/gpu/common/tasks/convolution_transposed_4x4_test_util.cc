@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_4x4_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -54,7 +55,7 @@ absl::Status ConvolutionTransposed4x4SimpleWeightsTest(
           CreateConvolutionTransposed4x4(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<ConvolutionTransposed4x4>(std::move(operation)),
+          std::make_unique<ConvolutionTransposed4x4>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 1.0f, 1.0f, 1.0f, 2.0f, 6.0f, 6.0f, 4.0f, 2.0f,

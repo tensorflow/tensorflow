@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/strided_slice_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -50,7 +51,7 @@ absl::Status StridedSliceTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       StridedSlice operation = CreateStridedSlice(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<StridedSlice>(std::move(operation)),
+          src_tensor, std::make_unique<StridedSlice>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(10.2f), half(10.4), half(20.2f), half(20.4)},

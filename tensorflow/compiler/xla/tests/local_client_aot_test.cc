@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 class LocalClientAotTest : public ::testing::Test {};
 

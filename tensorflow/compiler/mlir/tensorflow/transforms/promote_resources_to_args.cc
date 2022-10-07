@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -341,8 +340,11 @@ LogicalResult PromoteResourcesToArguments(
   return success();
 }
 
+#define GEN_PASS_DEF_PROMOTERESOURCESTOARGSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class PromoteResourcesToArgsPass
-    : public PromoteResourcesToArgsPassBase<PromoteResourcesToArgsPass> {
+    : public impl::PromoteResourcesToArgsPassBase<PromoteResourcesToArgsPass> {
  public:
   PromoteResourcesToArgsPass() = default;
   explicit PromoteResourcesToArgsPass(llvm::ArrayRef<std::string> functions);
@@ -378,8 +380,12 @@ void PromoteResourcesToArgsPass::runOnOperation() {
   }
 }
 
+#define GEN_PASS_DEF_PROMOTEVARHANDLESTOARGSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class PromoteVarHandlesToArgsPass
-    : public PromoteVarHandlesToArgsPassBase<PromoteVarHandlesToArgsPass> {
+    : public impl::PromoteVarHandlesToArgsPassBase<
+          PromoteVarHandlesToArgsPass> {
  public:
   void runOnOperation() override;
 };
@@ -407,8 +413,9 @@ void PromoteVarHandlesToArgsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
-  return std::make_unique<PromoteResourcesToArgsPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass(
+    llvm::ArrayRef<std::string> functions) {
+  return std::make_unique<PromoteResourcesToArgsPass>(functions);
 }
 
 std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteVarHandlesToArgsPass() {

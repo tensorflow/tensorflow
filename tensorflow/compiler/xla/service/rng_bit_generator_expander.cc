@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace {
@@ -106,7 +106,7 @@ StatusOr<HloInstruction*> RngBitGeneratorExpander::ExpandInstruction(
     algorithm = default_algorithm_;
   }
 
-  HloModule* module = hlo->parent()->parent();
+  HloModule* module = hlo->GetModule();
   const Shape& data_shape = rng->shape().tuple_shapes(1);
   const Shape& state_shape = rng->operand(0)->shape();
   TF_ASSIGN_OR_RETURN(

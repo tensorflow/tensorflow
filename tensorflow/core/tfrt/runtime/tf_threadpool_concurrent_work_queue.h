@@ -43,7 +43,7 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   TfThreadPoolWorkQueue(
       int64_t id, tensorflow::thread::ThreadPoolInterface* intra_op_threadpool,
       tensorflow::thread::ThreadPoolInterface* inter_op_threadpool)
-      : id_(id),
+      : WorkQueueInterface(id),
         intra_op_threadpool_(intra_op_threadpool),
         inter_op_threadpool_(inter_op_threadpool) {}
 
@@ -70,7 +70,6 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
   bool IsInWorkerThread() const override;
 
  private:
-  int64_t id_ = 0;
   tensorflow::thread::ThreadPoolInterface* intra_op_threadpool_ = nullptr;
   tensorflow::thread::ThreadPoolInterface* inter_op_threadpool_ = nullptr;
 };

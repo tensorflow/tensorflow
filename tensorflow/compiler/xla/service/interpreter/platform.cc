@@ -15,17 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/interpreter/platform.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
-#include "tensorflow/stream_executor/device_options.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/device_options.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 namespace stream_executor {
 namespace interpreter {
@@ -75,8 +74,8 @@ port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
-  auto executor = absl::make_unique<StreamExecutor>(
-      this, absl::make_unique<XlaInterpreterExecutor>(config.plugin_config),
+  auto executor = std::make_unique<StreamExecutor>(
+      this, std::make_unique<XlaInterpreterExecutor>(config.plugin_config),
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {

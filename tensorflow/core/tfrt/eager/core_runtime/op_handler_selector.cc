@@ -62,7 +62,7 @@ Status EagerOpHandlerSelector::SelectFromArguments(
         DVLOG(1) << "Setting device of operation " << op.Name() << " to "
                  << device_name << " because input #" << i
                  << " is a resource in this device.";
-        return Status::OK();
+        return ::tensorflow::OkStatus();
       }
     }
   }
@@ -76,12 +76,12 @@ Status EagerOpHandlerSelector::SelectFromArguments(
         {cpu_device_.name().data(), cpu_device_.name().size()}));
     if (pin_to_cpu) {
       *op_handler = cpu_op_handler_;
-      return Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
 
   // Note: The output op_handler is nullptr.
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status EagerOpHandlerSelector::SelectFromNodeDef(
@@ -108,7 +108,7 @@ Status EagerOpHandlerSelector::SelectFromNodeDef(
 
   if (!(*op_handler)) *op_handler = fallback_op_handler_;
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tf

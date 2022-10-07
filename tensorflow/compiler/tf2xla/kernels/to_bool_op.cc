@@ -42,7 +42,7 @@ class ToBoolOp : public XlaOpKernel {
     if (shape.rank() == 0) {
       auto result = xla::Ne(ctx->Input(0), xla::ZerosLike(input));
       ctx->SetOutput(0, result);
-      return Status::OK();
+      return OkStatus();
     }
 
     // Otherwise, any input tensor with elements returns True. Input tensor
@@ -54,7 +54,7 @@ class ToBoolOp : public XlaOpKernel {
     auto result = xla::Ne(num_elements, xla::ZerosLike(num_elements));
     ctx->SetOutput(0, result);
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

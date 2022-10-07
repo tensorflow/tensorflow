@@ -1,0 +1,15 @@
+op 	 {
+  name: "ConnectTPUEmbeddingHosts"
+  input_arg {
+    name: "network_configs"
+    type: DT_STRING
+    number_attr: "N"
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

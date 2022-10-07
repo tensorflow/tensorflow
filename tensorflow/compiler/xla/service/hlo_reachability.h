@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -158,7 +158,7 @@ class HloReachabilityMap {
 
  private:
   // A bit-vector implementation specialized for this use case which provides a
-  // fast bitwise OR operation not available in tensorflow::gtl::BitMap.
+  // fast bitwise OR operation not available in tsl::gtl::BitMap.
   class BitVector {
    public:
     BitVector() = default;
@@ -226,7 +226,7 @@ class HloReachabilityMap {
   uint64_t GetKey(const HloInstruction* instruction) const {
     uint64_t unique_id = absl::bit_cast<uint32_t>(instruction->unique_id());
     uint64_t module_id =
-        absl::bit_cast<uint32_t>(instruction->parent()->parent()->unique_id());
+        absl::bit_cast<uint32_t>(instruction->GetModule()->unique_id());
     return (module_id << 32) | unique_id;
   }
   // Return the index of the given instruction.

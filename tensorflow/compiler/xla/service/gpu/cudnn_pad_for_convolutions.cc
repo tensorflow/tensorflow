@@ -23,11 +23,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/stream_executor/device_description.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -44,9 +44,6 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
   HloComputation* comp = instr->parent();
 
   const Shape& shape = instr->shape();
-  auto* zero = comp->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
-
   PaddingConfig pad_config = MakeNoPaddingConfig(shape.rank());
 
   bool added_padding = false;
@@ -59,12 +56,15 @@ static HloInstruction* PadInstruction(HloInstruction* instr,
         new_shape.dimensions(dim) - shape.dimensions(dim));
     added_padding = true;
   }
-
   if (!added_padding) {
     return instr;
   }
+
+  auto* zero = comp->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
   return comp->AddInstruction(
-      HloInstruction::CreatePad(new_shape, instr, zero, pad_config));
+      HloInstruction::CreatePad(new_shape, instr, zero, pad_config),
+      &instr->metadata());
 }
 
 // Modifies the given convolution to have the given input and result shapes.
@@ -322,9 +322,9 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   // The input/kernel/output might already be vectorized (i.e. cudnn layout
   // NCHW_VECT_C).  If so, we pad the features dim so that
   // size(features_dim) * size(vect_dim) is a multiple of pad_to.
-  absl::optional<int64_t> input_vect_dim;
-  absl::optional<int64_t> kernel_vect_dim;
-  absl::optional<int64_t> result_vect_dim;
+  std::optional<int64_t> input_vect_dim;
+  std::optional<int64_t> kernel_vect_dim;
+  std::optional<int64_t> result_vect_dim;
   std::tie(input_vect_dim, kernel_vect_dim, result_vect_dim) =
       FindVectorizedFeatureDims(dnums, input_shape, kernel_shape, result_shape);
 
@@ -463,9 +463,12 @@ StatusOr<bool> TryResolvePaddedShapesForIntegerConvolution(
   return changed;
 }
 
-StatusOr<bool> CudnnPadForConvolutions::Run(HloModule* module) {
+StatusOr<bool> CudnnPadForConvolutions::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloCustomCallInstruction* conv : GetRelevantConvs(comp)) {
       // On Turing and later (sm75+), pad to multiples of 32 bytes if possible,
       // because that lets us use the fast int8x32 data type.

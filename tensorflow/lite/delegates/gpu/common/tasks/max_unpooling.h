@@ -24,10 +24,12 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-GPUOperation CreateMaxUnpooling(const OperationDef& definition,
+GPUOperation CreateMaxUnpooling(const GpuInfo& gpu_info,
+                                const OperationDef& definition,
                                 const MaxUnpooling2DAttributes& attr);
 
-GPUOperation CreateMaxUnpooling(const OperationDef& definition,
+GPUOperation CreateMaxUnpooling(const GpuInfo& gpu_info,
+                                const OperationDef& definition,
                                 const MaxUnpooling3DAttributes& attr);
 
 }  // namespace gpu

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "WriteHistogramSummary"
   input_arg {
     name: "writer"

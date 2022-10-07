@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 
+#include <functional>
 #include <memory>
+#include <string>
 #include <unordered_map>
 
 #include "absl/synchronization/mutex.h"

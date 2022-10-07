@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResourceSparseApplyAdagradDA"
   input_arg {
     name: "var"

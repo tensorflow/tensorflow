@@ -1,229 +1,360 @@
-# Android quickstart
+# Quickstart for Android
 
-To get started with TensorFlow Lite on Android, we recommend exploring the
-following example.
+This page shows you how to build an Android app with TensorFlow Lite to analyze
+a live camera feed and identify objects. This machine learning use case is
+called *object detection*. The example app uses the TensorFlow Lite
+[Task library for vision](../inference_with_metadata/task_library/overview#supported_tasks)
+via [Google Play services](./play_services) to enable execution of the object
+detection machine learning model, which is the recommended approach for building
+an ML application with TensorFlow Lite.
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">Android
-image classification example</a>
+<aside class="note"> <b>Terms:</b> By accessing or using TensorFlow Lite in
+Google Play services APIs, you agree to the <a href="./play_services#tos">Terms
+of Service</a>. Please read and understand all applicable terms and policies
+before accessing the APIs. </aside>
 
-Read
-[TensorFlow Lite Android image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
-for an explanation of the source code.
+![Object detection animated demo](https://storage.googleapis.com/download.tensorflow.org/tflite/examples/obj_detection_cat.gif){: .attempt-right width="250px"}
+## Setup and run the example
 
-This example app uses
-[image classification](https://www.tensorflow.org/lite/models/image_classification/overview)
-to continuously classify whatever it sees from the device's rear-facing camera.
-The application can run either on device or emulator.
+For the first part of this exercise, download the
+[example code](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android_play_services)
+from GitHub and run it using [Android Studio](https://developer.android.com/studio/).
+The following sections of this document explore the relevant sections of the
+code example, so you can apply them to your own Android apps. You need the
+following versions of these tools installed:
 
-Inference is performed using the TensorFlow Lite Java API and the
-[TensorFlow Lite Android Support Library](../inference_with_metadata/lite_support.md).
-The demo app classifies frames in real-time, displaying the top most probable
-classifications. It allows the user to choose between a floating point or
-[quantized](https://www.tensorflow.org/lite/performance/post_training_quantization)
-model, select the thread count, and decide whether to run on CPU, GPU, or via
-[NNAPI](https://developer.android.com/ndk/guides/neuralnetworks).
+* Android Studio 4.2 or higher
+* Android SDK version 21 or higher
 
-Note: Additional Android applications demonstrating TensorFlow Lite in a variety
-of use cases are available in
-[Examples](https://www.tensorflow.org/lite/examples).
+Note: This example uses the camera, so you should run it on a physical Android
+device.
 
-## Build in Android Studio
+### Get the example code
 
-To build the example in Android Studio, follow the instructions in
-[README.md](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/README.md).
+Create a local copy of the example code so you can build and run it.
 
-## Create your own Android app
+To clone and setup the example code:
 
-To get started quickly writing your own Android code, we recommend using our
-[Android image classification example](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android)
-as a starting point.
+1.  Clone the git repository
+    <pre class="devsite-click-to-copy">
+    git clone https://github.com/tensorflow/examples.git
+    </pre>
+2.  Configure your git instance to use sparse checkout, so you have only
+    the files for the object detection example app:
+    <pre class="devsite-click-to-copy">
+    cd examples
+    git sparse-checkout init --cone
+    git sparse-checkout set lite/examples/object_detection/android_play_services
+    </pre>
 
-The following sections contain some useful information for working with
-TensorFlow Lite on Android.
+### Import and run the project
 
-### Use Android Studio ML Model Binding
+Use Android Studio to create a project from the downloaded example code, build
+the project, and run it.
 
-Note: Required [Android Studio 4.1](https://developer.android.com/studio) or
-above
+To import and build the example code project:
 
-To import a TensorFlow Lite (TFLite) model:
+1.  Start [Android Studio](https://developer.android.com/studio).
+1.  From the Android Studio **Welcome** page, choose **Import Project**, or
+    select **File > New > Import Project**.
+1.  Navigate to the example code directory containing the build.gradle file
+    (`...examples/lite/examples/object_detection/android_play_services/build.gradle`)
+    and select that directory.
 
-1.  Right-click on the module you would like to use the TFLite model or click on
-    `File`, then `New` > `Other` > `TensorFlow Lite Model`
-    ![Right-click menus to access the TensorFlow Lite import functionality](../images/android/right_click_menu.png)
+After you select this directory, Android Studio creates a new project and builds
+it. When the build completes, the Android Studio displays a `BUILD SUCCESSFUL`
+message in the **Build Output** status panel.
 
-1.  Select the location of your TFLite file. Note that the tooling will
-    configure the module's dependency on your behalf with ML Model binding and
-    all dependencies automatically inserted into your Android module's
-    `build.gradle` file.
+To run the project:
 
-    Optional: Select the second checkbox for importing TensorFlow GPU if you
-    want to use [GPU acceleration](../performance/gpu).
-    ![Import dialog for TFLite model](../images/android/import_dialog.png)
+1.  From Android Studio, run the project by selecting **Run > Run…** and
+    **MainActivity**.
+1.  Select an attached Android device with a camera to test the app.
 
-1.  Click `Finish`.
+## How the example app works
 
-1.  The following screen will appear after the import is successful. To start
-    using the model, select Kotlin or Java, copy and paste the code under the
-    `Sample Code` section. You can get back to this screen by double clicking
-    the TFLite model under the `ml` directory in Android Studio.
-    ![Model details page in Android Studio](../images/android/model_details.png)
+The example app uses pre-trained object detection model, such as
+[mobilenetv1.tflite](https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/2?lite-format=tflite),
+in TensorFlow Lite format look for objects in a live video stream from an
+Android device's camera. The code for this feature is primarily in these files:
 
-### Use the TensorFlow Lite Task Library
+*   [ObjectDetectorHelper.kt](https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/android_play_services/app/src/main/java/org/tensorflow/lite/examples/objectdetection/ObjectDetectorHelper.kt) -
+    Initializes the runtime environment, enables hardware acceleration, and 
+    runs the object detection ML model.
+*   [CameraFragment.kt](https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/android_play_services/app/src/main/java/org/tensorflow/lite/examples/objectdetection/fragments/CameraFragment.kt) -
+    Builds the camera image data stream, prepares data for the model, and
+    displays the object detection results.
 
-TensorFlow Lite Task Library contains a set of powerful and easy-to-use
-task-specific libraries for app developers to create ML experiences with TFLite.
-It provides optimized out-of-box model interfaces for popular machine learning
-tasks, such as image classification, question and answer, etc. The model
-interfaces are specifically designed for each task to achieve the best
-performance and usability. Task Library works cross-platform and is supported on
-Java, C++, and Swift (coming soon).
+Note: This example app uses the TensorFlow Lite
+[Task Library](../inference_with_metadata/task_library/overview#supported_tasks),
+which provides easy-to-use, task-specific APIs for performing common machine
+learning operations. For apps with more specific needs and customized ML
+functions, consider using the
+[Interpreter API](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/InterpreterApi).
 
-To use the Task Library in your Android app, we recommend using the AAR hosted
-at MavenCentral for
-[Task Vision library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-vision)
-and
-[Task Text library](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-task-text)
-, respectively.
+The next sections show you the key components of these code files, so you can
+modify an Android app to add this functionality.
 
-You can specify this in your `build.gradle` dependencies as follows:
+## Build the app {:#build_app}
 
-```build
-dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-task-vision:0.3.0'
-    implementation 'org.tensorflow:tensorflow-lite-task-text:0.3.0'
-    implementation 'org.tensorflow:tensorflow-lite-task-audio:0.3.0'
-}
-```
+The following sections explain the key steps to build your own Android app and
+run the model shown in the example app. These instructions use the example app
+shown earlier as a reference point.
 
-To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
+Note: To follow along with these instructions and build your own app, create a
+[basic Android project](https://developer.android.com/studio/projects/create-project)
+using Android Studio.
 
-See the introduction in the
-[TensorFlow Lite Task Library overview](../inference_with_metadata/task_library/overview.md)
-for more details.
+### Add project dependencies {:#add_dependencies}
 
-### Use the TensorFlow Lite Android Support Library
+In your basic Android app, add the project dependencies for running TensorFlow
+Lite machine learning models and accessing ML data utility functions. These
+utility functions convert data such as images into a tensor data format that can
+be processed by a model.
 
-The TensorFlow Lite Android Support Library makes it easier to integrate models
-into your application. It provides high-level APIs that help transform raw input
-data into the form required by the model, and interpret the model's output,
-reducing the amount of boilerplate code required.
+The example app uses the TensorFlow Lite
+[Task library for vision](../inference_with_metadata/task_library/overview#supported_tasks)
+from [Google Play services](./play_services) to enable execution of the object
+detection machine learning model. The following instructions explain how to add
+the required library dependencies to your own Android app project.
 
-It supports common data formats for inputs and outputs, including images and
-arrays. It also provides pre- and post-processing units that perform tasks such
-as image resizing and cropping.
+To add module dependencies:
 
-To use the Support Library in your Android app, we recommend using the
-[TensorFlow Lite Support Library AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite-support).
+1.  In the Android app module that uses TensorFlow Lite, update the module's
+    `build.gradle` file to include the following dependencies. In the example
+    code, this file is located here:
+    `...examples/lite/examples/object_detection/android_play_services/app/build.gradle`
+    ```
+    ...
+    dependencies {
+    ...
+        // Tensorflow Lite dependencies
+        implementation 'org.tensorflow:tensorflow-lite-task-vision-play-services:0.4.2'
+        implementation 'com.google.android.gms:play-services-tflite-gpu:16.1.0'
+    ...
+    }
+    ```
+1.  In Android Studio, sync the project dependencies by selecting: **File >
+    Sync Project with Gradle Files**.
 
-You can specify this in your `build.gradle` dependencies as follows:
+### Initialize Google Play services
 
-```build
-dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-support:0.3.0'
-}
-```
+When you use [Google Play services](./play_services) to run TensorFlow Lite
+models, you must initialize the service before you can use it. If you want to
+use hardware acceleration support with the service, such as GPU acceleration,
+you also enable that support as part of this initialization.
 
-To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
+To initialize TensorFlow Lite with Google Play services:
 
-To get started, follow the instructions in the
-[TensorFlow Lite Android Support Library](../inference_with_metadata/lite_support.md).
+1.  Create a `TfLiteInitializationOptions` object and modify it to enable GPU
+    support:
 
-### Use the TensorFlow Lite AAR from MavenCentral
+    ```
+    val options = TfLiteInitializationOptions.builder()
+        .setEnableGpuDelegateSupport(true)
+        .build()
+    ```
 
-To use TensorFlow Lite in your Android app, we recommend using the
-[TensorFlow Lite AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow-lite).
+1.  Use the `TfLiteVision.initialize()` method to enable use of the Play
+    services runtime, and set a listener to verify that it loaded successfully:
 
-You can specify this in your `build.gradle` dependencies as follows:
-
-```build
-dependencies {
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly-SNAPSHOT'
-}
-```
-
-To use nightly snapshots, make sure that you have added
-[Sonatype snapshot repository](./build_android#use_nightly_snapshots).
-
-This AAR includes binaries for all of the
-[Android ABIs](https://developer.android.com/ndk/guides/abis). You can reduce
-the size of your application's binary by only including the ABIs you need to
-support.
-
-We recommend most developers omit the `x86`, `x86_64`, and `arm32` ABIs. This
-can be achieved with the following Gradle configuration, which specifically
-includes only `armeabi-v7a` and `arm64-v8a`, which should cover most modern
-Android devices.
-
-```build
-android {
-    defaultConfig {
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a'
+    ```
+    TfLiteVision.initialize(context, options).addOnSuccessListener {
+        objectDetectorListener.onInitialized()
+    }.addOnFailureListener {
+        // Called if the GPU Delegate is not supported on the device
+        TfLiteVision.initialize(context).addOnSuccessListener {
+            objectDetectorListener.onInitialized()
+        }.addOnFailureListener{
+            objectDetectorListener.onError("TfLiteVision failed to initialize: "
+                    + it.message)
         }
     }
-}
+    ```
+
+### Initialize the ML model interpreter
+
+Initialize the TensorFlow Lite machine learning model interpreter by loading the
+model file and setting model parameters. A TensorFlow Lite model includes a
+`.tflite` file containing the model code. You should store your models in the
+`src/main/assets` directory of your development project, for example:
+
+```
+.../src/main/assets/mobilenetv1.tflite`
 ```
 
-To learn more about `abiFilters`, see
-[`NdkOptions`](https://google.github.io/android-gradle-dsl/current/com.android.build.gradle.internal.dsl.NdkOptions.html)
-in the Android Gradle documentation.
+Tip: Task library interpreter code automatically looks for models in the
+`src/main/assets` directory if you do not specify a file path.
 
-## Build Android app using C++
+To initialize the model:
 
-There are two ways to use TFLite through C++ if you build your app with the NDK:
+1.  Add a `.tflite` model file to the `src/main/assets` directory of your
+    development project, such as [ssd_mobilenet_v1](https://tfhub.dev/tensorflow/lite-model/ssd_mobilenet_v1/1/metadata/2).
+1.  Set the `modelName` variable to specify your ML model's file name:
+    ```
+    val modelName = "mobilenetv1.tflite"
+    ```
+1.  Set the options for model, such as the prediction threshold and results set
+    size:
+    ```
+    val optionsBuilder =
+        ObjectDetector.ObjectDetectorOptions.builder()
+            .setScoreThreshold(threshold)
+            .setMaxResults(maxResults)
+    ```
+1.  Enable GPU acceleration with the options and allow the code to fail
+    gracefully if acceleration is not supported on the device:
+    ```
+    try {
+        optionsBuilder.useGpu()
+    } catch(e: Exception) {
+        objectDetectorListener.onError("GPU is not supported on this device")
+    }
 
-### Use TFLite C API
+    ```
+1.  Use the settings from this object to construct a TensorFlow Lite
+    [`ObjectDetector`](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/task/vision/detector/ObjectDetector#createFromFile(Context,%20java.lang.String))
+    object that contains the model:
+    ```
+    objectDetector =
+        ObjectDetector.createFromFileAndOptions(
+            context, modelName, optionsBuilder.build())
+    ```
 
-This is the *recommended* approach. Download the
-[TensorFlow Lite AAR hosted at MavenCentral](https://search.maven.org/artifact/org.tensorflow/tensorflow/tensorflow-lite),
-rename it to `tensorflow-lite-*.zip`, and unzip it. You must include the four
-header files in `headers/tensorflow/lite/` and `headers/tensorflow/lite/c/`
-folder and the relevant `libtensorflowlite_jni.so` dynamic library in `jni/`
-folder in your NDK project.
+For more information about using hardware acceleration delegates with TensorFlow
+Lite, see [TensorFlow Lite Delegates](../performance/delegates).
 
-The `c_api.h` header file contains basic documentation about using the TFLite C
-API.
+### Prepare data for the model
 
-### Use TFLite C++ API
+You prepare data for interpretation by the model by transforming existing data
+such as images into the [Tensor](../api_docs/java/org/tensorflow/lite/Tensor)
+data format, so it can be processed by your model. The data in a Tensor must
+have specific dimensions, or shape, that matches the format of data used to
+train the model. Depending on the model you use, you may need to transform the
+data to fit what the model expects. The example app uses an
+[`ImageAnalysis`](https://developer.android.com/reference/androidx/camera/core/ImageAnalysis)
+object to extract image frames from the camera subsystem.
 
-If you want to use TFLite through C++ API, you can build the C++ shared
-libraries:
+To prepare data for processing by the model:
 
-32bit armeabi-v7a:
+1.  Build an `ImageAnalysis` object to extract images in the required format:
+    ```
+    imageAnalyzer =
+        ImageAnalysis.Builder()
+            .setTargetAspectRatio(AspectRatio.RATIO_4_3)
+            .setTargetRotation(fragmentCameraBinding.viewFinder.display.rotation)
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .build()
+            ...
+    ```
+1.  Connect the analyzer to the camera subsystem and create a bitmap buffer
+    to contain the data received from the camera:
+    ```
+            .also {
+            it.setAnalyzer(cameraExecutor) { image ->
+                if (!::bitmapBuffer.isInitialized) {
+                    bitmapBuffer = Bitmap.createBitmap(
+                        image.width,
+                        image.height,
+                        Bitmap.Config.ARGB_8888
+                    )
+                }
+                detectObjects(image)
+            }
+        }
+    ```
+1.  Extract the specific image data needed by the model, and pass
+    the image rotation information:
+    ```
+    private fun detectObjects(image: ImageProxy) {
+        // Copy out RGB bits to the shared bitmap buffer
+        image.use { bitmapBuffer.copyPixelsFromBuffer(image.planes[0].buffer) }
+        val imageRotation = image.imageInfo.rotationDegrees
+        objectDetectorHelper.detect(bitmapBuffer, imageRotation)
+    }    
+    ```
+1.  Complete any final data transformations and add the image data to a
+    `TensorImage` object, as shown in the `ObjectDetectorHelper.detect()`
+    method of the example app:
+    ```
+    val imageProcessor = ImageProcessor.Builder().add(Rot90Op(-imageRotation / 90)).build()
 
-```sh
-bazel build -c opt --config=android_arm //tensorflow/lite:libtensorflowlite.so
-```
+    // Preprocess the image and convert it into a TensorImage for detection.
+    val tensorImage = imageProcessor.process(TensorImage.fromBitmap(image))
+    ```
 
-64bit arm64-v8a:
+### Run predictions
 
-```sh
-bazel build -c opt --config=android_arm64 //tensorflow/lite:libtensorflowlite.so
-```
+Once you create a
+[TensorImage](../api_docs/java/org/tensorflow/lite/support/image/TensorImage)
+object with image data in the correct format, you can run the model against that
+data to produce a prediction, or *inference*. In the example app, this code
+is contained in the `ObjectDetectorHelper.detect()` method.
 
-Currently, there is no straightforward way to extract all header files needed,
-so you must include all header files in `tensorflow/lite/` from the TensorFlow
-repository. Additionally, you will need header files from
-[FlatBuffers](https://github.com/google/flatbuffers) and
-[Abseil](https://github.com/abseil/abseil-cpp).
+To run a the model and generate predictions from image data:
 
-## Min SDK version of TFLite
+-   Run the prediction by passing the image data to your predict function:
+    ```
+    val results = objectDetector?.detect(tensorImage)
+    ```
 
-| Library                     | `minSdkVersion` | Device Requirements    |
-| --------------------------- | --------------- | ---------------------- |
-| tensorflow-lite             | 19              | NNAPI usage requires   |
-:                             :                 : API 27+                :
-| tensorflow-lite-gpu         | 19              | GLES 3.1 or OpenCL     |
-:                             :                 : (typically only        :
-:                             :                 : available on API 21+   :
-| tensorflow-lite-hexagon     | 19              | -                      |
-| tensorflow-lite-support     | 19              | -                      |
-| tensorflow-lite-task-vision | 21              | android.graphics.Color |
-:                             :                 : related API requires   :
-:                             :                 : API 26+                :
-| tensorflow-lite-task-text   | 21              | -                      |
-| tensorflow-lite-task-audio  | 23              | -                      |
-| tensorflow-lite-metadata    | 19              | -                      |
+### Handle model output
+
+After you run image data against the object detection model, it produces a list
+of prediction results which your app code must handle by executing additional
+business logic, displaying results to the user, or taking other actions. The
+object detection model in the example app produces a list of predictions and
+bounding boxes for the detected objects. In the example app, the prediction
+results are passed to a listener object for further processing and display to
+the user.
+
+To handle model prediction results:
+
+1.  Use a listener pattern to pass results to your app code or user interface
+    objects. The example app uses this pattern to pass detection results from
+    the `ObjectDetectorHelper` object to the `CameraFragment` object:
+    ```
+    objectDetectorListener.onResults( // instance of CameraFragment
+        results,
+        inferenceTime,
+        tensorImage.height,
+        tensorImage.width)
+    ```
+1.  Act on the results, such as displaying the prediction to the user. The 
+    example app draws an overlay on the `CameraPreview` object to show the result:
+    ```
+    override fun onResults(
+      results: MutableList<Detection>?,
+      inferenceTime: Long,
+      imageHeight: Int,
+      imageWidth: Int
+    ) {
+        activity?.runOnUiThread {
+            fragmentCameraBinding.bottomSheetLayout.inferenceTimeVal.text =
+                String.format("%d ms", inferenceTime)
+
+            // Pass necessary information to OverlayView for drawing on the canvas
+            fragmentCameraBinding.overlay.setResults(
+                results ?: LinkedList<Detection>(),
+                imageHeight,
+                imageWidth
+            )
+
+            // Force a redraw
+            fragmentCameraBinding.overlay.invalidate()
+        }
+    }
+    ```
+
+## Next steps
+
+*   Learn more about the
+    [Task Library APIs](../inference_with_metadata/task_library/overview#supported_tasks)
+*   Learn more about the
+    [Interpreter APIs](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/InterpreterApi).
+*   Explore the uses of TensorFlow Lite in the [examples](../examples).
+*   Learn more about using and building machine learning models with TensorFlow
+    Lite in the [Models](../models) section.
+*   Learn more about implementing machine learning in your mobile application in
+    the [TensorFlow Lite Developer Guide](../guide).

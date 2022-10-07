@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "TPURoundRobin"
+  summary: "Round-robin load balancing on TPU cores."
+  description: <<END
+A load balancing op that round-robins among TPU cores.
+
+This op round-robins between the integers in [0, NumTPUCoresVisiblePerHost]. It
+is useful for interfacing with TensorFlow ops that take as input a TPU core on
+which to execute computations, such as `TPUPartitionedCall`.
+
+device_ordinal: An integer in [0, NumTPUCoresVisiblePerHost].
+END
+}

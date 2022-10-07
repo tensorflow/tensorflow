@@ -137,7 +137,7 @@ Status GraphTopologyView::InitializeFromGraph(
     SortAndRemoveDuplicates(&fanouts_[node_idx]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GraphTopologyView::InitializeFromGraph(

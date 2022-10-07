@@ -49,7 +49,9 @@ mlir::Value FloatConst(mlir::OpBuilder& builder, mlir::Location loc,
 // Returns a 1-D tf.string constant array with given values.
 mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
                         llvm::ArrayRef<llvm::StringRef> values);
-
+// Returns a tf.string scalar constant with given value.
+mlir::Value StringScalarConst(mlir::OpBuilder& builder, mlir::Location loc,
+                              llvm::StringRef value);
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value);
 Status ExtractConstVectorFromValue(mlir::Value value,
                                    llvm::SmallVector<int64_t, 4>* out_vector);
@@ -59,13 +61,20 @@ mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
                                  mlir::Location loc, bool use_int64 = true);
 
 // Returns a scalar constant with 'value' of 'type'.
-absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
-                                                  mlir::Location loc,
-                                                  mlir::Type type);
+StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
+                                            mlir::Location loc,
+                                            mlir::Type type);
+
+// Selects a scalar tensor value from a 1D array in specified index.
+StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
+                                                 int index,
+                                                 mlir::Location location,
+                                                 mlir::Value array);
 
 // Returns the type that value holds. If value holds a Type that has a subtype,
 // then it returns the subtype.
 mlir::Type GetSubtypeOrSelf(mlir::Value value);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 #endif  // TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_

@@ -121,7 +121,7 @@ Status StaticDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 bool StaticDeviceMgr::ContainsDevice(int64_t device_incarnation) const {
@@ -151,6 +151,8 @@ int StaticDeviceMgr::NumDeviceType(const string& type) const {
   if (iter != device_type_counts_.end()) return iter->second;
   return 0;
 }
+
+int StaticDeviceMgr::NumDevices() const { return devices_.size(); }
 
 Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
 

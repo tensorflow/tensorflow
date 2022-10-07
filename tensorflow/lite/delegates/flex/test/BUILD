@@ -96,7 +96,7 @@ ios_static_framework(
     testonly = 1,
     avoid_deps = ["//tensorflow/lite/c:common"],
     bundle_name = "TestTensorFlowLiteSelectTfOps",
-    minimum_os_version = "9.0",
+    minimum_os_version = "11.0",
     deps = [
         ":test_flex_delegate",
     ],

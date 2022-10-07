@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace {
@@ -56,7 +55,11 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
                                        PatternRewriter& rewriter) const;
 };
 
-class BroadcastFoldPass : public TF::BroadcastFoldPassBase<BroadcastFoldPass> {
+#define GEN_PASS_DEF_BROADCASTFOLDPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class BroadcastFoldPass
+    : public impl::BroadcastFoldPassBase<BroadcastFoldPass> {
  public:
   void runOnOperation() override;
 };
@@ -199,7 +202,7 @@ void BroadcastFoldPass::runOnOperation() {
 
 namespace TF {
 std::unique_ptr<OperationPass<func::FuncOp>> CreateBroadcastFoldPass() {
-  return absl::make_unique<BroadcastFoldPass>();
+  return std::make_unique<BroadcastFoldPass>();
 }
 }  // namespace TF
 

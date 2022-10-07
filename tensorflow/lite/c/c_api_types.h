@@ -77,6 +77,13 @@ typedef enum TfLiteStatus {
   // resolved at runtime. This could happen when the specific op is not
   // registered or built with the TF Lite framework.
   kTfLiteUnresolvedOps = 7,
+
+  // Generally referring to invocation cancelled by the user.
+  // See `interpreter::Cancel`.
+  // TODO(b/194915839): Implement `interpreter::Cancel`.
+  // TODO(b/250636993): Cancellation triggered by `SetCancellationFunction`
+  // should also return this status code.
+  kTfLiteCancelled = 8,
 } TfLiteStatus;
 
 // Types supported by tensor
@@ -123,6 +130,15 @@ typedef struct TfLiteOpaqueNode TfLiteOpaqueNode;
 
 // TfLiteOpaqueTensor is an opaque version of TfLiteTensor;
 typedef struct TfLiteOpaqueTensor TfLiteOpaqueTensor;
+
+// TfLiteOpaqueDelegateStruct: opaque version of TfLiteDelegate; allows
+// delegation of nodes to alternative backends.
+//
+// This is an abstract type that is intended to have the same
+// role as TfLiteDelegate from common.h, but without exposing the implementation
+// details of how delegates are implemented.
+// WARNING: This is an experimental type and subject to change.
+typedef struct TfLiteOpaqueDelegateStruct TfLiteOpaqueDelegateStruct;
 
 #ifdef __cplusplus
 }  // extern C

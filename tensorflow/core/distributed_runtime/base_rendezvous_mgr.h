@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,7 +40,6 @@ namespace tensorflow {
 
 class BaseRemoteRendezvous;
 class BaseRecvTensorCall;
-class CancellationManager;
 
 // RendezvousMgr keeps track of a set of local rendezvous instances.
 // All tensors sent by this worker are buffered in a RendezvousMgr

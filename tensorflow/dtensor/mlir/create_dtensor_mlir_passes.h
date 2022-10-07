@@ -100,7 +100,7 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorEmbeddingPassV2();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateDTensorEmbeddingLoadPass();
+CreateDTensorEmbeddingCheckpointPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateFunctionRenamingPass();
@@ -131,6 +131,9 @@ CreateDTensorSparseTensorToDenseTensor();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorSparseExpansion();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorInferShapesForRestoreV2Op();
 
 // Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

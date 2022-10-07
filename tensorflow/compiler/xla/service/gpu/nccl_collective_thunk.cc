@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_activation.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace xla {
 namespace gpu {
@@ -109,16 +109,18 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 #endif
 }
 
-Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
-  VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
+StatusOr<NcclComm::Lock> LockNcclComm(
+    const NcclExecuteParams& params,
+    const std::vector<ReplicaGroup>& replica_groups,
+    CollectiveOpGroupMode group_mode, int64_t op_id) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
   TF_ASSIGN_OR_RETURN(
       std::vector<GlobalDeviceId> participants,
       GetParticipatingDevices(global_device_id, *params.device_assn,
-                              config().replica_groups, config().group_mode));
+                              replica_groups, group_mode));
 
   if (IsGlobalNcclConfig() &&
       (participants.size() != params.device_assn->replica_count())) {
@@ -131,9 +133,15 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_RET_CHECK(it != participants.end());
   int rank = it - participants.begin();
 
-  OpId op_id(config().op_id);
+  std::vector<GlobalDeviceId> local_devices;
+  if (params.gpu_global_device_ids) {
+    local_devices.reserve(params.gpu_global_device_ids->size());
+    for (const auto& entry : *params.gpu_global_device_ids) {
+      local_devices.push_back(entry.second);
+    }
+  }
   size_t num_local_participants = GetNumLocalParticipants(
-      participants, /*local_devices=*/params.gpu_global_device_ids);
+      participants, params.gpu_global_device_ids ? &local_devices : nullptr);
 
   bool is_local = participants.size() == num_local_participants;
   TF_ASSIGN_OR_RETURN(
@@ -143,10 +151,37 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::StreamExecutor* executor = params.stream->parent();
   se::gpu::ScopedActivateExecutorContext scoped_context(executor);
 
-  TF_ASSIGN_OR_RETURN(
-      NcclComm::Lock comm,
-      AcquireNcclComm(params.run_id, op_id, std::move(participants),
-                      num_local_participants, *unique_id_callback, rank));
+  return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
+                         num_local_participants, *unique_id_callback, rank);
+}
+#endif  // XLA_ENABLE_XCCL
+
+StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
+    const Thunk::ExecuteParams& params,
+    const std::vector<NcclCollectiveThunk::Buffer>& buffers,
+    const std::vector<PrimitiveType>& element_types) {
+  if (buffers.size() != element_types.size())
+    return FailedPrecondition("Mismatch in operand buffer counts.");
+
+  std::vector<DeviceBufferPair> device_buffers;
+  device_buffers.reserve(buffers.size());
+  for (int i = 0; i < buffers.size(); ++i) {
+    device_buffers.emplace_back(DeviceBufferPair{
+        element_types[i], buffers[i].element_count,
+
+        params.buffer_allocations->GetDeviceAddress(buffers[i].source_buffer),
+        params.buffer_allocations->GetDeviceAddress(
+            buffers[i].destination_buffer)});
+  }
+  return device_buffers;
+}
+
+Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
+#if XLA_ENABLE_XCCL
+  VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
+  TF_ASSIGN_OR_RETURN(NcclComm::Lock comm,
+                      LockNcclComm(params.nccl_params, config().replica_groups,
+                                   config().group_mode, config().op_id));
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, *comm));
 
@@ -158,7 +193,7 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
     TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
-  return Status::OK();
+  return OkStatus();
 #else   // XLA_ENABLE_XCCL
   return Unimplemented(
       "NCCL support is not available: this binary was not built with a CUDA "
@@ -167,11 +202,11 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 }
 
 std::string NcclCollectiveThunk::GetDeviceString(
-    const ExecuteParams& params) const {
-  int device_ordinal = params.stream->parent()->device_ordinal();
-  GlobalDeviceId global_device_id = params.GetGlobalDeviceId().ValueOrDie();
+    const NcclExecuteParams& nccl_params) {
+  int device_ordinal = nccl_params.stream->parent()->device_ordinal();
+  GlobalDeviceId global_device_id = nccl_params.GetGlobalDeviceId().value();
   DeviceAssignment::LogicalID logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id).ValueOrDie();
+      nccl_params.device_assn->LogicalIdForDevice(global_device_id).value();
   return absl::StrFormat("(r%d, p%d) : GlobalID %d, ord %d",
                          logical_id.replica_id, logical_id.computation_id,
                          global_device_id.value(), device_ordinal);

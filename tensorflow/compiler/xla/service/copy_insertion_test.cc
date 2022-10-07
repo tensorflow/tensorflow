@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -77,7 +77,9 @@ class CopyInsertionTest : public HloTestBase {
  protected:
   void InsertCopies(HloModule* module) {
     CopyInsertion copy_insertion;
+    VLOG(3) << "Before copy inser: " << module->ToString();
     ASSERT_IS_OK(copy_insertion.Run(module).status());
+    VLOG(2) << "After copy inser: " << module->ToString();
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
@@ -755,8 +757,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
   ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
   // code generates a clone of the existing while and replaces that while
@@ -823,8 +824,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]) {
   ROOT %while.1 = (s32[], f32[8]{0}) while((s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
   // code generates a clone of the existing while and replaces that while
@@ -883,8 +883,7 @@ ENTRY %DependentTupleElements.While () -> (s32[], f32[8]{0}, s32[], f32[8]{0}, s
   ROOT %while.1 = (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) while( (s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}, s32[], f32[8]{0}) %tuple.1), condition=%DependentTupleElements.Condition, body=%DependentTupleElements.Body
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module_ = module_or_status.ConsumeValueOrDie();
+  auto module_ = ParseAndReturnVerifiedModule(hlo_string).value();
   auto while_hlo = module_->entry_computation()->root_instruction();
   // module_ and while_hlo are the pre-existing module and hlo, the below
   // code generates a clone of the existing while and replaces that while
@@ -2175,8 +2174,7 @@ ENTRY TestComputation {
   ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module = module_or_status.ConsumeValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   InsertCopies(module.get());
 }
 
@@ -2275,8 +2273,7 @@ ENTRY TestComputation {
   ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
-  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
-  auto module = module_or_status.ConsumeValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   InsertCopies(module.get());
 }
 
@@ -2469,7 +2466,6 @@ ENTRY TestComputation {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
-  VLOG(2) << module->ToString() << "\n";
 
   // An extra copy must be kept inside the loop due to uses in the conditional.
   EXPECT_EQ(CountCopies(*module), 3);
@@ -2828,6 +2824,36 @@ ENTRY main {
                           ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
   EXPECT_EQ(CountCopies(*module), 1);
+}
+
+TEST_F(CopyInsertionTest, ScatterSharedOperand) {
+  // If an in-place op has an additional operand that has the same value as the
+  // in-place buffer, a copy needs to be inserted on one of these values only.
+  absl::string_view hlo_string = R"(
+HloModule Module
+
+update_s32 {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+fused_computation {
+  iota.1 = s32[73729]{0} iota(), iota_dimension=0
+  ROOT indices.1 = s32[73729]{0} reverse(iota.1), dimensions={0}
+}
+
+ENTRY main {
+  iota.2 = s32[73729]{0} iota(), iota_dimension=0
+  fusion = s32[73729]{0} fusion(), kind=kLoop, calls=fused_computation
+  ROOT scatter = s32[73729]{0} scatter(iota.2, fusion, iota.2), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=update_s32
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  InsertCopies(module.get());
+  EXPECT_EQ(CountCopies(*module), 1);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Scatter(op::Copy(op::Iota()), op::Fusion(), op::Iota()));
 }
 
 TEST_F(CopyInsertionTest, HorizontalLoopFusionNoCopy) {
@@ -3338,6 +3364,24 @@ ENTRY %main.13 (Arg_0.1: pred[], Arg_1.2: u8[300,451,3]) -> u8[300,451,3] {
   VLOG(2) << module->ToString();
   HloInstruction* reverse = FindInstruction(module.get(), "reverse");
   EXPECT_THAT(reverse->operand(0), op::Copy());
+}
+
+TEST_F(CopyInsertionTest, InputOutputAliasCopy) {
+  const char* const kModuleString = R"(
+HloModule main_tf2xla.11, input_output_alias={ {0}: (0, {1}, may-alias) }
+
+ENTRY %main_tf2xla.11 (arg_tuple.1: (f32[], f32[])) -> (f32[], f32[]) {
+ROOT %arg_tuple.1 = (f32[]{:T(256)}, f32[]{:T(256)}) parameter(0), parameter_replication={false,false}, sharding={{replicated}, {replicated}}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleString));
+
+  CopyInsertion copy_insertion(nullptr,
+                               /*use_region_based_live_range_analysis=*/-1);
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
+  VLOG(2) << module->ToString();
 }
 
 }  // namespace

@@ -10,7 +10,7 @@ For an explanation of the source code, you should also read
 [TensorFlow Lite iOS image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md).
 
 This example app uses
-[image classification](https://www.tensorflow.org/lite/models/image_classification/overview)
+[image classification](https://www.tensorflow.org/lite/examples/image_classification/overview)
 to continuously classify whatever it sees from the device's rear-facing camera,
 displaying the top most probable classifications. It allows the user to choose
 between a floating point or

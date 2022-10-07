@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace spmd {
@@ -56,7 +56,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -77,7 +77,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -100,7 +100,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -123,7 +123,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -146,7 +146,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -167,7 +167,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -190,7 +190,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -211,7 +211,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);
@@ -232,7 +232,7 @@ ENTRY entry {
 })";
   auto module_status = RunPass(hlo_string);
   EXPECT_TRUE(module_status.status().ok());
-  auto module = module_status.ConsumeValueOrDie();
+  auto module = std::move(module_status).value();
   HloInstruction* tuple = module->entry_computation()->root_instruction();
   EXPECT_EQ(tuple->opcode(), HloOpcode::kTuple);
   EXPECT_EQ(tuple->operand_count(), 2);

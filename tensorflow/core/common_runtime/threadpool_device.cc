@@ -125,7 +125,7 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor parsed(tensor_proto.dtype());
     if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
@@ -142,7 +142,7 @@ void ThreadPoolDevice::CopyTensorInSameDevice(
     return;
   }
   tensor::DeepCopy(*input_tensor, output_tensor);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 namespace {

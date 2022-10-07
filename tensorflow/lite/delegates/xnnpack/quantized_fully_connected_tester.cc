@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/quantized_fully_connected_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -111,6 +112,10 @@ void QuantizedFullyConnectedTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(default_interpreter->AllocateTensors(), kTfLiteOk);
 
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
+
+  if (weights_cache_ != nullptr) {
+    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+  }
 
   if (Unsigned()) {
     Test<uint8_t>(delegate_interpreter.get(), default_interpreter.get());

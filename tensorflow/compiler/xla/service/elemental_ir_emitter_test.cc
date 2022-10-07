@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:

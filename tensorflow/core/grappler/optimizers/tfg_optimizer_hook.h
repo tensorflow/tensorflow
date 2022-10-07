@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
-#define TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_OPTIMIZER_HOOK_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_OPTIMIZER_HOOK_H_
 
 #include <functional>
 #include <string>
@@ -25,12 +25,6 @@ namespace mlir {
 class PassManager;
 
 namespace tfg {
-
-// Constructs the default graph/function-level TFG pass pipeline.
-void DefaultGrapplerPipeline(PassManager& mgr);
-
-// Constructs the default module-level TFG pass pipeline.
-void DefaultModuleGrapplerPipeline(PassManager& mgr);
 
 // A function that builds the TFG pass pipeline.
 using TFGPassPipelineBuilder = std::function<void(PassManager& pm)>;
@@ -68,4 +62,4 @@ class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
 }  // end namespace tfg
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_OPTIMIZER_HOOK_H_

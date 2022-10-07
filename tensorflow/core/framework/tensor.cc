@@ -757,7 +757,7 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     buf_ = other.buf_;
     RefIfNonNull(buf_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Notice that buf_ either points to a regular TensorBuffer or a SubBuffer.
@@ -849,7 +849,7 @@ Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
       type, {}, return errors::InvalidArgument("Type not set"),
       return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
   *out_tensor = Tensor(type, shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 // NOTE(mrry): The default allocator for a Tensor (when none is specified) is
@@ -862,7 +862,7 @@ Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
 // default allocator is widely used throughout the codebase and in client code.
 static Allocator* get_default_cpu_allocator() {
   static Allocator* default_cpu_allocator =
-      cpu_allocator(port::kNUMANoAffinity);
+      cpu_allocator(tsl::port::kNUMANoAffinity);
   return default_cpu_allocator;
 }
 

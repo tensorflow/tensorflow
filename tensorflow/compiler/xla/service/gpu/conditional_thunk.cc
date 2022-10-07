@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -40,7 +41,7 @@ Status ConditionalThunk::Initialize(const GpuExecutable& executable,
   for (auto& branch_thunk : config_.branch_thunks) {
     TF_RETURN_IF_ERROR(branch_thunk->Initialize(executable, executor));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -76,7 +77,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   TF_RETURN_IF_ERROR(
       config_.branch_thunks[branch_index]->ExecuteOnStream(params));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

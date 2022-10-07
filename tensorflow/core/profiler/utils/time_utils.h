@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,26 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TIME_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TIME_UTILS_H_
 
-#include <cstdint>
-
-#include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/tsl/profiler/utils/time_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Returns the current CPU wallclock time in nanoseconds.
-int64_t GetCurrentTimeNanos();
-
-// Sleeps for the specified duration.
-void SleepForNanos(int64_t ns);
-inline void SleepForMicros(int64_t us) { SleepForNanos(MicroToNano(us)); }
-inline void SleepForMillis(int64_t ms) { SleepForNanos(MilliToNano(ms)); }
-inline void SleepForSeconds(int64_t s) { SleepForNanos(UniToNano(s)); }
-
-// Spins to simulate doing some work instead of sleeping, because sleep
-// precision is poor. For testing only.
-void SpinForNanos(int64_t ns);
-inline void SpinForMicros(int64_t us) { SpinForNanos(us * 1000); }
+using tsl::profiler::GetCurrentTimeNanos;  // NOLINT
+using tsl::profiler::SleepForMicros;       // NOLINT
+using tsl::profiler::SleepForMillis;       // NOLINT
+using tsl::profiler::SleepForNanos;        // NOLINT
+using tsl::profiler::SpinForMicros;        // NOLINT
+using tsl::profiler::SpinForNanos;         // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

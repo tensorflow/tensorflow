@@ -168,6 +168,25 @@ class CSRSparseMatrixOpsTest(test.TestCase):
     self.assertAllClose(a_values, a_st_rt_value.values)
     self.assertAllEqual(a_dense_shape, a_st_rt_value.dense_shape)
 
+  def testSparseTensorConversionInvalidInputShapes(self):
+    values = constant_op.constant(
+        0.554979503, shape=[5], dtype=dtypes.float32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 1"):
+      indices = constant_op.constant(0, shape=[5, 2], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(53, shape=[], dtype=dtypes.int64)
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape)
+      self.evaluate(csr)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "must be rank 2"):
+      indices = constant_op.constant(0, shape=[5], dtype=dtypes.int64)
+      dense_shape = constant_op.constant(53, shape=[1], dtype=dtypes.int64)
+      csr = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
+          indices=indices, values=values, dense_shape=dense_shape)
+      self.evaluate(csr)
+
   # TODO(b/139491352): Add handle_data propagation to array_ops.identity.
   @test_util.run_deprecated_v1
   def testCSRSparseMatrixResourceVariable(self):
@@ -1293,6 +1312,16 @@ class CSRSparseMatrixOpsTest(test.TestCase):
       # for this matrix.
       self.assertLess(cholesky_with_amd_nnz_value,
                       cholesky_without_ordering_nnz_value)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNoMatrixNoCrash(self):
+    # Round-about way of creating an empty variant tensor that works in both
+    # graph and eager modes.
+    no_matrix = array_ops.reshape(dense_to_csr_sparse_matrix([[0.0]]), [1])[0:0]
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "(Invalid input matrix)|(Shape must be rank 0)"):
+      sparse_csr_matrix_ops.sparse_matrix_nnz(no_matrix)
 
 
 class CSRSparseMatrixOpsBenchmark(test.Benchmark):

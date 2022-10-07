@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_FILE_SYSTEM_H_
-#define TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_
 
 #include <functional>
 #include <string>
@@ -250,7 +250,7 @@ Status RetryingFileSystem<Underlying>::NewRandomAccessFile(
       retry_config_));
   result->reset(new retrying_internals::RetryingRandomAccessFile(
       std::move(base_file), retry_config_));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Underlying>
@@ -265,7 +265,7 @@ Status RetryingFileSystem<Underlying>::NewWritableFile(
       retry_config_));
   result->reset(new retrying_internals::RetryingWritableFile(
       std::move(base_file), retry_config_));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Underlying>
@@ -281,7 +281,7 @@ Status RetryingFileSystem<Underlying>::NewAppendableFile(
       retry_config_));
   result->reset(new retrying_internals::RetryingWritableFile(
       std::move(base_file), retry_config_));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Underlying>
@@ -298,4 +298,4 @@ Status RetryingFileSystem<Underlying>::NewReadOnlyMemoryRegionFromFile(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_RETRYING_FILE_SYSTEM_H_

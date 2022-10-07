@@ -37,18 +37,18 @@ class GetOptionsParams : public DatasetParams {
                    string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
   }
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
   Status GetInputNames(std::vector<string>* input_names) const override {
     input_names->emplace_back(OptionsDatasetOp::kInputDataset);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override { return "GetOptions"; }

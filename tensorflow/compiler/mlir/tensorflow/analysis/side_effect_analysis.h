@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -32,6 +33,9 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 using ResourceId = int64_t;
+inline constexpr ResourceId kUnknownResourceId =
+    ResourceAliasAnalysis::Info::kUnknownResourceId;
+static_assert(kUnknownResourceId < 0, "kUnknownResourceId must be < 0");
 
 namespace detail {
 
@@ -133,6 +137,12 @@ class SideEffectAnalysisInfo {
   // access considered.
   bool IsUnknownAccessIndirectlyTrackedByResource(ResourceId resource,
                                                   bool read_only);
+
+  // Returns a set of resource IDs that have potential dependencies to
+  // `resource_id` (i.e., there are potential dependencies between the
+  // resources corresponding to the IDs).
+  llvm::SmallSet<ResourceId, 8> GetDependentIds(ResourceId resource_id,
+                                                bool is_fetch_op) const;
 
   // Maps from an op to its control predecessors.
   llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 4>, 8>

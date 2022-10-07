@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
@@ -51,8 +50,11 @@ constexpr char kThenFuncNameAttr[] = "_then_func_name";
 constexpr char kXlaPropagateCompileTimeConsts[] =
     "_xla_propagate_compile_time_consts";
 
+#define GEN_PASS_DEF_REGIONCONTROLFLOWTOFUNCTIONALPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct RegionControlFlowToFunctional
-    : public TF::RegionControlFlowToFunctionalPassBase<
+    : public impl::RegionControlFlowToFunctionalPassBase<
           RegionControlFlowToFunctional> {
   void runOnOperation() override;
 

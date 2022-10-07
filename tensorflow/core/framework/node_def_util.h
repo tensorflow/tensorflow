@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -255,6 +256,13 @@ Status GetNodeAttr(
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<Tensor>* value);  // type: "list(tensor)"
 
+template <typename T>
+StatusOr<T> GetNodeAttr(const NodeDef& ndef, absl::string_view attr_name) {
+  T val;
+  TF_RETURN_IF_ERROR(GetNodeAttr(ndef, attr_name, &val));
+  return val;
+}
+
 // This version avoids copying the TensorProto.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -356,6 +364,17 @@ Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
 // REQUIRES: ValidateOpDef(op_def).ok()
 Status NumOutputsForNode(const NodeDef& node_def, const OpDef& op_def,
                          int* num_outputs);
+
+// Map a node/op's input/output port_id to arg_id.
+//
+// The port_id refers to the n-th tensor of the node, while the arg_id refers to
+// the n-th arg of the op. These two can be different if an op's arg is a list
+// of tensors.
+//
+// We return -1 for any invalid port_id (i.e., no corresponding arg_id).
+int OpPortIdToArgId(const NodeDef& node,
+                    const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+                    int port_id);
 
 // Validates that the NodeDef:
 // * Defines all expected attrs from the OpDef.

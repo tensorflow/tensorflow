@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_DATAFLOW_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_DATAFLOW_ANALYSIS_H_
 
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <string>
@@ -70,7 +71,7 @@ class HloDataflowAnalysis {
   // The first parameter of the function should be the instruction, the
   // second parameter should be an operand of the instruction. The third
   // parameter should be the output index of the instruction.
-  using CanShareBuffer = std::function<absl::optional<bool>(
+  using CanShareBuffer = std::function<std::optional<bool>(
       const HloInstruction* instr, const HloInstruction* operand,
       const ShapeIndex& user_index)>;
 
@@ -255,6 +256,17 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  // Async op propagation rules:
+  //  - Operand of async-start to parameter of async wrapped computation and at
+  //    index {0, operand_number} of async-start and async-update outputs.
+  //  - Root of async wrapped computation to index {1} of async-start and
+  //    async-update and index {} of async-done.
+  //  - The contexts in indices {2+} of async-start to the same indices of
+  //    async-update.
+  //
+  // As a result of this, the operands/outputs of async-start and async-done
+  // instructions share the same values as the parameters/roots of the async
+  // wrapped computation.
   bool UpdateAsyncStartValueSet(HloInstruction* async_start);
   bool UpdateAsyncUpdateValueSet(HloInstruction* async_update);
   bool UpdateAsyncDoneValueSet(HloInstruction* async_done);

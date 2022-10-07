@@ -117,6 +117,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   tensorflow::CustomDeviceOpHandler& GetCustomDeviceOpHandler() override;
 
+  bool IsCustomDevice(const std::string& device_name) override;
+
   tensorflow::Status RegisterCustomDevice(
       const std::string& name,
       std::unique_ptr<tensorflow::CustomDevice> device) override;
@@ -150,7 +152,7 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
   tensorflow::Status AsyncWait() override {
     TF_RETURN_IF_ERROR(GetEagerContext()->AsyncWait());
     GetHostContext()->Quiesce();
-    return tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   tensorflow::Status AddFunctionDef(

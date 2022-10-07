@@ -39,7 +39,7 @@ class IdentityReader : public ReaderBase {
     *value = current_work();
     *produced = true;
     *at_end = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Stores state in a ReaderBaseState proto, since IdentityReader has
@@ -48,7 +48,7 @@ class IdentityReader : public ReaderBase {
     ReaderBaseState base_state;
     SaveBaseState(&base_state);
     SerializeToTString(base_state, state);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RestoreStateLocked(const tstring& state) override {
@@ -58,7 +58,7 @@ class IdentityReader : public ReaderBase {
                                      absl::CEscape(state));
     }
     TF_RETURN_IF_ERROR(RestoreBaseState(base_state));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

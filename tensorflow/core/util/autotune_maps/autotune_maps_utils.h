@@ -15,8 +15,8 @@ limitations under the License.
 
 // For Google-internal use only.
 
-#ifndef TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_DEVICE_IDENTIFIER_UTILS_H_
-#define TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_DEVICE_IDENTIFIER_UTILS_H_
+#ifndef TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_MAPS_UTILS_H_
+#define TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_MAPS_UTILS_H_
 
 #include <string>
 #include <vector>
@@ -50,4 +50,4 @@ uint64_t HashProto(const protobuf::Message& proto);
 }  // namespace autotune_maps_utils
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_DEVICE_IDENTIFIER_UTILS_H_
+#endif  // TENSORFLOW_CORE_UTIL_AUTOTUNE_MAPS_AUTOTUNE_MAPS_UTILS_H_

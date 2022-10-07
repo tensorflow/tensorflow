@@ -19,10 +19,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PRIMITIVE_UTIL_H_
 
 #include <string>
+#include <tuple>
 #include <type_traits>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -148,7 +148,10 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 bool IsIntegralType(PrimitiveType type);
 
 // Returns true if values of the given primitive type are held in array shapes.
-bool IsArrayType(PrimitiveType primitive_type);
+inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
+  return primitive_type != PRIMITIVE_TYPE_INVALID && primitive_type != TUPLE &&
+         primitive_type != OPAQUE_TYPE && primitive_type != TOKEN;
+}
 
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);

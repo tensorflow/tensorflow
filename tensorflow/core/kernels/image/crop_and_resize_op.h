@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_IMAGECROP_AND_RESIZE_OP_H_
-#define TENSORFLOW_CORE_KERNELS_IMAGECROP_AND_RESIZE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_CROP_AND_RESIZE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_CROP_AND_RESIZE_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -69,4 +69,4 @@ struct CheckValidBoxIndexHelper {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_IMAGECROP_AND_RESIZE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_CROP_AND_RESIZE_OP_H_

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MultiDeviceIteratorGetNextFromShard"
   input_arg {
     name: "multi_device_iterator"

@@ -934,13 +934,6 @@ then b == f32[3]{0.0, 1.0, 2.0}
 
 Performs `AllReduce` with a summation computation.
 
-## OptimizationBarrier
-
-Blocks any optimization pass from moving computations across the barrier.
-
-Ensures that all inputs are evaluated before any operators that depend on the
-barrier's outputs.
-
 ## CustomCall
 
 See also
@@ -1397,6 +1390,9 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
@@ -1673,8 +1669,8 @@ the formal description) and "Offset Mapping" (`remapped_offset_dims` in the
 formal description) into [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively,
 adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
-[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
-the semantics for `tf.gather_nd`.
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`O`<sub>`0`</sub>]
+which gives us the semantics for `tf.gather_nd`.
 
 `slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
 index `X` in the gather indices array picks an entire row and the result is the
@@ -1862,6 +1858,13 @@ with S.
 For example: `Map(op1, op2, op3, computation, par1)` maps `elem_out <-
 computation(elem1, elem2, elem3, par1)` at each (multi-dimensional) index in the
 input arrays to produce the output array.
+
+## OptimizationBarrier
+
+Blocks any optimization pass from moving computations across the barrier.
+
+Ensures that all inputs are evaluated before any operators that depend on the
+barrier's outputs.
 
 ## Pad
 
@@ -2258,7 +2261,7 @@ XlaComputation max;
   auto y = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "y");
   auto x = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "x");
   builder.Max(y, x);
-  max = builder.Build().ConsumeValueOrDie();
+  max = builder.Build().value();
 }
 
 // Create a ReduceWindow computation with the max reduction computation.
@@ -2573,8 +2576,8 @@ The arguments of scatter should follow these constraints:
     `inserted_window_dims.size`.
 
 -   `scatter_dims_to_operand_dims.size` must be equal to
-    `scatter_indices`[`index_vector_dim`], and its values must be in the range
-    `[0, operand.rank)`.
+    `scatter_indices.shape.dims`[`index_vector_dim`], and its values must be in
+    the range `[0, operand.rank)`.
 
 For a given index `U` in each `updates` array, the corresponding index `I` in
 the corresponding `operands` array into which this update has to be applied is
@@ -2610,7 +2613,7 @@ In summary, the scatter operation can be defined as follows.
     `output`[`J`][`O`] = `operands`[`J`][`O`]
 -   For every index `U` in the `updates`[`J`] array and the corresponding index
     `O` in the `operand`[`J`] array, if `O` is a valid index for `output`: \
-    `(output`[`0`][`O`], ..., output`[`N-1`][`O`])
+    `(output`[`0`][`O`], ..., `output`[`N-1`][`O`])
     =`update_computation`(`output`[`0`][`O`], ...,
     ,`output`[`N-1`][`O`],`updates`[`0`][`U`], ...,`updates`[`N-1`][`U`])
 
@@ -2829,7 +2832,7 @@ rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices)` </b>
+<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |

@@ -146,13 +146,20 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
 
   AddDTensorEmbeddingPassV2(pm);
 
+  // For DTensor Checkpoint V2, the outputs of tf.RestoreV2 ops
+  // do not have shape information. We can infer the shapes of these
+  // outputs from the tf.AssignVariableOps that consume these outputs.
+  // This pass fills in all missing shapes caused by tf.RestoreV2 ops.
+  pm->addPass(CreateDTensorInferShapesForRestoreV2Op());
+
   pm->addPass(CreateDTensorLayoutPropagationPassV2());
 
   // Expand graph to SPMD form given layouts are annotated to all ops.
   // Remove all DTensorLayout ops after the expansion is done.
   pm->addPass(CreateDTensorSPMDExpansion());
 
-  AddDTensorEmbeddingLoadPass(pm);
+  // Insert functions to save or load embeddings when using tpu device.
+  AddDTensorEmbeddingCheckpointPass(pm);
 
   // Expand all ops that consume SparseTensors to possibly new ops.
   // Remove any unused SparseToDense, Layout, and Const Ops after
@@ -282,7 +289,7 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // Convert compilation and replication attributes to unified attributes
     // expected by TPURewritePass.
     pm->addNestedPass<mlir::func::FuncOp>(
-        mlir::TFTPU::CreateCanonicalizeCompileAndReplicateAttributesPass());
+        mlir::TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
     // Create TPU Compile and TPU Execute ops for each TPU devices.
     pm->addPass(mlir::TFTPU::CreateTPURewritePass());
     // Convert unified compilation and replication attributes back to legacy

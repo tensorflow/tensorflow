@@ -65,7 +65,7 @@ Status ZerosLikeTensor(OpKernelContext* ctx, const Tensor& x, Tensor* out) {
           "Trying to compute zeros_like for unsupported dtype ",
           DataTypeString(out->dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device>
@@ -73,11 +73,11 @@ Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
                         Tensor* out) {
   if (a.dtype() == DT_INVALID) {
     *out = b;
-    return Status::OK();
+    return OkStatus();
   }
   if (b.dtype() == DT_INVALID) {
     *out = a;
-    return Status::OK();
+    return OkStatus();
   }
   if (a.dtype() != b.dtype()) {
     return errors::InvalidArgument(
@@ -120,7 +120,7 @@ Status BinaryAddTensors(OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       return errors::InvalidArgument("Trying to add unsupported dtype ",
                                      out->dtype());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

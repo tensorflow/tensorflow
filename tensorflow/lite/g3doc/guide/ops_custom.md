@@ -8,7 +8,7 @@ To allow conversion, users can provide their own custom implementation of an
 unsupported TensorFlow operator in TensorFlow Lite, known as a custom operator.
 *If instead, you wish to combine a series of unsupported (or supported)
 TensorFlow operators into a single fused optimized custom operator, refer to
-[operator fusing](https://www.tensorflow.org/lite/convert/operation_fusion).*
+[operator fusing](https://www.tensorflow.org/lite/models/convert/operation_fusion).*
 
 Using custom operators consists of four steps.
 
@@ -33,10 +33,15 @@ Let’s walk through an end-to-end example of running a model with a custom
 operator `tf.sin` (named as `Sin`, refer to #create-a-tensorflow-model) which is
 supported in TensorFlow, but unsupported in TensorFlow Lite.
 
-Note: In reality, `tf.sin` is **not** a custom operator. It is regular operator
+Note: The `tf.sin` function is **not** a custom operator. It is a regular
+operator
 which is supported by both TensorFlow and TensorFlow Lite. But we **assume**
 that it is a custom operator in the following example in order to demonstrate a
 simple workflow.
+
+The TensorFlow Text operator is an example of a custom operator. See the
+<a href="https://tensorflow.org/text/guide/text_tf_lite" class="external">
+  Convert TF Text to TF Lite</a> tutorial for a code example.
 
 ## Example: Custom `Sin` operator
 

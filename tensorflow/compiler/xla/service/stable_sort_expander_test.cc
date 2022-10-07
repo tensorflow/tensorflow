@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -103,7 +103,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortReuseIotaOperand) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(
                         m::Sort(m::Parameter(0), m::Iota()), 0)));
@@ -149,7 +149,7 @@ TEST_F(StableSortExpanderTest,
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(
                         m::Sort(m::Parameter(0), m::Iota()), 0)));
@@ -179,7 +179,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortAddIotaOperandAndChangeRoot) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
       root, GmockMatch(m::Tuple(
@@ -215,7 +215,7 @@ TEST_F(StableSortExpanderTest, HonorIsStableFlag) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_FALSE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(stabilizer.Run(module.get()).value());
 }
 
 TEST_F(StableSortExpanderTest,
@@ -242,11 +242,11 @@ TEST_F(StableSortExpanderTest,
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   // Simplify away the "wrapper" tuple around the new sort.
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions(
       [](const Shape&, const Shape&) { return false; }));
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(
@@ -279,11 +279,11 @@ TEST_F(StableSortExpanderTest, StabilizeSortDontReuseIotaOperandWrongType) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   // Simplify away the "wrapper" tuple around the new sort.
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions(
       [](const Shape&, const Shape&) { return false; }));
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(
@@ -315,7 +315,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::GetTupleElement(
                         m::Sort(m::Parameter(0), m::Iota()), 0)));
@@ -346,7 +346,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1NoRoot) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   StableSortExpander stabilizer;
-  EXPECT_TRUE(stabilizer.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(stabilizer.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Negate(m::GetTupleElement(
                         m::Sort(m::Parameter(0), m::Iota()), 0))));

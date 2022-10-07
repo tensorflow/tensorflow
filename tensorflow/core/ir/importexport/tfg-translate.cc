@@ -20,16 +20,15 @@ limitations under the License.
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
-#include "tensorflow/core/ir/importexport/export.h"
 #include "tensorflow/core/ir/importexport/graphdef_export.h"
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
-#include "tensorflow/core/ir/importexport/import.h"
 #include "tensorflow/core/ir/importexport/load_proto.h"
 
 namespace mlir {
 
 TranslateToMLIRRegistration graphdef_to_mlir(
-    "graphdef-to-mlir", [](StringRef proto_txt, MLIRContext *context) {
+    "graphdef-to-mlir", "graphdef-to-mlir",
+    [](StringRef proto_txt, MLIRContext *context) {
       tensorflow::GraphDebugInfo debug_info;
       tensorflow::GraphDef graphdef;
       tensorflow::Status status = tensorflow::LoadProtoFromBuffer(
@@ -43,11 +42,11 @@ TranslateToMLIRRegistration graphdef_to_mlir(
         LOG(ERROR) << errorOrModule.status();
         return OwningOpRef<mlir::ModuleOp>{};
       }
-      return std::move(errorOrModule.ValueOrDie());
+      return std::move(errorOrModule.value());
     });
 
 TranslateFromMLIRRegistration mlir_to_graphdef(
-    "mlir-to-graphdef",
+    "mlir-to-graphdef", "mlir-to-graphdef",
     [](ModuleOp module, raw_ostream &output) {
       tensorflow::GraphDef graphdef;
       tensorflow::Status status =

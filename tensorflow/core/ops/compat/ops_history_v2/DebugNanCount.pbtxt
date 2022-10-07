@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DebugNanCount"
   input_arg {
     name: "input"

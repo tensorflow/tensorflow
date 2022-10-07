@@ -44,7 +44,7 @@ struct BucketizeFunctor<CPUDevice, T> {
       output(i) = first_bigger_it - boundaries_vector.begin();
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

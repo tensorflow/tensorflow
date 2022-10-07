@@ -33,11 +33,7 @@ limitations under the License.
 //   #endif
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
-// FixedPoint header must be included after Tensor.
-// clang-format off
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
-// clang-format on
+#include "tensorflow/tsl/framework/fixedpoint/FixedPoint.h"
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
 #include "dnnl.h"

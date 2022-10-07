@@ -65,6 +65,8 @@ void DefineConstantsModule(py::module main_module) {
 
   m.attr("VARIABLES_FILENAME") =
       py::str(tensorflow::kSavedModelVariablesFilename);
+
+  m.attr("FINGERPRINT_FILENAME") = py::str(tensorflow::kFingerprintFilenamePb);
 }
 
 }  // namespace python

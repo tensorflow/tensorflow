@@ -63,9 +63,17 @@ struct GraphExecutionRunOptions {
   // will be raised upon mismatch.
   bool validate_input_specs = false;
 
+  // TODO(b/239749833) Remove after b/239749833 is fixed.
+  // If true, the input specs will be checked before running, and an error
+  // will be logged upon mismatch.
+  bool validate_input_specs_dry_run = false;
+
   // The thread pool used for this run. If it is nullptr, a default one set
   // in the tensorflow::tfrt_stub::Runtime will be used.
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
+
+  // If true, the cost of the op will be measured at the execution time.
+  bool enable_cost_measurement = false;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

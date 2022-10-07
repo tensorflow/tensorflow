@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -169,11 +169,11 @@ Status IrEmitterNested::CodegenNestedComputation() {
   }
   b_.SetInsertPoint(ret_instr);
   emitted_function_ = function;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitterNested::EmitTargetElementLoop(
@@ -187,7 +187,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
-    return Status::OK();
+    return OkStatus();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
@@ -241,7 +241,7 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     }
     ir_emitter_context_->constants().push_back(std::move(info));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

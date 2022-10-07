@@ -40,7 +40,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
         drop_remainder_(drop_remainder),
         parallel_copy_(parallel_copy),
         num_padded_shapes_(num_padded_shapes) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     op_version_ = kOpVersion;
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
@@ -76,7 +76,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
           strings::StrCat(PaddedBatchDatasetOp::kPaddingValues, "_", j));
     }
     input_names->push_back(PaddedBatchDatasetOp::kDropRemainder);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -85,7 +85,7 @@ class PaddedBatchDatasetParams : public DatasetParams {
                     {"output_shapes", output_shapes_},
                     {"N", num_padded_shapes_},
                     {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {

@@ -32,10 +32,13 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
+
+#define GEN_PASS_DEF_CONSOLIDATEATTRIBUTES
+#define GEN_PASS_DEF_PREPAREATTRIBUTESFOREXPORT
+#include "tensorflow/core/transforms/passes.h.inc"
 
 static const char *kRegenerateOutputShapes = "tfg.regenerate_output_shapes";
 
@@ -112,7 +115,7 @@ class ConsolidateAttributesPassImpl
  private:
   // Reify `tf._input_shapes`, `tf._output_shapes` and `tfg.handle_data` into
   // the types of the function arguments. Drop the attributes `tfg.dtype` and
-  // `tfg.is_ref`. Return the the new argument attributes.
+  // `tfg.is_ref`. Return the new argument attributes.
   ArrayAttr reifyAndDropFunctionArgumentAttributes(GraphFuncOp func);
   // Reify `tf._output_shapes` and `tfg.handle_data` into the types of the
   // function results. Drop the attribute `tfg.dtype`. Return the new result
@@ -175,8 +178,9 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
   SmallVector<Attribute> arg_attrs;
   auto empty_dict = DictionaryAttr::get(&getContext());
   for (auto i : llvm::seq<unsigned>(0, num_args)) {
-    BlockArgument arg = GraphFuncOp::getDataValue(func.body(), i);
-    NamedAttrList attrs(func.getArgAttrs(arg.getArgNumber()));
+    BlockArgument arg = GraphFuncOp::getDataValue(func.getBody(), i);
+    NamedAttrList attrs(
+        func.FunctionOpInterfaceTrait::getArgAttrs(arg.getArgNumber()));
     Type arg_type = arg.getType();
     arg_type = refineTypeWithOutputShapes(arg_type, attrs);
     arg_type = refineTypeWithHandleData(arg_type, attrs.erase(handle_data_id_));
@@ -192,11 +196,13 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
 
 ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
     GraphFuncOp func) {
+  ArrayAttr res_attrs = func.getAllResultAttrs();
+  if (!res_attrs) return ArrayAttr::get(&getContext(), {});
+
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
-  for (auto &it :
-       llvm::enumerate(func.getAllResultAttrs().getAsRange<DictionaryAttr>())) {
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
+  for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
     Type ret_type = ret.getType();
@@ -340,7 +346,7 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   // Skip this pass on generic functions. Generic functions contain only opaque
   // tensor types, into which shape and data type info cannot be reified.
   auto func = dyn_cast<GraphFuncOp>(getOperation());
-  if (func && func.generic()) return;
+  if (func && func.getGeneric()) return;
 
   // Reify operation attributes.
   RewritePatternSet patterns(&getContext());
@@ -365,14 +371,14 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   if (!func) return;
   ArrayAttr arg_attrs = reifyAndDropFunctionArgumentAttributes(func);
   ArrayAttr res_attrs = reifyAndDropFunctionResultAttributes(func);
-  Block &body = func.body().front();
+  Block &body = func.getBody().front();
   auto type = FunctionType::get(
       &getContext(), body.getArgumentTypes(),
       TFOp(body.getTerminator()).getNonControlOperands().getTypes());
   NamedAttrList attrs(func->getAttrDictionary());
-  attrs.set(func.function_typeAttrName(), TypeAttr::get(type));
-  attrs.set(func.arg_attrsAttrName(), arg_attrs);
-  attrs.set(func.res_attrsAttrName(), res_attrs);
+  attrs.set(func.getFunctionTypeAttrName(), TypeAttr::get(type));
+  attrs.set(func.getArgAttrsAttrName(), arg_attrs);
+  attrs.set(func.getResAttrsAttrName(), res_attrs);
   func->setAttrs(attrs.getDictionary(&getContext()));
 }
 
@@ -400,9 +406,11 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
     GraphFuncOp func) {
   NamedAttrList attrs(func->getAttrDictionary());
   SmallVector<Attribute> input_shapes, arg_attrs, res_attrs;
-  for (auto it :
-       llvm::zip(func.getArgumentTypes(),
-                 func.getAllArgAttrs().getAsRange<DictionaryAttr>())) {
+
+  ArrayAttr func_arg_attrs = func.getAllArgAttrs();
+  if (!func_arg_attrs) func_arg_attrs = ArrayAttr::get(&getContext(), {});
+  for (auto it : llvm::zip(func.getArgumentTypes(),
+                           func_arg_attrs.getAsRange<DictionaryAttr>())) {
     Type type = std::get<0>(it);
     DictionaryAttr attrs = std::get<1>(it);
     if (type == control_type_) {
@@ -416,16 +424,20 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
       input_shapes.push_back(ShapeAttr::get(&getContext(), llvm::None));
     }
   }
-  for (auto it :
-       llvm::zip(func.getResultTypes(),
-                 func.getAllResultAttrs().getAsRange<DictionaryAttr>()))
+
+  ArrayAttr func_res_attrs = func.getAllResultAttrs();
+  if (!func_res_attrs) func_res_attrs = ArrayAttr::get(&getContext(), {});
+  for (auto it : llvm::zip(func.getResultTypes(),
+                           func_res_attrs.getAsRange<DictionaryAttr>()))
     res_attrs.push_back(prepareAttributesFor(std::get<0>(it), std::get<1>(it)));
 
   // Add input shapes only if its regeneration is required.
   if (attrs.erase(regenerate_input_shapes_id_))
     attrs.set(input_shapes_id_, ArrayAttr::get(&getContext(), input_shapes));
-  attrs.set(func.arg_attrsAttrName(), ArrayAttr::get(&getContext(), arg_attrs));
-  attrs.set(func.res_attrsAttrName(), ArrayAttr::get(&getContext(), res_attrs));
+  attrs.set(func.getArgAttrsAttrName(),
+            ArrayAttr::get(&getContext(), arg_attrs));
+  attrs.set(func.getResAttrsAttrName(),
+            ArrayAttr::get(&getContext(), res_attrs));
   func->setAttrs(attrs.getDictionary(&getContext()));
 }
 
@@ -482,7 +494,7 @@ class MaterializeAttrsPattern : public OpRewritePattern<OpT> {
   ArrayAttr getArgumentElementTypesAttr(PatternRewriter &rewriter,
                                         OpT op) const {
     return GetElementTypesAttr(
-        rewriter, SplitDataAndControlValues(op.args(), control_type_).first);
+        rewriter, SplitDataAndControlValues(op.getArgs(), control_type_).first);
   }
 
  private:
@@ -497,15 +509,17 @@ struct MaterializeIfAttrs : public MaterializeAttrsPattern<IfLikeOp> {
   // Materialize `Tcond`, `Tin`, and `Tout`.
   LogicalResult matchAndRewrite(IfLikeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (op.Tcond() && op.Tin() && op.Tout()) return failure();
+    if (op.getTcond() && op.getTin() && op.getTout()) return failure();
     NamedAttrList attrs(op->getAttrDictionary());
-    attrs.set(
-        op.TcondAttrName(),
-        TypeAttr::get(
-            op.cond().getType().template cast<TensorType>().getElementType()));
-    attrs.set(op.TinAttrName(),
+    attrs.set(op.getTcondAttrName(),
+              TypeAttr::get(op.getCond()
+                                .getType()
+                                .template cast<TensorType>()
+                                .getElementType()));
+    attrs.set(op.getTinAttrName(),
               this->getArgumentElementTypesAttr(rewriter, op));
-    attrs.set(op.ToutAttrName(), GetElementTypesAttr(rewriter, op.outs()));
+    attrs.set(op.getToutAttrName(),
+              GetElementTypesAttr(rewriter, op.getOuts()));
     rewriter.updateRootInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
@@ -519,11 +533,12 @@ struct MaterializeCaseAttrs : public MaterializeAttrsPattern<CaseLikeOp> {
   // Materialize `Tin` and `Tout`.
   LogicalResult matchAndRewrite(CaseLikeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (op.Tin() && op.Tout()) return failure();
+    if (op.getTin() && op.getTout()) return failure();
     NamedAttrList attrs(op->getAttrDictionary());
-    attrs.set(op.TinAttrName(),
+    attrs.set(op.getTinAttrName(),
               this->getArgumentElementTypesAttr(rewriter, op));
-    attrs.set(op.ToutAttrName(), GetElementTypesAttr(rewriter, op.outs()));
+    attrs.set(op.getToutAttrName(),
+              GetElementTypesAttr(rewriter, op.getOuts()));
     rewriter.updateRootInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
@@ -537,9 +552,10 @@ struct MaterializeTAttr : public MaterializeAttrsPattern<WhileOrForLikeOp> {
   // Materialize `T`.
   LogicalResult matchAndRewrite(WhileOrForLikeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (op.T()) return failure();
-    rewriter.updateRootInPlace(
-        op, [&] { op.TAttr(this->getArgumentElementTypesAttr(rewriter, op)); });
+    if (op.getT()) return failure();
+    rewriter.updateRootInPlace(op, [&] {
+      op.setTAttr(this->getArgumentElementTypesAttr(rewriter, op));
+    });
     return success();
   }
 };
@@ -630,7 +646,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
   // Skip this pass on generic functions. Generic functions contain only opaque
   // tensor types, into which shape and data type info cannot be reified.
   auto func = dyn_cast<GraphFuncOp>(getOperation());
-  if (func && func.generic()) return;
+  if (func && func.getGeneric()) return;
 
   RewritePatternSet patterns(&getContext());
   ControlType control_type = ControlType::get(&getContext());
@@ -656,7 +672,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
 
 namespace {
 struct ConsolidateAttributesPass
-    : public ConsolidateAttributesBase<ConsolidateAttributesPass> {
+    : public impl::ConsolidateAttributesBase<ConsolidateAttributesPass> {
   void runOnOperation() override {
     // Run the sub-pass on both `tfg.graph` and `tfg.func`.
     PassManager mgr(&getContext());
@@ -669,7 +685,8 @@ struct ConsolidateAttributesPass
 };
 
 struct PrepareAttributesForExportPass
-    : public PrepareAttributesForExportBase<PrepareAttributesForExportPass> {
+    : public impl::PrepareAttributesForExportBase<
+          PrepareAttributesForExportPass> {
   void runOnOperation() override {
     // Run the sub-pass on both `tfg.graph` and `tfg.func`.
     PassManager mgr(&getContext());

@@ -2,7 +2,7 @@ path: "tensorflow.lookup.KeyValueTensorInitializer"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.KeyValueTensorInitializer\'>"
   is_instance: "<class \'tensorflow.python.ops.lookup_ops.TableInitializerBase\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "key_dtype"

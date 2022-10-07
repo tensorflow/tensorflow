@@ -60,14 +60,14 @@ class RandomDatasetParams : public DatasetParams {
   virtual Status GetInputNames(
       std::vector<string>* input_names) const override {
     *input_names = {RandomDatasetOp::kSeed, RandomDatasetOp::kSeed2};
-    return Status::OK();
+    return OkStatus();
   }
 
   virtual Status GetAttributes(AttributeVector* attributes) const override {
     *attributes = {{"output_types", output_dtypes_},
                    {"output_shapes", output_shapes_},
                    {"metadata", ""}};
-    return Status::OK();
+    return OkStatus();
   }
 
   virtual string dataset_type() const override {

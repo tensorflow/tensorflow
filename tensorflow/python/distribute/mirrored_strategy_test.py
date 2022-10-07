@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
@@ -298,6 +299,61 @@ class MirroredTwoDeviceDistributionTest(
         tf_device.DeviceSpec.from_string(tensor.device).device_type for
         tensor in item.values}
     self.assertAllEqual(list(device_types), ["CPU"])
+
+
+@combinations.generate(
+    combinations.combine(
+        mode=["eager", "graph"], required_gpus=[2]))
+class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
+                               strategy_test_lib.TwoDeviceDistributionTestBase,
+                               parameterized.TestCase):
+
+  def tearDown(self):
+    super(MirroredCollectiveOpTest, self).tearDown()
+    context._reset_context()
+
+  def testAllCpu(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.RING)
+    fn()
+
+  def testMixedDevices(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "GPU:0"])
+      self.assertIsInstance(
+          strategy.extended._collective_ops,
+          cross_device_ops_lib.ReductionToOneDevice)
+    fn()
+
+  def testAllPhysicalGpu(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.NCCL)
+    fn()
+
+  def testVirtualGpu(self):
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    # Logical devices cannot be changed after context initialization.
+    context._reset_context()
+    context.context().set_logical_device_configuration(physical_gpus[1], [
+        context.LogicalDeviceConfiguration(memory_limit=1024),
+        context.LogicalDeviceConfiguration(memory_limit=1024)
+    ])
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.RING)
+    fn()
 
 
 def one_device_combinations():

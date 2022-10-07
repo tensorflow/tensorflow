@@ -44,13 +44,22 @@ REGISTER_OP("ConfigureAndInitializeGlobalTPU")
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 0, &input));
       }
       c->set_output(0, c->Vector(c->UnknownDim()));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("ShutdownTPUSystem")
     .SetIsStateful()
     .Output("success: bool")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("DTensorSetGlobalTPUArray")
+    .Input("topology: string")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
+      return OkStatus();
+    });
 
 }  // namespace dtensor
 }  // namespace tensorflow

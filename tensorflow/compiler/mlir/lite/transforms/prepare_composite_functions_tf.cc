@@ -47,16 +47,11 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-// The cmd line flag to turn on/off Tf.Text API fusion.
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> fuse_tftext_flag(
-    "tfl-fuse-tftext", llvm::cl::value_desc("bool"),
-    llvm::cl::desc("Fuse TF.Text API ops when it's true"),
-    llvm::cl::init(false));
-
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
 constexpr char kTFTextAPIPrefix[] = "tftext:";
@@ -68,13 +63,10 @@ constexpr char kTFLFusableOp[] = "tfl_fusable_op";
 
 using mlir::TF::FuncAttr;
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
 LogicalResult CreateTflFusableOpCustomOptions(
@@ -163,15 +155,8 @@ class ConvertEmbeddedLookupFunc {
   func::FuncOp func_;
 };
 
-// This pass uses mechanisms listed in RFC:
-// https://github.com/tensorflow/community/pull/113
-// It prepares composite functions that are attributed to indicate
-// a specific interface (LSTM, SVDF, Embedding lookup etc.) by replacing the
-// body with the corresponding fused TFLite op. The replacement need not always
-// be a fused op, though that is the primary use case.
 class PrepareCompositeFunctionsPass
-    : public PassWrapper<PrepareCompositeFunctionsPass,
-                         OperationPass<ModuleOp>> {
+    : public PrepareCompositeFunctionsPassBase<PrepareCompositeFunctionsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFL::TensorFlowLiteDialect>();
   }
@@ -180,16 +165,6 @@ class PrepareCompositeFunctionsPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareCompositeFunctionsPass)
 
   explicit PrepareCompositeFunctionsPass() {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-prepare-composite-funcs-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Prepares composite functions in Tensorflow dialect of MLIR";
-  }
 
  private:
   // TODO(b/160915525): Consolidate FuncAttr and StringAttr into one.
@@ -364,7 +339,7 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
     func::FuncOp func, FuncAttr attr) {
   StringRef api_name = attr.getName().getLeafReference().getValue();
   bool enable_fuse_tftext =
-      fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
+      tfl_fuse_tftext_ || IsTFTextRegistered(tensorflow::OpRegistry::Global());
   if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
     if (failed(ConvertTFTextAPI(func, api_name, attr))) {
       return signalPassFailure();
@@ -459,8 +434,6 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
-
-static PassRegistration<PrepareCompositeFunctionsPass> pass;
 
 }  // namespace TFL
 }  // namespace mlir

@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/types/variant.h"
@@ -30,8 +31,8 @@ namespace gl {
 
 struct Variable {
   using ValueType =
-      absl::variant<int32_t, int2, int4, uint32_t, uint4, float, float2, float4,
-                    std::vector<int2>, std::vector<float4>>;
+      std::variant<int32_t, int2, int4, uint32_t, uint4, float, float2, float4,
+                   std::vector<int2>, std::vector<float4>>;
 
   std::string name;
   ValueType value;

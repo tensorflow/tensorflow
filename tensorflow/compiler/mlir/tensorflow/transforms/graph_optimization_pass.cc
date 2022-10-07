@@ -40,7 +40,7 @@ Status MlirGraphOptimizationPass::Run(
       ::tensorflow::MlirOptimizationPassState::Disabled) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
-    return Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   VLOG(1) << "Run MLIR Graph Optimization Passes";

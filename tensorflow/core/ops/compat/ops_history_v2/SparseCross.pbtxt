@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SparseCross"
   input_arg {
     name: "indices"

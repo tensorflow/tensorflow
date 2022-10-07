@@ -19,12 +19,16 @@ limitations under the License.
 #include <stdint.h>
 
 #include <array>
+#include <cmath>
 #include <fstream>
+#include <ios>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
@@ -44,8 +48,9 @@ TEST(CApiSimple, Smoke) {
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);
 
-  // The options can be deleted immediately after interpreter creation.
+  // The options/model can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
 
   ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
   ASSERT_EQ(TfLiteInterpreterGetInputTensorCount(interpreter), 1);
@@ -101,7 +106,6 @@ TEST(CApiSimple, Smoke) {
   EXPECT_EQ(output[1], 9.f);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, QuantizationParams) {
@@ -111,6 +115,8 @@ TEST(CApiSimple, QuantizationParams) {
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, nullptr);
   ASSERT_NE(interpreter, nullptr);
+
+  TfLiteModelDelete(model);
 
   const std::array<int, 1> input_dims = {2};
   ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
@@ -160,7 +166,6 @@ TEST(CApiSimple, QuantizationParams) {
   EXPECT_EQ(dequantizedOutput1, 0.035298f);
 
   TfLiteInterpreterDelete(interpreter);
-  TfLiteModelDelete(model);
 }
 
 TEST(CApiSimple, Delegate) {
@@ -184,9 +189,46 @@ TEST(CApiSimple, Delegate) {
 
   // Subsequent execution should behave properly (the delegate is a no-op).
   TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
   TfLiteInterpreterDelete(interpreter);
+}
+
+TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_prepared;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* context,  // NOLINT
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        *static_cast<bool*>(data) = true;
+
+        TfLiteIntArray* execution_plan;
+        EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextGetExecutionPlan(
+                                 context, &execution_plan));
+        EXPECT_EQ(2, execution_plan->size);
+
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
   TfLiteModelDelete(model);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
 TEST(CApiSimple, DelegateFails) {
@@ -209,6 +251,37 @@ TEST(CApiSimple, DelegateFails) {
   TfLiteModelDelete(model);
 }
 
+TEST(CApiSimple, OpaqueDelegate_Prepare) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_prepared;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* context,
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        *static_cast<bool*>(data) = true;
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  TfLiteModelDelete(model);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
 TEST(CApiSimple, ErrorReporter) {
   TfLiteModel* model =
       TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
@@ -225,8 +298,9 @@ TEST(CApiSimple, ErrorReporter) {
       &reporter);
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
 
-  // The options can be deleted immediately after interpreter creation.
+  // The options/model can be deleted immediately after interpreter creation.
   TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
 
   // Invoke the interpreter before tensor allocation.
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteError);
@@ -237,7 +311,58 @@ TEST(CApiSimple, ErrorReporter) {
   EXPECT_EQ(reporter.num_calls(), 1);
 
   TfLiteInterpreterDelete(interpreter);
+}
+
+TEST(CApiSimple, OpaqueContextGetNodeAndRegistration) {
+  struct DelegatePrepareStatus {
+    bool prepared;
+  };
+  DelegatePrepareStatus delegate_state{false};
+
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_state;
+  opaque_delegate_builder.Prepare =
+      [](TfLiteOpaqueContext* opaque_context,
+         struct TfLiteOpaqueDelegateStruct* opaque_delegate, void* data) {
+        DelegatePrepareStatus* delegate_state =
+            static_cast<DelegatePrepareStatus*>(data);
+        delegate_state->prepared = true;
+
+        TfLiteIntArray* execution_plan;
+        TfLiteOpaqueContextGetExecutionPlan(opaque_context, &execution_plan);
+        EXPECT_EQ(execution_plan->size, 2);
+
+        for (int i = 0; i < execution_plan->size; i++) {
+          TfLiteOpaqueNode* node = nullptr;
+          TfLiteRegistrationExternal* registration_external = nullptr;
+          TfLiteOpaqueContextGetNodeAndRegistration(opaque_context, 0, &node,
+                                                    &registration_external);
+          EXPECT_NE(node, nullptr);
+          EXPECT_NE(registration_external, nullptr);
+          EXPECT_EQ(kTfLiteBuiltinAdd, TfLiteRegistrationExternalGetBuiltInCode(
+                                           registration_external));
+          EXPECT_EQ(2, TfLiteOpaqueNodeNumberOfInputs(node));
+          EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
+        }
+        return kTfLiteOk;
+      };
+
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddOpaqueDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   TfLiteModelDelete(model);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_state.prepared);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
 }
 
 TEST(CApiSimple, ValidModel) {
@@ -274,6 +399,28 @@ TEST(CApiSimple, InvalidModelFromFile) {
   ASSERT_EQ(model, nullptr);
 }
 
+struct SinhParams {
+  bool use_cosh_instead = false;
+};
+
+void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
+                   size_t length) {
+  auto sinh_params = new SinhParams;
+  // The buffer that is passed into here is the custom_options
+  // field from the flatbuffer (tensorflow/lite/schema/schema.fbs)
+  // `Operator` for this node.
+  // Typically it should be stored as a FlexBuffer, but for this test
+  // we assume that it is just a string.
+  if (std::string(buffer, length) == "use_cosh") {
+    sinh_params->use_cosh_instead = true;
+  }
+  return sinh_params;
+}
+
+void FlexSinhFree(TfLiteOpaqueContext* context, void* data) {
+  delete static_cast<SinhParams*>(data);
+}
+
 TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
                              TfLiteOpaqueNode* node) {
   return kTfLiteOk;
@@ -281,6 +428,86 @@ TfLiteStatus FlexSinhPrepare(TfLiteOpaqueContext* context,
 
 TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
                           TfLiteOpaqueNode* node) {
+  auto sinh_params =
+      static_cast<SinhParams*>(TfLiteOpaqueNodeGetUserData(node));
+  EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfInputs(node));
+  const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
+  size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
+  void* data_ptr = TfLiteOpaqueTensorData(input);
+  float input_value;
+  memcpy(&input_value, data_ptr, input_bytes);
+
+  EXPECT_EQ(1, TfLiteOpaqueNodeNumberOfOutputs(node));
+  TfLiteOpaqueTensor* output = TfLiteOpaqueNodeGetOutput(context, node, 0);
+  float output_value = sinh_params->use_cosh_instead ? std::cosh(input_value)
+                                                     : std::sinh(input_value);
+  TfLiteOpaqueTensorCopyFromBuffer(output, &output_value, sizeof(output_value));
+  return kTfLiteOk;
+}
+
+TEST(CApiSimple, CustomOpSupport) {
+  TfLiteModel* model = TfLiteModelCreateFromFile(
+      "tensorflow/lite/testdata/custom_sinh.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteRegistrationExternal* reg =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+  TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
+  TfLiteRegistrationExternalSetInit(reg, &FlexSinhInit);
+  TfLiteRegistrationExternalSetFree(reg, &FlexSinhFree);
+  TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  TfLiteInterpreterOptionsDelete(options);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  float input_value = 1.0f;
+  TfLiteTensorCopyFromBuffer(input_tensor, &input_value, sizeof(float));
+
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
+
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  float output_value;
+  TfLiteTensorCopyToBuffer(output_tensor, &output_value, sizeof(float));
+  EXPECT_EQ(output_value, std::sinh(1.0f));
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteRegistrationExternalDelete(reg);
+}
+
+int g_init_data = 1;
+int g_prepare_data = 2;
+int g_invoke_data = 3;
+int g_free_data = 4;
+
+void* FlexSinhInitExpectingData(void* data, TfLiteOpaqueContext* context,
+                                const char* buffer, size_t length) {
+  EXPECT_EQ(data, &g_init_data);
+  return &g_init_data;
+}
+
+void FlexSinhFreeExpectingData(void* data, TfLiteOpaqueContext* context,
+                               void* buffer) {
+  EXPECT_EQ(data, &g_free_data);
+}
+
+TfLiteStatus FlexSinhPrepareExpectingData(void* data,
+                                          TfLiteOpaqueContext* context,
+                                          TfLiteOpaqueNode* node) {
+  EXPECT_EQ(data, &g_prepare_data);
+  return kTfLiteOk;
+}
+
+TfLiteStatus FlexSinhEvalExpectingData(void* data, TfLiteOpaqueContext* context,
+                                       TfLiteOpaqueNode* node) {
+  EXPECT_EQ((*static_cast<int*>(data)), g_invoke_data);
+
   const TfLiteOpaqueTensor* input = TfLiteOpaqueNodeGetInput(context, node, 0);
   size_t input_bytes = TfLiteOpaqueTensorByteSize(input);
   void* data_ptr = TfLiteOpaqueTensorData(input);
@@ -293,14 +520,21 @@ TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
   return kTfLiteOk;
 }
 
-TEST(CApiSimple, CustomOpSupport) {
+TEST(CApiSimple, CustomOpSupport_UsingFunctionsAcceptingDataArgument) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
       "tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
-  TfLiteRegistrationExternal* reg = TfLiteRegistrationExternalCreate("Sinh", 1);
-  TfLiteRegistrationExternalSetPrepare(reg, &FlexSinhPrepare);
-  TfLiteRegistrationExternalSetInvoke(reg, &FlexSinhEval);
+  TfLiteRegistrationExternal* reg =
+      TfLiteRegistrationExternalCreate(kTfLiteBuiltinCustom, "Sinh", 1);
+  tflite::internal::TfLiteRegistrationExternalSetInitWithData(
+      reg, &g_init_data, &FlexSinhInitExpectingData);
+  tflite::internal::TfLiteRegistrationExternalSetPrepareWithData(
+      reg, &g_prepare_data, &FlexSinhPrepareExpectingData);
+  tflite::internal::TfLiteRegistrationExternalSetInvokeWithData(
+      reg, &g_invoke_data, &FlexSinhEvalExpectingData);
+  tflite::internal::TfLiteRegistrationExternalSetFreeWithData(
+      reg, &g_free_data, &FlexSinhFreeExpectingData);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddRegistrationExternal(options, reg);

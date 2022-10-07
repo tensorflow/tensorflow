@@ -81,7 +81,7 @@ bool KernelFallbackExecute(
                 op_name_str, &op_kernel_construction);
 
         // Forward kernel construction error.
-        if (op_kernel_construction.error().hasValue()) {
+        if (op_kernel_construction.error().has_value()) {
           SetError(exec_ctx, &outputs,
                    op_kernel_construction.error().getValue());
           return;
@@ -100,7 +100,7 @@ bool KernelFallbackExecute(
         op->Compute(&op_kernel_context);
 
         // Forward the context's error or outputs to raii_frame.
-        if (op_kernel_context.error().hasValue()) {
+        if (op_kernel_context.error().has_value()) {
           SetError(exec_ctx, &outputs, op_kernel_context.error().getValue());
           return;
         } else {

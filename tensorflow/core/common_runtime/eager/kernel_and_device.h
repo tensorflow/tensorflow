@@ -56,10 +56,12 @@ class FunctionLibraryRuntime;
 const int64_t kInvalidOpId = -1;
 
 // This struc is used for:
-// 1. setting op_id and step_id for single-host remote function scenario, and
+// 1. setting op_id and step_id, is_component_function for single-client
+// remote function scenario,
 // 2. setting step_id for multi-client parallel_device scenario.
 struct EagerFunctionParams {
   int64_t op_id = kInvalidOpId;
+  bool is_component_function;
   absl::optional<int64_t> step_id = absl::nullopt;
 };
 

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "DecodeRaw"
   input_arg {
     name: "bytes"

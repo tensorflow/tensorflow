@@ -18,7 +18,8 @@ import itertools
 
 import uuid
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management as ckpt_manager
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -40,8 +41,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import checkpoint_management as ckpt_manager
-from tensorflow.python.training.tracking import util as trackable_utils
+from tensorflow.python.util import variable_utils
 
 
 def strategy_and_run_tf_function_combinations():
@@ -662,8 +662,9 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
         return scatter_op(delta)
 
       per_replica_results = self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_xxx)))
+          variable_utils.convert_variables_to_tensors(
+              distribution.experimental_local_results(
+                  distribution.run(scatter_xxx))))
       self.assertAllClose([expect, expect], per_replica_results)
 
     with distribution.scope():
@@ -999,11 +1000,8 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(expected, self.evaluate(array_ops.identity(v)),
                        aggregation)
 
-  # TODO(b/145574622): Re-enable this test once ReduceOp argument is
-  # respected on GPUs.
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def disable_testAllReduce(self, distribution,
-                            experimental_run_tf_function):
+  def testAllReduce(self, distribution, experimental_run_tf_function):
     with distribution.scope():
       v = variable_scope.variable(
           2.,
@@ -1026,7 +1024,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     for i in range(distribution.num_replicas_in_sync):
       expected_result.append(2.0 * distribution.num_replicas_in_sync +
                              1.0 * i)
-    self.assertEqual(per_replica_results, tuple(expected_result))
+    self.assertAllEqual(per_replica_results, tuple(expected_result))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testAssignPerReplicaBeforeRead(self, distribution,

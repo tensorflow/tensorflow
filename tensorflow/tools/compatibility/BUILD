@@ -4,7 +4,7 @@ load(
     "tf_cc_test",  # @unused
     "tf_copts",  # @unused
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -100,10 +100,7 @@ py_library(
     srcs = ["all_renames_v2.py"],
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
-    visibility = [
-        "//tensorflow:__pkg__",
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [":renames_v2"],
 )
 
@@ -232,7 +229,7 @@ genrule(
 
 py_test(
     name = "test_file_v1_0",
-    size = "small",
+    size = "medium",
     srcs = ["test_file_v1_0.py"],
     python_version = "PY3",
     srcs_version = "PY3",
@@ -259,7 +256,7 @@ genrule(
 
 py_test(
     name = "test_file_v1_12",
-    size = "small",
+    size = "medium",
     srcs = ["testdata/test_file_v1_12.py"],
     python_version = "PY3",
     srcs_version = "PY3",
@@ -274,7 +271,7 @@ py_test(
 
 py_test(
     name = "test_file_v2_0",
-    size = "small",
+    size = "medium",
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
     srcs_version = "PY3",

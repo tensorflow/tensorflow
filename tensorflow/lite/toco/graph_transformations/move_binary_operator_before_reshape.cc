@@ -13,6 +13,7 @@
  limitations under the License.
  ==============================================================================*/
 #include <algorithm>
+#include <string>
 
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
@@ -72,7 +73,7 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
       binary_op->type != OperatorType::kLessEqual &&
       binary_op->type != OperatorType::kGreater &&
       binary_op->type != OperatorType::kGreaterEqual) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // BINARY OP INPUT CHECKS
@@ -84,11 +85,11 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
   if (!input_is_const[0] && !input_is_const[1]) {
     // To limit our scope, we require one constant input. Though there's no
     // reason this transformation wouldn't work with all variable inputs.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (input_is_const[0] && input_is_const[1]) {
     // Both inputs are constants. Leave this for constants propagation.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const int constant_input_idx = input_is_const[0] ? 0 : 1;
   const int variable_input_idx = input_is_const[0] ? 1 : 0;
@@ -101,13 +102,13 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
     AddMessageF(
         "Not moving %s because it's non-constant input shape is not resolved.",
         LogName(*binary_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (!IsTailOfShape(
           model->GetArray(binary_op->inputs[constant_input_idx]).shape(),
           model->GetArray(binary_op->inputs[variable_input_idx]).shape())) {
     // Constant array shape must be the latter part of the variable shape.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // RESHAPE OP CHECKS
@@ -116,13 +117,13 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
   if (reshape_it == model->operators.end()) {
     AddMessageF("Not moving %s because it's variable input is not connected.",
                 LogName(*binary_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   Operator* reshape_op = reshape_it->get();
   if (reshape_op->type != OperatorType::kReshape) {
     AddMessageF("Not moving %s because the preceding %s is not a reshape op",
                 LogName(*binary_op), LogName(*reshape_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto& reshape_input_array = model->GetArray(reshape_op->inputs[0]);
   if (!reshape_input_array.has_shape()) {
@@ -130,14 +131,14 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
         "Not moving %s because it's non-constant input shape is not resolved "
         "yet",
         LogName(*binary_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (!IsTailOfShape(
           model->GetArray(binary_op->inputs[constant_input_idx]).shape(),
           model->GetArray(reshape_op->outputs[0]).shape())) {
     // Constant array shape must be the latter part of the binary op output
     // shape.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // EXTRA CHECKS ON CONNECTING ARRAY
@@ -146,7 +147,7 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
       AddMessageF(
           "Not moving %s because the output of reshape op %s is an output op.",
           LogName(*binary_op), LogName(*reshape_op));
-      return ::tensorflow::Status::OK();
+      return ::tensorflow::OkStatus();
     }
   }
   int count_ops_consuming_output =
@@ -157,7 +158,7 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
         "Not moving %s because the output of reshape op %s is consumed by "
         "another op",
         LogName(*binary_op), LogName(*reshape_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // SWAP ORDER OF BINARY AND RESHAPE OPS
@@ -176,7 +177,7 @@ bool IsTailOfShape(const Shape& tail, const Shape& shape) {
   model->GetArray(binary_op->outputs[0]).clear_shape();
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

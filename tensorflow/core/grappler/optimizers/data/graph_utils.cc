@@ -190,7 +190,7 @@ Status GetScalarConstNodeValueHelper(
 
   get_value(tensor);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
@@ -361,7 +361,7 @@ Status EnsureNodeNamesUnique(Graph* g) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
@@ -374,7 +374,7 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 
   *fetch_node = graph.GetNode(item.fetch.at(0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
@@ -431,6 +431,11 @@ const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
     "ParseExampleDataset",
 };
 
+const auto* kReplicateOnSplitAttrOps = new absl::flat_hash_set<string>{
+    "TensorSliceDataset",
+    "RangeDataset",
+};
+
 const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
     "LegacyParallelInterleaveDatasetV2",
     "ParallelInterleaveDatasetV3",
@@ -441,6 +446,10 @@ const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
 }  // anonymous namespace
 
 bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasReplicateOnSplitAttr(const string& op) {
+  return kReplicateOnSplitAttrOps->contains(op);
+}
 
 bool HasDeterministicAttr(const string& op) {
   return kDeterministicAttrOps->contains(op);
@@ -458,7 +467,7 @@ Status SetMetadataName(const std::string& name, NodeDef* node) {
   }
   *metadata.mutable_name() = name;
   metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace graph_utils

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -28,78 +29,45 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
-// NOLINTNEXTLINE
-static llvm::cl::opt<std::string> enable_custom_op_no_side_effect(
-    "tfl-enable-no-side-effect",
-    llvm::cl::desc("Specifies which custom ops are NoSideEffect."),
-    llvm::cl::ZeroOrMore);
-
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
 //
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass
-    : public PassWrapper<PostQuantizePass, OperationPass<func::FuncOp>> {
+class PostQuantizePass : public PostQuantizePassBase<PostQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
-  explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {
-    ParseCustomOpSpecs(enable_custom_op_no_side_effect,
-                       quant::CustomOpUpdateOptions::kNoSideEffect,
-                       custom_op_map_);
-  }
+  explicit PostQuantizePass() { this->emit_quant_adaptor_ops_ = false; }
 
   // Constructor used by manually creating the pass.
   explicit PostQuantizePass(bool emit_quant_adaptor_ops,
                             const quant::CustomOpMap& custom_op_map)
-      : emit_quant_adaptor_ops_(emit_quant_adaptor_ops),
-        custom_op_map_(custom_op_map) {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-post-quantize";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Apply post quantization clean up after quantization";
+      : custom_op_map_(custom_op_map) {
+    // Set this flag to true if the inputs and outputs are in floating point.
+    // The quant adaptor ops convert them to fixed point values (i.e. quantize)
+    // before feeding them to the model and convert them back to floating point
+    // (i.e. dequantize) as the output.
+    this->emit_quant_adaptor_ops_ = emit_quant_adaptor_ops;
   }
 
   void runOnOperation() override;
 
  private:
-  // Set this flag to true if the inputs and outputs are in floating point. The
-  // quant adaptor ops convert them to fixed point values (i.e. quantize) before
-  // feeding them to the model and convert them back to floating point
-  // (i.e. dequantize) as the output.
-  bool emit_quant_adaptor_ops_;
   quant::CustomOpMap custom_op_map_;
 };
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
 class PostQuantizeRemoveQDQPass
-    : public PassWrapper<PostQuantizeRemoveQDQPass,
-                         OperationPass<func::FuncOp>> {
+    : public PostQuantizeRemoveQDQPassBase<PostQuantizeRemoveQDQPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizeRemoveQDQPass)
-
-  // Constructor used by the PassRegistration. This will remove QDQ ops.
-  explicit PostQuantizeRemoveQDQPass() {}
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-post-quantize-remove-qdq";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Remove qdq from input and output nodes after quantization";
-  }
 
   void runOnOperation() override;
 };
@@ -221,6 +189,145 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
+// Fold the constant quantized Transpose ops.
+struct FoldTransposeOp : public OpRewritePattern<TransposeOp> {
+  explicit FoldTransposeOp(MLIRContext* context)
+      : OpRewritePattern<TransposeOp>(context, 1) {}
+
+  // Computes the permutation of a constant `input_tensor` according to `perm`.
+  // The function recursively traverses the dimensions of the output tensor in
+  // a row-major order and writes the value in the output tensor into
+  // `new_values`.
+  void ComputePermutation(ElementsAttr input_tensor, ArrayRef<int32_t> perm,
+                          ArrayRef<int64_t> output_shape, int num_dimensions,
+                          int output_axis, std::vector<uint64_t>* input_indices,
+                          std::vector<Attribute>* new_values) const {
+    // Refer to the implementation of `Transpose` function in
+    // tensorflow/lite/kernels/internal/reference/reference_ops.h
+    assert(output_axis < num_dimensions);
+    const int input_axis = perm[output_axis];
+    for (int i = 0; i < output_shape[output_axis]; ++i) {
+      // Update the input indices on `input_axis`.
+      assert(input_axis < input_indices->size());
+      input_indices->operator[](input_axis) = static_cast<uint64_t>(i);
+      // Write the value from `input_tensor` if it is the last axis or
+      // recurse into the next axis.
+      const bool is_last_axis = output_axis == num_dimensions - 1;
+      if (is_last_axis) {
+        new_values->push_back(
+            input_tensor.getValues<Attribute>()[*input_indices]);
+      } else {
+        ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+                           output_axis + 1, input_indices, new_values);
+      }
+    }
+  }
+
+  LogicalResult matchAndRewrite(TransposeOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* def_op = op.input().getDefiningOp();
+    auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
+    if (qconst_op == nullptr) return failure();
+
+    DenseIntElementsAttr perm_tensor;
+    if (!matchPattern(op.perm(), m_Constant(&perm_tensor))) return failure();
+
+    if (!(getElementTypeOrSelf(op.output().getType()))
+             .isa<quant::UniformQuantizedType>())
+      return failure();
+
+    ElementsAttr input_tensor = qconst_op.value();
+
+    assert(perm_tensor.getType().getRank() == 1);
+    const int num_dimensions = input_tensor.getType().getRank();
+    assert(perm_tensor.getType().getNumElements() == num_dimensions);
+
+    ArrayRef<int64_t> input_shape = input_tensor.getType().getShape();
+    auto output_type = op.output().getType().cast<ShapedType>();
+
+    SmallVector<int32_t, 4> perm;
+    SmallVector<int64_t, 4> output_shape;
+    for (int i = 0; i < num_dimensions; ++i) {
+      perm.push_back(perm_tensor.getValues<IntegerAttr>()[i].getInt());
+      output_shape.push_back(input_shape[perm[i]]);
+
+      // Check that the derived output shape matches the static shape.
+      assert(!output_type.hasStaticShape() ||
+             output_type.getShape()[i] == output_shape[i]);
+    }
+
+    std::vector<Attribute> new_values;
+    new_values.reserve(input_tensor.getType().getNumElements());
+    std::vector<uint64_t> input_indices(num_dimensions);
+    ComputePermutation(input_tensor, perm, output_shape, num_dimensions,
+                       /*output_axis=*/0, &input_indices, &new_values);
+    auto result_type =
+        RankedTensorType::get(output_shape, output_type.getElementType());
+    auto values_type = RankedTensorType::get(
+        output_shape, output_type.getElementType()
+                          .cast<quant::UniformQuantizedType>()
+                          .getStorageType());
+    rewriter.replaceOpWithNewOp<QConstOp>(
+        op, TypeAttr::get(result_type),
+        DenseIntElementsAttr::get(values_type, new_values));
+    return success();
+  }
+};
+
+// Fold constant quantized Reshape ops.
+struct FoldReshapeOp : public OpRewritePattern<ReshapeOp> {
+  // Does not take ownership of context, which must refer to a valid value that
+  // outlives this object.
+  explicit FoldReshapeOp(MLIRContext* context)
+      : OpRewritePattern<ReshapeOp>(context, /*benefit=*/1) {}
+
+  LogicalResult matchAndRewrite(ReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* def_op = op.input().getDefiningOp();
+    auto qconst_op = llvm::dyn_cast_or_null<QConstOp>(def_op);
+    if (qconst_op == nullptr) return failure();
+
+    auto dense_elements =
+        qconst_op.value().dyn_cast_or_null<DenseElementsAttr>();
+    if (dense_elements == nullptr) return failure();
+
+    // Handle per tensor cases only.
+    if (!(getElementTypeOrSelf(op.getType()))
+             .isa<quant::UniformQuantizedType>()) {
+      return failure();
+    }
+
+    // Remove identity reshape with both static result and input shape.
+    auto result_type = op.getType().cast<ShapedType>();
+    auto input_type = op.input().getType().cast<ShapedType>();
+
+    // Constant folding
+    // If the result type isn't static, tries to derive the result type from
+    // the #2 operand.
+    if (!result_type.hasStaticShape()) {
+      DenseIntElementsAttr shape_elements;
+      if (!matchPattern(op.shape(), m_Constant(&shape_elements)))
+        return failure();
+
+      SmallVector<int64_t, 4> shape_data;
+      for (const APInt& it : shape_elements.getValues<APInt>()) {
+        shape_data.push_back(it.getSExtValue());
+      }
+      result_type =
+          RankedTensorType::get(shape_data, input_type.getElementType());
+    }
+    auto values_type = RankedTensorType::get(
+        result_type.getShape(), result_type.getElementType()
+                                    .cast<quant::UniformQuantizedType>()
+                                    .getStorageType());
+
+    DenseElementsAttr reshaped_elements = dense_elements.reshape(values_type);
+    rewriter.replaceOpWithNewOp<QConstOp>(op, TypeAttr::get(result_type),
+                                          reshaped_elements);
+    return success();
+  }
+};
+
 // Removes operations with side effect (i.e. LSTM, SVDF) that have dangling
 // output.
 template <typename OpTy>
@@ -258,6 +365,12 @@ struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
 #include "tensorflow/compiler/mlir/lite/transforms/generated_post_quantize.inc"
 
 void PostQuantizePass::runOnOperation() {
+  if (!enable_custom_op_no_side_effect_.empty()) {
+    ParseCustomOpSpecs(enable_custom_op_no_side_effect_,
+                       quant::CustomOpUpdateOptions::kNoSideEffect,
+                       custom_op_map_);
+  }
+
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
@@ -278,7 +391,8 @@ void PostQuantizePass::runOnOperation() {
   RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.add<quant::FoldTrivalRequantizeOp<QuantizeOp>,
-                       RemoveVolatileOps<kPreserveInputsAndOutputs>>(ctx);
+                       RemoveVolatileOps<kPreserveInputsAndOutputs>,
+                       FoldTransposeOp, FoldReshapeOp>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
 
@@ -300,15 +414,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass(
                                             custom_op_map);
 }
 
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass() {
+  return std::make_unique<PostQuantizePass>();
+}
+
 // Creates an instance of the TensorFlow Lite dialect PostQuantizeRemoveQDQ
 // pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizeRemoveQDQPass() {
   return std::make_unique<PostQuantizeRemoveQDQPass>();
 }
-
-static PassRegistration<PostQuantizePass> pass;
-
-static PassRegistration<PostQuantizeRemoveQDQPass> remove_qdq_pass;
 
 }  // namespace TFL
 }  // namespace mlir

@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -38,7 +38,7 @@ Status HloModuleMetadata::MutateCurrentHloPassMetadata(
   TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
                       GetCurrentHloPassMetadata());
   mutator(pass_metadata);
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloModuleMetadata::RecordPassStart() {
@@ -53,7 +53,7 @@ Status HloModuleMetadata::RecordPassEnd() {
                       GetCurrentHloPassMetadata());
   pass_metadata->set_end_timestamp_usec(env_->NowMicros());
   running_passes_.pop_back();
-  return Status::OK();
+  return OkStatus();
 }
 
 void HloModuleMetadata::set_prepartitioning_metadata(

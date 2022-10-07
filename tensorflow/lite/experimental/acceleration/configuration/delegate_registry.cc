@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 
+#include <functional>
+#include <string>
+
 #include "absl/synchronization/mutex.h"
 
 namespace tflite {

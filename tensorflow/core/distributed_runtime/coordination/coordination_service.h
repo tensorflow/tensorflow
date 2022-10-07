@@ -21,15 +21,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using tsl::Env;
 class CoordinationServiceDeviceInfo;
 class ServerDef;
-class Env;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -136,19 +140,31 @@ class CoordinationServiceInterface {
   // Set a task in error state permanently.
   virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
 
+  // Get the state and the error status of the tasks.
+  virtual std::vector<CoordinatedTaskStateInfo> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
+
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
   // The key-values are not persisted and will be lost if the leader fails.
   virtual Status InsertKeyValue(const std::string& key,
                                 const std::string& value) = 0;
 
-  // Get a configuration key-value from the coordination service. Block until
-  // the key-value is available.
-  virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   // Get a configuration key-value from the coordination service. The `done`
   // callback is invoked when the key-value becomes available.
   virtual void GetKeyValueAsync(const std::string& key,
                                 StatusOrValueCallback done) = 0;
+
+  // Get a configuration key-value from the coordination service. If the key
+  // does not exist, return NotFound error.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
+
+  // Gets all values under a directory (key).
+  // A value is considered to be in the directory if its key is prefixed with
+  // the directory. This is not a blocking call. Agent does not need to be
+  // connected to utilize the distributed key-value store.
+  virtual std::vector<KeyValueEntry> GetKeyValueDir(
+      absl::string_view directory_key) = 0;
 
   // Delete configuration key-value. If key is a directory, recursively clean
   // up all key-values under the directory.
@@ -194,22 +210,15 @@ class CoordinationServiceInterface {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  //   - NotFound: No barrier with the specified id is found.
   virtual Status CancelBarrier(const std::string& barrier_id,
                                const CoordinatedTask& task) = 0;
-
- protected:
-  // TODO(haoyuzhang): Remove singleton once we decide on how to access the
-  // coordination service from op kernel.
-  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
-    static CoordinationServiceInterface* instance = nullptr;
-    return &instance;
-  }
 
  private:
   friend class CoordinationServiceRpcHandler;
   friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
   friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
+  friend class
+      CoordinationServiceTest_ListClusterDevices_DevicesAreNotAddedTwice_Test;
 
   virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
   virtual uint64_t GetServiceIncarnation() = 0;
@@ -219,6 +228,11 @@ class CoordinationServiceInterface {
     static auto* coordination_service_factories =
         new std::unordered_map<std::string, CoordinationServiceFactory>();
     return coordination_service_factories;
+  }
+
+  static CoordinationServiceInterface** GetCoordinationServiceInstancePtr() {
+    static CoordinationServiceInterface* instance = nullptr;
+    return &instance;
   }
 };
 

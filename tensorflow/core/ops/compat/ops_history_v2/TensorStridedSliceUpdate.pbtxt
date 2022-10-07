@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorStridedSliceUpdate"
   input_arg {
     name: "input"

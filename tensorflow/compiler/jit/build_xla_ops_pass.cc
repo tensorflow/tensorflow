@@ -260,7 +260,7 @@ Status GetXlaClusterInfo(Node* n, XlaClusterInfo* result) {
 
   result->function.set_name(n->type_string());
   *result->function.mutable_attr() = n->def().attr();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
@@ -270,7 +270,7 @@ Status CopyIncomingControlEdges(Graph* g, Node* from, Node* to) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
@@ -289,7 +289,7 @@ Status DeviceRequiresCompilation(const jit::DeviceInfoCache& device_info_cache,
       device_info_cache.GetCompilationDevice(device);
   *result = registration->autoclustering_policy ==
             XlaOpRegistry::AutoclusteringPolicy::kAlways;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replaces `n` with a `PartitionedCall` op that calls the same function.
@@ -442,7 +442,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
   }
 
   if (int32_inputs.empty()) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Create a single IdentityN that is dead if and only if
@@ -460,7 +460,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
                                                 int32_inputs_input_idxs[i]));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ReplaceNodeWithXlaCompileAndXlaRun(
@@ -564,7 +564,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
         PredicateInt32Inputs(root, pco, inverse_predicate_as_control));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -614,6 +614,6 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
     DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace tensorflow

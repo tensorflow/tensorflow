@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "llvm/ADT/None.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,6 +38,9 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
 // Attribute name to identify whether variables should be legalized to TFLite or
 // not.
 const char kLegalizeTflVariables[] = "tfl._legalize_tfl_variables";
@@ -52,24 +57,10 @@ bool IsSupportedElementType(ShapedType type) {
 
 // Pass which legalizes TF variables which are already passed as bounded
 // arguments to functions, to TFLite variables.
-class LegalizeVariables
-    : public PassWrapper<LegalizeVariables, OperationPass<ModuleOp>> {
+class LegalizeVariablesPass
+    : public LegalizeVariablesPassBase<LegalizeVariablesPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeVariables)
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect>();
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-legalize-variables-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Legalize TensorFlow variables to TensorFlow Lite dialect";
-  }
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeVariablesPass)
 
   void runOnOperation() override {
     auto module = getOperation();
@@ -88,10 +79,8 @@ class LegalizeVariables
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeVariablesPass() {
-  return std::make_unique<LegalizeVariables>();
+  return std::make_unique<LegalizeVariablesPass>();
 }
-
-static PassRegistration<LegalizeVariables> pass;
 
 }  // namespace TFL
 }  // namespace mlir

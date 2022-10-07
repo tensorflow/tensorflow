@@ -242,9 +242,10 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
         auto propagate_error = [&invocation](Status s) {
           auto error = tfrt::EmitErrorAsync(
               invocation.exec_ctx,
-              tfrt::StrCat("Error running kernel fallback OpHandler ",
-                           invocation.op_name, ":", s.error_message()),
-              tfrt::ConvertTfErrorCodeToTfrtErrorCode(s));
+              absl::Status(
+                  ToAbslStatus(s).code(),
+                  tfrt::StrCat("Error running kernel fallback OpHandler ",
+                               invocation.op_name, ":", s.error_message())));
           for (auto& result : invocation.results) {
             result = tfrt::TensorHandle::CreateError(error.CopyRef());
           }
@@ -291,7 +292,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
               if (auto error =
                       tfd::FillAttrValueMap(attrs, host, attr_value_map))
                 return tensorflow::errors::InvalidArgument(tfrt::StrCat(error));
-              return Status::OK();
+              return OkStatus();
             },
             fallback_op_entry.fallback_request_state->device_manager(),
             fallback_op_entry.fallback_request_state
@@ -301,8 +302,7 @@ Expected<CoreRuntimeOp> KernelFallbackOpHandler::MakeOp(string_view op_name) {
           propagate_error(kernel_runner_or_status.status());
           return;
         }
-        fallback_op_entry.op_kernel_runner =
-            kernel_runner_or_status.ValueOrDie();
+        fallback_op_entry.op_kernel_runner = kernel_runner_or_status.value();
 
         tfrt::ExecuteOnOpHandler<KernelFallbackOpHandlerCompatTraits>(
             update_chain, invocation, fallback_op_entry, this);

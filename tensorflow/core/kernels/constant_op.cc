@@ -285,11 +285,11 @@ REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(int64_t, GPU);
+REGISTER_KERNEL(complex64, GPU);
+REGISTER_KERNEL(complex128, GPU);
 #endif
 
 REGISTER_KERNEL(bfloat16, GPU);
-REGISTER_KERNEL(complex64, GPU);
-REGISTER_KERNEL(complex128, GPU);
 REGISTER_KERNEL(Variant, GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNEL
@@ -332,10 +332,10 @@ REGISTER_KERNEL(Eigen::half, GPU);
 REGISTER_KERNEL(float, GPU);
 REGISTER_KERNEL(double, GPU);
 REGISTER_KERNEL(int64_t, GPU);
-#endif
-REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
+#endif
+REGISTER_KERNEL(bfloat16, GPU);
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
