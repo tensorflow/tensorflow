@@ -465,17 +465,17 @@ void DnnPoolingGradOp<T>::Compute(
   }
   if (tensor_out) {
     TensorShape params_forward_output_shape;
-    OP_REQUIRES(context, params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES_OK(context, params.forward_output_shape(&params_forward_output_shape));
     OP_REQUIRES(context, tensor_out->shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out->shape()));
   }
   TensorShape params_forward_output_shape;
-  OP_REQUIRES(context, params.forward_output_shape(&params_forward_output_shape));
+  OP_REQUIRES_OK(context, params.forward_output_shape(&params_forward_output_shape));
   OP_REQUIRES(context, out_backprop.shape() == params_forward_output_shape,
               errors::InvalidArgument("Expected grad shape to be ",
-                                      params.forward_output_shape(),
+                                      params_forward_output_shape,
                                       ", but got ", out_backprop.shape()));
 
   TensorFormat transformed_input_data_format = data_format;
