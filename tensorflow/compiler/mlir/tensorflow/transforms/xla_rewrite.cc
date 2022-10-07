@@ -38,13 +38,17 @@ struct XlaRewritePass : public impl::XlaRewritePassBase<XlaRewritePass> {
   void runOnOperation() override;
 };
 
-void Rewrite(TF::StatefulPartitionedCallOp call_op) {
-  OpBuilder builder(call_op->getContext());
-  builder.setInsertionPoint(call_op);
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, TF::PartitionedCallOp,
+              TF::StatefulPartitionedCallOp>::value>::type * = nullptr>
+void Rewrite(OpT pcall_op) {
+  OpBuilder builder(pcall_op->getContext());
+  builder.setInsertionPoint(pcall_op);
 
   llvm::SmallVector<Value> args, resources;
-  for (auto arg : call_op.args()) {
-    if (getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
+  for (auto arg : pcall_op.args()) {
+    if (getElementTypeOrSelf(arg.getType()).template isa<TF::ResourceType>()) {
       resources.push_back(arg);
     } else {
       args.push_back(arg);
@@ -52,27 +56,29 @@ void Rewrite(TF::StatefulPartitionedCallOp call_op) {
   }
 
   auto xla_launch_op = builder.create<TF::XlaLaunchOp>(
-      call_op.getLoc(), call_op.getResultTypes(), /*constants=*/ValueRange({}),
-      ValueRange(args), ValueRange(resources), call_op.fAttr());
-  CopyDeviceAndUnderscoredAttributes(call_op, xla_launch_op);
-  call_op.replaceAllUsesWith(xla_launch_op.getResults());
-  call_op.erase();
+      pcall_op.getLoc(), pcall_op.getResultTypes(),
+      /*constants=*/ValueRange({}), ValueRange(args), ValueRange(resources),
+      pcall_op.fAttr());
+  CopyDeviceAndUnderscoredAttributes(pcall_op, xla_launch_op);
+  pcall_op.replaceAllUsesWith(xla_launch_op.getResults());
+  pcall_op.erase();
 }
 
 void XlaRewritePass::runOnOperation() {
   func::FuncOp func_op = getOperation();
 
-  llvm::SmallVector<TF::StatefulPartitionedCallOp, 4> ops;
-  func_op.walk([&](TF::StatefulPartitionedCallOp call_op) {
-    if (call_op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
-      ops.push_back(call_op);
+  func_op.walk([&](mlir::Operation *op) {
+    if (!op->hasAttr(tensorflow::kCompileDeviceTypeAttr))
+      return WalkResult::advance();
+    if (auto pcall_op = dyn_cast<TF::PartitionedCallOp>(op)) {
+      Rewrite(pcall_op);
+    } else if (auto stateful_pcall_op =
+                   dyn_cast<TF::StatefulPartitionedCallOp>(op)) {
+      Rewrite(stateful_pcall_op);
     }
+    return WalkResult::advance();
   });
-
-  // Rewrite tf.StatefulPartitionedCall ops to tf.XlaLaunch ops.
-  for (auto call_op : ops) Rewrite(call_op);
 }
-
 }  // namespace
 
 namespace TFDevice {
