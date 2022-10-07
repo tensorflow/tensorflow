@@ -67,7 +67,9 @@ class AddNTest(test.TestCase):
           else:
             expected = np.sum(np.vstack(
                 [np.expand_dims(d, 0) for d in data]), axis=0)
-          self.assertAllCloseAccordingToType(expected, actual)
+          tol = 5e-3 if dtype == dtypes.float16 else 5e-7
+          tol = 5e-2 if dtype == dtypes.bfloat16 else tol
+          self.assertAllClose(expected, actual, rtol=tol, atol=tol)
 
   @test_util.run_deprecated_v1
   def testUnknownShapes(self):
@@ -86,7 +88,9 @@ class AddNTest(test.TestCase):
           else:
             expected = np.sum(np.vstack([np.expand_dims(data, 0)] * count),
                             axis=0)
-          self.assertAllCloseAccordingToType(expected, actual)
+          tol = 5e-3 if dtype == dtypes.float16 else 5e-7
+          tol = 5e-2 if dtype == dtypes.bfloat16 else tol
+          self.assertAllClose(expected, actual, rtol=tol, atol=tol)
 
   @test_util.run_deprecated_v1
   def testVariant(self):
