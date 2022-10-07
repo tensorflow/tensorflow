@@ -259,6 +259,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
@@ -272,25 +273,10 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
-)
-
-tf_cc_test(
-    name = "scoped_annotation_test",
-    size = "small",
-    srcs = ["scoped_annotation_test.cc"],
-    deps = [
-        ":scoped_annotation",
-        ":scoped_annotation_stack",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 cc_library(

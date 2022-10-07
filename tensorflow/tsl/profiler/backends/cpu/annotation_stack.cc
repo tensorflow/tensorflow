@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
 
 #include <atomic>
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace internal {
 
@@ -38,4 +38,4 @@ static_assert(ATOMIC_INT_LOCK_FREE == 2, "Assumed atomic<int> was lock free");
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

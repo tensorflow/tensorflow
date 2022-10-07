@@ -13,17 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
 
 #include <string>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/backends/cpu/annotation_stack.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation_stack.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/profiler/backends/cpu/annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -141,4 +141,4 @@ BENCHMARK(BM_ScopedAnnotationEnabled_Adhoc_Lambda);
 
 }  // namespace
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

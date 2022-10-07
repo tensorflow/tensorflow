@@ -23,6 +23,7 @@ cc_library(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "scoped_annotation.h",
         "traceme.h",
         "traceme_encode.h",
     ],
@@ -139,4 +140,45 @@ cc_library(
         "//tensorflow/tsl/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/tsl/profiler/utils:time_utils",
     ]),
+)
+
+cc_library(
+    name = "scoped_annotation",
+    hdrs = ["scoped_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:types",
+    ] + if_not_android([
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+    ]),
+)
+
+cc_library(
+    name = "scoped_annotation_stack",
+    hdrs = ["scoped_annotation_stack.h"],
+    visibility = [
+        "//tensorflow/compiler/xla:runtime",
+        "//tensorflow/core/profiler/lib:__pkg__",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ] + if_not_android([
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+    ]),
+)
+
+tf_cc_test(
+    name = "scoped_annotation_test",
+    size = "small",
+    srcs = ["scoped_annotation_test.cc"],
+    deps = [
+        ":scoped_annotation",
+        ":scoped_annotation_stack",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "@com_google_absl//absl/strings",
+    ],
 )

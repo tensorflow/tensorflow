@@ -65,3 +65,38 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "annotation_stack",
+    hdrs = ["annotation_stack.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/tsl/profiler:internal",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+    ] + if_static([
+        ":annotation_stack_impl",
+    ]),
+)
+
+cc_library(
+    name = "annotation_stack_impl",
+    srcs = [
+        "annotation_stack.cc",
+        "annotation_stack.h",
+    ],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler/backends/cpu:__pkg__",
+        "//tensorflow/tsl/profiler:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)

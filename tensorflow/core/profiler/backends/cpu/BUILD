@@ -116,6 +116,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
     ] + if_static([
         ":annotation_stack_impl",
     ]),
@@ -124,13 +125,14 @@ cc_library(
 cc_library(
     name = "annotation_stack_impl",
     srcs = [
-        "annotation_stack.cc",
         "annotation_stack.h",
     ],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
