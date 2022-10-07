@@ -27,6 +27,7 @@ tf_proto_library(
     protodeps = [
         ":tpu_driver_proto",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
     use_grpc_namespace = True,
@@ -48,6 +49,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         ":tpu_driver_proto_cc",
     ] + external_deps(),
@@ -106,6 +108,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         ":tpu_driver_proto_cc",
         ":tpu_service_proto_cc",
         ":tpu_service_cc_grpc_proto",
