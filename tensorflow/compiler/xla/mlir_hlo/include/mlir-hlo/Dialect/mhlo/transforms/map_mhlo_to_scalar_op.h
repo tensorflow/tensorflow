@@ -747,14 +747,6 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
 }
 
 template <>
-inline Value mapMhloOpToStdScalarOp<mhlo::BitcastConvertOp>(
-    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type>,
-    mhlo::BitcastConvertOp::Adaptor adaptor, OpBuilder* b) {
-  return b->create<mlir::arith::BitcastOp>(loc, resultTypes,
-                                           adaptor.getOperands());
-}
-
-template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::DotOp>(Location loc,
                                                  ArrayRef<Type> resultTypes,
                                                  ArrayRef<Type> argTypes,

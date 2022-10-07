@@ -823,6 +823,112 @@ class TransposeConverter
   }
 };
 
+class BitcastConvertConverter
+    : public OpConversionPattern<mhlo::BitcastConvertOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::BitcastConvertOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!verifyHloOpBufferOrTensorSemantics(op)) return failure();
+
+    auto inputType = adaptor.getOperand().getType().cast<RankedTensorType>();
+    auto outputType =
+        typeConverter->convertType(op.getType()).cast<RankedTensorType>();
+    auto loc = op.getLoc();
+
+    // Don't emit a loop for scalar types. This can occur inside of a reduction.
+    if (inputType.getRank() == 0 && outputType.getRank() == 0) {
+      Value scalarResult = rewriter.create<arith::BitcastOp>(
+          loc, outputType.getElementType(),
+          rewriter.create<tensor::ExtractOp>(loc, adaptor.getOperand()));
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, outputType,
+                                                          scalarResult);
+      return success();
+    }
+
+    auto inputBitWidth = inputType.getElementType().getIntOrFloatBitWidth();
+    auto outputBitWidth = outputType.getElementType().getIntOrFloatBitWidth();
+
+    auto maxRank = std::max(inputType.getRank(), outputType.getRank());
+    auto identityMap =
+        AffineMap::getMultiDimIdentityMap(maxRank, rewriter.getContext());
+    AffineMap indexingMaps[] = {
+        AffineMap::get(
+            /*dimCount=*/maxRank, /*symbolCount=*/0,
+            identityMap.getResults().take_front(inputType.getRank()),
+            rewriter.getContext()),
+        AffineMap::get(
+            /*dimCount=*/maxRank, /*symbolCount=*/0,
+            identityMap.getResults().take_front(outputType.getRank()),
+            rewriter.getContext())};
+
+    Value output =
+        getEmptyTensorFor(rewriter, loc, outputType, op, adaptor.getOperands());
+    bool isExpansion = inputBitWidth > outputBitWidth;
+    bool isContraction = inputBitWidth < outputBitWidth;
+    // When combining values we start with a 0 and merge bits into it.
+    if (isContraction) {
+      output = fillTensorWithZeros(rewriter, loc, output);
+    }
+
+    rewriter.replaceOpWithNewOp<linalg::GenericOp>(
+        op, outputType, adaptor.getOperand(), output, indexingMaps,
+        getParallelAndReductionIterators(maxRank, isContraction ? 1 : 0),
+        [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange args) {
+          auto inIntType = nestedBuilder.getIntegerType(inputBitWidth);
+          auto outIntType = nestedBuilder.getIntegerType(outputBitWidth);
+          Value innerResult = args.front();
+          if (isExpansion) {
+            // Expand a big value into multiple small values with shifts.
+            auto iotaIndex =
+                nestedBuilder.create<linalg::IndexOp>(nestedLoc, maxRank - 1);
+            auto iota = nestedBuilder.create<arith::IndexCastOp>(
+                nestedLoc, inIntType, iotaIndex);
+
+            auto width = nestedBuilder.create<arith::ConstantOp>(
+                nestedLoc,
+                nestedBuilder.getIntegerAttr(inIntType, outputBitWidth));
+            auto shiftWidth =
+                nestedBuilder.create<arith::MulIOp>(nestedLoc, iota, width);
+            Value inputCasted = nestedBuilder.create<arith::BitcastOp>(
+                nestedLoc, inIntType, args.front());
+            Value shifted = nestedBuilder.create<arith::ShRUIOp>(
+                nestedLoc, inputCasted, shiftWidth);
+            innerResult = nestedBuilder.create<arith::TruncIOp>(
+                nestedLoc, outIntType, shifted);
+          } else if (isContraction) {
+            // Combine multiple small values into one big value.
+            auto iotaIndex =
+                nestedBuilder.create<linalg::IndexOp>(nestedLoc, maxRank - 1);
+            auto iota = nestedBuilder.create<arith::IndexCastOp>(
+                nestedLoc, outIntType, iotaIndex);
+
+            auto width = nestedBuilder.create<arith::ConstantOp>(
+                nestedLoc,
+                nestedBuilder.getIntegerAttr(outIntType, inputBitWidth));
+            auto shiftWidth =
+                nestedBuilder.create<arith::MulIOp>(nestedLoc, iota, width);
+            Value inputCasted = nestedBuilder.create<arith::BitcastOp>(
+                nestedLoc, inIntType, args.front());
+            Value inputExt = nestedBuilder.create<arith::ExtUIOp>(
+                nestedLoc, outIntType, inputCasted);
+            Value shifted = nestedBuilder.create<arith::ShLIOp>(
+                nestedLoc, inputExt, shiftWidth);
+            Value accumulatorCasted = nestedBuilder.create<arith::BitcastOp>(
+                nestedLoc, outIntType, args.back());
+            innerResult = nestedBuilder.create<arith::OrIOp>(
+                nestedLoc, outIntType, shifted, accumulatorCasted);
+          }
+          innerResult = nestedBuilder.create<arith::BitcastOp>(
+              nestedLoc, outputType.getElementType(), innerResult);
+          nestedBuilder.create<linalg::YieldOp>(nestedLoc, innerResult);
+        },
+        linalg::getPrunedAttributeList(op));
+    return success();
+  }
+};
+
 // Lowers mhlo.RealDynamicSliceOp to tensor.extract_slice and other
 // arith/tensor dialect ops.
 class RealDynamicSliceConverter
@@ -3294,6 +3400,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
                                           RewritePatternSet* patterns) {
   // clang-format off
   patterns->add<
+      BitcastConvertConverter,
       BroadcastConverter<mhlo::BroadcastOp>, ConcatenateConverter,
       ConstConverterTensor, HloDynamicBroadcastInDimConverter,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
@@ -3304,7 +3411,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::AddOp>,
       PointwiseToLinalgConverter<mhlo::AndOp>,
       PointwiseToLinalgConverter<mhlo::Atan2Op>,
-      PointwiseToLinalgConverter<mhlo::BitcastConvertOp>,
       PointwiseToLinalgConverter<mhlo::CbrtOp>,
       PointwiseToLinalgConverter<mhlo::CeilOp>,
       PointwiseToLinalgConverter<mhlo::ClampOp>,
