@@ -527,6 +527,13 @@ double ReshardingCostMixedMeshShape(
 bool AdjustShardingsWithPartialMeshShape(
     const std::vector<HloInstruction*>& instructions,
     const std::vector<int64_t>& mesh_shape, int64_t total_num_devices);
+
+// Decompose mesh shapes into partial mesh shapes so that we can solve the auto
+// sharding problem iteratively. Returns partial mesh shapes with larger
+// dimensions first. For example, input [1, 4, 2] returns [1, 4, 1] and [1, 4,
+// 2]; input [4, 8, 2] returns [1, 8, 1], [4, 8, 1] and [ 4, 8, 2].
+std::vector<std::vector<int64_t>> DecomposeMeshShapes(
+    std::vector<int64_t> mesh_shape);
 }  // namespace spmd
 }  // namespace xla
 
