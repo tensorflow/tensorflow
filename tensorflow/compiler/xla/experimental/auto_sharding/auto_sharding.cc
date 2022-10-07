@@ -2749,6 +2749,28 @@ int64_t MemoryBudgetLowerBound(const HloModule& module,
   return max_memory_usage;
 }
 
+void RecoverShardingsFromPartialMesh(
+    const HloInstructionSequence& sequence,
+    const absl::flat_hash_map<std::string, std::vector<HloSharding>>&
+        preserve_shardings) {
+  const std::vector<HloInstruction*>& instructions = sequence.instructions();
+
+  for (HloInstruction* ins : instructions) {
+    if (preserve_shardings.find(ins->name()) != preserve_shardings.end()) {
+      if (ins->shape().IsTuple()) {
+        ShapeTree<HloSharding> output_tuple_sharding(ins->shape(), Undefined());
+        size_t i = 0;
+        for (auto& leaf : output_tuple_sharding.leaves()) {
+          leaf.second = preserve_shardings.at(ins->name()).at(i++);
+        }
+        ins->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+      } else {
+        ins->set_sharding(preserve_shardings.at(ins->name()).at(0));
+      }
+    }
+  }
+}
+
 }  // namespace spmd
 
 StatusOr<bool> AutoSharding::RemoveShardingAnnotation(
