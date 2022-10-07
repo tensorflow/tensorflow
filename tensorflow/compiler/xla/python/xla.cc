@@ -34,6 +34,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_sync_manager.h"
 #ifdef XLA_PYTHON_ENABLE_GPU
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
@@ -392,8 +394,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("__str__", &CompiledMemoryStats::DebugString);
 
   py::class_<PyLoadedExecutable, std::shared_ptr<PyLoadedExecutable>>
-      executable(m, "LoadedExecutable");
-  executable.def_property_readonly("client", &PyLoadedExecutable::client)
+      loaded_executable(m, "LoadedExecutable");
+  loaded_executable.def_property_readonly("client", &PyLoadedExecutable::client)
       .def("local_logical_device_ids",
            [](PyLoadedExecutable* exec) {
              auto span = exec->addressable_device_logical_ids();
@@ -619,6 +621,36 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("pprof_profile_to_json", &PprofProfileToJson,
         "Decodes an uncompressed pprof Profile protocol buffer into a JSON "
         "representation");
+
+  py::class_<PjRtDeviceTopology>(m, "DeviceTopology")
+      .def_property_readonly("platform", [](PjRtDeviceTopology& topology) {
+        return topology.platform_name();
+      });
+
+  py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(
+      m, "UnloadedExecutable")
+      .def("hlo_modules", &PjRtExecutable::GetHloModules)
+      .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
+      .def("serialize", &PjRtExecutable::SerializeExecutable);
+
+  m.def(
+      "compile",
+      [](const PjRtDeviceTopology& topology, std::string mlir_module,
+         CompileOptions options) -> StatusOr<std::shared_ptr<PjRtExecutable>> {
+        std::unique_ptr<PjRtExecutable> executable;
+        std::optional<std::string> fingerprint;
+        {
+          py::gil_scoped_release gil_release;
+          mlir::MLIRContext context;
+          TF_ASSIGN_OR_RETURN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                              ParseMlirModuleString(mlir_module, context));
+          TF_ASSIGN_OR_RETURN(executable, PjRtCompile(std::move(options),
+                                                      module.get(), topology));
+        }
+        return std::shared_ptr<PjRtExecutable>(std::move(executable));
+      },
+      py::arg("topology"), py::arg("computation"),
+      py::arg("compile_options") = CompileOptions());
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

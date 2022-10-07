@@ -514,6 +514,16 @@ class LoadedExecutable:
   traceback: Traceback
   fingerprint: Optional[bytes]
 
+class Executable:
+  def hlo_modules(self) -> List[HloModule]: ...
+  def get_compiled_memory_stats(self) -> CompiledMemoryStats: ...
+  def serialize(self) -> str: ...
+
+class DeviceTopology:
+  platform: str
+
+def compile(topology: DeviceTopology, mlir_module: str) -> Executable: ...
+
 def buffer_to_dlpack_managed_tensor(
     buffer: Buffer,
     take_ownership: bool = ...) -> Any: ...
