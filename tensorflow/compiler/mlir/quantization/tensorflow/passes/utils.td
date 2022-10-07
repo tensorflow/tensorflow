@@ -99,6 +99,10 @@ class CreateStringAttr<string values> : NativeCodeCall<
 def CloneTypeWithF32ElementType : NativeCodeCall<
   "CloneTypeWithNewElementType($0.getType(), $_builder.getF32Type())">;
 
+// Creates a new I32 type with the same shape as the given value.
+def CloneTypeWithI32ElementType : NativeCodeCall<
+  "CloneTypeWithNewElementType($0.getType(), $_builder.getI32Type())">;
+
 // By default, the generated code uses  the `create` method without the output
 // type field. However, for many ops, the output type field is always required.
 class CreateOpWithOutputType<string op_name> : NativeCodeCall<
