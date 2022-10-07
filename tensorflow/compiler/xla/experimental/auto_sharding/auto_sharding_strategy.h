@@ -357,23 +357,27 @@ class ProfilingResult {
 // the real profiling result.
 class ClusterEnvironment {
  public:
-  ClusterEnvironment(const Array<int64_t>& device_mesh,
+  ClusterEnvironment(const Array<int64_t>& original_device_mesh,
+                     const Array<int64_t>& device_mesh,
                      absl::Span<const double> mesh_alpha,
                      absl::Span<const double> mesh_beta,
                      const ProfilingResult& prof_result,
                      const AutoShardingSolverOption& solver_option)
-      : device_mesh_(device_mesh),
+      : original_device_mesh_(original_device_mesh),
+        device_mesh_(device_mesh),
         mesh_alpha_(mesh_alpha.begin(), mesh_alpha.end()),
         mesh_beta_(mesh_beta.begin(), mesh_beta.end()),
         prof_result_(prof_result),
         total_devices_(device_mesh.num_elements()),
-        device_mesh_1d_(device_mesh),
+        device_mesh_1d_(original_device_mesh),
         solver_option_(solver_option) {
     // Build replica group for each dimension.
     non_zero_mesh_dims_ =
         VectorGreaterThanOneElementIndices(device_mesh.dimensions());
     GenerateCachedReplicaGroups();
-    device_mesh_1d_.Reshape({device_mesh.num_elements(), 1});
+    // TODO(yuemmawang) Find the largest dimension in original_device_mesh and
+    // create 1d mesh on that dimension.
+    device_mesh_1d_.Reshape({original_device_mesh.num_elements(), 1});
   }
 
   size_t NumDevices() const { return total_devices_; }
@@ -388,6 +392,11 @@ class ClusterEnvironment {
 
   bool IsDeviceMesh1D() const {
     return VectorGreaterThanOneElementCount(device_mesh_.dimensions()) == 1;
+  }
+
+  bool IsOriginalDeviceMesh2D() const {
+    return VectorGreaterThanOneElementCount(
+               original_device_mesh_.dimensions()) == 2;
   }
 
   double AllGatherCost(double num_bytes, int mesh_dim) const {
@@ -622,8 +631,13 @@ class ClusterEnvironment {
     return str;
   }
 
-  // Shape and bandwidth of the device mesh
+  // The original, complete device mesh shape that describes the hardware.
+  const Array<int64_t> original_device_mesh_;
+  // When solve_nd_sharding_iteratively is true, it is a partial mesh shape from
+  // the original_device_mesh_. When solve_nd_sharding_iteratively is false, it
+  // is the same as original_device_mesh_.
   const Array<int64_t> device_mesh_;
+  // Bandwidth of the device mesh
   const std::vector<double> mesh_alpha_;
   const std::vector<double> mesh_beta_;
   const ProfilingResult& prof_result_;

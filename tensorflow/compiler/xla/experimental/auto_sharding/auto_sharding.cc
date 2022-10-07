@@ -812,63 +812,128 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateParameterStrategyVector(
   return strategies;
 }
 
-void TrimOrGenerateStrategiesBasedOnUserSharding(
+// The sharding is replicated or the total number of tiles is over or equal to
+// the total number of devices. If returns true, this sharding is likely
+// provided by users.
+bool ShardingIsComplete(const HloSharding& sharding, size_t total_num_devices) {
+  return sharding.TotalNumTiles() >= total_num_devices ||
+         sharding.IsReplicated();
+}
+
+// Two shardings shard the same dimension of a given tensor.
+bool ShardingIsConsistent(const HloSharding& partial_sharding,
+                          const HloSharding& complete_sharding) {
+  if (partial_sharding.tile_assignment().num_dimensions() >
+      complete_sharding.tile_assignment().num_dimensions()) {
+    return false;
+  }
+  for (size_t i = 0; i < partial_sharding.tile_assignment().num_dimensions();
+       ++i) {
+    if (partial_sharding.tile_assignment().dim(i) > 1 &&
+        complete_sharding.tile_assignment().dim(i) > 1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Existing shardings refer to the HloSharding field in the given
+// HloInstruction. This function handles two cases:
+// 1. Existing sharding is from outside of XLA, which we refer to as user
+// sharding. We need to preserve user shardings when the HloModule exit from
+// AutoSharding.
+// 2. Existing sharding is from previous iteration when
+// solve_nd_sharding_iteratively is true. We use such shardings as hints to
+// reduce the current iteration's problem size, by keeping sharding strategies
+// that shard the same tensor dimensions as specified in the existing
+// HloSharding.
+// These two are distinguished by ShardingIsComplete().
+void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const Shape& output_shape, StrategyVector* strategies,
     const StrategyMap& strategy_map,
     const std::vector<HloInstruction*> instructions,
-    const HloSharding& user_sharding, const ClusterEnvironment& cluster_env,
+    const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
     StableHashMap<int64_t, std::vector<ShardingStrategy>>&
         trimmed_strategy_map) {
   if (strategies->is_tuple) {
     for (size_t i = 0; i < strategies->childs.size(); ++i) {
-      TrimOrGenerateStrategiesBasedOnUserSharding(
+      TrimOrGenerateStrategiesBasedOnExistingSharding(
           output_shape.tuple_shapes(i), strategies->childs.at(i).get(),
-          strategy_map, instructions, user_sharding.tuple_elements().at(i),
+          strategy_map, instructions, existing_sharding.tuple_elements().at(i),
           cluster_env, trimmed_strategy_map);
     }
   } else {
-    // Find the strategy that aligns with user sharding.
-    int32_t strategy_index = -1;
-    for (size_t i = 0; i < strategies->leaf_vector.size(); i++) {
-      if (strategies->leaf_vector[i].output_sharding == user_sharding) {
-        strategy_index = i;
-      }
-    }
-    if (strategy_index >= 0) {
-      VLOG(1) << "Keeping strategy index: " << strategy_index;
-      // Stores other strategies in the map, removes them in the vector and only
-      // keeps the one we found.
-      ShardingStrategy found_strategy = strategies->leaf_vector[strategy_index];
-      trimmed_strategy_map[strategies->id] = strategies->leaf_vector;
-      strategies->leaf_vector.clear();
-      strategies->leaf_vector.push_back(found_strategy);
-    } else {
-      VLOG(1) << "Generate a new strategy based on user sharding.";
-      std::string name = ToStringSimple(user_sharding);
-      std::vector<std::vector<double>> resharding_costs;
-      if (strategies->in_nodes.empty()) {
-        resharding_costs = {};
-      } else {
-        for (size_t i = 0; i < strategies->in_nodes.size(); i++) {
-          HloInstruction* operand =
-              instructions.at(strategies->in_nodes.at(i)->instruction_id);
-          HloInstruction* ins = instructions.at(strategies->instruction_id);
-          auto operand_strategies = strategy_map.at(operand).get();
-          auto operand_shape = operand->shape();
-          std::optional<HloSharding> input_sharding =
-              ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
-                                                       true);
-          resharding_costs.push_back(ReshardingCostVector(
-              operand_strategies, operand_shape, *input_sharding, cluster_env));
+    if (ShardingIsComplete(existing_sharding,
+                           cluster_env.device_mesh_.num_elements())) {
+      // Sharding provided by XLA users, we need to keep them.
+      strategies->following = nullptr;
+      int32_t strategy_index = -1;
+      for (size_t i = 0; i < strategies->leaf_vector.size(); i++) {
+        if (strategies->leaf_vector[i].output_sharding == existing_sharding) {
+          strategy_index = i;
         }
       }
-      double memory_cost = GetBytes(output_shape) / user_sharding.NumTiles();
-      if (!strategies->leaf_vector.empty()) {
+      if (strategy_index >= 0) {
+        VLOG(1) << "Keeping strategy index: " << strategy_index;
+        // Stores other strategies in the map, removes them in the vector and
+        // only keeps the one we found.
+        ShardingStrategy found_strategy =
+            strategies->leaf_vector[strategy_index];
         trimmed_strategy_map[strategies->id] = strategies->leaf_vector;
+        strategies->leaf_vector.clear();
+        strategies->leaf_vector.push_back(found_strategy);
+      } else {
+        VLOG(1) << "Generate a new strategy based on user sharding.";
+        std::string name = ToStringSimple(existing_sharding);
+        std::vector<std::vector<double>> resharding_costs;
+        if (strategies->in_nodes.empty()) {
+          resharding_costs = {};
+        } else {
+          for (size_t i = 0; i < strategies->in_nodes.size(); i++) {
+            HloInstruction* operand =
+                instructions.at(strategies->in_nodes.at(i)->instruction_id);
+            // Set resharding cost to be 0 because there is only one choice and
+            // the cost do not matter.
+            resharding_costs.push_back(std::vector<double>(
+                strategy_map.at(operand)->leaf_vector.size(), 0.0));
+          }
+        }
+        double memory_cost =
+            GetBytes(output_shape) / existing_sharding.NumTiles();
+        if (!strategies->leaf_vector.empty()) {
+          trimmed_strategy_map[strategies->id] = strategies->leaf_vector;
+        }
+        strategies->leaf_vector.clear();
+        strategies->leaf_vector.push_back(ShardingStrategy({name,
+                                                            existing_sharding,
+                                                            0,
+                                                            0,
+                                                            memory_cost,
+                                                            resharding_costs,
+                                                            {}}));
       }
-      strategies->leaf_vector.clear();
-      strategies->leaf_vector.push_back(ShardingStrategy(
-          {name, user_sharding, 0, 0, memory_cost, resharding_costs, {}}));
+    } else {
+      // If existing sharding is a partial sharding from previous iteration,
+      // find the strategies that are 1D&&complete or align with user
+      // sharding.
+      std::vector<ShardingStrategy> new_vector;
+      for (const auto& strategy : strategies->leaf_vector) {
+        if (ShardingIsConsistent(existing_sharding, strategy.output_sharding) ||
+            (VectorGreaterThanOneElementCount(
+                 strategy.output_sharding.tile_assignment().dimensions()) ==
+                 1 &&
+             ShardingIsComplete(
+                 strategy.output_sharding,
+                 cluster_env.original_device_mesh_.num_elements()))) {
+          new_vector.push_back(std::move(strategy));
+        }
+      }
+      // If no sharding strategy left, just keep the original set, because we do
+      // not have to strictly keep those shardings and the only purpose is to
+      // reduce problem size for the last iteration.
+      if (!new_vector.empty()) {
+        strategies->leaf_vector = std::move(new_vector);
+      }
     }
   }
 }
@@ -1625,7 +1690,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       // TODO(b/208668853) If needed, we can make auto sharding faster by using
       // this sharding spec when merging node using strategies->following.
       strategies->following = nullptr;
-      TrimOrGenerateStrategiesBasedOnUserSharding(
+      TrimOrGenerateStrategiesBasedOnExistingSharding(
           ins->shape(), strategies.get(), strategy_map, instructions,
           ins->sharding(), cluster_env, trimmed_strategy_map);
     }
@@ -2807,9 +2872,11 @@ StatusOr<bool> AutoSharding::Run(
   device_mesh.SetValues(option_.device_mesh_ids);
   // TODO (zhuohan): include the prof result as an option.
   spmd::ProfilingResult prof_result;
-  spmd::ClusterEnvironment cluster_env(device_mesh, option_.device_mesh_alpha,
-                                       option_.device_mesh_beta, prof_result,
-                                       solver_option);
+  // TODO(yuemmawang): set the 1st device_mesh as original device mesh and 2nd
+  // as partial device mesh.
+  spmd::ClusterEnvironment cluster_env(
+      device_mesh, device_mesh, option_.device_mesh_alpha,
+      option_.device_mesh_beta, prof_result, solver_option);
 
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
