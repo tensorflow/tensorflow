@@ -30,10 +30,7 @@ pytype_library(
     pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":xla_extension",
-        "@absl_py//absl/logging",
-    ],
+    deps = [":xla_extension"],
 )
 
 exports_files(["xla_client.pyi"])
