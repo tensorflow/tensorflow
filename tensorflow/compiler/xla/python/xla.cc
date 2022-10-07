@@ -627,8 +627,7 @@ PYBIND11_MODULE(xla_extension, m) {
         return topology.platform_name();
       });
 
-  py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(
-      m, "UnloadedExecutable")
+  py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules", &PjRtExecutable::GetHloModules)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
       .def("serialize", &PjRtExecutable::SerializeExecutable);
