@@ -361,6 +361,8 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/lite:flatbuffer_export",
         "//tensorflow/compiler/mlir/lite:tf_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_passes",
+        "//tensorflow/compiler/mlir/quantization/tensorflow:quantize_preprocess",
         "//tensorflow/compiler/mlir/quantization/tensorflow:tf_quant_ops",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
