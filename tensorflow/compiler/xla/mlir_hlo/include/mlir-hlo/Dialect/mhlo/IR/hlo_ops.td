@@ -1823,7 +1823,7 @@ def HLO_ConvolutionOp : HLO_Op<"convolution", [NoSideEffect]> {
 
   code extraClassDeclaration = [{
     bool hasWindowReversal() {
-      auto reversal = window_reversalAttr();
+      auto reversal = getWindowReversalAttr();
       return reversal && llvm::any_of(reversal.getValues<bool>(),
                                       [](bool v) { return v; });
     }

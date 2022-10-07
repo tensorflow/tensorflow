@@ -411,10 +411,10 @@ struct TransposePattern : public OpConversionPattern<mhlo::TransposeOp> {
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     auto permutation = rewriter.getDenseI64ArrayAttr(
-        llvm::to_vector(op.permutation().getValues<int64_t>()));
+        llvm::to_vector(op.getPermutation().getValues<int64_t>()));
 
     rewriter.replaceOpWithNewOp<thlo::TransposeOp>(
-        op, op.getType(), op.operand(), emptyTensor, permutation);
+        op, op.getType(), op.getOperand(), emptyTensor, permutation);
 
     return success();
   }
@@ -427,7 +427,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
       mhlo::MapOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
-    assert(op.dimensions().size() == resultTy.getRank() &&
+    assert(op.getDimensions().size() == resultTy.getRank() &&
            "Expected a pointwise map");
 
     Location loc = op.getLoc();
@@ -437,7 +437,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
     auto thloMap = rewriter.create<thlo::MapOp>(
         loc, resultTy, adaptor.operands(), emptyTensor);
     Region& region = thloMap.getMapper();
-    rewriter.inlineRegionBefore(op.computation(), region, region.end());
+    rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
 
     TypeConverter::SignatureConversion signatureConverter(
         thloMap.getNumInputs());

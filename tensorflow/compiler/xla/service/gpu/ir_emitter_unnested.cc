@@ -1165,13 +1165,13 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
 
     if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
       const auto& broadcast_dimensions_size =
-          broadcast.broadcast_dimensions().size();
+          broadcast.getBroadcastDimensions().size();
       if (broadcast_dimensions_size == 0) {
         continue;
       }
       llvm::SmallVector<int64_t> broadcast_dimensions;
       broadcast_dimensions.reserve(broadcast_dimensions_size);
-      for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
+      for (const llvm::APInt& int_value : broadcast.getBroadcastDimensions()) {
         broadcast_dimensions.push_back(int_value.getSExtValue());
       }
 
@@ -1637,7 +1637,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
         continue;
       }
       if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-        if (broadcast.broadcast_dimensions().empty() ||
+        if (broadcast.getBroadcastDimensions().empty() ||
             // More then 2 bit inputs cause one speed regression.
             (row_vectorized && num_big_inputs <= 3)) {
           continue;
@@ -3224,7 +3224,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
     }
   } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
                  init_value.getDefiningOp())) {
-    const_init = constant.value().dyn_cast<mlir::DenseElementsAttr>();
+    const_init = constant.getValue().dyn_cast<mlir::DenseElementsAttr>();
   }
 
   if (const_init) {
@@ -3290,7 +3290,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
   TF_RET_CHECK(reduce);
   TF_RET_CHECK(reduce.getNumResults() == 1);
 
-  mlir::Value init_value = reduce.init_values()[0];
+  mlir::Value init_value = reduce.getInitValues()[0];
   mlir::Value dest = fusion.getOutputBuffers()[output_index];
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Thunk> constant_init_thunk,

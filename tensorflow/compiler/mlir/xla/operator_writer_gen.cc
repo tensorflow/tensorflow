@@ -110,7 +110,9 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     // Otherwise, this is an attribute.
     auto named_attr = arg.get<NamedAttribute*>();
     os << "  auto xla_arg_" << index << " = "
-       << GetDefaultAttrExport(*named_attr) << "(op." << op.getArgName(index)
+       << GetDefaultAttrExport(*named_attr) << "(op.get"
+       << convertToCamelFromSnakeCase(op.getArgName(index),
+                                      /*capitalizeFirst=*/true)
        << "());\n";
   }
 

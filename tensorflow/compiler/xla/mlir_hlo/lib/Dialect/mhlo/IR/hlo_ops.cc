@@ -2125,12 +2125,12 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
                                             PatternRewriter& rewriter) {
   DenseIntElementsAttr sliceSizes;
-  if (!matchPattern(op.slice_sizes(), m_Constant(&sliceSizes))) {
+  if (!matchPattern(op.getSliceSizes(), m_Constant(&sliceSizes))) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-      op, op.operand(), op.start_indices(), op.dimension_numbersAttr(),
-      sliceSizes, op.indices_are_sortedAttr());
+      op, op.getOperand(), op.getStartIndices(), op.getDimensionNumbersAttr(),
+      sliceSizes, op.getIndicesAreSortedAttr());
   return success();
 }
 
