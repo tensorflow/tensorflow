@@ -852,8 +852,8 @@ TEST_F(CudnnFusedConvRewriterHloTest, DontFuseEluIfMultipleUses) {
     HloModule Test
 
     ENTRY Test {
-      inputs = f16[1,17,9,9] parameter(0)
-      filters = f16[3,3,17,32] parameter(1)
+      inputs = f16[1,16,9,9] parameter(0)
+      filters = f16[3,3,16,32] parameter(1)
       bias = f16[32] parameter(2)
       bias_broadcast = f16[1,32,9,9] broadcast(bias), dimensions={1}
       zero = f16[] constant(0)
