@@ -60,10 +60,30 @@ class CompilationEnvironments {
   template <typename T>
   static std::unique_ptr<T> CreateDefaultEnv() = delete;
 
+  // Whenever an environment is added to CompilationEnvironments, even when
+  // GetEnv() adds a lazily initialized one, it is passed to this method. The
+  // result of this method is the environment that is used by
+  // CompilationEnvironments. This allows environment authors to do things like
+  // populate missing fields in an added environment.
+  //
+  // Users of CompilationEnvironments must specialize this method for each type
+  // of CompilationEnvironment they wish to use in code.
+  //
+  // The input env may be null.
+  //
+  // REQUIRES:
+  // - T must be a type of proto message.
+  // - The output is *not* allowed to be null, even for null input.
+  template <typename T>
+  static std::unique_ptr<T> ProcessNewEnv(std::unique_ptr<T> env) = delete;
+
   // Adds env to the list of CompilationEnvironments. If an environment with
   // std::type_index equal to env.GetTypeid() has already been added, env
   // will replace it.
-  void AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  //
+  // All added environments are processed via ProcessNewEnv().
+  template <typename T>
+  void AddEnv(std::unique_ptr<T> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
   // environment has not been added, CreateDefaultEnv<T>() will be called to
@@ -95,6 +115,9 @@ class CompilationEnvironments {
   // are added to CompilationEnvironments.
   static void EnvAdded(std::string_view env_type);
 
+  // Implements the part of AddEnv() after the ProcessNewEnv() call.
+  void AddProcessedEnv(std::unique_ptr<tsl::protobuf::Message> env);
+
   absl::flat_hash_map<const tsl::protobuf::Descriptor*,
                       std::unique_ptr<tsl::protobuf::Message>>
       environments_;
@@ -108,6 +131,18 @@ class CompilationEnvironments {
 template <>
 std::unique_ptr<tsl::protobuf::Message>
 CompilationEnvironments::CreateDefaultEnv() = delete;
+
+// Make sure no one tries to specialize ProcessNewEnv() for raw
+// tsl::protobuf::Message. Specialization should always be for a specific
+// type of proto message.
+template <>
+std::unique_ptr<tsl::protobuf::Message> CompilationEnvironments::ProcessNewEnv(
+    std::unique_ptr<tsl::protobuf::Message> env) = delete;
+
+template <typename T>
+void CompilationEnvironments::AddEnv(std::unique_ptr<T> env) {
+  AddProcessedEnv(ProcessNewEnv<T>(std::move(env)));
+}
 
 template <typename T>
 const T& CompilationEnvironments::GetEnv() {

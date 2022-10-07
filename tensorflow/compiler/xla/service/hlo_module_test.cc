@@ -37,12 +37,22 @@ limitations under the License.
 namespace xla {
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
-// must define CreateDefaultEnv for them.
+// must define CreateDefaultEnv and ProcessNewEnv for them.
 template <>
 std::unique_ptr<test::TestCompilationEnvironment1>
 CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment1>() {
   auto env = std::make_unique<test::TestCompilationEnvironment1>();
   env->set_some_flag(100);
+  return env;
+}
+template <>
+std::unique_ptr<test::TestCompilationEnvironment1>
+CompilationEnvironments::ProcessNewEnv(
+    std::unique_ptr<test::TestCompilationEnvironment1> env) {
+  if (!env) {
+    return CompilationEnvironments::CreateDefaultEnv<
+        test::TestCompilationEnvironment1>();
+  }
   return env;
 }
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -110,6 +111,17 @@ class GlobalCompEnvStats {
 
 }  // namespace
 
+CompilationEnvironments& CompilationEnvironments::operator=(
+    const CompilationEnvironments& rhs) {
+  Clear();
+  for (const auto& descriptor_message_pair : rhs.environments_) {
+    auto env = absl::WrapUnique(descriptor_message_pair.second->New());
+    env->CopyFrom(*descriptor_message_pair.second);
+    environments_.insert({descriptor_message_pair.first, std::move(env)});
+  }
+  return *this;
+}
+
 void CompilationEnvironments::DefaultEnvCreated(std::string_view env_type) {
   GlobalCompEnvStats::GetSingleton().DefaultEnvCreated(env_type);
 }
@@ -124,25 +136,31 @@ void CompilationEnvironments::EnvAdded(std::string_view env_type) {
   GlobalCompEnvStats::GetSingleton().EnvAdded(env_type);
 }
 
-CompilationEnvironments& CompilationEnvironments::operator=(
-    const CompilationEnvironments& rhs) {
-  Clear();
-  for (const auto& descriptor_message_pair : rhs.environments_) {
-    auto env = absl::WrapUnique(descriptor_message_pair.second->New());
-    env->CopyFrom(*descriptor_message_pair.second);
-    environments_.insert({descriptor_message_pair.first, std::move(env)});
-  }
-  return *this;
-}
-
-void CompilationEnvironments::AddEnv(
+void CompilationEnvironments::AddProcessedEnv(
     std::unique_ptr<tsl::protobuf::Message> env) {
+  // Check if we already have an environment of env's type
   auto descriptor = env->GetDescriptor();
   if (environments_.contains(descriptor)) {
     LOG(WARNING) << "Replacing CompilationEnvironment of type "
                  << descriptor->full_name();
   }
 
+  // Check for unknown fields
+  const tsl::protobuf::UnknownFieldSet& unknown_fields =
+      env->GetReflection()->GetUnknownFields(*env);
+  std::vector<int> unknown_tags;
+  unknown_tags.reserve(unknown_fields.field_count());
+  for (int i = 0; i < unknown_fields.field_count(); ++i) {
+    const tsl::protobuf::UnknownField& field = unknown_fields.field(i);
+    unknown_tags.push_back(field.number());
+  }
+  if (!unknown_tags.empty()) {
+    LOG(WARNING) << "CompilationEnvironment " << descriptor->full_name()
+                 << " contains unknown fields with tag numbers: "
+                 << absl::StrJoin(unknown_tags, ", ");
+  }
+
+  // Actually add the env
   environments_.insert({descriptor, std::move(env)});
   EnvAdded(descriptor->full_name());
 }
