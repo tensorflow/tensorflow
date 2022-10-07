@@ -488,6 +488,16 @@ StatusOr<bool> FuseElu(HloComputation* comp, se::CudaComputeCapability cc) {
       continue;
     }
 
+    // In some cases, the XLA optimizes the inputs of the convolution by
+    // moving and broadcasting the bias to the side input, e.g., when the input
+    // spatial dimensions are all ones and filter spatial dimentsions are all
+    // non-ones. However, there is a known issue that the side input is not well
+    // supported in the cuDNN runtime fusion. Therefore, we skip these cases.
+    // TODO(kaixih@nvidia): remove this check when cuDNN fixes it.
+    if (conv->operands().size() > 3) {
+      continue;
+    }
+
     // cuDNN runtime funsion kernels require 32-bit aligned data access. Since
     // we only allow fp16 datatype, we need to check if the in and out channels
     // of filter are even numbers.
