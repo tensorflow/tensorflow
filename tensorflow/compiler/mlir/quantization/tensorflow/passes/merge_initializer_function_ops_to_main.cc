@@ -171,7 +171,8 @@ FailureOr<llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions>>
 GetInitFuncOps(tf_saved_model::SessionInitializerOp session_init_op,
                SymbolTable symbol_table) {
   const auto initializer_symbol_refs =
-      session_init_op.initializersAttr().getAsValueRange<FlatSymbolRefAttr>();
+      session_init_op.getInitializersAttr()
+          .getAsValueRange<FlatSymbolRefAttr>();
   if (absl::c_distance(initializer_symbol_refs) > kMaxNumInitializerFunctions) {
     session_init_op->emitError(
         absl::StrFormat("SessionInitializerOp cannot have more than %d "
@@ -261,7 +262,7 @@ llvm::SmallVector<Value> CopyOpsToMainFunction(
 
 void ClearInitializersAttr(tf_saved_model::SessionInitializerOp session_init_op,
                            MLIRContext* ctx) {
-  session_init_op.initializersAttr(
+  session_init_op.setInitializersAttr(
       ArrayAttr::get(ctx, llvm::ArrayRef<Attribute>{}));
 }
 

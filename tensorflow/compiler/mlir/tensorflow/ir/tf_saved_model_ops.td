@@ -84,7 +84,7 @@ def TfSavedModel_Dialect : Dialect {
 
   let cppNamespace = "::mlir::tf_saved_model";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 
