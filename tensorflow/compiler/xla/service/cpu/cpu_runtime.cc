@@ -43,9 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace se = ::stream_executor;
 
@@ -285,13 +285,13 @@ ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY int64_t __xla_cpu_runtime_TracingStart(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr,
     const char* name) {
   VLOG(3) << "TracingStart " << name;
-  return tsl::profiler::TraceMe::ActivityStart(name);
+  return tensorflow::profiler::TraceMe::ActivityStart(name);
 }
 
 ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_TracingEnd(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, int64_t id) {
   VLOG(3) << "TracingEnd " << id;
-  tsl::profiler::TraceMe::ActivityEnd(id);
+  tensorflow::profiler::TraceMe::ActivityEnd(id);
 }
 
 }  // extern "C"

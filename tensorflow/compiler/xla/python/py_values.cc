@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace py = pybind11;
 
@@ -275,7 +275,7 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 
 StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options) {
-  tsl::profiler::TraceMe traceme("DevicePut");
+  tensorflow::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();

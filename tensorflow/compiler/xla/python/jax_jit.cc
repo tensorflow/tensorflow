@@ -63,8 +63,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -231,7 +231,7 @@ xla::Status ParseArguments(py::handle args,
                            absl::Span<int const> static_argnums,
                            absl::Span<py::str const> static_argnames,
                            ParsedArgumentsAsBuffers& arguments) {
-  tsl::profiler::TraceMe traceme("ParseArguments");
+  tensorflow::profiler::TraceMe traceme("ParseArguments");
   int num_args = PyTuple_GET_SIZE(args.ptr());
   int num_kwargs = py_kwargs ? py_kwargs->size() : 0;
 
@@ -700,7 +700,7 @@ static xla::StatusOr<xla::PjRtDevice*> GetJitArgumentStickyDevice(
 xla::Status ComputeSignature(bool jax_enable_x64,
                              xla::PjRtDevice* default_device, bool is_committed,
                              ParsedArgumentsAsBuffers& arguments) {
-  tsl::profiler::TraceMe traceme("ComputeSignature");
+  tensorflow::profiler::TraceMe traceme("ComputeSignature");
 
   int num_flat_dynamic_args = arguments.flat_dynamic_args.size();
   // When the jitted function is not committed, we first check whether any
@@ -1215,7 +1215,7 @@ PyObject* JaxCompiledFunction_tp_call(PyObject* self, PyObject* args,
                                       PyObject* kwargs) {
   JaxCompiledFunctionObject* o =
       reinterpret_cast<JaxCompiledFunctionObject*>(self);
-  tsl::profiler::TraceMe traceme([&] {
+  tensorflow::profiler::TraceMe traceme([&] {
     return absl::StrCat("JaxCompiledFunction(", o->fun.function_name(), ")");
   });
   std::optional<py::kwargs> py_kwargs;

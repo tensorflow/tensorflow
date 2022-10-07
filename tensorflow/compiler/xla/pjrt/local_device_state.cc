@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -109,7 +109,7 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
                                            std::function<void()> callback) {
-  tsl::profiler::TraceMe traceme("ThenExecuteCallback");
+  tensorflow::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
     absl::MutexLock lock(&mu_);

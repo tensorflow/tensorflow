@@ -59,7 +59,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/platform:path",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",

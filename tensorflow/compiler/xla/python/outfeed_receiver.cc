@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 // Implementation notes:
 //
@@ -384,7 +384,7 @@ void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
       return;
     }
     {
-      tsl::profiler::TraceMe traceme("OutfeedReceiver::Callback");
+      tensorflow::profiler::TraceMe traceme("OutfeedReceiver::Callback");
       callback_(received->device(), received->consumer_id(),
                 received->literal());
     }

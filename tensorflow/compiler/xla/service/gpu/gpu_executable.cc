@@ -56,11 +56,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -349,9 +349,9 @@ Status ExecuteThunks(const std::string& module_name,
 
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-  tsl::profiler::TraceMe hlo_module_activity(
+  tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
-      tsl::profiler::TraceMeLevel::kInfo);
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   for (const std::unique_ptr<Thunk>& thunk : thunk_sequence) {
     // Annotate execution of this op if tracing was enabled when we started
@@ -554,9 +554,9 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
     VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal) {
-  tsl::profiler::TraceMe hlo_module_activity(
+  tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return std::string("Build buffer allocations"); },
-      tsl::profiler::TraceMeLevel::kInfo);
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   const int64_t num_buffers = allocations_.size();
   std::vector<se::DeviceMemoryBase> buffers;
@@ -600,9 +600,9 @@ static Status ExecuteJitRt(const std::string& module_name,
                            bool block_host_until_done) {
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
-  tsl::profiler::TraceMe hlo_module_activity(
+  tensorflow::profiler::TraceMe hlo_module_activity(
       [&] { return absl::StrCat(module_name, ":XLA GPU module"); },
-      tsl::profiler::TraceMeLevel::kInfo);
+      tensorflow::profiler::TraceMeLevel::kInfo);
 
   ScopedAnnotation annotation(
       []() -> std::string { return "JitRtExecutable"; });
@@ -730,9 +730,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
 
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
-    tsl::profiler::TraceMe hlo_module_activity(
+    tensorflow::profiler::TraceMe hlo_module_activity(
         [&] { return std::string("Resolve constant globals"); },
-        tsl::profiler::TraceMeLevel::kInfo);
+        tensorflow::profiler::TraceMeLevel::kInfo);
 
     TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(run_options->stream()));
   }
