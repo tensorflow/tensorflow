@@ -1274,9 +1274,12 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
       return;
     }
 
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
-                        params.out_width, params.depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            data_format_, params.tensor_in_batch, params.out_height,
+            params.out_width, params.depth, &out_shape));
 
     // Degenerate pooling output should return an empty tensor.
     if (out_shape.num_elements() == 0) {
@@ -1409,9 +1412,12 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
       return;
     }
 
-    TensorShape out_shape =
-        ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
-                        params.out_width, params.depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            data_format_, params.tensor_in_batch, params.out_height,
+            params.out_width, params.depth, &out_shape));
     if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize,
                                stride, padding_, explicit_paddings_,

@@ -247,10 +247,15 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   /// to NCHW before calling cudnn. We need to get rid of this once it is done
   Tensor transformed_input;
   if (data_format == FORMAT_NHWC) {
+    TensorShape transformed_input_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, tensor_in.shape(),
+            data_format, &transformed_input_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, tensor_in.shape(),
-                                                data_format),
+                                transformed_input_shape,
                                 &transformed_input));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<Device>(),
                                            tensor_in.tensor<T, 4>(),
@@ -260,10 +265,15 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   }
   Tensor transformed_output;
   if (data_format == FORMAT_NHWC) {
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, tensor_out_shape, data_format,
+            &transformed_output_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, tensor_out_shape,
-                                                data_format),
+                                transformed_output_shape,
                                 &transformed_output));
   } else {
     transformed_output = *tensor_out;
@@ -316,11 +326,16 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
     const int64_t new_in_rows = tensor_in_rows + padding_rows_diff;
     const int64_t new_in_cols = tensor_in_cols + padding_cols_diff;
 
+    TensorShape padded_input_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            data_format, batch_size,
+            new_in_rows, new_in_cols, depth, &padded_input_shape));
     OP_REQUIRES_OK(
         context,
         context->allocate_temp(DataTypeToEnum<T>::value,
-                               ShapeFromFormat(data_format, batch_size,
-                                               new_in_rows, new_in_cols, depth),
+                               padded_input_shape,
                                &padded_input));
     const int64_t input_pad_top = params.pad_top - common_padding_rows;
     const int64_t input_pad_bottom = params.pad_bottom - common_padding_rows;

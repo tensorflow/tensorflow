@@ -1335,8 +1335,11 @@ class FusedBatchNormOpBase : public OpKernel {
       int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
       int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
       const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
-      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
-                                   {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES_OK(
+          context,
+          ShapeFromFormatWithStatus(tensor_format_, in_batch,
+                                   {{in_planes, in_rows * in_cols}}, in_depth,
+                                   &dest_shape));
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
     }
@@ -1580,8 +1583,11 @@ class FusedBatchNormGradOpBase : public OpKernel {
       int64_t in_rows = GetTensorDim(x, tensor_format_, '1');
       int64_t in_cols = GetTensorDim(x, tensor_format_, '2');
       const int64_t in_depth = GetTensorDim(x, tensor_format_, 'C');
-      dest_shape = ShapeFromFormat(tensor_format_, in_batch,
-                                   {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES_OK(
+          context,
+          ShapeFromFormatWithStatus(
+              tensor_format_, in_batch,
+              {{in_planes, in_rows * in_cols}}, in_depth, &dest_shape));
       OP_REQUIRES(context, x.CopyFrom(x, dest_shape),
                   errors::InvalidArgument("Error during tensor copy."));
       OP_REQUIRES(context, y_backprop.CopyFrom(y_backprop, dest_shape),
