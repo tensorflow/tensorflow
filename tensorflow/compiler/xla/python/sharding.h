@@ -105,8 +105,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
 class PmapSharding : public XLACompatibleSharding {
  public:
   PmapSharding(pybind11::array devices, ShardingSpec sharding_spec)
-      : XLACompatibleSharding(
-            /*num_devices=*/devices.size()),
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),
         sharding_spec_(std::move(sharding_spec)) {}
 
@@ -129,9 +128,13 @@ class PmapSharding : public XLACompatibleSharding {
 class OpShardingSharding : public XLACompatibleSharding {
  public:
   OpShardingSharding(pybind11::list devices, xla::OpSharding op_sharding)
-      : XLACompatibleSharding(
-            /*num_devices=*/devices.size()),
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
+        op_sharding_(std::move(op_sharding)) {}
+
+  OpShardingSharding(pybind11::tuple devices, xla::OpSharding op_sharding)
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+        devices_(std::move(devices)),
         op_sharding_(std::move(op_sharding)) {}
 
   const pybind11::tuple& devices() const { return devices_; }
