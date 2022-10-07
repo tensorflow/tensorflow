@@ -181,6 +181,11 @@ genrule(
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
+        "//tensorflow/core/kernels:xsmm": [
+            "@libxsmm_archive//:LICENSE.md",
+        ],
+        "//conditions:default": [],
+    }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",
         ],
@@ -250,6 +255,11 @@ genrule(
         "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
+    }) + select({
+        "//tensorflow/core/kernels:xsmm": [
+            "@libxsmm_archive//:LICENSE.md",
+        ],
+        "//conditions:default": [],
     }) + select({
         "//tensorflow/tsl:with_numa_support": [
             "@hwloc//:COPYING",

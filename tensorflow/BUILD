@@ -82,6 +82,7 @@ PACKAGE_STATIC_DEPS = [
     "@fft2d//:__subpackages__",
     "@gemmlowp//:__subpackages__",
     "@jsoncpp_git//:__subpackages__",
+    "@libxsmm_archive//:__subpackages__",
     "@llvm_openmp//:__subpackages__",
     "@llvm_terminfo//:__subpackages__",
     "@llvm_zlib//:__subpackages__",
