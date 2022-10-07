@@ -2655,6 +2655,13 @@ absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
     for (const auto computation : module->computations()) {
       for (const auto inst : computation->instructions()) {
         SaveShardingForInstruction(preserve_shardings, inst);
+        for (const auto user : inst->users()) {
+          // Also preserve the shardings of copy ops that are the users of those
+          // instructions.
+          if (user->opcode() == HloOpcode::kCopy) {
+            SaveShardingForInstruction(preserve_shardings, user);
+          }
+        }
       }
     }
   } else if (type == AutoShardingOption::PreserveShardingsType::
@@ -2663,6 +2670,13 @@ absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
     for (const auto inst :
          module->entry_computation()->parameter_instructions()) {
       SaveShardingForInstruction(preserve_shardings, inst);
+      for (const auto user : inst->users()) {
+        // Also preserve the shardings of copy ops that are the users of those
+        // instructions.
+        if (user->opcode() == HloOpcode::kCopy) {
+          SaveShardingForInstruction(preserve_shardings, user);
+        }
+      }
     }
     // Saves output shardings
     auto inst = module->entry_computation()->root_instruction();
@@ -2784,7 +2798,7 @@ StatusOr<bool> AutoSharding::RemoveShardingAnnotation(
   }
   VLOG(0) << "Removing user sharding annotations.";
   bool changed = false;
-  std::vector<HloInstruction*> to_remove_inst;
+  absl::flat_hash_set<HloInstruction*> keep_inst;
   for (HloComputation* computation : module->computations(execution_threads)) {
     bool is_entry_computation = computation->IsEntryComputation();
 
@@ -2796,22 +2810,18 @@ StatusOr<bool> AutoSharding::RemoveShardingAnnotation(
                   kKeepInputOutputShardings &&
           (is_entry_computation &&
            (ins->opcode() == HloOpcode::kParameter || ins->IsRoot()))) {
+        keep_inst.insert(ins);
         continue;
       }
-      if (ins->IsCustomCall("Sharding")) {
-        CHECK_EQ(ins->operand_count(), 1);
-        to_remove_inst.push_back(ins);
+      if (ins->opcode() == HloOpcode::kCopy &&
+          keep_inst.find(ins->operand(0)) != keep_inst.end()) {
+        continue;
       }
       if (ins->has_sharding()) {
         changed |= true;
         ins->clear_sharding();
       }
     }
-  }
-  changed |= !to_remove_inst.empty();
-  for (HloInstruction* ins : to_remove_inst) {
-    TF_RETURN_IF_ERROR(
-        ins->parent()->ReplaceInstruction(ins, ins->mutable_operand(0)));
   }
   return changed;
 }
