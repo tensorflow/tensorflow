@@ -340,9 +340,10 @@ static Graph* FusedConv2DWithBatchNorm(
 // The following benchmarks are always using 'float' data type with NHWC layout.
 // -------------------------------------------------------------------------- //
 
-#define BM_SET_INFO(N, H, W, C, type, LABEL, NAME)                         \
+// The number of items is equal to number of fused multiply and accumlate operations
+#define BM_SET_INFO(N, H, W, C, FW, FH, FC, type, LABEL, NAME)             \
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * (N) * \
-                          (H) * (W) * (C));                                \
+                          (H) * (W) * (FC) * (C) * (FW) * (FH));           \
   state.SetLabel(LABEL);
 
 #define BM_NAME(name, type, N, H, W, C, FW, FH, FC) \
@@ -354,11 +355,11 @@ static Graph* FusedConv2DWithBatchNorm(
     test::Benchmark(#type, Conv2D<float>(N, H, W, C, FW, FH, FC).graph, \
                     /*old_benchmark_api=*/false)                        \
         .Run(state);                                                    \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                       \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type, LABEL, Conv2D);           \
   }                                                                     \
   BENCHMARK(BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC))           \
       ->Arg(/*unused arg*/ 1)                                           \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_Conv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH,       \
@@ -367,11 +368,11 @@ static Graph* FusedConv2DWithBatchNorm(
                     Conv2DWithBias<float>(N, H, W, C, FW, FH, FC).graph, \
                     /*old_benchmark_api=*/false)                         \
         .Run(state);                                                     \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                        \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type,, Conv2D);                  \
   }                                                                      \
   BENCHMARK(BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH, FC))    \
       ->Arg(/*unused arg*/ 1)                                            \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)        \
   static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH,    \
@@ -382,11 +383,11 @@ static Graph* FusedConv2DWithBatchNorm(
             .graph,                                                          \
         /*old_benchmark_api=*/false)                                         \
         .Run(state);                                                         \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                            \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type,, Conv2D);                      \
   }                                                                          \
   BENCHMARK(BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC)) \
       ->Arg(/*unused arg*/ 1)                                                \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_FusedConv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)        \
   static void BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH,    \
@@ -396,11 +397,11 @@ static Graph* FusedConv2DWithBatchNorm(
         FusedConv2DWithBias<float>(N, H, W, C, FW, FH, FC, {"BiasAdd"}),   \
         /*old_benchmark_api=*/false)                                       \
         .Run(state);                                                       \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                          \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type,, Conv2D);                    \
   }                                                                        \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH, FC)) \
       ->Arg(/*unused arg*/ 1)                                              \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_FusedConv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, \
@@ -410,12 +411,12 @@ static Graph* FusedConv2DWithBatchNorm(
                                                {"BiasAdd", "Relu"}),           \
                     /*old_benchmark_api=*/false)                               \
         .Run(state);                                                           \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                              \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type,, Conv2D);                        \
   }                                                                            \
   BENCHMARK(                                                                   \
       BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC))    \
       ->Arg(/*unused arg*/ 1)                                                  \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_Conv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH,       \
@@ -424,11 +425,11 @@ static Graph* FusedConv2DWithBatchNorm(
                     Conv2DWithBatchNorm<float>(N, H, W, C, FW, FH, FC).graph, \
                     /*old_benchmark_api=*/false)                              \
         .Run(state);                                                          \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                             \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type, LABEL, Conv2D);                 \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC))    \
       ->Arg(/*unused arg*/ 1)                                                 \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_Conv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, \
@@ -439,12 +440,12 @@ static Graph* FusedConv2DWithBatchNorm(
                         .graph,                                                \
                     /*old_benchmark_api=*/false)                               \
         .Run(state);                                                           \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                              \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type, LABEL, Conv2D);                  \
   }                                                                            \
   BENCHMARK(                                                                   \
       BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, FC))    \
       ->Arg(/*unused arg*/ 1)                                                  \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, \
@@ -454,12 +455,12 @@ static Graph* FusedConv2DWithBatchNorm(
                                                     {"FusedBatchNorm"}),     \
                     /*old_benchmark_api=*/false)                             \
         .Run(state);                                                         \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                            \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type, LABEL, Conv2D);                \
   }                                                                          \
   BENCHMARK(                                                                 \
       BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC))    \
       ->Arg(/*unused arg*/ 1)                                                \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #define BM_FusedConv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type,      \
                                            LABEL)                             \
@@ -470,12 +471,12 @@ static Graph* FusedConv2DWithBatchNorm(
                         N, H, W, C, FW, FH, FC, {"FusedBatchNorm", "Relu"}),  \
                     /*old_benchmark_api=*/false)                              \
         .Run(state);                                                          \
-    BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                             \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type, LABEL, Conv2D);                 \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C, FW, \
                     FH, FC))                                                  \
       ->Arg(/*unused arg*/ 1)                                                 \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 // -------------------------------------------------------------------------- //
 // Pixel CNN convolutions.
@@ -632,11 +633,11 @@ BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
                     Conv2D<T>(N, H, W, C, FW, FH, FC, FORMAT_##FORMAT).graph, \
                     /*old_benchmark_api=*/false)                              \
         .Run(state);                                                          \
-    BM_SET_INFO(N, H, W, C, type, "", Conv2D);                                \
+    BM_SET_INFO(N, H, W, C, FW, FH, FC, type, "", Conv2D);                    \
   }                                                                           \
   BENCHMARK(BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH, FC)) \
       ->Arg(/*unused arg*/ 1)                                                 \
-      ->MeasureProcessCPUTime();
+      ->MeasureProcessCPUTime()->UseRealTime();
 
 #if GOOGLE_CUDA
 using fp32 = float;
