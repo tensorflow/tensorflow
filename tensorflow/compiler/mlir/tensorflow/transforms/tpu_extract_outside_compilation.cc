@@ -13,17 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstdint>
+#include <deque>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
@@ -34,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -259,18 +266,22 @@ TF::_TPUCompileMlirPlaceholderProgramKeyOp CreateCompilationKeyPlaceholder(
 
 // Creates a `tf_device.launch` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
-    OpBuilder& builder, Operation* loc_op, llvm::StringRef host_device) {
+    OpBuilder& builder, Operation* loc_op, llvm::StringRef host_device,
+    llvm::SmallVector<Value, 4>& return_value_from_host) {
+  llvm::SmallVector<Type, 4> host_result_types;
+  host_result_types.reserve(return_value_from_host.size());
+  for (Value old_result : return_value_from_host)
+    host_result_types.push_back(old_result.getType());
+
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
   auto launch_op = builder.create<tf_device::LaunchOp>(
       loc_op->getLoc(), builder.getStringAttr(host_device),
-      /*result_types=*/ArrayRef<Type>{});
+      /*result_types=*/host_result_types);
 
   launch_op.getBody().push_back(new Block);
   builder.setInsertionPointToEnd(&launch_op.GetBody());
-  builder.create<tf_device::ReturnOp>(loc_op->getLoc(),
-                                      llvm::ArrayRef<Value>{});
-
+  builder.create<tf_device::ReturnOp>(loc_op->getLoc(), return_value_from_host);
   return launch_op;
 }
 
@@ -375,11 +386,13 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
 }
 
 // Gets all outputs that need to be communicated from host->device.
-llvm::SmallSetVector<Value, 4> GetExternalOutputs(
-    const llvm::SmallSetVector<Operation*, 4>& cluster_ops) {
-  llvm::SmallSetVector<Value, 4> external_outputs;
+void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
+                        llvm::SmallSetVector<Value, 4>& external_outputs,
+                        llvm::SmallVector<Value, 4>& host_outputs) {
   bool has_dynamic_outputs = HasDynamicOutputs(cluster_ops);
+  llvm::SmallVector<Value, 4> tmp_host_outputs;
   for (Operation* op : cluster_ops) {
+    llvm::SmallDenseSet<Operation*, 4> user_set;
     for (Operation* user : op->getUsers()) {
       // We skip any operations that are in the same outside compilation
       // cluster that will be moved to the host at the same time since both
@@ -390,13 +403,22 @@ llvm::SmallSetVector<Value, 4> GetExternalOutputs(
       // This is pessimistic and in some cases will add extra communication.
       if (!HasOutsideCompilationAncestor(user) || has_dynamic_outputs ||
           HasDynamicOutputs(user)) {
+        if (!user_set.insert(user).second) continue;
         for (Value v : user->getOperands()) {
-          if (v.getDefiningOp() == op) external_outputs.insert(v);
+          if (v.getDefiningOp() == op && !isa<tf_device::ReturnOp>(user))
+            external_outputs.insert(v);
+          if (v.getDefiningOp() == op && isa<tf_device::ReturnOp>(user))
+            tmp_host_outputs.push_back(v);
         }
       }
     }
   }
-  return external_outputs;
+
+  // Value in `tmp_host_outputs` may contain user in non return op, which has
+  // been in `external_outputs`. We need exclude those Value.
+  for (auto val : tmp_host_outputs) {
+    if (!external_outputs.contains(val)) host_outputs.push_back(val);
+  }
 }
 
 // Creates the HostCompute with `inputs` and `outputs`
@@ -433,7 +455,9 @@ bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
     if (TF::CanBeRefined(v.getType())) {
       has_dynamic_output = true;
       for (Operation* user : v.getUsers()) {
-        if (!HasOutsideCompilationAncestor(user)) return true;
+        if (!HasOutsideCompilationAncestor(user) &&
+            !isa<tf_device::ReturnOp>(user))
+          return true;
       }
     }
   }
@@ -595,10 +619,13 @@ void MoveOpsToHost(const llvm::SmallSetVector<Operation*, 4>& clustered_ops,
 // `communication_key_index` which is incremented when used. Communication ops
 // are added only when needed and at the location need.  There are checks to
 // ensure that duplicate communication between device and host is not added.
-LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
-                            Operation* insertion_point, Value compilation_key,
-                            Value device_ordinal, int default_device_ordignal,
-                            int& communication_key_index) {
+// When `return_value_from_host` is not nullptr, MoveOpsToHost will also update
+// its value.
+LogicalResult MoveOpsToHost(
+    tf_device::ClusterOp tpu_cluster, Block* src, Operation* insertion_point,
+    Value compilation_key, Value device_ordinal, int default_device_ordignal,
+    int& communication_key_index,
+    llvm::SmallVector<Value, 4>* return_value_from_host = nullptr) {
   // Contains all of the outside compiled operations that should be moved to the
   // host using a single `_XlaHostComputeMlir` op.  This should only contain a
   // single op except in the case where some of the input/output shapes are
@@ -610,6 +637,8 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
         !op.hasAttrOfType<StringAttr>(kXlaOutsideCompilationAttr))
       continue;
 
+    llvm::SmallSetVector<Value, 4> external_outputs;
+    llvm::SmallVector<Value, 4> host_outputs;
     // We want to move the clustered_ops if the op to be added has all
     // statically shaped operands since we can't ensure that the static shapes
     // has been sent back to host in all cases.  See
@@ -617,8 +646,12 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     if (!HasDynamicExternalValues(&op) && !clustered_ops.empty()) {
       llvm::SmallSetVector<Value, 4> external_operands =
           GetExternalOperands(tpu_cluster, clustered_ops);
-      llvm::SmallSetVector<Value, 4> external_outputs =
-          GetExternalOutputs(clustered_ops);
+      GetExternalOutputs(clustered_ops, external_outputs, host_outputs);
+      if (return_value_from_host) {
+        for (auto& output : host_outputs) {
+          return_value_from_host->push_back(output);
+        }
+      }
       MoveOpsToHost(clustered_ops, external_operands, external_outputs,
                     insertion_point, compilation_key, device_ordinal,
                     default_device_ordignal, communication_key_index);
@@ -628,13 +661,20 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     clustered_ops.insert(&op);
 
     // Get the outputs that need to be communicated from host -> device.
-    llvm::SmallSetVector<Value, 4> external_outputs =
-        GetExternalOutputs(clustered_ops);
+    external_outputs.clear();
+    host_outputs.clear();
+    GetExternalOutputs(clustered_ops, external_outputs, host_outputs);
 
     if (ShouldCloseCluster(external_outputs.getArrayRef())) {
       // Get the operands that need to be communicated from device -> host.
       llvm::SmallSetVector<Value, 4> external_operands =
           GetExternalOperands(tpu_cluster, clustered_ops);
+      if (return_value_from_host) {
+        for (auto& output : host_outputs) {
+          return_value_from_host->push_back(output);
+        }
+      }
+
       MoveOpsToHost(clustered_ops, external_operands, external_outputs,
                     insertion_point, compilation_key, device_ordinal,
                     default_device_ordignal, communication_key_index);
@@ -642,6 +682,20 @@ LogicalResult MoveOpsToHost(tf_device::ClusterOp tpu_cluster, Block* src,
     }
   }
   return success();
+}
+
+void GetReturnValueFromTPU(
+    tf_device::ClusterOp tpu_cluster,
+    const llvm::SmallVector<Value, 4>& return_value_from_host,
+    llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  if (auto return_op = llvm::dyn_cast_or_null<tf_device::ReturnOp>(
+          tpu_cluster.GetBody().getTerminator())) {
+    for (auto v : return_op.getOperands()) {
+      if (absl::c_count(return_value_from_host, v) == 0) {
+        return_value_from_tpu.push_back(v);
+      }
+    }
+  }
 }
 
 // Decompose control flow in `tpu_cluster` into device computation and host
@@ -763,26 +817,230 @@ LogicalResult GetDefaultDeviceOrdinal(tf_device::ClusterOp tpu_cluster,
   }
   return success();
 }
-// Creates a `parallel_execute` op with a region for host computation and
-// a region for `tpu_cluster` computation by extracting outside compiled ops to
-// host computation.
-LogicalResult CreateParallelExecuteForOutsideCompilation(
-    ModuleOp module, tf_device::ClusterOp tpu_cluster,
-    llvm::StringRef host_device) {
-  OpBuilder builder(tpu_cluster);
-  // Create parallel_execute regions, one for the host computation for outside
-  // compilation and the second for the original TPU cluster computation.
-  const int num_regions = 2;
+
+// The results of parallel executes is the combination of return values from
+// both host and tpu.
+llvm::SmallVector<Type, 4> GetParallelExecuteResultsTypes(
+    const llvm::SmallVector<Value, 4>& return_value_from_host,
+    const llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  llvm::SmallVector<Type, 4> parallel_execute_result_types;
+  const int num_of_outputs =
+      return_value_from_host.size() + return_value_from_tpu.size();
+  parallel_execute_result_types.reserve(num_of_outputs);
+  for (Value result : return_value_from_host)
+    parallel_execute_result_types.push_back(result.getType());
+  for (Value result : return_value_from_tpu)
+    parallel_execute_result_types.push_back(result.getType());
+  return parallel_execute_result_types;
+}
+
+// Remap the tpu cluster results with parallel execute op results
+llvm::SmallVector<Value, 4> GetRemappedTpuClusterResults(
+    tf_device::ClusterOp tpu_cluster,
+    const llvm::SmallVector<Value, 4>& return_value_from_host,
+    const llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  llvm::SmallVector<Value, 4> remapped_tpu_cluster_results;
+
+  std::vector<int> order_from_new_output_to_previous_output;
+  order_from_new_output_to_previous_output.reserve(
+      return_value_from_host.size() + return_value_from_tpu.size());
+
+  llvm::SmallDenseMap<Value, std::deque<int>> return_operand_map;
+  auto return_op = llvm::dyn_cast<tf_device::ReturnOp>(
+      tpu_cluster.GetBody().getTerminator());
+
+  for (OpOperand& operand : return_op->getOpOperands()) {
+    auto operand_idx = operand.getOperandNumber();
+    return_operand_map[return_op.getOperand(operand_idx)].push_back(
+        operand_idx);
+  }
+  // `return_value_from_host` and `return_value_from_tpu` together contain all
+  // elements in operands in `return_op`, including duplicated ones. They are
+  // one to one mapping. Therefore, when we iterate `return_value_from_host` and
+  // `return_value_from_tpu`, it is safe to access return_operand_map and call
+  // `front()` method.
+  for (const auto& return_val : return_value_from_host) {
+    order_from_new_output_to_previous_output.push_back(
+        return_operand_map[return_val].front());
+    return_operand_map[return_val].pop_front();
+  }
+
+  for (const Value& return_val : return_value_from_tpu) {
+    order_from_new_output_to_previous_output.push_back(
+        return_operand_map[return_val].front());
+    return_operand_map[return_val].pop_front();
+  }
+
+  for (auto idx : order_from_new_output_to_previous_output)
+    remapped_tpu_cluster_results.push_back(tpu_cluster.getResult(idx));
+
+  return remapped_tpu_cluster_results;
+}
+
+// Remap cluster results with parallel_execute results if user is outside of
+// parallel_execute.
+void RemapTpuClusterResultsWithParallelExecuteResults(
+    tf_device::ClusterOp tpu_cluster,
+    tf_device::ParallelExecuteOp parallel_execute_op,
+    const llvm::SmallVector<Value, 4>& return_value_from_host,
+    const llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  llvm::SmallVector<Value, 4> remapped_tpu_cluster_results =
+      GetRemappedTpuClusterResults(tpu_cluster, return_value_from_host,
+                                   return_value_from_tpu);
+
+  for (auto result : llvm::zip(remapped_tpu_cluster_results,
+                               parallel_execute_op.getResults())) {
+    Value tpu_cluster_result = std::get<0>(result);
+    Value parallel_execute_result = std::get<1>(result);
+    for (auto& use : llvm::make_early_inc_range(tpu_cluster_result.getUses()))
+      if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
+        use.set(parallel_execute_result);
+  }
+}
+
+// Get the vector of results for new tpu cluster
+llvm::SmallVector<Value, 4> GetNewTpuResults(
+    const llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  llvm::SmallVector<Value, 4> tpu_results;
+  tpu_results.reserve(return_value_from_tpu.size());
+  for (Value old_result : return_value_from_tpu)
+    tpu_results.push_back(old_result);
+  return tpu_results;
+}
+
+// Get the vector of types of results for new tpu cluster
+llvm::SmallVector<Type, 4> GetNewTpuTypes(
+    const llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  llvm::SmallVector<Type, 4> tpu_result_types;
+  tpu_result_types.reserve(return_value_from_tpu.size());
+  for (Value old_result : return_value_from_tpu)
+    tpu_result_types.push_back(old_result.getType());
+  return tpu_result_types;
+}
+
+// Move ops in old tpu cluster to new tpu cluster
+void MoveOldTpuClusterToNewTpuCluster(tf_device::ClusterOp tpu_cluster,
+                                      Operation* after_op_r) {
+  for (Operation& op : llvm::make_early_inc_range(tpu_cluster.GetBody())) {
+    if (&op != tpu_cluster.GetBody().getTerminator()) {
+      op.moveBefore(after_op_r);
+    }
+  }
+}
+
+// Move ops in the tmp host launch op to new host launch op
+void MoveTmpLaunchOpToNewLaunchOp(tf_device::LaunchOp tmp_host_launch_op,
+                                  Operation* after_op_host_cluster) {
+  for (Operation& op :
+       llvm::make_early_inc_range(tmp_host_launch_op.GetBody())) {
+    if (&op != tmp_host_launch_op.GetBody().getTerminator()) {
+      op.moveBefore(after_op_host_cluster);
+    }
+  }
+}
+
+// Since we have the outputs from host and tpu computation after moving
+// outside compiled ops, we can create the actual parallel_execute regions.
+// Still, one region is for the host computation for outside compilation and
+// the other one is for the original TPU cluster computation.
+tf_device::ParallelExecuteOp CreateFinalParallelExecuteOp(
+    OpBuilder& builder, int num_regions, llvm::StringRef host_device,
+    tf_device::ClusterOp tpu_cluster, tf_device::LaunchOp tmp_host_launch_op,
+    const llvm::SmallVector<Value, 4>& return_value_from_host,
+    const llvm::SmallVector<Value, 4>& return_value_from_tpu) {
+  llvm::SmallVector<Type, 4> parallel_execute_result_types =
+      GetParallelExecuteResultsTypes(return_value_from_host,
+                                     return_value_from_tpu);
+
+  builder.setInsertionPoint(tpu_cluster);
   auto parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
-      tpu_cluster.getLoc(), num_regions, tpu_cluster.getResults().getTypes());
+      tpu_cluster.getLoc(), num_regions, parallel_execute_result_types);
   Block& host_computation_block =
       parallel_execute_op.GetRegionBlockWithIndex(0);
   builder.setInsertionPointToEnd(&host_computation_block);
 
   // Create a single launch op for all outside compiled ops.
-  tf_device::LaunchOp host_launch_op =
-      CreateLaunchOpForOutsideCluster(builder, tpu_cluster, host_device);
-  builder.setInsertionPoint(host_launch_op.GetBody().getTerminator());
+  llvm::SmallVector<Value, 4> host_results;
+  host_results.insert(host_results.end(), return_value_from_host.begin(),
+                      return_value_from_host.end());
+  tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
+      builder, tpu_cluster, host_device, host_results);
+
+  // Create a return op for host computation block
+  builder.setInsertionPointToEnd(&host_computation_block);
+  builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
+                                      host_launch_op->getResults());
+
+  // Move the launch body to last parallel_execute block.
+  Block& parallel_execute_tpu_block =
+      parallel_execute_op.GetRegionBlockWithIndex(1);
+  builder.setInsertionPointToEnd(&parallel_execute_tpu_block);
+
+  // Get the vector of results and types of results for new tpu cluster
+  llvm::SmallVector<Value, 4> tpu_results =
+      GetNewTpuResults(return_value_from_tpu);
+  llvm::SmallVector<Type, 4> tpu_result_types =
+      GetNewTpuTypes(return_value_from_tpu);
+
+  // Create a empty tpu cluster op with same attribute but different return type
+  auto new_tpu_cluster = builder.create<tf_device::ClusterOp>(
+      tpu_cluster.getLoc(), tpu_result_types,
+      /*operands=*/llvm::ArrayRef<Value>{}, tpu_cluster->getAttrs());
+
+  new_tpu_cluster.getBody().push_back(new Block);
+  builder.setInsertionPointToEnd(&new_tpu_cluster.GetBody());
+
+  // Create return op for tpu computation region in the paralle_execute op
+  Operation* after_op_r = builder.create<tf_device::ReturnOp>(
+      new_tpu_cluster.getLoc(), tpu_results);
+
+  builder.setInsertionPointToEnd(&parallel_execute_tpu_block);
+
+  // Create return op for the new tpu cluster op
+  builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
+                                      new_tpu_cluster.getResults());
+
+  MoveOldTpuClusterToNewTpuCluster(tpu_cluster, after_op_r);
+
+  Operation* after_op_host_cluster = host_launch_op.GetBody().getTerminator();
+  MoveTmpLaunchOpToNewLaunchOp(tmp_host_launch_op, after_op_host_cluster);
+
+  return parallel_execute_op;
+}
+
+// Creates a `parallel_execute` op with a region for host computation and
+// a region for `tpu_cluster` computation by extracting outside compiled ops to
+// host computation.
+LogicalResult CreateParallelExecuteForOutsideCompilation(
+    ModuleOp module, tf_device::ClusterOp tpu_cluster,
+    llvm::StringRef host_device,
+    llvm::SmallVector<tf_device::ParallelExecuteOp, 4>& ops) {
+  OpBuilder builder(tpu_cluster);
+  llvm::SmallVector<Value, 4> returns_from_host;
+
+  // Create a temporary parallel_execute. This is temporary because the result
+  // type is not determined until after it is filled. There are two regions in
+  // `tmp_parallel_execute_op`. The first one is for the host computation for
+  // outside compilation and the second one is for the original TPU cluster
+  // computation.
+  const int num_regions = 2;
+  auto tmp_parallel_execute_op = builder.create<tf_device::ParallelExecuteOp>(
+      tpu_cluster.getLoc(), num_regions, llvm::ArrayRef<Type>{});
+  Block& tmp_host_computation_block =
+      tmp_parallel_execute_op.GetRegionBlockWithIndex(0);
+  builder.setInsertionPointToEnd(&tmp_host_computation_block);
+
+  // Create a single tmp launch op for all outside compiled ops.
+  llvm::SmallVector<Value, 4> tmp_host_results;
+  tf_device::LaunchOp tmp_host_launch_op = CreateLaunchOpForOutsideCluster(
+      builder, tpu_cluster, host_device, tmp_host_results);
+
+  // Create a tmp return op for tmp host computation block
+  builder.setInsertionPointToEnd(&tmp_host_computation_block);
+  builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
+                                      llvm::ArrayRef<Value>{});
+
+  builder.setInsertionPoint(tmp_host_launch_op.GetBody().getTerminator());
   auto compilation_key_op =
       CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), builder);
   Value compilation_key = compilation_key_op.program();
@@ -804,41 +1062,37 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
                                   communication_key_index)))
     return failure();
 
-  // Move all outside compiled ops including control flow to host launch.
+  // Move all outside compiled ops including control flow to tmp host launch.
+  // Also set the values returned from the host when ops are moved.
   if (failed(MoveOpsToHost(tpu_cluster, &tpu_cluster.GetBody(),
-                           host_launch_op.GetBody().getTerminator(),
+                           tmp_host_launch_op.GetBody().getTerminator(),
                            compilation_key, device_ordinal,
-                           default_device_ordinal, communication_key_index)))
+                           default_device_ordinal, communication_key_index,
+                           &returns_from_host)))
     return failure();
+
+  llvm::SmallVector<Value, 4> returns_from_tpu;
+  GetReturnValueFromTPU(tpu_cluster, returns_from_host, returns_from_tpu);
 
   if (communication_key_index == 0) compilation_key_op.erase();
   if (communication_key_index == 0 || device_ordinal == nullptr)
     device_ordinal_op.erase();
 
-  RemoveOutsideCompilation(host_launch_op);
+  RemoveOutsideCompilation(tmp_host_launch_op);
 
-  builder.setInsertionPointToEnd(&host_computation_block);
-  builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(), ArrayRef<Value>{});
+  tf_device::ParallelExecuteOp parallel_execute_op =
+      CreateFinalParallelExecuteOp(builder, num_regions, host_device,
+                                   tpu_cluster, tmp_host_launch_op,
+                                   returns_from_host, returns_from_tpu);
 
-  // Move the launch body to last parallel_execute block.
-  Block& parallel_execute_tpu_block =
-      parallel_execute_op.GetRegionBlockWithIndex(1);
-  builder.setInsertionPointToEnd(&parallel_execute_tpu_block);
-  builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
-                                      tpu_cluster.getResults());
-  tpu_cluster.getOperation()->moveBefore(
-      parallel_execute_tpu_block.getTerminator());
-
+  ops.push_back(tmp_parallel_execute_op);
   // Remap cluster results with parallel_execute results if user is outside of
   // parallel_execute.
-  for (auto result :
-       llvm::zip(tpu_cluster.getResults(), parallel_execute_op.getResults())) {
-    Value tpu_cluster_result = std::get<0>(result);
-    Value parallel_execute_result = std::get<1>(result);
-    for (auto& use : llvm::make_early_inc_range(tpu_cluster_result.getUses()))
-      if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
-        use.set(parallel_execute_result);
-  }
+  RemapTpuClusterResultsWithParallelExecuteResults(
+      tpu_cluster, parallel_execute_op, returns_from_host, returns_from_tpu);
+
+  tpu_cluster.erase();
+
   return success();
 }
 
@@ -849,17 +1103,23 @@ void TPUExtractOutsideCompilation::runOnOperation() {
   if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
     return signalPassFailure();
 
+  llvm::SmallVector<tf_device::ParallelExecuteOp, 4> tmp_parallel_execute_ops;
+
   module.walk([&](tf_device::ClusterOp tpu_cluster) {
     if (HasOutsideCompilationNested(tpu_cluster.getOperation())) {
       std::string host_device;
       if (failed(tensorflow::GetHostDeviceOutsideComputation(
               devices, tpu_cluster, &host_device)))
         return signalPassFailure();
-      if (failed(CreateParallelExecuteForOutsideCompilation(module, tpu_cluster,
-                                                            host_device)))
+      if (failed(CreateParallelExecuteForOutsideCompilation(
+              module, tpu_cluster, host_device, tmp_parallel_execute_ops)))
         return signalPassFailure();
     }
   });
+
+  for (auto parallel_execute_op : tmp_parallel_execute_ops) {
+    parallel_execute_op.erase();
+  }
   // Remove `_xla_outside_compilation` attribute from all ops.  These ops will
   // be outside of the device cluster. The `_xla_outside_compilation` attribute
   // on ops outside of tf_device.cluster don't have any meaning and can lead to
