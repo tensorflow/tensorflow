@@ -26,32 +26,17 @@ limitations under the License.
 namespace xla {
 
 // In order to use TestCompilationEnvironment* with CompilationEnvironments, we
-// must define CreateDefaultEnv and ProcessNewEnv for them.
-template <>
-std::unique_ptr<test::TestCompilationEnvironment1>
-CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment1>() {
-  auto env = std::make_unique<test::TestCompilationEnvironment1>();
-  env->set_some_flag(100);
-  return env;
-}
+// must define ProcessNewEnv for them.
 template <>
 std::unique_ptr<test::TestCompilationEnvironment1>
 CompilationEnvironments::ProcessNewEnv(
     std::unique_ptr<test::TestCompilationEnvironment1> env) {
   if (!env) {
-    return CompilationEnvironments::CreateDefaultEnv<
-        test::TestCompilationEnvironment1>();
+    env = std::make_unique<test::TestCompilationEnvironment1>();
   }
-  if (env->some_flag() == 0) {
-    env->set_some_flag(101);
+  if (env->some_flag() == 0 || env->some_flag() == 1) {
+    env->set_some_flag(100);
   }
-  return env;
-}
-template <>
-std::unique_ptr<test::TestCompilationEnvironment2>
-CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment2>() {
-  auto env = std::make_unique<test::TestCompilationEnvironment2>();
-  env->set_some_other_flag(200);
   return env;
 }
 template <>
@@ -59,16 +44,11 @@ std::unique_ptr<test::TestCompilationEnvironment2>
 CompilationEnvironments::ProcessNewEnv(
     std::unique_ptr<test::TestCompilationEnvironment2> env) {
   if (!env) {
-    return CompilationEnvironments::CreateDefaultEnv<
-        test::TestCompilationEnvironment2>();
+    env = std::make_unique<test::TestCompilationEnvironment2>();
   }
-  return env;
-}
-template <>
-std::unique_ptr<test::TestCompilationEnvironment3>
-CompilationEnvironments::CreateDefaultEnv<test::TestCompilationEnvironment3>() {
-  auto env = std::make_unique<test::TestCompilationEnvironment3>();
-  env->set_a_third_flag(300);
+  if (env->some_other_flag() == 0) {
+    env->set_some_other_flag(200);
+  }
   return env;
 }
 template <>
@@ -76,8 +56,10 @@ std::unique_ptr<test::TestCompilationEnvironment3>
 CompilationEnvironments::ProcessNewEnv(
     std::unique_ptr<test::TestCompilationEnvironment3> env) {
   if (!env) {
-    return CompilationEnvironments::CreateDefaultEnv<
-        test::TestCompilationEnvironment3>();
+    env = std::make_unique<test::TestCompilationEnvironment3>();
+  }
+  if (env->a_third_flag() == 0) {
+    env->set_a_third_flag(300);
   }
   return env;
 }
@@ -104,9 +86,9 @@ TEST_F(CompilationEnvironmentsTest, GetAddedEnvNotModifiedByProcessNewEnv) {
 TEST_F(CompilationEnvironmentsTest, GetAddedEnvModifiedByProcessNewEnv) {
   CompilationEnvironments envs;
   auto env = std::make_unique<TestCompilationEnvironment1>();
-  env->set_some_flag(0);
+  env->set_some_flag(1);
   envs.AddEnv(std::move(env));
-  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 101);
+  EXPECT_EQ(envs.GetEnv<TestCompilationEnvironment1>().some_flag(), 100);
 }
 
 TEST_F(CompilationEnvironmentsTest, MultipleEnvs) {
