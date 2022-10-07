@@ -1043,19 +1043,6 @@ bool LeafVectorsAreConsistent(const std::vector<ShardingStrategy>& one,
   if (one.size() != two.size()) {
     return false;
   }
-  if (is_reshape) {
-    // Checks only the sizes for reshapes.
-    return true;
-  }
-  for (size_t i = 0; i < one.size(); i++) {
-    // Note: this will always unfollow for instructions with operands of
-    // different shapes. Need to re-evaluate whether we should follow in this
-    // case.
-    if (one.at(i).output_sharding.ToString() !=
-        two.at(i).output_sharding.ToString()) {
-      return false;
-    }
-  }
   return true;
 }
 
