@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -2732,25 +2733,110 @@ arith::ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
   return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
+bool IsSign(APInt a, APInt sign) {
+  if (a.isZero()) return a == sign;
+  if (a.isNegative()) return sign == -1;
+  return sign == 1;
+}
+
 bool IsSign(APFloat a, APFloat sign) {
   if (a.isNaN() || a.isZero()) return a == sign;
   if (a.isNegative()) return sign.isExactlyValue(-1.0);
   return sign.isExactlyValue(1.0);
 }
 
-// Returns whether the splat constant is the sign of the FloatTensor
-bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
-                       ElementsAttr sgn_cst) {
-  if (!sgn_cst.isa<SplatElementsAttr>()) return false;
-  auto sgn_cst_spl = sgn_cst.cast<SplatElementsAttr>().getSplatValue<APFloat>();
-  if (floatv.isa<SplatElementsAttr>()) {
-    auto floatv_spl = floatv.cast<SplatElementsAttr>().getSplatValue<APFloat>();
-    return IsSign(floatv_spl, sgn_cst_spl);
-  } else if (floatv.isa<DenseElementsAttr>()) {
-    auto floatv_dns = floatv.cast<DenseFPElementsAttr>();
-    return llvm::all_of(floatv_dns.getValues<APFloat>(), [&](APFloat value) {
-      return IsSign(value, sgn_cst_spl);
+bool IsDenseSplatIntAttr(ElementsAttr float_or_int) {
+  return float_or_int.isa<SplatElementsAttr>() &&
+         float_or_int.isa<DenseIntElementsAttr>();
+}
+
+bool IsDenseSplatFloatAttr(ElementsAttr float_or_int) {
+  return float_or_int.isa<SplatElementsAttr>() &&
+         float_or_int.isa<DenseFPElementsAttr>();
+}
+
+bool ValueIsReciprocal(ElementsAttr float_or_int, ElementsAttr rhs) {
+  if (IsDenseSplatFloatAttr(float_or_int) &&
+      IsDenseSplatFloatAttr(float_or_int)) {
+    return (float_or_int.cast<SplatElementsAttr>().getSplatValue<APFloat>() *
+            rhs.cast<SplatElementsAttr>().getSplatValue<APFloat>())
+        .isExactlyValue(1.0);
+  } else if (IsDenseSplatIntAttr(float_or_int) &&
+             IsDenseSplatIntAttr(float_or_int)) {
+    return (float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>() *
+            rhs.cast<SplatElementsAttr>().getSplatValue<APInt>()) == 1;
+  }
+  return false;
+}
+
+bool ValueEquals(ElementsAttr float_or_int, double rhs) {
+  if (IsDenseSplatFloatAttr(float_or_int)) {
+    return float_or_int.cast<SplatElementsAttr>()
+        .getSplatValue<APFloat>()
+        .isExactlyValue(rhs);
+  } else if (IsDenseSplatIntAttr(float_or_int)) {
+    return float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>() ==
+           static_cast<int>(rhs);
+  }
+  return false;
+}
+
+bool ValueGreaterThanZero(ElementsAttr float_or_int) {
+  if (IsDenseSplatIntAttr(float_or_int)) {
+    auto value = float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>();
+    return !value.isNegative() && !value.isZero();
+  } else if (IsDenseSplatFloatAttr(float_or_int)) {
+    auto value =
+        float_or_int.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+    return !value.isNaN() && !value.isNegative() && !value.isZero();
+  }
+  return false;
+}
+
+// Returns whether the splat constant is the sign of the int or float Tensor.
+bool TensorIsSign(PatternRewriter &rewriter, ElementsAttr float_or_int,
+                  ElementsAttr sgn_cst) {
+  auto sgn_splat = llvm::dyn_cast<SplatElementsAttr>(sgn_cst);
+  if (!sgn_splat) return false;
+
+  auto splat = dyn_cast<SplatElementsAttr>(float_or_int);
+  if (auto float_spl = llvm::dyn_cast_if_present<FloatAttr>(splat),
+      sgn_cst_spl = llvm::dyn_cast_if_present<FloatAttr>(sgn_splat);
+      float_spl && sgn_cst_spl) {
+    return IsSign(float_spl.getValue(), sgn_cst_spl.getValue());
+  }
+  if (auto int_spl = llvm::dyn_cast_if_present<IntegerAttr>(splat),
+      sgn_cst_spl = llvm::dyn_cast_if_present<IntegerAttr>(sgn_splat);
+      int_spl && sgn_cst_spl) {
+    return IsSign(int_spl.getValue(), sgn_cst_spl.getValue());
+  }
+  if (float_or_int.isa<DenseFPElementsAttr>()) {
+    auto sgn_splat_value = sgn_splat.getSplatValue<APFloat>();
+    return llvm::all_of(float_or_int.getValues<APFloat>(), [&](APFloat value) {
+      return IsSign(value, sgn_splat_value);
     });
+  }
+  if (float_or_int.isa<DenseIntElementsAttr>()) {
+    auto sgn_splat_value = sgn_splat.getSplatValue<APInt>();
+    return llvm::all_of(float_or_int.getValues<APInt>(), [&](APInt value) {
+      return IsSign(value, sgn_splat_value);
+    });
+  }
+  return false;
+}
+
+bool SameTypeOrDefaultCompare(mhlo::ComparisonTypeAttr comparison_type_attr,
+                              ElementsAttr cst) {
+  if (!comparison_type_attr) return true;
+  auto comparison_type_attr_value = comparison_type_attr.getValue();
+  if (comparison_type_attr_value == mhlo::ComparisonType::FLOAT &&
+      IsDenseSplatFloatAttr(cst)) {
+    return true;
+  }
+  if ((comparison_type_attr_value == mhlo::ComparisonType::SIGNED ||
+       comparison_type_attr_value == mhlo::ComparisonType::UNSIGNED) &&
+      IsDenseSplatIntAttr(cst)) {
+    return true;
   }
   return false;
 }
