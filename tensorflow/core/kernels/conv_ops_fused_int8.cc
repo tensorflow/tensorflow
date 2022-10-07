@@ -443,12 +443,17 @@ void operator()(
         using VectT = int32;
         auto pad_data_format = FORMAT_NCHW;
 
+	TensorShape maybe_padded_conv_input_shape;
+	OP_REQUIRES_OK(
+            ctx,
+            ShapeFromFormatWithStatus(
+                data_format, batch_size, new_conv_input_rows,
+                new_conv_input_cols, conv_input_depth, &maybe_padded_conv_input_shape));
         OP_REQUIRES_OK(
             ctx,
             ctx->allocate_temp(
                 DataTypeToEnum<T>::value,
-                ShapeFromFormat(data_format, batch_size, new_conv_input_rows,
-                                new_conv_input_cols, conv_input_depth),
+                maybe_padded_conv_input_shape,
                 &maybe_padded_conv_input));
 
         auto conv_input_eigen_tensor =

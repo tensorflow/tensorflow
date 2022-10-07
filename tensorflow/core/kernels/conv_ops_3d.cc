@@ -183,8 +183,12 @@ class Conv3DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(
         context, Get3dOutputSizeV2(input_size, filter_size, dilations, strides,
                                    padding_, &out, &padding));
-    TensorShape out_shape = ShapeFromFormat(
-        data_format_, in_batch, {{out[0], out[1], out[2]}}, out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            data_format_, in_batch, {{out[0], out[1], out[2]}}, out_depth,
+            &out_shape));
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
