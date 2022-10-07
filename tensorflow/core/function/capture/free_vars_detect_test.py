@@ -457,6 +457,43 @@ class FreeVarDetectionTest(parameterized.TestCase):
     free_vars = get_var_name(func_map["g"])
     self.assertSequenceEqual(free_vars, ["x"])
 
+  def test_decorated_method_w_self_no_exception(self):
+    """Test this pattern does not raise any exceptions."""
+
+    def dummy_tf_function(func):
+
+      func_map = free_vars_detect._detect_function_free_vars(func)
+      self.assertLen(func_map, 1)
+      self.assertIn("foo", func_map.keys())
+      free_vars = get_var_name(func_map["foo"])
+      self.assertSequenceEqual(free_vars, ["dummy_tf_function"])
+
+      def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+      return wrapper
+
+    glob = 1
+
+    # This pattern is not fully supported yet in the sense that `self.bar()` is
+    # not inspected so `glob` cannot be detected.
+    # The reason is the neither `self` nor `self.bar` is accessible from the
+    # perspective of dummy_tf_function decorator.
+    # One possible solution is parsing the source code of the whole module,
+    # instead of single function. And probably get the source of `self.bar`
+    # from the AST of the module where `Foo` is defined. One potentail challenge
+    # of this approach is how to locate the decorated function in the AST.
+    class Foo():
+
+      @dummy_tf_function
+      def foo(self):
+        return self.bar()
+
+      def bar(self):
+        return glob
+
+    _ = Foo()
+
   # Use `wrapper_first` to control different arguments order
   @parameterized.parameters(
       (functools.update_wrapper, True),
@@ -512,8 +549,27 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertGreater(len(free_vars), 2)
     return "\n".join(free_vars[2:])
 
-  def test_empty_input(self):
-    txt = free_vars_detect.generate_logging(None)
+  def test_none_input(self):
+    txt = free_vars_detect.generate_free_var_logging(None)
+    self.assertIsNone(txt)
+
+  def test_non_function_input(self):
+    x = 1
+
+    class Foo():
+
+      def bar(self):
+        return x
+
+    foo = Foo()
+    txt = free_vars_detect.generate_free_var_logging(foo)
+    self.assertIsNone(txt)
+
+  def test_func_wo_source_code(self):
+    code = "def f_exec():\n  return 1"
+    # Use `exec` to generate a function without source code
+    exec(code, globals())  # pylint: disable=exec-used
+    txt = free_vars_detect.generate_free_var_logging(f_exec)  # pylint: disable=undefined-variable
     self.assertIsNone(txt)
 
   def test_no_free_var(self):
@@ -521,7 +577,7 @@ class GenerateLoggingTest(parameterized.TestCase):
     def f(x):
       return x + 1
 
-    txt = free_vars_detect.generate_logging(f)
+    txt = free_vars_detect.generate_free_var_logging(f)
     self.assertIsNone(txt)
 
   def test_single_func(self):
@@ -531,7 +587,7 @@ class GenerateLoggingTest(parameterized.TestCase):
     def f(a):
       return a + x + y
 
-    txt = free_vars_detect.generate_logging(f)
+    txt = free_vars_detect.generate_free_var_logging(f)
     txt = self._remove_explanation(txt)
     self.assertEqual(txt, "Inside function f(): x, y")
 
@@ -545,7 +601,7 @@ class GenerateLoggingTest(parameterized.TestCase):
     def f():
       return g() + x
 
-    txt = free_vars_detect.generate_logging(f)
+    txt = free_vars_detect.generate_free_var_logging(f)
     txt = self._remove_explanation(txt)
     lines = txt.split("\n")
     self.assertLen(lines, 2)
@@ -564,7 +620,7 @@ class GenerateLoggingTest(parameterized.TestCase):
         return [x]
 
     foo = Foo()
-    txt = free_vars_detect.generate_logging(foo.f)
+    txt = free_vars_detect.generate_free_var_logging(foo.f)
     txt = self._remove_explanation(txt)
     lines = txt.split("\n")
     self.assertLen(lines, 2)
@@ -580,7 +636,7 @@ class GenerateLoggingTest(parameterized.TestCase):
 
     partial_f = functools.partial(f, a=0)
 
-    txt = free_vars_detect.generate_logging(partial_f)
+    txt = free_vars_detect.generate_free_var_logging(partial_f)
     txt = self._remove_explanation(txt)
     self.assertEqual(txt, "Inside function f(): x, y")
 
@@ -598,7 +654,7 @@ class GenerateLoggingTest(parameterized.TestCase):
       partial_f = functools.partialmethod(f)
 
     foo = Foo()
-    txt = free_vars_detect.generate_logging(foo.partial_f)
+    txt = free_vars_detect.generate_free_var_logging(foo.partial_f)
     txt = self._remove_explanation(txt)
     lines = txt.split("\n")
     self.assertLen(lines, 2)
@@ -611,7 +667,7 @@ class GenerateLoggingTest(parameterized.TestCase):
     def f():
       return a + b + c + d + e
 
-    txt = free_vars_detect.generate_logging(f, var_threshold=3)
+    txt = free_vars_detect.generate_free_var_logging(f, var_threshold=3)
     txt = self._remove_explanation(txt)
     self.assertEqual(txt, "Inside function f(): a, b, c...")
 
@@ -627,7 +683,7 @@ class GenerateLoggingTest(parameterized.TestCase):
     def f():
       return g() + h()
 
-    txt = free_vars_detect.generate_logging(f, fn_threshold=2)
+    txt = free_vars_detect.generate_free_var_logging(f, fn_threshold=2)
     txt = self._remove_explanation(txt)
     lines = txt.split("\n")
     self.assertLen(lines, 3)
