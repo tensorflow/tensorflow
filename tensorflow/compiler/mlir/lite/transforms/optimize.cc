@@ -64,7 +64,7 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_OPTIMIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kRelu[] = "RELU";
@@ -95,7 +95,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-class OptimizePass : public OptimizePassBase<OptimizePass> {
+class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
 

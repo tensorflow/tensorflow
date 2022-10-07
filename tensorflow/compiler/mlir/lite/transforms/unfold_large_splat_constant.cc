@@ -33,7 +33,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_UNFOLDLARGESPLATCONSTANTPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // The threshold of constant bits to be unfolded (1Mb). If there is a splat
@@ -44,7 +44,8 @@ constexpr int64_t kConstantSizeThresholdInBits = 1e+6;
 // Pass which will replace large splat constant tensors to `tfl.Fill` op to
 // reduce the size of the generated flatbuffer model size.
 class UnfoldLargeSplatConstantPass
-    : public UnfoldLargeSplatConstantPassBase<UnfoldLargeSplatConstantPass> {
+    : public impl::UnfoldLargeSplatConstantPassBase<
+          UnfoldLargeSplatConstantPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfoldLargeSplatConstantPass)
 
