@@ -237,20 +237,31 @@ struct LaunchLRN<GPUDevice, T> {
     const int depth = static_cast<int>(in.dim_size(3));
 
     Tensor transformed_input;
+    TensorShape transformed_input_shape;
+    OP_REQUIRES_OK(context,
+                   ShapeFromFormatWithStatus(
+                       FORMAT_NCHW, in.shape(), FORMAT_NHWC,
+                       &transformed_input_shape));
     OP_REQUIRES_OK(context,
                    context->allocate_temp(
                        DataTypeToEnum<T>::value,
-                       ShapeFromFormat(FORMAT_NCHW, in.shape(), FORMAT_NHWC),
+                       transformed_input_shape,
                        &transformed_input));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<GPUDevice>(),
                                            in.tensor<T, 4>(),
                                            transformed_input.tensor<T, 4>());
 
     Tensor transformed_output;
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, output->shape(), FORMAT_NHWC,
+            &transformed_output_shape));
     OP_REQUIRES_OK(
         context, context->allocate_temp(
                      DataTypeToEnum<T>::value,
-                     ShapeFromFormat(FORMAT_NCHW, output->shape(), FORMAT_NHWC),
+                     transformed_output_shape,
                      &transformed_output));
 
     perftools::gputools::dnn::BatchDescriptor dimensions_desc;
@@ -531,40 +542,61 @@ struct LaunchLRNGrad<GPUDevice, T> {
     const int64 depth = in_grads.dim_size(3);
 
     Tensor transformed_in_grads;
+    TensorShape transformed_in_grads_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, in_grads.shape(),
+            FORMAT_NHWC, &transformed_in_grads_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, in_grads.shape(),
-                                                FORMAT_NHWC),
+                                transformed_in_grads_shape,
                                 &transformed_in_grads));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<GPUDevice>(),
                                            in_grads.tensor<T, 4>(),
                                            transformed_in_grads.tensor<T, 4>());
 
     Tensor transformed_in_image;
+    TensorShape transformed_in_image_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, in_image.shape(),
+            FORMAT_NHWC, &transformed_in_image_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, in_image.shape(),
-                                                FORMAT_NHWC),
+                                transformed_in_image_shape,
                                 &transformed_in_image));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<GPUDevice>(),
                                            in_image.tensor<T, 4>(),
                                            transformed_in_image.tensor<T, 4>());
 
     Tensor transformed_out_image;
+    TensorShape transformed_out_image_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, out_image.shape(),
+            FORMAT_NHWC, &transformed_out_image_shape));
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DataTypeToEnum<T>::value,
-                                ShapeFromFormat(FORMAT_NCHW, out_image.shape(),
-                                                FORMAT_NHWC),
+                                transformed_out_image_shape,
                                 &transformed_out_image));
     functor::NHWCToNCHW<GPUDevice, T, 4>()(
         context->eigen_device<GPUDevice>(), out_image.tensor<T, 4>(),
         transformed_out_image.tensor<T, 4>());
 
     Tensor transformed_output;
+    TensorShape transformed_output_shape;
+    OP_REQUIRES_OK(
+        context,
+        ShapeFromFormatWithStatus(
+            FORMAT_NCHW, output->shape(),
+            FORMAT_NHWC, &transformed_output_shape));
     OP_REQUIRES_OK(
         context, context->allocate_temp(
                      DataTypeToEnum<T>::value,
-                     ShapeFromFormat(FORMAT_NCHW, output->shape(), FORMAT_NHWC),
+                     transformed_output_shape,
                      &transformed_output));
 
     perftools::gputools::dnn::BatchDescriptor dimensions_desc;
