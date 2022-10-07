@@ -2323,17 +2323,11 @@ void CheckHloSharding(const HloInstructionSequence& sequence) {
 void SetHloSharding(const HloInstructionSequence& sequence,
                     const StrategyMap& strategy_map,
                     const CostGraph& cost_graph,
-                    absl::Span<const int64_t> s_val,
-                    const ClusterEnvironment& cluster_env,
-                    const AutoShardingSolverOption& solver_option) {
+                    absl::Span<const int64_t> s_val, bool last_iteration) {
   // Set the HloSharding for every instruction
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
-  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
 
   for (HloInstruction* inst : instructions) {
-    if (inst->has_sharding()) {  // its sharding has been forcibly set
-      continue;
-    }
     auto iter = strategy_map.find(inst);
     if (iter == strategy_map.end()) {
       continue;
@@ -2345,9 +2339,15 @@ void SetHloSharding(const HloInstructionSequence& sequence,
       ShapeTree<HloSharding> output_tuple_sharding(out_shape, Undefined());
       std::vector<HloSharding> output_flattened_shardings;
 
+      bool set_tuple_sharding = true;
       for (const auto& t : strategies->childs) {
         int node_idx = t->id;
         int stra_idx = s_val[node_idx];
+        // Do not set completed sharding before the last iteration
+        if (t->leaf_vector[stra_idx].output_sharding.IsReplicated() &&
+            !last_iteration) {
+          set_tuple_sharding = false;
+        }
         output_flattened_shardings.push_back(
             t->leaf_vector[stra_idx].output_sharding);
       }
@@ -2356,7 +2356,9 @@ void SetHloSharding(const HloInstructionSequence& sequence,
       for (auto& leaf : output_tuple_sharding.leaves()) {
         leaf.second = output_flattened_shardings[i++];
       }
-      inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+      if (set_tuple_sharding) {
+        inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+      }
     } else {
       const HloSharding& sharding_spec =
           GetShardingStrategy(inst, strategy_map, cost_graph, s_val)
@@ -2364,15 +2366,28 @@ void SetHloSharding(const HloInstructionSequence& sequence,
       if (IsUndefined(sharding_spec)) {
         continue;
       }
-      inst->set_sharding(sharding_spec);
+      // Do not overwrite existing complete shardings.
+      if (sharding_spec.IsReplicated() && !last_iteration) {
+        LOG(INFO) << "skip setting shardings for inst " << inst->name();
+      } else {
+        inst->set_sharding(sharding_spec);
+      }
     }
   }
+}
 
+void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
+                                  const StrategyMap& strategy_map,
+                                  const CostGraph& cost_graph,
+                                  absl::Span<const int64_t> s_val,
+                                  const ClusterEnvironment& cluster_env) {
+  const std::vector<HloInstruction*>& instructions = sequence.instructions();
+  const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
   // Post process: fix some corner cases.
   ReshardingCache resharding_cache_entity;
   ReshardingCache* resharding_cache = &resharding_cache_entity;
 
-  for (HloInstruction* inst : sequence.instructions()) {
+  for (HloInstruction* inst : instructions) {
     // For some dot instructions and resharding cases, our formulation thinks
     // they are valid. But the spmd partitioner cannot infer the correct
     // dot algorithms or resharding algorithm from the input/output sharding.
@@ -2876,17 +2891,6 @@ StatusOr<bool> AutoSharding::Run(
       option_.force_strategy_inst_indices;
   solver_option.force_strategy_stra_names = option_.force_strategy_stra_names;
 
-  // ----- Read parameters of device mesh -----
-  Array<int64_t> device_mesh(option_.device_mesh_shape);
-  device_mesh.SetValues(option_.device_mesh_ids);
-  // TODO (zhuohan): include the prof result as an option.
-  spmd::ProfilingResult prof_result;
-  // TODO(yuemmawang): set the 1st device_mesh as original device mesh and 2nd
-  // as partial device mesh.
-  spmd::ClusterEnvironment cluster_env(
-      device_mesh, device_mesh, option_.device_mesh_alpha,
-      option_.device_mesh_beta, prof_result, solver_option);
-
   // Remove CustomCalls with custom_call_target="Sharding" and move their
   // shardings to their input ops.
   absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>
@@ -2961,96 +2965,155 @@ StatusOr<bool> AutoSharding::Run(
   }
   VLOG(10) << hlo_live_range->ToString();
   VLOG(10) << spmd::PrintLivenessSet(liveness_set);
-
-  int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(
-      *module, liveness_set, device_mesh.num_elements());
-  // Rounds up to the next GB.
-  int64_t memory_lower_bound_gb = 1 + memory_lower_bound / (1024 * 1024 * 1024);
-  LOG(INFO) << "Memory consumption lower bound is " << memory_lower_bound_gb
-            << " GB.";
-  if (option_.memory_budget_per_device == 0) {
-    LOG(INFO)
-        << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, setting "
-           "option.memory_budget_per_device to be the estimated memory "
-           "consumption lower bound of this module to maximize sharding. Note "
-           "that the memory consumption estimation does not take into account "
-           "alias pairs or while op inputs. So if the model "
-           "is very small such that the alias pairs and while op inputs "
-           "consist significant memory usage percentage, this lower bound will "
-           "cause solver being unable to find feasible solutison. Please set "
-           "xla_tpu_auto_spmd_partitioning_memory_budget_gb to be greater than "
-        << memory_lower_bound_gb << " if this behavior is undesired.";
-    option_.memory_budget_per_device =
-        memory_lower_bound_gb * (1024 * 1024 * 1024);
-  }
-
-  if (!solver_option.force_simple_heuristic.empty()) {
-    AnnotateShardingWithSimpleHeuristic(
-        module, solver_option.force_simple_heuristic, alias_map, cluster_env);
-    return true;
-  }
-
-  // ----- Analyze the batch dim -----
   const HloInstructionSequence& sequence =
       hlo_live_range->flattened_instruction_sequence();
+
+  // ----- Analyze the batch dim -----
   spmd::InstructionBatchDimMap batch_dim_map;
   // TODO(yuemmawang) Enable the batch_dim_map if it becomes helpful. This is
   // supposed to make the solver faster, but it makes it much much slower for
-  // both 1D and 2D mesh shapes. batch_dim_map =
-  // spmd::BuildInstructionBatchDimMap(sequence);
-  if (solver_option.force_batch_dim_to_mesh_dim >= 0) {
-    DisableIncompatibleMixedMeshShapeAndForceBatchDim(
-        batch_dim_map, sequence.instructions(), device_mesh.num_elements(),
-        solver_option);
-  }
+  // both 1D and 2D mesh shapes.
+  // batch_dim_map = spmd::BuildInstructionBatchDimMap(sequence);
+  // ----- Read parameters of device mesh ----
+  Array<int64_t> original_device_mesh(option_.device_mesh_shape);
+  original_device_mesh.SetValues(option_.device_mesh_ids);
+  int64_t original_memory_budget = option_.memory_budget_per_device;
 
-  // ----- Analyze depth -----
-  spmd::InstructionDepthMap ins_depth_map;
-  ins_depth_map = spmd::BuildInstructionDepthMap(sequence, batch_dim_map);
-  // ----- Build strategies and costs -----
-  spmd::StrategyMap strategy_map;
-  spmd::LeafStrategies leaf_strategies;
-  spmd::AssociativeDotPairs associative_dot_pairs;
-
-  TF_ASSIGN_OR_RETURN(
-      std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
-      BuildStrategyAndCost(sequence, ins_depth_map, batch_dim_map, alias_map,
-                           cluster_env, solver_option));
-  spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
-  CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
-  XLA_VLOG_LINES(3, PrintStrategyMap(strategy_map, sequence));
-
-  // ----- Build cost graph and merge unimporant nodes -----
-  spmd::CostGraph cost_graph(leaf_strategies, associative_dot_pairs);
-  cost_graph.Simplify(option_.simplify_graph);
-
-  // ----- Call the ILP Solver -----
-  std::vector<int64_t> s_val, e_val;
-  double objective = -1.0;
-  if (!solver_option.load_solution_vector) {
-    TF_ASSIGN_OR_RETURN(
-        auto solution,
-        CallSolver(sequence, liveness_set, strategy_map, leaf_strategies,
-                   cost_graph, alias_set, option_.memory_budget_per_device));
-    std::tie(s_val, e_val, objective) = solution;
+  std::vector<std::vector<int64_t>> partial_mesh_shapes;
+  if (option_.solve_nd_sharding_iteratively) {
+    // Generate partial mesh shapes to optimize iteratively.
+    partial_mesh_shapes = spmd::DecomposeMeshShapes(option_.device_mesh_shape);
   } else {
-    s_val = option_.strategy_vector;
-  }
-  XLA_VLOG_LINES(5, PrintAutoShardingSolution(sequence, liveness_set,
-                                              strategy_map, leaf_strategies,
-                                              cost_graph, s_val, objective));
-  XLA_VLOG_LINES(1, PrintSolutionMemoryUsage(liveness_set, strategy_map,
-                                             cost_graph, s_val));
-
-  // ----- Substitute all-reduce with reduce-scatter -----
-  if (solver_option.prefer_reduce_scatter) {
-    GenerateReduceScatter(sequence, alias_map, ins_depth_map, strategy_map,
-                          cost_graph, s_val, cluster_env, solver_option);
+    partial_mesh_shapes = {option_.device_mesh_shape};
   }
 
-  // ----- Set Sharding -----
-  SetHloSharding(sequence, strategy_map, cost_graph, s_val, cluster_env,
-                 solver_option);
+  for (size_t mesh_idx = 0; mesh_idx < partial_mesh_shapes.size(); ++mesh_idx) {
+    // Adjust existing shardings with current partial mesh shapes;
+    std::vector<int64_t> mesh_shape = partial_mesh_shapes[mesh_idx];
+    LOG(INFO) << "Processing partial mesh shape: "
+              << spmd::ToString(mesh_shape);
+    Array<int64_t> device_mesh(mesh_shape);
+    int64_t total_devices = 1;
+    for (auto i : mesh_shape) {
+      total_devices *= i;
+    }
+    if (mesh_idx != partial_mesh_shapes.size() - 1) {
+      bool changed = spmd::AdjustShardingsWithPartialMeshShape(
+          sequence.instructions(), mesh_shape, total_devices);
+      LOG(INFO)
+          << "Shardings are adjusted based on current partial mesh shape: "
+          << changed;
+    }
+    std::vector<int64_t> device_mesh_ids = std::vector<int64_t>(total_devices);
+    std::iota(device_mesh_ids.begin(), device_mesh_ids.end(), 0);
+    device_mesh.SetValues(device_mesh_ids);
+
+    // TODO (zhuohan): include the prof result as an option.
+    spmd::ProfilingResult prof_result;
+    spmd::ClusterEnvironment cluster_env(
+        original_device_mesh, device_mesh, option_.device_mesh_alpha,
+        option_.device_mesh_beta, prof_result, solver_option);
+
+    int64_t memory_lower_bound = spmd::MemoryBudgetLowerBound(
+        *module, liveness_set, device_mesh.num_elements());
+    // Rounds up to the next GB.
+    int64_t memory_lower_bound_gb =
+        1 + memory_lower_bound / (1024 * 1024 * 1024);
+    LOG(INFO) << "Memory consumption lower bound is " << memory_lower_bound_gb
+              << " GB.";
+    if (option_.memory_budget_per_device == 0) {
+      LOG(INFO)
+          << "--xla_tpu_auto_spmd_partitioning_memory_budget_gb is 0, setting "
+             "option.memory_budget_per_device to be the estimated memory "
+             "consumption lower bound of this module to maximize sharding. "
+             "Note "
+             "that the memory consumption estimation does not take into "
+             "account "
+             "alias pairs or while op inputs. So if the model "
+             "is very small such that the alias pairs and while op inputs "
+             "consist significant memory usage percentage, this lower bound "
+             "will "
+             "cause solver being unable to find feasible solutison. Please set "
+             "xla_tpu_auto_spmd_partitioning_memory_budget_gb to be greater "
+             "than "
+          << memory_lower_bound_gb << " if this behavior is undesired.";
+      option_.memory_budget_per_device =
+          memory_lower_bound_gb * (1024 * 1024 * 1024);
+    } else if (option_.memory_budget_per_device > 0) {
+      option_.memory_budget_per_device = original_memory_budget *
+                                         original_device_mesh.num_elements() /
+                                         device_mesh.num_elements();
+      LOG(INFO) << "Setting option.memory_budget_per_device to "
+                << option_.memory_budget_per_device;
+    }
+
+    if (!solver_option.force_simple_heuristic.empty()) {
+      AnnotateShardingWithSimpleHeuristic(
+          module, solver_option.force_simple_heuristic, alias_map, cluster_env);
+      return true;
+    }
+
+    if (solver_option.force_batch_dim_to_mesh_dim >= 0) {
+      DisableIncompatibleMixedMeshShapeAndForceBatchDim(
+          batch_dim_map, sequence.instructions(), device_mesh.num_elements(),
+          solver_option);
+    }
+
+    // ----- Analyze depth -----
+    spmd::InstructionDepthMap ins_depth_map;
+    ins_depth_map = spmd::BuildInstructionDepthMap(sequence, batch_dim_map);
+    // ----- Build strategies and costs -----
+    spmd::StrategyMap strategy_map;
+    spmd::LeafStrategies leaf_strategies;
+    spmd::AssociativeDotPairs associative_dot_pairs;
+
+    TF_ASSIGN_OR_RETURN(
+        std::tie(strategy_map, leaf_strategies, associative_dot_pairs),
+        BuildStrategyAndCost(sequence, ins_depth_map, batch_dim_map, alias_map,
+                             cluster_env, solver_option));
+    spmd::AliasSet alias_set = spmd::BuildAliasSet(module, strategy_map);
+    CheckAliasSetCompatibility(alias_set, leaf_strategies, sequence);
+    XLA_VLOG_LINES(8, PrintStrategyMap(strategy_map, sequence));
+
+    // ----- Build cost graph and merge unimporant nodes -----
+    spmd::CostGraph cost_graph(leaf_strategies, associative_dot_pairs);
+    cost_graph.Simplify(option_.simplify_graph);
+
+    // ----- Call the ILP Solver -----
+    std::vector<int64_t> s_val, e_val;
+    double objective = -1.0;
+    if (!solver_option.load_solution_vector) {
+      TF_ASSIGN_OR_RETURN(
+          auto solution,
+          CallSolver(sequence, liveness_set, strategy_map, leaf_strategies,
+                     cost_graph, alias_set, option_.memory_budget_per_device));
+      std::tie(s_val, e_val, objective) = solution;
+    } else {
+      s_val = option_.strategy_vector;
+    }
+
+    XLA_VLOG_LINES(5, PrintAutoShardingSolution(sequence, liveness_set,
+                                                strategy_map, leaf_strategies,
+                                                cost_graph, s_val, objective));
+    XLA_VLOG_LINES(1, PrintSolutionMemoryUsage(liveness_set, strategy_map,
+                                               cost_graph, s_val));
+
+    // ----- Substitute all-reduce with reduce-scatter -----
+    if (solver_option.prefer_reduce_scatter) {
+      GenerateReduceScatter(sequence, alias_map, ins_depth_map, strategy_map,
+                            cost_graph, s_val, cluster_env, solver_option);
+    }
+    // ----- Set Sharding -----
+    SetHloSharding(sequence, strategy_map, cost_graph, s_val,
+                   (mesh_idx == partial_mesh_shapes.size() - 1));
+    if (mesh_idx == partial_mesh_shapes.size() - 1) {
+      SetHloShardingPostProcessing(sequence, strategy_map, cost_graph, s_val,
+                                   cluster_env);
+    } else {
+      spmd::RecoverShardingsFromPartialMesh(sequence, preserve_shardings);
+    }
+  }
+
   if (VLOG_IS_ON(1)) {
     spmd::CheckHloSharding(sequence);
   }
