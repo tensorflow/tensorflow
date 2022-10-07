@@ -250,6 +250,7 @@ cc_library(
     hdrs = ["type_converter.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:types",
