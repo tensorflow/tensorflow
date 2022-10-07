@@ -693,19 +693,6 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
 }
 
 //===----------------------------------------------------------------------===//
-// AllReduceOp
-//===----------------------------------------------------------------------===//
-
-void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllReduceOp::build(odsBuilder, odsState, resultType, operand, replicaGroups,
-                     channelHandle,
-                     /*use_global_device_ids=*/nullptr);
-}
-
-//===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
@@ -738,16 +725,6 @@ void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
                          scatterDimension, replicaGroups, channelHandle,
                          /*use_global_device_ids=*/nullptr);
-}
-
-void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                            Type resultType, Value operand,
-                            uint64_t scatterDimension,
-                            DenseIntElementsAttr replicaGroups,
-                            ChannelHandleAttr channelHandle) {
-  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
-                         scatterDimension, replicaGroups, channelHandle,
-                         /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3157,15 +3134,6 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
                      replicaGroups, channelHandle,
                      /*use_global_device_ids=*/nullptr);
-}
-
-void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand, uint64_t allGatherDim,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
-                     replicaGroups, channelHandle,
-                     /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//

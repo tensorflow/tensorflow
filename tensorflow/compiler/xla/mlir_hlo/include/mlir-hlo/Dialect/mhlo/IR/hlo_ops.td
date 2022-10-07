@@ -1146,11 +1146,6 @@ def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::IntegerAttr":$all_gather_dim,
       "::mlir::DenseIntElementsAttr":$replica_groups,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>,
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "uint64_t":$all_gather_dim,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
@@ -1209,11 +1204,6 @@ def HLO_ReduceScatterOp : HLO_Op<"reduce_scatter",
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::IntegerAttr":$scatter_dimension,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
-      "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>,
-    OpBuilder<(ins
-      "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "uint64_t":$scatter_dimension,
       "::mlir::DenseIntElementsAttr":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 

@@ -1,0 +1,217 @@
+--- a/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
++++ a/llvm/lib/Transforms/InstCombine/InstructionCombining.cpp
+@@ -1154,6 +1154,22 @@
+     NewFV = foldOperationIntoSelectOperand(Op, FV, Builder);
+   return SelectInst::Create(SI->getCondition(), NewTV, NewFV, "", nullptr, SI);
+ }
++
++static Value *foldOperationIntoPhiValue(BinaryOperator *I, Value *InV,
++                                        InstCombiner::BuilderTy &Builder) {
++  bool ConstIsRHS = isa<Constant>(I->getOperand(1));
++  Constant *C = cast<Constant>(I->getOperand(ConstIsRHS));
++
++  Value *Op0 = InV, *Op1 = C;
++  if (!ConstIsRHS)
++    std::swap(Op0, Op1);
++
++  Value *RI = Builder.CreateBinOp(I->getOpcode(), Op0, Op1, "phi.bo");
++  auto *FPInst = dyn_cast<Instruction>(RI);
++  if (FPInst && isa<FPMathOperator>(FPInst))
++    FPInst->copyFastMathFlags(I);
++  return RI;
++}
+ 
+ Instruction *InstCombinerImpl::foldOpIntoPhi(Instruction &I, PHINode *PN) {
+   unsigned NumPHIValues = PN->getNumIncomingValues();
+@@ -1173,68 +1189,48 @@
+     // Otherwise, we can replace *all* users with the new PHI we form.
+   }
+ 
+-  // Check to see whether the instruction can be folded into each phi operand.
+-  // If there is one operand that does not fold, remember the BB it is in.
+-  // If there is more than one or if *it* is a PHI, bail out.
+-  SmallVector<Value *> NewPhiValues;
+-  BasicBlock *NonSimplifiedBB = nullptr;
+-  Value *NonSimplifiedInVal = nullptr;
++  // Check to see if all of the operands of the PHI are simple constants
++  // (constantint/constantfp/undef).  If there is one non-constant value,
++  // remember the BB it is in.  If there is more than one or if *it* is a PHI,
++  // bail out.  We don't do arbitrary constant expressions here because moving
++  // their computation can be expensive without a cost model.
++  BasicBlock *NonConstBB = nullptr;
+   for (unsigned i = 0; i != NumPHIValues; ++i) {
+     Value *InVal = PN->getIncomingValue(i);
+-    BasicBlock *InBB = PN->getIncomingBlock(i);
+-
+-    // NB: It is a precondition of this transform that the operands be
+-    // phi translatable! This is usually trivially satisfied by limiting it
+-    // to constant ops, and for selects we do a more sophisticated check.
+-    SmallVector<Value *> Ops;
+-    for (Value *Op : I.operands()) {
+-      if (Op == PN)
+-        Ops.push_back(InVal);
+-      else
+-        Ops.push_back(Op->DoPHITranslation(PN->getParent(), InBB));
+-    }
+-
+-    // Don't consider the simplification successful if we get back a constant
+-    // expression. That's just an instruction in hiding.
+-    // Also reject the case where we simplify back to the phi node. We wouldn't
+-    // be able to remove it in that case.
+-    Value *NewVal = simplifyInstructionWithOperands(&I, Ops, SQ);
+-    if (NewVal && NewVal != PN && !match(NewVal, m_ConstantExpr())) {
+-      NewPhiValues.push_back(NewVal);
++    // For non-freeze, require constant operand
++    // For freeze, require non-undef, non-poison operand
++    if (!isa<FreezeInst>(I) && match(InVal, m_ImmConstant()))
+       continue;
+-    }
++    if (isa<FreezeInst>(I) && isGuaranteedNotToBeUndefOrPoison(InVal))
++      continue;
+ 
+     if (isa<PHINode>(InVal)) return nullptr;  // Itself a phi.
+-    if (NonSimplifiedBB) return nullptr;  // More than one non-simplified value.
++    if (NonConstBB) return nullptr;  // More than one non-const value.
+ 
+-    NonSimplifiedBB = InBB;
+-    NonSimplifiedInVal = InVal;
+-    NewPhiValues.push_back(nullptr);
++    NonConstBB = PN->getIncomingBlock(i);
+ 
+     // If the InVal is an invoke at the end of the pred block, then we can't
+     // insert a computation after it without breaking the edge.
+     if (isa<InvokeInst>(InVal))
+-      if (cast<Instruction>(InVal)->getParent() == NonSimplifiedBB)
++      if (cast<Instruction>(InVal)->getParent() == NonConstBB)
+         return nullptr;
+ 
+     // If the incoming non-constant value is reachable from the phis block,
+     // we'll push the operation across a loop backedge. This could result in
+     // an infinite combine loop, and is generally non-profitable (especially
+     // if the operation was originally outside the loop).
+-    if (isPotentiallyReachable(PN->getParent(), NonSimplifiedBB, nullptr, &DT,
+-                               LI))
++    if (isPotentiallyReachable(PN->getParent(), NonConstBB, nullptr, &DT, LI))
+       return nullptr;
+   }
+ 
+-  // If there is exactly one non-simplified value, we can insert a copy of the
++  // If there is exactly one non-constant value, we can insert a copy of the
+   // operation in that block.  However, if this is a critical edge, we would be
+   // inserting the computation on some other paths (e.g. inside a loop).  Only
+   // do this if the pred block is unconditionally branching into the phi block.
+   // Also, make sure that the pred block is not dead code.
+-  if (NonSimplifiedBB != nullptr) {
+-    BranchInst *BI = dyn_cast<BranchInst>(NonSimplifiedBB->getTerminator());
+-    if (!BI || !BI->isUnconditional() ||
+-        !DT.isReachableFromEntry(NonSimplifiedBB))
++  if (NonConstBB != nullptr) {
++    BranchInst *BI = dyn_cast<BranchInst>(NonConstBB->getTerminator());
++    if (!BI || !BI->isUnconditional() || !DT.isReachableFromEntry(NonConstBB))
+       return nullptr;
+   }
+ 
+@@ -1245,23 +1241,88 @@
+ 
+   // If we are going to have to insert a new computation, do so right before the
+   // predecessor's terminator.
+-  Instruction *Clone = nullptr;
+-  if (NonSimplifiedBB) {
+-    Clone = I.clone();
+-    for (Use &U : Clone->operands()) {
+-      if (U == PN)
+-        U = NonSimplifiedInVal;
++  if (NonConstBB)
++    Builder.SetInsertPoint(NonConstBB->getTerminator());
++
++  // Next, add all of the operands to the PHI.
++  if (SelectInst *SI = dyn_cast<SelectInst>(&I)) {
++    // We only currently try to fold the condition of a select when it is a phi,
++    // not the true/false values.
++    Value *TrueV = SI->getTrueValue();
++    Value *FalseV = SI->getFalseValue();
++    BasicBlock *PhiTransBB = PN->getParent();
++    for (unsigned i = 0; i != NumPHIValues; ++i) {
++      BasicBlock *ThisBB = PN->getIncomingBlock(i);
++      Value *TrueVInPred = TrueV->DoPHITranslation(PhiTransBB, ThisBB);
++      Value *FalseVInPred = FalseV->DoPHITranslation(PhiTransBB, ThisBB);
++      Value *InV = nullptr;
++      // Beware of ConstantExpr:  it may eventually evaluate to getNullValue,
++      // even if currently isNullValue gives false.
++      Constant *InC = dyn_cast<Constant>(PN->getIncomingValue(i));
++      // For vector constants, we cannot use isNullValue to fold into
++      // FalseVInPred versus TrueVInPred. When we have individual nonzero
++      // elements in the vector, we will incorrectly fold InC to
++      // `TrueVInPred`.
++      if (InC && isa<ConstantInt>(InC))
++        InV = InC->isNullValue() ? FalseVInPred : TrueVInPred;
++      else {
++        // Generate the select in the same block as PN's current incoming block.
++        // Note: ThisBB need not be the NonConstBB because vector constants
++        // which are constants by definition are handled here.
++        // FIXME: This can lead to an increase in IR generation because we might
++        // generate selects for vector constant phi operand, that could not be
++        // folded to TrueVInPred or FalseVInPred as done for ConstantInt. For
++        // non-vector phis, this transformation was always profitable because
++        // the select would be generated exactly once in the NonConstBB.
++        Builder.SetInsertPoint(ThisBB->getTerminator());
++        InV = Builder.CreateSelect(PN->getIncomingValue(i), TrueVInPred,
++                                   FalseVInPred, "phi.sel");
++      }
++      NewPN->addIncoming(InV, ThisBB);
++    }
++  } else if (CmpInst *CI = dyn_cast<CmpInst>(&I)) {
++    Constant *C = cast<Constant>(I.getOperand(1));
++    for (unsigned i = 0; i != NumPHIValues; ++i) {
++      Value *InV = nullptr;
++      if (auto *InC = dyn_cast<Constant>(PN->getIncomingValue(i)))
++        InV = ConstantExpr::getCompare(CI->getPredicate(), InC, C);
+       else
+-        U = U->DoPHITranslation(PN->getParent(), NonSimplifiedBB);
++        InV = Builder.CreateCmp(CI->getPredicate(), PN->getIncomingValue(i),
++                                C, "phi.cmp");
++      NewPN->addIncoming(InV, PN->getIncomingBlock(i));
+     }
+-    InsertNewInstBefore(Clone, *NonSimplifiedBB->getTerminator());
+-  }
+-
+-  for (unsigned i = 0; i != NumPHIValues; ++i) {
+-    if (NewPhiValues[i])
+-      NewPN->addIncoming(NewPhiValues[i], PN->getIncomingBlock(i));
+-    else
+-      NewPN->addIncoming(Clone, PN->getIncomingBlock(i));
++  } else if (auto *BO = dyn_cast<BinaryOperator>(&I)) {
++    for (unsigned i = 0; i != NumPHIValues; ++i) {
++      Value *InV = foldOperationIntoPhiValue(BO, PN->getIncomingValue(i),
++                                             Builder);
++      NewPN->addIncoming(InV, PN->getIncomingBlock(i));
++    }
++  } else if (isa<FreezeInst>(&I)) {
++    for (unsigned i = 0; i != NumPHIValues; ++i) {
++      Value *InV;
++      if (NonConstBB == PN->getIncomingBlock(i))
++        InV = Builder.CreateFreeze(PN->getIncomingValue(i), "phi.fr");
++      else
++        InV = PN->getIncomingValue(i);
++      NewPN->addIncoming(InV, PN->getIncomingBlock(i));
++    }
++  } else if (auto *EV = dyn_cast<ExtractValueInst>(&I)) {
++    for (unsigned i = 0; i != NumPHIValues; ++i)
++      NewPN->addIncoming(Builder.CreateExtractValue(PN->getIncomingValue(i),
++                                                    EV->getIndices(), "phi.ev"),
++                         PN->getIncomingBlock(i));
++  } else {
++    CastInst *CI = cast<CastInst>(&I);
++    Type *RetTy = CI->getType();
++    for (unsigned i = 0; i != NumPHIValues; ++i) {
++      Value *InV;
++      if (Constant *InC = dyn_cast<Constant>(PN->getIncomingValue(i)))
++        InV = ConstantExpr::getCast(CI->getOpcode(), InC, RetTy);
++      else
++        InV = Builder.CreateCast(CI->getOpcode(), PN->getIncomingValue(i),
++                                 I.getType(), "phi.cast");
++      NewPN->addIncoming(InV, PN->getIncomingBlock(i));
++    }
+   }
+ 
+   for (User *U : make_early_inc_range(PN->users())) {
