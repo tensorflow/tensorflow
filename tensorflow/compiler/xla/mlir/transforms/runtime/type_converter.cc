@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
-#include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
 namespace runtime {
@@ -36,8 +35,6 @@ namespace runtime {
 using absl::InvalidArgumentError;
 using absl::StatusOr;
 using absl::StrFormat;
-
-using xla::primitive_util::NativeToPrimitiveType;
 
 // Type conversion for the canonical MLIR types supported by the runtime.
 static std::unique_ptr<Type> ConvertCanonicalType(
@@ -61,8 +58,8 @@ static std::unique_ptr<Type> ConvertCanonicalType(
       return std::make_unique<AsyncValueType>(std::move(*value_type));
   }
 
-  // mlir::{IndexType, IntegerType, FloatType} -> xla::runtime::ScalarType
-  if (type.isa<mlir::IndexType, mlir::IntegerType, mlir::FloatType>()) {
+  // mlir::{IntegerType, FloatType} -> xla::runtime::ScalarType
+  if (type.isa<mlir::IntegerType, mlir::FloatType>()) {
     if (auto dtype = TypeConverter::ConvertElementType(type); dtype.ok())
       return std::make_unique<ScalarType>(*dtype);
   }
@@ -111,7 +108,6 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
     mlir::Type type) {
-  if (type.isIndex()) return NativeToPrimitiveType<intptr_t>();
   if (type.isBF16()) return PrimitiveType::BF16;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
