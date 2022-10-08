@@ -76,7 +76,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_transforms",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:shape_component_analysis",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineAnalysis",

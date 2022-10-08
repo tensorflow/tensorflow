@@ -2140,7 +2140,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@stablehlo//:register",
     "//tensorflow/compiler/xla/mlir_hlo",
     "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-    "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
+    "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
     "//tensorflow/compiler/mlir/xla:layout_util",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:tf_xla_passes",

@@ -15,9 +15,9 @@ tf_cc_binary(
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/cpu:passes",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:all_test_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_test_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",

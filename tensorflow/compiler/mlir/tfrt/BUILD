@@ -119,7 +119,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
