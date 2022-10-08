@@ -22,7 +22,7 @@ REGISTER6(BinaryOp, CPU, "Div", functor::div, float, Eigen::half, double,
 REGISTER8(BinaryOp, CPU, "Div", functor::safe_div, uint8, uint16, uint32,
           uint64, int8, int16, int32, int64_t);
 REGISTER8(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16,
-          uint32, uint64, int8, int16, int32, int64_t);
+          uint32, uint64, int8, int16, int32, int64_t,float, Eigen::half, double, bfloat16, complex64, complex128);
 REGISTER6(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
           bfloat16, complex64, complex128);
 REGISTER6(BinaryOp, CPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
@@ -41,7 +41,7 @@ REGISTER_KERNEL_BUILDER(Name("Div")
 REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
           uint16, int16, int64, complex64, complex128);
 REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
-          int64);
+          int64, uint32, uint64, int8, int16, int32, int64_t,float, Eigen::half, double, bfloat16, complex64, complex128);
 REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
           complex64, complex128);
 REGISTER5(BinaryOp, GPU, "DivNoNan", functor::div_no_nan, Eigen::half, float,
