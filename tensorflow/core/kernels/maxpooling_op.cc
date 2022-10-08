@@ -770,9 +770,11 @@ class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+    TensorShape params_forward_output_shape;
+    OP_REQUIRES_OK(context, params.forward_output_shape(&params_forward_output_shape));
+    OP_REQUIRES(context, tensor_out.shape() == params_forward_output_shape,
                 errors::InvalidArgument("Expected orig_output shape to be ",
-                                        params.forward_output_shape(),
+                                        params_forward_output_shape,
                                         ", but got ", tensor_out.shape()));
     OP_REQUIRES(
         context, out_grad_backprop.shape() == tensor_in.shape(),

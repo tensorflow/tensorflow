@@ -605,11 +605,13 @@ inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
 
 // Returns a copy of the specified tensor 'src_shape' converted from
 // 'src_format' to 'dst_format'.
-inline TensorShape ShapeFromFormat(TensorFormat dst_format,
-                                   const TensorShape& src_shape,
-                                   TensorFormat src_format) {
+inline Status ShapeFromFormatWithStatus(TensorFormat dst_format,
+                                        const TensorShape& src_shape,
+                                        TensorFormat src_format,
+                                        TensorShape *shape) {
   if (src_format == dst_format) {
-    return src_shape;
+    *shape = src_shape;
+    return Status::OK();
   }
 
   const int64_t batch = GetTensorDim(src_shape, src_format, 'N');
@@ -626,7 +628,16 @@ inline TensorShape ShapeFromFormat(TensorFormat dst_format,
   if (src_format == FORMAT_NHWC_VECT_W) {
     spatial_dims[num_src_spatial_dims - 1] *= 4;
   }
-  return ShapeFromFormat(dst_format, batch, {spatial_dims}, channels);
+  return ShapeFromFormatWithStatus(dst_format, batch, {spatial_dims}, channels, shape);
+}
+
+inline TensorShape ShapeFromFormat(TensorFormat dst_format,
+                                   const TensorShape& src_shape,
+                                   TensorFormat src_format) {
+  TensorShape shape;
+  Status status = ShapeFromFormatWithStatus(dst_format, src_shape, src_format, &shape);
+  CHECK(status.ok());
+  return shape;
 }
 
 // Returns a copy of the specified filter tensor 'src_shape' converted from

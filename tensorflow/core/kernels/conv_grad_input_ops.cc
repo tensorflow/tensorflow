@@ -203,7 +203,7 @@ void LaunchConv2DBackpropInputOpGpuImpl(
     const int64_t new_in_cols =
         dims.spatial_dims[1].input_size + padding_cols_diff;
     OP_REQUIRES_OK(
-        context,
+        ctx,
         ShapeFromFormatWithStatus(
             data_format, dims.batch_size, new_in_rows, new_in_cols, dims.in_depth,
             &compatible_input_shape));
@@ -412,7 +412,7 @@ void LaunchConv2DBackpropInputOpGpuImpl(
             GetTensorDim(input_shape, data_format, 'H'),
             GetTensorDim(input_shape, data_format, 'W'),
             GetTensorDim(input_shape, data_format, 'C'),
-            &in_backprop_remove_padding_shape);
+            &in_backprop_remove_padding_shape));
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(
                  DataTypeToEnum<T>::value,

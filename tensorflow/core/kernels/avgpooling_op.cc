@@ -187,7 +187,8 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     OP_REQUIRES(context, tensor_in.dims() == 4,
                 errors::InvalidArgument("tensor_in must be 4-dimensional"));
 
-    TensorShape output_shape = params.forward_output_shape();
+    TensorShape output_shape;
+    OP_REQUIRES_OK(context, params.forward_output_shape(&output_shape));
     if (output_shape.num_elements() == 0) {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
