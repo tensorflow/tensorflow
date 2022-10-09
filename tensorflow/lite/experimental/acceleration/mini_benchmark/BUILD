@@ -25,7 +25,7 @@ default_visibility_group = [
 ] + minibenchmark_visibility_allowlist()
 
 minibenchmark_visibility_group = default_visibility_group + [
-    "//tensorflow_lite_support/cc:__subpackages__",
+    "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
 ]
 
 package(
