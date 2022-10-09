@@ -614,7 +614,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
-  known until execution time. Hence,when defining custom layers and models
+  known until execution time. Hence, when defining custom layers and models
   for graph mode, prefer the dynamic `tf.shape(x)` over the static `x.shape`.
 
   Args:
