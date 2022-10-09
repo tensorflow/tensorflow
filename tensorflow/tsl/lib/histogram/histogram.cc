@@ -20,11 +20,10 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/protobuf/histogram.pb.h"
-
 namespace tsl {
 namespace histogram {
 

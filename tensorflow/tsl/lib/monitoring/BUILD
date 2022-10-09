@@ -64,6 +64,7 @@ cc_library(
     deps = [
         ":collection_registry",
         ":metric_def",
+        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/lib/histogram",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:macros",
@@ -71,7 +72,6 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -94,9 +94,9 @@ cc_library(
     ],
     deps = [
         ":types",
+        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -111,6 +111,7 @@ cc_library(
         ":collected_metrics",
         ":metric_def",
         ":types",
+        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
@@ -119,7 +120,6 @@ cc_library(
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )
 
@@ -131,7 +131,7 @@ cc_library(
     deps = [
         ":metric_def",
         ":types",
-        "//tensorflow/tsl/protobuf:histogram_proto_cc",
+        "//tensorflow/core/framework:summary_proto_cc",
     ],
 )
 
@@ -191,9 +191,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
+        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],

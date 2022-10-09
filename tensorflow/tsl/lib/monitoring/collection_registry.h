@@ -106,6 +106,7 @@ class CollectionRegistry {
 #include <memory>
 #include <utility>
 
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/monitoring/collected_metrics.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/lib/monitoring/types.h"
@@ -116,7 +117,6 @@ class CollectionRegistry {
 #include "tensorflow/tsl/platform/stringpiece.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
 #include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {
