@@ -257,11 +257,11 @@ class ScopedCounter final {
 
   // Returns duration of the current interval in case the timer has started.
   // Returns nullopt otherwise.
-  absl::optional<uint64> DurationMicroSec() const {
+  std::optional<uint64> DurationMicroSec() const {
     return started_ ? std::optional<uint64>(accumulated_time_ +
                                             Env::Default()->NowMicros() -
                                             start_time_)
-                    : absl::nullopt;
+                    : std::nullopt;
   }
 
   // Temporarily stop the timer, but keep accumulated time.
