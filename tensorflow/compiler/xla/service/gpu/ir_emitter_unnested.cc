@@ -4189,11 +4189,7 @@ IrEmitterUnnested::EmitTilingKernel(
 
 llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
   MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering::SequentiallyConsistent,
-<<<<<<< HEAD
-      "workgroup");
-=======
                           "workgroup");
->>>>>>> upstream/master
   return EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
 }
 

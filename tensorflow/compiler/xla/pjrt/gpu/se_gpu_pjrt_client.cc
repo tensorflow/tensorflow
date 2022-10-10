@@ -308,13 +308,9 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       "StreamExecutorGpuDevice(id=%i, process_index=%i)", id, process_index());
 }
 
-<<<<<<< HEAD:tensorflow/compiler/xla/pjrt/gpu_device.cc
-absl::string_view GpuDevice::device_vendor() const { return device_vendor_; }
-=======
 absl::string_view StreamExecutorGpuDevice::device_vendor() {
   return device_vendor_;
 }
->>>>>>> upstream/master:tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.cc
 
 absl::string_view StreamExecutorGpuDevice::ToString() const {
   return to_string_;

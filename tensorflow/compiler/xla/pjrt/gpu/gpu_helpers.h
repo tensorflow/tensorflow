@@ -35,19 +35,8 @@ StatusOr<LocalClient*> GetGpuXlaClient(
     const std::optional<std::string>& platform_name,
     const std::optional<std::set<int>>& allowed_devices);
 
-<<<<<<< HEAD:tensorflow/compiler/xla/pjrt/gpu_device.h
-  absl::string_view device_vendor() const;
-
-  absl::string_view ToString() const override;
-
- private:
-  std::string device_vendor_;
-  std::string to_string_;
-};
-=======
 // Enables peer access between all pairs of GPUs where possible.
 void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors);
->>>>>>> upstream/master:tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h
 
 struct GpuAllocatorConfig {
   enum class Kind {

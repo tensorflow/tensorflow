@@ -1,11 +1,6 @@
 # Tests of TensorFlow kernels written using the Python API.
 
-<<<<<<< HEAD
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "gpu_py_test")
-=======
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
->>>>>>> upstream/master
 
 package(licenses = ["notice"])
 

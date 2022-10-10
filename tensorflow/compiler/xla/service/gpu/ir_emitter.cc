@@ -726,17 +726,6 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
   }
 }
 
-<<<<<<< HEAD
-void IrEmitter::MaybeEmitFenceForAMDGPU(
-    llvm::AtomicOrdering atomic_ordering,
-    const char* sync_scope_id) {
-  if (IsEmittingForAMDGPU()) {
-    if (ir_emitter_context_->rocm_compute_capability()
-        .gcn_arch_name().substr(0, 6) == "gfx90a") {
-      Fence(atomic_ordering,
-          b_.getContext().getOrInsertSyncScopeID(sync_scope_id));
-    }
-=======
 void IrEmitter::MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
                                         const char* sync_scope_id) {
   if (IsEmittingForAMDGPU() &&
@@ -744,7 +733,6 @@ void IrEmitter::MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
           0, 6) == "gfx90a") {
     b_.CreateFence(atomic_ordering,
                    b_.getContext().getOrInsertSyncScopeID(sync_scope_id));
->>>>>>> upstream/master
   }
 }
 
