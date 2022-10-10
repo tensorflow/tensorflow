@@ -6,8 +6,7 @@ load(
     "tf_proto_library",
 )
 load("//tensorflow:tensorflow.bzl", "if_libtpu", "tf_cc_test", "tf_copts")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",

@@ -43,15 +43,7 @@ load(
     "if_rocm_is_configured",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_cuda_cc_test")
 
 package(
     default_visibility = [

@@ -1,7 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
