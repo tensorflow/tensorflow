@@ -133,6 +133,20 @@ bool isSplatValue(DenseIntElementsAttr attr, uint64_t value) {
   return attr.isSplat() && attr.getSplatValue<uint64_t>() == value;
 }
 
+/// Extracts an element from a tensor and optionally converts it to an index
+/// type, based on the tensor's pre-type conversion type.
+Value extractIndexFromTensor(OpBuilder& builder, Location loc, Value tensor,
+                             ShapedType originalType,
+                             ArrayRef<Value> tensorIndex = {}) {
+  Value extracted = builder.create<tensor::ExtractOp>(loc, tensor, tensorIndex);
+  if (extracted.getType().isIndex()) return extracted;
+  return originalType.getElementType().isUnsignedInteger()
+             ? builder.createOrFold<arith::IndexCastUIOp>(
+                   loc, builder.getIndexType(), extracted)
+             : builder.createOrFold<arith::IndexCastOp>(
+                   loc, builder.getIndexType(), extracted);
+}
+
 /// Returns true if the given `dimensionNumbers` from a mhlo.convolution op
 /// follows a canonical form:
 ///
@@ -1380,6 +1394,8 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
     }
 
     SmallVector<OpFoldResult, 3> startIndices, sizes;
+    Type originalStartIndexType =
+        dynamicSliceOp.getStartIndices().front().getType();
     for (auto& en : llvm::enumerate(
              llvm::zip(adaptor.getStartIndices(),
                        dynamicSliceOp.getSliceSizes().getValues<int64_t>()))) {
@@ -1389,10 +1405,8 @@ class DynamicSliceConverter : public OpConversionPattern<mhlo::DynamicSliceOp> {
       // By mhlo.DynamicSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - size_indices[i])`
-      Value startIndex =
-          rewriter.create<tensor::ExtractOp>(loc, std::get<0>(en.value()));
-      startIndex = rewriter.createOrFold<arith::IndexCastOp>(
-          loc, rewriter.getIndexType(), startIndex);
+      Value startIndex = extractIndexFromTensor(
+          rewriter, loc, std::get<0>(en.value()), originalStartIndexType);
 
       Value mn = rewriter.create<arith::ConstantIndexOp>(loc, 0);
 
@@ -1457,10 +1471,9 @@ class DynamicUpdateSliceConverter
       // By mhlo.DynamicUpdateSlice definition:
       //   `start_indices[i] = clamp(start_indices[i],
       //       0, operand.dimension_size[i] - update.dimension_size[i])`
-      Value startIndex = rewriter.create<tensor::ExtractOp>(loc, en.value());
-      if (!startIndex.getType().isIndex())
-        startIndex = rewriter.create<arith::IndexCastOp>(
-            loc, rewriter.getIndexType(), startIndex);
+      Value startIndex =
+          extractIndexFromTensor(rewriter, loc, en.value(),
+                                 op.getStartIndices()[en.index()].getType());
       Value ub = rewriter.create<arith::ConstantIndexOp>(
           loc, operandType.getDimSize(en.index()) -
                    updateType.getDimSize(en.index()));
@@ -3204,7 +3217,9 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
         gCombine.insert(gCombine.begin() + indexVectorDim, constants[i]);
       }
 
-      indexFromStartIndices.push_back(extractAsIndex(startIndices, gCombine));
+      indexFromStartIndices.push_back(extractIndexFromTensor(
+          rewriter, loc, startIndices, gatherOp.getStartIndices().getType(),
+          gCombine));
     }
 
     // But then start indices are shuffled by the start index map. To make a

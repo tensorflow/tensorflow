@@ -2859,6 +2859,21 @@ func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: t
 
 // -----
 
+func.func @dynamic_slice_unsigned_index(
+    %arg: tensor<3x4xui32>, %start1: tensor<ui64>, %start2: tensor<ui64>) 
+    -> tensor<1x4xui32> {
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
+    slice_sizes = dense<[1, 4]> : tensor<2xi64>
+  } : (tensor<3x4xui32>, tensor<ui64>, tensor<ui64>) -> tensor<1x4xui32>
+  func.return %0 : tensor<1x4xui32>
+}
+
+// CHECK-LABEL: func @dynamic_slice_unsigned_index(
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract
+// CHECK:         arith.index_castui %[[EXTRACT1]]
+
+// -----
+
 func.func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xui32> {
   %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
@@ -2908,6 +2923,20 @@ func.func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi3
 // CHECK-SAME:      [%[[CLAMPED1]], %[[CLAMPED2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
 // CHECK:         return %[[RES]] : tensor<3x3xi32>
+
+// -----
+
+func.func @dynamic_update_slice_unsigned_index(
+    %target: tensor<3x3xi32>, %update: tensor<2x2xi32>,
+    %idx: tensor<ui32>) -> tensor<3x3xi32> {
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %idx, %idx)
+    : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<ui32>, tensor<ui32>) -> tensor<3x3xi32>
+  func.return %0 : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: func @dynamic_update_slice_unsigned_index(
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract
+// CHECK:         arith.index_castui %[[EXTRACT1]]
 
 // -----
 
@@ -4052,6 +4081,33 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IDX2]]] : tensor<1x4x8xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK-DAG:       return %[[RES]]
+
+// -----
+
+func.func @gather_unsigned_index(
+    %operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xui32>)
+    -> tensor<1x8x8xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    someattr
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xui32>) -> tensor<1x8x8xi32>
+  func.return %res : tensor<1x8x8xi32>
+}
+
+// CHECK-LABEL:   func @gather_unsigned_index(
+// CHECK-DAG:       %[[C0:.+]] = arith.constant 0
+// CHECK-DAG:       %[[C1:.+]] = arith.constant 1
+// CHECK:           %[[S0_INT:.+]] = tensor.extract {{.*}}[{{.*}}, %[[C0]]]
+// CHECK:           arith.index_castui %[[S0_INT]] : i32 to index
+// CHECK:           %[[S0_INT:.+]] = tensor.extract {{.*}}[{{.*}}, %[[C1]]]
+// CHECK:           arith.index_castui %[[S1_INT]] : i32 to index
 
 // -----
 
