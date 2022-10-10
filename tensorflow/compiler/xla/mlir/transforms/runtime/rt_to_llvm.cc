@@ -283,10 +283,8 @@ static FailureOr<Value> EncodeArguments(
   // Store constructed arguments array on the stack and return a pointer to it.
   b.create<LLVM::StoreOp>(arr, mem);
 
-  // Return a pointer to the first element of the arguments array.
-  Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
-  Value gep = b.create<LLVM::GEPOp>(ptr, type, mem, ValueRange({c0, c0}));
-  return gep;
+  // Return a pointer to the encoded arguments.
+  return mem;
 }
 
 // Encodes attributes into the global constant (array of pointers to the
@@ -372,10 +370,8 @@ static FailureOr<EncodedResults> EncodeResults(
   // Store constructed results array on the stack
   b.create<LLVM::StoreOp>(arr, mem);
 
-  // Return a pointer to the first element of the results array.
-  Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
-  Value gep = b.create<LLVM::GEPOp>(ptr, type, mem, ValueRange({c0, c0}));
-  results.result_array_ptr = gep;
+  // Return a pointer to the encoded results.
+  results.result_array_ptr = mem;
   return results;
 }
 

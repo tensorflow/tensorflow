@@ -167,16 +167,12 @@ func.func @custom_call(%arg0: !rt.execution_context) {
 func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
 
   // CHECK: %[[C1:.*]] = arith.constant 1 : i32
-  // CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<1 x ptr>
+  // CHECK: %[[RETS:.*]] = llvm.alloca %[[C1]] x !llvm.array<1 x ptr>
 
   // CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
-  // CHECK: %[[ARGS_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x !llvm.array<1 x ptr>
-  // CHECK: %[[ARGS:.*]] = llvm.getelementptr %[[ARGS_ALLOCA]]
+  // CHECK: %[[ARGS:.*]] = llvm.alloca %[[C1_0]] x !llvm.array<1 x ptr>
 
-  // CHECK: %[[ATTRS_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
-  // CHECK: %[[ATTRS:.*]] = llvm.getelementptr %[[ATTRS_ADDR]]
-
-  // CHECK: %[[RETS:.*]] = llvm.getelementptr %[[RETS_ALLOCA]]
+  // CHECK: %[[ATTRS:.*]] = llvm.mlir.addressof @__rt_custom_call_attrs
 
   // CHECK: %[[CALLEE_ADDR:.*]] = llvm.mlir.addressof @__rt_custom_call_name
 
@@ -404,13 +400,12 @@ func.func @dynamic_custom_call(%arg0: !rt.execution_context) {
 // -----
 
 // CHECK: %[[C1:.*]] = arith.constant 1 : i32
-// CHECK: %[[RETS_ALLOCA:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr>
+// CHECK: %[[RETS:.*]] = llvm.alloca %[[C1]] x !llvm.array<3 x ptr>
 
 // CHECK: %[[C1_0:.*]] = arith.constant 1 : i32
 // CHECK: %[[F32_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x f32
 
 // CHECK: %[[N_RETS:.*]]  = llvm.mlir.addressof @__rt_num_rets
-// CHECK: %[[RETS:.*]] = llvm.getelementptr %[[RETS_ALLOCA]]
 
 // CHECK: call @f32_reduce
 // CHECK: %[[LOAD2:.*]] = llvm.load %[[F32_ALLOCA]]
@@ -467,22 +462,27 @@ func.func @opaque_custom_call_res(%ctx: !rt.execution_context) {
 // CHECK: %[[MEMREF_ALLOCA:.*]] = llvm.alloca %[[C1_0]] x !llvm.struct<(i8, i8, ptr, array<4 x i64>)>
 
 // CHECK: call @f32_reduce
+
 // CHECK: %[[DESC:.*]] = llvm.mlir.undef : !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
-// CHECK: %[[DATA:.*]] = llvm.getelementptr %[[MEMREF_ALLOCA]]
-// CHECK: %[[LOAD_DATA:.*]] = llvm.load %[[DATA]]
-// CHECK: %[[BITCAST:.*]] = llvm.bitcast %[[LOAD_DATA]] : !llvm.ptr to !llvm.ptr
-// CHECK: %[[INSERT_0:.*]] = llvm.insertvalue %[[BITCAST]], %[[DESC]][0]
-// CHECK: %[[INSERT_1:.*]] = llvm.insertvalue %[[BITCAST]], %[[INSERT_0]][1]
-// CHECK: %[[ARR:.*]] = llvm.getelementptr %[[MEMREF_ALLOCA]]
-// CHECK: %[[C2:.*]] = arith.constant 2 : i64
-// CHECK: %[[C2_0:.*]] = arith.constant 2 : i64
-// CHECK: %[[INSERT_2:.*]] = llvm.insertvalue %[[C2]], {{.*}}[3, 0]
-// CHECK: %[[INSERT_3:.*]] = llvm.insertvalue %[[C2_0]], %[[INSERT_2]][4, 0]
-// CHECK: %[[C2_1:.*]] = arith.constant 2 : i64
-// CHECK: %[[C1_1:.*]] = arith.constant 1 : i64
-// CHECK: %[[INSERT_4:.*]] = llvm.insertvalue %[[C2_1]], %[[INSERT_3]][3, 1]
-// CHECK: %[[INSERT_5:.*]] = llvm.insertvalue %[[C1_1]], %[[INSERT_4]][4, 1]
-// CHECK: %[[MEMREF:.*]] = builtin.unrealized_conversion_cast %[[INSERT_5]]
+// CHECK: %[[DATA_GEP:.*]] = llvm.getelementptr %[[MEMREF_ALLOCA]]
+// CHECK: %[[DATA_PTR:.*]] = llvm.load %[[DATA_GEP]]
+// CHECK: %[[DATA:.*]] = llvm.bitcast %[[DATA_PTR]] : !llvm.ptr to !llvm.ptr<f32>
+
+// CHECK: llvm.insertvalue %[[DATA]], {{.*}}[0]
+// CHECK: llvm.insertvalue %[[DATA]], {{.*}}[1]
+
+// CHECK: %[[OFFSET:.*]] = llvm.mlir.constant(0 : index)
+// CHECK: llvm.insertvalue %[[OFFSET]], {{.*}}[2]
+
+// CHECK: %[[DIM0:.*]] = llvm.mlir.constant(2 : index)
+// CHECK: llvm.insertvalue %[[DIM0]], {{.*}}[3, 0]
+// CHECK: %[[STRIDE0:.*]] = llvm.mlir.constant(2 : index)
+// CHECK: llvm.insertvalue %[[STRIDE0]], {{.*}}[4, 0]
+
+// CHECK: %[[DIM1:.*]] = llvm.mlir.constant(2 : index)
+// CHECK: llvm.insertvalue %[[DIM1]], {{.*}}[3, 1]
+// CHECK: %[[STRIDE1:.*]] = llvm.mlir.constant(1 : index)
+// CHECK: llvm.insertvalue %[[STRIDE1]], {{.*}}[4, 1]
 func.func @custom_call(%ctx: !rt.execution_context) -> (memref<2x2xf32>) {
   %status, %0 = rt.custom_call %ctx["f32_reduce"] () : () -> (memref<2x2xf32>)
   return %0 : memref<2x2xf32>
