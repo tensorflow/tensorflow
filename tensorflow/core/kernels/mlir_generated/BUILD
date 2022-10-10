@@ -126,52 +126,90 @@ tf_kernel_library(
     ]),
     tags = ["manual"],
     deps = if_mlir_generated_gpu_kernels_enabled([
-        ":base_gpu_op",
-        ":gpu_abs_kernels",
-        ":gpu_acos_kernels",
-        ":gpu_acosh_kernels",
-        ":gpu_angle_kernels",
-        ":gpu_asin_kernels",
-        ":gpu_asinh_kernels",
-        ":gpu_atan_kernels",
-        ":gpu_ceil_kernels",
-        ":gpu_complex_abs_kernels",
-        ":gpu_conj_kernels",
-        ":gpu_cos_kernels",
-        ":gpu_cosh_kernels",
-        ":gpu_digamma_kernels",
-        ":gpu_erf_kernels",
-        ":gpu_erfc_kernels",
-        ":gpu_exp_kernels",
-        ":gpu_expm1_kernels",
-        ":gpu_floor_kernels",
-        ":gpu_imag_kernels",
-        ":gpu_invert_kernels",
+        ":gpu_is_nan_kernels",
         ":gpu_is_finite_kernels",
         ":gpu_is_inf_kernels",
-        ":gpu_is_nan_kernels",
-        ":gpu_lgamma_kernels",
-        ":gpu_log1p_kernels",
-        ":gpu_log_kernels",
-        ":gpu_logical_not_kernels",
-        ":gpu_neg_kernels",
+        ":base_gpu_op",
+        ":gpu_imag_kernels",
         ":gpu_real_kernels",
-        ":gpu_reciprocal_kernels",
-        ":gpu_rint_kernels",
-        ":gpu_round_kernels",
-        ":gpu_rsqrt_kernels",
-        ":gpu_sigmoid_kernels",
-        ":gpu_sign_kernels",
-        ":gpu_sin_kernels",
-        ":gpu_sinh_kernels",
-        ":gpu_sqrt_kernels",
-        ":gpu_square_kernels",
-        ":gpu_tan_kernels",
-        ":gpu_tanh_kernels",
+        ":gpu_angle_kernels",
+        ":gpu_complex_abs_kernels",
         "//third_party/eigen3",
     ]) + if_mlir_generated_experimental_kernels_enabled(
-        [":gpu_atanh_kernels_experimental"],
-        [":gpu_atanh_kernels"],
+        [
+            ":gpu_ceil_kernels_experimental",
+            ":gpu_cos_kernels_experimental",
+            ":gpu_expm1_kernels_experimental",
+            ":gpu_floor_kernels_experimental",
+            ":gpu_invert_kernels_experimental",
+            ":gpu_log1p_kernels_experimental",
+            ":gpu_log_kernels_experimental",
+            ":gpu_rsqrt_kernels_experimental",
+            ":gpu_sin_kernels_experimental",
+            ":gpu_sqrt_kernels_experimental",
+            ":gpu_tan_kernels_experimental",
+            ":gpu_tanh_kernels_experimental",
+            ":gpu_atanh_kernels_experimental",
+            ":gpu_abs_kernels_experimental",
+            ":gpu_acos_kernels_experimental",
+            ":gpu_acosh_kernels_experimental",
+            ":gpu_asin_kernels_experimental",
+            ":gpu_asinh_kernels_experimental",
+            ":gpu_atan_kernels_experimental",
+            ":gpu_conj_kernels_experimental",
+            ":gpu_cosh_kernels_experimental",
+            ":gpu_digamma_kernels_experimental",
+            ":gpu_erf_kernels_experimental",
+            ":gpu_erfc_kernels_experimental",
+            ":gpu_exp_kernels_experimental",
+            ":gpu_lgamma_kernels_experimental",
+            ":gpu_logical_not_kernels_experimental",
+            ":gpu_neg_kernels_experimental",
+            ":gpu_reciprocal_kernels_experimental",
+            ":gpu_rint_kernels_experimental",
+            ":gpu_round_kernels_experimental",
+            ":gpu_sigmoid_kernels_experimental",
+            ":gpu_sign_kernels_experimental",
+            ":gpu_sinh_kernels_experimental",
+            ":gpu_square_kernels_experimental",
+        ],
+        [
+            ":gpu_ceil_kernels",
+            ":gpu_cos_kernels",
+            ":gpu_expm1_kernels",
+            ":gpu_floor_kernels",
+            ":gpu_invert_kernels",
+            ":gpu_log1p_kernels",
+            ":gpu_log_kernels",
+            ":gpu_rsqrt_kernels",
+            ":gpu_sin_kernels",
+            ":gpu_sqrt_kernels",
+            ":gpu_tan_kernels",
+            ":gpu_tanh_kernels",
+            ":gpu_atanh_kernels",
+            ":gpu_abs_kernels",
+            ":gpu_acos_kernels",
+            ":gpu_acosh_kernels",
+            ":gpu_asin_kernels",
+            ":gpu_asinh_kernels",
+            ":gpu_atan_kernels",
+            ":gpu_conj_kernels",
+            ":gpu_cosh_kernels",
+            ":gpu_digamma_kernels",
+            ":gpu_erf_kernels",
+            ":gpu_erfc_kernels",
+            ":gpu_exp_kernels",
+            ":gpu_lgamma_kernels",
+            ":gpu_logical_not_kernels",
+            ":gpu_neg_kernels",
+            ":gpu_reciprocal_kernels",
+            ":gpu_rint_kernels",
+            ":gpu_round_kernels",
+            ":gpu_sigmoid_kernels",
+            ":gpu_sign_kernels",
+            ":gpu_sinh_kernels",
+            ":gpu_square_kernels",
+        ],
     ),
 )
 
@@ -583,6 +621,18 @@ gpu_kernel_library(
     ],
 )
 
+gpu_kernel_library(
+    name = "gpu_sigmoid_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "sigmoid",
+    tile_size = "256",
+    types = [],
+)
+
 # TODO(b/25387198): Add an int32 kernel.
 gpu_kernel_library(
     name = "gpu_abs_kernels",
@@ -602,6 +652,25 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_abs_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "i8",
+        "i16",
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    op = "abs",
+    test_tags = [
+        "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
+    ],
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_acos_kernels",
     op = "acos",
     tile_size = "256",
@@ -611,6 +680,18 @@ gpu_kernel_library(
         "f64",
     ],
     # Cannot vectorize.
+)
+
+gpu_kernel_library(
+    name = "gpu_acos_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "acos",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -624,6 +705,18 @@ gpu_kernel_library(
     ],
     # May be compute-bound.
     # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_acosh_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "acosh",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -654,6 +747,18 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_asin_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "asin",
+    tile_size = "256",
+    types = [],
+)
+
+gpu_kernel_library(
     name = "gpu_asinh_kernels",
     op = "asinh",
     tile_size = "256",
@@ -666,6 +771,19 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_asinh_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "asinh",
+    tile_size = "256",
+    types = [],
+    # Cannot vectorize.
+)
+
+gpu_kernel_library(
     name = "gpu_atan_kernels",
     op = "atan",
     tile_size = "256",
@@ -674,6 +792,19 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_atan_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "atan",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -691,16 +822,18 @@ gpu_kernel_library(
 
 gpu_kernel_library(
     name = "gpu_atanh_kernels_experimental",
-    jit_i64_indexed_for_large_tensors_types = ["f16"],
-    op = "atanh",
-    test_tags = [
-        "noasan",  # TODO(b/248071004): JIT-compiled code will not be instrumented.
-    ],
-    tile_size = "256",
-    types = [
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
         "f32",
         "f64",
     ],
+    op = "atanh",
+    test_tags = [
+        # TODO(b/248071004): JIT-compiled code will not be instrumented.
+        "noasan",
+    ],
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -712,6 +845,18 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "2",
+)
+
+gpu_kernel_library(
+    name = "gpu_conj_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "c64",
+        "c128",
+    ],
+    op = "conj",
+    tile_size = "256",
+    types = [],
     unroll_factors = "2",
 )
 
@@ -733,6 +878,20 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_cosh_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "c64",
+        "c128",
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "cosh",
+    tile_size = "256",
+    types = [],
+)
+
+gpu_kernel_library(
     name = "gpu_erf_kernels",
     op = "erf",
     tile_size = "256",
@@ -745,6 +904,19 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_erf_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "erf",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_erfc_kernels",
     op = "erfc",
     tile_size = "256",
@@ -753,6 +925,19 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_erfc_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "erfc",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -770,11 +955,34 @@ gpu_kernel_library(
     ],
 )
 
+# gpu_kernel_library(
+#     name  =  "gpu_imag_kernels_experimental",
+#     jit_i64_indexed_for_large_tensors_types  =  [
+#         "c64",
+#         "c128",
+#     ],
+#     op  =  "imag",
+#     output_types  =  [
+#         "f32",
+#         "f64",
+#     ],
+#     tile_size  =  "256",
+#     types  =  [],
+# )
+
 gpu_kernel_library(
     name = "gpu_logical_not_kernels",
     op = "logical_not",
     tile_size = "256",
     types = ["i1"],
+)
+
+gpu_kernel_library(
+    name = "gpu_logical_not_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = ["i1"],
+    op = "logical_not",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -790,6 +998,21 @@ gpu_kernel_library(
         "c128",
     ],
 )
+
+# gpu_kernel_library(
+#     name  =  "gpu_real_kernels_experimental",
+#     jit_i64_indexed_for_large_tensors_types  =  [
+#         "c64",
+#         "c128",
+#     ],
+#     op  =  "real",
+#     output_types  =  [
+#         "f32",
+#         "f64",
+#     ],
+#     tile_size  =  "256",
+#     types  =  [],
+# )
 
 gpu_kernel_library(
     name = "gpu_reciprocal_kernels",
@@ -807,6 +1030,22 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_reciprocal_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "c64",
+        "c128",
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+    ],
+    op = "reciprocal",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_polygamma_kernels",
     op = "polygamma",
     tile_size = "256",
@@ -814,6 +1053,17 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_polygamma_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f32",
+        "f64",
+    ],
+    op = "polygamma",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -828,6 +1078,18 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_digamma_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "digamma",
+    tile_size = "256",
+    types = [],
+)
+
+gpu_kernel_library(
     name = "gpu_lgamma_kernels",
     op = "lgamma",
     tile_size = "256",
@@ -836,6 +1098,18 @@ gpu_kernel_library(
         "f32",
         "f64",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_lgamma_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "lgamma",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -859,6 +1133,25 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_sign_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "i8",
+        "i16",
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    op = "sign",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_sinh_kernels",
     jit_types = [
         "c64",
@@ -873,6 +1166,20 @@ gpu_kernel_library(
     ],
     # May be compute-bound.
     # unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_sinh_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "c64",
+        "c128",
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "sinh",
+    tile_size = "256",
+    types = [],
 )
 
 gpu_kernel_library(
@@ -893,6 +1200,26 @@ gpu_kernel_library(
         "f64",
         "i64",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_square_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i64",
+        "i8",
+        "i16",
+        "ui8",
+        "ui16",
+        "ui32",
+        "ui64",
+    ],
+    op = "square",
+    tile_size = "1024",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -977,6 +1304,21 @@ gpu_kernel_library(
         "c128",
     ],
 )
+
+# gpu_kernel_library(
+#     name  =  "gpu_complex_abs_kernels_experimental",
+#     jit_i64_indexed_for_large_tensors_types  =  [
+#         "c64",
+#         "c128",
+#     ],
+#     op  =  "complex_abs",
+#     output_types  =  [
+#         "f32",
+#         "f64",
+#     ],
+#     tile_size  =  "256",
+#     types  =  [],
+# )
 
 gpu_kernel_library(
     name = "gpu_div_kernels",
@@ -1079,6 +1421,20 @@ gpu_kernel_library(
         "left_shift",
     ]
 ]
+
+gpu_kernel_library(
+    name = "gpu_invert_kernels_experimental",
+    op = "invert",
+    tile_size = "1024",
+    jit_i64_indexed_for_large_tensors_types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    types = [],
+    unroll_factors = "4",
+)
 
 gpu_kernel_library(
     name = "gpu_right_shift_kernels",
@@ -1225,6 +1581,25 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_neg_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "c64",
+        "c128",
+    ],
+    op = "neg",
+    tile_size = "256",
+    types = [],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
     name = "gpu_floor_div_kernels",
     jit_types = [
         "i8",
@@ -1291,6 +1666,32 @@ gpu_kernel_library(
     ]
 ]
 
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        tile_size = "256",
+        jit_i64_indexed_for_large_tensors_types = [
+            "f16",
+            "f32",
+            "f64",
+        ],
+        types = [],
+        unroll_factors = "4",
+    )
+    for op in [
+        "ceil",
+        "expm1",
+        "floor",
+        "log",
+        "log1p",
+        "relu_grad",
+        "rsqrt",
+        "sqrt",
+        "tanh",
+    ]
+]
+
 gpu_kernel_library(
     name = "gpu_exp_kernels",
     op = "exp",
@@ -1302,6 +1703,21 @@ gpu_kernel_library(
         "c64",
         "c128",
     ],
+    unroll_factors = "4",
+)
+
+gpu_kernel_library(
+    name = "gpu_exp_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "c64",
+        "c128",
+    ],
+    op = "exp",
+    tile_size = "256",
+    types = [],
     unroll_factors = "4",
 )
 
@@ -1341,6 +1757,27 @@ gpu_kernel_library(
             "f32",
             "f64",
         ],
+    )
+    for op in [
+        "cos",
+        "sin",
+        "tan",
+    ]
+]
+
+[
+    gpu_kernel_library(
+        name = "gpu_" + op + "_kernels_experimental",
+        op = op,
+        tile_size = "256",
+        jit_i64_indexed_for_large_tensors_types = [
+            "c64",
+            "c128",
+            "f16",
+            "f32",
+            "f64",
+        ],
+        types = [],
     )
     for op in [
         "cos",
@@ -1515,6 +1952,18 @@ gpu_kernel_library(
 )
 
 gpu_kernel_library(
+    name = "gpu_rint_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    op = "rint",
+    tile_size = "1024",
+    types = [],
+)
+
+gpu_kernel_library(
     name = "gpu_round_kernels",
     op = "round",
     tile_size = "1024",
@@ -1525,6 +1974,20 @@ gpu_kernel_library(
         "i32",
         "i64",
     ],
+)
+
+gpu_kernel_library(
+    name = "gpu_round_kernels_experimental",
+    jit_i64_indexed_for_large_tensors_types = [
+        "f16",
+        "f32",
+        "f64",
+        "i32",
+        "i64",
+    ],
+    op = "round",
+    tile_size = "1024",
+    types = [],
 )
 
 gpu_kernel_library(
