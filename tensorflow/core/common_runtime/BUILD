@@ -10,15 +10,7 @@ load(
     "tf_openmp_copts",
     "tf_openmp_lopts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_cuda_cc_test")
 
 # For platform specific build config
 load(

@@ -15,12 +15,7 @@ load(
     "tf_kernel_library",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
 
 package(
     licenses = ["notice"],

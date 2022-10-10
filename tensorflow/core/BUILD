@@ -79,27 +79,7 @@ load(
     "tf_opts_nortti_if_lite_protos",
     "transitive_hdrs",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "if_nccl")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tensorflow_opensource_extra_deps")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_monitoring_framework_deps")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tensorflow_opensource_extra_deps", "tf_monitoring_framework_deps", "tf_selective_registration_deps")
 
 # For platform specific build config
 load(
