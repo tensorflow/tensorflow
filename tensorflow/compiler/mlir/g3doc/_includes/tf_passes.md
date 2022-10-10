@@ -1180,6 +1180,10 @@ and each pop will be turned into
 
 The pass also works across control flow and functional calls.
 ### `-tf-strip-noinline-attribute`: Strip the tf._noinline attribute from top-level functions.
+### `-tf-strip-tf-attributes`: Removes TF specific attributes
+Removes attributes that are TF specific (start with "tf.") or that
+have a value from the TF dialect. Useful after legalizing TF graphs
+to other dialects, to remove any TF remnants.
 ### `-tf-tensor-array-ops-decomposition`: Decompose tensor array operations into local variable operations.
 A pass that converts tensor array operations to tensor operations and
 read/assign ops on local variables. A later resource lifting pass can further
