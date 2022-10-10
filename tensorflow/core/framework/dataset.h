@@ -45,8 +45,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -591,35 +594,24 @@ class IteratorContext {
 // Aggregates runtime support needed for dataset and iterator serialization.
 class SerializationContext {
  public:
-  // Enum describing what to do during serialization when external state is
-  // encountered.
-  enum class ExternalStatePolicy : int64 {
-    // Proceed with serialization, but log a warning about what state will be
-    // lost.
-    kWarn = 0,
-    // Proceed with serialization without logging any warning.
-    kIgnore = 1,
-    // Fail the serialization with an error.
-    kFail = 2,
-  };
-
-  // Handles the CheckExternalState status according to the external state
-  // policy.
+  // Handles the external state according to the external state policy.
   Status HandleCheckExternalStateStatus(Status s) {
     if (s.ok()) {
       return s;
     }
     switch (params_.external_state_policy) {
-      case ExternalStatePolicy::kWarn:
+      case ExternalStatePolicy::POLICY_WARN:
         LOG(WARNING) << s.ToString();
         return OkStatus();
-      case ExternalStatePolicy::kIgnore:
+      case ExternalStatePolicy::POLICY_IGNORE:
         VLOG(2) << "Ignoring error status: " << s.ToString();
         return OkStatus();
-      case ExternalStatePolicy::kFail:
+      case ExternalStatePolicy::POLICY_FAIL:
         return s;
+      default:
+        return errors::InvalidArgument("Unexpected value of external policy: ",
+                                       params_.external_state_policy);
     }
-    LOG(FATAL) << "Control should never reach here";
   }
 
   struct Params {
@@ -632,7 +624,8 @@ class SerializationContext {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
     // Indicates what to do if the dataset depends on external state.
-    ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
+    ExternalStatePolicy external_state_policy =
+        ExternalStatePolicy::POLICY_WARN;
 
     // Indicates whether the serialization is for rewrites.
     //
