@@ -20,6 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
@@ -29,7 +30,14 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 #include "tensorflow/core/util/permutation_input_iterator.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm.h"
+#endif
 
 namespace tensorflow {
 
@@ -1024,7 +1032,7 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
 
     // Compute the gradient using a weighted SegmentReduceGPU with the segment
     // IDs and indices swapped.
-    using ReduceOp = gpuprim::Sum;
+    using ReduceOp = functor::Sum;
     using Treduce = typename ReduceType<ReduceOp, T>::type;
     OP_REQUIRES_OK(
         context,
@@ -1039,6 +1047,362 @@ struct SparseSegmentGradFunctor<GPUDevice, T, Index, SegmentId> {
             /*input=*/input_flat.data(), /*segment_ids=*/sorted_indices_ptr,
             /*indices=*/sorted_segment_ptr, /*weights=*/weights_ptr,
             /*output=*/output_flat.data()));
+  }
+};
+
+template <typename Tindices_internal>
+struct EdgeIndicatorFunctor {
+  EdgeIndicatorFunctor(const Tindices_internal* sorted_indices)
+      : sorted_indices_(sorted_indices) {}
+
+  template <typename Idx>
+  __device__ bool operator()(Idx idx) const {
+    return idx == 0 ? false : sorted_indices_[idx] != sorted_indices_[idx - 1];
+  }
+
+ private:
+  const Tindices_internal* __restrict__ sorted_indices_;
+};
+
+template <typename Tindex, typename EdgeIndicatorIter,
+          typename Tindices_internal, typename Tindices>
+__global__ void ScatterUniqueIndicesKernel(
+    Tindex nouter,
+    EdgeIndicatorIter sorted_indices_edge_indicator,       // [nouter]
+    const Tindices_internal* __restrict__ sorted_indices,  // [nouter]
+    const Tindex* __restrict__ sorted_indices_ids,         // [nouter]
+    Tindices* __restrict__ sorted_unique_indices) {        // [num_unique]
+  GPU_1D_KERNEL_LOOP(i, nouter) {
+    if (i == 0 || sorted_indices_edge_indicator[i]) {
+      sorted_unique_indices[sorted_indices_ids[i]] =
+          static_cast<Tindices>(sorted_indices[i]);
+    }
+  }
+}
+
+template <typename Tindex, typename EdgeIndicatorIter,
+          typename Tindices_internal, typename Tindices>
+Status LaunchScatterUniqueIndicesKernel(
+    const GPUDevice& d, Tindex nouter,
+    EdgeIndicatorIter sorted_indices_edge_indicator,       // [nouter]
+    const Tindices_internal* __restrict__ sorted_indices,  // [nouter]
+    const Tindex* __restrict__ sorted_indices_ids,         // [nouter]
+    Tindices* __restrict__ sorted_unique_indices) {        // [num_unique]
+  GpuLaunchConfig config = GetGpuLaunchConfig(
+      nouter, d,
+      &ScatterUniqueIndicesKernel<Tindex, EdgeIndicatorIter, Tindices_internal,
+                                  Tindices>,
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+  return GpuLaunchKernel(
+      ScatterUniqueIndicesKernel<Tindex, EdgeIndicatorIter, Tindices_internal,
+                                 Tindices>,
+      config.block_count, config.thread_per_block, 0, d.stream(), nouter,
+      sorted_indices_edge_indicator, sorted_indices, sorted_indices_ids,
+      sorted_unique_indices);
+}
+
+template <typename T, typename Tindices, typename Tsegmentids>
+struct SparseSegmentGradV2Functor<GPUDevice, T, Tindices, Tsegmentids> {
+  void operator()(OpKernelContext* context,
+                  SparseSegmentReductionOperation operation,
+                  typename TTypes<T>::ConstMatrix input_flat,
+                  typename TTypes<Tindices>::ConstVec indices_vec,
+                  typename TTypes<Tsegmentids>::ConstVec segment_vec,
+                  const TensorShape& dense_output_shape,
+                  typename AsyncOpKernel::DoneCallback done) {
+    const GPUDevice& device = context->eigen_gpu_device();
+
+    const int64_t nsegments = input_flat.dimension(0);
+    const int64_t ninner64 = input_flat.dimension(1);
+    const int64_t nouter64 = indices_vec.dimension(0);
+    // Note: nouter and ninner are not expected to be huge, so we use int32 to
+    // save memory bandwidth.
+    using Tindex = int32;
+    OP_REQUIRES_ASYNC(
+        context, nouter64 <= std::numeric_limits<Tindex>::max(),
+        errors::InvalidArgument("Indices vector of length ", nouter64,
+                                " is too large to fit in int32."),
+        done);
+    const Tindex nouter = static_cast<Tindex>(nouter64);
+    OP_REQUIRES_ASYNC(
+        context, ninner64 <= std::numeric_limits<Tindex>::max(),
+        errors::InvalidArgument("Inner data dimension of size ", ninner64,
+                                " is too large to fit in int32."),
+        done);
+    const Tindex ninner = static_cast<Tindex>(ninner64);
+
+    // Cast indices to 32-bit to save memory bandwidth (the cost of the cast is
+    // worth it because the vector is used multiple times).
+    // Note that we can assume int32 is safe because the op's dense_output_dim0
+    // input is always int32.
+    using Tindices_internal = int32;
+    Tensor tmp_indices_internal;
+    const Tindices_internal* indices_internal_ptr;
+    if constexpr (std::is_same<Tindices, Tindices_internal>::value) {
+      indices_internal_ptr = indices_vec.data();
+    } else {
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_temp(DataTypeToEnum<Tindices_internal>::value,
+                                 TensorShape({nouter}), &tmp_indices_internal),
+          done);
+      auto indices_vec_internal =
+          tmp_indices_internal.flat<Tindices_internal>();
+      indices_vec_internal.device(device) =
+          indices_vec.template cast<Tindices_internal>();
+      indices_internal_ptr = indices_vec_internal.data();
+    }
+
+    // Cast segment IDs to smallest possible type to save memory bandwidth.
+    if (nsegments <= std::numeric_limits<int16_t>::max()) {
+      CastSegmentIdsThenImpl<Tindex, Tindices_internal, int16_t>(
+          context, operation, nouter, ninner, nsegments, input_flat.data(),
+          tmp_indices_internal, indices_internal_ptr, segment_vec,
+          dense_output_shape, done);
+    } else if (sizeof(Tsegmentids) > sizeof(int32) &&
+               nsegments <= std::numeric_limits<int32>::max()) {
+      CastSegmentIdsThenImpl<Tindex, Tindices_internal, int32>(
+          context, operation, nouter, ninner, nsegments, input_flat.data(),
+          tmp_indices_internal, indices_internal_ptr, segment_vec,
+          dense_output_shape, done);
+    } else {
+      Impl<Tindex, Tindices_internal, Tsegmentids>(
+          context, operation, nouter, ninner, nsegments, input_flat.data(),
+          tmp_indices_internal, indices_internal_ptr, Tensor(),
+          segment_vec.data(), dense_output_shape, done);
+    }
+  }
+
+ private:
+  using Tweight = typename RealTypeIfComplex<T>::type;
+
+  template <typename Tindex, typename Tindices_internal,
+            typename Tsegmentids_internal>
+  void CastSegmentIdsThenImpl(
+      OpKernelContext* context, SparseSegmentReductionOperation operation,
+      Tindex nouter, Tindex ninner, Tsegmentids_internal nsegments,
+      const T* input, Tensor indices_tensor, const Tindices_internal* indices,
+      typename TTypes<Tsegmentids>::ConstVec segment_vec,
+      const TensorShape& dense_output_shape,
+      typename AsyncOpKernel::DoneCallback done) {
+    const GPUDevice& device = context->eigen_gpu_device();
+    Tensor tmp_segment_internal;
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DataTypeToEnum<Tsegmentids_internal>::value,
+                               TensorShape({nouter}), &tmp_segment_internal),
+        done);
+    auto segment_vec_internal =
+        tmp_segment_internal.flat<Tsegmentids_internal>();
+    segment_vec_internal.device(device) =
+        segment_vec.template cast<Tsegmentids_internal>();
+
+    Impl<Tindex, Tindices_internal, Tsegmentids_internal>(
+        context, operation, nouter, ninner, nsegments, input, indices_tensor,
+        indices, tmp_segment_internal, segment_vec_internal.data(),
+        dense_output_shape, done);
+  }
+
+  template <typename Tindex, typename Tindices_internal,
+            typename Tsegmentids_internal>
+  void Impl(OpKernelContext* context, SparseSegmentReductionOperation operation,
+            Tindex nouter, Tindex ninner, Tsegmentids_internal nsegments,
+            const T* input, Tensor indices_tensor,
+            const Tindices_internal* indices, Tensor segment_ids_tensor,
+            const Tsegmentids_internal* segment_ids,
+            const TensorShape& dense_output_shape,
+            typename AsyncOpKernel::DoneCallback done) {
+    const GPUDevice& device = context->eigen_gpu_device();
+    const int64_t dense_output_dim0 = dense_output_shape.dim_size(0);
+
+    // Allocate and compute segment weights (for Mean/SqrtN operations only).
+    Tensor tmp_weights;
+    Tweight* weights_ptr = nullptr;
+    if (operation != SparseSegmentReductionOperation::kSum) {
+      ComputeSegmentWeights(context, operation, nsegments, nouter, segment_ids,
+                            &tmp_weights, done);
+      weights_ptr = tmp_weights.flat<Tweight>().data();
+    }
+
+    const Tindices_internal* sorted_indices_ptr = indices;
+    const Tsegmentids_internal* permuted_segment_ptr = segment_ids;
+    Tensor tmp_sorted_indices;
+    Tensor tmp_permuted_segment;
+    if (dense_output_dim0 > 1) {
+      // Sort indices and permute segments.
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_temp(DataTypeToEnum<Tindices_internal>::value,
+                                 TensorShape({nouter}), &tmp_sorted_indices),
+          done);
+      Tindices_internal* tmp_sorted_indices_ptr =
+          tmp_sorted_indices.flat<Tindices_internal>().data();
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_temp(DataTypeToEnum<Tsegmentids_internal>::value,
+                                 TensorShape({nouter}), &tmp_permuted_segment),
+          done);
+      Tsegmentids_internal* tmp_permuted_segment_ptr =
+          tmp_permuted_segment.flat<Tsegmentids_internal>().data();
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          GpuRadixSort(context, nouter,
+                       /*keys_in=*/indices,
+                       /*keys_out=*/tmp_sorted_indices_ptr,
+                       /*indices_in=*/segment_ids,
+                       /*indices_out=*/tmp_permuted_segment_ptr,
+                       /*num_bits=*/Log2Ceiling64(dense_output_dim0)),
+          done);
+      sorted_indices_ptr = tmp_sorted_indices_ptr;
+      permuted_segment_ptr = tmp_permuted_segment_ptr;
+      // The original tensors are no longer needed.
+      indices_tensor = Tensor();
+      indices = nullptr;
+      segment_ids_tensor = Tensor();
+      segment_ids = nullptr;
+    }
+
+    using CountIter = gpuprim::CountingInputIterator<Tindex>;
+    using EdgeIndicatorIter = gpuprim::TransformInputIterator<
+        Tindex, EdgeIndicatorFunctor<Tindices_internal>, CountIter>;
+    EdgeIndicatorIter sorted_indices_edge_indicator(
+        CountIter(0),
+        EdgeIndicatorFunctor<Tindices_internal>(sorted_indices_ptr));
+
+    Tensor tmp_sorted_indices_unique_ids;
+    OP_REQUIRES_OK_ASYNC(context,
+                         context->allocate_temp(DataTypeToEnum<Tindex>::value,
+                                                TensorShape({nouter}),
+                                                &tmp_sorted_indices_unique_ids),
+                         done);
+    Tindex* sorted_indices_unique_ids_ptr =
+        tmp_sorted_indices_unique_ids.flat<Tindex>().data();
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        GpuInclusivePrefixSum(context, nouter, sorted_indices_edge_indicator,
+                              sorted_indices_unique_ids_ptr),
+        done);
+
+    se::Stream* stream = context->op_device_context()->stream();
+    OP_REQUIRES_ASYNC(context, stream,
+                      errors::Internal("No GPU stream available."), done);
+
+    // Copy the last element of sorted_indices_unique_ids back to the host to
+    // obtain num_unique.
+    ScratchSpace<Tindex> last_idx_host(context, 1, /*on_host=*/true);
+    OP_REQUIRES_ASYNC(
+        context,
+        stream
+            ->ThenMemcpy(
+                last_idx_host.mutable_data(),
+                se::DeviceMemoryBase(
+                    const_cast<Tindex*>(sorted_indices_unique_ids_ptr) +
+                        (nouter - 1),
+                    sizeof(*last_idx_host.data())),
+                sizeof(*last_idx_host.data()))
+            .ok(),
+        errors::Internal("Failed to copy last_idx to host"), done);
+
+    auto async_finish_computation =
+        [this, context, dense_output_shape, nouter, ninner, input,
+         indices_tensor, tmp_sorted_indices, sorted_indices_ptr,
+         tmp_sorted_indices_unique_ids, sorted_indices_unique_ids_ptr,
+         segment_ids_tensor, tmp_permuted_segment, permuted_segment_ptr,
+         sorted_indices_edge_indicator, tmp_weights, weights_ptr, last_idx_host,
+         done]() -> void {
+      const GPUDevice& device = context->eigen_gpu_device();
+      Tindex num_unique = (*last_idx_host.data()) + 1;
+
+      se::gpu::ScopedActivateExecutorContext scoped_activation{
+          context->op_device_context()->stream()->parent()};
+
+      TensorShape output_shape = dense_output_shape;
+      OP_REQUIRES_OK_ASYNC(context,
+                           output_shape.SetDimWithStatus(0, num_unique), done);
+      Tensor* output = nullptr;
+      T* output_ptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+      output_ptr = output->flat<T>().data();
+
+      // Compute the gradient using a weighted SegmentReduceGPU with the segment
+      // IDs and indices swapped.
+      using ReduceOp = functor::Sum;
+      using Treduce = typename ReduceType<ReduceOp, T>::type;
+      OP_REQUIRES_OK_ASYNC(context,
+                           SegmentReduceGPU<Treduce>(
+                               context, /*nouter=*/nouter,
+                               /*ninner=*/ninner,
+                               /*nsegments=*/num_unique,
+                               /*reduce_op=*/ReduceOp(),
+                               /*initial_value=*/T(0),
+                               /*empty_segment_value=*/T(0),
+                               /*is_mean=*/false, /*is_sqrtn=*/false,
+                               /*input=*/input,
+                               /*segment_ids=*/sorted_indices_unique_ids_ptr,
+                               /*indices=*/permuted_segment_ptr,
+                               /*weights=*/weights_ptr,
+                               /*output=*/output_ptr),
+                           done);
+
+      Tensor* sorted_unique_indices = nullptr;
+      Tindices* sorted_unique_indices_ptr;
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          context->allocate_output(1, TensorShape({num_unique}),
+                                   &sorted_unique_indices),
+          done);
+      sorted_unique_indices_ptr =
+          sorted_unique_indices->flat<Tindices>().data();
+
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          LaunchScatterUniqueIndicesKernel(
+              device, nouter, sorted_indices_edge_indicator, sorted_indices_ptr,
+              sorted_indices_unique_ids_ptr, sorted_unique_indices_ptr),
+          done);
+
+      done();
+    };
+
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, async_finish_computation);
+  }
+
+  template <typename Tsegmentids_internal, typename Tindex>
+  void ComputeSegmentWeights(OpKernelContext* context,
+                             SparseSegmentReductionOperation operation,
+                             Tsegmentids_internal nsegments, Tindex nouter,
+                             const Tsegmentids_internal* segment_ids,
+                             Tensor* tmp_weights,
+                             typename AsyncOpKernel::DoneCallback done) {
+    const GPUDevice& device = context->eigen_gpu_device();
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        context->allocate_temp(DataTypeToEnum<Tweight>::value,
+                               TensorShape({nsegments}), tmp_weights),
+        done);
+    Tweight* weights_ptr = tmp_weights->flat<Tweight>().data();
+    // Allocate and compute segment_offsets.
+    Tensor tmp_segment_offsets;
+    OP_REQUIRES_OK_ASYNC(context,
+                         context->allocate_temp(DataTypeToEnum<Tindex>::value,
+                                                TensorShape({nsegments + 1}),
+                                                &tmp_segment_offsets),
+                         done);
+    Tindex* segment_offsets_ptr = tmp_segment_offsets.flat<Tindex>().data();
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        LaunchSegmentOffsetsKernel(device, nouter, nsegments, segment_ids,
+                                   segment_offsets_ptr),
+        done);
+    // Compute the weights based on the segment sizes using segment_offsets.
+    OP_REQUIRES_OK_ASYNC(
+        context,
+        LaunchSegmentWeightsKernel(device, nsegments, operation,
+                                   segment_offsets_ptr, weights_ptr),
+        done);
   }
 };
 
