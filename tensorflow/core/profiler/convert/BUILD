@@ -763,6 +763,7 @@ cc_library(
     hdrs = ["hlo_to_tools_data.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [

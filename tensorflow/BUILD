@@ -1211,6 +1211,9 @@ tf_cc_shared_library(
         "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
         "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
     }),
+    exports_filter = [
+        "//:__subpackages__",
+    ],
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1304,6 +1307,7 @@ tf_cc_shared_library(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/convert:hlo_to_tools_data_impl",
         "//tensorflow/core/profiler/internal:print_model_analysis",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/rpc/client:profiler_client_impl",
@@ -1321,6 +1325,7 @@ tf_cc_shared_library(
         "//tensorflow/core:script_ops_op_lib",
         "//tensorflow/distribute/experimental/rpc/kernels:rpc_ops",
         "//tensorflow/dtensor/cc:dtensor_device_cc",
+        "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/flex:delegate",
