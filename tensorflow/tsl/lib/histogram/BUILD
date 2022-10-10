@@ -21,12 +21,12 @@ cc_library(
     srcs = ["histogram.cc"],
     hdrs = ["histogram.h"],
     deps = [
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
     alwayslink = True,
 )
@@ -62,9 +62,9 @@ tf_cc_test(
     ],
     deps = [
         ":histogram",
-        "//tensorflow/core/framework:summary_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/protobuf:histogram_proto_cc",
     ],
 )

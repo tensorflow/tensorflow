@@ -1776,7 +1776,9 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+        "//tensorflow/tsl/protobuf:histogram_proto",
     ],
+    exports = ["//tensorflow/tsl/protobuf:histogram_proto"],
 )
 
 tf_proto_library(
