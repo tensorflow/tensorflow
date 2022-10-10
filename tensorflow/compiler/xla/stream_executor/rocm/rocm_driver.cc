@@ -1244,9 +1244,9 @@ static uint64 GetReservedMemory() {
   uint64 reserve = 0;
   hipDeviceProp_t props;
   hipDevice_t dev;
-  hipError_t res = tensorflow::wrap::hipGetDevice(&dev);
+  hipError_t res = wrap::hipGetDevice(&dev);
   if(res == hipSuccess) {
-    res = tensorflow::wrap::hipGetDeviceProperties(&props, dev);
+    res = wrap::hipGetDeviceProperties(&props, dev);
     if (res == hipSuccess) {
       std::string gcnArchName = props.gcnArchName;
   // On gfx90a, we hide 1 GB of GPU memory from TF, to allow for late

@@ -1013,7 +1013,7 @@ Status RocmActivityCallbackImpl::operator()(const char* begin,
 
     RETURN_IF_ROCTRACER_ERROR(static_cast<roctracer_status_t>(
 #if TF_ROCM_VERSION >= 50300
-        wrap::roctracer_next_record(record, &record)
+        se::wrap::roctracer_next_record(record, &record)
 #else
         roctracer_next_record(record, &record)
 #endif
@@ -1491,7 +1491,7 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
       DumpActivityRecord(record,
                          "activity_tracing_enabled_ is false. Dropped!");
 #if TF_ROCM_VERSION >= 50300
-      wrap::roctracer_next_record(record, &record);
+      se::wrap::roctracer_next_record(record, &record);
 #else
       roctracer_next_record(record, &record);
 #endif
