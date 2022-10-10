@@ -69,6 +69,7 @@ absl::InlinedVector<T, 10> RepeatElements(absl::InlinedVector<T, 10> input,
 /// Helper functions to get default input shapes.
 
 TensorShape DefaultInputShape();
+TensorShape DefaultInputExceedingIntSize();
 
 /// Helper functions to configure tests.
 
@@ -199,16 +200,6 @@ absl::InlinedVector<T, 10> DefaultInputNonZero() {
                                          0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
-template <typename T, std::enable_if_t<
-                           llvm::is_one_of<T, Eigen::half, float, double>::value,
-                           bool> = true>
- absl::InlinedVector<T, 10> VeryLargeVector() {
-   auto max_val = pow(2,32) + 1;
-   absl::InlinedVector<T, 10> v;
-   for (auto i = 0; i < max_val; ++i) v.push_back(0.1);
-   return v;
- }
- 
 template <typename T, std::enable_if_t<is_integer<T>::value, bool> = true>
 absl::InlinedVector<T, 10> DefaultInputNonZero() {
   return test::InputAsVector<T, int>({-18, -9, -1, 1, 3, 4, 5, 7, 9, 10, 18});

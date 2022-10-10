@@ -19,6 +19,7 @@ namespace tensorflow {
 namespace test {
 
 TensorShape DefaultInputShape() { return TensorShape{7, 13}; }
+TensorShape DefaultInputExceedingIntSize() { return TensorShape{pow(2,32) + 1242}; }
 
 }  // namespace test
 }  // namespace tensorflow
