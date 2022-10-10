@@ -18,14 +18,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
+#define GEN_PASS_DEF_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUReorderReplicateAndPartitionedInputsPass
-    : public TF::TPUReorderReplicateAndPartitionedInputsPassBase<
+    : public impl::TPUReorderReplicateAndPartitionedInputsPassBase<
           TPUReorderReplicateAndPartitionedInputsPass> {
   void runOnOperation() override;
 };

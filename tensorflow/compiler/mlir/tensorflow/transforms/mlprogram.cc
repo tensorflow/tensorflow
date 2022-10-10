@@ -42,6 +42,9 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
 
   pm.addPass(mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass());
   pm.addPass(mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass());
+  pm.addPass(mlir::TF::CreateLocalizeVarHandlesPass());
+  pm.addPass(mlir::tf_saved_model::CreateStripSavedModuleMetadataPass());
+
   pm.addPass(mlir::TF::CreateRemoveUnusedArgumentsPass());
 
   pm.addPass(mlir::createInlinerPass());
@@ -61,6 +64,9 @@ void PopulateLowerToMlProgramAndHloPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSymbolDCEPass());
   pm.addPass(mlir::createCanonicalizerPass());
+
+  pm.addPass(mlir::TF::CreateOrderByDialectPass());
+  pm.addPass(mlir::TF::CreateGroupByDialectPass());
 }
 
 }  // namespace tensorflow

@@ -124,8 +124,8 @@ class CoordinationServiceAgent {
   virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<CoordinatedTaskState> GetTaskStatus(
-      const CoordinatedTask& task) = 0;
+  virtual StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to

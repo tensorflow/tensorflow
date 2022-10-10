@@ -28,7 +28,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_OPTIMIZEOPORDERPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Dequantize ops will produce 3x larger tensors, so we want to move it after
@@ -105,7 +105,7 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 };
 
 struct OptimizeOpOrderPass
-    : public OptimizeOpOrderPassBase<OptimizeOpOrderPass> {
+    : public impl::OptimizeOpOrderPassBase<OptimizeOpOrderPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeOpOrderPass)
 
   void runOnOperation() override;

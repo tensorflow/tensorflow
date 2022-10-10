@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_opaque.h"
 
+#include <unordered_map>
+
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_opaque_internal.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 TfLiteType TfLiteOpaqueTensorType(const TfLiteOpaqueTensor* opaque_tensor) {
@@ -98,4 +104,43 @@ TfLiteStatus TfLiteOpaqueContextGetExecutionPlan(
   // TfLiteOpaqueContext and TfLiteContext being equivalent.
   auto context = reinterpret_cast<TfLiteContext*>(opaque_context);
   return context->GetExecutionPlan(context, execution_plan);
+}
+
+TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
+    struct TfLiteOpaqueContext* opaque_context, int node_index,
+    TfLiteOpaqueNode** node,
+    TfLiteRegistrationExternal** registration_external) {
+  // The following casts are safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
+  // TfLiteOpaqueNode and TfLiteNode being equivalent.
+  TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+  TfLiteNode* local_node;
+  TfLiteRegistration* registration;
+
+  TfLiteStatus status = context->GetNodeAndRegistration(
+      context, node_index, &local_node, &registration);
+  if (status != kTfLiteOk) return status;
+
+  // When the 'registration' object obtained via 'GetNodeAndRegistration'
+  // has its 'registration_external' field set then we can load that into the
+  // caller's 'registration_external' pointer and return early.
+  *node = reinterpret_cast<TfLiteOpaqueNode*>(local_node);
+  if (registration->registration_external) {
+    *registration_external = registration->registration_external;
+    return kTfLiteOk;
+  }
+
+  // When the 'registration' object obtained via 'GetNodeAndRegistration'
+  // does *not* have its 'registration_external' field set then we need to
+  // create a TfLiteRegistrationExternal on the fly, and set its field according
+  // to the 'TfLiteRegistration' object.
+  auto derived_registration =
+      tflite::internal::CommonOpaqueConversionUtil::ObtainRegistrationExternal(
+          context, registration);
+
+  if (derived_registration == nullptr) return kTfLiteError;
+
+  *registration_external = derived_registration;
+  return kTfLiteOk;
 }

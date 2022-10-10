@@ -11,9 +11,9 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup")  # buildifier: disable=same-origin-load
 
 # For platform specific build config
 load(
@@ -428,6 +428,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
+        ":session_mgr",
         ":worker_cache",
         ":worker_env",
         ":worker_interface",
@@ -440,6 +441,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
     ],
 )
 

@@ -37,7 +37,7 @@ def PythonTestAttrsDialect : Dialect {
     }
   }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif  // PYTHON_TEST_ATTRS

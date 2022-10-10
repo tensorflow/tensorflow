@@ -26,7 +26,8 @@ bool isCanonicalScatter(ScatterOp scatterOp) {
       }))
     return false;
 
-  ScatterDimensionNumbersAttr dimsAttrs = scatterOp.scatter_dimension_numbers();
+  ScatterDimensionNumbersAttr dimsAttrs =
+      scatterOp.getScatterDimensionNumbers();
   auto indicesType =
       scatterOp.getScatterIndices().getType().cast<RankedTensorType>();
   auto operandType =

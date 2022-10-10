@@ -849,7 +849,8 @@ PyTpuExecutable::ExecuteShardedOnLocalDevices(
   // TODO(henrytan): in the future, we want to consider argument Layout
   // information e.g. for linearization.
   std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program =
-      client->driver()->CompileProgram(hlo_proto, options.num_replicas(), {});
+      client->driver()->CompileProgram(hlo_proto, options.num_replicas(), {},
+                                       options.debug_options());
 
   ::xla::Shape result_layout;
   if (options.result_layout()) {

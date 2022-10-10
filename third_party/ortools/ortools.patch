@@ -113,3 +113,15 @@ diff '--color=auto' -u -r or-tools-7.3/ortools/linear_solver/BUILD or-tools-7.3-
 +        "@glpk//:glpk",
 +    ],
  )
+diff '--color=auto' -u -r or-tools-7.3/ortools/util/file_util.cc or-tools-7.3-new/ortools/util/file_util.cc
+--- or-tools-7.3/ortools/util/file_util.cc	2019-08-05 20:37:22.000000000 +0000
++++ or-tools-7.3-new/ortools/util/file_util.cc	2022-09-30 23:01:03.559353459 +0000
+@@ -69,6 +69,8 @@
+         return false;
+       }
+       break;
++    default:
++      break;
+   }
+   const std::string output_filename = absl::StrCat(filename, file_type_suffix);
+   VLOG(1) << "Writing " << output_string.size() << " bytes to "

@@ -10,7 +10,7 @@
 //       CHECK-TILE-2:   %[[dim0:.*]] = tensor.dim %[[input]], %[[c0]]
 //       CHECK-TILE-2:   %[[dim1:.*]] = tensor.dim %[[input]], %[[c1]]
 //       CHECK-TILE-2:   %[[dim2:.*]] = tensor.dim %[[input]], %[[c2]]
-//       CHECK-TILE-2:   %[[init_tensor:.*]] = linalg.init_tensor
+//       CHECK-TILE-2:   %[[init_tensor:.*]] = tensor.empty
 //       CHECK-TILE-2:   %[[split_bound:.*]] = affine.apply
 //       CHECK-TILE-2:   %[[r1:.*]] = gml_st.loop (%[[iv0:.*]], %[[iv1:.*]], %[[iv2:.*]]) = (%[[c0]], %[[c0]], %[[c0]])
 //  CHECK-TILE-2-SAME:       to (%[[dim0]], %[[dim1]], %[[split_bound]])
@@ -89,7 +89,7 @@ func.func @loop_3d_tensor(%arg0: tensor<?x?x?xf32>, %s0: index, %s1: index,
   %dim0 = tensor.dim %arg0, %c0 : tensor<?x?x?xf32>
   %dim1 = tensor.dim %arg0, %c1 : tensor<?x?x?xf32>
   %dim2 = tensor.dim %arg0, %c2 : tensor<?x?x?xf32>
-  %output = linalg.init_tensor [%dim0, %dim1, %dim2] : tensor<?x?x?xf32>
+  %output = tensor.empty(%dim0, %dim1, %dim2) : tensor<?x?x?xf32>
   %result = gml_st.loop
            (%arg1, %arg2, %arg3) = (%c0, %c0, %c0) to (%dim0, %dim1, %dim2)
            step (%s0, %s1, %s2) ins (%arg4 = %arg0: tensor<?x?x?xf32>)
@@ -183,7 +183,7 @@ func.func @step_1_do_not_peel(%arg0: tensor<?x?x?xf32>) -> tensor<?x?x?xf32> {
   %dim0 = tensor.dim %arg0, %c0 : tensor<?x?x?xf32>
   %dim1 = tensor.dim %arg0, %c1 : tensor<?x?x?xf32>
   %dim2 = tensor.dim %arg0, %c2 : tensor<?x?x?xf32>
-  %output = linalg.init_tensor [%dim0, %dim1, %dim2] : tensor<?x?x?xf32>
+  %output = tensor.empty(%dim0, %dim1, %dim2) : tensor<?x?x?xf32>
   %result = gml_st.loop
            (%arg1, %arg2, %arg3) = (%c0, %c0, %c0) to (%dim0, %dim1, %dim2)
            step (%c1, %c1, %c1) ins (%arg4 = %arg0: tensor<?x?x?xf32>)
@@ -216,7 +216,7 @@ func.func @divides_evenly_do_not_peel(%arg0: tensor<?x?x?xf32>, %s: index)
   %dim0 = tensor.dim %arg0, %c0 : tensor<?x?x?xf32>
   %dim1 = tensor.dim %arg0, %c1 : tensor<?x?x?xf32>
   %dim2 = tensor.dim %arg0, %c2 : tensor<?x?x?xf32>
-  %output = linalg.init_tensor [%dim0, %dim1, %dim2] : tensor<?x?x?xf32>
+  %output = tensor.empty(%dim0, %dim1, %dim2) : tensor<?x?x?xf32>
   %result = gml_st.loop
            (%arg1, %arg2, %arg3) = (%c0, %c0, %c0) to (%dim0, %dim1, %c64)
            step (%s, %s, %c8) ins (%arg4 = %arg0: tensor<?x?x?xf32>)

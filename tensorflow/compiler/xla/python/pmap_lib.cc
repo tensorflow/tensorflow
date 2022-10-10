@@ -207,7 +207,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
 }
 
 struct PmapCacheEntry {
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   // The value `backend.local_devices()`.
   py::object py_devices;  // To pass back to Python.
   std::vector<xla::PjRtDevice*> devices;
@@ -235,7 +235,7 @@ struct PmapCacheEntry {
 
 // A `PmapFunction` is associated to a `jax.pmap(f)` and takes care of the
 // bookkeeping of the different signatures used and the dispatch of calls to
-// the correct underlying `PyExecutable`. This class is thread-safe.
+// the correct underlying `PyLoadedExecutable`. This class is thread-safe.
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
@@ -376,7 +376,7 @@ class PmapFunction {
   py::function cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
-  // passed to the underlying PyExecutable. In sorted order.
+  // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
@@ -407,9 +407,9 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
   // See api.py::_PmapFastpathData in the JAX code base for the expected
   // namedtuple.
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   try {
-    executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+    executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
         pmap_data.attr("xla_executable"));
   } catch (const py::cast_error& e) {
     // Backends that don't implement the C++ PjRt APIs

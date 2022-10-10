@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
 
 namespace xla {
@@ -34,6 +35,12 @@ using llvm::Optional;
 void ExportOp::build(OpBuilder &builder, OperationState &result,
                      func::FuncOp function_ref) {
   result.addAttribute("function_ref", SymbolRefAttr::get(function_ref));
+}
+
+void ExportOp::build(OpBuilder &builder, OperationState &result,
+                     func::FuncOp function_ref, unsigned ordinal) {
+  build(builder, result, function_ref);
+  result.addAttribute("ordinal", builder.getI32IntegerAttr(ordinal));
 }
 
 LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {

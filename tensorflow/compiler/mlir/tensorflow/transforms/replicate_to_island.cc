@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -51,8 +50,11 @@ constexpr char kReplicaIdAttr[] = "_xla_replica_id";
 constexpr char kDeviceOrdinalAttr[] = "device_ordinal";
 constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
+#define GEN_PASS_DEF_REPLICATETOISLANDPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ReplicateToIslandPass
-    : public TF::ReplicateToIslandPassBase<ReplicateToIslandPass> {
+    : public impl::ReplicateToIslandPassBase<ReplicateToIslandPass> {
   void runOnOperation() override;
 };
 

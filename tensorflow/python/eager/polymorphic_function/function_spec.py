@@ -21,6 +21,8 @@ import weakref
 import numpy as np
 import six
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.function_type import function_type as function_type_lib
 from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -47,7 +49,6 @@ class FunctionSpec(object):
   def from_function_and_signature(cls, python_function,
                                   input_signature,
                                   is_pure=False,
-                                  experimental_follow_type_hints=False,
                                   jit_compile=None):
     """Creates a FunctionSpec instance given a python function and signature.
 
@@ -56,7 +57,6 @@ class FunctionSpec(object):
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
       will be converted to tensors and no variable changes allowed.
-      experimental_follow_type_hints: see `tf.function`
       jit_compile: see `tf.function`
 
     Returns:
@@ -143,7 +143,6 @@ class FunctionSpec(object):
         input_signature,
         is_pure=is_pure,
         jit_compile=jit_compile,
-        experimental_follow_type_hints=experimental_follow_type_hints,
         name=name)
 
   def __init__(self,
@@ -151,7 +150,6 @@ class FunctionSpec(object):
                is_method,
                input_signature,
                is_pure=False,
-               experimental_follow_type_hints=False,
                name=None,
                jit_compile=None):
     """Constructs a FunctionSpec describing a python function.
@@ -162,7 +160,6 @@ class FunctionSpec(object):
       input_signature: a signature of the function (None, if variable)
       is_pure: if True all input arguments (including variables and constants)
         will be converted to tensors and no variable changes allowed.
-      experimental_follow_type_hints: see `tf.function`.
       name: Name of the function
       jit_compile: see `tf.function`.
     """
@@ -170,7 +167,6 @@ class FunctionSpec(object):
     self._is_method = is_method
     self._is_pure = is_pure
     self._jit_compile = jit_compile
-    self._experimental_follow_type_hints = experimental_follow_type_hints
 
     # TODO(edloper): Include name when serializing for SavedModel?
     self._name = name or "f"
@@ -206,6 +202,93 @@ class FunctionSpec(object):
       self._flat_input_signature = tuple(nest.flatten(input_signature,
                                                       expand_composites=True))
     self.validate_input_signature_with_argspec()
+    self._default_values = self._make_default_values()
+    self._function_type = self._make_function_type()
+
+  def _make_default_values(self):
+    """Returns default values from the function's inspected fullargspec."""
+    if self.fullargspec.defaults is not None:
+      defaults = {
+          name: value for name, value in zip(
+              self.fullargspec.args[-len(self.fullargspec.defaults):],
+              self.fullargspec.defaults)
+      }
+    else:
+      defaults = {}
+
+    if self.fullargspec.kwonlydefaults is not None:
+      defaults.update(self.fullargspec.kwonlydefaults)
+
+    return defaults
+
+  @property
+  def default_values(self):
+    """Returns dict mapping parameter names to default values."""
+    return self._default_values
+
+  def _make_function_type(self):
+    """Repackages fullargspec information into an equivalent FunctionType."""
+    parameters = []
+
+    arg_kind = (
+        function_type_lib.Parameter.POSITIONAL_ONLY
+        if self.fullargspec.kwonlyargs else
+        function_type_lib.Parameter.POSITIONAL_OR_KEYWORD)
+    for arg in self.fullargspec.args:
+      # TODO(b/249802365): Add sanitization warning when load-bearing.
+      parameters.append(
+          function_type_lib.Parameter(
+              tensor_spec.sanitize_spec_name(arg), arg_kind, arg
+              in self.default_values, None))
+
+    if self.fullargspec.varargs is not None:
+      parameters.append(
+          function_type_lib.Parameter(
+              self.fullargspec.varargs,
+              function_type_lib.Parameter.VAR_POSITIONAL, False, None))
+
+    for kwarg in self.fullargspec.kwonlyargs:
+      # TODO(b/249802365): Add sanitization warning when load-bearing.
+      parameters.append(
+          function_type_lib.Parameter(
+              tensor_spec.sanitize_spec_name(kwarg),
+              function_type_lib.Parameter.KEYWORD_ONLY, kwarg
+              in self.default_values, None))
+
+    if self.fullargspec.varkw is not None:
+      parameters.append(
+          function_type_lib.Parameter(self.fullargspec.varkw,
+                                      function_type_lib.Parameter.VAR_KEYWORD,
+                                      False, None))
+
+    # Annotate with Type Constraints if needed.
+    if self.input_signature:
+      scanned_index = 0
+      for i, param in enumerate(parameters):
+        if (param.name != "self" and
+            param.kind != function_type_lib.Parameter.VAR_POSITIONAL and
+            param.kind != function_type_lib.Parameter.VAR_KEYWORD):
+          if scanned_index < len(self.input_signature):
+            type_constraint = trace_type.from_value(
+                self.input_signature[scanned_index],
+                trace_type.InternalTracingContext(is_legacy_signature=True))
+            parameters[i] = function_type_lib.Parameter(param.name, param.kind,
+                                                        param.optional,
+                                                        type_constraint)
+            scanned_index += 1
+          elif param.name in self.default_values:
+            type_constraint = trace_type.from_value(
+                self.default_values[param.name])
+            parameters[i] = function_type_lib.Parameter(param.name, param.kind,
+                                                        param.optional,
+                                                        type_constraint)
+
+    return function_type_lib.FunctionType(parameters)
+
+  @property
+  def function_type(self):
+    """Returns a FunctionType representing the Python function signature."""
+    return self._function_type
 
   @property
   def fullargspec(self):
@@ -296,35 +379,6 @@ class FunctionSpec(object):
               f"{len(missing_tensor_specs)} argument(s):"
               f" {missing_tensor_specs}.")
 
-  def _convert_annotated_args_to_tensors(self, args, kwargs):
-    """Attempts to autobox arguments annotated as tf.Tensor."""
-    if self.input_signature is not None:
-      return
-
-    args = list(args)
-    for i, arg in enumerate(args):
-      # See
-      # https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
-      if i < len(self._fullargspec.args):
-        annotation_key = self._fullargspec.args[i]
-      else:
-        annotation_key = self._fullargspec.varargs
-      arg_annotation = self._fullargspec.annotations.get(annotation_key, None)
-
-      # TODO(rahulkamat): Change to TensorLike (here ans below)
-      if arg_annotation == ops.Tensor:
-        args[i] = _to_tensor_or_tensor_spec(arg)
-
-    for kw, v in kwargs.items():
-      if kw in self._fullargspec.kwonlyargs or kw in self._fullargspec.args:
-        annotation_key = kw
-      else:
-        annotation_key = self._fullargspec.varkw
-      kwarg_annotation = self._fullargspec.annotations.get(annotation_key, None)
-      if kwarg_annotation == ops.Tensor:
-        kwargs[kw] = _to_tensor_or_tensor_spec(v)
-    return tuple(args), kwargs
-
   def _validate_inputs(self, flat_inputs):
     """Raises an error if inputs contain illegal values."""
     for inp in flat_inputs:
@@ -395,8 +449,7 @@ class FunctionSpec(object):
     kwargs = {key: kwargs[key] for key in kwargs}
     if self._is_pure:
       args, kwargs = _convert_variables_to_tensors(args, kwargs)
-    if self._experimental_follow_type_hints:
-      args, kwargs = self._convert_annotated_args_to_tensors(args, kwargs)
+
     # Pre-calculate to reduce overhead
     arglen = len(args)
     if self._input_signature is not None:

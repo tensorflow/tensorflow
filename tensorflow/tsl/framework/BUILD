@@ -4,20 +4,14 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -170,7 +164,6 @@ cc_library(
         ":numeric_types",
         ":type_traits",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/lib/gtl:inlined_vector",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
@@ -180,6 +173,7 @@ cc_library(
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -206,7 +200,6 @@ cc_library(
         ":shared_counter",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/lib/core:bits",
         "//tensorflow/tsl/lib/monitoring:counter",
         "//tensorflow/tsl/lib/monitoring:gauge",
@@ -220,6 +213,7 @@ cc_library(
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

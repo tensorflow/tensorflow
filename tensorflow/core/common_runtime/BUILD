@@ -12,13 +12,13 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -2692,7 +2692,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
-    ] + if_cuda(["//tensorflow/core/common_runtime/gpu:cuda"]),
+    ] + if_cuda(["//tensorflow/tsl/platform:cuda"]),
 )
 
 # This is identical to :common_runtime_direct_session_test with the addition of
@@ -2746,7 +2746,7 @@ tf_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = [
         "no_gpu",
-        "no_macos",  # TODO(b/250242601)
+        "nomac",  # TODO(b/250242601)
     ],
     deps = [
         ":core",

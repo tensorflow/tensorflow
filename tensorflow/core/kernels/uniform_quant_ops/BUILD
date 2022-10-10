@@ -13,8 +13,8 @@ load(
 # copybara:uncomment_begin(google-only)
 # # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 # copybara:uncomment_end
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
 
 package(
     default_visibility = ["//visibility:public"],

@@ -313,6 +313,13 @@ class ShapeInference {
   static StatusOr<Shape> InferBitcastConvertShape(
       const Shape& operand_shape, PrimitiveType new_element_type);
 
+  // Helper that validates the given operand shape can be converted to the
+  // target output_shape via a stochastic convert instruction -- the requirement
+  // is that the shape is identical except for the element type.
+  static StatusOr<Shape> InferStochasticConvertShape(
+      const Shape& operand_shape, const Shape& random_shape,
+      PrimitiveType new_element_type);
+
   // Helper that validates the input data type for a reduce-precision operation,
   // and returns the result shape.
   static StatusOr<Shape> InferReducePrecisionShape(const Shape& operand_shape,

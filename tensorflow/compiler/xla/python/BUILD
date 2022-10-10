@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -8,12 +8,8 @@ load(
     "tf_cc_test",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pytype_library")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
+load("//tensorflow:pytype.default.bzl", "pytype_library")
 
 package(
     default_visibility = [":friends"],
@@ -34,10 +30,7 @@ pytype_library(
     pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":xla_extension",
-        "@absl_py//absl/logging",
-    ],
+    deps = [":xla_extension"],
 )
 
 exports_files(["xla_client.pyi"])
@@ -259,6 +252,16 @@ cc_library(
 )
 
 cc_library(
+    name = "numpy",
+    srcs = ["numpy.cc"],
+    hdrs = ["numpy.h"],
+    deps = [
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
     name = "py_client",
     srcs = [
         "callback.cc",
@@ -293,6 +296,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":exceptions",
+        ":numpy",
         ":pprof_profile_builder",
         ":python_ref_manager",
         ":python_utils",
@@ -326,7 +330,6 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/python/lib/core:numpy_lib",
         "//tensorflow/tsl/platform:fingerprint",
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
@@ -810,6 +813,7 @@ pybind_extension(
         ":custom_call_sharding",
         ":jax_jit",
         ":mlir",
+        ":numpy",
         ":ops",
         ":pmap_lib",
         ":pjit",
@@ -835,9 +839,11 @@ pybind_extension(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:cpu_device",
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla/pjrt/distributed",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
@@ -854,7 +860,7 @@ pybind_extension(
         "//tensorflow/python:bfloat16_lib",
     ] + select({
         ":gpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:gpu_device",
+            "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         ],
         "//conditions:default": [],
     }) + select({

@@ -11,8 +11,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_or_rocm",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",

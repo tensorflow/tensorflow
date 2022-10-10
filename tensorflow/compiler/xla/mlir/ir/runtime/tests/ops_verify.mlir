@@ -16,31 +16,31 @@ func.func @bar() {
 }
 
 // -----
-// expected-error @+1 {{'func.func' op requires "rt.entrypoint" to be a unit attribute}}
-func.func private @verify_rt_entrypoint(%arg0: memref<?xf32>)
-  attributes { rt.entrypoint = 1 } {
+// expected-error @+1 {{'func.func' op requires "rt.exported" to be an integer attribute}}
+func.func private @verify_rt_exported(%arg0: memref<?xf32>)
+  attributes { rt.exported } {
   call @custom_call(%arg0) : (memref<?xf32>) -> ()
   return
 }
 
 // -----
-func.func private @verify_entrypoint_non_func(%arg0: memref<?xf32>) {
-  // expected-error @+1 {{"rt.entrypoint" can only be applied to a function}}
-  call @custom_call(%arg0) {rt.entrypoint}: (memref<?xf32>) -> ()
+func.func private @verify_exported_non_func(%arg0: memref<?xf32>) {
+  // expected-error @+1 {{"rt.exported" can only be applied to a function}}
+  call @custom_call(%arg0) { rt.exported = 0 : i32}: (memref<?xf32>) -> ()
   return
 }
 
 // -----
-func.func private @verify_entrypoint_non_func(%arg0: memref<?xf32>) {
+func.func private @verify_exported_non_func(%arg0: memref<?xf32>) {
   // expected-error @+1 {{"rt.dynamic" can only be applied to a custom call declaration}}
   call @custom_call(%arg0) {rt.dynamic}: (memref<?xf32>) -> ()
   return
 }
 
 // -----
-// expected-error @+1 {{'func.func' op requires non-empty body for function with attribute "rt.entrypoint"}}
-func.func private @verify_rt_entrypoint(%arg0: memref<?xf32>)
-  attributes { rt.entrypoint}
+// expected-error @+1 {{'func.func' op requires non-empty body for function with attribute "rt.exported"}}
+func.func private @verify_rt_exported(%arg0: memref<?xf32>)
+  attributes { rt.exported = 0 : i32 }
 
 
 // -----
@@ -65,7 +65,7 @@ func.func private @custom_call(%arg0: memref<?xf32>) -> memref<?xf32>
 
 // -----
 func.func private @verify_custom_call_non_func(%arg0: memref<?xf32>)
-  attributes { rt.entrypoint } {
+  attributes { rt.exported = 0 : i32 } {
   // expected-error @+1 {{"rt.custom_call" can only be applied to a function}}
   call @custom_call(%arg0) {rt.custom_call = "target"}: (memref<?xf32>) -> ()
   return

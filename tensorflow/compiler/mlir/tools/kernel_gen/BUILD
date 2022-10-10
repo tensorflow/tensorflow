@@ -1,10 +1,7 @@
-# buildifier: disable=same-origin-load
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "if_gpu_is_configured",
 )
-
-# buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
@@ -53,9 +50,9 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_no_fallback",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",  # fixdeps: keep
-        "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
-        "//tensorflow/compiler/xla/mlir_hlo:gpu_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_gpu_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineToStandard",

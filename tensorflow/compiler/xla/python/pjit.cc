@@ -37,7 +37,7 @@ namespace {
 namespace py = pybind11;
 
 struct PjitCacheEntry {
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   std::vector<py::object> in_shardings;
   std::vector<py::object> out_avals;
   std::vector<py::dtype> out_dtypes;
@@ -95,7 +95,8 @@ class PjitFunction {
 // Prepares the input PjRtBuffers from the python arguments. This is equivalent
 // to shard_args() in pxla.py but for only a few supported cases.
 xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
-    const xla::PyExecutable& executable, ParsedArgumentsAsBuffers& arguments) {
+    const xla::PyLoadedExecutable& executable,
+    ParsedArgumentsAsBuffers& arguments) {
   const auto& devices = executable.AddressableDevices();
   int num_args = arguments.flat_dynamic_args.size();
 
@@ -336,7 +337,7 @@ xla::Status PjitFunction::UpdateArgsSignature(
   arguments.signature.thread_local_extra_jit_context = tls.extra_jit_context;
   arguments.signature.global_extra_jit_context = global_state.extra_jit_context;
 
-  return xla::Status::OK();
+  return xla::OkStatus();
 }
 
 void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
@@ -352,7 +353,7 @@ void PjitFunction::PopulateCacheEntry(PjitCacheEntry& cache_entry,
 
   py::tuple fastpath_data = py::cast<py::tuple>(out_and_fastpath_data[1]);
 
-  cache_entry.executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+  cache_entry.executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
       fastpath_data.attr("xla_executable"));
 
   py::list in_shardings = fastpath_data.attr("in_shardings");

@@ -26,17 +26,19 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/core/platform/path.h"
 
 namespace mlir {
 namespace tf_saved_model {
 namespace {
 
+#define GEN_PASS_DEF_FREEZEASSETSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 // This pass will replace a func's saved model asset bound inputs which are
 // bound to tf.InitializeTableFromTextFileV2Op ops with tf.Const ops inside the
 // func's body.
-struct FreezeAssetsPass : public FreezeAssetsPassBase<FreezeAssetsPass> {
+struct FreezeAssetsPass : public impl::FreezeAssetsPassBase<FreezeAssetsPass> {
   FreezeAssetsPass() = default;
 
   FreezeAssetsPass(const FreezeAssetsPass& pass) {}

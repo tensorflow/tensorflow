@@ -53,7 +53,9 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   // connected to FakeQuantOp instead of the ConstOp so need to add separate
   // pattern for FakeQuantOp.
   // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
       quantization_options.op_set()));
@@ -94,11 +96,14 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 }
 
-void AddQuantizePtqPreCalibrationPasses(mlir::PassManager &pm) {
+void AddQuantizePtqPreCalibrationPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quantization_options.op_set()));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());

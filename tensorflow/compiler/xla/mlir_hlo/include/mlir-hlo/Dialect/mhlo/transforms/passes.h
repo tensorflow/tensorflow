@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Pass/Pass.h"
+
 namespace mlir {
 
 class ModuleOp;
@@ -35,14 +37,7 @@ class FusionOp;
 
 namespace mhlo {
 
-#define GEN_PASS_DECL_CHLOLEGALIZETOHLOPASS
-#define GEN_PASS_DECL_EXPANDHLOTUPLESPASS
-#define GEN_PASS_DECL_GROUPREDUCTIONDIMENSIONSPASS
-#define GEN_PASS_DECL_LEGALIZEMHLOTOTHLOPASS
-#define GEN_PASS_DECL_RANKSPECIALIZATIONTOSCFPASS
-#define GEN_PASS_DECL_HLOLEGALIZETOSTABLEHLOPASS
-#define GEN_PASS_DECL_HLOCANONICALIZESCATTERPASS
-#define GEN_PASS_DECL_STABLEHLOLEGALIZETOHLOPASS
+#define GEN_PASS_DECL
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 /// Lowers HLO control flow ops to SCF.
@@ -166,6 +161,14 @@ std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();
 
 // Legalizes from the StableHLO dialect to the MHLO dialect.
 std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
+
+// Test passes.
+std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
+std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
+std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
+
+#define GEN_PASS_REGISTRATION
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 }  // namespace mhlo
 }  // namespace mlir

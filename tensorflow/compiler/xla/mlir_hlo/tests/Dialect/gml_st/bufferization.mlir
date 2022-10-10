@@ -235,3 +235,52 @@ func.func @nested_parallel_with_vector(%init : tensor<?x32xf32>)
 // CHECK:           vector.transfer_write %[[RESVEC]], %[[INITTILE]]
 // CHWECK-SAME:         vector<1x32xf32>, memref<1x32xf32
 // CHECK:         return %[[INIT]] : memref<?x32xf32>
+
+
+// -----
+
+func.func @scalarized_reduction(%arg: tensor<1x?xf32>) -> tensor<1xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %empty = tensor.empty() : tensor<1xf32>
+  %fill = linalg.fill ins(%cst : f32)
+                      outs(%empty : tensor<1xf32>) -> tensor<1xf32>
+
+  %dim = tensor.dim %arg, %c1 : tensor<1x?xf32>
+  %result = gml_st.for (%i) = (%c0) to (%dim) step (%c1)
+      outs (%out = %fill: tensor<1xf32>) {
+    %space = gml_st.space [1, %dim] : !gml_st.tile<1x?>
+    %tile = gml_st.tile %space [0, %i] [1, 1] [1, 1]
+      : !gml_st.tile<1x?> to !gml_st.tile<1x1>
+    %elem = gml_st.materialize %arg[%tile]
+      : tensor<1x?xf32>[!gml_st.tile<1x1>] to f32
+
+    %extracted = tensor.extract %out[%c0] : tensor<1xf32>
+    %sum = arith.addf %extracted, %elem : f32
+
+    %tile1 = gml_st.space [1] : !gml_st.tile<1>
+    gml_st.set_yield %sum into %out[%tile1]
+      : f32 into tensor<1xf32>[!gml_st.tile<1>]
+  } : tensor<1xf32>
+  return %result : tensor<1xf32>
+}
+// CHECK-LABEL: func.func @scalarized_reduction(
+// CHECK-SAME:      %[[ARG:.*]]: memref<1x?xf32>) -> memref<1xf32> {
+
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+
+// CHECK:       %[[ALLOC:.*]] = memref.alloc()
+// CHECK:       linalg.fill ins(%{{.*}}: f32) outs(%[[ALLOC]] : memref<1xf32>)
+// CHECK:       %[[DIM:.*]] = memref.dim %[[ARG]], %[[C1]] : memref<1x?xf32>
+
+// CHECK-NEXT:  gml_st.for (%[[I:.*]]) = (%[[C0]]) to (%[[DIM]]) step (%[[C1]]) {
+// CHECK-NEXT:    %[[ARG_ELEM:.*]] = memref.load %[[ARG]][%[[C0]], %[[I]]]
+// CHECK-NEXT:    %[[ACC:.*]] = memref.load %[[ALLOC]][%[[C0]]] : memref<1xf32>
+// CHECK-NEXT:    %[[SUM:.*]] = arith.addf %[[ACC]], %[[ARG_ELEM]] : f32
+// CHECK-NEXT:    memref.store %[[SUM]], %[[ALLOC]][%[[C0]]] : memref<1xf32>
+// CHECK-NEXT:    gml_st.set_yield
+// CHECK-NEXT:  }
+// CHECK:       return %[[ALLOC]] : memref<1xf32>
+

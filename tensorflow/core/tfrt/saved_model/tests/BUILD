@@ -1,8 +1,8 @@
 load(":gen_saved_model.bzl", "gen_saved_model")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
     default_visibility = [":internal"],

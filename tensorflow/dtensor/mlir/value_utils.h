@@ -61,9 +61,9 @@ mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
                                  mlir::Location loc, bool use_int64 = true);
 
 // Returns a scalar constant with 'value' of 'type'.
-absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
-                                                  mlir::Location loc,
-                                                  mlir::Type type);
+StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
+                                            mlir::Location loc,
+                                            mlir::Type type);
 
 // Selects a scalar tensor value from a 1D array in specified index.
 StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,

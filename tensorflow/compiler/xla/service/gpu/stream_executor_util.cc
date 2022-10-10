@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <random>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -61,42 +63,53 @@ int64_t FindMissingDnum(absl::Span<const int64_t> vals) {
   return vals.size();
 }
 
+StatusOr<Layout> DataLayoutToXlaLayout(
+    DataLayout data_layout, int64_t batch_dimension, int64_t feature_dimension,
+    absl::Span<int64_t const> spatial_dimensions) {
+  std::vector<int64_t> layout;
+  switch (data_layout) {
+    case DataLayout::kBatchDepthYX:  // NCHW
+      layout.push_back(batch_dimension);
+      layout.push_back(feature_dimension);
+      layout.insert(layout.end(), spatial_dimensions.begin(),
+                    spatial_dimensions.end());
+      break;
+    case DataLayout::kBatchDepthYX4:   // NCHW_VECT_C
+    case DataLayout::kBatchDepthYX32:  // NCHW_VECT_C
+      layout.push_back(batch_dimension);
+      layout.push_back(feature_dimension);
+      layout.insert(layout.end(), spatial_dimensions.begin(),
+                    spatial_dimensions.end());
+      layout.push_back(FindMissingDnum(layout));
+      break;
+    case DataLayout::kBatchYXDepth:  // NHWC
+      layout.push_back(batch_dimension);
+      layout.insert(layout.end(), spatial_dimensions.begin(),
+                    spatial_dimensions.end());
+      layout.push_back(feature_dimension);
+      break;
+    default:
+      return InternalError("Invalid layout %s", DataLayoutString(data_layout));
+  }
+  return LayoutUtil::MakeLayoutFromMajorToMinor(layout);
+}
+
 }  // anonymous namespace
 
 StatusOr<std::tuple<Layout, Layout, Layout>>
 StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
                                       DataLayout input, FilterLayout filter,
                                       DataLayout output) {
-  std::vector<int64_t> input_layout;
-  switch (input) {
-    case DataLayout::kBatchDepthYX:  // NCHW
-      input_layout.push_back(dnums.input_batch_dimension());
-      input_layout.push_back(dnums.input_feature_dimension());
-      input_layout.insert(input_layout.end(),
-                          dnums.input_spatial_dimensions().begin(),
-                          dnums.input_spatial_dimensions().end());
-      break;
-    case DataLayout::kBatchDepthYX4:   // NCHW_VECT_C
-    case DataLayout::kBatchDepthYX32:  // NCHW_VECT_C
-      input_layout.push_back(dnums.input_batch_dimension());
-      input_layout.push_back(dnums.input_feature_dimension());
-      input_layout.insert(input_layout.end(),
-                          dnums.input_spatial_dimensions().begin(),
-                          dnums.input_spatial_dimensions().end());
-      input_layout.push_back(FindMissingDnum(input_layout));
-      break;
-    case DataLayout::kBatchYXDepth:  // NHWC
-      input_layout.push_back(dnums.input_batch_dimension());
-      input_layout.insert(input_layout.end(),
-                          dnums.input_spatial_dimensions().begin(),
-                          dnums.input_spatial_dimensions().end());
-      input_layout.push_back(dnums.input_feature_dimension());
-      break;
-    default:
-      return InternalError("Invalid input layout %s for conv with dnums %s",
-                           DataLayoutString(input),
-                           ConvolutionDimensionNumbersToString(dnums));
-  }
+  TF_ASSIGN_OR_RETURN(
+      Layout input_layout,
+      DataLayoutToXlaLayout(input, dnums.input_batch_dimension(),
+                            dnums.input_feature_dimension(),
+                            dnums.input_spatial_dimensions()));
+  TF_ASSIGN_OR_RETURN(
+      Layout output_layout,
+      DataLayoutToXlaLayout(input, dnums.output_batch_dimension(),
+                            dnums.output_feature_dimension(),
+                            dnums.output_spatial_dimensions()));
 
   std::vector<int64_t> filter_layout;
   switch (filter) {
@@ -124,45 +137,14 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
       filter_layout.push_back(dnums.kernel_input_feature_dimension());
       break;
     default:
-      return InternalError("Invalid filter layout %s for conv with dnums %s",
+      return InternalError("Invalid filter layout %s for conv with dnums %s,",
                            FilterLayoutString(filter),
                            ConvolutionDimensionNumbersToString(dnums));
   }
 
-  std::vector<int64_t> output_layout;
-  switch (output) {
-    case DataLayout::kBatchDepthYX:  // NCHW
-      output_layout.push_back(dnums.output_batch_dimension());
-      output_layout.push_back(dnums.output_feature_dimension());
-      output_layout.insert(output_layout.end(),
-                           dnums.output_spatial_dimensions().begin(),
-                           dnums.output_spatial_dimensions().end());
-      break;
-    case DataLayout::kBatchDepthYX4:   // NCHW_VECT_C
-    case DataLayout::kBatchDepthYX32:  // NCHW_VECT_C
-      output_layout.push_back(dnums.output_batch_dimension());
-      output_layout.push_back(dnums.output_feature_dimension());
-      output_layout.insert(output_layout.end(),
-                           dnums.output_spatial_dimensions().begin(),
-                           dnums.output_spatial_dimensions().end());
-      output_layout.push_back(FindMissingDnum(output_layout));
-      break;
-    case DataLayout::kBatchYXDepth:  // NHWC
-      output_layout.push_back(dnums.output_batch_dimension());
-      output_layout.insert(output_layout.end(),
-                           dnums.output_spatial_dimensions().begin(),
-                           dnums.output_spatial_dimensions().end());
-      output_layout.push_back(dnums.output_feature_dimension());
-      break;
-    default:
-      return InternalError("Invalid output layout %s for conv with dnums %s",
-                           DataLayoutString(output),
-                           ConvolutionDimensionNumbersToString(dnums));
-  }
-
-  return std::make_tuple(LayoutUtil::MakeLayoutFromMajorToMinor(input_layout),
+  return std::make_tuple(input_layout,
                          LayoutUtil::MakeLayoutFromMajorToMinor(filter_layout),
-                         LayoutUtil::MakeLayoutFromMajorToMinor(output_layout));
+                         output_layout);
 }
 
 StatusOr<std::tuple<DataLayout, FilterLayout, DataLayout>>
@@ -215,9 +197,12 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(input.layout(), nhwc_input)) {
     input_layout = DataLayout::kBatchYXDepth;
   } else {
-    return InternalError("Invalid input layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(input.layout()),
-                         ConvolutionDimensionNumbersToString(dnums));
+    return InternalError(
+        "Invalid input layout %s for conv with dnums %s; expected one of (%s, "
+        "%s, %s)",
+        LayoutUtil::HumanString(input.layout()),
+        ConvolutionDimensionNumbersToString(dnums), nchw_input.ToString(),
+        nchw_vect_input.ToString(), nhwc_input.ToString());
   }
 
   FilterLayout filter_layout;
@@ -239,9 +224,12 @@ XlaConvShapesToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
   } else if (LayoutUtil::Equal(filter.layout(), nhwc_filter)) {
     filter_layout = FilterLayout::kOutputYXInput;
   } else {
-    return InternalError("Invalid filter layout %s for conv with dnums %s",
-                         LayoutUtil::HumanString(filter.layout()),
-                         ConvolutionDimensionNumbersToString(dnums));
+    return InternalError(
+        "Invalid filter layout %s for conv with dnums %s, expected one of (%s, "
+        "%s, %s)",
+        LayoutUtil::HumanString(filter.layout()),
+        ConvolutionDimensionNumbersToString(dnums), nchw_filter.ToString(),
+        nchw_vect_filter.ToString(), nhwc_filter.ToString());
   }
 
   DataLayout output_layout;

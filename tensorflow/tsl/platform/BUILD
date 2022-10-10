@@ -4,9 +4,8 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
-# buildifier: disable=same-origin-load
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -14,7 +13,7 @@ load(
     "tf_copts",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_cuda_libdevice_path_deps",
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
@@ -27,7 +26,7 @@ load(
     "tf_windows_aware_platform_deps",
 )
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -254,8 +253,8 @@ cc_library(
         ":strcat",
         ":stringprintf",
         ":types",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/status",
@@ -274,7 +273,7 @@ cc_library(
         ":status",
         ":statusor",
         ":test",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -999,6 +998,13 @@ cc_library(
 )
 
 cc_library(
+    name = "cuda",
+    deps = [
+        "//tensorflow/tsl/platform/default/build_config:cuda",
+    ],
+)
+
+cc_library(
     name = "logger",
     srcs = ["logger.cc"],
     hdrs = ["logger.h"],
@@ -1300,7 +1306,7 @@ tf_cc_test(
         ":statusor",
         ":test",
         ":test_main",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -1416,28 +1422,6 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
-    ],
-)
-
-tf_cc_test(
-    name = "env_test",
-    size = "small",
-    srcs = ["env_test.cc"],
-    deps = [
-        ":cord",
-        ":env",
-        ":env_impl",
-        ":null_file_system",
-        ":path",
-        ":protobuf",
-        ":str_util",
-        ":strcat",
-        ":stringpiece",
-        ":test",
-        ":test_main",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//third_party/eigen3",
     ],
 )
 

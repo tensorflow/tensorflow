@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Internal APIs to be removed in the future."""
 
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
@@ -369,8 +368,7 @@ def defun_with_attributes(func=None,
                           autograph=True,
                           experimental_autograph_options=None,
                           jit_compile=None,
-                          reduce_retracing=False,
-                          experimental_follow_type_hints=False):
+                          reduce_retracing=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -392,7 +390,6 @@ def defun_with_attributes(func=None,
       experimental_autograph_options.
     jit_compile: same as defun()'s jit_compile.
     reduce_retracing: same as defun()'s reduce_retracing
-    experimental_follow_type_hints: see `tf.function`.
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -418,8 +415,7 @@ def defun_with_attributes(func=None,
             autograph=autograph,
             autograph_options=experimental_autograph_options,
             jit_compile=jit_compile,
-            reduce_retracing=reduce_retracing,
-            experimental_follow_type_hints=experimental_follow_type_hints))
+            reduce_retracing=reduce_retracing))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -513,8 +509,7 @@ def clear_function_callbacks():
 
 
 @deprecation.deprecated(
-    None,
-    "Use `tf.config.run_functions_eagerly` instead of the experimental "
+    None, "Use `tf.config.run_functions_eagerly` instead of the experimental "
     "version.")
 @tf_export("config.experimental_run_functions_eagerly")
 def experimental_run_functions_eagerly(run_eagerly):

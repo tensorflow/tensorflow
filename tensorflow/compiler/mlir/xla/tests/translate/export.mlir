@@ -99,6 +99,35 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
 // -----
 
 // CHECK:  HloModule
+func.func @all_gather_0(%arg1: tensor<128x32xf32>) -> tensor<128x128xf32> attributes {execution_thread = "main"} {
+  %0 = "mhlo.all_gather"(%arg1) {
+    all_gather_dim = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>,
+    shard_count = 4,
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    use_global_device_ids
+  } : (tensor<128x32xf32>) -> tensor<128x128xf32>
+  return %0 : tensor<128x128xf32>
+}
+
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x128xf32> {
+  %0 = "mhlo.async_start"(%arg0) {called_computation = @all_gather_0, execution_thread = "main"} : (tensor<128x32xf32>) -> !mhlo.async_bundle<tensor<128x32xf32>, tensor<128x128xf32>>
+  %1 = "mhlo.async_done"(%0) {called_computation = @all_gather_0, execution_thread = "main"} : (!mhlo.async_bundle<tensor<128x32xf32>, tensor<128x128xf32>>) -> tensor<128x128xf32>
+  return %1 : tensor<128x128xf32>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
+// CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,128]) all-gather-start(f32[128,32] %[[INPUT]])
+// CHECK-SAME: channel_id=1
+// CHECK-SAME{LITERAL}: replica_groups={{0,2,4,6},{1,3,5,7}}
+// CHECK-SAME: dimensions={1}
+// CHECK-SAME: use_global_device_ids=true
+// CHECK: ROOT {{.*}} (f32[128,128]) all-gather-done((f32[128,32], f32[128,128]) %[[OUTPUT]]
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({
   // Perform max reduction inside the region
@@ -626,6 +655,19 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK:  ENTRY
 // CHECK:  %[[ARG:.*]] = s32[2] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[2] convert(s32[2] %[[ARG]])
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<5x5xf32>, %arg1: tensor<5x5xi32>) -> tensor<5x5xi8> {
+  %result = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<5x5xf32>, tensor<5x5xi32>) -> tensor<5x5xi8>
+  func.return %result : tensor<5x5xi8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = f32[5,5] parameter(0)
+// CHECK:  %[[ARG1:.*]] = s32[5,5] parameter(1)
+// CHECK:  ROOT %[[RESULT:.*]] = s8[5,5] stochastic-convert(f32[5,5] %[[ARG0]], s32[5,5] %[[ARG1]])
 
 // -----
 

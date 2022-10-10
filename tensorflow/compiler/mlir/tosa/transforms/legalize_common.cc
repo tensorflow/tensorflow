@@ -3021,68 +3021,144 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   size_t output_height = output_shape[1];
   size_t output_width = output_shape[2];
 
-  double fp_stride_y =
-      static_cast<double>(input_height) / static_cast<double>(output_height);
-  double fp_stride_x =
-      static_cast<double>(input_width) / static_cast<double>(output_width);
-  if (align_corners && output_height > 1) {
-    fp_stride_y = static_cast<double>(input_height - 1) /
-                  static_cast<double>(output_height - 1);
-  }
-  if (align_corners && output_width > 1) {
-    fp_stride_x = static_cast<double>(input_width - 1) /
-                  static_cast<double>(output_width - 1);
+  // By defining the scaling factor as a ratio of integers so that exact output
+  // dimensions can be derived from input dimensions without rounding.
+  //
+  // a.For power of two upscale [OH, OW] = (1 << k) * [IH, IW],
+  //   sampling range approximately (-0.5, -0.5) to (IH - 0.5, IW - 0.5), set:
+  //
+  //   scale_y_n = 2 << k, scale_y_d = 2,
+  //   offset_y = -(1 << k) + 1, border_y = (1 << k) - 1
+  //
+  //   scale_x_n = 2 << k, scale_x_d = 2,
+  //   offset_x = -(1 << k) + 1, border_x = (1 << k) - 1
+  //
+  // b.For power of two upscale [OH - 1 ,OW - 1] = (1 << k) * [IH - 1, IW - 1],
+  //   sampling between (0,0) and (IH - 1,IW - 1), set:
+  //
+  //   scale_y_n = (1 << k), scale_y_d = 1, offset_y = 0, border_y = 0
+  //
+  //   scale_x_n = (1 << k), scale_x_d = 1, offset_x = 0, border_x = 0
+  //
+  // c.For approximate uniform input
+  //   sampling between (0, 0) and (IH - 1, IW - 1) set:
+  //
+  //   scale_y_n/scale_y_d = (OH - 1)/(IH - 1) as integer ratios
+  //   offset_y = 0, border_y = 0
+  //
+  //   scale_x_n/scale_x_d = (OW - 1)/(IW - 1) as integer ratios
+  //   offset_x = 0, border_x = 0
+
+  int scale_y_n, scale_y_d, scale_x_n, scale_x_d;
+  int offset_y = 0, offset_x = 0;
+  int border_y = 0, border_x = 0;
+  bool uniform_sampling = true;
+
+  // The ratio below is a non-zero positive value if this is a power-of-two
+  // upscaling.
+  int height_ratio = 0;
+  if (output_height % input_height == 0) {
+    int quotient = output_height / input_height;
+    if (llvm::isPowerOf2_64(quotient)) {
+      height_ratio = quotient;
+    }
   }
 
-  double fp_offset_y, fp_offset_x;
-  if (half_pixel_centers) {
-    fp_offset_y = fp_stride_y * 0.5f - 0.5f;
-    fp_offset_x = fp_stride_x * 0.5f - 0.5f;
-  } else {
-    fp_offset_y = 0.0f;
-    fp_offset_x = 0.0f;
+  int width_ratio = 0;
+  if (output_width % input_width == 0) {
+    int quotient = output_width / input_width;
+    if (llvm::isPowerOf2_64(quotient)) {
+      width_ratio = quotient;
+    }
   }
 
-  // oh * fp_stride_y + fp_offset_y = ix
+  int height_minus_one_ratio = 0;
+  if ((output_height - 1) % (input_height - 1) == 0) {
+    int quotient = (output_height - 1) / (input_height - 1);
+    if (llvm::isPowerOf2_64(quotient)) {
+      height_minus_one_ratio = quotient;
+    }
+  }
 
-  ArrayAttr output_size =
-      rewriter.getI64ArrayAttr({static_cast<int64_t>(output_height),
-                                static_cast<int64_t>(output_width)});
+  int width_minus_one_ratio = 0;
+  if ((output_width - 1) % (input_width - 1) == 0) {
+    int quotient = (output_width - 1) / (input_width - 1);
+    if (llvm::isPowerOf2_64(quotient)) {
+      width_minus_one_ratio = quotient;
+    }
+  }
+
+  // True if [OH, OW] = (1 << k) * [IH, IW],
+  if ((height_ratio != 0) && (height_ratio == width_ratio)) {
+    // Find the shift value 'k' that satisfy '1 << k = OH / IH'.
+    int k = llvm::Log2_64(height_ratio);
+    scale_y_n = 2 << k;
+    scale_y_d = 2;
+    offset_y = -(1 << k) + 1;
+    border_y = (1 << k) - 1;
+    scale_x_n = scale_y_n;
+    scale_x_d = scale_y_d;
+    offset_x = offset_y;
+    border_x = border_y;
+    uniform_sampling = false;
+  } else if ((height_minus_one_ratio != 0) &&
+             (height_minus_one_ratio == width_minus_one_ratio)) {
+    // True if [OH - 1, OW - 1] = (1 << k) * [IH  - 1, IW - 1],
+    int k = llvm::Log2_64(height_minus_one_ratio);
+    scale_y_n = 1 << k;
+    scale_y_d = 1;
+    scale_x_n = scale_y_n;
+    scale_x_d = 1;
+    uniform_sampling = false;
+  }
+
+  // Align corners sets the scaling ratio to (OH - 1)/(IH - 1)
+  // rather than OH / IH. Similarly for width.
+  if (align_corners || uniform_sampling) {
+    int gcd_y = std::gcd(input_height - 1, output_height - 1);
+    int gcd_x = std::gcd(input_width - 1, output_width - 1);
+    scale_y_n = (output_height - 1) / gcd_y;
+    scale_y_d = (input_height - 1) / gcd_y;
+    scale_x_n = (output_width - 1) / gcd_x;
+    scale_x_d = (input_width - 1) / gcd_x;
+    offset_y = 0;
+    offset_x = 0;
+    border_y = 0;
+    border_x = 0;
+  }
+
+  if (!align_corners && !half_pixel_centers) {
+    // Adds a sampling offset.
+    offset_x += 1;
+    offset_y += 1;
+    // Adjust the borders to match an expected output shape.
+    border_x += 1;
+    border_y += 1;
+  }
+
+  ArrayAttr scale =
+      rewriter.getI64ArrayAttr({scale_y_n, scale_y_d, scale_x_n, scale_x_d});
+  ArrayAttr offset = rewriter.getI64ArrayAttr({offset_y, offset_x});
+  ArrayAttr border = rewriter.getI64ArrayAttr({border_y, border_x});
+
   StringAttr resize_mode = rewriter.getStringAttr(mode);
 
+  auto isInt16Range = [](int x) {
+    return (x <= std::numeric_limits<int16_t>::max()) &&
+           (x >= std::numeric_limits<int16_t>::min());
+  };
+
   if (input_is_qtype) {
-    // Magic shift number TFLite resize bilinear use
-    // reference: tensorflow/lite/kernels/internal/reference/reference_ops.h
-    int32_t shift = 10;
-
-    // 1.0 is equivalent to (1 << shift) in quantized space.
-    // Here we noted as unit = (1 << shift).
-    double unit = static_cast<double>(1 << shift);
-
-    // Stride and Offset is int16.
-    int32_t stride_y = std::lround(fp_stride_y * unit);
-    int32_t stride_x = std::lround(fp_stride_x * unit);
-    int32_t offset_y = std::lround(fp_offset_y * unit);
-    int32_t offset_x = std::lround(fp_offset_x * unit);
-
-    // Numerically we can decrement shift to let these number fits within 16
-    // bits but that's not commonly seen and won't match TFLite reference
-    if (stride_y > std::numeric_limits<int16_t>::max() ||
-        stride_x > std::numeric_limits<int16_t>::max() ||
-        stride_y < std::numeric_limits<int16_t>::min() ||
-        stride_x < std::numeric_limits<int16_t>::min() ||
-        offset_y > std::numeric_limits<int16_t>::max() ||
-        offset_x > std::numeric_limits<int16_t>::max() ||
-        offset_y < std::numeric_limits<int16_t>::min() ||
-        offset_x < std::numeric_limits<int16_t>::min()) {
-      (void)rewriter.notifyMatchFailure(op,
-                                        "stride or offset out of 16 bit range");
-      return llvm::None;
+    // It isn't commonly seen these numbers aren't fit within 16 bits, and won't
+    // match TFLite reference.
+    if (!isInt16Range(scale_y_n) || !isInt16Range(scale_y_d) ||
+        !isInt16Range(scale_x_n) || !isInt16Range(scale_x_d) ||
+        !isInt16Range(offset_y) || !isInt16Range(offset_x) ||
+        !isInt16Range(border_y) || !isInt16Range(border_x)) {
+      return (void)rewriter.notifyMatchFailure(
+                 op, "stride or offset out of 16 bit range"),
+             llvm::None;
     }
-
-    ArrayAttr stride = rewriter.getI64ArrayAttr({stride_y, stride_x});
-    ArrayAttr offset = rewriter.getI64ArrayAttr({offset_y, offset_x});
-    IntegerAttr shift_attr = rewriter.getI32IntegerAttr(shift);
 
     // If quantized bilinear mode, need to lower to RESIZE + RESCALE pair.
     if (mode == "BILINEAR") {
@@ -3090,16 +3166,16 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       auto input_element_qtype =
           input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
-      bool scale32;
+      bool is_scale32;
 
       // TOSA RESIZE: 16 bit input -> 48 bit output, or 8 bit input -> 32 bit
       // output.
       if (input_element_qtype.getStorageTypeIntegralWidth() == 16) {
-        scale32 = false;
+        is_scale32 = false;
         output_acc_type = tensorflow::GetTypeFromTFTensorShape(
             output_type.getShape(), rewriter.getIntegerType(48));
       } else if (input_element_qtype.getStorageTypeIntegralWidth() == 8) {
-        scale32 = true;
+        is_scale32 = true;
         output_acc_type = tensorflow::GetTypeFromTFTensorShape(
             output_type.getShape(), rewriter.getI32Type());
       } else {
@@ -3109,9 +3185,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       }
 
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
-          rewriter, op->getLoc(), output_acc_type, input_value, output_size,
-          stride, offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
-          rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
+          rewriter, op->getLoc(), output_acc_type, input_value, scale, offset,
+          border, resize_mode);
 
 #ifdef RESIZE_BILINEAR_LOWER_SYMMETRIC_ROUNDING
       // TFLite resize_bilinear always assume input and output tensors have
@@ -3152,14 +3227,14 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       // This should be the expected lowering, but is +-1 within compared to
       // TFLite reference.
       return buildRescale(rewriter, op, output_type, resize_op.getResult(),
-                          1.0 / (1 << 20), 0, 0, false, scale32);
+                          1.0 / (scale_y_n * scale_x_n), 0, 0, false,
+                          is_scale32);
 #endif
 
     } else if (mode == "NEAREST_NEIGHBOR") {
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
-          rewriter, op->getLoc(), output_type, input_value, output_size, stride,
-          offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
-          rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
+          rewriter, op->getLoc(), output_type, input_value, scale, offset,
+          border, resize_mode);
       return resize_op.getResult();
     } else {
       (void)rewriter.notifyMatchFailure(
@@ -3168,14 +3243,9 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     }
   } else {
     auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
-        rewriter, op->getLoc(), output_type, input_value, output_size,
-        rewriter.getI64ArrayAttr({0, 0}), rewriter.getI64ArrayAttr({0, 0}),
-        rewriter.getI32IntegerAttr(0),
-        rewriter.getF32ArrayAttr(
-            {static_cast<float>(fp_stride_y), static_cast<float>(fp_stride_x)}),
-        rewriter.getF32ArrayAttr(
-            {static_cast<float>(fp_offset_y), static_cast<float>(fp_offset_x)}),
+        rewriter, op->getLoc(), output_type, input_value, scale, offset, border,
         resize_mode);
+
     return resize_op.getResult();
   }
 }

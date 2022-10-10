@@ -20,13 +20,16 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.td"
 
 def CreateXLAConvOpFromTFConv2DOp : NativeCodeCall<
-  "CreateXLAConvOpFromTFConv2DOp($_builder, $_loc, $0...)">;
+  "CreateXlaConvOpFromTfConv2dOp($_builder, $_loc, $0...)">;
 
 def CreateXLAConvOpFromTFDepthwiseConv2DOp : NativeCodeCall<
-  "CreateXLAConvOpFromTFDepthwiseConv2DOp($_builder, $_loc, $0...)">;
+  "CreateXlaConvOpFromTfDepthwiseConv2dOp($_builder, $_loc, $0...)">;
 
 def CreateXlaDotV2OpFromTfMatMulOp : NativeCodeCall<
   "CreateXlaDotV2OpFromTfMatMulOp($_builder, $_loc, $0...)">;
+
+def CreateXLAConvOpFromTFConv3DOp : NativeCodeCall<
+  "CreateXlaConvOpFromTfConv3dOp($_builder, $_loc, $0...)">;
 
 // Converts inlined Conv2D pattern to TF XlaConvV2 op. This pattern doesn't
 // support non-constant weights.
@@ -144,4 +147,49 @@ def ConvertTFMatMulWithNoZeroPointToXLADotV2Op : Pat<
    (IsConstTensor $weight),
    (IsInt32ElementType $matmul),
    (HasStaticShapeConstraint $weight)],
+  (addBenefit 10)>;
+
+// Converts inlined Conv3D pattern to TF XlaConvV2 op. This pattern
+// doesn't support non-constant weights.
+def ConvertTFConv3DToXLAConvOp : Pat<
+  (TF_CastOp:$conv
+    (TF_Conv3DOp
+      (TF_CastOp:$casted_input
+        (TF_SubOp (TF_CastOp $input, $truncate1), $input_zp), $truncate2),
+      (TF_CastOp
+        (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
+      $strides, $padding, IsDataFormatNDHWC:$data_format, $dilations),
+    $truncate5),
+  (CreateXLAConvOpFromTFConv3DOp
+    $input, $filter, $input_zp, $conv, $strides, $dilations, $padding),
+  [(IsInt8ElementType $input),
+   (IsF32ElementType $casted_input),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
+   (IsInt32ElementType $conv),
+   (HasStaticShapeConstraint $filter),
+   (HasStaticShapeAtDimsConstraint<"4"> $input)],
+  (addBenefit 10)>;
+
+// Same as ConvertTFConv3DToXLAConvOp but handles the case where input
+// zero point is 0 and the Sub op has been folded.
+def ConvertTFConv3DWithNoZeroPointToXLAConvOp : Pat<
+  (TF_CastOp:$conv
+    (TF_Conv3DOp
+      (TF_CastOp:$casted_input
+        (TF_CastOp $input, $truncate1), $truncate2),
+      (TF_CastOp
+        (TF_CastOp (TF_IdentityOp $filter), $truncate3), $truncate4),
+      $strides, $padding, IsDataFormatNDHWC:$data_format, $dilations),
+    $truncate5),
+  (CreateXLAConvOpFromTFConv3DOp
+    $input, $filter, /*input_zp=*/(CreateScalarIntegerConst<"int32_t", "0">),
+    $conv, $strides, $dilations, $padding),
+  [(IsInt8ElementType $input),
+   (IsF32ElementType $casted_input),
+   (IsInt8ElementType $filter),
+   (IsConstTensor $filter),
+   (IsInt32ElementType $conv),
+   (HasStaticShapeConstraint $filter),
+   (HasStaticShapeAtDimsConstraint<"4"> $input)],
   (addBenefit 10)>;

@@ -90,8 +90,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
       const CoordinationServiceDeviceInfo& local_devices) override;
   const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
   StatusOr<CoordinatedTask> GetOwnTask() override;
-  StatusOr<CoordinatedTaskState> GetTaskStatus(
-      const CoordinatedTask& task) override;
+  StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) override;
   Status ReportError(const Status& error) override;
   Status Shutdown() override;
   Status Reset() override;
@@ -397,10 +397,26 @@ StatusOr<CoordinatedTask> CoordinationServiceAgentImpl::GetOwnTask() {
   return task_;
 }
 
-StatusOr<CoordinatedTaskState> CoordinationServiceAgentImpl::GetTaskStatus(
-    const CoordinatedTask& task) {
-  return MakeCoordinationError(errors::Unimplemented(
-      "CoordinationServiceAgentImpl::GetTaskStatus is not implemented."));
+StatusOr<std::vector<CoordinatedTaskStateInfo>>
+CoordinationServiceAgentImpl::GetTaskState(
+    const std::vector<CoordinatedTask>& tasks) {
+  GetTaskStateRequest request;
+  *request.mutable_source_task() = {tasks.begin(), tasks.end()};
+  GetTaskStateResponse response;
+  absl::Notification n;
+  StatusOr<std::vector<CoordinatedTaskStateInfo>> result;
+  leader_client_->GetTaskStateAsync(&request, &response, [&](const Status& s) {
+    if (s.ok()) {
+      result = std::vector<CoordinatedTaskStateInfo>(
+          std::make_move_iterator(response.task_state().begin()),
+          std::make_move_iterator(response.task_state().end()));
+    } else {
+      result = s;
+    }
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return result;
 }
 
 Status CoordinationServiceAgentImpl::ReportError(const Status& error) {

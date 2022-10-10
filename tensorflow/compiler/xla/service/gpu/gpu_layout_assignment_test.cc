@@ -312,6 +312,41 @@ TEST_F(LayoutAssignmentTest, FftLayout) {
                         op::ShapeWithLayout("c64[8,32]{1,0}")))));
 }
 
+TEST_F(LayoutAssignmentTest, CustomCallConstrainedAlias) {
+  const char* module_str = R"(
+HloModule TestModule
+
+ENTRY entry {
+  Arg_0 = f32[2,5,5]{2,1,0} parameter(0)
+  Arg_1 = f32[2,5,5]{2,1,0} parameter(1)
+  Arg_2 = f32[2,5,5]{2,1,0} parameter(2)
+  dot.0 = f32[2,5,5]{2,1,0} dot(Arg_1, Arg_2), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={2}, operand_precision={highest,highest}
+  custom-call.0 = (f32[2,5,5]{1,2,0}, s8[16]{0}, s8[16]{0}) custom-call(Arg_0, dot.0), custom_call_target="dummy_call", operand_layout_constraints={f32[2,5,5]{1,2,0}, f32[2,5,5]{1,2,0}}, output_to_operand_aliasing={{0}: (1, {})}
+  ROOT get-tuple-element.0 = f32[2,5,5]{1,2,0} get-tuple-element(custom-call.0), index=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape());
+
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        backend().default_stream_executor());
+
+  EXPECT_THAT(layout_assignment.Run(m.get()), IsOkAndHolds(true));
+
+  const HloInstruction* call_0 = FindInstruction(m.get(), "custom-call.0");
+  auto expect_layout = [](const Shape& shape,
+                          absl::Span<const int64_t> minor_to_major) {
+    const Layout expected = LayoutUtil::MakeLayout(minor_to_major);
+    EXPECT_TRUE(LayoutUtil::Equal(shape.layout(), expected))
+        << "Expected layout " << expected << ", actual " << shape.layout();
+  };
+  expect_layout(ShapeUtil::GetSubshape(call_0->shape(), {0}), {1, 2, 0});
+  expect_layout(call_0->operand(0)->shape(), {1, 2, 0});
+  expect_layout(call_0->operand(1)->shape(), {1, 2, 0});
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

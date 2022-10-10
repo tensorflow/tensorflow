@@ -30,6 +30,7 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/249802365): Sanitize all TensorSpec names.
 def sanitize_spec_name(name: str) -> str:
   """Sanitizes Spec names. Matches Graph Node and Python naming conventions.
 
@@ -204,6 +205,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     if isinstance(tensor, ops.EagerTensor):
       return TensorSpec(tensor.shape, tensor.dtype, name)
     elif isinstance(tensor, ops.Tensor):
+      # TODO(b/249802365): Return a sanitized version of op name or no name.
       return TensorSpec(tensor.shape, tensor.dtype, name or tensor.op.name)
     else:
       raise ValueError(

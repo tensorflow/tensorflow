@@ -232,7 +232,7 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
       shape_component_analysis, op.getOperand(), op.getOutputDimensions());
   if (!input_map) return failure();
 
-  // Resolve dynamic output dimensions for the `linalg.init_tensor` operation.
+  // Resolve dynamic output dimensions for the `tensor.empty` operation.
   SmallVector<Value> output_dyn_dimensions;
   Location loc = op.getLoc();
   int64_t rank = out_type.getRank();
@@ -255,10 +255,10 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
     output_dyn_dimensions.push_back(output_dyn_dim);
   }
 
-  // Create a linalg.tensor_init operation to initialize output.
-  Value init = rewriter.create<linalg::InitTensorOp>(loc, output_dyn_dimensions,
-                                                     out_type.getShape(),
-                                                     out_type.getElementType());
+  // Create a tensor.empty operation to initialize output.
+  Value emptyTensor = rewriter.create<tensor::EmptyOp>(
+      loc, out_type.getShape(), out_type.getElementType(),
+      output_dyn_dimensions);
 
   // Output indexing map is an identity with `rank` number of loops.
   AffineMap output_map = AffineMap::getMultiDimIdentityMap(rank, ctx);
@@ -267,9 +267,9 @@ LogicalResult DynamicBroadcastInDimOpLowering::matchAndRewrite(
   SmallVector<llvm::StringRef> iterator_types(rank, "parallel");
 
   rewriter.replaceOpWithNewOp<linalg::GenericOp>(
-      op, /*resultTensorTypes=*/TypeRange{init.getType()},
+      op, /*resultTensorTypes=*/TypeRange{emptyTensor.getType()},
       /*inputs=*/ValueRange{op.getOperand()},
-      /*outputs=*/ValueRange{init},
+      /*outputs=*/ValueRange{emptyTensor},
       /*indexingMaps=*/llvm::makeArrayRef({*input_map, output_map}),
       /*iteratorTypes=*/iterator_types,
       [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {

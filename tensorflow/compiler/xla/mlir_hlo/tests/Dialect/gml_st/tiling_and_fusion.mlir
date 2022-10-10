@@ -8,7 +8,7 @@
 
 func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
     -> tensor<32xf32> {
-  %init_mul = linalg.init_tensor [32, 16] : tensor<32x16xf32>
+  %init_mul = tensor.empty() : tensor<32x16xf32>
   %mul = linalg.generic {
       indexing_maps = [#id_2d, #id_2d, #id_2d],
       iterator_types = ["parallel", "parallel"],
@@ -20,7 +20,7 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
     linalg.yield %mul_scalar : f32
   } -> tensor<32x16xf32>
   %c0_f32 = arith.constant 0.0 : f32
-  %init_reduce = linalg.init_tensor [32] : tensor<32xf32>
+  %init_reduce = tensor.empty() : tensor<32xf32>
   %fill = linalg.fill ins(%c0_f32 : f32)
       outs(%init_reduce : tensor<32xf32>) -> tensor<32xf32>
   %sum = linalg.generic {
@@ -43,8 +43,8 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
 // CHECK:       %[[C0:.*]] = arith.constant 0
 // CHECK:       %[[C32:.*]] = arith.constant 32
 // CHECK:       %[[CST:.*]] = arith.constant 0.000000e+00
-// CHECK:       %[[INIT:.*]] = linalg.init_tensor [32, 16]
-// CHECK:       %[[INIT_0:.*]] = linalg.init_tensor [32]
+// CHECK:       %[[INIT:.*]] = tensor.empty()
+// CHECK:       %[[INIT_0:.*]] = tensor.empty()
 // CHECK:       %[[FILL:.*]] = linalg.fill
 // CHECK-SAME:      ins(%[[CST]] : f32)
 // CHECK-SAME:      outs(%[[INIT_0]] : tensor<32xf32>)

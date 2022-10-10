@@ -293,7 +293,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
 
   template <typename ForEachEventMetadataFunc>
   void ForEachEventMetadata(
-      ForEachEventMetadataFunc&& for_each_event_metadata) {
+      ForEachEventMetadataFunc&& for_each_event_metadata) const {
     for (const auto& [id, event_metadata] : plane_->event_metadata()) {
       for_each_event_metadata(XEventMetadataVisitor(this, &event_metadata));
     }

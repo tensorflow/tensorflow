@@ -787,7 +787,6 @@ PjRtCApiExecutable::ExecuteSharded(
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
-  args.execute_device->device = device;
 
   RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
                          pjrt_c_api());

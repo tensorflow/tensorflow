@@ -91,10 +91,12 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       "quantize_ptq_model_pre_calibration",
       [](const absl::string_view saved_model_path,
          const absl::string_view exported_names_str,
-         const absl::string_view tags) {
+         const absl::string_view tags,
+         const absl::string_view quant_opts_serialized) {
         const auto [graph_def_serialized, init_node_name] =
             tensorflow::quantization::QuantizePtqModelPreCalibration(
-                saved_model_path, exported_names_str, tags);
+                saved_model_path, exported_names_str, tags,
+                quant_opts_serialized);
 
         return std::make_pair(py::bytes(graph_def_serialized), init_node_name);
       },

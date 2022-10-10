@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     default_visibility = ["//tensorflow/core/function:__subpackages__"],

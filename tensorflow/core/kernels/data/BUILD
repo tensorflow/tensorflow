@@ -5,8 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],

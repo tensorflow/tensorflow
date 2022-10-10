@@ -68,7 +68,8 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions() {
 
 void AddSparsificationPasses(OpPassManager& pm) {
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
-  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(mlir::bufferization::createTensorCopyInsertionPass(
       GetBufferizationOptions()));
   pm.addPass(mlir::createSparsificationPass());

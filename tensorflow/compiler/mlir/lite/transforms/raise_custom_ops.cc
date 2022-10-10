@@ -35,12 +35,13 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_RAISECUSTOMOPSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This transformation pass takes an operation with unknown op properties and
 // wrap it by a TFL::CustomTfOp.
-struct RaiseCustomOpsPass : public RaiseCustomOpsPassBase<RaiseCustomOpsPass> {
+struct RaiseCustomOpsPass
+    : public impl::RaiseCustomOpsPassBase<RaiseCustomOpsPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(RaiseCustomOpsPass)
 

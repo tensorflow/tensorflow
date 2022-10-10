@@ -1,9 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [

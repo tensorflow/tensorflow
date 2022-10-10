@@ -64,7 +64,11 @@ transitive_hdrs(
         "//tensorflow/python/framework:python_op_gen",
         "//tensorflow/python/client:tf_session_helper",
         "//third_party/eigen3",
+<<<<<<< HEAD
 	"//tensorflow/stream_executor:stream_executor_headers",
+=======
+        "//tensorflow/stream_executor:stream_executor_headers",
+>>>>>>> upstream/master
     ] + if_cuda([
         "@local_config_cuda//cuda:cuda_headers",
     ]),

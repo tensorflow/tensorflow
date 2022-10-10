@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(

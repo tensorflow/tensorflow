@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -91,6 +91,7 @@ gentbl_cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncTdFiles",
         "@llvm-project//mlir:PassBaseTdFiles",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:TensorOpsTdFiles",
     ],
 )
@@ -146,6 +147,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -237,6 +239,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
     ],
@@ -280,6 +283,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
@@ -310,6 +314,7 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:Transforms",
@@ -355,6 +360,7 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
@@ -447,6 +453,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
     ],
 )
 
@@ -478,6 +485,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -622,6 +630,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
     ],
 )
 
@@ -669,12 +678,14 @@ cc_library(
         ":mlir_hlo_to_hlo",
         ":type_to_shape",
         ":xla_mlir_translate",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/tsl/platform:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TranslateLib",
     ],

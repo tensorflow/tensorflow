@@ -491,7 +491,7 @@ class LiveRangeRegions {
   // The value-defining and value-use instructions do not have to belong to the
   // same computation, but the value use needs to be nested within the defining
   // computation.
-  typedef absl::flat_hash_map<HloInstruction*, InstructionInfo> InstructionMap;
+  typedef HloInstructionMap<InstructionInfo> InstructionMap;
   typedef std::pair<HloInstruction*, InstructionInfo> InstructionEntry;
   // Map each computation to its immediately contained instructions.
   typedef absl::flat_hash_map<const HloComputation*, InstructionMap>
@@ -509,10 +509,12 @@ class LiveRangeRegions {
     CHECK(p != computation_map_.end());
     return p->second;
   }
-  ComputationMap::const_iterator begin() const {
-    return computation_map_.begin();
+  absl::InlinedVector<const HloComputation*, 5>::const_iterator begin() const {
+    return computation_vector_.begin();
   }
-  ComputationMap::const_iterator end() const { return computation_map_.end(); }
+  absl::InlinedVector<const HloComputation*, 5>::const_iterator end() const {
+    return computation_vector_.end();
+  }
   int64_t size() const {
     CHECK_EQ(computation_vector_.size(), computation_map_.size());
     return computation_vector_.size();
@@ -521,7 +523,7 @@ class LiveRangeRegions {
   const HloComputation* Computation(int64_t index) const {
     return computation_vector_[index];
   }
-  bool contains(const HloInstruction* instr) const {
+  bool contains(HloInstruction* instr) const {
     CHECK_NE(instr, nullptr);
     auto* computation = instr->parent();
     auto p = computation_map_.find(computation);
@@ -773,9 +775,8 @@ class ComputeRelativeLocation {
     Relation dir_src_dest;
     for (int64_t index = 0; index < range1.size(); index++) {
       auto* computation1 = range1.Computation(index);
-      for (const auto& computation_entry2 : range2) {
-        auto* computation2 = computation_entry2.first;
-        for (auto instr_entry2 : computation_entry2.second) {
+      for (const auto* computation2 : range2) {
+        for (auto instr_entry2 : range2[computation2]) {
           if (!ordering_->call_graph().Dominates(computation1, computation2)) {
             continue;
           }
@@ -956,7 +957,7 @@ class ComputeRelativeLocation {
       case HloOpcode::kCopy:
         // Checking the copy simply copies from the other live range with no
         // layout conflicts.
-        if (region.contains(instr->operand(0)) &&
+        if (region.contains(instr->mutable_operand(0)) &&
             ShapeUtil::Equal(instr->shape(), instr->operand(0)->shape())) {
           return false;  // Cannot intercept.
         }

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-inlining"
@@ -42,8 +41,11 @@ namespace tf_executor {
 namespace {
 constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 
+#define GEN_PASS_DEF_EXECUTORTPUV1ISLANDINLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ExecutorTPUV1IslandInliningPass
-    : public TF::ExecutorTPUV1IslandInliningPassBase<
+    : public impl::ExecutorTPUV1IslandInliningPassBase<
           ExecutorTPUV1IslandInliningPass> {
   void runOnOperation() override;
 };

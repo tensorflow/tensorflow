@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
@@ -804,6 +805,15 @@ TEST(ShapeUtilTest, DeleteDimensions) {
   EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {5, 2}, {1, 0}));
 }
 
+TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 24, 4, 48, 48},
+                                               {2, 4, 3, 1, 0});
+  Shape new_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+  EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {128, 24, 48, 48, 4},
+                                                      {4, 3, 2, 1, 0}));
+}
+
 TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2, 7, 9}, {2, 0, 1, 4, 3});
@@ -811,6 +821,64 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape b = ShapeUtil::DeleteDimensions({3, 2, 1}, shape);
   EXPECT_EQ(a, b);
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
+}
+
+TEST(ShapeUtilTest, B_250640044) {
+  // This case failed the fuzzer; see b/250640044.
+  ShapeProto proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(element_type: TUPLE
+           tuple_shapes {
+             element_type: S8
+             dimensions: 137438953472
+             layout {
+               minor_to_major: 0
+               dim_level_types: DIM_COMPRESSED
+               physical_shape {
+                 element_type: TUPLE
+                 tuple_shapes {}
+               }
+             }
+             is_dynamic_dimension: false
+           })pb",
+      &proto));
+  Shape shape(proto);
+  EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+}
+
+TEST(ShapeUtilTest, B_251055887) {
+  // This case failed the fuzzer; see b/251055887.
+  ShapeProto proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        element_type: S8
+        dimensions: 0
+        dimensions: 8
+        dimensions: 0
+        dimensions: 0
+        dimensions: 4
+        dimensions: 1
+        dimensions: 1
+        dimensions: 6
+        dimensions: 281474976710657
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 3
+          minor_to_major: 0
+          minor_to_major: 5
+          minor_to_major: 4
+          minor_to_major: 6
+          minor_to_major: 8
+          minor_to_major: 7
+          minor_to_major: 6
+          minor_to_major: 9
+          element_size_in_bits: 4
+          physical_shape { element_type: -562 }
+        })pb",
+      &proto));
+  Shape shape(proto);
+  EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
 TEST(Transpose021Test, NoTranspose) {

@@ -40,6 +40,7 @@ struct RunHloModuleOptions {
         // Using small float range by default, as otherwise all reductions
         // miscompare vs. the interpreter with inf/nan.
         use_large_float_range(false),
+        treat_gte_as_data_formatting(false),
         abs_error_bound(1e-3),
         rel_error_bound(1e-3),
         input_format("hlo"),
@@ -54,6 +55,7 @@ struct RunHloModuleOptions {
   bool run_test_hlo_passes;
   bool run_reference_hlo_passes;
   bool use_large_float_range;
+  bool treat_gte_as_data_formatting;
   float abs_error_bound;
   float rel_error_bound;
   std::string input_format;

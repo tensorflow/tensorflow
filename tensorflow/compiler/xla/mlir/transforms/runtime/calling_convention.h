@@ -24,11 +24,11 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
-// Calling convention converts the XLA entrypoint function type to the function
-// type with a well defined ABI (e.g. tensors do not have an ABI, and must be
-// passed across the function boundary as memrefs). In a nutshell it tells the
-// XLA runtime how to call the compiled executable at run time, and how to
-// return results back to the caller.
+// Calling convention converts exported function types to function types with
+// a well-defined ABI (e.g. tensors do not have an ABI; they must be passed
+// across the function boundary as memrefs). In a nutshell it tells the XLA
+// runtime how to call the compiled executable at run time, and how to return
+// results back to the caller.
 //
 // All types in the converted function signature should have a registered
 // type conversion (see `type_converter` below) to a type with defined
@@ -51,15 +51,15 @@ namespace runtime {
 //                  %arg1: memref<?xf32>) -> memref<?x?xf32> { ... }
 //   ```
 //
-// Calling convention function type is not the same as the entrypoint function
+// Calling convention function type is not the same as the exported function
 // type produced by the compilation pipeline for several reasons:
 //
 // 1) Compilation pipeline produces LLVM functions with LLVM types, and high
 //    level information is lost, e.g. all memrefs are deconstructed into
 //    primitive fields when passed as inputs.
 //
-// 2) Compiled entrypoint function always returns void, and uses runtime API to
-//    return results back to the caller (see `rt-convert-to-entrypoint` pass).
+// 2) Exported function always returns void, and uses runtime API to return
+//    results back to the caller (see `xla-rt-export-functions` pass).
 //
 // Calling convention function type is a XLA-compatible description of the
 // compiled executable ABI, so that XLA runtime can correctly initialize

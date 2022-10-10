@@ -52,16 +52,26 @@ def RT_ExportOp : RT_Op<"export", [
   let description = [{
     Specifies an exported function that can be called externally by the XLA
     runtime and becomes visible as an XLA executable function.
+
+    Optional ordinal attribute specifies exported function ordinal in the
+    executable. If ordinal is not defined, it will be assigned automatically by
+    the ordinal assignment pass.
+
+    Each ordinal must be unique and ordinals are contiguous starting from zero.
   }];
 
-  let arguments = (ins FlatSymbolRefAttr:$function_ref);
+  let arguments = (ins
+    FlatSymbolRefAttr:$function_ref,
+    OptionalAttr<RT_Ordinal>:$ordinal
+  );
 
   let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "mlir::func::FuncOp":$function_ref)>,
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref, "unsigned":$ordinal)>,
   ];
 
-  let assemblyFormat = "$function_ref attr-dict";
+  let assemblyFormat = "$function_ref (`ordinal` $ordinal^)? attr-dict";
 }
 
 //===----------------------------------------------------------------------===//

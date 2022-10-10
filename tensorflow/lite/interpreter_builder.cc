@@ -831,6 +831,11 @@ TfLiteStatus InterpreterBuilder::operator()(
   if (status != kTfLiteOk) {
     interpreter->reset();
   }
+
+  // Apply Interpreter options again for dynamic allocation.
+  if (options_.GetDynamicAllocationForLargeTensors()) {
+    (*interpreter)->ApplyOptionsImpl(&options_);
+  }
   return status;
 }
 

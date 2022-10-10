@@ -19,27 +19,34 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace runtime {
 
-#define GEN_PASS_DECL_CONVERTTOENTRYPOINT
+#define GEN_PASS_DECL_EXPORTFUNCTIONS
+#define GEN_PASS_DECL_CONVERTCUSTOMCALLS
+#define GEN_PASS_DECL_CONVERTASSERTS
 #define GEN_PASS_DECL_CONVERTRUNTIMETOLLVMPASS
+
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 //===-----------------------------------------------------------------------===/
 // Transformations targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
 
-static constexpr char const* kEntrypointAttrName = "rt.entrypoint";
+static constexpr char const* kExportedAttrName = "rt.exported";
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateConvertToEntrypoint();
+CreateExportRuntimeFunctionsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateConvertCustomCallsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateConvertAssertsPass();
 
 //===-----------------------------------------------------------------------===/
 // Conversions targeting `rt` dialect.

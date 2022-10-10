@@ -601,7 +601,7 @@ func.func @column_reduction(%arg: tensor<128x16xf32>,
     %arg_sub = gml_st.materialize %arg[%arg_tile]
       : tensor<128x16xf32>[!gml_st.tile<8x8>] to tensor<8x8xf32>
 
-    %init = linalg.init_tensor [8] : tensor<8xf32>
+    %init = tensor.empty() : tensor<8xf32>
     %fill = linalg.fill ins(%cst : f32)
                         outs(%init : tensor<8xf32>) -> tensor<8xf32>
 

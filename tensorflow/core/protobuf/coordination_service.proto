@@ -40,6 +40,14 @@ message CoordinationServiceError {
   CoordinatedTask source_task = 4;
 }
 
+message CoordinatedTaskStateInfo {
+  CoordinatedTask task = 1;
+  CoordinatedTaskState state = 2;
+  int32 error_code = 3;
+  string error_message = 4;
+  CoordinationServiceError error_payload = 5;
+}
+
 // Represent device information from different runtimes.
 message TfDeviceList {
   repeated DeviceAttributes devices = 1;
@@ -140,6 +148,15 @@ message ReportErrorToServiceRequest {
 }
 
 message ReportErrorToServiceResponse {}
+
+// Request and response messages for getting state of a remote task.
+message GetTaskStateRequest {
+  repeated CoordinatedTask source_task = 1;
+}
+
+message GetTaskStateResponse {
+  repeated CoordinatedTaskStateInfo task_state = 1;
+}
 
 // Message for configuration key value.
 // Key is structured like Unix file system, with multiple levels of directory
@@ -257,6 +274,11 @@ service CoordinationService {
   // state to error, and propagate the error to other tasks in the cluster.
   rpc ReportErrorToService(ReportErrorToServiceRequest)
       returns (ReportErrorToServiceResponse);
+
+  // Get the state of a remote task. Specifically, RPC returns a
+  // CoordinatedTaskState, and if the task is in an error status, returns a
+  // non-OK error code, non-empty error message and error payload.
+  rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
 
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The

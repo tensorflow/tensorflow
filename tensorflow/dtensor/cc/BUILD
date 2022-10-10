@@ -5,7 +5,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_dtensor_tpu_dependencies",
 )
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",

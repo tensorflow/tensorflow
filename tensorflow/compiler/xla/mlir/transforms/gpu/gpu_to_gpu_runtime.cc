@@ -83,8 +83,8 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
 
   // Identify the direction of the memcpy operation.
   static StringRef Target(MemcpyOp op) {
-    if (IsHostMemRef(op.dst())) return "xla.gpu.memcpy.d2h";
-    if (IsHostMemRef(op.src())) return "xla.gpu.memcpy.h2d";
+    if (IsHostMemRef(op.getDst())) return "xla.gpu.memcpy.d2h";
+    if (IsHostMemRef(op.getSrc())) return "xla.gpu.memcpy.h2d";
     return "xla.gpu.memcpy.d2d";
   }
 
@@ -153,8 +153,9 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
 
     // Prepare arguments for the custom call.
     llvm::SmallVector<Value> args = {
-        cast(op.gridSizeX()),  cast(op.gridSizeY()),  cast(op.gridSizeZ()),
-        cast(op.blockSizeX()), cast(op.blockSizeY()), cast(op.blockSizeZ())};
+        cast(op.getGridSizeX()),  cast(op.getGridSizeY()),
+        cast(op.getGridSizeZ()),  cast(op.getBlockSizeX()),
+        cast(op.getBlockSizeY()), cast(op.getBlockSizeZ())};
 
     // Add kernel arguments.
     llvm::copy(op.getKernelOperands(), std::back_inserter(args));

@@ -510,6 +510,30 @@ int64_t GetShardedInstructionSize(
 
 HloInstruction* FindInstruction(
     const std::vector<HloInstruction*>& instructions, absl::string_view name);
+double AllToAllCostUtil(double num_bytes, int mesh_dim, int64_t num_devices,
+                        const std::vector<double>& mesh_alpha,
+                        const std::vector<double>& mesh_beta);
+
+double ReshardingCostMixedMeshShape(
+    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
+    std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t num_devices,
+    const std::vector<double>& mesh_alpha,
+    const std::vector<double>& mesh_beta);
+
+// When a complete mesh shape is [1, 8, 4], [1, 8, 1] is its partial mesh shape.
+// If a sharding is [8, 4] for the complete mesh shape, we convert it to [8, 1]
+// given [1, 8, 1] as the partial mesh shape.
+// total_num_devices should equal to the product of mesh_shape elements.
+bool AdjustShardingsWithPartialMeshShape(
+    const std::vector<HloInstruction*>& instructions,
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices);
+
+// Decompose mesh shapes into partial mesh shapes so that we can solve the auto
+// sharding problem iteratively. Returns partial mesh shapes with larger
+// dimensions first. For example, input [1, 4, 2] returns [1, 4, 1] and [1, 4,
+// 2]; input [4, 8, 2] returns [1, 8, 1], [4, 8, 1] and [ 4, 8, 2].
+std::vector<std::vector<int64_t>> DecomposeMeshShapes(
+    std::vector<int64_t> mesh_shape);
 }  // namespace spmd
 }  // namespace xla
 

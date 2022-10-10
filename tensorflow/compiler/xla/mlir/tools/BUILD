@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = [
@@ -17,8 +17,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:gml_st_tiling_cwise",
-        "//tensorflow/compiler/xla/mlir_hlo:gml_st_tiling_reduction",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_test_passes",
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",

@@ -112,7 +112,7 @@ class CpuExecutable : public Executable {
 
   ~CpuExecutable() override;
 
-  bool IsXlaRuntime() { return xla_runtime_executable_ != nullptr; }
+  bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
 
   Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table) {
     return xla_runtime_executable_->Execute(descriptor_table);

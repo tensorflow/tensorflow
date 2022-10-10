@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -513,13 +514,27 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF64s) {
+  auto inf = std::numeric_limits<double>::infinity();
+  auto nan = std::numeric_limits<double>::quiet_NaN();
+  std::array<double, 7> vals{0, 0.1, 1, 2, 1e20, nan, inf};
+  std::vector<double> a_vals;
+  std::vector<double> b_vals;
+  a_vals.reserve(vals.size() * vals.size());
+  b_vals.reserve(vals.size() * vals.size());
+  for (auto abs_a_val : vals) {
+    for (auto a_val : {-abs_a_val, abs_a_val}) {
+      for (auto abs_b_val : vals) {
+        for (auto b_val : {-abs_b_val, abs_b_val}) {
+          a_vals.push_back(a_val);
+          b_vals.push_back(b_val);
+        }
+      }
+    }
+  }
+
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<double>(
-      &builder, {-2.5, 25.5, 2.25, -10.0, 6.0, 1.0, 2.0, 3.2, -4.0, 0.45, 5.7,
-                 0.1, 1.0, 2.0, 0.5, -1.0, -0.5, 1.0});
-  auto b = ConstantR1<double>(
-      &builder, {10.0, 5.1, 1.0, 10.0, -6.0, 0.1, 1.0, 2.0, 0.5, -1.0, -0.5,
-                 2.1, 3.1, 9.9, -4.5, -11.0, -21.5, M_PI});
+  auto a = ConstantR1<double>(&builder, a_vals);
+  auto b = ConstantR1<double>(&builder, b_vals);
   Div(a, b);
 
   ComputeAndCompare(&builder, {}, strict_error_spec_);

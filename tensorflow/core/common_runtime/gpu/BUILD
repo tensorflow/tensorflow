@@ -7,10 +7,10 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -64,13 +64,6 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/common_runtime/device:device_event_mgr_hdrs",
-    ],
-)
-
-cc_library(
-    name = "cuda",
-    deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
     ],
 )
 

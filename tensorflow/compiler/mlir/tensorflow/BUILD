@@ -1,7 +1,4 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -344,7 +341,6 @@ cc_library(
         "transforms/generated_legalize_hlo.inc",
         "transforms/legalize_hlo.cc",
         "transforms/passes.h",
-        "transforms/passes_detail.h",
     ],
     deps = [
         ":lower_tf_lib",
@@ -372,7 +368,6 @@ cc_library(
     name = "tfe_legalize_tfg",
     srcs = [
         "transforms/passes.h",
-        "transforms/passes_detail.h",
         "transforms/tfg-to-tfe.cc",
     ],
     deps = [
@@ -841,7 +836,6 @@ cc_library(
 cc_library(
     name = "unroll_batch_matmul_pass",
     srcs = [
-        "transforms/passes_detail.h",
         "transforms/unroll_batch_matmul.cc",
     ],
     hdrs = [
@@ -1195,6 +1189,7 @@ cc_library(
         "transforms/init_text_file_to_import.cc",
         "transforms/launch_to_device_attribute.cc",
         "transforms/layout_optimization.cc",
+        "transforms/localize_var_handles.cc",
         "transforms/lower_quantized.cc",
         "transforms/mark_input_output_aliases.cc",
         "transforms/mark_ops_for_outside_compilation.cc",
@@ -1265,9 +1260,6 @@ cc_library(
     ],
     includes = ["include"],
     textual_hdrs = [
-        "transforms/passes_detail.h",
-        "transforms/savedmodel_passes_detail.h",
-        "transforms/tf_device_passes_detail.h",
         "transforms/tf_device_passes.h.inc",
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",
@@ -1339,6 +1331,7 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ControlFlowDialect",
+        "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -1358,7 +1351,6 @@ cc_library(
     name = "shape_inference_pass",
     srcs = [
         "transforms/passes.h",
-        "transforms/passes_detail.h",
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
     ],
@@ -1421,7 +1413,6 @@ cc_library(
     ],
     hdrs = [
         "transforms/test_passes.h",
-        "transforms/test_passes_detail.h",
     ],
     deps = [
         ":error_util",
@@ -2149,7 +2140,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "@stablehlo//:register",
     "//tensorflow/compiler/xla/mlir_hlo",
     "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
-    "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
+    "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
     "//tensorflow/compiler/mlir/xla:layout_util",
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:tf_xla_passes",

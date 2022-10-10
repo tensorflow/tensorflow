@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-sink-constant"
@@ -38,8 +37,11 @@ namespace TFDevice {
 namespace {
 using ::mlir::TF::ConstOp;
 
+#define GEN_PASS_DEF_CLUSTERCONSTANTSINKINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class ClusterConstantSinkingPass
-    : public TF::ClusterConstantSinkingPassBase<ClusterConstantSinkingPass> {
+    : public impl::ClusterConstantSinkingPassBase<ClusterConstantSinkingPass> {
  public:
   explicit ClusterConstantSinkingPass(
       llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter)

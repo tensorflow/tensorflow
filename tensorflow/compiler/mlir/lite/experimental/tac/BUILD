@@ -1,7 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load(
     "@llvm-project//mlir:tblgen.bzl",
     "gentbl_cc_library",

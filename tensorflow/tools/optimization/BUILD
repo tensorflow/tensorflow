@@ -6,7 +6,7 @@ load(
     "tf_cc_binary",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],

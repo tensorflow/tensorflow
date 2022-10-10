@@ -2,7 +2,7 @@
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_libtpu", "if_not_windows")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
@@ -674,6 +674,7 @@ def tf_additional_all_protos():
 def tf_protos_all_impl():
     return [
         clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/protobuf:autotuning_proto_cc_impl"),
         clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
         clean_dep("//tensorflow/core:protos_all_cc_impl"),
         clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
@@ -715,11 +716,6 @@ def tf_additional_device_tracer_srcs():
 
 def tf_additional_test_deps():
     return []
-
-def tf_additional_test_srcs():
-    return [
-        "//tensorflow/tsl/platform/default:test.cc",
-    ]
 
 def tf_kernel_tests_linkstatic():
     return 0

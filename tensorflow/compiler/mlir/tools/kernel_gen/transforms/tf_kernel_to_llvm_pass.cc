@@ -153,7 +153,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
 LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
     gpu::LaunchFuncOp launch_op, OpAdaptor adaptor,
     ConversionPatternRewriter &rewriter) const {
-  if (!launch_op.asyncDependencies().empty() || launch_op.asyncToken()) {
+  if (!launch_op.getAsyncDependencies().empty() || launch_op.getAsyncToken()) {
     return rewriter.notifyMatchFailure(
         launch_op, "Cannot convert with async dependency or result.");
   }
@@ -229,10 +229,11 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   rewriter.create<LLVM::CallOp>(
       loc, TypeRange(), mlir::SymbolRefAttr::get(function),
 
-      ArrayRef<Value>{
-          context_arg, module_blob, kernel_name_global, adaptor.gridSizeX(),
-          adaptor.gridSizeY(), adaptor.gridSizeZ(), adaptor.blockSizeX(),
-          adaptor.blockSizeY(), adaptor.blockSizeZ(), kernel_params});
+      ArrayRef<Value>{context_arg, module_blob, kernel_name_global,
+                      adaptor.getGridSizeX(), adaptor.getGridSizeY(),
+                      adaptor.getGridSizeZ(), adaptor.getBlockSizeX(),
+                      adaptor.getBlockSizeY(), adaptor.getBlockSizeZ(),
+                      kernel_params});
 
   rewriter.eraseOp(launch_op);
   return success();

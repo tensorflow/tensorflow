@@ -47,8 +47,9 @@ void RegisterXlaRuntimeTestlibDialects(mlir::DialectRegistry& registry) {
 void CreateXlaRuntimeTestlibPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createConvertSCFToCFPass());
 
-  // Convert entry function to the XLA entrypoint.
-  pm.addPass(CreateConvertToEntrypoint());
+  // Export functions to the XLA runtime.
+  pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
   pm.addPass(mlir::createAsyncToAsyncRuntimePass());

@@ -23,15 +23,18 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
 namespace {
 constexpr char kDeviceAttr[] = "device";
 
+#define GEN_PASS_DEF_LAUNCHTODEVICEATTRIBUTEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct LaunchToDeviceAttributePass
-    : public LaunchToDeviceAttributePassBase<LaunchToDeviceAttributePass> {
+    : public impl::LaunchToDeviceAttributePassBase<
+          LaunchToDeviceAttributePass> {
   void runOnOperation() override;
 };
 

@@ -400,7 +400,7 @@ struct Slicer {
       : sizes(ivs.size() + 1, b.getI64IntegerAttr(1)),
         strides(ivs.size() + 1, b.getI64IntegerAttr(1)) {
     sizes[sortDim] = sortDimSize;
-    for (int i = 0; i < ivs.size() + 1; ++i) {
+    for (size_t i = 0; i < ivs.size() + 1; ++i) {
       if (i == sortDim) {
         offsets.push_back(b.getI64IntegerAttr(0));
       } else {

@@ -37,12 +37,12 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_WHILEOUTLINEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass outlines the cond/body region of the TFL WhileOp into functions and
 // replaces the regions with calls to these outlined functions.
-class WhileOutlinePass : public WhileOutlinePassBase<WhileOutlinePass> {
+class WhileOutlinePass : public impl::WhileOutlinePassBase<WhileOutlinePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(WhileOutlinePass)
   explicit WhileOutlinePass() {}

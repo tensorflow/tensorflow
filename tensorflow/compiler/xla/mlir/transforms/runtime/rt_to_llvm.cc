@@ -688,7 +688,10 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   });
 
   if (failed(applyPartialConversion(module, target, std::move(patterns))))
-    signalPassFailure();
+    return signalPassFailure();
+
+  // Remove all rt.exported attributes once we are done with conversion to LLVM.
+  module.walk([](Operation *op) { op->removeAttr("rt.exported"); });
 }
 
 }  // namespace

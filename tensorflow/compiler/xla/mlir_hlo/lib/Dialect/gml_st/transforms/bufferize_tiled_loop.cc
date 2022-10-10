@@ -61,8 +61,8 @@ namespace {
 using bufferization::ToMemrefOp;
 using bufferization::ToTensorOp;
 using gml_st::LoopOp;
-using linalg::InitTensorOp;
 using memref::SubViewOp;
+using tensor::EmptyOp;
 using tensor::ExtractSliceOp;
 using tensor::InsertSliceOp;
 using vector::TransferReadOp;
@@ -126,18 +126,18 @@ struct BufferizeExtractSliceOp : public OpConversionPattern<ExtractSliceOp> {
   }
 };
 
-/// Convert `linalg.init_tensor` of `memref.alloc`.
-struct BufferizeInitTensorOp : public OpConversionPattern<InitTensorOp> {
-  using OpConversionPattern<InitTensorOp>::OpConversionPattern;
+/// Convert `tensor.empty` to `memref.alloc`.
+struct BufferizeEmptyTensorOp : public OpConversionPattern<EmptyOp> {
+  using OpConversionPattern<EmptyOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      InitTensorOp op, OpAdaptor adaptor,
+      EmptyOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
     if (!op->getParentOfType<LoopOp>()) return failure();
 
     rewriter.replaceOpWithNewOp<memref::AllocOp>(
         op, getTypeConverter()->convertType(op.getType()).cast<MemRefType>(),
-        adaptor.sizes());
+        adaptor.getDynamicSizes());
     return success();
   }
 };
@@ -437,7 +437,7 @@ void populateTiledLoopBufferizePattern(
   patterns->add<
     BufferizeDstStyleOpInterface,
     BufferizeExtractSliceOp,
-    BufferizeInitTensorOp,
+    BufferizeEmptyTensorOp,
     BufferizeInsertSliceOp,
     BufferizeLinalgYieldOp,
     BufferizeLoopOp,

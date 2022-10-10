@@ -58,10 +58,6 @@ void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
                             const TilingOptions &opts,
                             RewritePatternSet *patterns);
 
-/// Populate fusion patterns.
-void populateFusionPatterns(MLIRContext *context, OpFilterFn filterFn,
-                            RewritePatternSet *patterns);
-
 void populateCollapseMaterializeOpsPatterns(MLIRContext *, bool reverse,
                                             RewritePatternSet *);
 

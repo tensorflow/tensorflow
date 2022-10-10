@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
@@ -338,6 +338,8 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":composite_tensor_utils",
+        "//tensorflow/core/function/function_type",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:constant_op",
@@ -346,5 +348,18 @@ py_library(
         "//tensorflow/python/util",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "function_spec_test",
+    size = "medium",
+    srcs = ["function_spec_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":function_spec",
+        "//tensorflow/core/function/function_type",
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python:client_testlib",
     ],
 )

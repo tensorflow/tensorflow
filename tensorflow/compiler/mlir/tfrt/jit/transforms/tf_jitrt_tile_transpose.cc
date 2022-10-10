@@ -67,15 +67,15 @@ bool IsTransposeGenericOp(Operation *op) {
     return false;
 
   // Check that input is yielded.
-  if (generic_op.getTiedBlockArgument(generic_op.getInputOperand(0)) !=
+  if (generic_op.getMatchingBlockArgument(generic_op.getInputOperand(0)) !=
       yield_op.getOperand(0))
     return false;
 
   // Check parallel iterators.
-  auto iterator_types = generic_op.iterator_types();
+  auto iterator_types = generic_op.getIteratorTypesArray();
   if (std::any_of(iterator_types.begin(), iterator_types.end(),
-                  [](Attribute attr) {
-                    return !mlir::linalg::isParallelIterator(attr);
+                  [](auto iterator_type) {
+                    return !mlir::linalg::isParallelIterator(iterator_type);
                   }))
     return false;
 

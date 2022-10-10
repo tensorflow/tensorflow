@@ -33,6 +33,7 @@
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 
@@ -216,7 +217,8 @@ class TpuDriver {
 
   virtual std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) = 0;
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) = 0;
   virtual std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for) = 0;

@@ -38,6 +38,7 @@ namespace xla {
 namespace {
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 3;
+constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
 struct ServiceParams {
   std::string test_name;
@@ -447,7 +448,7 @@ TEST_P(ClientServerTest, LateClientsAreOk) {
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.init_timeout = absl::Milliseconds(20000);
+    client_options.init_timeout = absl::Seconds(20);
     client_options.rpc_timeout = absl::Milliseconds(200);
     auto client =
         GetClient(node_id, GetParam().use_coordination_service, client_options);
@@ -485,6 +486,11 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     DistributedRuntimeClient::Options client_options;
     client_options.init_timeout = timeout;
     client_options.rpc_timeout = timeout;
+    // Overwrite the default error callback which invokes LOG(QFATAL).
+    client_options.missed_heartbeat_callback =
+        [](xla::Status status, bool coordinator_reported_failure) {
+          LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
+        };
     auto client =
         GetClient(node_id, GetParam().use_coordination_service, client_options);
 
@@ -515,10 +521,8 @@ TEST_P(ClientServerTest, WaitAtBarrier_Succeed) {
     auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_2", absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_2", kBarrierTimeout));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
     return xla::OkStatus();
@@ -550,8 +554,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
     if (node_id == 1) {
       n.WaitForNotification();
     }
-    Status barrier_status =
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100));
+    Status barrier_status = client->WaitAtBarrier("barrier_1", kBarrierTimeout);
     // Node 0 notifies that barrier has already timed out.
     if (node_id == 0) {
       n.Notify();
@@ -603,8 +606,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
     } else if (node_id == 1) {
       barrier_id = "barrier_1";
     }
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier(barrier_id, absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier(barrier_id, kBarrierTimeout));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
     return xla::OkStatus();
@@ -632,10 +634,8 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
     return xla::OkStatus();

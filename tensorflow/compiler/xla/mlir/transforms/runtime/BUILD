@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
@@ -31,7 +31,9 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "convert_to_entrypoint.cc",
+        "convert_asserts.cc",
+        "convert_custom_calls.cc",
+        "export_functions.cc",
         "rt_to_llvm.cc",
     ],
     hdrs = ["passes.h"],
@@ -198,6 +200,7 @@ cc_library(
         ":passes",
         ":specialization",
         ":type_converter",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:arguments",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",

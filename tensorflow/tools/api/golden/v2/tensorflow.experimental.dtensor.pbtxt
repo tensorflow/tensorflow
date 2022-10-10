@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "Mesh"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "UNSHARDED"

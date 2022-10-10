@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -48,11 +47,14 @@ namespace {
 // TODO(b/158265178): Support GPU-specific fusions.
 // TODO(b/158266710): Support CPU MKL configurations.
 
+#define GEN_PASS_DEF_FUSEDKERNELMATCHERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Optimizes TF computations by fusing subgraphs/nodes onto more efficient
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
+    : public impl::FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
   void runOnOperation() override;
 };
 

@@ -4,12 +4,7 @@ load(
     "tf_cc_test",
     "tf_py_test",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_python_pybind_extension")
 load("//tensorflow/compiler/mlir/tfr:build_defs.bzl", "gen_op_libraries")
 load(
     "@llvm-project//mlir:tblgen.bzl",
