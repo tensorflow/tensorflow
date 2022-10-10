@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -101,6 +101,7 @@ distribute_py_test(
 tf_py_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
+    flaky = True,
     python_version = "PY3",
     shard_count = 36,
     tags = [

@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILETRANSPOSE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using llvm::SmallVector;
@@ -67,19 +67,20 @@ bool IsTransposeGenericOp(Operation *op) {
     return false;
 
   // Check that input is yielded.
-  if (generic_op.getTiedBlockArgument(generic_op.getInputOperand(0)) !=
+  if (generic_op.getMatchingBlockArgument(generic_op.getInputOperand(0)) !=
       yield_op.getOperand(0))
     return false;
 
   // Check parallel iterators.
-  auto iterator_types = generic_op.iterator_types();
-  if (std::any_of(
-          iterator_types.begin(), iterator_types.end(),
-          [](Attribute attr) { return !mlir::isParallelIterator(attr); }))
+  auto iterator_types = generic_op.getIteratorTypesArray();
+  if (std::any_of(iterator_types.begin(), iterator_types.end(),
+                  [](auto iterator_type) {
+                    return !mlir::linalg::isParallelIterator(iterator_type);
+                  }))
     return false;
 
   // Check that the two indexing maps are a permutation.
-  auto indexing_maps = generic_op.getIndexingMaps();
+  auto indexing_maps = generic_op.getIndexingMapsArray();
   if (indexing_maps.size() != 2) return false;
   return (indexing_maps[0].isIdentity() && indexing_maps[1].isPermutation()) ||
          (indexing_maps[0].isPermutation() && indexing_maps[1].isIdentity());
@@ -115,7 +116,7 @@ struct TileTransposePattern : public mlir::OpRewritePattern<GenericOp> {
   LinalgTilingOptions options;
 };
 
-struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
+struct TileTransposePass : public impl::TileTransposeBase<TileTransposePass> {
   void runOnOperation() override {
     auto get_tile_size = [&](mlir::OpBuilder b, Operation *op) {
       auto generic_op = llvm::cast<GenericOp>(op);
@@ -131,7 +132,7 @@ struct TileTransposePass : public TileTransposeBase<TileTransposePass> {
       // scatter operations.
       SmallVector<Value> tiles(num_loops,
                                b.create<ConstantIndexOp>(op->getLoc(), 1));
-      auto indexing_maps = generic_op.getIndexingMaps();
+      auto indexing_maps = generic_op.getIndexingMapsArray();
       unsigned last_dim = num_loops - 1;
       unsigned vec_factor0 = 8, vec_factor1 = 8;
       unsigned vec_dim0 = indexing_maps[0].getDimPosition(last_dim);

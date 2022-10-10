@@ -110,7 +110,9 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     // Otherwise, this is an attribute.
     auto named_attr = arg.get<NamedAttribute*>();
     os << "  auto xla_arg_" << index << " = "
-       << GetDefaultAttrExport(*named_attr) << "(op." << op.getArgName(index)
+       << GetDefaultAttrExport(*named_attr) << "(op.get"
+       << convertToCamelFromSnakeCase(op.getArgName(index),
+                                      /*capitalizeFirst=*/true)
        << "());\n";
   }
 
@@ -168,8 +170,9 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   // Create a scoped object to assign op metadata to generated XLA ops.
   os << "  xla::XlaScopedOpMetadataAssignment "
         "op_metadata(lowering_context.builder, "
-        "CreateOpMetadataFromLocation(op, "
-        "lowering_context.converter->GetOptions()));\n\n";
+        "mlir::mhlo::CreateOpMetadataFromLocation("
+        "op, lowering_context.converter->GetOptions().legalize_node_names"
+        "));\n\n";
 
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {

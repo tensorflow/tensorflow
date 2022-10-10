@@ -22,8 +22,6 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import range
-from six.moves import zip
 import tensorflow as tf
 
 # Force loaded shared object symbols to be globally visible. This is needed so
@@ -134,6 +132,35 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     expected_value = root.f(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testStringInput(self):
+
+    class Model(tf.Module):
+
+      @tf.function
+      def __call__(self, x):
+        return x
+
+    root = Model()
+    concrete_func = root.__call__.get_concrete_function(
+        tf.constant([str(x) for x in range(11)]))
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func],
+                                                               root)
+    tflite_model = converter.convert()
+    input_data = tf.constant([str(x) for x in range(11)],
+                             shape=(11,),
+                             dtype=tf.dtypes.string)
+    # Check values from converted model.
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    my_signature = interpreter.get_signature_runner()
+
+    with self.assertRaises(ValueError) as error:
+      _ = my_signature(x=input_data)
+    self.assertIn('Passed in value type is not a numpy array, got type ',
+                  str(error.exception))
 
   @test_util.run_v2_only
   def testModelWithoutInputs(self):
@@ -2310,6 +2337,44 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(
         list(output_details[0]['shape_signature']),
         list(model.layers[-1].output_shape))
+
+  @test_util.run_v2_only
+  def testKerasConv2DTransposedWithMismatchQuantizedAxes(self):
+
+    class QuantConv2DTransposed(tf.keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight('kernel', [3, 3, input_shape[-1], 24])
+
+      def call(self, inputs):
+        filters = tf.quantization.fake_quant_with_min_max_vars_per_channel(
+            self.kernel,
+            -3.0 * tf.ones([24]),
+            3.0 * tf.ones([24]),
+            narrow_range=True)
+        filters = tf.transpose(filters, (0, 1, 3, 2))
+        return tf.nn.conv2d_transpose(inputs, filters, [*inputs.shape[:-1], 24],
+                                      1)
+
+    inp = tf.keras.Input(shape=(6, 8, 48), batch_size=1)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        inp, -3.0, 3.0, narrow_range=True)
+    x = QuantConv2DTransposed()(x)
+    x = tf.quantization.fake_quant_with_min_max_vars(
+        x, -3.0, 3.0, narrow_range=True)
+
+    model = tf.keras.Model(inp, x)
+
+    saved_model_dir = os.path.join(self.get_temp_dir(),
+                                   'keras_conv2d_transpose')
+    model.save(saved_model_dir)
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+
+    with self.assertRaises(convert.ConverterError) as error:
+      _ = converter.convert()
+    self.assertIn('mismatched quantized axes of input and output',
+                  str(error.exception))
 
   def _createModelWithInputShape(self, shape):
     """Create a simple SavedModel with a certain shape."""

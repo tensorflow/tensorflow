@@ -1,6 +1,6 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])
@@ -55,9 +55,9 @@ cc_library(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:random",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:random",
+        "//tensorflow/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -72,8 +72,9 @@ tf_cc_test(
         ":service",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -97,6 +98,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
@@ -141,8 +143,9 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/platform:errors",
     ] + tf_grpc_cc_dependencies(),
 )

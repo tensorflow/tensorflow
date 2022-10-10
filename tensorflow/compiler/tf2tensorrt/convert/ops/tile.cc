@@ -25,12 +25,10 @@ namespace convert {
 
 class ConvertTile : public OpConverterBase<ConvertTile> {
  public:
-  explicit ConvertTile(OpConverterParams *params)
-      : OpConverterBase<ConvertTile>(params) {}
-
-  static constexpr std::array<DataType, 3> AllowedDataTypes() {
-    return {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32};
-  }
+  explicit ConvertTile(const OpConverterParams *params)
+      : OpConverterBase<ConvertTile>(
+            params,
+            {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}) {}
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {
     return std::array<InputArgSpec, 2>{
@@ -60,13 +58,8 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       multiplies = nullptr;
     }
 
-    if (dtype != nvinfer1::DataType::kINT32) {
-      return errors::InvalidArgument(
-          "The replication parameter of the ", params.node_def.op(),
-          " operation in ", params.node_def.name(), " is expected to be of ",
-          DebugString(nvinfer1::DataType::kINT32), " type, got ",
-          DebugString(dtype), ".");
-    }
+    const auto &node = params.node_def;
+    TF_RETURN_IF_ERROR(check_type(dtype, nvinfer1::DataType::kINT32, node, 1));
 
     const auto dims = inputs.at(0).GetTrtDims();
     const auto nb_dims =
@@ -77,7 +70,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       if (mult_numb != nb_dims) {
         return errors::InvalidArgument(
             "The length of the replication vector (", mult_numb,
-            ") of the Tile operation in '", params.node_def.name(),
+            ") of the Tile operation in '", node.name(),
             "' is expected to be equal to the rank of the input vector (",
             nb_dims, ").");
       }
@@ -86,14 +79,14 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
                       [](int i) { return i <= 0; })) {
         const auto &mul = absl::StrJoin(multiplies, multiplies + nb_dims, ", ");
         return errors::InvalidArgument(
-            "All replications of the Tile operation in '",
-            params.node_def.name(), "' should be positive, got (", mul, ").");
+            "All replications of the Tile operation in '", node.name(),
+            "' should be positive, got (", mul, ").");
       }
 
       if (params.use_implicit_batch && multiplies[0] > 1) {
         return errors::Unimplemented(
-            "The Tile operation along the batch dimension in '",
-            params.node_def.name(), "' is not implemented.");
+            "The Tile operation along the batch dimension in '", node.name(),
+            "' is not implemented.");
       }
     } else {
       const auto &repl_dims = repl.GetTrtDims();
@@ -115,7 +108,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -128,18 +121,18 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     const auto dims = tensor.GetTrtDims();
     const auto nb_dims = dims.nbDims;
 
-    nvinfer1::Dims size{nb_dims, {1}};
-    bool dynamic_flag = replics.is_tensor();
+    nvinfer1::Dims output_size{nb_dims, {1}};
+    bool dynamic_flag = replics.is_tensor() || !HasStaticShape(dims);
+
     if (!dynamic_flag) {
-      const auto dim_adj =
+      // If input0 is a tensor, and we're in implicit batch mode, then we need
+      // dim_offset.
+      const auto dim_offset =
           params.use_implicit_batch && tensor.is_tensor() ? 1 : 0;
-      const auto *pSize = dims.d;
-      dynamic_flag = std::any_of(pSize + 1 - dim_adj, pSize + nb_dims,
-                                 [](int i) { return i < 0; });
-      const int *pMultiplies = replics.weights().GetPointer<int>() + dim_adj;
-      size.d[0] = pMultiplies[0];
-      for (int i = 1 - dim_adj; i < nb_dims; i++)
-        size.d[i] = pMultiplies[i] * pSize[i];
+      const auto *input_size = dims.d;
+      const int *pReplics = replics.weights().GetPointer<int>() + dim_offset;
+      for (int i = 0; i < nb_dims; i++)
+        output_size.d[i] = pReplics[i] * input_size[i];
     }
 
     StatusOr<TRTNetworkBuilder> builder;
@@ -184,8 +177,8 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
 
     nvinfer1::Dims start{nb_dims, {}};
     DimsAdapter stride(std::vector<int>(nb_dims, 1));
-    auto layer =
-        network->addSlice(input_trt_tensor, start, size, stride.AsTrtDims());
+    auto layer = network->addSlice(input_trt_tensor, start, output_size,
+                                   stride.AsTrtDims());
     layer->setMode(nvinfer1::SliceMode::kWRAP);
     if (target_shape) layer->setInput(2, *target_shape);
 
@@ -202,7 +195,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     }
 
     AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

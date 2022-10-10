@@ -154,6 +154,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_MUL, 3}, "1.15.0"},
            {{BuiltinOperator_MUL, 4}, "2.3.0"},
            {{BuiltinOperator_MUL, 5}, "2.6.0"},
+           {{BuiltinOperator_MUL, 6}, "2.11.0"},
            {{BuiltinOperator_NON_MAX_SUPPRESSION_V4, 1}, "2.1.0"},
            {{BuiltinOperator_NON_MAX_SUPPRESSION_V5, 1}, "2.1.0"},
            {{BuiltinOperator_PAD, 1}, "1.5.0"},
@@ -382,8 +383,10 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_DYNAMIC_UPDATE_SLICE, 1}, "2.9.0"},
            {{BuiltinOperator_UNSORTED_SEGMENT_PROD, 1}, "2.10.0"},
            {{BuiltinOperator_UNSORTED_SEGMENT_MAX, 1}, "2.10.0"},
+           {{BuiltinOperator_UNSORTED_SEGMENT_MIN, 1}, "2.11.0"},
            {{BuiltinOperator_UNSORTED_SEGMENT_SUM, 1}, "2.10.0"},
-           {{BuiltinOperator_ATAN2, 1}, "2.10.0"}});
+           {{BuiltinOperator_ATAN2, 1}, "2.10.0"},
+           {{BuiltinOperator_SIGN, 1}, "2.11.0"}});
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};
   auto it = op_version_map->find(version_key);

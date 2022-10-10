@@ -430,20 +430,12 @@ class SaveTest(test.TestCase, parameterized.TestCase):
 
   def test_variable_args_cannot_be_used_as_signature(self):
 
-    @def_function.function(input_signature=[
-        resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
-    ])
-    def f(unused_v):
-      return 1
-
-    root = autotrackable.AutoTrackable()
-    root.f = f.get_concrete_function()
-    with self.assertRaisesRegex(ValueError,
-                                "tf.Variable inputs cannot be exported"):
-      save.save(
-          root,
-          os.path.join(self.get_temp_dir(), "saved_model"),
-          signatures=root.f)
+    with self.assertRaises(TypeError):
+      @def_function.function(input_signature=[
+          resource_variable_ops.VariableSpec(shape=[], dtype=dtypes.int32)
+      ])
+      def f(unused_v):
+        return 1
 
   def test_export_correct_output_shapes(self):
     """Asserts that nodes are exported with the correct number of output shapes.
@@ -939,7 +931,7 @@ class SavingOptionsTest(test.TestCase):
         "my_func": root.f,
     })
     save.save(root, save_dir, root.f, options=options)
-    function_cache = root.f._stateful_fn._list_all_concrete_functions()
+    function_cache = root.f._variable_creation_fn._list_all_concrete_functions()
     function_aliases = loader_impl.parse_saved_model(
         save_dir).meta_graphs[0].meta_info_def.function_aliases
     self.assertLen(function_cache, 1)
@@ -1124,9 +1116,9 @@ class ExportMetaGraphTests(test.TestCase):
 class FingerprintingTests(test.TestCase):
 
   def test_toggle_flag(self):
-    self.assertFalse(flags.config().saved_model_fingerprinting.value())
-    flags.config().saved_model_fingerprinting.reset(True)
     self.assertTrue(flags.config().saved_model_fingerprinting.value())
+    flags.config().saved_model_fingerprinting.reset(False)
+    self.assertFalse(flags.config().saved_model_fingerprinting.value())
 
 
 if __name__ == "__main__":

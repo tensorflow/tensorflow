@@ -46,15 +46,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/lib/monitoring/gauge.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
 namespace {
 
-auto* dynamic_padding_gauge = tensorflow::monitoring::Gauge<bool, 0>::New(
+auto* dynamic_padding_gauge = tsl::monitoring::Gauge<bool, 0>::New(
     "/tensorflow/core/use_dynamic_padding_gauge",
     "Tracks if dynamic padder is used.");
 
@@ -951,7 +950,7 @@ HloInstruction* RewriteInputWithDynamicPadding(
   // Reconstruct dynamic padding using pad and dynamic slice.
 
   HloInstruction* pad =
-      MakePadHlo(input, padding_value, padding_configs).ValueOrDie();
+      MakePadHlo(input, padding_value, padding_configs).value();
   input = conv->AddInstruction(HloInstruction::CreateDynamicSlice(
       padded_shape, pad, start_indices, padded_shape.dimensions()));
   return input;
@@ -1282,8 +1281,7 @@ StatusOr<bool> RewriteDynamicSelectAndScatterSamePadding(
     }
     *padding_configs.add_dimensions() = padding_dim;
   }
-  HloInstruction* padded =
-      MakePadHlo(rewritten, init, padding_configs).ValueOrDie();
+  HloInstruction* padded = MakePadHlo(rewritten, init, padding_configs).value();
   rewritten = hlo->AddInstruction(HloInstruction::CreateDynamicSlice(
       hlo->shape(), padded, start_indices, hlo->shape().dimensions()));
   TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rewritten));
@@ -1379,7 +1377,7 @@ StatusOr<bool> RewriteDynamicSort(
       "inbound_rhs");
   std::vector<const HloInstruction*> extra_parameters{new_param_0.get(),
                                                       new_param_1.get()};
-  HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
+  HloComputation* sort_comp = sort->GetModule()->AddEmbeddedComputation(
       sort->called_computations()[0]->CloneWithReplacements(
           /*replacements=*/nullptr, extra_parameters));
   auto inbound_lhs =
@@ -1499,16 +1497,38 @@ StatusOr<bool> RewriteDynamicBinaryOp(
                 static_shape, HloOpcode::kSelect, pred, broadcast, operand));
         return select;
       };
+
+      HloInstruction* one = binary->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::One(S32)));
+
       auto operand_0_needs_broadcast = binary->parent()->AddInstruction(
           HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
                                         dim_1, ComparisonDirection::kLt),
+          "lhs_less_than_rhs");
+      auto is_one = binary->parent()->AddInstruction(
+          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_0,
+                                        one, ComparisonDirection::kEq),
+          "lhs_is_one");
+      operand_0_needs_broadcast = binary->parent()->AddInstruction(
+          HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
+                                       HloOpcode::kAnd, is_one,
+                                       operand_0_needs_broadcast),
           "lhs_needs_implicit_broadcast");
       operand_0 = rewrite_operand(operand_0_needs_broadcast, operand_0);
 
       auto operand_1_needs_broadcast = binary->parent()->AddInstruction(
           HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
                                         dim_0, ComparisonDirection::kLt),
-          "rhs_needs_implicit_broadcast");
+          "rhs_less_than_lhs");
+      is_one = binary->parent()->AddInstruction(
+          HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), dim_1,
+                                        one, ComparisonDirection::kEq),
+          "rhs_is_one");
+      operand_1_needs_broadcast = binary->parent()->AddInstruction(
+          HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
+                                       HloOpcode::kAnd, is_one,
+                                       operand_1_needs_broadcast),
+          "lhs_needs_implicit_broadcast");
       operand_1 = rewrite_operand(operand_1_needs_broadcast, operand_1);
     }
   }

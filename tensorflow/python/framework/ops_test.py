@@ -2075,10 +2075,17 @@ class MultithreadedGraphStateTest(test_util.TensorFlowTestCase):
       t.join()
 
     gd = g.as_graph_def()
-    self.assertProtoEqualsVersion("""
-      node { name: "ColocateWithMe_0" op: "FloatOutput" }
-      node { name: "ColocateWithMe_1" op: "FloatOutput" }
-      node { name: "ColocateWithMe_2" op: "FloatOutput" }
+    self.assertProtoEqualsVersion(
+        """
+      node { name: "ColocateWithMe_0" op: "FloatOutput"
+             attr { key: "_has_manual_control_dependencies"
+                    value { b: true } } }
+      node { name: "ColocateWithMe_1" op: "FloatOutput"
+             attr { key: "_has_manual_control_dependencies"
+                    value { b: true } } }
+      node { name: "ColocateWithMe_2" op: "FloatOutput"
+             attr { key: "_has_manual_control_dependencies"
+                    value { b: true } } }
       node { name: "FloatOutput_0" op: "FloatOutput"
              input: "^ColocateWithMe_0" }
       node { name: "FloatOutput_1" op: "FloatOutput"
@@ -2523,6 +2530,31 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
       b = _apply_op(g, "Identity", [a], [dtypes.float32])
 
     self.assertEqual(b.op.control_inputs, [])
+
+  def testMonitoringAttributeAddedWhenUsingManualControlDep(self):
+    g = ops.Graph()
+    a = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    b = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    with g.control_dependencies([a]):
+      c = _apply_op(g, "Identity", [b], [dtypes.float32])
+
+    with g.control_dependencies([b]):
+      d = _apply_op(g, "Identity", [b], [dtypes.float32])
+
+    # Validate that the monitoring attribute is set to track usage of the
+    # `control_dependencies(...)` API.
+    self.assertEqual(c.op.control_inputs, [a.op])
+    with self.assertRaises(ValueError):
+      c.op.get_attr("_has_manual_control_dependencies")
+    self.assertEqual(a.op.get_attr("_has_manual_control_dependencies"), True)
+
+    # Validate that the monitoring attribute is set to track usage of the
+    # `control_dependencies(...)` API even when the manual control deps actually
+    # happened to be pruned at runtime.
+    self.assertEqual(d.op.control_inputs, [])
+    with self.assertRaises(ValueError):
+      d.op.get_attr("_has_manual_control_dependencies")
+    self.assertEqual(b.op.get_attr("_has_manual_control_dependencies"), True)
 
 
 class OpScopeTest(test_util.TensorFlowTestCase):

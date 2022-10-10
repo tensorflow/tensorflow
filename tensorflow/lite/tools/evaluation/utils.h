@@ -89,6 +89,8 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(
     const TfLiteXNNPackDelegateOptions* options);
 #endif
 TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads);
+
+TfLiteDelegatePtr CreateCoreMlDelegate();
 }  // namespace evaluation
 }  // namespace tflite
 

@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
@@ -44,7 +46,6 @@ namespace {
 using ::testing::EqualsProto;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
-using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -92,6 +93,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
+  UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
@@ -195,7 +197,8 @@ class CoordinateTwoTasksTest : public ::testing::Test {
 
   // Set up coordination service.
   void EnableCoordinationService(bool has_service_to_client_connection = true,
-                                 bool enable_shutdown_barrier = false) {
+                                 bool enable_shutdown_barrier = false,
+                                 bool set_worker_job_recoverable = false) {
     ServerDef server_def = GetMultiClientServerDef("worker", /*num_tasks=*/2);
     auto client_cache = std::make_unique<TestCoordinationClientCache>();
     if (has_service_to_client_connection) {
@@ -210,6 +213,9 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     coord_config->set_service_type(kCoordinationServiceType);
     coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
                                               absl::Milliseconds(1));
+    if (set_worker_job_recoverable) {
+      coord_config->mutable_recoverable_jobs()->Add("worker");
+    }
     if (enable_shutdown_barrier) {
       coord_config->set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
                                                        absl::Milliseconds(1));
@@ -222,9 +228,11 @@ class CoordinateTwoTasksTest : public ::testing::Test {
 
   CoordinatedTask task_0_;
   const uint64_t incarnation_0_ = random::New64();
+  const uint64_t incarnation_0_new_ = random::New64();
   TestCoordinationClient client_0_;
   CoordinatedTask task_1_;
   const uint64_t incarnation_1_ = random::New64();
+  const uint64_t incarnation_1_new_ = random::New64();
   TestCoordinationClient client_1_;
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
 };
@@ -470,7 +478,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
       });
   n1.WaitForNotification();
   TF_ASSERT_OK(ret.status());
-  EXPECT_EQ(ret.ValueOrDie(), "value0");
+  EXPECT_EQ(ret.value(), "value0");
   // Get key with redundant slashes
   absl::Notification n2;
   coord_service_->GetKeyValueAsync(
@@ -479,7 +487,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
         n2.Notify();
       });
   n2.WaitForNotification();
-  EXPECT_EQ(ret.ValueOrDie(), "value1");
+  EXPECT_EQ(ret.value(), "value1");
 
   // Delete single key-value
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("key0"));
@@ -494,7 +502,7 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
   // Insert the previously deleted key again
   TF_ASSERT_OK(coord_service_->InsertKeyValue("key0", "value0_new"));
   n3.WaitForNotification();
-  EXPECT_EQ(ret.ValueOrDie(), "value0_new");
+  EXPECT_EQ(ret.value(), "value0_new");
 
   // Delete key-values recursively
   TF_ASSERT_OK(coord_service_->DeleteKeyValue("/path"));
@@ -525,7 +533,7 @@ TEST(CoordinationServiceTest, TryGetKeyValue) {
   // Insert key value.
   TF_ASSERT_OK(coord_service->InsertKeyValue("test_key", "test_value"));
   result = coord_service->TryGetKeyValue("test_key");
-  EXPECT_EQ(result.ValueOrDie(), "test_value");
+  EXPECT_EQ(result.value(), "test_value");
 
   // Delete Key, and try to get the key again.
   TF_ASSERT_OK(coord_service->DeleteKeyValue("test_key"));
@@ -667,8 +675,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
                         local_devices_1.mutable_tf()->devices().end());
   expected_devices->Add(local_devices_2.mutable_tf()->devices().begin(),
                         local_devices_2.mutable_tf()->devices().end());
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
@@ -709,9 +716,11 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
 
   // Each task sends its device info.
   CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [&](Status s) { TF_ASSERT_OK(s); });
+  // Make sure that cluster device order is deterministic even if devices are
+  // sent out of order.
   coord_service->WaitForAllTasks(task_1, local_devices_1,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
   coord_service->WaitForAllTasks(task_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
@@ -732,8 +741,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
       local_1;
   *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
       local_2;
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 // Task devices should not be added twice if same task calls WaitForAllDevices()
@@ -788,8 +796,7 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
                         local_devices_0.mutable_tf()->devices().end());
   expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
                         local_devices_1.mutable_tf()->devices().end());
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 TEST_F(CoordinationBarrierTest, Barrier) {
@@ -1336,4 +1343,88 @@ TEST_F(CoordinateTwoTasksTest,
 
   EXPECT_TRUE(errors::IsInvalidArgument(s)) << s;
 }
+
+TEST_F(CoordinateTwoTasksTest, UnrecoverableTaskPropagatesError) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/false);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  TF_ASSERT_OK(
+      coord_service_->ReportTaskError(task_0_, errors::Internal("test_error")));
+
+  EXPECT_TRUE(errors::IsInternal(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  // For unrecoverable task, error propagates to all connected tasks.
+  EXPECT_TRUE(errors::IsInternal(client_1_.GetStatus()));
+}
+
+TEST_F(CoordinateTwoTasksTest, RecoverableTaskWillNotPropagateError) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  TF_ASSERT_OK(
+      coord_service_->ReportTaskError(task_0_, errors::Internal("test_error")));
+
+  EXPECT_TRUE(errors::IsInternal(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  // Since no error propagation for recoverable tasks, other tasks should work
+  // as normal.
+  TF_EXPECT_OK(client_1_.GetStatus());
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       RecoverableTaskReportErrorResetAndRegisterAgain) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  TF_ASSERT_OK(
+      coord_service_->ReportTaskError(task_0_, errors::Internal("test_error")));
+
+  EXPECT_TRUE(errors::IsInternal(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  // Since no error propagation for recoverable tasks, other tasks should work
+  // as normal.
+  TF_EXPECT_OK(client_1_.GetStatus());
+
+  // Reset and register the error task again, both tasks should be healthy.
+  TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(client_1_.GetStatus());
+}
+
+TEST_F(CoordinateTwoTasksTest,
+       RecoverableTaskHeartbeatTimeoutAndRegisterAgain) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_));
+
+  Env::Default()->SleepForMicroseconds(
+      absl::ToInt64Microseconds(2 * kHeartbeatTimeout));
+
+  EXPECT_TRUE(errors::IsUnavailable(
+      coord_service_->RecordHeartbeat(task_0_, incarnation_0_)));
+  EXPECT_TRUE(errors::IsUnavailable(
+      coord_service_->RecordHeartbeat(task_1_, incarnation_1_)));
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_1_, incarnation_1_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_1_, incarnation_1_new_));
+}
+
 }  // namespace tensorflow

@@ -19,7 +19,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/strings/str_cat.h"
@@ -110,7 +110,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitDeviceMathCall(
       ObtainDeviceFunctionName(funcid, output_type, b());
   llvm::Value* result = EmitMathCall(munged_callee, converted_operands,
                                      converted_input_types, output_type, name)
-                            .ValueOrDie();
+                            .value();
   if (cast_result_to_fp16) {
     result = FPCast(result, b()->getHalfTy());
   }

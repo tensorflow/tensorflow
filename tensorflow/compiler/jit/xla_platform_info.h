@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_device.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 
 namespace tensorflow {
 
@@ -113,6 +113,11 @@ XlaCompiler::Options GenerateCompilerOptions(
     const FunctionLibraryRuntime& function_library, DeviceBase* device,
     se::Stream* stream, const XlaPlatformInfo& platform_info,
     bool has_ref_vars);
+
+// Returns created options for XLA compiler when TFRT-TPU is used.
+XlaCompiler::Options GenerateTfrtTpuCompilerOptions(
+    const XlaCompilationCache& cache,
+    const FunctionLibraryRuntime& function_library);
 
 }  // namespace tensorflow
 

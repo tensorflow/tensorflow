@@ -97,11 +97,12 @@ TEST(DataTypeTest, GlslShaderDataTypes) {
   EXPECT_EQ("lowp uint",
             ToGlslShaderDataType(DataType::UINT8, 1, /*add_precision*/ true));
 
-  EXPECT_EQ("float", ToGlslShaderDataType(DataType::BOOL));
-  EXPECT_EQ("highp float",
+  EXPECT_EQ("bool", ToGlslShaderDataType(DataType::BOOL));
+  EXPECT_EQ("bvec4", ToGlslShaderDataType(DataType::BOOL, 4));
+  EXPECT_EQ("bool",
             ToGlslShaderDataType(DataType::BOOL, 1, /*add_precision*/ true));
-  EXPECT_EQ("float", ToGlslShaderDataType(DataType::BOOL, 1,
-                                          /*add_precision*/ false));
+  EXPECT_EQ("bool", ToGlslShaderDataType(DataType::BOOL, 1,
+                                         /*add_precision*/ false));
 }
 
 }  // namespace

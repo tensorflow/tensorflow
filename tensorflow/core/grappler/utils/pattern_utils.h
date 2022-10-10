@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_HELPER_H_
-#define TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_HELPER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_
 
 #include "tensorflow/core/grappler/utils/graph_view.h"
 
@@ -230,4 +230,4 @@ class SubGraphMatcher {
 }  // namespace grappler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_HELPER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_PATTERN_UTILS_H_

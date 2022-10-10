@@ -317,7 +317,7 @@ class Exchange {
   }
 
   // If `status` is success, completes this exchange by parsing the
-  // response_buf_ and invoking cb_ with Status::OK(). Else, invokes the
+  // response_buf_ and invoking cb_ with OkStatus(). Else, invokes the
   // callback with `status`.
   void Complete(Status status);
 

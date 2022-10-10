@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -28,9 +28,13 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_TENSORFLOWSHAPEINFERENCEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-class ShapeInference : public TensorFlowShapeInferencePassBase<ShapeInference> {
+class ShapeInference
+    : public impl::TensorFlowShapeInferencePassBase<ShapeInference> {
  public:
   void runOnOperation() override {
     auto failure_or_converged =

@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/framework/model.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -1327,10 +1330,19 @@ TEST(ModelTest, ModelMetrics) {
   std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
   model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
                 nullptr, &root);
-  std::string model_id = strings::StrCat(reinterpret_cast<uint64>(&model));
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
   EXPECT_THAT(cell_reader.Read(model_id),
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
                     HasSubstr("autotune: true")));
+}
+
+TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  auto* model = new model::Model();
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(model));
+  thread::ThreadPool threads(Env::Default(), "collect_and_destroy_race", 2);
+  threads.Schedule([&]() { cell_reader.Read(model_id); });
+  threads.Schedule([&]() { delete model; });
 }
 
 class ModelTimingTest : public ::testing::Test {
@@ -1362,11 +1374,12 @@ class ModelTimingTest : public ::testing::Test {
 
   // Gets the node given its id.
   const Node* GetNode(int64_t node_id) const { return node_map_.at(node_id); }
+  Node* MutableGetNode(int64_t node_id) const { return node_map_.at(node_id); }
 
  protected:
   std::unique_ptr<Model> model_;
   std::unique_ptr<ModelTiming> model_timing_;
-  absl::flat_hash_map<int64_t, const Node*> node_map_;
+  absl::flat_hash_map<int64_t, Node*> node_map_;
 };
 
 TEST_F(ModelTimingTest, Interleave) {
@@ -1441,325 +1454,189 @@ TEST_F(ModelTimingTest, Interleave) {
   EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave_DeterministicFalse) {
-  ComputeModelTiming(R"pb(
-    nodes: {
-      key: 1
-      value: {
-        id: 1
-        name: "Batch"
-        autotune: true
-        num_elements: 100
-        processing_time: 1000
-        node_class: KNOWN_RATIO
-        ratio: 1
-        inputs: 2
-      }
-    }
-    nodes: {
-      key: 2
-      value: {
-        id: 2
-        name: "ParallelInterleaveV4"
-        autotune: true
-        num_elements: 100
-        processing_time: 2000
-        node_class: ASYNC_INTERLEAVE_MANY
-        inputs: 3
-        inputs: 4
-        inputs: 5
-        parameters: {
-          name: "parallelism"
-          value: 2
-          min: 1
-          max: 10
-          tunable: true
+class ParallelInterleaveTimingTest
+    : public ModelTimingTest,
+      public ::testing::WithParamInterface<
+          std::tuple<int32_t, int32_t, int32_t>> {};
+
+TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
+  const int32_t parallelism = std::get<0>(GetParam());
+  const int32_t deterministic = std::get<1>(GetParam());
+  const int32_t cycle_length = std::get<2>(GetParam());
+  ComputeModelTiming(strings::Printf(
+      R"pb(
+        nodes: {
+          key: 1
+          value: {
+            id: 1
+            name: "Batch"
+            autotune: true
+            num_elements: 100
+            processing_time: 1000
+            node_class: KNOWN_RATIO
+            ratio: 1
+            inputs: 2
+          }
         }
-        parameters: { name: "cycle_length" value: 2 tunable: false }
-        parameters: { name: "deterministic" value: 0 tunable: false }
-      }
-    }
-    nodes: {
-      key: 3
-      value: {
-        id: 3
-        name: "Batch"
-        autotune: true
-        num_elements: 60
-        processing_time: 60
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 4
-      value: {
-        id: 4
-        name: "Batch"
-        autotune: true
-        num_elements: 60
-        processing_time: 1200
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 5
-      value: {
-        id: 5
-        name: "Batch"
-        autotune: true
-        num_elements: 40
-        processing_time: 800
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    output: 1
-  )pb");
+        nodes: {
+          key: 2
+          value: {
+            id: 2
+            name: "ParallelInterleaveV4"
+            autotune: true
+            num_elements: 100
+            processing_time: 2000
+            node_class: ASYNC_INTERLEAVE_MANY
+            inputs: 3
+            inputs: 4
+            inputs: 5
+            inputs: 6
+            inputs: 7
+            parameters: {
+              name: "parallelism"
+              value: %d
+              min: 1
+              max: 10
+              tunable: true
+            }
+            parameters: { name: "deterministic" value: %d tunable: false }
+            parameters: { name: "cycle_length" value: %d tunable: false }
+          }
+        }
+        nodes: {
+          key: 3
+          value: {
+            id: 3
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 60
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 4
+          value: {
+            id: 4
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 1200
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 5
+          value: {
+            id: 5
+            name: "Batch"
+            autotune: true
+            num_elements: 40
+            processing_time: 1200
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 6
+          value: {
+            id: 6
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 2400
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 7
+          value: {
+            id: 7
+            name: "Batch"
+            autotune: false  # Marked as an inactive input
+            num_elements: 40
+            processing_time: 2000
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        output: 1
+      )pb",
+      parallelism, deterministic, cycle_length));
 
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->self_time_nsec);
-
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->total_time_nsec);
-}
-
-TEST_F(ModelTimingTest, ParallelInterleave_DeterministicTrue) {
-  ComputeModelTiming(R"pb(
-    nodes: {
-      key: 1
-      value: {
-        id: 1
-        name: "Batch"
-        autotune: true
-        num_elements: 100
-        processing_time: 1000
-        node_class: KNOWN_RATIO
-        ratio: 1
-        inputs: 2
-      }
-    }
-    nodes: {
-      key: 2
-      value: {
-        id: 2
-        name: "ParallelInterleaveV4"
-        autotune: true
-        num_elements: 100
-        processing_time: 2000
-        node_class: ASYNC_INTERLEAVE_MANY
-        inputs: 3
-        inputs: 4
-        inputs: 5
-        parameters: {
-          name: "parallelism"
-          value: 2
-          min: 1
-          max: 10
-          tunable: true
-        }
-        parameters: { name: "cycle_length" value: 2 tunable: false }
-        parameters: { name: "deterministic" value: 1 tunable: false }
-      }
-    }
-    nodes: {
-      key: 3
-      value: {
-        id: 3
-        name: "Batch"
-        autotune: true
-        num_elements: 60
-        processing_time: 60
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 4
-      value: {
-        id: 4
-        name: "Batch"
-        autotune: true
-        num_elements: 60
-        processing_time: 1200
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 5
-      value: {
-        id: 5
-        name: "Batch"
-        autotune: true
-        num_elements: 40
-        processing_time: 1600
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    output: 1
-  )pb");
-
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(40, GetNodeTiming(/*node_id=*/5)->self_time_nsec);
-
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(30, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(40, GetNodeTiming(/*node_id=*/5)->total_time_nsec);
-}
-
-TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
-  ComputeModelTiming(R"pb(
-    nodes: {
-      key: 1
-      value: {
-        id: 1
-        name: "Batch"
-        autotune: true
-        num_elements: 100
-        processing_time: 1000
-        node_class: KNOWN_RATIO
-        ratio: 1
-        inputs: 2
-      }
-    }
-    nodes: {
-      key: 2
-      value: {
-        id: 2
-        name: "ParallelInterleaveV4"
-        autotune: true
-        num_elements: 100
-        processing_time: 2000
-        node_class: ASYNC_INTERLEAVE_MANY
-        inputs: 3
-        inputs: 4
-        inputs: 5
-        inputs: 6
-        inputs: 7
-        parameters: {
-          name: "parallelism"
-          value: 2
-          min: 1
-          max: 10
-          tunable: true
-        }
-        parameters: { name: "cycle_length" value: 1 tunable: false }
-        parameters: { name: "deterministic" value: 0 tunable: false }
-      }
-    }
-    nodes: {
-      key: 3
-      value: {
-        id: 3
-        name: "Batch"
-        autotune: true
-        num_elements: 60
-        processing_time: 60
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 4
-      value: {
-        id: 4
-        name: "Batch"
-        autotune: true
-        num_elements: 60
-        processing_time: 1200
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 5
-      value: {
-        id: 5
-        name: "Batch"
-        autotune: true
-        num_elements: 40
-        processing_time: 800
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 6
-      value: {
-        id: 6
-        name: "Batch"
-        autotune: false
-        num_elements: 60
-        processing_time: 1200
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    nodes: {
-      key: 7
-      value: {
-        id: 7
-        name: "Batch"
-        autotune: false
-        num_elements: 40
-        processing_time: 800
-        node_class: KNOWN_RATIO
-        ratio: 1
-      }
-    }
-    output: 1
-  )pb");
-
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
   EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
 
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/6)->self_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/7)->self_time_nsec);
+  const double expected_self_time_1 = 1000.0 / 100.0;
+  const double expected_self_time_2 = 2000.0 / 100.0 / parallelism;
+  const double expected_self_time_3 = 60.0 / 60.0;
+  const double expected_self_time_4 = 1200.0 / 60.0;
+  const double expected_self_time_5 = 1200.0 / 40.0;
+  const double expected_self_time_6 = 2400.0 / 60.0;
+  const double expected_self_time_7 = 2000.0 / 40.0;
 
-  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->total_time_nsec);
-  EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/6)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_7,
+                   GetNodeTiming(/*node_id=*/7)->self_time_nsec);
+
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->total_time_nsec);
   EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
+
+  const double max_input_time = expected_self_time_6;
+  double input_throughput = 1.0 / expected_self_time_4 +
+                            1.0 / expected_self_time_5 +
+                            1.0 / expected_self_time_6;
+  const double active_inputs = 3.0;
+  double expected_input_time;
+  if (deterministic == 1) {
+    expected_input_time = max_input_time / std::min(parallelism, cycle_length);
+  } else {
+    if (std::min(parallelism, cycle_length) < active_inputs) {
+      input_throughput *= std::min(parallelism, cycle_length) / active_inputs;
+    }
+    expected_input_time = 1.0 / input_throughput;
+  }
+  EXPECT_DOUBLE_EQ(expected_input_time + expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->total_time_nsec);
 }
+
+INSTANTIATE_TEST_SUITE_P(ParallelInterleaveTimingTest,
+                         ParallelInterleaveTimingTest,
+                         ::testing::Combine(::testing::Values(1, 2, 3),
+                                            ::testing::Values(0, 1),
+                                            ::testing::Values(1, 2, 3)));
 
 TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
   ComputeModelTiming(R"pb(
@@ -1944,8 +1821,8 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
         ratio: 1
         parameters: {
           name: "buffer_size"
-          value: 5
-          state_value: 5
+          value: 3
+          state_value: 3
           min: 1
           max: 10
           tunable: true
@@ -2006,11 +1883,33 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
         num_elements: 100
         processing_time: 2000
         node_class: ASYNC_KNOWN_RATIO
+        inputs: 5
         ratio: 1
         parameters: {
           name: "buffer_size"
           value: 5
           state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 5
+      value: {
+        id: 5
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 8
+          state_value: 8
           min: 1
           max: 8
           tunable: true
@@ -2024,6 +1923,7 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   std::shared_ptr<Node> node_2 = GetNode(2);
   std::shared_ptr<Node> node_3 = GetNode(3);
   std::shared_ptr<Node> node_4 = GetNode(4);
+  std::shared_ptr<Node> node_5 = GetNode(5);
   // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
   // downsized to 2.
   node_1->record_buffer_event(100, 1);
@@ -2053,13 +1953,31 @@ TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
   node_4->record_buffer_event(-100, -1);
   EXPECT_EQ(0, node_4->buffered_elements_low());
   EXPECT_EQ(5, node_4->buffered_elements_high());
+  // Set node 5 low watermark to 1 and high watermark to 2. Its current buffer
+  // size is set to 8. Expect that it is downsized to 8/2 rather than (2 - 1 + 1
+  // = 3) because downsize is capped to half its size.
+  node_5->record_buffer_event(100, 1);
+  node_5->record_buffer_event(-100, 1);
+  EXPECT_EQ(1, node_5->buffered_elements_low());
+  EXPECT_EQ(2, node_5->buffered_elements_high());
 
-  model_->OptimizeBuffers(node_1, 10000);
+  model_->OptimizeBuffers(node_1->Snapshot(), 10000);
 
   EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
   EXPECT_EQ(5, node_2->parameter_value(kBufferSize));
   EXPECT_EQ(10, node_3->parameter_value(kBufferSize));
   EXPECT_EQ(8, node_4->parameter_value(kBufferSize));
+  EXPECT_EQ(6, node_5->parameter_value(kBufferSize));
+  EXPECT_EQ(2, node_1->buffered_elements_low());
+  EXPECT_EQ(2, node_1->buffered_elements_high());
+  EXPECT_EQ(4, node_2->buffered_elements_low());
+  EXPECT_EQ(4, node_2->buffered_elements_high());
+  EXPECT_EQ(4, node_3->buffered_elements_low());
+  EXPECT_EQ(4, node_3->buffered_elements_high());
+  EXPECT_EQ(4, node_4->buffered_elements_low());
+  EXPECT_EQ(4, node_4->buffered_elements_high());
+  EXPECT_EQ(2, node_5->buffered_elements_low());
+  EXPECT_EQ(2, node_5->buffered_elements_high());
 }
 
 TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
@@ -2186,12 +2104,20 @@ TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
   EXPECT_EQ(0, node_4->buffered_elements_low());
   EXPECT_EQ(5, node_4->buffered_elements_high());
 
-  model_->OptimizeBuffers(node_1, 3000);
+  model_->OptimizeBuffers(node_1->Snapshot(), 3000);
 
   EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_3->parameter_value(kBufferSize));
   EXPECT_DOUBLE_EQ(7.0, node_4->parameter_value(kBufferSize));
+  EXPECT_EQ(5, node_1->buffered_elements_low());
+  EXPECT_EQ(5, node_1->buffered_elements_high());
+  EXPECT_EQ(5, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  EXPECT_EQ(5, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  EXPECT_EQ(4, node_4->buffered_elements_low());
+  EXPECT_EQ(4, node_4->buffered_elements_high());
 }
 
 TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
@@ -2389,6 +2315,7 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
         parameters: {
           name: "parallelism"
           value: 4
+          state_value: 4
           min: 1
           max: 16
           tunable: true
@@ -2410,6 +2337,7 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
         parameters: {
           name: "parallelism"
           value: 4
+          state_value: 4
           min: 1
           max: 16
           tunable: true
@@ -2432,78 +2360,21 @@ TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 5, 800, 50,
+  // Not enough RAM, the original `parallelism` should not change.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
                    &cancellation_manager);
-
   EXPECT_EQ(4, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
   EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
-}
-
-TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_CpuBudgetExceeded) {
-  BuildModelFromProto(R"pb(
-    nodes: {
-      key: 1
-      value: {
-        id: 1
-        name: "ParallelMapV2"
-        autotune: true
-        num_elements: 100
-        processing_time: 25000
-        bytes_produced: 10000
-        node_class: ASYNC_KNOWN_RATIO
-        ratio: 1
-        inputs: 2
-        parameters: {
-          name: "parallelism"
-          value: 4
-          min: 1
-          max: 16
-          tunable: true
-        }
-      }
-    }
-    nodes: {
-      key: 2
-      value: {
-        id: 2
-        name: "ParallelMapV2"
-        autotune: true
-        num_elements: 100
-        processing_time: 20000
-        bytes_produced: 10000
-        node_class: ASYNC_KNOWN_RATIO
-        ratio: 1
-        inputs: 3
-        parameters: {
-          name: "parallelism"
-          value: 4
-          min: 1
-          max: 16
-          tunable: true
-        }
-      }
-    }
-    nodes: {
-      key: 3
-      value: {
-        id: 3
-        name: "SSTable"
-        autotune: true
-        num_elements: 100
-        processing_time: 1000
-        node_class: KNOWN_RATIO
-        ratio: 2
-      }
-    }
-    output: 1
-  )pb");
-
-  CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 3, 1000, 50,
+  // Has enough RAM, the original `parallelism` should increase.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100000, 0,
                    &cancellation_manager);
-
-  EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
-  EXPECT_EQ(3, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  // Not enough RAM, the original `parallelism` should not change.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
+                   &cancellation_manager);
+  EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
 }
 
 TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
@@ -2558,10 +2429,10 @@ TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
   )pb");
 
   CancellationManager cancellation_manager;
-  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 10000, 50,
                    &cancellation_manager);
 
-  EXPECT_EQ(10, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(16, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
 }
 
 TEST_F(ModelTimingTest, ComputeTargetTime) {
@@ -2609,6 +2480,55 @@ TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
   }
 
   EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, SelfTime) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  auto node_1 = MutableGetNode(/*node_id=*/1);
+  EXPECT_DOUBLE_EQ(100, node_1->ComputeSelfTime());
+  node_1->add_processing_time(400);
+  node_1->record_element();
+  EXPECT_DOUBLE_EQ(110, node_1->ComputeSelfTime());
+  auto node_2 = MutableGetNode(/*node_id=*/2);
+  EXPECT_DOUBLE_EQ(1000, node_2->ComputeSelfTime());
+  node_2->add_processing_time(100);
+  node_2->record_element();
+  EXPECT_DOUBLE_EQ(910, node_2->ComputeSelfTime());
 }
 
 }  // namespace

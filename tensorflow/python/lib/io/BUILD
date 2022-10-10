@@ -1,10 +1,6 @@
 # python/lib/io package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test", "tf_python_pybind_extension")
 
 visibility = [
     "//tensorflow:__subpackages__",

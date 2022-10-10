@@ -18,7 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 

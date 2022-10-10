@@ -17,15 +17,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::tfrt::jitrt::JitExecutableCache;
-
 Status SetUpTfJitRtRequestContext(tfrt::RequestContextBuilder* builder) {
   // TODO(ezhulenev): Instead of keeping JitExecutableCache in the
   // ResourceContext it can be stored in the SavedModel itself to avoid
   // quite exensive GetOrCreateResource operation.
-  JitExecutableCache* jit_executable_cache =
-      builder->resource_context()->GetOrCreateResource<JitExecutableCache>(
-          "tf_jitrt.jit_executable_cache");
+  TfJitRtRequestState::JitExecutableCache* jit_executable_cache =
+      builder->resource_context()
+          ->GetOrCreateResource<TfJitRtRequestState::JitExecutableCache>(
+              "tf_jitrt.jit_executable_cache");
 
   builder->context_data().emplace<TfJitRtRequestState>(jit_executable_cache);
 

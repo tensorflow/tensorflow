@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_PERMUTE_THUNK_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
@@ -78,7 +78,7 @@ class NcclCollectivePermuteThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo::CollectivePermuteOp op) {
     return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
-        .ValueOrDie();
+        .value();
   }
 
  protected:

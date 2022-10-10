@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -108,8 +108,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
       const HloInstruction* instruction, const ShapeIndex& index,
       absl::Span<const std::pair<HloInstruction*, ShapeIndex>> expected) {
     const LogicalBuffer* buffer =
-        points_to_analysis_->GetBufferDefinedAt(instruction, index)
-            .ValueOrDie();
+        points_to_analysis_->GetBufferDefinedAt(instruction, index).value();
     std::vector<BufferAlias> expected_aliases;
     expected_aliases.reserve(expected.size());
     for (auto& pair : expected) {

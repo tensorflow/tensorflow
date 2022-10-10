@@ -42,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -153,6 +153,14 @@ class HloModule {
     return config_.entry_computation_layout();
   }
 
+  void set_use_auto_spmd_partitioning(bool use) {
+    use_auto_spmd_partitioning_ = use;
+  }
+
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+
   // Based on module's entry_computation sharded shapes,
   // layout_canonicalization_callback_ computes and
   // returns <argument_layouts, result_layout> for module's entry computation.
@@ -192,37 +200,38 @@ class HloModule {
   //
   //   for (HloComputation* c : module->computations()) { ... }
   //
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
   computations() const {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::iterator>>
   computations() {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
 
-  // Similar as above, but return a vector of computations for specified
+  // Similar as above, but return a filtered view of computations for specified
   // `execution_threads`. Empty `execution_threads` list means all execution
   // threads are included.
-  std::vector<HloComputation*> computations(
+  tsl::gtl::iterator_range<FilteringUnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator,
+      std::function<bool(const HloComputation*)>>>
+  computations(
       const absl::flat_hash_set<absl::string_view>& execution_threads) const {
-    std::vector<HloComputation*> computations;
-    if (execution_threads.empty()) {
-      computations.assign(MakeUnwrappingIterator(computations_.begin()),
-                          MakeUnwrappingIterator(computations_.end()));
-      return computations;
-    }
-    for (auto& computation : computations_) {
-      if (execution_threads.find(computation->execution_thread()) !=
-          execution_threads.end()) {
-        computations.push_back(computation.get());
-      }
-    }
-    return computations;
+    // Pass execution_threads by value to the predicate to ensure it lives
+    // beyond this function.
+    std::function<bool(const HloComputation*)> pred =
+        [execution_threads](const HloComputation* computation) {
+          if (execution_threads.empty()) {
+            return true;
+          }
+          return execution_threads.contains(computation->execution_thread());
+        };
+    return MakeFilteringUnwrappingIteratorRange(computations_.begin(),
+                                                computations_.end(), pred);
   }
 
   // Returns the computation in this module that has the name `name`.  Returns
@@ -507,7 +516,7 @@ class HloModule {
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
  private:
-  // This constructor is used in Clone() to copy the ComputationEnvironments.
+  // This constructor is used in Clone() to copy the CompilationEnvironments.
   // comp_envs may be null, in which case a clean one will be created.
   HloModule(const std::string& name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);
@@ -537,7 +546,7 @@ class HloModule {
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
   // A unique id to label modules with.
-  int unique_id_;
+  const int unique_id_;
 
   // The HloSchedule of the module. The schedule if it exists contains a
   // sequential order of instructions for each non-fusion computation in the
@@ -580,6 +589,8 @@ class HloModule {
 
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
+
+  bool use_auto_spmd_partitioning_ = false;
 
   // Layout canonicalization callback, used only when
   // use_auto_spmd_partitioning_ = true.

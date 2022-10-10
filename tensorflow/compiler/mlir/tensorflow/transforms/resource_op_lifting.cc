@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/resource_op_lifting_cleanup.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -65,9 +64,12 @@ namespace {
 
 constexpr char kDeviceAttr[] = "device";
 
+#define GEN_PASS_DEF_RESOURCEOPLIFTINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Lift resource operations out of device computation.
 struct ResourceOpLiftingPass
-    : public TFDevice::ResourceOpLiftingPassBase<ResourceOpLiftingPass> {
+    : public impl::ResourceOpLiftingPassBase<ResourceOpLiftingPass> {
   void runOnOperation() override;
 };
 
@@ -1259,8 +1261,11 @@ void ResourceOpLiftingPass::runOnOperation() {
   if (walk_result.wasInterrupted()) return signalPassFailure();
 }
 
+#define GEN_PASS_DEF_RESOURCEOPLIFTINGFORMAINFUNCTIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct ResourceOpLiftingForMainFunctionPass
-    : public TFDevice::ResourceOpLiftingForMainFunctionPassBase<
+    : public impl::ResourceOpLiftingForMainFunctionPassBase<
           ResourceOpLiftingForMainFunctionPass> {
   void runOnOperation() override;
 };

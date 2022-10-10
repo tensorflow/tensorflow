@@ -925,31 +925,31 @@ def _slice_helper(tensor, slice_spec, var=None):
   ```python
   # Strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval())  # => [3,4]
+  print(foo[2:-2])  # => [3,4]
 
   # Skip every other row and reverse the order of the columns
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1])  # => [[3,2,1], [9,8,7]]
 
   # Use scalar tensors as indices on both dimensions
-  print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
+  print(foo[tf.constant(0), tf.constant(2)])  # => 3
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[:, tf.newaxis, :].eval()) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
-  print(foo[:, :, tf.newaxis].eval()) # => [[[1],[2],[3]], [[4],[5],[6]],
+  print(foo[tf.newaxis, :, :]) # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[:, tf.newaxis, :]) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
+  print(foo[:, :, tf.newaxis]) # => [[[1],[2],[3]], [[4],[5],[6]],
   [[7],[8],[9]]]
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
 
   # Masks
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
+  print(foo[foo > 2])  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -1314,18 +1314,16 @@ def _SliceHelperVar(var, slice_spec):
   This function in addition also allows assignment to a sliced range.
   This is similar to `__setitem__` functionality in Python. However,
   the syntax is different so that the user can capture the assignment
-  operation for grouping or passing to `sess.run()`.
+  operation for grouping or passing to `sess.run()` in TF1.
   For example,
 
   ```python
   import tensorflow as tf
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
-  with tf.compat.v1.Session() as sess:
-    sess.run(tf.compat.v1.global_variables_initializer())
-    print(sess.run(A[:2, :2]))  # => [[1,2], [4,5]]
+  print(A[:2, :2])  # => [[1,2], [4,5]]
 
-    op = A[:2,:2].assign(22. * tf.ones((2, 2)))
-    print(sess.run(op))  # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+  A[:2,:2].assign(22. * tf.ones((2, 2))))
+  print(A) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
   ```
 
   Note that assignments currently do not support NumPy broadcasting
@@ -3505,7 +3503,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
   # default shape out of the placeholder. Override that
   # shape to be the value determined here, so partial shapes can be
   # propagated.
-  result._dense_shape_default = dense_shape_default
+  result.set_shape(dense_shape_default)
   return result
 
 # pylint: enable=redefined-outer-name
@@ -3633,7 +3631,9 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tf_type(constant_values) and constant_values == 0:
+    if (not tensor_util.is_tf_type(constant_values) and
+        np.ndim(constant_values) == 0 and
+        constant_values == np.zeros_like(constant_values)):
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(
@@ -4622,12 +4622,36 @@ def squeeze_v2(input, axis=None, name=None):
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
-
+  
   Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
   deprecated `squeeze_dims` argument.
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
+  
+  Note: If squeeze is performed on dimensions of unknown sizes, then the
+  returned Tensor will be of unknown shape. A common situation is when the
+  first (batch) dimension is of size `None`, `tf.squeeze` returns
+  `<unknown>` shape which may be a surprise. Specify the `axis=` argument
+  to get the expected result, as illustrated in the following example:
+  
+  ```python
+  @tf.function
+  def func(x):
+    print('x.shape:', x.shape)
+    known_axes = [i for i, size in enumerate(x.shape) if size == 1]
+    y = tf.squeeze(x, axis=known_axes)
+    print('shape of tf.squeeze(x, axis=known_axes):', y.shape)
+    y = tf.squeeze(x)
+    print('shape of tf.squeeze(x):', y.shape)
+    return 0
+ 
+  _ = func.get_concrete_function(tf.TensorSpec([None, 1, 2], dtype=tf.int32))
+  # Output is.
+  # x.shape: (None, 1, 2)
+  # shape of tf.squeeze(x, axis=known_axes): (None, 2)
+  # shape of tf.squeeze(x): <unknown>
+  ```
 
   Args:
     input: A `Tensor`. The `input` to squeeze.
@@ -5453,8 +5477,8 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   arranged along the last axis of `indices`.
 
   This is similar to `tf.gather`, in which `indices` defines slices into the
-  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into the
-  first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into
+  the first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 
   Caution: On CPU, if an out of bound index is found, an error is returned.
   On GPU, if an out of bound index is found, a 0 is stored in the

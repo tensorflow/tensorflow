@@ -13,6 +13,19 @@ message CoordinatedTask {
   int32 task_id = 2;
 }
 
+// Represents the state of a remote worker
+enum CoordinatedTaskState {
+  // TASKSTATE_UNSPECIFIED is an invalid state such that indicates a bug.
+  TASKSTATE_UNSPECIFIED = 0;
+  // TASKSTATE_UNINITIALIZED is an agent-only state. While the agent is
+  // disconnected, the service has no way of knowing if the task is
+  // initialized/uninitialized.
+  TASKSTATE_UNINITIALIZED = 1;
+  TASKSTATE_DISCONNECTED = 2;
+  TASKSTATE_CONNECTED = 3;
+  TASKSTATE_ERROR = 4;
+}
+
 // Status payload for all coordination service errors.
 // Note: an empty proto may be set if the error is triggered by the task's own
 // agent calls (i.e. not propagated by the service from another remote task).
@@ -25,6 +38,14 @@ message CoordinationServiceError {
   // Denotes which task hit the error. If unset, the error originated from the
   // same task that is processing this error.
   CoordinatedTask source_task = 4;
+}
+
+message CoordinatedTaskStateInfo {
+  CoordinatedTask task = 1;
+  CoordinatedTaskState state = 2;
+  int32 error_code = 3;
+  string error_message = 4;
+  CoordinationServiceError error_payload = 5;
 }
 
 // Represent device information from different runtimes.
@@ -127,6 +148,15 @@ message ReportErrorToServiceRequest {
 }
 
 message ReportErrorToServiceResponse {}
+
+// Request and response messages for getting state of a remote task.
+message GetTaskStateRequest {
+  repeated CoordinatedTask source_task = 1;
+}
+
+message GetTaskStateResponse {
+  repeated CoordinatedTaskStateInfo task_state = 1;
+}
 
 // Message for configuration key value.
 // Key is structured like Unix file system, with multiple levels of directory
@@ -244,6 +274,11 @@ service CoordinationService {
   // state to error, and propagate the error to other tasks in the cluster.
   rpc ReportErrorToService(ReportErrorToServiceRequest)
       returns (ReportErrorToServiceResponse);
+
+  // Get the state of a remote task. Specifically, RPC returns a
+  // CoordinatedTaskState, and if the task is in an error status, returns a
+  // non-OK error code, non-empty error message and error payload.
+  rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
 
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The

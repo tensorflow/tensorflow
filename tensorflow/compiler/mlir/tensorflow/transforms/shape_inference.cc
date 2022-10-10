@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -226,7 +227,7 @@ bool NeedsCastBack(OpOperand& use, Dialect* tf_dialect) {
 TensorType CreateTensorType(llvm::Optional<llvm::ArrayRef<int64_t>> shape,
                             Type element_type) {
   if (shape.has_value())
-    return RankedTensorType::get(shape.getValue(), element_type);
+    return tensorflow::GetTypeFromTFTensorShape(shape.getValue(), element_type);
   return UnrankedTensorType::get(element_type);
 }
 
@@ -254,7 +255,8 @@ RankedTensorType DropFirstDimension(Type type) {
   if (!ranked_type) return {};
   llvm::ArrayRef<int64_t> dims_except_first =
       ranked_type.getShape().drop_front();
-  return RankedTensorType::get(dims_except_first, ranked_type.getElementType());
+  return tensorflow::GetTypeFromTFTensorShape(dims_except_first,
+                                              ranked_type.getElementType());
 }
 
 Operation* InsertCast(OpBuilder& b, Location loc, Type dst_type, Value input) {
@@ -404,7 +406,8 @@ Type GetType(Attribute shape_attr, Attribute type_attr) {
   auto shape = shape_attr.cast<tf_type::ShapeAttr>();
   auto type = type_attr.cast<TypeAttr>();
   if (shape.hasRank())
-    return RankedTensorType::get(shape.getShape(), type.getValue());
+    return tensorflow::GetTypeFromTFTensorShape(shape.getShape(),
+                                                type.getValue());
   else
     return UnrankedTensorType::get(type.getValue());
 }
@@ -546,14 +549,14 @@ Attribute ComputeOutputComponent(const ValuePort& value_port,
   if (auto graph = dyn_cast<tf_executor::GraphOp>(op)) {
     if (port.size() == 1)
       return ComputeOutputComponent(
-          ValuePort(graph.GetFetch().fetches()[port[0]]), values);
+          ValuePort(graph.GetFetch().getFetches()[port[0]]), values);
     return nullptr;
   }
 
   if (auto island = dyn_cast<tf_executor::IslandOp>(op)) {
     if (port.size() == 1)
       return ComputeOutputComponent(
-          ValuePort(island.GetYield().fetches()[port[0]]), values);
+          ValuePort(island.GetYield().getFetches()[port[0]]), values);
     return nullptr;
   }
 
@@ -783,8 +786,8 @@ class ShapeInference {
   // update the subtypes of the resource type.
   bool InferShapeForVarHandleOp(VarHandleOp op);
 
-  // Infers the output shape of XlaConvOp based on the input shapes
-  bool InferShapeForXlaConvOp(XlaConvOp op);
+  // Infers the output shape of XlaConvV2Op based on the input shapes
+  bool InferShapeForXlaConvV2Op(XlaConvV2Op op);
 
   // Infers the output shape of XlaReduceWindowOp based on the input shapes.
   bool InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op);
@@ -836,8 +839,10 @@ ArrayRef<Operation*> ShapeInference::GetCallers(func::FuncOp fn) {
 }
 
 void ShapeInference::EnqueueCallers(func::FuncOp fn) {
-  for (auto user : GetCallers(fn))
-    enqueue(user->getParentOfType<func::FuncOp>());
+  for (auto user : GetCallers(fn)) {
+    auto func = user->getParentOfType<func::FuncOp>();
+    if (func) enqueue(func);
+  }
 }
 
 bool ShapeInference::UpdateTypeAndInsertIncompatibleUseCasts(Type new_type,
@@ -921,7 +926,7 @@ bool ShapeInference::InferShapeForCast(Operation* op) {
       }))
     return false;
 
-  auto new_type = RankedTensorType::get(
+  auto new_type = tensorflow::GetTypeFromTFTensorShape(
       ranked_op_type.getShape(),
       result.getType().cast<ShapedType>().getElementType());
 
@@ -1178,9 +1183,6 @@ bool ShapeInference::InferShapeForReduceDataset(ReduceDatasetOp op,
         input_types.size() - num_states - num_captured_arguments;
   }
 
-  VLOG(0) << "Inferring shape for ReduceDataset with #states = " << num_states
-          << " , #input_elements = " << num_input_elements
-          << " , and #captured_arguments = " << num_captured_arguments;
   DCOMMENT_OP(op,
               "Inferring shape for ReduceDataset with #states = "
                   << num_states << " , #input_elements = " << num_input_elements
@@ -1257,7 +1259,7 @@ bool ShapeInference::InferShapeForTensorListInitOps(Operation* op) {
                                        << element_type);
   if (!element_type || !element_type.hasStaticShape()) return false;
   auto variant_type = VariantType::get(element_type, op->getContext());
-  auto tensor_type = RankedTensorType::get({}, variant_type);
+  auto tensor_type = tensorflow::GetTypeFromTFTensorShape({}, variant_type);
   bool changed = RefineResultType(op, handle, tensor_type);
   if (changed) DCOMMENT_OP(op, "Modified after shape inference:");
   return changed;
@@ -1417,7 +1419,7 @@ llvm::Optional<RankedTensorType> InferWindowOutputShape(
     }
   }
 
-  return RankedTensorType::get(output_dimensions, element_type);
+  return tensorflow::GetTypeFromTFTensorShape(output_dimensions, element_type);
 }
 
 bool ShapeInference::InferShapeForXlaReduceWindowOp(XlaReduceWindowOp op) {
@@ -1569,7 +1571,7 @@ llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
   }
 
   ShapedType base_shape =
-      RankedTensorType::get(input_spatial_dims, element_type);
+      tensorflow::GetTypeFromTFTensorShape(input_spatial_dims, element_type);
 
   auto window =
       InferWindowFromDimensions(window_spatial_dims, window_strides, paddings,
@@ -1586,7 +1588,7 @@ llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
              << dnums.output_spatial_dimensions(i) << " is "
              << output_dims[dnums.output_spatial_dimensions(i)]);
   }
-  return RankedTensorType::get(output_dims, element_type);
+  return tensorflow::GetTypeFromTFTensorShape(output_dims, element_type);
 }
 
 // TODO(hanxiongwang): The logic in this function need move to Op Verify method
@@ -1594,7 +1596,7 @@ llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
 // "third_party/tensorflow/compiler/xla/xla_data.pb.h" into
 // "third_party/tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.cc" is
 // resolved
-LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
+LogicalResult PrecheckForXlaConvV2Op(XlaConvV2Op op) {
   auto input_tensor = op.lhs();
   auto kernel_tensor = op.rhs();
   auto window_strides = op.window_strides();
@@ -1602,10 +1604,7 @@ LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
   auto lhs_dilation = op.lhs_dilation();
   auto rhs_dilation = op.rhs_dilation();
   auto feature_group_count = op.feature_group_count();
-  // This batch_group_count is a placeholder. We do not have batch_group_count
-  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
-  // Eventually we migrate to V2, we con reuse this variable with minor change
-  int64_t batch_group_count = 1;
+  int64_t batch_group_count = op.batch_group_count();
 
   auto input_args_have_static_shape = [&]() -> bool {
     return input_tensor.getType().cast<TensorType>().hasStaticShape() &&
@@ -1722,12 +1721,12 @@ LogicalResult PrecheckForXlaConvOp(XlaConvOp op) {
   return success();
 }
 
-bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
-  DCOMMENT_OP(op, "Inferring shape for XlaConvOp");
+bool ShapeInference::InferShapeForXlaConvV2Op(XlaConvV2Op op) {
+  DCOMMENT_OP(op, "Inferring shape for XlaConvV2Op");
 
   bool changed = false;
 
-  if (PrecheckForXlaConvOp(op).failed()) {
+  if (PrecheckForXlaConvV2Op(op).failed()) {
     return changed;
   }
 
@@ -1737,10 +1736,7 @@ bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
   auto padding = op.padding();
   auto lhs_dilation = op.lhs_dilation();
   auto rhs_dilation = op.rhs_dilation();
-  // This batch_group_count is a placeholder. We do not have batch_group_count
-  // in XlaConvOp V1. By default, it is set to be 1. In XlaConvOpV2, we have it.
-  // Eventually we migrate to V2, we con reuse this variable with minor change
-  int64_t batch_group_count = 1;
+  int64_t batch_group_count = op.batch_group_count();
 
   DenseIntElementsAttr window_strides_attr, padding_attr, lhs_dilation_attr,
       rhs_dilation_attr;
@@ -1787,10 +1783,17 @@ bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
       rhs_dilations_vec.push_back(i.getSExtValue());
     }
 
+    Type input_tensor_element_type = input_tensor_shape.getElementType();
+    Type result_element_type = op.getType().getElementType();
+    Type element_type = input_tensor_element_type.getIntOrFloatBitWidth() >=
+                                result_element_type.getIntOrFloatBitWidth()
+                            ? input_tensor_element_type
+                            : result_element_type;
     auto output_shape = InferXlaConvOutputShape(
         input_tensor_dims_vec, kernel_tensor_dims_vec, window_strides_vec,
         padding_pairs, lhs_dilations_vec, rhs_dilations_vec, batch_group_count,
-        dnums, input_tensor_shape.getElementType());
+        dnums, element_type);
+
     if (output_shape.getValue()) {
       changed = RefineResultType(op.getOperation(), op.getResult(),
                                  output_shape.getValue());
@@ -1803,6 +1806,12 @@ bool ShapeInference::InferShapeForXlaConvOp(XlaConvOp op) {
 bool ShapeInference::RefineWithInferTypeOpInterface(
     InferTypeOpInterface infer_ti) {
   Operation* op = infer_ti.getOperation();
+  if (none_of(op->getResultTypes(), CanBeRefined)) {
+    LLVM_DEBUG(llvm::dbgs() << "Skipping inference for statically shaped op '"
+                            << op->getName() << "'.\n");
+    return false;
+  }
+
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
       op->getContext(), op->getLoc(), op->getOperands(),
@@ -1927,16 +1936,18 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
 
 bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   if (auto graph_op = dyn_cast<tf_executor::GraphOp>(op)) {
-    return RefineTypeForPassThroughOperands(
-        graph_op.GetFetch(), graph_op.GetFetch().fetches(), op->getResults());
+    return RefineTypeForPassThroughOperands(graph_op.GetFetch(),
+                                            graph_op.GetFetch().getFetches(),
+                                            op->getResults());
   }
   if (auto island_op = dyn_cast<tf_executor::IslandOp>(op)) {
-    return RefineTypeForPassThroughOperands(
-        island_op.GetYield(), island_op.GetYield().fetches(), op->getResults());
+    return RefineTypeForPassThroughOperands(island_op.GetYield(),
+                                            island_op.GetYield().getFetches(),
+                                            op->getResults());
   }
   if (auto iter_sink = dyn_cast<tf_executor::NextIterationSinkOp>(op)) {
     auto iter_source = cast<tf_executor::NextIterationSourceOp>(
-        iter_sink.token().getDefiningOp());
+        iter_sink.getToken().getDefiningOp());
     return RefineTypeForPassThroughOperands(
         op, iter_sink.getOperands().drop_front().take_front(),
         iter_source.getResults());
@@ -2121,8 +2132,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
     return InferShapeForXlaSelectAndScatterOp(xla_select_and_scatter_op);
   }
 
-  if (auto xla_conv_op = dyn_cast<XlaConvOp>(op)) {
-    return InferShapeForXlaConvOp(xla_conv_op);
+  if (auto xla_conv_v2_op = dyn_cast<XlaConvV2Op>(op)) {
+    return InferShapeForXlaConvV2Op(xla_conv_v2_op);
   }
 
   // Return operand as a constant attribute.
@@ -2161,12 +2172,13 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
     ShapedTypeComponents inferred = std::get<1>(result);
     TensorType inferred_type;
-    if (inferred.hasRank())
-      inferred_type =
-          RankedTensorType::get(inferred.getDims(), inferred.getElementType());
-    else
-      inferred_type = UnrankedTensorType::get(inferred.getElementType());
+    if (inferred.hasRank()) {
+      inferred_type = tensorflow::GetTypeFromTFTensorShape(
+          inferred.getDims(), inferred.getElementType());
 
+    } else {
+      inferred_type = UnrankedTensorType::get(inferred.getElementType());
+    }
     inferred_type =
         TypeMeet(op_result.getType(), inferred_type).cast<TensorType>();
     if (op_result.getType() == inferred_type) continue;
@@ -2333,7 +2345,8 @@ RankedTensorType GetCompatibleRankedTensorType(RankedTensorType lhs,
       dims.push_back(ShapedType::kDynamicSize);
     }
   }
-  return RankedTensorType::get(dims, GetElementTypeFromOperand(lhs, rhs));
+  return tensorflow::GetTypeFromTFTensorShape(
+      dims, GetElementTypeFromOperand(lhs, rhs));
 }
 
 // Finds compatible types to propagate into functions/regions of a shape
@@ -2427,7 +2440,8 @@ FailureOr<bool> ShapeInference::PropagateShapeIntoAttachedFunctions(
           mlir::SymbolTable::lookupSymbolIn(module, func_sym));
       mlir::SmallVector<mlir::Type, 2> types;
       for (auto type : func.getFunctionType().getInputs()) {
-        types.push_back(RankedTensorType::get({}, getElementTypeOrSelf(type)));
+        types.push_back(tensorflow::GetTypeFromTFTensorShape(
+            {}, getElementTypeOrSelf(type)));
       }
       return PropagateShapeToFunctions(module, types, {func}, max_iterations);
     };
@@ -2714,7 +2728,8 @@ FailureOr<bool> InferShapeForFunction(func::FuncOp func,
       element_type = unranked_input_ty.getElementType();
     }
 
-    auto new_arg_type = RankedTensorType::get(shape, element_type);
+    auto new_arg_type =
+        tensorflow::GetTypeFromTFTensorShape(shape, element_type);
     if (new_arg_type != func_type.getInput(i)) {
       // If the new type is more detailed, trigger shape inference.
       func.getArgument(i).setType(new_arg_type);
@@ -2746,7 +2761,7 @@ FailureOr<bool> InferModuleShape(ModuleOp module, int64_t max_iterations) {
                << "Skipping inference; " << producer_or.status().ToString());
     return true;
   }
-  int64_t producer = producer_or.ValueOrDie();
+  int64_t producer = producer_or.value();
   // TODO(jpienaar): Clean up propagate_NextIterationSinkOp_callee_constants if
   // it is no longer needed.
   ShapeInference context(producer, module,

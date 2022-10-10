@@ -25,6 +25,6 @@ func.func @dense_tensor() -> tensor<4xui64> {
 func.func @tensor_proto() -> tensor<!tf_type.quint8> {
   // tfrt_fallback_async.const_tensor_proto accepts a serialized tensor proto.
   // CHECK: tfrt_fallback_async.const_tensor_proto "\08\0C\12\00\22\01@"
-  %0 = "tf.Const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F5155494E54382074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20224022"> : tensor<!tf_type.quint8>} : () -> tensor<!tf_type.quint8>
+  %0 = "tf.Const"() {value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F5155494E54382074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20224022"> : tensor<!tf_type.quint8>} : () -> tensor<!tf_type.quint8>
   func.return %0 : tensor<!tf_type.quint8>
 }

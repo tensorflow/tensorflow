@@ -54,7 +54,7 @@ struct ObjectValidityChecker {
   bool operator()(VulkanTexture obj) const { return obj.memory; }
   bool operator()(CpuMemory obj) const {
     return obj.data != nullptr && obj.size_bytes > 0 &&
-           (data_type == DataType::UNKNOWN ||
+           (data_type == DataType::UNKNOWN || data_type == DataType::BOOL ||
             obj.size_bytes % SizeOf(data_type) == 0);
   }
   DataType data_type;

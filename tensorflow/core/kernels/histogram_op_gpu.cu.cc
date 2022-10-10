@@ -109,7 +109,7 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
           "Could not launch HistogramRange: ", GpuGetErrorString(err), ".");
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

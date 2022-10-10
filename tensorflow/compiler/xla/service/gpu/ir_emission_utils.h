@@ -16,18 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
+
+// The amount of shared memory a CUDA kernel can use.
+//
+// Stay on the conservative side, this is smaller than full 64kB, but allows
+// some extra space for cache.
+inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
+
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 
 // Matrix multiplication before the rewrite.
 //
@@ -61,9 +73,6 @@ extern const char* const kCusolverCholeskyCallTarget;
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
-// MLIR variant.
-bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op);
-
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
 // ROOT slices have no strides.
@@ -79,7 +88,7 @@ struct ReductionDimensions {
   //
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
-  std::array<int64_t, 3> dimensions;
+  Vector3 dimensions;
 };
 
 // Given the input shape and dimensions to reduce for a reduction, returns
@@ -90,13 +99,10 @@ struct ReductionDimensions {
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
-ReductionDimensions GetReductionKindAndContiguousComponents(
-    mlir::Operation* reduce);
 
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
-std::array<int64_t, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions,
-    se::CudaComputeCapability cuda_compute_capability);
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
+                           se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -174,62 +180,65 @@ Shape GetShape(mlir::Value value);
 // Returns whether the given reduction can be safely generated without atomics:
 // that is, at most one block will write to every output element.
 bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const std::array<int64_t, 3>& reduction_tiling);
+                         const Vector3& reduction_tiling);
 
-// A recursive function to inspect the users of a parameter to determine
-// whether it's safe for a parameter to participate in a shared-memory
-// transpose.
+// Description of how to emit a given transposition.
 //
-// Consider a fusion parameter P for which we might want to use a shmem
-// transpose.  If we do, we use a GPU thread block to preload a tile of P with
-// indices [z, y..y+31, x..x+31] to compute an output tile with the same indices
-// cooperatively, where z, y, x are the indices for the normalized input/output
-// tensor (see the document for FindTranspose021 for the definition of
-// normalized tensor for 0-2-1 transpose). This shmem transpose implementation
-// requires that the computation of the output tile only read elements within
-// the preload tile. If this is not true, we can't use a shmem transpose for P.
+// On a group of input parameters that are 0-2-1 transpose of the outputs
+// of a fusion kernel, stores the input parameters that are safe for the
+// shared memory transpose implementation and the dimension permutation.
 //
-// If the computation of output element [z, y, x] only requires the element of
-// P with the same indices, the shmem transpose implementation can be applied
-// to P safely. This is a sufficient but not necessary condition. We check all
-// the transitive users of P to see if we can find a user that may cause an
-// exception to the situation. If such a user is not found, we conclude that P
-// is safe for shmem transpose.
-//
-// This is trivially true for elementwise operations and some "data-movement"
-// ops like kTuple. However, it's not true for operations that can change the
-// dimensions of the inputs (e.g. pad, slice) and bitcast operation.
-// For example:
-//
-// fused_computation {
-//   param_0 = f32[64,64]{1,0} parameter(0)
-//   ROOT bitcast = f32[64,64]{0,1} bitcast(param_0)
-// }
-// The output element at logical address [0, 63] depends on the input element
-// at logical address [63, 0], which would not be within the shared-memory
-// block.
-//
-// TODO(bixia): In order to extend this for kInput fusion, that is reduction
-// with transpose, we only need to end the use-chain checking with the input of
-// a reduce operations. In this case, the above description on "output" apply
-// to the result of such a use-chain, which provides the input to the reduce
-// operation.
-bool IsInstructionSafeForShmemTranspose(mlir::Operation* op);
+// When a tile based shared memory transpose is used to implement an input
+// with 0-2-1 transpose, we preload a tile of the input elements [z, y..y+31,
+// x..x+31] to compute the output tile elements of the same indices.
+// Preloading the input tile this way is only safe when the computation of the
+// output tile elements do not need any input element outside the preloaded
+// tile. We inspect all the transitive users of the input parameter up to the
+// fusion root instruction to see if we can find any instruction that can make
+// preloading the input tile unsafe.
+struct TransposeDimsAndParams {
+  // Permutation of the dimensions relative to output.
+  Vector3 dims;
 
-// Given a group of input parameters that are 0-2-1 transpose of the outputs of
-// a fusion kernel, returns the input parameters that are safe for the shared
-// memory transpose implementation.
+  // Indices of parameters which are permuted.
+  std::vector<int64_t> params;
+
+  std::string ToString() const {
+    return absl::StrFormat("{dims={%s}, params={%s}}",
+                           absl::StrJoin(dims, ", "),
+                           absl::StrJoin(params, ", "));
+  }
+};
+
+// Returns instructions which are roots of the fusion, following the operands of
+// GTE instructions in the root tuple. Groups multiple subsequent instructions
+// with the same root. CHECKs that the fusion never outputs the same instruction
+// twice, as well as that there are no explicitly created tuples or nested gtes
+// in fusion output.
 //
-// When a tile based shared memory transpose is used to implement an input with
-// 0-2-1 transpose, we preload a tile of the input elements
-// [z, y..y+31, x..x+31] to compute the output tile elements of the same
-// indices. Preloading the input tile this way is only safe when the computation
-// of the output tile elements do not need any input element outside the
-// preloaded tile. We inspect all the transitive users of the input parameter
-// up to the fusion root instruction to see if we can find any instruction
-// that can make preloading the input tile unsafe.
-std::vector<int64_t> FilterInputsForShmemTranspose(
-    mlir::lmhlo::FusionOp fusion, std::vector<int64_t> input_ids);
+// For input: (tuple (gte R1) (gte R1) O2)
+// Expected output: [R1, O2]
+//
+// For input: (tuple R1 R2 O2)
+// Expected output: [R1, R2, O2]
+//
+// For input: (tuple (gte R1) (gte R1) R2 O3)
+// Expected output: [R1, R2, O3]
+//
+// For input: R1
+// Expected output: [R1]
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
+
+// Returns whether the computation has at least one root triggering unnested
+// reduction emitter.
+bool HasAnyUnnestedReductionRoot(HloComputation* computation);
+
+// Whether there is a fusion root triggering transposition emitter.
+bool HasAnyTiledTransposeRoot(HloComputation* computation);
+
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla

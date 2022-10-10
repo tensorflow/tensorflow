@@ -1,7 +1,7 @@
 # Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -62,7 +62,7 @@ cc_library(
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
     ]),
 )
 
@@ -149,6 +149,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -177,7 +178,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/platform:test",
     ],
 )
@@ -268,6 +268,14 @@ filegroup(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
+    ]),
+)
+
+filegroup(
+    name = "saved_model_fingerprinting_test_files",
+    srcs = glob([
+        "testdata/bert2/**",
+        "testdata/bert1/**",
     ]),
 )
 
@@ -373,8 +381,15 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
+        ":constants",
+        "//tensorflow/core/graph/regularization:simple_delete",
+        "//tensorflow/core/graph/regularization:util",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util/tensor_bundle:naming",
+        "@com_google_protobuf//:protobuf_headers",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/strings",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )
@@ -385,7 +400,7 @@ cc_library(
     visibility = ["//tensorflow/python/saved_model:__subpackages__"],
     deps = if_static([
         ":fingerprinting_impl",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:protos_all_cc",
     ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
 )
@@ -395,7 +410,8 @@ tf_cc_test(
     size = "small",
     srcs = ["fingerprinting_test.cc"],
     data = [
-        "//tensorflow/cc/saved_model:saved_model_test_files",
+        ":saved_model_fingerprinting_test_files",
+        ":saved_model_test_files",
     ],
     deps = [
         ":fingerprinting",
@@ -403,6 +419,7 @@ tf_cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/protobuf:for_core_protos_cc",

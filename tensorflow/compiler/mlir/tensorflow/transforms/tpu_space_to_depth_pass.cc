@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -61,10 +60,13 @@ struct BlockArgumentInfo {
   unsigned num_users;
 };
 
+#define GEN_PASS_DEF_TPUSPACETODEPTHPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // TODO(wangtao): add a pass to check if it is profitable to space to depth
 // transform and invoke the transform if it is needed.
 struct TPUSpaceToDepthPass
-    : public TF::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
+    : public impl::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
   void runOnOperation() override;
 };
 
@@ -409,7 +411,7 @@ bool HandleHostReplicatedInputs(int64_t index,
                                 tf_device::ReplicateOp replicate,
                                 int32_t block_size) {
   // We need to know the devices to copy to.
-  if (!replicate.devices()) return false;
+  if (!replicate.getDevices()) return false;
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(block_arg);
@@ -455,7 +457,7 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
       if (input.index() != arg_num) continue;
       auto input_op = input.value().getDefiningOp();
       if (maybe_replicate &&
-          maybe_replicate.body().isAncestor(input_op->getParentRegion())) {
+          maybe_replicate.getBody().isAncestor(input_op->getParentRegion())) {
         continue;
       }
       if (!IsSupportedHostInputOp(input_op)) continue;
@@ -615,7 +617,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
   }
 
   // Get the function on device.
-  auto device_func = cluster_func->getFunc();
+  auto device_func = cluster_func->getFuncOp();
   if (!device_func) return;
 
   TF::Conv2DOp first_conv;

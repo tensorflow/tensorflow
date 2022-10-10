@@ -323,12 +323,9 @@ Status mlir::CustomOptionsToAttributes(
   std::string content;
   content.assign(reinterpret_cast<const char*>(custom_options.data()),
                  custom_options.size());
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
   attributes->emplace_back(builder.getNamedAttr(
       "custom_option",
-      OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
-                              type, content)));
+      mlir::TFL::ConstBytesAttr::get(builder.getContext(), content)));
 
   return ::tensorflow::OkStatus();
 }

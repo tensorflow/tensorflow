@@ -79,7 +79,7 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(CountGetDimensionSize(*module), 3);
   // Make sure this operation is expanded.
@@ -122,7 +122,7 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(module.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(CountGetDimensionSize(*module), 3);
   // Make sure this operation is expanded.
@@ -145,7 +145,7 @@ ENTRY entry {
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(m.get()).value());
 
   for (auto* instruction : m->entry_computation()->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) {

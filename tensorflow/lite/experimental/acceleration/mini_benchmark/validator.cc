@@ -27,15 +27,19 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"
@@ -57,6 +61,25 @@ std::unique_ptr<tflite::delegates::DelegatePluginInterface> LoadDelegatePlugin(
     const std::string& name, const tflite::TFLiteSettings& tflite_settings) {
   return tflite::delegates::DelegatePluginRegistry::CreateByName(
       name + "Plugin", tflite_settings);
+}
+
+void AddTensorDataToMap(TfLiteTensor* tensor,
+                        std::map<std::string, std::vector<char>>& output_map) {
+  std::vector<char> char_output(TfLiteTensorByteSize(tensor));
+  memcpy(char_output.data(), TfLiteTensorData(tensor),
+         TfLiteTensorByteSize(tensor));
+  output_map.emplace(TfLiteTensorName(tensor), std::move(char_output));
+}
+
+// Returns whether the tensor is embedded with data.
+inline bool HasTensorData(ModelLoader* model_loader, const Subgraph& graph,
+                          int index) {
+  // TODO(b/247752800): Find a better approach to see if data is embedded,
+  // regardless of how the model is loaded.
+  const TfLiteTensor* tensor = graph.tensor(index);
+  return tensor->allocation != nullptr ||
+         (model_loader->IsLoadedFromFlatbufferBuilder() &&
+          tensor->data.data != nullptr);
 }
 
 constexpr int64_t kMicrosInSecond = 1000 * 1000;
@@ -109,26 +132,9 @@ class ValidatorProfiler : public ::tflite::Profiler {
 
 }  // namespace
 
-MinibenchmarkStatus Validator::CheckGoldenOutput() {
+MinibenchmarkStatus Validator::CheckGoldenOutput(Results* results_out) {
   if (!interpreter_ || !model_loader_->GetModel()) {
     return kMinibenchmarkPreconditionNotMet;
-  }
-  if (validation_entrypoint_) {
-    // Already done.
-    return kMinibenchmarkSuccess;
-  }
-  main_model_ = interpreter_->subgraph(0);
-  int validation_entrypoint_index = 0;
-  for (int i = 0; i < interpreter_->subgraphs_size(); i++) {
-    Subgraph* subgraph = interpreter_->subgraph(i);
-    if (subgraph->GetName() == "VALIDATION:main") {
-      validation_entrypoint_ = subgraph;
-      validation_entrypoint_index = i;
-      break;
-    }
-  }
-  if (!validation_entrypoint_) {
-    return kMinibenchmarkValidationSubgraphNotFound;
   }
   if (validation_entrypoint_->inputs().size() <= 1) {
     return kMinibenchmarkValidationSubgraphHasTooFewInputs;
@@ -138,18 +144,14 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
     return kMinibenchmarkValidationSubgraphHasTooFewOutputs;
   }
 
-  if (validation_entrypoint_->AllocateTensors() != kTfLiteOk) {
-    return kMinibenchmarkAllocateTensorsFailed;
-  }
-
-  // Check if we have validation data embedded or need to run CPU for it. If
-  // the data is embedded, there is already an allocation for it from the model,
-  // and we can skip running it on CPU.
-  TfLiteTensor* first_input_tensor =
-      validation_entrypoint_->tensor(validation_entrypoint_->inputs()[0]);
-  if (first_input_tensor->allocation) {
+  // Check if we have golden output embedded or need to run CPU for it.  If
+  // embedded, we can skip running it on CPU.
+  if (HasTensorData(model_loader_.get(), *validation_entrypoint_,
+                    validation_entrypoint_->inputs()[0])) {
     return kMinibenchmarkSuccess;
   }
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                  "Running on CPU to get golden output for comparison.");
 
   // Create the interpreter to run on CPU.
   tflite::InterpreterBuilder(*model_loader_->GetModel(),
@@ -158,7 +160,7 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
     return kMinibenchmarkInterpreterBuilderFailed;
   }
   Subgraph* golden_validation_entrypoint =
-      golden_interpreter_->subgraph(validation_entrypoint_index);
+      golden_interpreter_->subgraph(validation_entrypoint_index_);
 
   // Run on CPU.
   if (golden_validation_entrypoint->AllocateTensors() != kTfLiteOk) {
@@ -169,7 +171,7 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
   for (int i = 0; i < golden_validation_entrypoint->inputs().size() - 1; i++) {
     TfLiteTensor* input_tensor = golden_validation_entrypoint->tensor(
         golden_validation_entrypoint->inputs()[i]);
-    memset(input_tensor->data.raw, 0, input_tensor->bytes);
+    memset(input_tensor->data.data, 0, input_tensor->bytes);
   }
 
   if (golden_validation_entrypoint->Invoke() != kTfLiteOk) {
@@ -179,13 +181,14 @@ MinibenchmarkStatus Validator::CheckGoldenOutput() {
   for (int i = 0; i < validation_entrypoint_->inputs().size() - 1; i++) {
     TfLiteTensor* input_tensor =
         validation_entrypoint_->tensor(validation_entrypoint_->inputs()[i]);
-    TfLiteTensor* golden_tensor = golden_validation_entrypoint->tensor(
+    TfLiteTensor* golden_output_tensor = golden_validation_entrypoint->tensor(
         golden_validation_entrypoint->outputs()[i]);
-    if (input_tensor->bytes != golden_tensor->bytes) {
+    if (input_tensor->bytes != golden_output_tensor->bytes) {
       return kMinibenchmarkValidationSubgraphInputsDontMatchOutputs;
     }
-    memcpy(input_tensor->data.raw, golden_tensor->data.raw,
-           input_tensor->bytes);
+
+    memcpy(input_tensor->data.data, golden_output_tensor->data.data,
+           golden_output_tensor->bytes);
   }
 
   return kMinibenchmarkSuccess;
@@ -237,6 +240,12 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
       !model_loader_->GetModel()) {
     return kMinibenchmarkPreconditionNotMet;
   }
+
+  if (interpreter_) {
+    // Already done.
+    return kMinibenchmarkSuccess;
+  }
+
   *delegate_error_out = 0;
   // Create interpreter with the delegate.
   if (compute_settings_->tflite_settings() &&
@@ -267,6 +276,31 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
     TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                     "Creating Interpreter failed with error code %d.", status);
     return kMinibenchmarkInterpreterBuilderFailed;
+  }
+  main_model_ = interpreter_->subgraph(0);
+  validation_entrypoint_index_ = -1;
+  for (int i = 0; i < interpreter_->subgraphs_size(); i++) {
+    Subgraph* subgraph = interpreter_->subgraph(i);
+    if (subgraph->GetName() == kValidationGraphName) {
+      validation_entrypoint_index_ = i;
+      validation_entrypoint_ = subgraph;
+    } else if (subgraph->GetName() == "VALIDATION:metrics") {
+      has_accuracy_validation_ = true;
+    }
+  }
+  if (!validation_entrypoint_) {
+    return kMinibenchmarkValidationSubgraphNotFound;
+  }
+  // Check if validation input exists and prefilled.
+  if (validation_entrypoint_->inputs().empty()) {
+    return kMinibenchmarkValidationSubgraphHasTooFewInputs;
+  }
+  if (!HasTensorData(model_loader_.get(), *validation_entrypoint_,
+                     validation_entrypoint_->inputs().back())) {
+    return kMinibenchmarkValidationInputMissing;
+  }
+  if (validation_entrypoint_->AllocateTensors() != kTfLiteOk) {
+    return kMinibenchmarkAllocateTensorsFailed;
   }
 
   // Check if the model is actually going to execute on the delegate.
@@ -323,42 +357,62 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
   MB_RETURN_IF_ERROR(CreateInterpreter(&results_out->delegate_error,
                                        &results_out->delegated_kernels));
   int64_t delegate_load_end_time_us = ElapsedTimeMicros();
-  MB_RETURN_IF_ERROR(CheckGoldenOutput());
+
   ValidatorProfiler profiler;
+  if (has_accuracy_validation_) {
+    MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out));
+  }
+
   main_model_->SetProfiler(&profiler, 0);
   TfLiteStatus status = validation_entrypoint_->Invoke();
   main_model_->SetProfiler(nullptr, 0);
   if (status != kTfLiteOk) {
     return kMinibenchmarkInvokeFailed;
   }
-  const std::string kMetricPrefix = "metrics/";
-  const std::string kOk("ok");
-  for (int i : validation_entrypoint_->outputs()) {
-    TfLiteTensor* tensor = validation_entrypoint_->tensor(i);
-    std::string name = tensor->name;
-    if (name.find(kMetricPrefix) != 0) {  // NOLINT
-      continue;
-    }
-    name = name.substr(kMetricPrefix.size());
-    if (kOk == name) {
-      results_out->ok = *(tensor->data.b);
-    } else {
-      std::vector<float> values;
-      int count = 1;
-      for (int j = 0; j < tensor->dims->size; j++) {
-        count *= tensor->dims->data[j];
+
+  int model_output_size = main_model_->outputs().size();
+  if (has_accuracy_validation_) {
+    // Accuracy metrics.
+    const std::string kMetricPrefix = "metrics/";
+    const std::string kOk("ok");
+    for (int i = model_output_size;
+         i < validation_entrypoint_->outputs().size(); i++) {
+      TfLiteTensor* tensor =
+          validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]);
+      std::string name = tensor->name;
+      if (name.find(kMetricPrefix) != 0) {  // NOLINT
+        continue;
       }
-      values.reserve(count);
-      for (int j = 0; j < count; j++) {
-        values.push_back(tensor->data.f[j]);
-        TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  %s %.4f", name.c_str(),
-                        tensor->data.f[j]);
+      name = name.substr(kMetricPrefix.size());
+      if (kOk == name) {
+        results_out->ok = *(tensor->data.b);
+      } else {
+        std::vector<float> values;
+        int count = 1;
+        for (int j = 0; j < tensor->dims->size; j++) {
+          count *= tensor->dims->data[j];
+        }
+        values.reserve(count);
+        for (int j = 0; j < count; j++) {
+          values.push_back(tensor->data.f[j]);
+          TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  %s %.4f", name.c_str(),
+                          tensor->data.f[j]);
+        }
+        results_out->metrics[name] = values;
       }
-      results_out->metrics[name] = values;
     }
+
+    TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  accuracy: %s",
+                    results_out->ok ? "ok" : "not ok");
   }
-  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  accuracy: %s",
-                  results_out->ok ? "ok" : "not ok");
+
+  // Model output.
+  for (int i = 0; i < model_output_size; i++) {
+    AddTensorDataToMap(
+        validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
+        results_out->actual_inference_output);
+  }
+  // Performance metrics.
   results_out->delegate_prep_time_us =
       (delegate_load_end_time_us == -1 || delegate_load_start_time_us == -1)
           ? -1

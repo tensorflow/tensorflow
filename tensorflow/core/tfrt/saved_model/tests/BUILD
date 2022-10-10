@@ -1,8 +1,8 @@
 load(":gen_saved_model.bzl", "gen_saved_model")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
     default_visibility = [":internal"],
@@ -598,19 +598,19 @@ tf_cc_test(
     ],
     tags = ["no_oss"],
     deps = [
-        "//tensorflow/cc/saved_model:loader",
-        "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "//tensorflow/core/tfrt/mla:mla_test_utils",
         "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",
         "@tf_runtime//:core_runtime_alwayslink",
-        "@tf_runtime//:tensor",
         "@tf_runtime//backends/cpu:core_runtime_alwayslink",
         "@tf_runtime//backends/cpu:tf_ops_alwayslink",
     ],

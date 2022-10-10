@@ -884,3 +884,34 @@ func.func @test_gather_nd(%arg0: tensor<13x21x3xf32>) -> tensor<6x7x21x3xf32> {
   %2 = "tf.Identity"(%1) {device = ""} : (tensor<6x7x21x3xf32>) -> tensor<6x7x21x3xf32>
   func.return %1 : tensor<6x7x21x3xf32>
 }
+
+
+// -----
+
+// CHECK-LABEL: test_fused_batch_norm
+func.func @test_fused_batch_norm(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
+  // CHECK:  %[[ONE:.+]] = "tosa.const"() {value = dense<1.000000e-03> : tensor<1xf32>}
+  // CHECK:  %[[RES0:.+]] = "tosa.reshape"(%arg3) {new_shape = [1, 1, 1, 8]}
+  // CHECK:  %[[SUB0:.+]] = "tosa.sub"(%arg0, %[[RES0]])
+  // CHECK:  %[[ADD0:.+]] = "tosa.add"(%arg4, %[[ONE]])
+  // CHECK:  %[[RSQR:.+]] = "tosa.rsqrt"(%[[ADD0]])
+  // CHECK:  %[[RES1:.+]] = "tosa.reshape"(%[[RSQR]]) {new_shape = [1, 1, 1, 8]}
+  // CHECK:  %[[MUL0:.+]] = "tosa.mul"(%[[SUB0]], %[[RES1]]) {shift = 0 : i32}
+  // CHECK:  %[[RES1:.+]] = "tosa.reshape"(%arg1) {new_shape = [1, 1, 1, 8]}
+  // CHECK:  %[[MUL1:.+]] = "tosa.mul"(%[[MUL0]], %[[RES1]]) {shift = 0 : i32}
+  // CHECK:  %[[RES2:.+]] = "tosa.reshape"(%arg2) {new_shape = [1, 1, 1, 8]}
+  // CHECK:  %[[ADD1:.+]] = "tosa.add"(%[[MUL1]], %[[RES2]])
+  %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>)
+
+  // CHECK: return %[[ADD1]]
+  func.return %0#0 : tensor<8x8x8x8xf32>
+}
+
+// -----
+
+// CHECK-LABEL: test_fused_batch_norm_training
+func.func @test_fused_batch_norm_training(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
+  // CHECK: "tf.FusedBatchNormV3"
+  %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, exponential_avg_factor = 1.0 : f32, is_training = true} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
+  func.return %0#0 : tensor<8x8x8x8xf32>
+}

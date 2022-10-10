@@ -3467,7 +3467,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyMax(*node) || IsAnyMin(*node) || IsAnyMaxPool(*node) ||
+    // Running on (Unsorted)SegmentMax(Min) can cause issues on empty segments.
+    return IsMax(*node) || IsMin(*node) || IsAnyMaxPool(*node) ||
            IsArgMax(*node) || IsArgMin(*node);
   }
 

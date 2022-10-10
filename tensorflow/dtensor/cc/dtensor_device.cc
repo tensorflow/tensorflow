@@ -41,6 +41,9 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -70,9 +73,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -99,7 +99,6 @@ class DTensorDevice {
 
   void AddMesh(std::unique_ptr<MeshWithParallelDevice> mesh,
                bool is_host_mesh) {
-    // TODO(b/168730933): Consider passing a cheaper int64_t mesh identifier.
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
       const std::string new_tpu_host_mesh = mesh->mesh_config().ToString();
@@ -168,7 +167,7 @@ class DTensorDevice {
       }
     }
     // Setting the default mesh under an empty name repeatedly is fine, which
-    // happens when dtensor_initialize_tpu_system is called multiple times
+    // happens when initialize_tpu_system is called multiple times
     // especially in tests. All the set mappings should be the same anyway.
     if (!mesh_name.empty() && Mesh::tpu_core_ids().count(mesh_name) > 0) {
       return errors::AlreadyExists("Mesh name already in use: ", mesh_name);
@@ -367,6 +366,12 @@ class DTensorDevice {
 
   void RecordInShapeLayoutCache(const TensorWithLayout& tensor);
 
+  // Choose a mesh to broadcast a non-dtensor to a dtensor based on the
+  // operation, other input meshes, default mesh, and dtypes.
+  const MeshWithParallelDevice* ChooseBroadcastingMesh(
+      const absl::flat_hash_set<Mesh>& input_meshes,
+      const std::vector<TF_DataType>& dtypes);
+
   // Returns whether a given mesh is a remote mesh.
   bool is_remote_mesh(const Mesh& mesh) const;
 
@@ -504,6 +509,32 @@ TF_Buffer* TensorWithLayoutSummarize(void* data, TF_Status* status) {
   std::string summary =
       reinterpret_cast<TensorWithLayout*>(data)->SummarizeValue();
   return TF_NewBufferFromString(summary.data(), summary.size());
+}
+
+const MeshWithParallelDevice* DTensorDevice::ChooseBroadcastingMesh(
+    const absl::flat_hash_set<Mesh>& input_meshes,
+    const std::vector<TF_DataType>& dtypes) {
+  bool has_string_dtype = std::find(dtypes.begin(), dtypes.end(),
+                                    TF_DataType::TF_STRING) != dtypes.end();
+  // String tensors can only be broadcast to a CPU mesh, so broadcast
+  // to CPU mesh if there is one we can infer.
+  if (has_string_dtype) {
+    // Choose the first CPU mesh amongst the input meshes as the CPU broadcast
+    // mesh if it exists.
+    for (const Mesh& mesh : input_meshes) {
+      if (mesh.is_cpu_mesh()) {
+        return mesh_to_device_map_[mesh].get();
+      }
+    }
+  }
+
+  // If a unique mesh is identified across all inputs, we use that mesh as the
+  // mesh to broadcast to. Otherwise we fallback to default mesh.
+  const MeshWithParallelDevice* broadcast_mesh =
+      input_meshes.size() == 1
+          ? mesh_to_device_map_[*input_meshes.begin()].get()
+          : default_mesh_;
+  return broadcast_mesh;
 }
 
 TFE_TensorHandle* DTensorDevice::MakeLayoutTensorHandle(
@@ -902,7 +933,7 @@ TFE_TensorHandle* DTensorDevice::Pack(TFE_Context* context, int num_inputs,
     packed_tensor =
         TensorWithLayout::Wrap(std::move(parallel_tensor),
                                *target_parallel_device, *target_layout)
-            .ValueOrDie();
+            .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -991,7 +1022,7 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
   if (is_remote_mesh(target_parallel_device->mesh_config())) {
     // Create a dummy SparseTensorWithLayout.
     packed_tensor = SparseTensorWithLayout::Dummy(
-        local_shape, *target_parallel_device, target_layout.ValueOrDie());
+        local_shape, *target_parallel_device, target_layout.value());
   } else {
     // Parse the indices, values, and dense_shape tensors and put them into
     // parallel tensors, and then pack it into a single SparseTensorWithLayout.
@@ -1047,8 +1078,8 @@ TFE_TensorHandle* DTensorDevice::SparsePack(
                                      std::move(parallel_values_tensor),
                                      std::move(parallel_dense_shapes_tensor),
                                      *target_parallel_device,
-                                     target_layout.ValueOrDie(), local_shape)
-            .ValueOrDie();
+                                     target_layout.value(), local_shape)
+            .value();
   }
 
   RecordInShapeLayoutCache(*packed_tensor);
@@ -1519,9 +1550,6 @@ void DTensorDevice::ExecuteRegularOperation(
 
   int num_global_outputs = 0;
 
-  // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-  // object. Ideally we'd just use a fingerprinted int64_t as a unique
-  // identifier for a mesh.
   std::map<std::string, const MeshWithParallelDevice*>
       function_name_and_mesh_mapping;
   absl::flat_hash_set<std::string> excluded_fn_names;
@@ -1540,9 +1568,6 @@ void DTensorDevice::ExecuteRegularOperation(
                         .c_str());
     }
     const Mesh& mesh = *maybe_converted_mesh;
-    // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-    // object. Ideally we'd just use a fingerprinted int64_t as a unique
-    // identifier for a mesh.
     const MeshWithParallelDevice* parallel_device_mesh =
         mesh_to_device_map_.contains(mesh) ? mesh_to_device_map_[mesh].get()
                                            : default_mesh_;
@@ -1703,9 +1728,6 @@ void DTensorDevice::ExecuteRegularOperation(
       continue;
     }
     const Mesh& mesh = function.function_mesh;
-    // TODO(b/168730933): Lookup is slow as it takes all the devices in the Mesh
-    // object. Ideally we'd just use a fingerprinted int64_t as a unique
-    // identifier for a mesh.
     const MeshWithParallelDevice* parallel_device_mesh =
         function_name_and_mesh_mapping[function.translated_function_name];
 
@@ -1837,11 +1859,16 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
   if (TF_GetCode(status) != TF_OK) return;
   std::vector<TFE_TensorHandle*> inputs_vector;
   inputs_vector.reserve(num_inputs);
+
+  std::vector<TF_DataType> dtypes;
+  dtypes.reserve(num_inputs);
+
   for (int input_index = 0; input_index < num_inputs; ++input_index) {
     TFE_TensorHandle* input =
         TFE_OpGetFlatInput(original_op, input_index, status);
     if (TF_GetCode(status) != TF_OK) return;
     inputs_vector.push_back(input);
+    dtypes.push_back(TFE_TensorHandleDataType(input));
   }
   TFE_TensorHandle** inputs = inputs_vector.data();
 
@@ -1900,12 +1927,9 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     typed_inputs[j] = t;
   }
 
-  // If a unique mesh is identified across all inputs, we use that mesh as the
-  // mesh to broadcast to. Otherwise we fallback to default mesh.
   const MeshWithParallelDevice* broadcast_mesh =
-      input_meshes.size() == 1
-          ? mesh_to_device_map_[*input_meshes.begin()].get()
-          : default_mesh_;
+      ChooseBroadcastingMesh(input_meshes, dtypes);
+
   if (!broadcast_mesh) {
     RETURN_STATUS(status, TF_INVALID_ARGUMENT,
                   "No mesh has been registered to DTensor. Use copy_to_mesh to "
@@ -1987,7 +2011,11 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
       TFE_TensorHandleDevicePointer(tensor, status));
   if (!tensorflow::dtensor::Layout(typed_input->layout()).IsFullyReplicated()) {
     TF_SetStatus(status, TF_UNIMPLEMENTED,
-                 "Trying to copy a non-replicated DTensor is not supported.");
+                 absl::StrCat("Trying to copy a non-replicated DTensor is not "
+                              "supported. Input tensor is: ",
+                              typed_input->DebugString())
+                     .c_str());
+
     return nullptr;
   }
   if (typed_input->tensor()->dtype() == TF_RESOURCE) {
@@ -2010,12 +2038,69 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
   return TFE_TensorHandleCopySharingTensor(typed_input->get_tensor(0), status);
 }
 
+bool PinToDTensorDevice(const TFE_Op* op, TF_Status* s) {
+  // Always pin to the dtensor device if any of its input is a dtensor.
+  // Note that if this function is called, the caller guarantees
+  // that all inputs that are on a custom device is a single dtensor device.
+
+  // Exception 1:
+  // If there is a non-dtensor resource tensor and other dtensor inputs
+  // are not on a CPU mesh, then pin to the physical device.
+  //
+  // This is because our resource upcast to a dtensor only supports broadcasting
+  // to a CPU mesh. If any other dtensor inputs are on a TPU mesh,
+  // then the mesh that is broadcasted will be the TPU mesh.
+  int num_inputs = TFE_OpGetFlatInputCount(op, s);
+  std::vector<TFE_TensorHandle*> inputs_vector;
+  inputs_vector.reserve(num_inputs);
+
+  absl::flat_hash_set<Mesh> input_meshes;
+
+  bool has_non_dtensor_resource = false;
+
+  for (int input_index = 0; input_index < num_inputs; ++input_index) {
+    TFE_TensorHandle* input = TFE_OpGetFlatInput(op, input_index, s);
+
+    std::string input_device_name =
+        std::string(TFE_TensorHandleDeviceName(input, s));
+    if (!absl::StrContains(absl::AsciiStrToLower(input_device_name),
+                           "custom")) {
+      TF_DataType dtype = TFE_TensorHandleDataType(input);
+      if (dtype == TF_RESOURCE) {
+        has_non_dtensor_resource = true;
+      }
+      continue;
+    }
+
+    // Handle input which is on DTensor device already.
+    TensorWithLayout* t = reinterpret_cast<TensorWithLayout*>(
+        TFE_TensorHandleDevicePointer(input, s));
+
+    if (!t->layout().mesh().IsEmpty()) {
+      input_meshes.insert(t->layout().mesh());
+    }
+  }
+
+  const Mesh* broadcast_mesh =
+      input_meshes.size() == 1 ? &(*input_meshes.begin()) : nullptr;
+
+  // Place on physical device as dtensor does not support upcasting resource
+  // tensor to a non-cpu mesh.
+  if (has_non_dtensor_resource && broadcast_mesh &&
+      !broadcast_mesh->is_cpu_mesh()) {
+    return false;
+  }
+
+  return true;
+}
+
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info) {
   device->copy_tensor_to_device = &CopyToDTensorDevice;
   device->copy_tensor_from_device = &CopyFromDTensorDevice;
   device->delete_device = &DeleteDTensorDevice;
   device->execute = &ExecuteOnDTensorDevice;
+  device->shall_pin_to_this_device = &PinToDTensorDevice;
   *device_info = new DTensorDevice(device_name);
 }
 
@@ -2029,7 +2114,7 @@ void AddMesh(const std::string& serialized_mesh, void* device_info,
                      .c_str());
     return;
   }
-  auto mesh_config = mesh_config_or_status.ValueOrDie();
+  auto mesh_config = mesh_config_or_status.value();
   std::vector<std::string> underlying_devices;
   underlying_devices.insert(underlying_devices.end(),
                             mesh_config.local_devices().begin(),
@@ -2059,7 +2144,7 @@ void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
     RETURN_STATUS(status, TF_INTERNAL, layout.status().error_message().c_str());
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetDefaultLayout(layout.ValueOrDie());
+  device->SetDefaultLayout(layout.value());
 }
 
 void ExperimentalClearDefaultLayout(void* device_info, TF_Status* status) {
@@ -2074,7 +2159,7 @@ void ExperimentalSetDefaultMesh(const std::string& serialized_mesh,
     RETURN_STATUS(status, TF_INTERNAL, mesh.status().error_message().c_str());
   }
   DTensorDevice* device = reinterpret_cast<DTensorDevice*>(device_info);
-  device->SetDefaultMesh(mesh.ValueOrDie());
+  device->SetDefaultMesh(mesh.value());
 }
 
 void ExperimentalClearDefaultMesh(void* device_info, TF_Status* status) {

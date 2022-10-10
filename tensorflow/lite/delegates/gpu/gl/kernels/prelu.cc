@@ -50,37 +50,23 @@ class PReLULinearAlpha : public NodeShader {
           "Alpha shape does not match the number of channels.");
     }
 
-    *generated_code =
-        attr.clip
-            ? GeneratedCode{
-                  /*parameters=*/{{"clip", attr.clip}},
-                  /*objects=*/{{"alpha", MakeReadonlyObject(alpha->data)}},
-                  /*shared_variables=*/{},
-                  /*workload=*/uint3(),
-                  /*workgroup=*/uint3(),
-                  "value_0 = clamp(value_0, 0.0, $clip$) + $alpha[gid.z]$ * "
-                  "min(value_0, 0.0);",
-                  /*input=*/IOStructure::AUTO,
-                  /*output=*/IOStructure::AUTO,
-              }
-            : GeneratedCode{
-                  /*parameters=*/{},
-                  /*objects=*/{{"alpha", MakeReadonlyObject(alpha->data)}},
-                  /*shared_variables=*/{},
-                  // Declare workload explicitly because shader depends on
-                  // gid.z.
-                  /*workload=*/
-                  uint3(static_cast<int>(ctx.output_shapes[0][2]),
-                        static_cast<int>(ctx.output_shapes[0][1]),
-                        DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]),
-                                      4)),
-                  /*workgroup=*/uint3(),
-                  /*source_code=*/
-                  "value_0 = max(value_0, 0.0) + $alpha[gid.z]$ * min(value_0, "
-                  "0.0);",
-                  /*input=*/IOStructure::AUTO,
-                  /*output=*/IOStructure::AUTO,
-              };
+    *generated_code = GeneratedCode{
+        /*parameters=*/{},
+        /*objects=*/{{"alpha", MakeReadonlyObject(alpha->data)}},
+        /*shared_variables=*/{},
+        // Declare workload explicitly because shader depends on
+        // gid.z.
+        /*workload=*/
+        uint3(static_cast<int>(ctx.output_shapes[0][2]),
+              static_cast<int>(ctx.output_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4)),
+        /*workgroup=*/uint3(),
+        /*source_code=*/
+        "value_0 = max(value_0, 0.0) + $alpha[gid.z]$ * min(value_0, "
+        "0.0);",
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
     return absl::OkStatus();
   }
 };
@@ -106,48 +92,24 @@ class PReLUFull : public NodeShader {
               static_cast<int>(ctx.output_shapes[0][1]),
               DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4));
 
-    *generated_code =
-        attr.clip
-            ? GeneratedCode{
-                  /*parameters=*/{{"clip", attr.clip}},
-                  /*objects=*/
-                  {{"alpha",
-                    MakeReadonlyObject(obj_size, ConvertToPHWC4(*alpha))}},
-                  /*shared_variables=*/{},
-                  // Declare workload explicitly because shader
-                  // depends on gid.z.
-                  /*workload=*/
-                  uint3(static_cast<int>(ctx.output_shapes[0][2]),
-                        static_cast<int>(ctx.output_shapes[0][1]),
-                        DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]),
-                                      4)),
-                  /*workgroup=*/uint3(),
-                  /*source_code=*/
-                  "value_0 = clamp(value_0, 0.0, $clip$) + "
-                  "$alpha[gid.x, gid.y, gid.z]$ * min(value_0, 0.0);",
-                  /*input=*/IOStructure::AUTO,
-                  /*output=*/IOStructure::AUTO,
-              }
-            : GeneratedCode{
-                  /*parameters=*/{},
-                  /*objects=*/
-                  {{"alpha",
-                    MakeReadonlyObject(obj_size, ConvertToPHWC4(*alpha))}},
-                  /*shared_variables=*/{},
-                  // Declare workload explicitly because shader depends on
-                  // gid.z.
-                  /*workload=*/
-                  uint3(static_cast<int>(ctx.output_shapes[0][2]),
-                        static_cast<int>(ctx.output_shapes[0][1]),
-                        DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]),
-                                      4)),
-                  /*workgroup=*/uint3(),
-                  /*source_code=*/
-                  "value_0 = max(value_0, 0.0) + $alpha[gid.x, gid.y, gid.z]$ "
-                  "* min(value_0, 0.0);",
-                  /*input=*/IOStructure::AUTO,
-                  /*output=*/IOStructure::AUTO,
-              };
+    *generated_code = GeneratedCode{
+        /*parameters=*/{},
+        /*objects=*/
+        {{"alpha", MakeReadonlyObject(obj_size, ConvertToPHWC4(*alpha))}},
+        /*shared_variables=*/{},
+        // Declare workload explicitly because shader depends on
+        // gid.z.
+        /*workload=*/
+        uint3(static_cast<int>(ctx.output_shapes[0][2]),
+              static_cast<int>(ctx.output_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4)),
+        /*workgroup=*/uint3(),
+        /*source_code=*/
+        "value_0 = max(value_0, 0.0) + $alpha[gid.x, gid.y, gid.z]$ "
+        "* min(value_0, 0.0);",
+        /*input=*/IOStructure::AUTO,
+        /*output=*/IOStructure::AUTO,
+    };
     return absl::OkStatus();
   }
 };

@@ -16,15 +16,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
+#include <numeric>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -46,10 +47,10 @@ bool IsRank2(const Shape& shape, int64_t batch_dimensions_size) {
 // the dimensions more major then the given dimensions, minor is the size of
 // dimensions more minor then the given dimensions, and middle is the size of
 // the given dimensions.
-std::array<int64_t, 3> PartitionShapeByMiddleDimensions(
+Vector3 PartitionShapeByMiddleDimensions(
     const Shape& shape, absl::Span<const int64_t> dims_middle) {
   CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-  std::array<int64_t, 3> values = {1, 1, 1};
+  Vector3 values = {1, 1, 1};
   enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
   Segment cur_segment = kMinor;
 
@@ -126,9 +127,8 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
   return true;
 }
 
-std::array<int64_t, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions,
-    se::CudaComputeCapability cuda_compute_capability) {
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
+                           se::CudaComputeCapability cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64_t tile_z = std::min(reduction_dimensions.dimensions[0],
                               BatchedReductionRaceFreeBound());
@@ -149,52 +149,16 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo) {
   return target == kCusolverCholeskyCallTarget;
 }
 
-static ReductionDimensions GetReductionKindAndContiguousComponentsImpl(
-    const Shape& input_shape, absl::Span<const int64_t> dims_to_reduce) {
-  DimensionVector dims_to_keep;
-  for (int64_t dim = 0; dim < input_shape.rank(); ++dim) {
-    if (!absl::c_linear_search(dims_to_reduce, dim)) {
-      dims_to_keep.push_back(dim);
-    }
-  }
-
-  if (dims_to_keep.empty()) {
-    return {/*is_row_reduction=*/true,
-            {1, 1, ShapeUtil::ElementsIn(input_shape)}};
-  }
-
-  if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
-                                           dims_to_keep)) {
-    std::array<int64_t, 3> shape_partition =
-        PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
-    if (shape_partition[1] == 1) {
-      return {/*is_row_reduction=*/true,
-              {1, 1, shape_partition[0] * shape_partition[2]}};
-    }
-    if (shape_partition[2] == 1) {
-      return {/*is_row_reduction=*/false,
-              {1, shape_partition[0], shape_partition[1]}};
-    }
-    return {/*is_row_reduction=*/true, shape_partition};
-  }
-
-  std::array<int64_t, 3> shape_partition =
-      PartitionShapeByMiddleDimensions(input_shape, dims_to_reduce);
-
-  if (shape_partition[2] == 1) {
-    return {/*is_row_reduction=*/true,
-            {1, shape_partition[0], shape_partition[1]}};
-  }
-  return {/*is_row_reduction=*/false, shape_partition};
-}
-
 static bool IsUnnestedReductionFasterThanElemental(
     const ReductionDimensions& reduction_dimensions) {
   if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
-    return reduction_dimensions.dimensions[2] >= WarpSize();
+    // For very small reductions with a power-of-two size, we can fit multiple
+    // reductions inside a single warp, which is more efficient than a loop.
+    return (reduction_dimensions.dimensions[2] >= WarpSize()) ||
+           ((WarpSize() % reduction_dimensions.dimensions[2]) == 0);
   }
 
   // For column reduction, the tile block is tile_size_y x tile_size_x, and we
@@ -213,9 +177,13 @@ static bool IsUnnestedReductionFasterThanElemental(
   return !prefer_elemental_emitter;
 }
 
-// Whether we can/should use the unnested emitter for reduction.
-static bool IsReductionFromOrToContiguousDimensionsImpl(
-    const Shape& operand_shape, absl::Span<int64_t const> dims_to_reduce) {
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
+  if (reduce.opcode() != HloOpcode::kReduce) {
+    return false;
+  }
+
+  const Shape& operand_shape = reduce.operand(0)->shape();
+  absl::Span<const int64_t> dims_to_reduce = reduce.dimensions();
   DimensionVector dims_to_keep;
   for (int64_t dim = 0; dim < operand_shape.dimensions().size(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
@@ -232,32 +200,7 @@ static bool IsReductionFromOrToContiguousDimensionsImpl(
           LayoutUtil::AreDimensionsConsecutive(operand_shape.layout(),
                                                dims_to_reduce)) &&
          IsUnnestedReductionFasterThanElemental(
-             GetReductionKindAndContiguousComponentsImpl(operand_shape,
-                                                         dims_to_reduce));
-}
-
-bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
-  return reduce.opcode() == HloOpcode::kReduce &&
-         IsReductionFromOrToContiguousDimensionsImpl(reduce.operand(0)->shape(),
-                                                     reduce.dimensions());
-}
-
-bool IsReductionFromOrToContiguousDimensions(mlir::Operation* op) {
-  auto reduce = mlir::dyn_cast<mlir::mhlo::ReduceOp>(op);
-  if (!reduce) {
-    return false;
-  }
-
-  mlir::Value first_operand = reduce.operands()[0];
-  Shape operand_shape = GetShape(first_operand);
-
-  llvm::SmallVector<int64_t> dimensions_to_reduce;
-  for (const llvm::APInt& d : reduce.dimensions()) {
-    dimensions_to_reduce.push_back(d.getZExtValue());
-  }
-
-  return IsReductionFromOrToContiguousDimensionsImpl(operand_shape,
-                                                     dimensions_to_reduce);
+             GetReductionKindAndContiguousComponents(reduce));
 }
 
 bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
@@ -278,7 +221,7 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
     if (!slice) {
       return false;
     }
-    if (verify_no_strides && !is_non_strided(slice.strides())) {
+    if (verify_no_strides && !is_non_strided(slice.getStrides())) {
       return false;
     }
   }
@@ -287,21 +230,43 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
 
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce) {
-  return GetReductionKindAndContiguousComponentsImpl(reduce.operand(0)->shape(),
-                                                     reduce.dimensions());
-}
-
-ReductionDimensions GetReductionKindAndContiguousComponents(
-    mlir::Operation* reduce) {
-  mlir::Value input = reduce->getOperand(0);
-  Shape operand_shape = GetShape(input);
-  llvm::SmallVector<int64_t> dimensions_to_reduce;
-  for (const llvm::APInt& d :
-       mlir::cast<mlir::mhlo::ReduceOp>(reduce).dimensions()) {
-    dimensions_to_reduce.push_back(d.getZExtValue());
+  Shape input_shape = reduce.operand(0)->shape();
+  absl::Span<const int64_t> dims_to_reduce = reduce.dimensions();
+  DimensionVector dims_to_keep;
+  for (int64_t dim = 0; dim < input_shape.rank(); ++dim) {
+    if (!absl::c_linear_search(dims_to_reduce, dim)) {
+      dims_to_keep.push_back(dim);
+    }
   }
-  return GetReductionKindAndContiguousComponentsImpl(operand_shape,
-                                                     dimensions_to_reduce);
+
+  if (dims_to_keep.empty()) {
+    return {/*is_row_reduction=*/true,
+            {1, 1, ShapeUtil::ElementsIn(input_shape)}};
+  }
+
+  if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
+                                           dims_to_keep)) {
+    Vector3 shape_partition =
+        PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
+    if (shape_partition[1] == 1) {
+      return {/*is_row_reduction=*/true,
+              {1, 1, shape_partition[0] * shape_partition[2]}};
+    }
+    if (shape_partition[2] == 1) {
+      return {/*is_row_reduction=*/false,
+              {1, shape_partition[0], shape_partition[1]}};
+    }
+    return {/*is_row_reduction=*/true, shape_partition};
+  }
+
+  Vector3 shape_partition =
+      PartitionShapeByMiddleDimensions(input_shape, dims_to_reduce);
+
+  if (shape_partition[2] == 1) {
+    return {/*is_row_reduction=*/true,
+            {1, shape_partition[0], shape_partition[1]}};
+  }
+  return {/*is_row_reduction=*/false, shape_partition};
 }
 
 // This emits a device-side call to
@@ -455,12 +420,12 @@ bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
   if (IsReductionFromOrToContiguousDimensions(*inst)) {
     // Shapes, layouts and dimensions must be the same for all reduces
     // inside of this fusion.
-    // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-    return ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
-           ShapeUtil::Equal(first_reduce->operand(0)->shape(),
-                            inst->operand(0)->shape()) &&
-           ShapeUtil::Equal(first_reduce->operand(1)->shape(),
-                            inst->operand(1)->shape()) &&
+    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
+                                               inst->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
            first_reduce->dimensions() == inst->dimensions();
   }
   return ShapeUtil::CompatibleIgnoringElementType(
@@ -633,7 +598,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   auto output_buffers = fusion.getOutputBuffers();
   CHECK_EQ(1, output_buffers.size());
   auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-      dus.operand().getDefiningOp());
+      dus.getOperand().getDefiningOp());
 
   if (!parameter) {
     return false;
@@ -657,7 +622,7 @@ Shape GetShape(mlir::Value value) {
 }
 
 bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const std::array<int64_t, 3>& reduction_tiling) {
+                         const Vector3& reduction_tiling) {
   return (reduction_dimensions.is_row_reduction &&
           reduction_dimensions.dimensions[2] <=
               MinThreadsXRowReduction() * reduction_tiling[2] &&
@@ -668,65 +633,86 @@ bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
               WarpSize() * reduction_tiling[1]);
 }
 
-bool IsInstructionSafeForShmemTranspose(mlir::Operation* op) {
-  if (mlir::isa<mlir::memref::TensorStoreOp>(op)) {
-    return true;
-  }
-
-  HloOpcode opcode;
-  if (mlir::isa<mlir::bufferization::ToTensorOp>(op)) {
-    opcode = HloOpcode::kParameter;
-  } else {
-    opcode = *MhloToHloOpcode(op);
-  }
-  if (HloInstruction::IsOpElementwise(opcode)) {
-    for (mlir::Value v : op->getResults()) {
-      for (mlir::OpOperand use : v.getUsers()) {
-        if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
-          return false;
-        }
-      }
+// Recursive helper for GetFusionRoots below.
+static void GetFusionRootsRec(HloInstruction* root,
+                              std::vector<HloInstruction*>& out) {
+  if (root->opcode() == HloOpcode::kGetTupleElement) {
+    return GetFusionRootsRec(root->mutable_operand(0), out);
+  } else if (root->opcode() == HloOpcode::kTuple) {
+    for (int i = 0; i < root->operand_count(); i++) {
+      GetFusionRootsRec(root->mutable_operand(i), out);
     }
-    return true;
-  }
-
-  switch (opcode) {
-    // Non-elementwise instructions that don't cause the shmem transpose
-    // to be unsafe, including the instructions that don't currently fuse.
-    case HloOpcode::kGetDimensionSize:
-      // The result of the operation doesn't rely on the content of the
-      // tensor. As such, there is no need to further inspect its users.
-      return true;
-    case HloOpcode::kGetTupleElement:
-    case HloOpcode::kMap:
-    case HloOpcode::kParameter:
-    case HloOpcode::kTuple:
-      for (mlir::Value v : op->getResults()) {
-        for (mlir::OpOperand use : v.getUsers()) {
-          if (!IsInstructionSafeForShmemTranspose(use.getOwner())) {
-            return false;
-          }
-        }
-      }
-      return true;
-
-    default:
-      return false;
+  } else {
+    if (!out.empty() && out.back() == root) {
+      return;
+    }
+    CHECK(!absl::c_linear_search(out, root))
+        << "Fusion root contains instruction " << root->ToString()
+        << " multiple times";
+    out.push_back(root);
   }
 }
 
-std::vector<int64_t> FilterInputsForShmemTranspose(
-    mlir::lmhlo::FusionOp fusion, std::vector<int64_t> input_ids) {
-  std::vector<mlir::Value> params = ToStdVector(fusion.getFusionParameters());
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
+  std::vector<HloInstruction*> out;
+  GetFusionRootsRec(computation->root_instruction(), out);
+  return out;
+}
 
-  std::vector<int64_t> filtered_input_ids;
-  for (int64_t input_id : input_ids) {
-    mlir::Value input = params.at(input_id);
-    if (IsInstructionSafeForShmemTranspose(input.getDefiningOp())) {
-      filtered_input_ids.push_back(input_id);
+static std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kCopy) {
+    return std::nullopt;
+  }
+
+  if (std::optional<Vector3> tr = ShapeUtil::FindTranspose021(
+          instr.operand(0)->shape(), instr.shape())) {
+    if (tr->at(1) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      return tr;
     }
   }
-  return filtered_input_ids;
+  return std::nullopt;
+}
+
+// Find 021 transpose in logical + physical transposition.
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kTranspose) {
+    return std::nullopt;
+  }
+
+  // TODO(cheshire): avoid code duplication.
+  if (std::optional<Vector3> tr = ShapeUtil::FindLogicalTranspose021(
+          instr.operand(0)->shape(), instr.shape(), instr.dimensions())) {
+    if (tr->at(1) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      return tr;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr) {
+  if (std::optional<Vector3> d1 = FindTiledTranspose(instr)) {
+    return d1;
+  }
+  if (std::optional<Vector3> d2 = FindTiledLogicalTranspose(instr)) {
+    return d2;
+  }
+  return std::nullopt;
+}
+
+bool HasAnyTiledTransposeRoot(HloComputation* computation) {
+  return absl::c_any_of(GetFusionRoots(computation),
+                        [&](const HloInstruction* instr) {
+                          return FindAnyTiledTranspose(*instr);
+                        });
+}
+
+bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
+  return absl::c_any_of(
+      GetFusionRoots(computation), [&](const HloInstruction* instr) {
+        return IsReductionFromOrToContiguousDimensions(*instr);
+      });
 }
 
 }  // namespace gpu

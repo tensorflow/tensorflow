@@ -17,13 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SERVICE_DISPATCHER_IMPL_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dataset_store.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
@@ -195,8 +196,14 @@ class DataServiceDispatcherImpl {
   // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
+                         const std::string& requested_dataset_id,
                          std::string& dataset_id)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Finds the dataset ID with the requested dataset ID, or with the matching
+  // fingerprint if the ID does not exist. Returns nullptr if no such dataset
+  // exists.
+  StatusOr<std::optional<std::string>> FindDataset(
+      const GetOrRegisterDatasetRequest& request, uint64 fingerprint);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -335,7 +342,7 @@ class DataServiceDispatcherImpl {
   absl::flat_hash_map<int64_t, absl::Time> latest_client_heartbeats_time_
       TF_GUARDED_BY(mu_);
 
-  absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
+  std::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
   DispatcherState state_ TF_GUARDED_BY(mu_);
   // Condition variable for waking up the iteration gc thread.

@@ -16,8 +16,8 @@ include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/IR/PatternBase.td"
 
-def NonOpaqueElementsAttr : ElementsAttrBase<
-  CPred<"!$_self.isa<OpaqueElementsAttr>()">,
+def DenseElementsAttr : ElementsAttrBase<
+  CPred<"$_self.isa<DenseElementsAttr>()">,
   "non-opaque constant tensor">;
 
 // Checks if the data format is "NHWC".
@@ -50,6 +50,10 @@ def IsInt8ElementType : Constraint<
 def IsInt32ElementType : Constraint<
   CPred<"getElementTypeOrSelf($0).isInteger(32)">>;
 
+// Checks if the value has the type of float32.
+def IsF32ElementType : Constraint<
+  CPred<"getElementTypeOrSelf($0).isF32()">>;
+
 // Checks if the value has static shape.
 def HasStaticShapeConstraint : Constraint<CPred<"HasStaticShape($0)">>;
 
@@ -74,6 +78,15 @@ class Create1DConst<string values> : NativeCodeCall<
 class CreateScalarConst<string value> : NativeCodeCall<
   "CreateScalarConstValue<float>($_builder, $_loc, "# value #")">;
 
+// Creates an 1D array const with integer values.
+// TODO(b/239490133): Make the rule name and function name consistent.
+class Create1DIntegerConst<string type, string values> : NativeCodeCall<
+  "Create1DConstValue<"# type #">($_builder, $_loc, "# values #")">;
+
+// Creates a scalar const with integer value.
+class CreateScalarIntegerConst<string type, string value> : NativeCodeCall<
+  "CreateScalarConstValue<"# type #">($_builder, $_loc, "# value #")">;
+
 // Creates an I64 array attribute with given values.
 class CreateI64ArrayAttr<string values> : NativeCodeCall<
   "$_builder.getI64ArrayAttr("# values #")">;
@@ -85,6 +98,10 @@ class CreateStringAttr<string values> : NativeCodeCall<
 // Creates a new F32 type with the same shape as the given value.
 def CloneTypeWithF32ElementType : NativeCodeCall<
   "CloneTypeWithNewElementType($0.getType(), $_builder.getF32Type())">;
+
+// Creates a new I32 type with the same shape as the given value.
+def CloneTypeWithI32ElementType : NativeCodeCall<
+  "CloneTypeWithNewElementType($0.getType(), $_builder.getI32Type())">;
 
 // By default, the generated code uses  the `create` method without the output
 // type field. However, for many ops, the output type field is always required.

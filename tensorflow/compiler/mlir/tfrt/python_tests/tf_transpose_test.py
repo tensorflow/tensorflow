@@ -218,7 +218,7 @@ class TfTransposeTest(test.TestCase):
   def test_transpose_value_specialization_i32(self):
     mlir_function = """
       func.func @compute(%arg0: tensor<*xf32>,
-                    %arg1: tensor<?xi32> {jitrt.constraint = "value"})
+                    %arg1: tensor<?xi32> {rt.constraint = "value"})
           -> tensor<*xf32> {
         %0 = "tf.Transpose"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<?xi32>) -> tensor<*xf32>
@@ -240,8 +240,8 @@ class TfTransposeTest(test.TestCase):
   def test_transpose_value_specialization_i64(self):
     mlir_function = """
       func.func @compute(%arg0: tensor<*xf32>,
-                    %arg1: tensor<?xi64> {jitrt.constraint = "value"},
-                    %arg2: tensor<?xi64> {jitrt.constraint = "value"})
+                    %arg1: tensor<?xi64> {rt.constraint = "value"},
+                    %arg2: tensor<?xi64> {rt.constraint = "value"})
           -> tensor<*xf32> {
         %0 = "tf.Transpose"(%arg0, %arg1)
              : (tensor<*xf32>, tensor<?xi64>) -> tensor<*xf32>

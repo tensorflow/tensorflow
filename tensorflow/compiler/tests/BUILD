@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load(
     "//tensorflow/compiler/tests:build_defs.bzl",
@@ -1351,8 +1351,8 @@ tf_xla_py_test(
     srcs = ["stateless_random_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 10,
     tags = [
-        "no_gpu",  # TODO(b/227775473)
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "optonly",
     ],
@@ -1422,6 +1422,7 @@ tf_xla_py_test(
     srcs = ["ternary_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",
@@ -1629,7 +1630,7 @@ tf_xla_py_test(
     srcs = ["sort_ops_test.py"],
     enable_mlir_bridge = True,
     python_version = "PY3",
-    shard_count = 10,
+    shard_count = 50,
     # Times out in fastbuild mode.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -2107,6 +2108,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tridiagonal_matmul_ops_test",
+    size = "medium",
+    srcs = ["tridiagonal_matmul_ops_test.py"],
+    enable_mlir_bridge = True,
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "special_math_test",
     size = "medium",
     srcs = ["special_math_test.py"],
@@ -2289,8 +2309,7 @@ tpu_py_test(
     name = "approx_topk_test",
     srcs = ["approx_topk_test.py"],
     disable_experimental = False,
-    # TODO(b/225357174): Implement MLIR legalization properly.
-    disable_mlir_bridge = True,
+    disable_mlir_bridge = False,
     tags = ["no_oss"],
     deps = [
         "//tensorflow/python:array_ops",

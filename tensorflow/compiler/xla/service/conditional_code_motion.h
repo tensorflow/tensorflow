@@ -38,13 +38,23 @@ namespace conditional_opt {
 // inside branches.
 class Boundary {
  public:
-  enum class Position { kInsideBranch, kOutsideBranch, kUndefined };
+  enum class Position {
+    kInsideBranch,
+    kOutsideBranchUser,
+    kOutsideBranchOperand,
+    kUndefined
+  };
   Boundary() : position_(Position::kUndefined) {}
   explicit Boundary(Position p) : position_(p) {}
   std::vector<HloInstruction*>& mutable_operands() { return operands_; }
   const std::vector<HloInstruction*>& operands() const { return operands_; }
   bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
-  bool IsOutsideBranch() const { return position_ == Position::kOutsideBranch; }
+  bool IsOutsideBranchUser() const {
+    return position_ == Position::kOutsideBranchUser;
+  }
+  bool IsOutsideBranchOperand() const {
+    return position_ == Position::kOutsideBranchOperand;
+  }
   Position GetPosition() const { return position_; }
   bool IsEmpty() const { return operands_.empty(); }
   std::string ToString() const {
@@ -213,9 +223,10 @@ class ConditionalCodeMotion : public HloModulePass {
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,
                                     std::vector<Boundary>& new_boundaries);
-  StatusOr<bool> MoveInstructionIn(HloInstruction* conditional,
-                                   std::vector<Boundary>& to_move_in,
-                                   std::vector<Boundary>& new_boundaries);
+  StatusOr<bool> MoveUserInstructionsIn(HloInstruction* conditional,
+                                        std::vector<Boundary>& to_move_in);
+  StatusOr<bool> MoveOperandInstructionsIn(HloInstruction* conditional,
+                                           std::vector<Boundary>& to_move_in);
   void SetDefaultMoveConfig();
 };
 }  // namespace conditional_opt

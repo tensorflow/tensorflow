@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 
+#include <map>
 #include <string>
 
 #include "absl/synchronization/notification.h"
@@ -30,13 +31,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/stream.h"
 
 namespace tensorflow {
 
@@ -223,8 +224,7 @@ Status ResolveDeviceAssignment(
     // For GPU collectives, `xla_global_id`s are arbitrary integers, and XLA
     // requires a mapping from local device IDs to global device IDs.
     const DeviceMgr* device_mgr = ctx->function_library()->device_mgr();
-    std::vector<xla::GlobalDeviceId> global_device_ids(
-        device_mgr->NumDeviceType(params->group.device_type.type_string()));
+    std::map<int, xla::GlobalDeviceId> global_device_ids;
 
     for (int device_idx = 0; device_idx < params->group.group_size;
          device_idx++) {

@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
     "tf_profiler_alias",
@@ -45,6 +45,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/profiler/utils:math_utils",
+        "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",

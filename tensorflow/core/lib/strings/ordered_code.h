@@ -35,8 +35,8 @@ limitations under the License.
 // This module is often useful when generating multi-part sstable
 // keys that have to be ordered in a particular fashion.
 
-#ifndef TENSORFLOW_LIB_STRINGS_ORDERED_CODE_H__
-#define TENSORFLOW_LIB_STRINGS_ORDERED_CODE_H__
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_ORDERED_CODE_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_ORDERED_CODE_H_
 
 #include <string>
 
@@ -91,4 +91,4 @@ class OrderedCode {
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_ORDERED_CODE_H__
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_ORDERED_CODE_H_

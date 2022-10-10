@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -40,10 +40,10 @@ class HloLiveRangeTest : public HloTestBase {
   ~HloLiveRangeTest() override {}
 
   void Analyze(const HloSchedule& schedule) {
-    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).ValueOrDie();
+    alias_analysis_ = HloAliasAnalysis::Run(module_.get()).value();
     hlo_live_range_ = HloLiveRange::Run(schedule, *alias_analysis_,
                                         module_->entry_computation())
-                          .ValueOrDie();
+                          .value();
   }
 
   std::unique_ptr<HloModule> module_;

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_KERNELS_C_API_H_
-#define TENSORFLOW_CORE_TPU_KERNELS_TPU_KERNELS_C_API_H_
+#ifndef TENSORFLOW_CORE_TPU_TPU_OPS_C_API_H_
+#define TENSORFLOW_CORE_TPU_TPU_OPS_C_API_H_
 
 #include <stddef.h>
 
@@ -21,9 +21,9 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/core/tpu/libtftpu.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 typedef struct TpuSerializedProto TpuSerializedProto;
 
@@ -815,4 +815,4 @@ struct TfTpu_OpsApiFn {
 
 }  // extern "C"
 
-#endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_KERNELS_C_API_H_
+#endif  // TENSORFLOW_CORE_TPU_TPU_OPS_C_API_H_

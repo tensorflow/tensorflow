@@ -61,7 +61,7 @@ class VariadicReductionLayoutEqualizer : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ReplaceInstruction(reduce, new_reduce));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/tridiagonal.h"
 
+#include <cstdint>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -107,6 +109,91 @@ StatusOr<int64_t> CheckSystemAndReturnNumEquations(XlaOp lower_diagonal,
                                                 "upper diagonal"));
 
   return num_equations;
+}
+
+// Information about matrix with shape [..., M, N].
+struct TridiagonalMatMulShapeParams {
+  int64_t rank;
+  int64_t m;
+  int64_t n;
+  PrimitiveType element_type;
+};
+
+Status ValidateTridiagonalMatMulDiagonal(const Shape& diagonal_shape,
+                                         const std::string_view diagonal_name,
+                                         const Shape& rhs_shape) {
+  const int64_t diagonal_rank = diagonal_shape.rank();
+  const int64_t rhs_rank = rhs_shape.rank();
+  if (diagonal_rank != rhs_rank) {
+    return InvalidArgument("%s must have same rank as rhs, but got %d and %d.",
+                           diagonal_name, diagonal_rank, rhs_rank);
+  }
+  for (int64_t i = 0; i < rhs_rank - 2; i++) {
+    const int64_t diagonal_dimension =
+        ShapeUtil::GetDimension(diagonal_shape, i);
+    const int64_t rhs_dimension = ShapeUtil::GetDimension(rhs_shape, i);
+    if (diagonal_dimension != rhs_dimension) {
+      return InvalidArgument(
+          "%s must have same outer dimensions as rhs, but for index %d, got %d "
+          "and %d.",
+          diagonal_name, i, diagonal_dimension, rhs_dimension);
+    }
+  }
+  if (const int64_t digonal_second_last_dimension =
+          ShapeUtil::GetDimension(diagonal_shape, rhs_rank - 2);
+      digonal_second_last_dimension != 1) {
+    return InvalidArgument(
+        "%s's second-to-last dimension must be 1, but got %d.", diagonal_name,
+        digonal_second_last_dimension);
+  }
+
+  const int64_t digonal_last_dimension =
+      ShapeUtil::GetDimension(diagonal_shape, rhs_rank - 1);
+  const int64_t rhs_second_last_dimension =
+      ShapeUtil::GetDimension(rhs_shape, rhs_rank - 2);
+  if (digonal_last_dimension != rhs_second_last_dimension) {
+    return InvalidArgument(
+        "%s's last dimension size must be rhs's second-to-last dimension size, "
+        "but got %d and %d.",
+        diagonal_name, digonal_last_dimension, rhs_second_last_dimension);
+  }
+  return OkStatus();
+}
+
+StatusOr<TridiagonalMatMulShapeParams> CheckMatMulSystemAndReturnShapeParams(
+    XlaOp upper_diagonal, XlaOp main_diagonal, XlaOp lower_diagonal,
+    XlaOp rhs) {
+  XlaBuilder* builder = upper_diagonal.builder();
+
+  TF_ASSIGN_OR_RETURN(const Shape upper_diagonal_shape,
+                      builder->GetShape(upper_diagonal));
+  TF_ASSIGN_OR_RETURN(const Shape main_diagonal_shape,
+                      builder->GetShape(main_diagonal));
+  TF_ASSIGN_OR_RETURN(const Shape lower_diagonal_shape,
+                      builder->GetShape(lower_diagonal));
+  TF_ASSIGN_OR_RETURN(const Shape rhs_shape, builder->GetShape(rhs));
+
+  const int64_t rank = rhs_shape.rank();
+  if (rank < 2) {
+    return InvalidArgument("Input must have rank >= 2, but got %d.", rank);
+  }
+
+  TF_RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(upper_diagonal_shape,
+                                                       "superdiag", rhs_shape));
+  TF_RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(main_diagonal_shape,
+                                                       "maindiag", rhs_shape));
+  TF_RETURN_IF_ERROR(ValidateTridiagonalMatMulDiagonal(lower_diagonal_shape,
+                                                       "subdiag", rhs_shape));
+
+  const int64_t rhs_height = ShapeUtil::GetDimension(rhs_shape, rank - 2);
+  const int64_t rhs_width = ShapeUtil::GetDimension(rhs_shape, rank - 1);
+
+  TridiagonalMatMulShapeParams shape_params;
+  shape_params.rank = rank;
+  shape_params.m = rhs_height;
+  shape_params.n = rhs_width;
+  shape_params.element_type = rhs_shape.element_type();
+  return shape_params;
 }
 
 XlaOp Coefficient(XlaOp operand, int32_t i) {
@@ -343,6 +430,56 @@ StatusOr<XlaOp> TridiagonalSolver(SolverAlgorithm algo, XlaOp diagonals,
           "Only algorithm kThomas (%d) is implemented, got: %d",
           static_cast<int>(kThomas), algo);
   }
+}
+
+// Multiplies tridiagonal matrix by matrix.
+// `upper_diagonal` is expected to have dimension [..., 1, M]. Element
+// [..., M - 1] is ignored.
+// `main_diagonal` is expected to have dimension [..., 1, M].
+// `lower_diagonal` is expected to have dimension [..., 1, M]. Element
+// [..., 0] is ignored.
+// The `right-hand-side` is expected to have dimension [..., M, N].
+// The solution will have size [..., M, N].
+StatusOr<XlaOp> TridiagonalMatMul(XlaOp upper_diagonal, XlaOp main_diagonal,
+                                  XlaOp lower_diagonal, XlaOp rhs) {
+  TF_ASSIGN_OR_RETURN(const TridiagonalMatMulShapeParams shape_params,
+                      CheckMatMulSystemAndReturnShapeParams(
+                          upper_diagonal, main_diagonal, lower_diagonal, rhs));
+  XlaBuilder* builder = main_diagonal.builder();
+
+  std::vector<int64_t> broadcasted_dims(shape_params.rank);
+  std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+  std::vector<int64_t> transpose_dims = broadcasted_dims;
+  std::swap(transpose_dims[shape_params.rank - 2],
+            transpose_dims[shape_params.rank - 1]);
+
+  // Shape [..., 1, M] -> [..., M, 1]
+  main_diagonal = xla::Transpose(main_diagonal, transpose_dims);
+  XlaOp diag_part = xla::Mul(main_diagonal, rhs, broadcasted_dims);
+
+  upper_diagonal = SliceInMinorDims(upper_diagonal, /*start=*/{0},
+                                    /*end=*/{shape_params.m - 1});
+  upper_diagonal = xla::Transpose(upper_diagonal, transpose_dims);
+  XlaOp adjusted_upper_rhs = SliceInMinorDims(
+      rhs, /*start=*/{1, 0}, /*end=*/{shape_params.m, shape_params.n});
+  XlaOp upper_diag_part =
+      xla::Mul(upper_diagonal, adjusted_upper_rhs, broadcasted_dims);
+  upper_diag_part = xla::PadInDim(
+      upper_diag_part, xla::Zero(builder, shape_params.element_type),
+      /*dimno=*/shape_params.rank - 2, /*pad_lo=*/0, /*pad_hi=*/1);
+
+  lower_diagonal = SliceInMinorDims(lower_diagonal, /*start=*/{1},
+                                    /*end=*/{shape_params.m});
+  lower_diagonal = xla::Transpose(lower_diagonal, transpose_dims);
+  XlaOp adjusted_lower_rhs = SliceInMinorDims(
+      rhs, /*start=*/{0, 0}, /*end=*/{shape_params.m - 1, shape_params.n});
+  XlaOp lower_diag_part =
+      xla::Mul(lower_diagonal, adjusted_lower_rhs, broadcasted_dims);
+  lower_diag_part = xla::PadInDim(
+      lower_diag_part, xla::Zero(builder, shape_params.element_type),
+      /*dimno=*/shape_params.rank - 2, /*pad_lo=*/1, /*pad_hi=*/0);
+
+  return diag_part + upper_diag_part + lower_diag_part;
 }
 
 }  // namespace tridiagonal

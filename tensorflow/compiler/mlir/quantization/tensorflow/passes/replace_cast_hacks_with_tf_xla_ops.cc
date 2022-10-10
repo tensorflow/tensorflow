@@ -24,8 +24,9 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/utils/tf_to_xla_attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/lite/kernels/padding.h"
 
 namespace mlir::quant {
 namespace {
@@ -56,84 +57,19 @@ void PrepareXlaConvParams(OpBuilder &builder, Location loc, ArrayAttr strides,
                           ArrayAttr dilations, int feature_group_cnt,
                           Value &window_strides, Value &lhs_dilation,
                           Value &rhs_dilation, Value &feature_group_count) {
-  const int stride_h = strides[1].cast<mlir::IntegerAttr>().getInt();
-  const int stride_w = strides[2].cast<mlir::IntegerAttr>().getInt();
+  const int stride_h = strides[1].cast<IntegerAttr>().getInt();
+  const int stride_w = strides[2].cast<IntegerAttr>().getInt();
   window_strides =
       Create1DConstValue<int32_t>(builder, loc, {stride_h, stride_w});
 
-  const int dilation_h = dilations[1].cast<mlir::IntegerAttr>().getInt();
-  const int dilation_w = dilations[2].cast<mlir::IntegerAttr>().getInt();
+  const int dilation_h = dilations[1].cast<IntegerAttr>().getInt();
+  const int dilation_w = dilations[2].cast<IntegerAttr>().getInt();
   lhs_dilation = Create1DConstValue<int32_t>(builder, loc, {1, 1});
   rhs_dilation =
       Create1DConstValue<int32_t>(builder, loc, {dilation_h, dilation_w});
 
   feature_group_count =
       CreateScalarConstValue<int32_t>(builder, loc, feature_group_cnt);
-}
-
-// For non-zero padding (input_zp != 0), adds Pad op before convolution.
-Value CalculatePaddingAndPadIfNeeded(
-    OpBuilder &builder, Location loc, Value input, Value filter,
-    int8_t input_zp_value, ArrayAttr strides, ArrayAttr dilations,
-    StringAttr conv_padding, ArrayAttr explicit_paddings, Value &padding) {
-  ShapedType input_shape = input.getType().template cast<ShapedType>();
-  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
-
-  int padding_h_before, padding_h_after, padding_w_before, padding_w_after;
-  if (conv_padding.strref().equals("EXPLICIT")) {
-    if (explicit_paddings.size() != 8) {
-      mlir::emitError(loc,
-                      "explicit_paddings are expected to be 8-element arrays");
-      return {};
-    }
-    padding_h_before = explicit_paddings[2].cast<mlir::IntegerAttr>().getInt();
-    padding_h_after = explicit_paddings[3].cast<mlir::IntegerAttr>().getInt();
-    padding_w_before = explicit_paddings[4].cast<mlir::IntegerAttr>().getInt();
-    padding_w_after = explicit_paddings[5].cast<mlir::IntegerAttr>().getInt();
-  } else {
-    TfLitePadding tflite_padding = conv_padding.strref().equals("VALID")
-                                       ? kTfLitePaddingValid
-                                       : kTfLitePaddingSame;
-    int output_height, output_width;
-    const int stride_h = strides[1].cast<mlir::IntegerAttr>().getInt();
-    const int stride_w = strides[2].cast<mlir::IntegerAttr>().getInt();
-    const int dilation_h = dilations[1].cast<mlir::IntegerAttr>().getInt();
-    const int dilation_w = dilations[2].cast<mlir::IntegerAttr>().getInt();
-    TfLitePaddingValues padding_values = tflite::ComputePaddingHeightWidth(
-        stride_h, stride_w, dilation_h, dilation_w,
-        /*in_height=*/input_shape.getDimSize(1),
-        /*in_width=*/input_shape.getDimSize(2),
-        /*filter_height=*/filter_shape.getDimSize(0),
-        /*filter_width=*/filter_shape.getDimSize(1), tflite_padding,
-        &output_height, &output_width);
-    padding_h_before = padding_values.height;
-    padding_h_after = padding_values.height + padding_values.height_offset;
-    padding_w_before = padding_values.width;
-    padding_w_after = padding_values.width + padding_values.width_offset;
-  }
-
-  if (conv_padding.strref().equals("VALID") || input_zp_value == 0 ||
-      (padding_h_before == 0 && padding_h_after == 0 && padding_w_before == 0 &&
-       padding_w_after == 0)) {
-    padding = CreateConstValue<int32_t>(
-        builder, loc, {2, 2},
-        {padding_h_before, padding_h_after, padding_w_before, padding_w_after});
-    return input;
-  }
-  padding = CreateConstValue<int32_t>(builder, loc, {2, 2}, {0, 0, 0, 0});
-
-  Value temp_padding =
-      CreateConstValue<int32_t>(builder, loc, {4, 2},
-                                {0, 0, padding_h_before, padding_h_after,
-                                 padding_w_before, padding_w_after, 0, 0});
-  SmallVector<int64_t> output_shape(input_shape.getShape().begin(),
-                                    input_shape.getShape().end());
-  output_shape[1] += padding_h_before + padding_h_after;
-  output_shape[2] += padding_w_before + padding_w_after;
-  return builder.create<TF::PadV2Op>(
-      loc, RankedTensorType::get(output_shape, builder.getI8Type()), input,
-      temp_padding,
-      CreateScalarConstValue<int8_t>(builder, loc, input_zp_value));
 }
 
 // Calculates zero-point offset by reducing weights and multiply it with zp.
@@ -144,81 +80,36 @@ Value CalculateZeroPointOffset(
       Create1DConstValue<int64_t>(builder, loc, weight_non_output_indices);
   Value zp = CreateScalarConstValue<int32_t>(builder, loc, input_zp);
 
+  TensorType filter_type = filter.getType().dyn_cast<TensorType>();
+  Value filter_i32 = builder.create<TF::CastOp>(
+      loc, filter_type.clone(builder.getIntegerType(32)), filter);
   auto zp_mul_output_type =
       RankedTensorType::get({output_dim}, builder.getIntegerType(32));
   auto reduced = builder.create<TF::SumOp>(
-      loc, zp_mul_output_type, filter, reduction_indices_value,
+      loc, zp_mul_output_type, filter_i32, reduction_indices_value,
       /*keep_dims=*/builder.getBoolAttr(false));
-  return builder.create<TF::MulOp>(loc, zp, reduced).getResult();
+  TF::MulOp mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
+  llvm::SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
+  return folded_results.front();
 }
 
 // Helper function to create a XlaConvV2Op for Conv2DOp and DepthwiseConv2DOp.
-Value CreateXLAConvOp(
-    OpBuilder &builder, Location loc, Value input, Value filter, Value input_zp,
-    Value conv_output, ArrayAttr strides, ArrayAttr dilations,
-    StringAttr conv_padding, ArrayAttr explicit_paddings, int feature_group_cnt,
-    const SmallVector<int64_t> &filter_non_output_indices,
-    const xla::ConvolutionDimensionNumbers &dimension_numbers) {
+Value CreateXLAConvOp(OpBuilder &builder, Location loc, Value input,
+                      Value filter, Value input_zp, Value conv_output,
+                      ArrayAttr strides, ArrayAttr dilations,
+                      StringAttr conv_padding, ArrayAttr explicit_paddings,
+                      int feature_group_cnt, bool four_bit = false) {
   int32_t input_zp_value;
   if (!GetSplatValue(input_zp, input_zp_value)) {
-    mlir::emitError(
-        loc, "zero point is expected to be a constant with a single value");
+    emitError(loc,
+              "zero point is expected to be a constant with a single value");
     return {};
   }
   if (strides.size() != 4 || dilations.size() != 4) {
-    mlir::emitError(
-        loc, "strides and dilations are expected to be 4-element arrays");
+    emitError(loc, "strides and dilations are expected to be 4-element arrays");
     return {};
   }
-  ShapedType input_shape = input.getType().template cast<ShapedType>();
   ShapedType filter_shape = filter.getType().template cast<ShapedType>();
-  if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
-      !filter_shape.hasRank() || filter_shape.getRank() != 4) {
-    mlir::emitError(loc, "input and filter are expected to be 4D tensors");
-    return {};
-  }
-
-  Value padding, window_strides, lhs_dilation, rhs_dilation,
-      feature_group_count;
-  PrepareXlaConvParams(builder, loc, strides, dilations, feature_group_cnt,
-                       /*window_strides=*/window_strides,
-                       /*lhs_dilation=*/lhs_dilation,
-                       /*rhs_dilation=*/rhs_dilation,
-                       /*feature_group_count=*/feature_group_count);
-
-  input = CalculatePaddingAndPadIfNeeded(
-      builder, loc, input, filter, input_zp_value, strides, dilations,
-      conv_padding, explicit_paddings, padding);
-  auto filter_type = filter.getType().dyn_cast<TensorType>();
-  Value filter_i8 = builder.create<TF::CastOp>(
-      loc, filter_type.clone(builder.getIntegerType(8)), filter);
-  Value xla_conv_output =
-      builder
-          .create<TF::XlaConvV2Op>(
-              loc, /*output=*/conv_output.getType(),
-              /*lhs=*/input,
-              /*rhs=*/filter_i8, window_strides, padding, lhs_dilation,
-              rhs_dilation, feature_group_count,
-              builder.getStringAttr(dimension_numbers.SerializeAsString()),
-              /*precision_config=*/builder.getStringAttr(""))
-          .output();
-  if (input_zp_value == 0) return xla_conv_output;
-
-  Value zp_offset = CalculateZeroPointOffset(
-      builder, loc, /*filter=*/filter, /*input_zp=*/input_zp_value,
-      /*output_dim=*/filter_shape.getDimSize(3),
-      /*weight_non_output_indices=*/filter_non_output_indices);
-  return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset);
-}
-
-// Creates a XlaConvV2Op from TF Conv2DOp and returns its output.
-Value CreateXLAConvOpFromTFConv2DOp(OpBuilder &builder, Location loc,
-                                    Value input, Value filter, Value input_zp,
-                                    Value conv_output, ArrayAttr strides,
-                                    ArrayAttr dilations,
-                                    StringAttr conv_padding,
-                                    ArrayAttr explicit_paddings) {
-  const int feature_group_cnt = 1;
   SmallVector<int64_t> filter_non_output_indices = {0, 1, 2};
   xla::ConvolutionDimensionNumbers dnums;
   // Input: [N, H, W, C].
@@ -236,9 +127,157 @@ Value CreateXLAConvOpFromTFConv2DOp(OpBuilder &builder, Location loc,
   dnums.set_output_feature_dimension(3);
   dnums.add_output_spatial_dimensions(1);
   dnums.add_output_spatial_dimensions(2);
+
+  Value padding, window_strides, lhs_dilation, rhs_dilation,
+      feature_group_count;
+  PrepareXlaConvParams(builder, loc, strides, dilations, feature_group_cnt,
+                       /*window_strides=*/window_strides,
+                       /*lhs_dilation=*/lhs_dilation,
+                       /*rhs_dilation=*/rhs_dilation,
+                       /*feature_group_count=*/feature_group_count);
+
+  input = CalculatePaddingAndPadIfNeeded(
+      builder, loc, input, filter, input_zp_value, strides, dilations,
+      conv_padding, explicit_paddings, padding);
+
+  std::string precision_config_str;
+  if (four_bit) {
+    input = PackOperand(builder, loc, input, /*pack_dim=*/3);
+    filter = PackOperand(builder, loc, filter, /*pack_dim=*/2);
+    xla::PrecisionConfig precision_config;
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config_str = precision_config.SerializeAsString();
+  }
+  Value xla_conv_output =
+      builder
+          .create<TF::XlaConvV2Op>(
+              loc, /*output_type=*/conv_output.getType(),
+              /*lhs=*/input,
+              /*rhs=*/filter, window_strides, padding, lhs_dilation,
+              rhs_dilation, feature_group_count,
+              builder.getStringAttr(dnums.SerializeAsString()),
+              /*precision_config=*/builder.getStringAttr(precision_config_str))
+          .output();
+  if (input_zp_value == 0) return xla_conv_output;
+
+  Value zp_offset = CalculateZeroPointOffset(
+      builder, loc, /*filter=*/filter, /*input_zp=*/input_zp_value,
+      /*output_dim=*/filter_shape.getDimSize(3),
+      /*weight_non_output_indices=*/filter_non_output_indices);
+  return builder.create<TF::SubOp>(loc, xla_conv_output, zp_offset);
+}
+
+// Creates a XlaConvV2Op from TF Conv2DOp and returns its output.
+Value CreateXLAConvOpFromTFConv2DOp(OpBuilder &builder, Location loc,
+                                    Value input, Value filter, Value input_zp,
+                                    Value conv_output, ArrayAttr strides,
+                                    ArrayAttr dilations,
+                                    StringAttr conv_padding,
+                                    ArrayAttr explicit_paddings) {
+  ShapedType input_shape = input.getType().template cast<ShapedType>();
+  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
+      !filter_shape.hasRank() || filter_shape.getRank() != 4) {
+    emitError(loc, "input and filter are expected to be 4D tensors");
+    return {};
+  }
+
+  const int feature_group_cnt =
+      input_shape.getDimSize(3) / filter_shape.getDimSize(2);
   return CreateXLAConvOp(builder, loc, input, filter, input_zp, conv_output,
                          strides, dilations, conv_padding, explicit_paddings,
-                         feature_group_cnt, filter_non_output_indices, dnums);
+                         feature_group_cnt);
+}
+
+// Creates a XlaConvV2Op from TF DepthConv2DOp and returns its output.
+Value CreateXLAConvOpFromTFDepthwiseConv2DOp(
+    OpBuilder &builder, Location loc, Value input, Value filter, Value input_zp,
+    Value conv_output, ArrayAttr strides, ArrayAttr dilations,
+    StringAttr conv_padding, ArrayAttr explicit_paddings) {
+  ShapedType input_shape = input.getType().template cast<ShapedType>();
+  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  if (!input_shape.hasRank() || input_shape.getRank() != 4 ||
+      !filter_shape.hasRank() || filter_shape.getRank() != 4) {
+    emitError(loc, "input and filter are expected to be 4D tensors");
+    return {};
+  }
+  const int feature_group_cnt = input_shape.getDimSize(3);
+
+  // Reshape the filter to [K, K, 1, I * O].
+  llvm::SmallVector<int64_t> new_filter_shape{
+      filter_shape.getDimSize(0), filter_shape.getDimSize(1), 1,
+      filter_shape.getDimSize(2) * filter_shape.getDimSize(3)};
+  Value new_filter = builder.create<TF::ReshapeOp>(
+      loc,
+      RankedTensorType::get(new_filter_shape, filter_shape.getElementType()),
+      filter, Create1DConstValue(builder, loc, new_filter_shape));
+  return CreateXLAConvOp(builder, loc, input, new_filter, input_zp, conv_output,
+                         strides, dilations, conv_padding, explicit_paddings,
+                         feature_group_cnt);
+}
+
+// Helper function to create an XlaDotV2Op.
+Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
+                       Value weight, Value input_zp, Value output,
+                       const xla::DotDimensionNumbers &dnums,
+                       bool four_bit = false) {
+  int32_t input_zp_value;
+  if (!GetSplatValue(input_zp, input_zp_value)) {
+    emitError(loc,
+              "zero point is expected to be a constant with a single value");
+    return {};
+  }
+
+  std::string precision_config_str;
+  if (four_bit) {
+    input = PackOperand(builder, loc, input, /*pack_dim=*/1);
+    weight = PackOperand(builder, loc, weight, /*pack_dim=*/0);
+    xla::PrecisionConfig precision_config;
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config.add_operand_precision(xla::PrecisionConfig::PACKED_NIBBLE);
+    precision_config_str = precision_config.SerializeAsString();
+  }
+  Value dot_result =
+      builder
+          .create<TF::XlaDotV2Op>(
+              loc, /*output=*/output.getType(),
+              /*lhs=*/input,
+              /*rhs=*/weight,
+              /*dimension_numbers=*/
+              builder.getStringAttr(dnums.SerializeAsString()),
+              /*precision_config=*/builder.getStringAttr(precision_config_str))
+          .getResult();
+
+  ShapedType weight_shape = weight.getType().template cast<ShapedType>();
+  SmallVector<int64_t> filter_non_output_indices = {0};
+  Value zp_offset = CalculateZeroPointOffset(
+      builder, loc, /*filter=*/weight, /*input_zp=*/input_zp_value,
+      /*output_dim=*/weight_shape.getDimSize(1),
+      /*weight_non_output_indices=*/filter_non_output_indices);
+  return builder.create<TF::SubOp>(loc, dot_result, zp_offset);
+}
+
+Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
+                                     Value input, Value weight, Value input_zp,
+                                     Value output, BoolAttr transpose_a,
+                                     BoolAttr transpose_b) {
+  // Transpose and constant-fold the weight if needed.
+  if (transpose_b.getValue()) {
+    Value perm = Create1DConstValue<int32_t>(builder, loc, {1, 0});
+    auto transpose_op = builder.create<TF::TransposeOp>(loc, weight, perm);
+    weight = ConstantFoldOpIfPossible(transpose_op).front();
+  }
+
+  xla::DotDimensionNumbers dnums;
+  dnums.add_rhs_contracting_dimensions(0);
+  if (transpose_a.getValue()) {
+    dnums.add_lhs_contracting_dimensions(0);
+  } else {
+    dnums.add_lhs_contracting_dimensions(1);
+  }
+
+  return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, output, dnums);
 }
 
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/replace_cast_hacks_with_tf_xla_ops.inc"

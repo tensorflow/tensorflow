@@ -5662,6 +5662,27 @@ func ClipByValue(scope *Scope, t tf.Output, clip_value_min tf.Output, clip_value
 	return op.Output(0)
 }
 
+// An op that merges the string-encoded memory config protos from all hosts.
+//
+// Arguments:
+//
+//	memory_configs: String-encoded memory config protos containing metadata about
+//
+// the memory allocations reserved for TPUEmbedding across all hosts.
+func CollateTPUEmbeddingMemory(scope *Scope, memory_configs []tf.Output) (merged_memory_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CollateTPUEmbeddingMemory",
+		Input: []tf.Input{
+			tf.OutputList(memory_configs),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveAllToAllV3Attr is an optional argument to CollectiveAllToAllV3.
 type CollectiveAllToAllV3Attr func(optionalAttr)
 
@@ -6536,12 +6557,12 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 //
 // For example:
 //
-// ```
-// # 'x' is [2, 2, 7]
-// # 'y' is [2, 3, 7]
-// # 'z' is [2, 5, 7]
-// concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
-// ```
+// >>> x = [2, 2, 7]
+// >>> y = [2, 3, 7]
+// >>> z = [2, 9, 7]
+// >>> offsets = concat_offset(1, [x, y, z])
+// >>> [list(off.numpy()) for off in offsets]
+// [[0, 0, 0], [0, 2, 0], [0, 5, 0]]
 //
 // This is typically used by gradient computations for a concat operation.
 //
@@ -6750,6 +6771,65 @@ func ConfigureTPUEmbedding(scope *Scope, config string) (o *tf.Operation) {
 	return scope.AddOperation(opspec)
 }
 
+// An op that configures the TPUEmbedding software on a host.
+//
+// Arguments:
+//
+//	common_config: A string-encoded common configuration proto containing metadata
+//
+// about the TPUEmbedding partitioner output.
+//
+//	memory_config: A string-encoded memory config proto containing metadata about
+//
+// the memory allocations reserved for TPUEmbedding.
+//
+//	config: An TPUEmbeddingConfiguration proto serialized to a string,
+//
+// describing the desired TPUEmbedding configuration.
+//
+// Returns A string containing metadata about the hostname and RPC port
+// used for communication with this host.
+func ConfigureTPUEmbeddingHost(scope *Scope, common_config tf.Output, memory_config tf.Output, config string) (network_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "ConfigureTPUEmbeddingHost",
+		Input: []tf.Input{
+			common_config, memory_config,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op that configures the TPUEmbedding software on a host.
+//
+// Arguments:
+//
+//	common_config: A string-encoded CommonConfiguration proto containing metadata
+//
+// about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+// for operation.
+//
+// Returns A string-encoded memory configuration containing metadata about
+// the memory allocations reserved for TPUEmbedding.
+func ConfigureTPUEmbeddingMemory(scope *Scope, common_config tf.Output) (memory_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConfigureTPUEmbeddingMemory",
+		Input: []tf.Input{
+			common_config,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns the complex conjugate of a complex number.
 //
 // Given a tensor `input` of complex numbers, this operation returns a tensor of
@@ -6797,6 +6877,30 @@ func ConjugateTranspose(scope *Scope, x tf.Output, perm tf.Output) (y tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// An op that sets up communication between TPUEmbedding host software instances
+//
+// after ConfigureTPUEmbeddingHost has been called on each host.
+//
+// Arguments:
+//
+//	network_configs: Strings containing metadata about the hostname and RPC port
+//
+// used for communication with all hosts.
+//
+// Returns the created operation.
+func ConnectTPUEmbeddingHosts(scope *Scope, network_configs []tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConnectTPUEmbeddingHosts",
+		Input: []tf.Input{
+			tf.OutputList(network_configs),
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // This op consumes a lock created by `MutexLock`.
@@ -14843,6 +14947,33 @@ func EuclideanNorm(scope *Scope, input tf.Output, axis tf.Output, optional ...Eu
 	return op.Output(0)
 }
 
+// An op that executes the TPUEmbedding partitioner on the central configuration
+//
+// device and computes the HBM size (in bytes) required for TPUEmbedding operation.
+//
+// Arguments:
+//
+//	config: An TPUEmbeddingConfiguration proto serialized to a string,
+//
+// describing the desired TPUEmbedding configuration.
+//
+// Returns A string-encoded common configuration proto
+// containing metadata about the TPUEmbedding partitioner output and
+// the HBM size (in bytes) required for operation.
+func ExecuteTPUEmbeddingPartitioner(scope *Scope, config string) (common_config tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"config": config}
+	opspec := tf.OpSpec{
+		Type: "ExecuteTPUEmbeddingPartitioner",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Exits the current frame to its parent frame.
 //
 // Exit makes its input `data` available to the parent frame.
@@ -16674,6 +16805,33 @@ func FinalizeDataset(scope *Scope, input_dataset tf.Output, output_types []tf.Da
 	return op.Output(0)
 }
 
+// An op that finalizes the TPUEmbedding configuration.
+//
+// Arguments:
+//
+//	common_config: A string-encoded common configuration proto containing metadata
+//
+// about the TPUEmbedding partitioner output and the HBM size (in bytes) required
+// for operation.
+//
+//	memory_config: A string-encoded memory config proto containing metadata about
+//
+// the memory allocations reserved for TPUEmbedding.
+//
+// Returns the created operation.
+func FinalizeTPUEmbedding(scope *Scope, common_config tf.Output, memory_config tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FinalizeTPUEmbedding",
+		Input: []tf.Input{
+			common_config, memory_config,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Generates fingerprint values.
 //
 // Generates fingerprint values of `data`.
@@ -17076,10 +17234,11 @@ func FloorDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division. When `x < 0` xor `y < 0` is
+// Returns element-wise remainder of division.
 //
-// true, this follows Python semantics in that the result here is consistent
-// with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+// This follows Python semantics in that the
+// result here is consistent with a flooring divide. E.g.
+// `floor(x / y) * y + floormod(x, y) = x`, regardless of the signs of x and y.
 //
 // *NOTE*: `FloorMod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -34722,6 +34881,19 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 	return op.Output(0)
 }
 
+// RandomIndexShuffleAttr is an optional argument to RandomIndexShuffle.
+type RandomIndexShuffleAttr func(optionalAttr)
+
+// RandomIndexShuffleRounds sets the optional rounds attribute to value.
+//
+// value: The number of rounds to use the in block cipher.
+// If not specified, defaults to 4
+func RandomIndexShuffleRounds(value int64) RandomIndexShuffleAttr {
+	return func(m optionalAttr) {
+		m["rounds"] = value
+	}
+}
+
 // Outputs the position of `value` in a permutation of [0, ..., max_index].
 //
 // Output values are a bijection of the `index` for any combination and `seed` and `max_index`.
@@ -34738,15 +34910,20 @@ func RandomGammaGrad(scope *Scope, alpha tf.Output, sample tf.Output) (output tf
 //	max_index: A scalar tensor or vector of dtype `dtype`. The upper bound(s) of the interval (inclusive).
 //
 // Returns A scalar tensor of dtype `dtype`, within [0, max_index]. The randomly shuffled index.
-func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output) (output tf.Output) {
+func RandomIndexShuffle(scope *Scope, index tf.Output, seed tf.Output, max_index tf.Output, optional ...RandomIndexShuffleAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
 	}
 	opspec := tf.OpSpec{
 		Type: "RandomIndexShuffle",
 		Input: []tf.Input{
 			index, seed, max_index,
 		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -36167,6 +36344,53 @@ func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protoco
 	}
 	opspec := tf.OpSpec{
 		Type: "RegisterDataset",
+		Input: []tf.Input{
+			dataset, address, protocol,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RegisterDatasetV2Attr is an optional argument to RegisterDatasetV2.
+type RegisterDatasetV2Attr func(optionalAttr)
+
+// RegisterDatasetV2ElementSpec sets the optional element_spec attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2ElementSpec(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["element_spec"] = value
+	}
+}
+
+// RegisterDatasetV2RequestedDatasetId sets the optional requested_dataset_id attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2RequestedDatasetId(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["requested_dataset_id"] = value
+	}
+}
+
+// RegisterDatasetV2Metadata sets the optional metadata attribute to value.
+// If not specified, defaults to ""
+func RegisterDatasetV2Metadata(value string) RegisterDatasetV2Attr {
+	return func(m optionalAttr) {
+		m["metadata"] = value
+	}
+}
+
+// Registers a dataset with the tf.data service.
+func RegisterDatasetV2(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64, optional ...RegisterDatasetV2Attr) (dataset_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RegisterDatasetV2",
 		Input: []tf.Input{
 			dataset, address, protocol,
 		},
@@ -40767,9 +40991,11 @@ func RiscMax(scope *Scope, x tf.Output, y tf.Output) (max tf.Output) {
 // (or any other distribution). The actual increment added to the
 // counter is an unspecified implementation choice.
 //
+// In the case that the input algorithm is RNG_ALG_AUTO_SELECT, the counter in the state needs to be of size int64[2], the current maximal counter size among algorithms. In this case, this op will manage the counter as if it is an 128-bit integer with layout [lower_64bits, higher_64bits]. If an algorithm needs less than 128 bits for the counter, it should use the left portion of the int64[2]. In this way, the int64[2] is compatible with all current RNG algorithms (Philox, ThreeFry and xla::RandomAlgorithm::RNG_DEFAULT). Downstream RNG ops can thus use this counter with any RNG algorithm.
+//
 // Arguments:
 //
-//	resource: The handle of the resource variable that stores the state of the RNG.
+//	resource: The handle of the resource variable that stores the state of the RNG. The state consists of the counter followed by the key.
 //	alg: The RNG algorithm.
 //	delta: The amount of advancement.
 //
@@ -41490,7 +41716,7 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //
 // ```python
 //
-//	indices = tf.constant([[0], [2]])
+//	indices = tf.constant([[1], [3]])
 //	updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
 //	                        [7, 7, 7, 7], [8, 8, 8, 8]],
 //	                       [[5, 5, 5, 5], [6, 6, 6, 6],
@@ -41503,10 +41729,10 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //
 // The resulting tensor would look like this:
 //
-//	[[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-//	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+//	[[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
 //	 [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-//	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+//	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+//	 [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 //
 // Note that on CPU, if an out of bound index is found, an error is returned.
 // On GPU, if an out of bound index is found, the index is ignored.
@@ -53861,6 +54087,320 @@ func UniformCandidateSampler(scope *Scope, true_classes tf.Output, num_true int6
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// UniformDequantizeAttr is an optional argument to UniformDequantize.
+type UniformDequantizeAttr func(optionalAttr)
+
+// UniformDequantizeQuantizationAxis sets the optional quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, input.dims()).
+// If not specified, defaults to -1
+func UniformDequantizeQuantizationAxis(value int64) UniformDequantizeAttr {
+	return func(m optionalAttr) {
+		m["quantization_axis"] = value
+	}
+}
+
+// Perform dequantization on the quantized Tensor `input`.
+//
+// Given quantized `input` which was quantized using `scales` and `zero_points`, performs dequantization using the formula:
+// dequantized_data = (quantized_data - zero_point) * scale.
+//
+// Arguments:
+//
+//	input: Must be a Tensor of Tin.
+//	scales: The float value(s) used as scale(s) when quantizing original data that input represents.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	zero_points: The int32 value(s) used as zero_point(s) when quantizing original data that input represents.
+//
+// Same shape condition as scales.
+//
+//	Tout: The type of output Tensor. A tf.DType from: tf.qint8, tf.qint32
+//	quantization_min_val: The quantization min value that was used when input was quantized.
+//
+// The purpose of this attribute is typically (but not limited to) to indicate narrow range, where this is set to:
+// `(Tin lowest) + 1` if narrow range, and `(Tin lowest)` otherwise.
+// For example, if Tin is qint8, this is set to -127 if narrow range quantized or -128 if not.
+//
+//	quantization_max_val: The quantization max value that was used when input was quantized.
+//
+// The purpose of this attribute is typically (but not limited to) indicate narrow range, where this is set to:
+// `(Tout max)` for both narrow range and not narrow range.
+// For example, if Tin is qint8, this is set to 127.
+//
+// Returns The output dequantized Tensor of Tout, whose shape is same as input.
+func UniformDequantize(scope *Scope, input tf.Output, scales tf.Output, zero_points tf.Output, Tout tf.DataType, quantization_min_val int64, quantization_max_val int64, optional ...UniformDequantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "quantization_min_val": quantization_min_val, "quantization_max_val": quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformDequantize",
+		Input: []tf.Input{
+			input, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniformQuantizeAttr is an optional argument to UniformQuantize.
+type UniformQuantizeAttr func(optionalAttr)
+
+// UniformQuantizeQuantizationAxis sets the optional quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, input.dims()).
+// If not specified, defaults to -1
+func UniformQuantizeQuantizationAxis(value int64) UniformQuantizeAttr {
+	return func(m optionalAttr) {
+		m["quantization_axis"] = value
+	}
+}
+
+// Perform quantization on Tensor `input`.
+//
+// Given `input`, `scales` and `zero_points`, performs quantization using the formula:
+// quantized_data = floor(input_data * (1.0f / scale) + 0.5f) + zero_point
+//
+// Arguments:
+//
+//	input: Must be a Tensor of Tin.
+//	scales: The float value(s) to use as scale(s) to quantize `input`.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	zero_points: The int32 value(s) to use as zero_point(s) to quantize `input`.
+//
+// Same shape condition as scales.
+//
+//	Tout: The type of output Tensor. A tf.DType from: tf.float32
+//	quantization_min_val: The quantization min value to quantize `input`.
+//
+// The purpose of this attribute is typically (but not limited to) to indicate narrow range, where this is set to:
+// `(Tin lowest) + 1` if narrow range, and `(Tin lowest)` otherwise.
+// For example, if Tin is qint8, this is set to -127 if narrow range quantized or -128 if not.
+//
+//	quantization_max_val: The quantization max value to quantize `input`.
+//
+// The purpose of this attribute is typically (but not limited to) indicate narrow range, where this is set to:
+// `(Tout max)` for both narrow range and not narrow range.
+// For example, if Tin is qint8, this is set to 127.
+//
+// Returns The output quantized Tensor of Tout, whose shape is same as input.
+func UniformQuantize(scope *Scope, input tf.Output, scales tf.Output, zero_points tf.Output, Tout tf.DataType, quantization_min_val int64, quantization_max_val int64, optional ...UniformQuantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "quantization_min_val": quantization_min_val, "quantization_max_val": quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantize",
+		Input: []tf.Input{
+			input, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniformQuantizedClipByValueAttr is an optional argument to UniformQuantizedClipByValue.
+type UniformQuantizedClipByValueAttr func(optionalAttr)
+
+// UniformQuantizedClipByValueQuantizationAxis sets the optional quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, operand.dims()).
+// If not specified, defaults to -1
+func UniformQuantizedClipByValueQuantizationAxis(value int64) UniformQuantizedClipByValueAttr {
+	return func(m optionalAttr) {
+		m["quantization_axis"] = value
+	}
+}
+
+// Perform clip by value on the quantized Tensor `operand`.
+//
+// Given quantized `operand` which was quantized using `scales` and `zero_points`, performs clip by value using `min` and `max` values.
+// If quantization_axis is -1 (per-tensor quantized), the entire operand is clipped using scalar min, max.
+// Otherwise (per-channel quantized), the clipping is also done per-channel.
+//
+// Arguments:
+//
+//	operand: Must be a Tensor of T.
+//	min: The min value(s) to clip operand. Must be a Tensor of T.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	max: The min value(s) to clip operand. Must be a Tensor of T.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	scales: The float value(s) used as scale(s) when quantizing `operand`, `min` and `max`.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (operand.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	zero_points: The int32 value(s) used as zero_point(s) when quantizing `operand`, `min` and `max`.
+//
+// Same shape condition as scales.
+//
+//	quantization_min_val: The quantization min value that was used when operand was quantized.
+//	quantization_max_val: The quantization max value that was used when operand was quantized.
+//
+// Returns The output clipped Tensor of T, whose shape is same as operand.
+func UniformQuantizedClipByValue(scope *Scope, operand tf.Output, min tf.Output, max tf.Output, scales tf.Output, zero_points tf.Output, quantization_min_val int64, quantization_max_val int64, optional ...UniformQuantizedClipByValueAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"quantization_min_val": quantization_min_val, "quantization_max_val": quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedClipByValue",
+		Input: []tf.Input{
+			operand, min, max, scales, zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniformQuantizedDotAttr is an optional argument to UniformQuantizedDot.
+type UniformQuantizedDotAttr func(optionalAttr)
+
+// UniformQuantizedDotLhsQuantizationAxis sets the optional lhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For dot op lhs, only per-tensor quantization is supported.
+// Thus, this attribute must be set to -1. Other values are rejected.
+// If not specified, defaults to -1
+func UniformQuantizedDotLhsQuantizationAxis(value int64) UniformQuantizedDotAttr {
+	return func(m optionalAttr) {
+		m["lhs_quantization_axis"] = value
+	}
+}
+
+// UniformQuantizedDotRhsQuantizationAxis sets the optional rhs_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For dot op rhs, only per-tensor quantization or per-channel quantization along dimension 1 is supported.
+// Thus, this attribute must be set to -1 or 1. Other values are rejected.
+// If not specified, defaults to -1
+func UniformQuantizedDotRhsQuantizationAxis(value int64) UniformQuantizedDotAttr {
+	return func(m optionalAttr) {
+		m["rhs_quantization_axis"] = value
+	}
+}
+
+// UniformQuantizedDotOutputQuantizationAxis sets the optional output_quantization_axis attribute to value.
+//
+// value: Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization.
+// For dot op output, only per-tensor quantization or per-channel quantization along dimension 1 is supported.
+// Thus, this attribute must be set to -1 or 1. Other values are rejected.
+// If not specified, defaults to -1
+func UniformQuantizedDotOutputQuantizationAxis(value int64) UniformQuantizedDotAttr {
+	return func(m optionalAttr) {
+		m["output_quantization_axis"] = value
+	}
+}
+
+// Perform quantized dot of quantized Tensor `lhs` and quantized Tensor `rhs` to make quantized `output`.
+//
+// Given quantized `lhs` and quantized `rhs`, performs quantized dot on `lhs` and `rhs` to make quantized `output`.
+// `lhs` and `rhs` must be 2D Tensors and the lhs.dim_size(1) must match rhs.dim_size(0).
+// `lhs` and `rhs` must be quantized Tensor, where data value is quantized using the formula:
+// quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+// `output` is also quantized, using the same formula.
+// If `rhs` is per-tensor quantized, `output` must be also per-tensor quantized.
+//
+// Arguments:
+//
+//	lhs: Must be a 2D Tensor of Tin.
+//	rhs: Must be a 2D Tensor of Tin.
+//	lhs_scales: The float value(s) used as scale when quantizing original data that lhs represents.
+//
+// Must be a scalar Tensor (lhs supports only per-tensor quantization).
+//
+//	lhs_zero_points: The int32 value(s) used as zero_point when quantizing original data that lhs represents.
+//
+// Same shape condition as lhs_scales.
+//
+//	rhs_scales: The float value(s) used as scale when quantizing original data that rhs represents.
+//
+// Must be a scalar Tensor (per-tensor quantization) or 1D Tensor of size (rhs.dim_size(1),) (per-channel quantization).
+//
+//	rhs_zero_points: The int32 value(s) used as zero_point when quantizing original data that rhs represents.
+//
+// Same shape condition as rhs_scales.
+//
+//	output_scales: The float value(s) to use as scales when quantizing original data that output represents.
+//
+// Must be a scalar Tensor (per-tensor quantization) or 1D Tensor of size (output.dim_size(1),) (per-channel quantization).
+// If rhs is per-tensor quantized, output must be also per-tensor quantized.
+// This means that if rhs_scales and rhs_zero_points are scalar Tensors, output_scales and output_zero_points must be scalar Tensors as well.
+//
+//	output_zero_points: The int32 value(s) used as zero_point when quantizing original data that output represents.
+//
+// Same shape condition as rhs_scales.
+//
+//	Tout: The type of output Tensor.
+//	lhs_quantization_min_val: The min value of the quantized data stored in lhs.
+//
+// For example, if Tin is qint8, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	lhs_quantization_max_val: The max value of the quantized data stored in rhs.
+//
+// For example, if Tin is qint8, this must be set to 127.
+//
+//	rhs_quantization_min_val: The min value of the quantized data stored in rhs.
+//
+// For example, if Trhs is qint8, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	rhs_quantization_max_val: The max value of the quantized data stored in rhs.
+//
+// For example, if Trhs is qint8, this must be set to 127.
+//
+//	output_quantization_min_val: The min value of the quantized data stored in output.
+//
+// For example, if Tout is qint8, this must be set to -127 if narrow range quantized or -128 if not.
+//
+//	output_quantization_max_val: The max value of the quantized data stored in output.
+//
+// For example, if Tout is qint8, this must be set to 127.
+//
+// Returns The output 2D Tensor of Tout, whose shape is (lhs.dim_size(0), rhs.dim_size(1)).
+func UniformQuantizedDot(scope *Scope, lhs tf.Output, rhs tf.Output, lhs_scales tf.Output, lhs_zero_points tf.Output, rhs_scales tf.Output, rhs_zero_points tf.Output, output_scales tf.Output, output_zero_points tf.Output, Tout tf.DataType, lhs_quantization_min_val int64, lhs_quantization_max_val int64, rhs_quantization_min_val int64, rhs_quantization_max_val int64, output_quantization_min_val int64, output_quantization_max_val int64, optional ...UniformQuantizedDotAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "lhs_quantization_min_val": lhs_quantization_min_val, "lhs_quantization_max_val": lhs_quantization_max_val, "rhs_quantization_min_val": rhs_quantization_min_val, "rhs_quantization_max_val": rhs_quantization_max_val, "output_quantization_min_val": output_quantization_min_val, "output_quantization_max_val": output_quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformQuantizedDot",
+		Input: []tf.Input{
+			lhs, rhs, lhs_scales, lhs_zero_points, rhs_scales, rhs_zero_points, output_scales, output_zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // UniformQuantizedDotHybridAttr is an optional argument to UniformQuantizedDotHybrid.
 type UniformQuantizedDotHybridAttr func(optionalAttr)
 
@@ -53920,6 +54460,103 @@ func UniformQuantizedDotHybrid(scope *Scope, lhs tf.Output, rhs tf.Output, rhs_s
 		Type: "UniformQuantizedDotHybrid",
 		Input: []tf.Input{
 			lhs, rhs, rhs_scales, rhs_zero_points,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// UniformRequantizeAttr is an optional argument to UniformRequantize.
+type UniformRequantizeAttr func(optionalAttr)
+
+// UniformRequantizeInputQuantizationAxis sets the optional input_quantization_axis attribute to value.
+//
+// value: The quantization axis that was used when quantizing original data that `input` represents.
+// Indicates the dimension index of the tensor where per-axis quantization is applied for the slices along that dimension.
+// If set to -1 (default), this indicates per-tensor quantization. Otherwise, it must be set within range [0, input.dims()).
+// If not specified, defaults to -1
+func UniformRequantizeInputQuantizationAxis(value int64) UniformRequantizeAttr {
+	return func(m optionalAttr) {
+		m["input_quantization_axis"] = value
+	}
+}
+
+// UniformRequantizeOutputQuantizationAxis sets the optional output_quantization_axis attribute to value.
+//
+// value: The new quantization axis to use to quantize original data that `input` represents.
+// If not specified, defaults to -1
+func UniformRequantizeOutputQuantizationAxis(value int64) UniformRequantizeAttr {
+	return func(m optionalAttr) {
+		m["output_quantization_axis"] = value
+	}
+}
+
+// Given quantized tensor `input`, requantize it with new quantization parameters.
+//
+// Given quantized tensor `input`, which was quantized using {input_scales, input_zero_points, input_quantization_axis, input_quantization_min_val, input_quantization_max_val},
+// requantize it to a tensor, which is quantized using {output_scales, output_zero_points, output_quantization_axis, output_quantization_min_val, output_quantization_max_val}.
+// The requantization is done by using the formula:
+// output_quantized_data = clip(
+//
+//	(input_quantized_data - input_zero_point) * (input_scale / output_scale) + output_zero_point,
+//	output_quantization_min_val,
+//	output_quantization_max_val)
+//
+// Per-tensor and per-axis quantization supported cases are followings:
+// * per-tensor -> per-tensor
+// * per-tensor -> per-axis
+// * per-axis -> per-axis where input_quantization_axis equals output_quantization_axis.
+// i.e. At least one among input_quantization_axis and output_quantization_axis must be -1, or two must be equal.
+//
+// Arguments:
+//
+//	input: Must be a Tensor of Tin.
+//	input_scales: The float value(s) used as scale(s) when quantizing original data that `input` represents.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	input_zero_points: The int32 value(s) used as zero_point(s) when quantizing original data that `input` represents.
+//
+// Same shape condition as scales.
+//
+//	output_scales: The float value(s) to use as new scale(s) to quantize original data that `input` represents.
+//
+// Must be a scalar Tensor if quantization_axis is -1 (per-tensor quantization), otherwise 1D Tensor of size (input.dim_size(quantization_axis),) (per-axis quantization).
+//
+//	output_zero_points: The int32 value(s) to use as new zero_point(s) to quantize original data that `input` represents.
+//
+// Same shape condition as scales.
+//
+//	Tout: The type of output Tensor. A tf.DType from: tf.qint8, tf.qint32
+//	input_quantization_min_val: The quantization min value that was used when quantizing original data that `input` represents.
+//
+// The purpose of this attribute is typically (but not limited to) to indicate narrow range, where this is set to:
+// `(Tin lowest) + 1` if narrow range, and `(Tin lowest)` otherwise.
+// For example, if Tin is qint8, this is set to -127 if narrow range quantized or -128 if not.
+//
+//	input_quantization_max_val: The quantization max value that was used when quantizing original data that `input` represents.
+//
+// The purpose of this attribute is typically (but not limited to) indicate narrow range, where this is set to:
+// `(Tout max)` for both narrow range and not narrow range.
+// For example, if Tin is qint8, this is set to 127.
+//
+//	output_quantization_min_val: The new quantization min value to quantize original data that `input` represents.
+//	output_quantization_max_val: The new quantization max value to quantize original data that `input` represents.
+//
+// Returns The output quantized Tensor of Tout, whose shape is same as input.
+func UniformRequantize(scope *Scope, input tf.Output, input_scales tf.Output, input_zero_points tf.Output, output_scales tf.Output, output_zero_points tf.Output, Tout tf.DataType, input_quantization_min_val int64, input_quantization_max_val int64, output_quantization_min_val int64, output_quantization_max_val int64, optional ...UniformRequantizeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Tout": Tout, "input_quantization_min_val": input_quantization_min_val, "input_quantization_max_val": input_quantization_max_val, "output_quantization_min_val": output_quantization_min_val, "output_quantization_max_val": output_quantization_max_val}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UniformRequantize",
+		Input: []tf.Input{
+			input, input_scales, input_zero_points, output_scales, output_zero_points,
 		},
 		Attrs: attrs,
 	}
@@ -55665,6 +56302,55 @@ func XlaCustomCall(scope *Scope, args []tf.Output, target_name string, backend_c
 	return op.Output(0)
 }
 
+// Emits an HLO `CustomCall` operation with multiple outputs.
+//
+// As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+//
+// See `CustomCall` specification at
+//
+//	https://tensorflow.org/xla/operation_semantics#customcall,
+//
+// and `mhlo.custom_call` specification at
+//
+//	https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+//
+// Arguments:
+//
+//	operands: A sequence of tensors with possibly different types.
+//	call_target_name: Name of the user function. The function signature must conform
+//
+// to version 3 of the API, see `API_VERSION_STATUS_RETURNING_UNIFIED`. All
+// operands and results assumed to be in the default layout.
+//
+//	backend_config: A string that encodes a metadata for the backend.
+//	has_side_effect: Indicates whether the custom call has side effects.
+//	result_dtypes: Types of all results.
+//	result_shapes: Shapes of all results.
+func XlaCustomCallV2(scope *Scope, operands []tf.Output, call_target_name string, backend_config string, has_side_effect bool, result_dtypes []tf.DataType, result_shapes []tf.Shape) (results []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"call_target_name": call_target_name, "backend_config": backend_config, "has_side_effect": has_side_effect, "result_dtypes": result_dtypes, "result_shapes": result_shapes}
+	opspec := tf.OpSpec{
+		Type: "XlaCustomCallV2",
+		Input: []tf.Input{
+			tf.OutputList(operands),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if results, idx, err = makeOutputList(op, idx, "results"); err != nil {
+		scope.UpdateErr("XlaCustomCallV2", err)
+		return
+	}
+	return results
+}
+
 // Takes the packed uint32 input and unpacks the input to uint8 to do
 //
 // Dequantization on device.
@@ -56089,6 +56775,31 @@ func XlaRecvTPUEmbeddingDeduplicationData(scope *Scope, config string) (output t
 	opspec := tf.OpSpec{
 		Type: "XlaRecvTPUEmbeddingDeduplicationData",
 
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Wraps the XLA ReducePrecision operator
+//
+//	documented at https://www.tensorflow.org/xla/operation_semantics#reduceprecision.
+//
+// Arguments:
+//
+//	operand: array of floating-point type.
+//	exponent_bits: number of exponent bits in lower-precision format
+//	mantissa_bits: number of mantissa bits in lower-precision format
+func XlaReducePrecision(scope *Scope, operand tf.Output, exponent_bits int64, mantissa_bits int64) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"exponent_bits": exponent_bits, "mantissa_bits": mantissa_bits}
+	opspec := tf.OpSpec{
+		Type: "XlaReducePrecision",
+		Input: []tf.Input{
+			operand,
+		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)

@@ -20,6 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CC_SAVED_MODEL_BUNDLE_V2_H_
 #define TENSORFLOW_CC_SAVED_MODEL_BUNDLE_V2_H_
 
+#include <functional>
+#include <memory>
 #include <string>
 
 #include "absl/container/flat_hash_set.h"

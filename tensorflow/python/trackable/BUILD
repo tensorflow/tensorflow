@@ -1,7 +1,7 @@
 # Description:
 #   Trackable class and subclass definitions.
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     default_visibility = [
@@ -70,7 +70,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":data_structures",
-        "//tensorflow/python/eager:function_saved_model_utils",
+        "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
     ],
 )
 
@@ -149,6 +149,7 @@ py_library(
     name = "resource",
     srcs = ["resource.py"],
     srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":base",
     ],
@@ -205,6 +206,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":base",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
     ],
 )

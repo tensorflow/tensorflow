@@ -17,14 +17,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
 
 namespace {
+
+#define GEN_PASS_DEF_XLACLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 // Outlines partitioned call ops with `_XlaMustCompile` to device clusters.
 struct XlaClusterFormationPass
-    : public TFDevice::XlaClusterFormationPassBase<XlaClusterFormationPass> {
+    : public impl::XlaClusterFormationPassBase<XlaClusterFormationPass> {
   void runOnOperation() override;
 };
 
@@ -36,7 +40,7 @@ void EncapsulatePartitionedCall(TF::StatefulPartitionedCallOp call_op) {
 
   call_op.replaceAllUsesWith(cluster.getResults());
 
-  cluster.body().push_back(new mlir::Block);
+  cluster.getBody().push_back(new mlir::Block);
 
   call_op.getOperation()->moveBefore(&cluster.GetBody(),
                                      cluster.GetBody().end());
@@ -51,8 +55,7 @@ void XlaClusterFormationPass::runOnOperation() {
 
   llvm::SmallVector<TF::StatefulPartitionedCallOp, 4> ops;
   module.walk([&](TF::StatefulPartitionedCallOp call_op) {
-    auto attr = call_op->getAttrOfType<BoolAttr>("_XlaMustCompile");
-    if (attr && attr.getValue()) {
+    if (call_op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) {
       ops.push_back(call_op);
     }
   });

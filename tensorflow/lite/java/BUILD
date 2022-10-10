@@ -185,6 +185,7 @@ aar_with_jni(
     android_library = ":tensorflowlite_gpu_impl",
     headers = [
         "//tensorflow/lite/delegates/gpu:delegate.h",
+        "//tensorflow/lite/delegates/gpu:delegate_options.h",
     ],
 )
 
@@ -302,6 +303,7 @@ android_library(
     deps = [
         ":tensorflowlite_gpu_api",
         "//tensorflow/lite/java:tensorflowlite_api",
+        "//third_party/java/androidx/annotation",
     ],
 )
 
@@ -313,6 +315,7 @@ android_library(
     deps = [
         ":tensorflowlite_api",
         ":tensorflowlite_gpu_api",
+        "//third_party/java/androidx/annotation",
     ],
 )
 

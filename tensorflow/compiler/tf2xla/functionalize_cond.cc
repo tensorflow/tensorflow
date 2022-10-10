@@ -1174,7 +1174,7 @@ Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
     auto id_or = JoinCondStatesMerge(dst, prop, state_map_.LookupCondId(dst));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
                                     FormatNodeForError(*dst));
-    state_map_.ResetCondId(dst, id_or.ValueOrDie());
+    state_map_.ResetCondId(dst, id_or.value());
   }
 
   // Incomplete Merge nodes are not supported.
@@ -1199,7 +1199,7 @@ Status FunctionalizeCond::DetermineCondStateNonMerge(Node* dst) {
     auto id_or = JoinCondStatesNonMerge(prop, state_map_.LookupCondId(dst));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
                                     FormatNodeForError(*dst));
-    state_map_.ResetCondId(dst, id_or.ValueOrDie());
+    state_map_.ResetCondId(dst, id_or.value());
   }
   return OkStatus();
 }
@@ -1293,12 +1293,12 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
                                          state_map_.LookupCondId(dst_node));
         TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
                                         FormatNodeForError(*dst_node));
-        state_map_.ResetCondId(dst_node, id_or.ValueOrDie());
+        state_map_.ResetCondId(dst_node, id_or.value());
       } else {
         auto id_or =
             JoinCondStatesNonMerge(dst_id, state_map_.LookupCondId(dst_node));
         TF_RETURN_IF_ERROR(id_or.status());
-        state_map_.ResetCondId(dst_node, id_or.ValueOrDie());
+        state_map_.ResetCondId(dst_node, id_or.value());
       }
     } else if (BranchType(switch_branch) != b) {
       state_map_.MarkDead(dst_node);

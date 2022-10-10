@@ -25,7 +25,6 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/core/platform/logging.h"
@@ -335,7 +335,7 @@ class QuantizationDriver {
       std::unique_ptr<OpQuantScaleSpec> scale_spec = GetQuantScaleSpec(op);
       if (op->hasTrait<OpTrait::IsTerminator>() ||
           (IsOpNotQuantizable(op) && !scale_spec->has_same_scale_requirement) ||
-          llvm::isa<quant::QuantizeCastOp, quant::DequantizeCastOp,
+          llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp,
                     func::ConstantOp, arith::ConstantOp>(op)) {
         return;
       }
@@ -574,8 +574,9 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   Type new_type = params.castFromExpressedType(expressed_type);
   // This value isn't an expressed type (float), skip.
   if (!new_type) return;
-  auto quantize = builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
-  auto dequantize = builder_.create<quant::DequantizeCastOp>(
+  auto quantize =
+      builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
+  auto dequantize = builder_.create<quantfork::DequantizeCastOp>(
       loc, expressed_type, quantize.getResult());
 
   // This attribute is set to distinguish the quantize ops being added by the
@@ -609,7 +610,7 @@ void QuantizationDriver::RequantizeOpResult(Operation *op, int index,
   }
   if (pos == RequantizeState::ON_OUTPUT) {
     Operation *user = value.getUses().begin().getUser();
-    if (llvm::isa<quant::QuantizeCastOp>(user)) {
+    if (llvm::isa<quantfork::QuantizeCastOp>(user)) {
       // The requantize op is inserted between `quantize` and `dequantize` ops.
       value = user->getResult(0);
       builder_.setInsertionPointAfter(user);
@@ -624,7 +625,7 @@ void QuantizationDriver::RequantizeArg(BlockArgument arg,
   builder_.setInsertionPointToStart(arg.getOwner());
   if (value.hasOneUse()) {
     auto user = value.use_begin().getUser();
-    if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+    if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
       value = q.getResult();
       builder_.setInsertionPoint(arg.getOwner(), ++Block::iterator(user));
     }
@@ -646,7 +647,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
     Type new_type = state.params.castFromExpressedType(expressed_type);
     if (!new_type) return;
     auto requantize_op =
-        builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
     value.replaceAllUsesWith(requantize_op);
     requantize_op.getOperation()->replaceUsesOfWith(requantize_op, value);
     // This requantization was defined as required for the result value, so
@@ -659,7 +660,7 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
   if (!value.hasOneUse()) {
     return;
   }
-  auto dequant_op = llvm::dyn_cast_or_null<quant::DequantizeCastOp>(
+  auto dequant_op = llvm::dyn_cast_or_null<quantfork::DequantizeCastOp>(
       value.use_begin().getUser());
   if (!dequant_op) {
     return;
@@ -684,14 +685,14 @@ void QuantizationDriver::RequantizeValue(Value value, RequantizeStates *states,
     if (!new_type) continue;
 
     auto requantize_op =
-        builder_.create<quant::QuantizeCastOp>(loc, new_type, value);
+        builder_.create<quantfork::QuantizeCastOp>(loc, new_type, value);
 
     if (clobber_first) {
       dequant_op.setOperand(requantize_op.getResult());
       // All ops requiring this value already use the result of dequant.
       clobber_first = false;
     } else {
-      auto new_dequant_op = builder_.create<quant::DequantizeCastOp>(
+      auto new_dequant_op = builder_.create<quantfork::DequantizeCastOp>(
           loc, dequant_op.getResult().getType(), requantize_op.getResult());
       for (auto &op_index : state.users) {
         op_index.first->setOperand(op_index.second, new_dequant_op.getResult());
@@ -797,7 +798,7 @@ void QuantizationDriver::PreprocessConstantOps() {
       // weights.
       if (biases.find(operand_num) == biases.end() &&
           !scale_spec->has_same_scale_requirement &&
-          !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+          !llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
         // Needs to scan the content of weights to get the quantization
         // parameters if there are no quantization parameters (FakeQuant ops).
         // For this case, the weight will not be duplicated.
@@ -829,7 +830,7 @@ void QuantizationDriver::SetupAllStates() {
     // If the argument is quantized, it should only has one user.
     if (arg.hasOneUse()) {
       auto user = value.use_begin().getUser();
-      if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+      if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
         value = q.getResult();
       }
     }
@@ -848,7 +849,7 @@ void QuantizationDriver::SetupAllStates() {
       if (auto *inst = operand.getDefiningOp()) {
         // If the operand comes from a tfl.dequantize op, we use the quantized
         // input of this tfl.dequantize op to set the state.
-        if (auto dq = llvm::dyn_cast<quant::DequantizeCastOp>(inst)) {
+        if (auto dq = llvm::dyn_cast<quantfork::DequantizeCastOp>(inst)) {
           operand = dq.getArg();
         }
       }
@@ -862,7 +863,7 @@ void QuantizationDriver::SetupAllStates() {
       // create the state and mark it immutable.
       if (result.hasOneUse()) {
         auto user = result.use_begin().getUser();
-        if (auto q = llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
+        if (auto q = llvm::dyn_cast<quantfork::QuantizeCastOp>(user)) {
           result = q.getResult();
         }
       }
@@ -1081,9 +1082,9 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
             filter_param.getStorageTypeMax()),
         /*override=*/true);
   } else if (auto bias_params =
-                 params.dyn_cast<UniformQuantizedPerAxisType>()) {
+                 params.dyn_cast<quant::UniformQuantizedPerAxisType>()) {
     auto filter_params =
-        filter_state.params.cast<UniformQuantizedPerAxisType>();
+        filter_state.params.cast<quant::UniformQuantizedPerAxisType>();
     std::vector<double> new_bias_scales = bias_params.getScales().vec();
     std::vector<double> new_filter_scales = filter_params.getScales().vec();
     bool needs_adjustment = false;
@@ -1100,7 +1101,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
     }
     changed |= SetOperandParams(
         op, bias_index,
-        UniformQuantizedPerAxisType::getChecked(
+        quant::UniformQuantizedPerAxisType::getChecked(
             bias_op->getLoc(), params.getFlags(), params.getStorageType(),
             params.getExpressedType(), new_bias_scales,
             bias_params.getZeroPoints(), bias_params.getQuantizedDimension(),
@@ -1111,7 +1112,7 @@ bool QuantizationDriver::SetBiasParamsWithAdjustments(
         filter_index);
     changed |= SetOperandParams(
         op, filter_index,
-        UniformQuantizedPerAxisType::getChecked(
+        quant::UniformQuantizedPerAxisType::getChecked(
             filter_op->getLoc(), filter_params.getFlags(),
             filter_params.getStorageType(), filter_params.getExpressedType(),
             new_filter_scales, filter_params.getZeroPoints(),

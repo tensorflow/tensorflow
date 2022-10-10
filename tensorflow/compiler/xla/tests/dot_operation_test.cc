@@ -28,11 +28,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace {
@@ -1207,11 +1206,11 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
-          .ValueOrDie(),
+          .value(),
       &builder);
   auto y = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
-          .ValueOrDie(),
+          .value(),
       &builder);
   auto config = std::get<2>(GetParam());
   if (config.find(',') == config.npos) {
@@ -1296,14 +1295,14 @@ XLA_TEST_P(BatchDotTest, BroadcastingBatchDotTest) {
   XlaBuilder builder(TestName());
   auto x = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
-          .ValueOrDie(),
+          .value(),
       &builder);
   auto y = AddParam(
       MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
-          .ValueOrDie(),
+          .value(),
       &builder);
   auto batch_dot = BatchDot(x, y);
-  auto output_shape = builder.GetShape(batch_dot).ValueOrDie();
+  auto output_shape = builder.GetShape(batch_dot).value();
   EXPECT_EQ(output_shape.dimensions(), std::get<2>(GetParam()));
   ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
 }
@@ -1568,6 +1567,36 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_GPU(PackedNibbleDot)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s8[20,55] parameter(0)
+  arg1 = s8[55,20] parameter(1)
+  ROOT dot = s32[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={PACKED_NIBBLE, PACKED_NIBBLE}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, UnsignedPackedNibbleDot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = u8[3,11,21] parameter(0)
+  arg1 = u8[55,21,3] parameter(1)
+  ROOT dot = u32[3,11,55] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={2}, rhs_contracting_dims={1}, operand_precision={PACKED_NIBBLE, PACKED_NIBBLE}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
 XLA_TEST_F(DotOperationTextTest, S32Dot) {
   absl::string_view hlo_string =
       R"(
@@ -1812,14 +1841,13 @@ ENTRY MatrixVectorComplex {
 // and then fold the reshape and transpose on the Const side.
 // We can compare performance with and without algsimp pass to see the impact.
 void DOT_ReorderContracting(::testing::benchmark::State& state) {
-  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
-  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().value();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).value();
   se::StreamExecutorMemoryAllocator allocator(platform, executors);
 
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform);
-  auto client =
-      ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
+  auto client = ClientLibrary::GetOrCreateLocalClient(client_options).value();
 
   int device_ordinal = client->default_device_ordinal();
 

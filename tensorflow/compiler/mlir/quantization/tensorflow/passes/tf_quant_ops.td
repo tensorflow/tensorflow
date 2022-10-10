@@ -29,9 +29,9 @@ def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [NoSideEffect]> {
     TF_Float32Tensor:$scales,
     TF_Int32Tensor:$zps,
 
-    DefaultValuedAttr<I64Attr, "-1">:$quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$quantization_max_val
   );
 
   let results = (outs
@@ -53,12 +53,12 @@ def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [NoSideEffect]> {
     TF_Float32Tensor:$output_scales,
     TF_Int32Tensor:$output_zps,
 
-    DefaultValuedAttr<I64Attr, "-1">:$input_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$input_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$input_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$output_quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$input_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$input_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$input_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
   );
 
   let results = (outs
@@ -83,15 +83,15 @@ def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [NoSideEffect]> {
     TF_Float32Tensor:$output_scales,
     TF_Int32Tensor:$output_zps,
 
-    DefaultValuedAttr<I64Attr, "-1">:$lhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$lhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$lhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$rhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$output_quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$lhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
   );
 
   let results = (outs
@@ -112,9 +112,9 @@ def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [NoS
     TF_Float32Tensor:$scales,
     TF_Int32Tensor:$zps,
 
-    DefaultValuedAttr<I64Attr, "-1">:$quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$quantization_max_val
   );
 
   let results = (outs
@@ -145,16 +145,16 @@ def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [NoS
     TF_Int32Tensor:$feature_group_count,
 
     StrAttr:$dimension_numbers,
-    DefaultValuedAttr<I64Attr, "1">:$batch_group_count,
-    DefaultValuedAttr<I64Attr, "-1">:$lhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$lhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$lhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$rhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$output_quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "1">:$batch_group_count,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$lhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
   );
 
   let results = (outs
@@ -181,15 +181,15 @@ def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [NoSideEffect]> {
     TF_Float32Tensor:$output_scales,
     TF_Int32Tensor:$output_zps,
 
-    DefaultValuedAttr<I64Attr, "-1">:$lhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$lhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$lhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$rhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$output_quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$lhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
   );
 
   let results = (outs
@@ -217,15 +217,15 @@ def TF_UniformQuantizedDotGeneralOp : TF_Op<"UniformQuantizedDotGeneral", [NoSid
     TF_Int32Tensor:$output_zps,
 
     StrAttr:$dimension_numbers,
-    DefaultValuedAttr<I64Attr, "-1">:$lhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$lhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$lhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$rhs_quantization_max_val,
-    DefaultValuedAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$output_quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$lhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$lhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val,
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
   );
 
   let results = (outs
@@ -247,9 +247,9 @@ def TF_UniformQuantizedDotHybridOp : TF_Op<"UniformQuantizedDotHybrid", [NoSideE
     TF_Float32Tensor:$rhs_scales,
     TF_Int32Tensor:$rhs_zps,
 
-    DefaultValuedAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedAttr<I64Attr, "127">:$rhs_quantization_max_val
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
+    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val
   );
 
   let results = (outs

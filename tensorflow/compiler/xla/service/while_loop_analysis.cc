@@ -505,7 +505,7 @@ optional<int64_t> ComputeWhileLoopTripCount(HloInstruction* while_op,
             << indvar_init_result.status() << ", " << indvar_init->ToString();
     return nullopt;
   }
-  Literal indvar_iter_val = std::move(indvar_init_result).ValueOrDie();
+  Literal indvar_iter_val = std::move(indvar_init_result).value();
 
   // First, try to pattern-match.
   if (auto trip_count = PatternMatchLoopTripCount(while_op, *indvar_tuple_idx,
@@ -531,7 +531,7 @@ optional<int64_t> ComputeWhileLoopTripCount(HloInstruction* while_op,
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
     }
-    if (result.ValueOrDie().data<bool>() == absl::Span<const bool>{false}) {
+    if (result.value().data<bool>() == absl::Span<const bool>{false}) {
       VLOG(2) << "Loop has static trip count of " << trip_count;
       return trip_count;
     }
@@ -545,7 +545,7 @@ optional<int64_t> ComputeWhileLoopTripCount(HloInstruction* while_op,
               << indvar_next_result.status();
       return nullopt;
     }
-    indvar_iter_val = std::move(indvar_next_result).ValueOrDie();
+    indvar_iter_val = std::move(indvar_next_result).value();
   }
 
   VLOG(2) << "Loop has unknown trip count.";
@@ -629,7 +629,7 @@ optional<int64_t> ComputeWhileLoopTripCountUpperBound(
     return nullopt;
   }
 
-  Literal cond_result_pred = std::move(eval_result.ValueOrDie());
+  Literal cond_result_pred = std::move(eval_result.value());
   CHECK(Shape::Equal().IgnoreLayout()(cond_result_pred.shape(),
                                       ShapeUtil::MakeShape(PRED, {})));
 

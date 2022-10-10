@@ -38,7 +38,6 @@ COMMON_PROTO_SRCS = [
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
-    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -64,9 +63,9 @@ COMMON_PROTO_SRCS = [
 tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/stream_executor:dnn_proto"],
+    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
 )
 
 tf_proto_library(
@@ -75,7 +74,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
-        "//tensorflow/stream_executor:dnn_proto",
+        "//tensorflow/compiler/xla/stream_executor:dnn_proto",
     ],
 )
 
@@ -153,8 +152,9 @@ tf_proto_library(
 tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
+    exports = ["//tensorflow/tsl/protobuf:error_codes_proto_impl"],
 )
 
 exports_files(

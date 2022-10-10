@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -36,6 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+using ::testing::SizeIs;
 
 class PartitioningUtilsTest : public ::testing::Test {
  public:
@@ -236,17 +239,44 @@ TEST_F(PartitioningUtilsTest, InsertTransferOpsWithTwoDevices) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Graph> new_graph,
                           InsertTransferOps(device_set_, std::move(graph)));
 
-  // Two pairs of Send/Recv nodes are inserted.
   EXPECT_EQ(new_graph->num_op_nodes(), 7);
   send_count = recv_count = 0;
-  for (const auto* op : new_graph->op_nodes()) {
-    if (op->IsSend())
+
+  auto get_tensor_name_attr = [](const Node* node) -> std::string {
+    auto tensor_name_it = node->def().attr().find("tensor_name");
+    return tensor_name_it->second.s();
+  };
+  absl::flat_hash_map<std::string, std::pair<Node*, Node*>> send_recv_pairs;
+
+  for (auto* op : new_graph->op_nodes()) {
+    if (op->IsSend()) {
       ++send_count;
-    else if (op->IsRecv())
+      send_recv_pairs[get_tensor_name_attr(op)].first = op;
+    } else if (op->IsRecv()) {
       ++recv_count;
+      send_recv_pairs[get_tensor_name_attr(op)].second = op;
+    }
   }
+
+  // Two pairs of Send/Recv nodes are inserted.
   EXPECT_EQ(send_count, 2);
   EXPECT_EQ(recv_count, 2);
+
+  // There is a control edge between each Send/Recv pair.
+  for (const auto& [tensor_name, send_recv_pair] : send_recv_pairs) {
+    ASSERT_TRUE(send_recv_pair.first != nullptr &&
+                send_recv_pair.second != nullptr);
+    std::vector<const Edge*> out_edges(
+        send_recv_pair.first->out_edges().begin(),
+        send_recv_pair.first->out_edges().end());
+    ASSERT_THAT(out_edges, SizeIs(2));
+    for (const Edge* out_edge : out_edges) {
+      if (out_edge->dst() != new_graph->sink_node()) {
+        EXPECT_TRUE(out_edge->IsControlEdge());
+        EXPECT_EQ(out_edge->dst(), send_recv_pair.second);
+      }
+    }
+  }
 }
 
 void CheckRetIndices(const std::vector<int>& expected,

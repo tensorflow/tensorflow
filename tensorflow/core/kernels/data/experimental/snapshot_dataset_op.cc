@@ -41,8 +41,6 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/snappy.h"
 #if !defined(IS_SLIM_BUILD)
-#include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
-#include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"

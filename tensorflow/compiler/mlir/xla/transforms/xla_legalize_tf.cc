@@ -25,26 +25,31 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 
 namespace mlir {
 namespace mhlo {
 namespace {
 
-class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
+#define GEN_PASS_DEF_LEGALIZETF
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
+class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
                       llvm::Optional<StringRef> tf2xla_fallback_device_type,
@@ -57,6 +62,20 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
     }
   }
+  /// Performs the lowering to XLA dialect.
+  void runOnOperation() override;
+};
+
+#define GEN_PASS_DEF_LEGALIZETFMODULEPASS
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
+class LegalizeTFModulePass
+    : public impl::LegalizeTFModulePassBase<LegalizeTFModulePass> {
+ public:
+  explicit LegalizeTFModulePass(StringRef tf2xla_fallback_device_type) {
+    device_type_ = tf2xla_fallback_device_type.str();
+  }
+
   /// Performs the lowering to XLA dialect.
   void runOnOperation() override;
 };
@@ -162,6 +181,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::SquaredDifferenceOp>(),
     TypeID::get<TF::TanhOp>(),
     TypeID::get<TF::TanhGradOp>(),
+    TypeID::get<TF::XlaConvV2Op>(),
     TypeID::get<TF::XlaDotOp>(),
     TypeID::get<TF::XlaDotV2Op>(),
     TypeID::get<TF::XlaDynamicSliceOp>(),
@@ -200,8 +220,10 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     // the bug. b/195583695 describes the motivation of this change.
     // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
     // See b/216353817 how to reproduce the bug regarding tf.StridedSlice Op
+    // See b/245615401 how to reproduce the bug regarding tf.SliceOp
     TypeID::get<TF::RandomUniformOp>(),
     TypeID::get<TF::StridedSliceOp>(),
+    TypeID::get<TF::SliceOp>(),
   };
   // clang-format on
   return *ops;
@@ -228,6 +250,40 @@ RewritePatternSet PatternsIncludeOps(
   to.add(std::move(from.getPDLPatterns()));
 
   return to;
+}
+
+mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
+                                  bool legalize_chlo,
+                                  bool allow_partial_conversion) {
+  ConversionTarget target(*op->getContext());
+  if (legalize_chlo) {
+    target.addIllegalDialect<chlo::ChloDialect>();
+  } else {
+    target.addLegalDialect<chlo::ChloDialect>();
+  }
+  target.addLegalDialect<MhloDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addLegalDialect<func::FuncDialect>();
+  target.addLegalDialect<tensor::TensorDialect>();
+  target.addLegalDialect<shape::ShapeDialect>();
+  target.addLegalOp<func::CallOp>();
+
+  if (!allow_partial_conversion) {
+    // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
+    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
+    DenseSet<Operation *> nonlegalized_ops;
+    LogicalResult result = applyPartialConversion(
+        op, target, std::move(patterns), &nonlegalized_ops);
+    // In order to enforce that the conversion result is fully converted,
+    // fail if there are any nonlegalized ops in the set.
+    if (failed(result) || !nonlegalized_ops.empty()) {
+      EmitLegalizationErrors(op, nonlegalized_ops);
+      return failure();
+    }
+    return result;
+  }
+
+  return applyPartialConversion(op, target, std::move(patterns));
 }
 
 /// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
@@ -291,35 +347,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // canonicalization pattern to pattern list to enable multi-hop lowering.
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
-  ConversionTarget target(*context);
-  if (legalize_chlo) {
-    target.addIllegalDialect<chlo::ChloDialect>();
-  } else {
-    target.addLegalDialect<chlo::ChloDialect>();
-  }
-  target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<func::FuncDialect>();
-  target.addLegalDialect<tensor::TensorDialect>();
-  target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<func::CallOp>();
-
-  if (!allow_partial_conversion) {
-    // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
-    DenseSet<Operation *> nonlegalized_ops;
-    LogicalResult result = applyPartialConversion(
-        op, target, std::move(patterns), &nonlegalized_ops);
-    // In order to enforce that the conversion result is fully converted,
-    // fail if there are any nonlegalized ops in the set.
-    if (failed(result) || !nonlegalized_ops.empty()) {
-      EmitLegalizationErrors(op, nonlegalized_ops);
-      return failure();
-    }
-    return result;
-  }
-
-  return applyPartialConversion(op, target, std::move(patterns));
+  return ApplyPatterns(op, patterns, legalize_chlo, allow_partial_conversion);
 }
 
 // Performs the lowering to XLA dialect.
@@ -335,6 +363,27 @@ void LegalizeTF::runOnOperation() {
   }
 }
 
+void LegalizeTFModulePass::runOnOperation() {
+  // This pass should only be run when a fallback device is present.
+  if (!device_type_.hasValue()) {
+    return;
+  }
+  VLOG(1) << "TF to XLA legalization patterns include TF2XLA fallback "
+             "patterns for Ops that need to create functions.";
+  Operation *op = getOperation();
+  MLIRContext *context = op->getContext();
+  RewritePatternSet patterns(context);
+  PopulateLegalizeTfWithTf2XlaPatterns(device_type_, patterns, context,
+                                       /*prefer_tf2xla=*/false,
+                                       /*is_module_pass=*/true);
+
+  if (failed(ApplyPatterns(op, patterns,
+                           /*legalize_chlo=*/false,
+                           /*allow_partial_conversion=*/true))) {
+    signalPassFailure();
+  }
+}
+
 }  // end namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
@@ -343,6 +392,11 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
                                       tf2xla_fallback_device_type,
                                       prefer_tf2xla);
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
+    StringRef tf2xla_fallback_device_type) {
+  return std::make_unique<LegalizeTFModulePass>(tf2xla_fallback_device_type);
 }
 
 }  // end namespace mhlo

@@ -17,16 +17,17 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/core/common_runtime/graph_execution_state.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
-#include "tensorflow/core/tfrt/tpu/tpu_resources.h"
+#include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 #include "tfrt/bef/bef_buffer.h"  // from @tf_runtime
 #include "tfrt/bef_executor/bef_file.h"  // from @tf_runtime
@@ -129,6 +130,19 @@ class GraphExecutor {
       absl::Span<const std::string> target_tensor_names,
       std::vector<tensorflow::Tensor>* outputs);
 
+  // Runs the graph identified by `graph_name` using the input `inputs` and
+  // stores the output of the execution in `outputs`. It is the client's
+  // responsibility to ensure `graph_name` corresponds to logically different
+  // graphs, since this name is used to lookup compiled graphs in the cache. The
+  // graph is run synchronously with the TFRT interpreter.
+  tensorflow::Status RunWithSyncInterpreter(
+      const std::string& graph_name, absl::Span<tfrt::Value*> input_values,
+      absl::Span<const std::string> input_names,
+      absl::Span<const tensorflow::DataType> input_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names,
+      absl::Span<tfrt::Value*> outputs);
+
   // Extends the current graph by `graph`.
   tensorflow::Status Extend(const GraphDef& graph);
 
@@ -150,13 +164,15 @@ class GraphExecutor {
  private:
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
-      const GraphExecutor::ClientGraph& client_graph);
+      const GraphExecutor::ClientGraph& client_graph,
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
   tensorflow::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>>
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
-  tensorflow::Status InitBef(tfrt::BEFFile* bef_file,
-                             tfrt::ResourceContext* resource_context);
+  tensorflow::Status InitBef(
+      tfrt::BEFFile* bef_file, tfrt::ResourceContext* resource_context,
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue);
 
   // Returns a `LoadedClientGraph` given input/output tensor info. If there is
   // no existing one yet, creates one first.
@@ -165,7 +181,9 @@ class GraphExecutor {
       absl::Span<const std::string> input_tensor_names,
       absl::Span<const tensorflow::DataType> input_tensor_dtypes,
       absl::Span<const std::string> output_tensor_names,
-      absl::Span<const std::string> target_tensor_names)
+      absl::Span<const std::string> target_tensor_names,
+      tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
+      std::optional<const std::string> graph_name = std::nullopt)
       TF_LOCKS_EXCLUDED(loaded_client_graphs_mu_);
 
   Options options_;

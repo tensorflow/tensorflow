@@ -26,7 +26,12 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/statusor.h"
+#if defined(PLATFORM_GOOGLE)
+#include "thread/executor.h"
+#include "thread/signal.h"
+#endif
 
 namespace tensorflow {
 
@@ -52,7 +57,17 @@ class SigtermNotifier : public PreemptionNotifier {
 SigtermNotifier::SigtermNotifier(Env* env) : PreemptionNotifier(env) {
   sigterm_received.store(false);
   StartListenerThread();
+#if defined(PLATFORM_GOOGLE)
+  thread::signal::Token unused_token;
+
+  thread::signal::AddHandler(
+      SIGTERM, thread::Executor::DefaultExecutor(),
+      []() { sigterm_received.store(true); },
+      /*flags=*/0,  // Don't override existing signal handlers.
+      &unused_token);
+#else
   std::signal(SIGTERM, [](int signal) { sigterm_received.store(true); });
+#endif
 }
 
 void SigtermNotifier::StartListenerThread() {

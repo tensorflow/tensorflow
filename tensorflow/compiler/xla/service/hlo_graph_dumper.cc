@@ -46,19 +46,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_outputbuffer.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/base64.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/stream_executor/dnn.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/lib/io/zlib_compression_options.h"
+#include "tensorflow/tsl/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/tsl/platform/base64.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -542,14 +542,13 @@ stylesheet=<
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64_t from_node_id =
-        tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
+    int64_t from_node_id = tsl::gtl::FindWithDefault(node_ids_, from_node, -1);
     if (from_node_id == -1) {
       LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
     }
-    int64_t to_node_id =
-        to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
-                : root_node_id_;
+    int64_t to_node_id = to_node
+                             ? tsl::gtl::FindWithDefault(node_ids_, to_node, -1)
+                             : root_node_id_;
     if (to_node != nullptr && to_node_id == -1) {
       LOG(FATAL) << to_node->name() << " was added to edges but not to nodes";
     }
@@ -1042,6 +1041,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
@@ -1273,7 +1273,7 @@ std::string HloDotDumper::GetInstructionNodeBackendConfig(
     if (config.ok()) {
       props = ExtractCudnnConvBackendConfigProps(*config);
     }
-  } else if (instr->IsCustomCall(gpu::kGemmCallTarget)) {
+  } else if (gpu::IsCublasGemm(*instr)) {
     StatusOr<gpu::GemmBackendConfig> config =
         instr->backend_config<gpu::GemmBackendConfig>();
     if (config.ok()) {
@@ -1706,6 +1706,7 @@ std::string WrapDotInHtml(absl::string_view dot) {
         var panzoom = svgPanZoom(svg, {
             zoomEnabled: true,
             controlIconsEnabled: true,
+            maxZoom: 100,
         });
         document.getElementsByTagName("BODY")[0].onresize = function() {
             panzoom.resize();
@@ -1820,7 +1821,7 @@ StatusOr<std::string> WrapDotInFormat(const HloComputation& computation,
 
 // Compress with zlib + b64 encode.
 static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
-  class WritableStringFile : public tensorflow::WritableFile {
+  class WritableStringFile : public tsl::WritableFile {
    public:
     explicit WritableStringFile(std::string* data) : data_(data){};
     ~WritableStringFile() override = default;
@@ -1841,15 +1842,15 @@ static StatusOr<std::string> CompressAndEncode(absl::string_view input) {
   std::string compressed;
   WritableStringFile f(&compressed);
 
-  auto gz_opts = tensorflow::io::ZlibCompressionOptions::GZIP();
-  tensorflow::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
-                                           gz_opts.output_buffer_size, gz_opts);
+  auto gz_opts = tsl::io::ZlibCompressionOptions::GZIP();
+  tsl::io::ZlibOutputBuffer gz_file(&f, gz_opts.input_buffer_size,
+                                    gz_opts.output_buffer_size, gz_opts);
   TF_RETURN_IF_ERROR(gz_file.Init());
   TF_RETURN_IF_ERROR(gz_file.Append(input));
   TF_RETURN_IF_ERROR(gz_file.Close());
 
   std::string encoded;
-  TF_RETURN_IF_ERROR(tensorflow::Base64Encode(compressed, &encoded));
+  TF_RETURN_IF_ERROR(tsl::Base64Encode(compressed, &encoded));
   return absl::StrReplaceAll(encoded, {{"_", "/"}, {"-", "+"}});
 }
 

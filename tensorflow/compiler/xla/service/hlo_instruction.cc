@@ -55,10 +55,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/human_readable_json.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/human_readable_json.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -276,6 +276,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                proto.is_host_transfer());
       break;
     case HloOpcode::kSendDone:
+      TF_RET_CHECK(DynCast<HloSendInstruction>(operands(0)) != nullptr)
+          << "SendDone must take the context operand from Send";
       instruction = CreateSendDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kRecv:
@@ -283,6 +285,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                proto.channel_id(), proto.is_host_transfer());
       break;
     case HloOpcode::kRecvDone:
+      TF_RET_CHECK(DynCast<HloRecvInstruction>(operands(0)) != nullptr)
+          << "RecvDone must take the context operand from Recv";
       instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
@@ -416,7 +420,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       const int64_t fusion_id = proto.called_computation_ids(0);
       auto* fused_computation =
-          tensorflow::gtl::FindPtrOrNull(computation_map, fusion_id);
+          tsl::gtl::FindPtrOrNull(computation_map, fusion_id);
       TF_RET_CHECK(fused_computation != nullptr)
           << "No fusion computation with id " << fusion_id;
       instruction =
@@ -678,6 +682,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kConvolution: {
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -769,6 +775,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           proto.custom_call_has_side_effect());
       custom_call_instr->set_padding_type(proto.padding_type());
 
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -879,6 +887,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kDot: {
       TF_RET_CHECK(proto.has_dot_dimension_numbers())
           << "Dot instruction should have dot_dimension_numbers.";
+      TF_RET_CHECK(absl::c_all_of(proto.precision_config().operand_precision(),
+                                  PrecisionConfig::Precision_IsValid));
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -953,6 +963,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               << "Call should have 1 called computation but has "
               << proto.called_computation_ids_size();
         }
+        if (instruction->opcode() == HloOpcode::kWhile) {
+          TF_RET_CHECK(proto.called_computation_ids_size() == 2)
+              << "While should have 2 called computation but has "
+              << proto.called_computation_ids_size();
+        }
         for (const int64_t computation_id : proto.called_computation_ids()) {
           instruction->called_computations_.push_back(
               computation_map.at(computation_id));
@@ -976,9 +991,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   instruction->metadata_ = proto.metadata();
   instruction->backend_config_ = proto.backend_config();
-  instruction->outer_dimension_partitions_.assign(
-      proto.outer_dimension_partitions().begin(),
-      proto.outer_dimension_partitions().end());
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -1125,6 +1137,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -1783,9 +1796,9 @@ HloInstruction::CreateDynamicReshape(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
     const Shape& shape, FusionKind fusion_kind,
     absl::Span<HloInstruction* const> operands,
-    HloComputation* fusion_computation) {
+    HloComputation* fusion_computation, absl::string_view prefix) {
   return std::make_unique<HloFusionInstruction>(shape, fusion_kind, operands,
-                                                fusion_computation);
+                                                fusion_computation, prefix);
 }
 
 void HloInstruction::set_single_sharding(const HloSharding& sharding) {
@@ -1963,6 +1976,13 @@ bool HloInstruction::HasSideEffect() const {
       std::move(user_side_metadata));
 }
 
+/* static */ bool HloInstruction::IsThreadIncluded(
+    absl::string_view execution_thread,
+    const absl::flat_hash_set<absl::string_view>& execution_threads_set) {
+  return execution_threads_set.empty() ||
+         execution_threads_set.contains(execution_thread);
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
@@ -2089,6 +2109,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
       break;
@@ -2153,7 +2174,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   // SetupDerivedInstruction will setup the precision_config_ field.
   SetupDerivedInstruction(clone.get());
   clone->set_parent(parent_);
-  clone->set_outer_dimension_partitions(outer_dimension_partitions_);
   clone->backend_config_ = backend_config_.Clone();
   // The new instruction's name will be uniquified when it's added to a
   // computation.
@@ -2519,6 +2539,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
@@ -2779,45 +2800,45 @@ bool HloInstruction::IsEffectiveBitcast() const {
 }
 
 HloComputation* HloInstruction::to_apply() const {
-  switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kScatter:
-    case HloOpcode::kSort:
-    case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      return called_computations_[0];
-    default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    return called_computations_[0];
   }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
   // Don't allow changing the computation for fused instructions so we don't
   // have to recompute called_instructions for the entire fusion instruction.
   CHECK(!IsFused());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    called_computations_[0] = computation;
+    return;
+  }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+}
+
+bool HloInstruction::has_to_apply() const {
   switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCall:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+      return true;
     case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      called_computations_[0] = computation;
-      break;
+      // CustomCall can have a to_apply computation, but it is not required to
+      // have one.
+      return called_computations_.size() == 1;
     default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+      return false;
   }
 }
 
@@ -3231,8 +3252,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
                opcode() == HloOpcode::kSort) {
-      extra.push_back(
-          StrCat("to_apply=", PrintNameInternal(to_apply()->name(), options)));
+      if (!called_computations().empty()) {
+        extra.push_back(StrCat("to_apply=",
+                               PrintNameInternal(to_apply()->name(), options)));
+      }
     } else if (opcode() == HloOpcode::kCustomCall) {
       if (!called_computations().empty()) {
         extra.push_back(StrCat(
@@ -3300,8 +3323,10 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
-        extra.push_back(
-            StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        if (!called_computations().empty()) {
+          extra.push_back(
+              StrCat("to_apply=\n", to_apply()->ToString(new_options)));
+        }
         break;
       default:
         if (!called_computations().empty()) {
@@ -3323,10 +3348,6 @@ std::vector<std::string> HloInstruction::ExtraAttributesToString(
   if (!frontend_attributes_.map().empty()) {
     extra.push_back(StrCat("frontend_attributes=",
                            FrontendAttributesToString(frontend_attributes_)));
-  }
-  if (!outer_dimension_partitions_.empty()) {
-    extra.push_back(absl::StrFormat("outer_dimension_partitions={%s}",
-                                    StrJoin(outer_dimension_partitions_, ",")));
   }
 
   if (options.print_control_dependencies() && !control_predecessors_.empty()) {
@@ -3378,11 +3399,6 @@ HloInstructionProto HloInstruction::ToProto() const {
   if (has_sharding()) {
     *proto.mutable_sharding() = sharding().ToProto();
   }
-  if (!outer_dimension_partitions_.empty()) {
-    for (const auto& idx : outer_dimension_partitions_) {
-      proto.mutable_outer_dimension_partitions()->Add(idx);
-    }
-  }
 
   *proto.mutable_frontend_attributes() = frontend_attributes_;
 
@@ -3409,6 +3425,12 @@ bool HloInstruction::IsFused() const {
 
 bool HloInstruction::IsCustomCall(absl::string_view target) const {
   return opcode() == HloOpcode::kCustomCall && custom_call_target() == target;
+}
+
+bool HloInstruction::IsCustomCall(
+    absl::Span<const absl::string_view> targets) const {
+  return opcode() == HloOpcode::kCustomCall &&
+         absl::c_linear_search(targets, custom_call_target());
 }
 
 bool HloInstruction::IsInputFusion() const {
@@ -3519,6 +3541,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConvert(this);
     case HloOpcode::kBitcastConvert:
       return visitor->HandleBitcastConvert(this);
+    case HloOpcode::kStochasticConvert:
+      return visitor->HandleStochasticConvert(this);
     case HloOpcode::kCopy:
       return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:
@@ -3877,7 +3901,7 @@ namespace {
 
 // Indicates how an instruction uses a value (such as an operand).
 //
-// Does it (a) not use it, (b) use it, or (c) use it multiple times?
+// Does it (a) use it multiple times, (b) use it, or (c) not use it?
 enum class UseKind { kReuse = 0, kUse = 1, kNoUse = 2 };
 
 // A helper class for memoized, recursive computation of HloOpcode::kFusion
@@ -4294,7 +4318,7 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
 }
 
 Status HloInstruction::GetBackendConfigInternal(
-    tensorflow::protobuf::Message* proto) const {
+    tsl::protobuf::Message* proto) const {
   proto->Clear();
 
   if (auto* proto_ptr = backend_config_.GetProtoPtr()) {
@@ -4310,14 +4334,14 @@ Status HloInstruction::GetBackendConfigInternal(
   if (raw_string.empty()) {
     return OkStatus();
   }
-  TF_RETURN_IF_ERROR(tensorflow::HumanReadableJsonToProto(raw_string, proto));
+  TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string, proto));
   backend_config_.SetProto(*proto);
   return OkStatus();
 }
 
 const std::string& HloInstruction::BackendConfigRep::GetRawString() const {
   if (proto_ && raw_string_.empty()) {
-    raw_string_ = BackendConfigToRawString(*proto_).ValueOrDie();
+    raw_string_ = BackendConfigToRawString(*proto_).value();
   }
   return raw_string_;
 }
@@ -4342,14 +4366,14 @@ HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
 }
 
 HloInstruction::BackendConfigRep& HloInstruction::BackendConfigRep::operator=(
-    const tensorflow::protobuf::Message& proto) {
+    const tsl::protobuf::Message& proto) {
   SetProto(proto);
   raw_string_.clear();
   return *this;
 }
 
 void HloInstruction::BackendConfigRep::SetProto(
-    const tensorflow::protobuf::Message& proto) {
+    const tsl::protobuf::Message& proto) {
   proto_.reset(proto.New());
   proto_->CopyFrom(proto);
 }
@@ -4359,7 +4383,7 @@ bool HloInstruction::BackendConfigRep::operator==(
   auto* proto_a = GetProtoPtr();
   auto* proto_b = other.GetProtoPtr();
   if (proto_a != nullptr && proto_b != nullptr) {
-    using ::tensorflow::protobuf::util::MessageDifferencer;
+    using ::tsl::protobuf::util::MessageDifferencer;
     return MessageDifferencer::Equals(*proto_a, *proto_b);
   }
   // TODO(b/225956414): Consider canonicalizing raw string form.
@@ -4367,13 +4391,13 @@ bool HloInstruction::BackendConfigRep::operator==(
 }
 
 /* static */ StatusOr<std::string> HloInstruction::BackendConfigToRawString(
-    const tensorflow::protobuf::Message& proto) {
+    const tsl::protobuf::Message& proto) {
   std::string ret;
   // Pass ignore_accuracy_loss = true because estimated_cycles field can be
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
   // accuracy loss for int64_t.
-  TF_RETURN_IF_ERROR(tensorflow::ProtoToHumanReadableJson(
+  TF_RETURN_IF_ERROR(tsl::ProtoToHumanReadableJson(
       proto, &ret, /*ignore_accuracy_loss=*/true));
   return ret;
 }
@@ -4412,11 +4436,6 @@ HloModule* HloInstruction::GetModule() const {
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   std::string parent_str = parent() == nullptr ? "noparent" : parent()->name();
   name_ = name_uniquer->GetUniqueName(name_);
-}
-
-void HloInstruction::set_outer_dimension_partitions(
-    const std::vector<int64_t>& outer_dimension_partitions) {
-  outer_dimension_partitions_ = outer_dimension_partitions;
 }
 
 void HloInstruction::SortInstructionUsersAndControlLists(
@@ -4581,13 +4600,13 @@ HloInstruction* HloInstruction::fused_expression_root() const {
   return Cast<HloFusionInstruction>(this)->fused_expression_root();
 }
 
-const tensorflow::gtl::iterator_range<UnwrappingIterator<
+const tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloInstruction::fused_instructions() const {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
 }
 
-const tensorflow::gtl::iterator_range<
+const tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloInstruction::fused_instructions() {
   return Cast<HloFusionInstruction>(this)->fused_instructions();
@@ -4893,6 +4912,11 @@ const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
 
 const CholeskyOptions& HloInstruction::cholesky_options() const {
   return Cast<HloCholeskyInstruction>(this)->cholesky_options();
+}
+
+const std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>&
+HloInstruction::custom_call_output_operand_aliasing() const {
+  return Cast<HloCustomCallInstruction>(this)->output_to_operand_aliasing();
 }
 
 }  // namespace xla

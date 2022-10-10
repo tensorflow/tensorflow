@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
@@ -636,7 +636,6 @@ py_library(
         ":tpu_util",
         ":tpu_values",
         ":values",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
@@ -651,6 +650,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/distribute/v1:input_lib",
         "//tensorflow/python/eager:context",
@@ -677,6 +677,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # b/213388775
+        "no_oss",  # b/241013307
     ],
     tpu_tags = [
         "no_oss",
@@ -937,12 +938,12 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":tpu_util",
-        "//tensorflow/compiler/xla/experimental/xla_sharding",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:resource_variable_ops_gen",
         "//tensorflow/python:tpu_partition_ops_gen",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compiler/xla/experimental:xla_sharding",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/saved_model:save_context",
@@ -1312,6 +1313,10 @@ tf_py_test(
     name = "sharded_variable_test",
     size = "small",
     srcs = ["sharded_variable_test.py"],
+    tags = [
+        "no_mac",
+        "no_windows",  # TODO(b/241967911): Re-enable mac and windows.
+    ],
     deps = [
         ":combinations",
         ":multi_worker_test_base",
@@ -2028,6 +2033,9 @@ py_library(
     name = "multi_process_runner",
     srcs = ["multi_process_runner.py"],
     srcs_version = "PY3",
+    tags = [
+        "no_oss",  # b/241013307 disable flaky under docker
+    ],
     deps = [
         ":multi_process_lib",
         "//tensorflow/python:client_testlib",
@@ -2249,6 +2257,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tf_decorator",
+        "//tensorflow/python:util",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/training:server_lib",
@@ -2295,8 +2304,10 @@ distribute_py_test(
     name = "distributed_table_test",
     srcs = ["distributed_table_test.py"],
     python_version = "PY3",
+    shard_count = 12,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/249822228)
         "noasan",  # TODO(b/237407459)
         "notpu",
         "notsan",  # Tsan failure doesn't seem to be caused by TF.
@@ -2308,6 +2319,7 @@ distribute_py_test(
         ":parameter_server_strategy_v2",
         ":ps_values",
         ":test_util",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:lookup_ops",
@@ -2336,6 +2348,7 @@ tpu_py_test(
     name = "tpu_strategy_model_parallelism_test",
     srcs = ["tpu_strategy_model_parallelism_test.py"],
     disable_experimental = True,  # b/202779350
+    disable_mlir_bridge = False,
     disable_v3_4chips = False,
     python_version = "PY3",
     tags = ["no_oss"],

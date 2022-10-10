@@ -15,3 +15,7 @@ message MyCompositeRepresentation {
   repeated tensorflow.core.function.trace_type.serialization.SerializedTraceType
       elements = 1;
 }
+
+message MyMultiClassRepresentation {
+  optional int32 id = 1;
+}

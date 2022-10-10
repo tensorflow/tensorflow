@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -48,6 +49,10 @@ Status SaveGzippedToolData(const std::string& repository_root,
                            const std::string& run, const std::string& host,
                            const std::string& tool_name,
                            const std::string& data);
+
+// Save XSpace to <repository_root>/<run>/<host>_<port>.<kXPlanePb>.
+Status SaveXSpace(const std::string& repository_root, const std::string& run,
+                  const std::string& host, const XSpace& xspace);
 
 }  // namespace profiler
 }  // namespace tensorflow

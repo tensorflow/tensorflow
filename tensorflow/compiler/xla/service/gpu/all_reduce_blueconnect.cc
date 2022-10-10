@@ -110,7 +110,7 @@ StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroup(
 StatusOr<std::optional<DecomposedReplicaGroups>> TryDecomposeReplicaGroups(
     const HloAllReduceInstruction& all_reduce, size_t num_devices_per_host) {
   const DeviceAssignment& device_assignment =
-      all_reduce.parent()->parent()->config().static_device_assignment();
+      all_reduce.GetModule()->config().static_device_assignment();
 
   absl::Span<const ReplicaGroup> replica_groups = all_reduce.replica_groups();
 

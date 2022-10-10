@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -51,7 +52,7 @@ namespace TFL {
 // The actual Quantize Pass.
 //
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_QUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 enum QuantizationTrait { kFullQuantization, kDynamicRangeQuantization };
@@ -198,7 +199,7 @@ class QuantizeConstPattern : public OpRewritePattern<QuantizeOp> {
 };
 
 // Applies quantization on the model in TFL dialect.
-struct QuantizePass : public QuantizePassBase<QuantizePass> {
+struct QuantizePass : public impl::QuantizePassBase<QuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizePass)
 

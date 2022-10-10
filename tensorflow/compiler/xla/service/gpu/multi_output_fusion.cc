@@ -174,7 +174,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 }
 
 bool IsSiblingFusionCandidate(const HloInstruction* instr) {
-  if (instr->IsDead()) {
+  if (instr->user_count() == 0) {
     return false;
   }
   if (!IsFusibleAsMultiOutputFusionRoot(*instr)) {

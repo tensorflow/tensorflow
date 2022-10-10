@@ -30,11 +30,41 @@ _NAMESPACE = flags.DEFINE_string('namespace', 'mlir::quant',
 flags.mark_flags_as_required(['output_file', 'src'])
 
 
+def _substitute_for_loop_template(module: str) -> str:
+  """Substitutes the for loop templates in the given module."""
+  compiled_regex = re.compile(
+      r'^\s*for\s(.*?)\sin\s(\[.*?\])\s\{(.*?)\}\s//\send\sfor\n',
+      re.MULTILINE | re.DOTALL)
+  while True:
+    func_match = re.search(compiled_regex, module)
+    if func_match is None:
+      break
+
+    try:
+      arg_name = func_match.group(1)
+      arg_values = ast.literal_eval(func_match.group(2))
+      loop_template = string.Template(func_match.group(3))
+    except Exception as e:  # pylint: disable=broad-except
+      raise ValueError('The loop template is in wrong format') from e
+
+    replacement_text = ''
+    for arg_value in arg_values:
+      arg_dict = {arg_name: arg_value}
+      replacement_text += '\\n'
+      replacement_text += _substitute_function_template(
+          loop_template.safe_substitute(arg_dict))
+    module = re.sub(compiled_regex, replacement_text, module, count=1)
+
+  return module
+
+
 def _substitute_function_template(module: str) -> str:
   """Substitutes all the function templates in the given module."""
+  compiled_regex = re.compile(
+      r'^\s*parameters(\[.*?\])\n?(^\s*(?:func\.)+func.*?\{.*?(?:func\.)+return.*?\}\n)',
+      re.MULTILINE | re.DOTALL)
   while True:
-    pattern = r'^\s*parameters(\[.*?\])\n?(^\s*(?:func\.)+func.*?\{.*?(?:func\.)+return.*?\}\n)'
-    func_match = re.search(pattern, module, re.MULTILINE | re.DOTALL)
+    func_match = re.search(compiled_regex, module)
     if func_match is None:
       break
 
@@ -48,12 +78,7 @@ def _substitute_function_template(module: str) -> str:
     for value_dict in value_list:
       replacement_text += '\\n'
       replacement_text += func_template.substitute(value_dict)
-    module = re.sub(
-        pattern,
-        replacement_text,
-        module,
-        count=1,
-        flags=re.MULTILINE | re.DOTALL)
+    module = re.sub(compiled_regex, replacement_text, module, count=1)
   return module
 
 
@@ -81,7 +106,9 @@ def main(_: Sequence[str]) -> None:
       if len(out) != 2:
         raise ValueError('The file name must start with {}'.format(file_prefix))
       tag = out[1][:-5]  # the last five values = ".mlir"
-      modules.append((tag, _substitute_function_template(module)))
+      module = _substitute_for_loop_template(module)
+      module = _substitute_function_template(module)
+      modules.append((tag, module))
 
   with open(_OUTPUT_FILE.value, 'w') as f:
     f.write("""/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.

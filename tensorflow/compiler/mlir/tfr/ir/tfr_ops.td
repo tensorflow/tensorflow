@@ -19,9 +19,9 @@ limitations under the License.
 #define DIALECT_TFR_OPS_
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/FunctionInterfaces.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
@@ -42,7 +42,7 @@ def TFR_Dialect : Dialect {
 
   let cppNamespace = "::mlir::TFR";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -140,13 +140,11 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
     Variadic<TFR_allowedResultType>:$outs);
 
   let extraClassDeclaration = [{
-    StringRef getCallee() { return callee(); }
-
     // Get the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
+    operand_range getArgOperands() { return getArgs(); }
 
     // Return the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return calleeAttr(); }
+    CallInterfaceCallable getCallableForCallee() { return getCalleeAttr(); }
   }];
 
   let assemblyFormat = [{
@@ -175,7 +173,7 @@ def TFR_CastOp : TFR_Op<"cast", [NoSideEffect]> {
     // Return element type of the input tensor type. Only available when the
     // input is a MLIR built-in tensor type.
     Attribute getInputElementType() {
-      if (auto ty = arg().getType().dyn_cast<TensorType>()) {
+      if (auto ty = getArg().getType().dyn_cast<TensorType>()) {
         return TypeAttr::get(ty.getElementType());
       }
       return {};
@@ -436,11 +434,6 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   ];
 
   let extraClassDeclaration = [{
-    /// Returns the type of this function.
-    /// FIXME: We should drive this via the ODS `type` param.
-    FunctionType getFunctionType() {
-      return getFunctionTypeAttr().getValue().cast<FunctionType>();
-    }
     LogicalResult verifyType() { return success(); }
 
     /// Returns the argument types of this function.

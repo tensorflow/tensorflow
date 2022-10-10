@@ -22,12 +22,12 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
-#include "tensorflow/compiler/xla/python/host_callback.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/python/py_client_gpu.h"
@@ -111,10 +111,10 @@ std::vector<py::object> PyClient::LiveBuffersOnDevice(PjRtDevice* device) {
   return buffers;
 }
 
-std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
+std::vector<std::shared_ptr<PyLoadedExecutable>> PyClient::LiveExecutables() {
   CHECK(PyGILState_Check());
-  std::vector<std::shared_ptr<PyExecutable>> executables;
-  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+  std::vector<std::shared_ptr<PyLoadedExecutable>> executables;
+  for (PyLoadedExecutable* exec = executables_; exec; exec = exec->next_) {
     if (!exec->is_deleted()) {
       executables.push_back(exec->shared_from_this());
     }
@@ -167,7 +167,7 @@ Status PyClient::Defragment() {
             pjrt_client_
                 ->BufferFromHostLiteral(*tmp_buffer.host_copy,
                                         tmp_buffer.py_buffer->buffer_->device())
-                .ValueOrDie();
+                .value();
         TF_CHECK_OK(new_copy->BlockHostUntilReady());
         tmp_buffer.py_buffer->buffer_.reset(new_copy.release());
       }
@@ -315,10 +315,10 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
   return result;
 }
 
-StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
+StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -328,15 +328,15 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_shared<PyExecutable>(
+  return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint), std::move(host_callbacks));
 }
 
-StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
+StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -349,20 +349,20 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_shared<PyExecutable>(
+  return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint), std::move(host_callbacks));
 }
 
 StatusOr<py::bytes> PyClient::SerializeExecutable(
-    const PyExecutable& executable) const {
+    const PyLoadedExecutable& executable) const {
   return pjrt_client_->SerializeExecutable(executable.pjrt_executable());
 }
 
-StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
+StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
-  std::unique_ptr<PjRtExecutable> executable;
+  std::unique_ptr<PjRtLoadedExecutable> executable;
   std::optional<std::string> fingerprint;
   {
     py::gil_scoped_release gil_release;
@@ -372,7 +372,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_shared<PyExecutable>(
+  return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint), std::move(host_callbacks));
 }
@@ -429,7 +429,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     }
   }
 
-  for (PyExecutable* executable = executables_; executable;
+  for (PyLoadedExecutable* executable = executables_; executable;
        executable = executable->next_) {
     if (!executable->is_deleted()) {
       HeapProfileKey key{executable->traceback(),
@@ -467,7 +467,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
       auto* device_label = sample->add_label();
       device_label->set_key(device_string_id);
       device_label->set_str(
-          builder.StringId(entry.first.device->DebugString()));
+          builder.StringId(std::string(entry.first.device->DebugString())));
     } else {
       kind_label->set_str(executable_string_id);
     }
@@ -577,7 +577,7 @@ StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
 
   host_callback->callback = [callback = std::move(callback)](void** outputs,
                                                              void** inputs) {
-    callback->PrepareAndCall(outputs, inputs, /*status=*/nullptr);
+    return callback->PrepareAndCall(outputs, inputs);
   };
 
   py::capsule callback_capsule(
