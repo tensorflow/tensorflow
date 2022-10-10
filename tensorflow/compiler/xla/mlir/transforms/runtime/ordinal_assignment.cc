@@ -47,12 +47,12 @@ void OrdinalAssignmentPass::runOnOperation() {
 
   for (ExportOp op : module.getOps<ExportOp>()) {
     // Collect export ops without assigned ordinals.
-    if (!op.getOrdinal()) {
+    if (!op.ordinal()) {
       unassigned.push_back(op);
       continue;
     }
 
-    unsigned ordinal = op.getOrdinal()->getLimitedValue();
+    unsigned ordinal = *op.ordinal();
     if (ordinal >= assigned.size()) assigned.resize(ordinal + 1);
 
     // Check that we do not have any duplicate exports.

@@ -158,12 +158,8 @@ class JitCompiler {
     return exported_[ordinal];
   }
 
-  // Marks function for export and makes it invocable by the runtime executable.
-  void Export(mlir::func::FuncOp func, unsigned ordinal) const;
-
  private:
-  JitCompiler(Options opts, std::string_view mlir_module,
-              absl::Span<const std::string_view> exported);
+  JitCompiler(Options opts, std::string_view mlir_module);
 
   absl::Status Error(std::string_view error) {
     // TODO(ezhulenev): Pass diagnstic as a status payload.
