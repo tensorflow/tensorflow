@@ -2016,6 +2016,13 @@ void FixMixedMeshShapeResharding(HloInstruction* inst, int operand_num,
       cache_vector->push_back({dst_sharding, replace_with});
     }
   }
+  size_t size =
+      GetInstructionSize(replace_with->shape()) / (1024 * 1024 * 1024);
+  if (size > 1) {
+    LOG(WARNING) << "Large reshape instruction inserted (operand of "
+                 << inst->name() << ") with size " << size
+                 << "GB: " << replace_with->ToString();
+  }
 
   TF_CHECK_OK(inst->ReplaceOperandWith(operand_num, replace_with));
 }

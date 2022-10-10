@@ -142,8 +142,15 @@ struct ShardingStrategy {
       if (s.IsReplicated()) {
         input_sharding_str += "[R],";
       } else {
-        input_sharding_str +=
-            "[" + absl::StrJoin(s.tile_assignment().dimensions(), ", ") + "],";
+        if (s.ReplicateOnLastTileDim()) {
+          input_sharding_str +=
+              "[" + absl::StrJoin(s.tile_assignment().dimensions(), ", ") +
+              "]last_tile_dim_replicate,";
+        } else {
+          input_sharding_str +=
+              "[" + absl::StrJoin(s.tile_assignment().dimensions(), ", ") +
+              "],";
+        }
       }
     }
     input_sharding_str += "}\n";
@@ -188,6 +195,9 @@ struct StrategyVector {
       absl::StrAppend(&str, std::string(indention, ' '),
                       "following instruction: ", following->instruction_id,
                       "\n");
+    } else {
+      absl::StrAppend(&str, std::string(indention, ' '),
+                      "source instruction\n");
     }
     for (auto i : in_nodes) {
       absl::StrAppend(&str, std::string(indention, ' '), "in nodes: id=", i->id,

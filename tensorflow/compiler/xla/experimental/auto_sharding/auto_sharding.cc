@@ -1792,11 +1792,14 @@ void PrintLargestInstructions(
   size_t k = 3;
   k = std::min(k, time_memory_usage.size());
   std::vector<std::pair<size_t, double>> instruction_mem;
+  absl::flat_hash_set<size_t> instruction_set;
   for (size_t t = 0; t < k; t++) {
     for (auto i : L[time_memory_usage.at(t).first]) {
       double mem = m[i][s_val[i]];
-      if (mem > 100 * 1024 * 1024) {
+      if (mem > 100 * 1024 * 1024 &&
+          instruction_set.find(i) == instruction_set.end()) {
         instruction_mem.push_back(std::make_pair(i, mem));
+        instruction_set.insert(i);
       }
     }
   }
@@ -1986,8 +1989,13 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   // c.
   if (M > 0) {
     for (size_t t = 0; t < N; ++t) {
+      std::string str = "[";
+      for (auto i : L[t]) {
+        absl::StrAppend(&str, i, ", ");
+      }
+      str += "]";
       MPConstraint* constraint = solver->MakeRowConstraint(
-          -MPSolver::infinity(), M, absl::StrCat("mem[", t, "]"));
+          -MPSolver::infinity(), M, absl::StrCat("mem[", t, "] = ", str));
       for (auto i : L[t]) {
         for (size_t j = 0; j < s[i].size(); ++j) {
           double accumulated_coefficient = constraint->GetCoefficient(s[i][j]);
@@ -2255,7 +2263,8 @@ CallSolver(const HloInstructionSequence& sequence,
                            instruction_names);
 }
 
-void CheckHloSharding(const HloInstructionSequence& sequence) {
+void CheckHloSharding(const HloInstructionSequence& sequence,
+                      size_t total_num_devices) {
   const std::vector<HloInstruction*>& instructions = sequence.instructions();
   std::vector<std::pair<size_t, std::string>> size_string;
   for (HloInstruction* ins : instructions) {
@@ -2266,6 +2275,16 @@ void CheckHloSharding(const HloInstructionSequence& sequence) {
         ins->opcode() != HloOpcode::kGetTupleElement) {
       // TODO(yuemmawang) Check other cases when it's helpful (it's not
       // needed so far).
+      double size = GetInstructionSize(ins->shape()) / 1024 / 1024 / 1024;
+      if ((!ShardingIsComplete(ins->sharding(), total_num_devices) ||
+           ins->sharding().IsReplicated()) &&
+          size > 1) {
+        LOG(INFO) << "Instruction is not fully sharded: (" << size << " GB) "
+                  << ins->ToString();
+      }
+    } else {
+      LOG(INFO) << "Instruction does not have sharding: " << ins->name();
+    }
       for (const auto& op : ins->operands()) {
         if (op->has_sharding()) {
           if (op->sharding().IsReplicated() || ins->sharding().IsReplicated()) {
@@ -2301,10 +2320,12 @@ void CheckHloSharding(const HloInstructionSequence& sequence) {
                                            "\n Operand: ", op->ToString());
             size_string.push_back(std::make_pair(op_size, std::move(str)));
           }
+        } else {
+          LOG(INFO) << "Instruction " << op->name()
+                    << " does not have sharding.";
         }
       }
     }
-  }
   struct {
     bool operator()(const std::pair<size_t, std::string>& a,
                     const std::pair<size_t, std::string>& b) const {
@@ -3125,7 +3146,7 @@ StatusOr<bool> AutoSharding::Run(
   }
 
   if (VLOG_IS_ON(1)) {
-    spmd::CheckHloSharding(sequence);
+    spmd::CheckHloSharding(sequence, original_device_mesh.num_elements());
   }
   module_is_changed = true;
 
