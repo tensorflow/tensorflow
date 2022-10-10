@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "absl/time/time.h"
@@ -22,8 +23,6 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
@@ -138,12 +137,11 @@ TEST(CAPI, MultiClientCoordinationService) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     // Normal execution: all cluster members are online.
-    std::this_thread::sleep_for(std::chrono::seconds(5));
     TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-    // Sleep for 10 seconds and run colletive ops on cluster except worker/1.
+    // Sleep for 10 seconds and run collective ops on cluster except worker/1.
     // Since worker/1 thread directly exits here, its heartbeat will expire,
     // leading to UnavailableError on leader and then propagate to all other
     // members in cluster.
