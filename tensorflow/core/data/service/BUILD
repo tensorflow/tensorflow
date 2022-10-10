@@ -997,6 +997,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
