@@ -276,3 +276,36 @@ func.func @map_unary_memref(%input: memref<64xf32>, %init: memref<64xf32>) {
   func.return
 }
 // CHECK-LABEL: func @map_unary_memref
+
+// -----
+
+func.func @sort(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
+                %init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
+    -> (tensor<?x?xf32>, tensor<?x?xi32>) {
+  %sorted1, %sorted2 = thlo.sort
+      ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
+      outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
+      { dimension = 0 : i64, is_stable = true }
+      (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
+        %gt = arith.cmpf ogt, %e11, %e12: f32
+        thlo.yield %gt : i1
+      }
+  func.return %sorted1, %sorted2 : tensor<?x?xf32>, tensor<?x?xi32>
+}
+// CHECK-LABEL: func @sort
+
+// -----
+
+func.func @sort_memref(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>,
+                       %init1: memref<?x?xf32>, %init2: memref<?x?xi32>) {
+  thlo.sort
+      ins(%input1: memref<?x?xf32>, %input2: memref<?x?xi32>)
+      outs(%init1: memref<?x?xf32>, %init2: memref<?x?xi32>)
+      { dimension = 0 : i64, is_stable = true }
+      (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
+        %gt = arith.cmpf ogt, %e11, %e12: f32
+        thlo.yield %gt : i1
+      }
+  func.return
+}
+// CHECK-LABEL: func @sort_memref

@@ -197,6 +197,35 @@ void THLODialect::initialize() {
 }
 
 //===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult checkYieldOutputs(YieldOp yieldOp,
+                                TypeRange expectedElementTypes) {
+  uint64_t numOutputs = expectedElementTypes.size();
+  if (yieldOp.getValues().size() != numOutputs) {
+    return yieldOp.emitOpError("expects number of tensor output args = ")
+           << numOutputs << " to match the number of yield operands = "
+           << yieldOp.getValues().size();
+  }
+
+  for (auto &item : llvm::enumerate(
+           llvm::zip(expectedElementTypes, yieldOp.getOperandTypes()))) {
+    Type outputElementType, resultType;
+    unsigned index = item.index();
+    std::tie(outputElementType, resultType) = item.value();
+    if (outputElementType != resultType)
+      return yieldOp.emitOpError("expects yield operand ")
+             << index << " with type = " << resultType
+             << " to match output arg element type = " << outputElementType;
+  }
+
+  return success();
+}
+
+LogicalResult YieldOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
@@ -692,6 +721,13 @@ LogicalResult ScatterOp::verify() {
            << "expected `updates` element type to match `init` element type";
   }
 
+  // The update computation should yield exactly 1 result.
+  auto updateTerminator = cast<YieldOp>(getBody()->getTerminator());
+  Type outputElementType =
+      getOutputs().front().getType().cast<ShapedType>().getElementType();
+  if (!succeeded(checkYieldOutputs(updateTerminator, outputElementType)))
+    return failure();
+
   return success();
 }
 
@@ -955,6 +991,7 @@ LogicalResult TransposeOp::verify() {
                            << "]) = " << inputDim;
     }
   }
+
   return verifyDestinationStyleOp(getOperation());
 }
 
@@ -1116,6 +1153,11 @@ LogicalResult ReductionOp::verify() {
                          << blockArgumentOutputTypes;
   }
 
+  // The reducer should yield exactly getNumOutputs() outputs.
+  YieldOp blockTerminator = cast<YieldOp>(block->getTerminator());
+  if (!succeeded(checkYieldOutputs(blockTerminator, outputElementTypes)))
+    return failure();
+
   return verifyDestinationStyleOp(getOperation());
 }
 
@@ -1206,7 +1248,7 @@ LogicalResult MapOp::verify() {
 
   // The shape of each input must match the shape of the output.
   auto outputShape =
-      getOutputs().front().getType().dyn_cast<ShapedType>().getShape();
+      getOutputs().front().getType().cast<ShapedType>().getShape();
   for (Type inputArgType : TypeRange{getInputs()}) {
     auto inputElemShape = inputArgType.cast<ShapedType>().getShape();
     if (inputElemShape != outputShape) {
@@ -1215,6 +1257,13 @@ LogicalResult MapOp::verify() {
                            << ")";
     }
   }
+
+  // The mapper should yield exactly one output.
+  YieldOp mapperTerminator = cast<YieldOp>(bodyBlock->getTerminator());
+  Type outputElementType =
+      getOutputs().front().getType().cast<ShapedType>().getElementType();
+  if (!succeeded(checkYieldOutputs(mapperTerminator, outputElementType)))
+    return failure();
 
   return verifyDestinationStyleOp(getOperation());
 }
@@ -1237,32 +1286,105 @@ ArrayAttr MapOp::getIndexingMaps() {
 bool MapOp::hasIndexSemantics() { return false; }
 
 //===----------------------------------------------------------------------===//
-// YieldOp
+// SortOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult YieldOp::verify() {
-  auto parentOp = dyn_cast<linalg::DestinationStyleOpInterface>(
-      *(getOperation()->getParentOp()));
+ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (parseDstStyleOp(parser, result)) return failure();
 
-  auto tensorOuts = parentOp.getOutputs();
-  if (tensorOuts.size() != getValues().size())
-    return emitOpError("expects number of tensor output args = ")
-           << tensorOuts.size()
-           << " to match the number of yield operands = " << getValues().size();
-
-  TypeRange tensorTypes{ValueRange{tensorOuts}};
-  for (auto &item :
-       llvm::enumerate(llvm::zip(tensorTypes, getOperandTypes()))) {
-    Type outputType, resultType;
-    unsigned index = item.index();
-    std::tie(outputType, resultType) = item.value();
-    Type outputElementType = outputType.cast<ShapedType>().getElementType();
-    if (outputElementType != resultType)
-      return emitOpError("expects yield operand ")
-             << index << " with type = " << resultType
-             << " to match output arg element type = " << outputElementType;
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
   }
+
+  Region *comparator = result.addRegion();
+  if (parser.parseRegion(*comparator, regionArgs)) return failure();
+
   return success();
+}
+
+void SortOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<SortOp>(*this, p);
+
+  p << "(";
+  llvm::interleaveComma(getComparator().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(getComparator(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult SortOp::verify() {
+  auto *comparatorBlock = getBody();
+  auto comparatorArgs = comparatorBlock->getArguments();
+
+  // Checks that the arity of the comparator is equal to twice the number of
+  // inputs.
+  if (comparatorArgs.size() != getNumInputs() * 2)
+    return emitOpError() << "expected the number of block arguments "
+                         << comparatorArgs.size() << " to be twice the number "
+                         << "of inputs (2*" << getNumInputs() << ")";
+
+  // Checks that the comparator's arguments match the element type of the
+  // inputs.
+  TypeRange inputTypes = TypeRange{getInputs()};
+  TypeRange comparatorArgElementTypes = comparatorBlock->getArgumentTypes();
+  for (size_t i = 0; i < getInputs().size(); ++i) {
+    Type inputArgElemType = inputTypes[i].cast<ShapedType>().getElementType(),
+         comparatorArgElemType1 = comparatorArgElementTypes[2 * i],
+         comparatorArgElemType2 = comparatorArgElementTypes[2 * i + 1];
+    if (comparatorArgElemType1 != inputArgElemType ||
+        comparatorArgElemType2 != inputArgElemType)
+      return emitOpError() << "expected element type of input " << i
+                           << " to match type of the corresponding "
+                              "arguments to the comparison function but got "
+                           << inputArgElemType << " and ("
+                           << comparatorArgElemType1 << ", "
+                           << comparatorArgElemType2 << ")";
+  }
+
+  // Checks that the comparator yields exactly one boolean output.
+  YieldOp comparatorTerminator =
+      cast<YieldOp>(comparatorBlock->getTerminator());
+  if (!succeeded(
+          checkYieldOutputs(comparatorTerminator,
+                            TypeRange({IntegerType::get(getContext(), 1)}))))
+    return failure();
+
+  // Checks that the inputs all have the same shape.
+  ArrayRef<int64_t> referenceShape =
+      getInputs().front().getType().cast<ShapedType>().getShape();
+
+  for (auto &item : llvm::enumerate(TypeRange{getInputs()})) {
+    ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
+    if (shape != referenceShape) {
+      return emitOpError() << "expected all inputs to have the same shape ("
+                           << referenceShape << ") but input " << item.index()
+                           << " has shape (" << shape << ")";
+    }
+  }
+
+  // Checks that the outputs have the same shape as the inputs.
+  for (auto &item : llvm::enumerate(TypeRange{getOutputs()})) {
+    ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
+    if (shape != referenceShape) {
+      return emitOpError() << "expected outputs to have shape ("
+                           << referenceShape << ") but output " << item.index()
+                           << " has shape (" << shape << ")";
+    }
+  }
+
+  // Checks that the rank of the reference shape is larger than the absolute
+  // value of the sorting dimension. This is enough to ensure that the dimension
+  // is valid, since all inputs are known to have the same shape.
+  int64_t referenceRank = referenceShape.size();
+  if (getDimension() >= referenceRank || getDimension() < 0) {
+    return emitOpError() << "sorting dimension must be in range [0, "
+                         << referenceRank << ") but got " << getDimension();
+  }
+
+  return verifyDestinationStyleOp(getOperation());
 }
 
 }  // namespace thlo

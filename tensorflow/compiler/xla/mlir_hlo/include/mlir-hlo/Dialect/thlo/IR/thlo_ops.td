@@ -53,7 +53,8 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
 }
 
 def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
-    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp", "TransposeOp"]>]>,
+    ParentOneOf<["MapOp", "ReductionOp", "ScatterOp", "SortOp",
+                 "TransposeOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation for tHLO ops with regions.";
   let assemblyFormat = "attr-dict $values `:` type($values)";
@@ -319,6 +320,48 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
       return nullptr;
     }
 
+  }];
+}
+
+def THLO_SortOp : THLO_DstStyleOp<"sort", [RecursiveSideEffects,
+        SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Destination-style twin for the `mhlo.sort`";
+  let description = [{
+    Sorts the given `operands` along the given `dimension` using the given
+    `comparator`.
+
+    Example:
+    ```
+      %sorted1, %sorted2 = thlo.sort
+          ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
+          outs(%init1: tensor<?x?xf32>, %init2: tensor<?x?xi32>)
+          { dimension = 0 : i64, is_stable = true }
+          (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
+            %gt = arith.cmpf ogt, %e11, %e12: f32
+            thlo.yield %gt : i1
+          }
+    ```
+    See https://www.tensorflow.org/xla/operation_semantics#sort.
+  }];
+
+  let arguments = (ins
+    // Input args
+    Variadic<TensorOrMemref>:$inputs,
+    // Output args
+    Variadic<TensorOrMemref>:$inits,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stable
+  );
+
+  let results = (outs Variadic<AnyTensor>:$result);
+  let regions = (region SizedRegion<1>:$comparator);
+
+  let extraClassDeclaration = [{
+    // Implement functions necessary for DestinationStyleOpInterface.
+    mlir::ValueRange getOutputs() { return getInits(); }
+    unsigned getNumInputs() { return getInputs().size(); };
+    unsigned getNumOutputs() { return getInits().size(); };
   }];
 }
 
