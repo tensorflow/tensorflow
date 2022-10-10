@@ -3503,7 +3503,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
   # default shape out of the placeholder. Override that
   # shape to be the value determined here, so partial shapes can be
   # propagated.
-  result._dense_shape_default = dense_shape_default
+  result.set_shape(dense_shape_default)
   return result
 
 # pylint: enable=redefined-outer-name
