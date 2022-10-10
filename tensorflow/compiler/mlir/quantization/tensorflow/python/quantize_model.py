@@ -338,7 +338,7 @@ def _log_sample_num_for_calibration(
     logging.info('Representative dataset size unknown.')
   else:
     total_num_samples = str(num_samples)
-    logging.info('Using representative dataset of size: %d', total_num_samples)
+    logging.info('Using representative dataset of size: %s', total_num_samples)
 
   sample_num = 1
   for sample in representative_dataset:

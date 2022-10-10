@@ -23,6 +23,9 @@ def DenseElementsAttr : ElementsAttrBase<
 // Checks if the data format is "NHWC".
 def IsDataFormatNHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NHWC\"">;
 
+// Checks if the data format is "NDHWC".
+def IsDataFormatNDHWC : ConstantAttr<TF_ConvnetDataFormatAttr, "\"NDHWC\"">;
+
 // Checks if the op is constant op.
 def IsConstTensor :  Constraint<CPred<"dyn_cast_or_null<TF::ConstOp>($0.getDefiningOp())">>;
 
