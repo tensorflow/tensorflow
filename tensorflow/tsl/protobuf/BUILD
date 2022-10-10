@@ -18,19 +18,6 @@ package(
 )
 
 tf_proto_library(
-    name = "autotuning_proto",
-    srcs = ["autotuning.proto"],
-    make_default_target_header_only = True,
-    protodeps = [":dnn_proto"],
-)
-
-tf_proto_library(
-    name = "dnn_proto",
-    srcs = ["dnn.proto"],
-    make_default_target_header_only = True,
-)
-
-tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,

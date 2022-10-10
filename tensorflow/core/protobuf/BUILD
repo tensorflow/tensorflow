@@ -63,9 +63,9 @@ COMMON_PROTO_SRCS = [
 tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
+    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["//tensorflow/compiler/xla/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
