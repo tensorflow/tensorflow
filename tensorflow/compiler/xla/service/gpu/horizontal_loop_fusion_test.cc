@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -71,6 +72,7 @@ TEST_F(HorizontalLoopFusionTest, BasicTest) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   const HloInstruction* entry_root =
@@ -189,6 +191,7 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -296,7 +299,8 @@ TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
-  EXPECT_TRUE(HloDCE().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -425,6 +429,7 @@ TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   VLOG(2) << "Dump after horizontal fusion:";

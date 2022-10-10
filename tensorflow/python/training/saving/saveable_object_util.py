@@ -763,7 +763,7 @@ class SaveableCompatibilityConverter(trackable.Trackable):
     expected_keys = []
     for saveable in self.saveables:
       expected_keys.extend(
-          _convert_to_string(spec.name)
+          trackable_utils.extract_local_name(_convert_to_string(spec.name))
           for spec in saveable.specs)
     if set(expected_keys) != restored_tensors.keys():
       raise ValueError(f"Could not restore object {self._obj} because not all "
@@ -800,7 +800,7 @@ def saveable_object_to_restore_fn(saveables):
     for saveable in saveables:
       saveable_restored_tensors = []
       for spec in saveable.specs:
-        name = _convert_to_string(spec.name)
+        name = trackable_utils.extract_local_name(_convert_to_string(spec.name))
         slice_spec = _convert_to_string(spec.slice_spec)
 
         maybe_tensor = restored_tensors[name]

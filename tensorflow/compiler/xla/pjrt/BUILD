@@ -1,10 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "if_nccl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 
@@ -210,22 +207,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "pjrt_client_test_gpu",
-    srcs = ["pjrt_client_test_gpu.cc"],
-    tags = [
-        "no_oss",
-        "notap",
-        "requires-gpu-nvidia:2",
-    ],
-    deps = [
-        ":gpu_device",
-        ":pjrt_client_test_common",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/tsl/platform:test_main",
-    ],
-)
-
 cc_library(
     name = "pjrt_executable",
     srcs = ["pjrt_executable.cc"],
@@ -356,6 +337,24 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "pjrt_stream_executor_client_test",
+    srcs = ["pjrt_stream_executor_client_test.cc"],
+    deps = [
+        ":pjrt_client",
+        ":pjrt_stream_executor_client",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "tpu_client",
     srcs = ["tpu_client.cc"],
@@ -425,38 +424,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_device",
-    srcs = ["gpu_device.cc"],
-    hdrs = ["gpu_device.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
-    visibility = [":friends"],
-    deps = [
-        ":pjrt_stream_executor_client",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/tsl/framework:bfc_allocator",
-        "//tensorflow/tsl/framework:device_id",
-        "//tensorflow/tsl/util:env_var",
-        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
-        "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
-    ] + if_cuda([
-        ":nccl_id_store",
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core/common_runtime/gpu:gpu_cudamallocasync_allocator",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocm_headers",
-    ]),
-)
-
-cc_library(
     name = "pjrt_plugin_device_client",
     deps = [
         ":pjrt_plugin_device_client_headers",
@@ -472,27 +439,6 @@ cc_library(
     ],
 )
 
-# We actually wish we could write if_cuda(if_nccl(...)) in :gpu_device,
-# but Bazel does not allow nested selects. We can work around the problem using
-# an intermediate library that has the conditional NCCL pieces that is only
-# itself included as a dependency if CUDA is enabled.
-cc_library(
-    name = "nccl_id_store",
-    srcs = ["nccl_id_store.cc"],
-    hdrs = ["nccl_id_store.h"],
-    defines = if_nccl(["NCCL_ENABLED=1"]),
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/synchronization",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:global_device_id",
-        "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
-)
-
 cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
@@ -504,10 +450,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:chlo_legalize_to_hlo_pass",
-        "//tensorflow/compiler/xla/mlir_hlo:sink_constants_to_control_flow",
-        "//tensorflow/compiler/xla/mlir_hlo:sparse_chlo_legalize_to_linalg",
-        "//tensorflow/compiler/xla/mlir_hlo:stablehlo_legalize_to_hlo_pass",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -719,9 +662,9 @@ tf_cc_test(
     srcs = ["host_callback_test.cc"],
     deps = [
         ":host_callback",
+        ":pjrt_client",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:test",
         "@com_google_googletest//:gtest_main",
     ],
 )

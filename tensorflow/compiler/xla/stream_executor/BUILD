@@ -5,14 +5,12 @@
 # do not link against restricted binary blobs.
 
 # TODO(rdzhabarov): XLA should have its own tensorflow independent rule.
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
     default_visibility = [
@@ -177,8 +175,9 @@ cc_library(
 tf_proto_library(
     name = "dnn_proto",
     srcs = ["dnn.proto"],
-    cc_api_version = 2,
     make_default_target_header_only = True,
+    protodeps = ["//tensorflow/tsl/protobuf:dnn_proto"],
+    exports = ["//tensorflow/tsl/protobuf:dnn_proto"],
 )
 
 cc_library(
@@ -702,6 +701,7 @@ cc_library(
         ":stream_executor_pimpl",
         ":timer",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc_impl",
+        "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
     ],
 )
 

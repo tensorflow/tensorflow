@@ -20,11 +20,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -50,6 +48,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   static constexpr const char kTranscendentalsKey[] = "transcendentals";
   static constexpr const char kBytesAccessedKey[] = "bytes accessed";
   static constexpr const char kOptimalSecondsKey[] = "optimal_seconds";
+  static constexpr const char kUtilizationKey[] = "utilization";
 
   // A struct to encapsulate hardware-related options. This includes the shape
   // size function, which is used to encode hardware-specific padding and per
@@ -193,6 +192,12 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   int64_t bytes_accessed(const HloInstruction& hlo) const;
   int64_t operand_bytes_accessed(const HloInstruction& hlo, int64_t operand_num,
                                  ShapeIndex index = {}) const;
+  // Value indicating how much each input of the instruction
+  // is used assuming its output is fully used.
+  // This is 1.0 for most cases except operations involving slicing (<1)
+  // and on some backends in addition reuse of inputs (>1).
+  float operand_utilization(const HloInstruction& hlo, int64_t operand_num,
+                            ShapeIndex index = {}) const;
   int64_t output_bytes_accessed(const HloInstruction& hlo,
                                 ShapeIndex index = {}) const;
   float optimal_seconds(const HloInstruction& hlo) const;
@@ -220,6 +225,8 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // input/output at the shape index.
   static std::string GetOperandBytesAccessedKey(int64_t operand_num,
                                                 ShapeIndex index = {});
+  static std::string GetOperandUtilizationKey(int64_t operand_num,
+                                              ShapeIndex index = {});
   static std::string GetOutputBytesAccessedKey(ShapeIndex index = {});
 
   // Returns the estimated convolution flops.
@@ -241,6 +248,14 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64_t kFmaFlops = 2;
+
+  // Operations like broadcast with reused inputs are
+  // not handled efficiently on some platforms.
+  virtual bool input_reuse_is_inefficient() const { return false; }
+
+  // Small constants can be embedded in the assembly and not require
+  // memory access.
+  virtual size_t immediate_constant_max_elements() const { return 1; }
 
   // Creates a nested instance of HloCostAnalysis using the same Options.
   virtual std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis();
@@ -275,6 +290,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   void SetOperandBytesAccessed(int64_t operand_num, float value);
   void SetOperandBytesAccessed(int64_t operand_num, ShapeIndex index,
                                float value);
+
+  void SetOperandUtilization(int64_t operand_num, float value);
+  void SetOperandUtilization(int64_t operand_num, ShapeIndex index,
+                             float value);
 
   // Set bytes accessed by the output at the shape index.
   void SetOutputBytesAccessed(float value);

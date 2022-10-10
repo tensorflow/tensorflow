@@ -36,12 +36,12 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_OPTIMIZEFUNCTIONALOPSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
-    : public OptimizeFunctionalOpsPassBase<OptimizeFunctionalOpsPass> {
+    : public impl::OptimizeFunctionalOpsPassBase<OptimizeFunctionalOpsPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeFunctionalOpsPass)
 
   void runOnOperation() override;

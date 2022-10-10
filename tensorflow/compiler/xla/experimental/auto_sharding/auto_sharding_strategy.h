@@ -357,23 +357,27 @@ class ProfilingResult {
 // the real profiling result.
 class ClusterEnvironment {
  public:
-  ClusterEnvironment(const Array<int64_t>& device_mesh,
+  ClusterEnvironment(const Array<int64_t>& original_device_mesh,
+                     const Array<int64_t>& device_mesh,
                      absl::Span<const double> mesh_alpha,
                      absl::Span<const double> mesh_beta,
                      const ProfilingResult& prof_result,
                      const AutoShardingSolverOption& solver_option)
-      : device_mesh_(device_mesh),
+      : original_device_mesh_(original_device_mesh),
+        device_mesh_(device_mesh),
         mesh_alpha_(mesh_alpha.begin(), mesh_alpha.end()),
         mesh_beta_(mesh_beta.begin(), mesh_beta.end()),
         prof_result_(prof_result),
         total_devices_(device_mesh.num_elements()),
-        device_mesh_1d_(device_mesh),
+        device_mesh_1d_(original_device_mesh),
         solver_option_(solver_option) {
     // Build replica group for each dimension.
     non_zero_mesh_dims_ =
         VectorGreaterThanOneElementIndices(device_mesh.dimensions());
     GenerateCachedReplicaGroups();
-    device_mesh_1d_.Reshape({device_mesh.num_elements(), 1});
+    // TODO(yuemmawang) Find the largest dimension in original_device_mesh and
+    // create 1d mesh on that dimension.
+    device_mesh_1d_.Reshape({original_device_mesh.num_elements(), 1});
   }
 
   size_t NumDevices() const { return total_devices_; }
@@ -388,6 +392,11 @@ class ClusterEnvironment {
 
   bool IsDeviceMesh1D() const {
     return VectorGreaterThanOneElementCount(device_mesh_.dimensions()) == 1;
+  }
+
+  bool IsOriginalDeviceMesh2D() const {
+    return VectorGreaterThanOneElementCount(
+               original_device_mesh_.dimensions()) == 2;
   }
 
   double AllGatherCost(double num_bytes, int mesh_dim) const {
@@ -414,7 +423,8 @@ class ClusterEnvironment {
   }
 
   // TODO(zhuohan): distinguish dtype and reduce_op.
-  double AllReduceCost(double num_bytes, int mesh_dim) const {
+  double AllReduceCost(double num_bytes, int32_t mesh_dim,
+                       int32_t mesh_dim_another = -1) const {
     if (solver_option_.override_all_reduce_cost) {
       return solver_option_.all_reduce_cost;
     }
@@ -423,12 +433,22 @@ class ClusterEnvironment {
       return prof_result_.EstimateAllReduceCost(
           cached_replica_groups_[mesh_dim], num_bytes / 4, "float32");
     }
-
-    int64_t num_devices = device_mesh_.dim(mesh_dim);
-    return (round(mesh_alpha_[mesh_dim] + mesh_beta_[mesh_dim] * 2 *
-                                              (num_devices - 1) / num_devices *
-                                              num_bytes) +
-            0.01);
+    double alpha, beta;
+    int64_t num_devices;
+    if (mesh_dim_another == -1) {
+      // Only communicating on one mesh dimension.
+      alpha = mesh_alpha_[mesh_dim];
+      beta = mesh_beta_[mesh_dim];
+      num_devices = device_mesh_.dim(mesh_dim);
+    } else {
+      // Communicating through both mesh dimensions.
+      alpha = std::max(mesh_alpha_[mesh_dim], mesh_alpha_[mesh_dim_another]);
+      beta = std::max(mesh_beta_[mesh_dim], mesh_beta_[mesh_dim_another]);
+      num_devices = device_mesh_.num_elements();
+    }
+    return (
+        round(alpha + beta * 2 * (num_devices - 1) / num_devices * num_bytes) +
+        0.01);
   }
 
   double ReduceScatterCost(double num_bytes, int mesh_dim) const {
@@ -464,14 +484,9 @@ class ClusterEnvironment {
       return kInfinityCost;
     }
 
-    // A penalty factor to make the theoretical cost match the
-    // empirical cost on v100 + nvlink.
     int64_t num_devices = device_mesh_.dim(mesh_dim);
-    double penalty_factor = static_cast<double>(num_devices) / 2.0;
-    return (round(mesh_alpha_[mesh_dim] +
-                  mesh_beta_[mesh_dim] * (num_devices - 1) / num_devices /
-                      num_devices * num_bytes * penalty_factor) +
-            0.001);
+    return AllToAllCostUtil(num_bytes, mesh_dim, num_devices, mesh_alpha_,
+                            mesh_beta_);
   }
 
   double DotCost(const Shape& lhs_shape, const Shape& rhs_shape,
@@ -521,15 +536,32 @@ class ClusterEnvironment {
     if (dst_spec.IsTiled()) {
       dst_rank = dst_spec.TiledDataRank();
     }
-    std::vector<int64_t> src_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_);
-    std::vector<int64_t> dst_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_);
-
+    std::vector<int64_t> src_tensor_dim_to_mesh_dim;
+    if (VectorGreaterThanOneElementCount(
+            src_spec.tile_assignment().dimensions()) == 1 &&
+        VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
+      // src spec is 1D and device_mesh is 2D or 3D
+      src_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_1d_);
+    } else {
+      src_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_);
+    }
+    std::vector<int64_t> dst_tensor_dim_to_mesh_dim;
+    if (VectorGreaterThanOneElementCount(
+            dst_spec.tile_assignment().dimensions()) == 1 &&
+        VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
+      // src spec is 1D and device_mesh is 2D or 3D
+      dst_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_1d_);
+    } else {
+      dst_tensor_dim_to_mesh_dim =
+          GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_);
+    }
     if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
       return ReshardingCostMixedMeshShape(
-          shape, src_spec, dst_spec, src_tensor_dim_to_mesh_dim,
-          dst_tensor_dim_to_mesh_dim, src_n_dim, dst_n_dim);
+          shape, src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim,
+          device_mesh_.num_elements(), mesh_alpha_, mesh_beta_);
     }
 
     AdjustTensorMeshDimMapping(src_tensor_dim_to_mesh_dim, src_n_dim);
@@ -589,102 +621,6 @@ class ClusterEnvironment {
     return cost;
   }
 
-  double ReshardingCostMixedMeshShape(
-      const Shape& shape, const HloSharding& src_spec,
-      const HloSharding& dst_spec,
-      std::vector<int64_t> src_tensor_dim_to_mesh_dim,
-      std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t src_n_dim,
-      int64_t dst_n_dim) const {
-    // The type, volume, and mesh dim of the required communications
-    std::vector<int> comm_type;  // 0: slice,  1: all-to-all,  2: all-gather
-    std::vector<double> comm_bytes;
-    std::vector<double> comm_mesh_dim;
-
-    // Generate required communication primitives.
-    // lhs is the mesh with 2d shape and rhs is the mesh with 1d shape
-    bool compatible = true;
-    auto generate_comm =
-        [&](absl::Span<const int64_t> lhs_tensor_dim_to_mesh_dim,
-            absl::Span<const int64_t> rhs_tensor_dim_to_mesh_dim) {
-          double bytes = GetBytes(shape) / total_devices_;
-
-          for (size_t i = 0; i < shape.rank(); ++i) {
-            int64_t lhs_mesh_dim = lhs_tensor_dim_to_mesh_dim[i];
-            int64_t rhs_mesh_dim = rhs_tensor_dim_to_mesh_dim[i];
-
-            if (lhs_mesh_dim == 1 && rhs_mesh_dim == -1) {
-              comm_type.push_back(1);  // all-to-all
-              comm_bytes.push_back(
-                  bytes);  // FIXME(zhuohan): this bytes is wrong
-              comm_mesh_dim.push_back(1);
-            } else if (lhs_mesh_dim == -1) {
-              if (rhs_mesh_dim == -1) {
-                // do nothing
-              } else {
-                comm_type.push_back(0);  // slice
-                comm_bytes.push_back(bytes);
-                comm_mesh_dim.push_back(0);
-              }
-            } else if (lhs_mesh_dim == rhs_mesh_dim) {
-              continue;
-            } else {
-              compatible = false;
-              break;
-            }
-          }
-
-          if (comm_type.empty()) {
-            comm_type.push_back(0);  // slice
-            comm_bytes.push_back(bytes);
-            comm_mesh_dim.push_back(1);
-          }
-        };
-
-    if (src_n_dim == 2) {
-      generate_comm(src_tensor_dim_to_mesh_dim, dst_tensor_dim_to_mesh_dim);
-    } else {
-      generate_comm(dst_tensor_dim_to_mesh_dim, src_tensor_dim_to_mesh_dim);
-
-      // Reverse communication pattern
-      for (size_t i = 0; i < comm_type.size(); ++i) {
-        if (comm_type[i] == 0) {  // if is slice, reverse it to all-gather
-          comm_type[i] = 2;
-        } else if (comm_type[i] ==
-                   2) {  // if is all-gather, reverse it to slice
-          comm_type[i] = 0;
-        }
-      }
-    }
-
-    double ret = 0;
-    if (compatible) {
-      // Sum up communication cost
-      int n_comm = 0;
-      for (int i = 0; i < comm_type.size(); ++i) {
-        if (comm_type[i] == 0) {  // slice
-          ret += 0;
-        } else if (comm_type[i] == 1) {  // all-to-all
-          ret += AllToAllCost(comm_bytes[i], comm_mesh_dim[i]);
-          n_comm += 1;
-        } else if (comm_type[i] == 2) {  // all-gather
-          ret += AllGatherCost(comm_bytes[i], comm_mesh_dim[i]);
-          n_comm += 1;
-        } else {
-          LOG(FATAL) << "Invalid communication type";
-        }
-      }
-
-      if (n_comm > 1) {
-        // Currently, SPMD partitioner do not support all-to-all + all-gather;
-        ret = kInfinityCost;
-      }
-    } else {
-      ret = kInfinityCost;
-    }
-
-    return ret;
-  }
-
   // Print the information of this device mesh.
   std::string ToString() {
     std::string str;
@@ -695,8 +631,13 @@ class ClusterEnvironment {
     return str;
   }
 
-  // Shape and bandwidth of the device mesh
+  // The original, complete device mesh shape that describes the hardware.
+  const Array<int64_t> original_device_mesh_;
+  // When solve_nd_sharding_iteratively is true, it is a partial mesh shape from
+  // the original_device_mesh_. When solve_nd_sharding_iteratively is false, it
+  // is the same as original_device_mesh_.
   const Array<int64_t> device_mesh_;
+  // Bandwidth of the device mesh
   const std::vector<double> mesh_alpha_;
   const std::vector<double> mesh_beta_;
   const ProfilingResult& prof_result_;

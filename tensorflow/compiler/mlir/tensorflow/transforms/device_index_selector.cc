@@ -24,11 +24,13 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 namespace {
+
+#define GEN_PASS_DEF_DEVICEINDEXSELECTORPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // Folds the DeviceIndex op to a constant value. The DeviceIndex return the
 // index of the device the op should run on. The user can use this to provide
@@ -46,7 +48,7 @@ namespace {
 // executed to produce the same values but with different functions optimized
 // for CPU or GPU.
 struct DeviceIndexSelector
-    : public DeviceIndexSelectorPassBase<DeviceIndexSelector> {
+    : public impl::DeviceIndexSelectorPassBase<DeviceIndexSelector> {
   void runOnOperation() override;
 };
 

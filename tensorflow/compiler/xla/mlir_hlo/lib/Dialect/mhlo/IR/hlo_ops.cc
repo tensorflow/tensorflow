@@ -693,19 +693,6 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
 }
 
 //===----------------------------------------------------------------------===//
-// AllReduceOp
-//===----------------------------------------------------------------------===//
-
-void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllReduceOp::build(odsBuilder, odsState, resultType, operand, replicaGroups,
-                     channelHandle,
-                     /*use_global_device_ids=*/nullptr);
-}
-
-//===----------------------------------------------------------------------===//
 // ReduceScatterOp
 //===----------------------------------------------------------------------===//
 
@@ -738,16 +725,6 @@ void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
                          scatterDimension, replicaGroups, channelHandle,
                          /*use_global_device_ids=*/nullptr);
-}
-
-void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                            Type resultType, Value operand,
-                            uint64_t scatterDimension,
-                            DenseIntElementsAttr replicaGroups,
-                            ChannelHandleAttr channelHandle) {
-  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
-                         scatterDimension, replicaGroups, channelHandle,
-                         /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2125,12 +2102,12 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
                                             PatternRewriter& rewriter) {
   DenseIntElementsAttr sliceSizes;
-  if (!matchPattern(op.slice_sizes(), m_Constant(&sliceSizes))) {
+  if (!matchPattern(op.getSliceSizes(), m_Constant(&sliceSizes))) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-      op, op.operand(), op.start_indices(), op.dimension_numbersAttr(),
-      sliceSizes, op.indices_are_sortedAttr());
+      op, op.getOperand(), op.getStartIndices(), op.getDimensionNumbersAttr(),
+      sliceSizes, op.getIndicesAreSortedAttr());
   return success();
 }
 
@@ -3157,15 +3134,6 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
                      replicaGroups, channelHandle,
                      /*use_global_device_ids=*/nullptr);
-}
-
-void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand, uint64_t allGatherDim,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
-                     replicaGroups, channelHandle,
-                     /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -8638,6 +8606,54 @@ LogicalResult ScatterOp::fold(
   return success();
 }
 
+// Replace mhlo.scatter overwriting the entire input with mhlo.map.
+struct ScatterFullReplace : public OpRewritePattern<ScatterOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ScatterOp scatter,
+                                PatternRewriter& rewriter) const override {
+    // Variadic Scatter not yet implemented
+    if (scatter.operands().size() != 1 || scatter.getUpdates().size() != 1)
+      return failure();
+
+    auto baseType =
+        scatter.operands().getTypes()[0].dyn_cast<RankedTensorType>();
+    auto updateType =
+        scatter.getUpdates().getTypes()[0].dyn_cast<RankedTensorType>();
+    auto indexType =
+        scatter.getScatterIndices().getType().dyn_cast<RankedTensorType>();
+    if (!baseType || !indexType || !updateType) return failure();
+
+    // If updates is an empty shape, scatter overwrites the entire tensor.
+    // Transform it into a map with the combiner function.
+    if (!indexType.hasStaticShape() || indexType.getNumElements() > 0)
+      return failure();
+
+    // Require the same shape for base and updates. This isn't strictly
+    // necessary, but handling other cases would require turning scatter options
+    // into the appropriate reshapes and transposes.
+    if (!baseType.hasStaticShape() || !updateType.hasStaticShape() ||
+        baseType != updateType)
+      return failure();
+
+    auto dimensions =
+        llvm::to_vector(llvm::seq<int64_t>(0, baseType.getRank()));
+    auto map = rewriter.create<mhlo::MapOp>(
+        scatter.getLoc(), scatter->getResultTypes(),
+        ValueRange{scatter.getOperands()[0], scatter.getUpdates()[0]},
+        rewriter.getI64TensorAttr(dimensions));
+    rewriter.inlineRegionBefore(scatter.getRegion(), map.getRegion(),
+                                map.getRegion().begin());
+    rewriter.replaceOp(scatter, map->getResults());
+    return success();
+  }
+};
+
+void ScatterOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                            MLIRContext* context) {
+  results.add<ScatterFullReplace>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
@@ -8932,7 +8948,7 @@ Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef mnemonic;
   Type parsedType;
   auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
-  if (parseResult.hasValue()) return parsedType;
+  if (parseResult.has_value()) return parsedType;
   if (mnemonic == "token") return TokenType::get(getContext());
   parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;

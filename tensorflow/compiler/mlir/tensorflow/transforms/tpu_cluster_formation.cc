@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -79,8 +78,11 @@ using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 // Mapping for `_replication_info` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
+#define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUClusterFormationPass
-    : public TF::TPUClusterFormationPassBase<TPUClusterFormationPass> {
+    : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }

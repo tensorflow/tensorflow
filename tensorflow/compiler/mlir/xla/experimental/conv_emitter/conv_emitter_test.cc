@@ -98,11 +98,11 @@ CHECK-NEXT:   affine.for %arg3 = 0 to 128 {
 CHECK-NEXT:     affine.for %arg4 = 0 to 2 {
 CHECK-NEXT:       affine.for %arg5 = 0 to 112 {
 CHECK-NEXT:         affine.for %arg6 = 0 to 7 {
-CHECK-NEXT:           %0 = memref.alloc() : memref<32x16xf32>
+CHECK-NEXT:           %[[ALLOC:.*]] = memref.alloc() : memref<32x16xf32>
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
 CHECK-NEXT:               %cst = arith.constant 0.000000e+00 : f32
-CHECK-NEXT:               affine.store %cst, %0[%arg7, %arg8] : memref<32x16xf32>
+CHECK-NEXT:               affine.store %cst, %[[ALLOC]][%arg7, %arg8] : memref<32x16xf32>
 CHECK-NEXT:             }
 CHECK-NEXT:           }
 CHECK-NEXT:           affine.for %arg7 = 0 to 1 {
@@ -111,14 +111,14 @@ CHECK-NEXT:               affine.for %arg9 = 0 to 7 {
 CHECK-NEXT:                 affine.for %arg10 = 0 to 32 {
 CHECK-NEXT:                   affine.for %arg11 = 0 to 16 {
 CHECK-NEXT:                     affine.for %arg12 = 0 to 4 {
-CHECK-NEXT:                       %1 = affine.load %arg1[%arg3, %arg5 * 2 + %arg8 - 3, (%arg6 * 16 + %arg11) * 2 + %arg9 - 3, %arg7 * 4 + %arg12] : memref<128x224x224x4xf16>
-CHECK-NEXT:                       %2 = arith.extf %1 : f16 to f32
-CHECK-NEXT:                       %3 = affine.load %arg2[%arg4 * 32 + %arg10, %arg8, %arg9, %arg7 * 4 + %arg12] : memref<64x7x7x4xf16>
-CHECK-NEXT:                       %4 = arith.extf %3 : f16 to f32
-CHECK-NEXT:                       %5 = affine.load %0[%arg10, %arg11] : memref<32x16xf32>
-CHECK-NEXT:                       %6 = arith.mulf %2, %4 : f32
-CHECK-NEXT:                       %7 = arith.addf %5, %6 : f32
-CHECK-NEXT:                       affine.store %7, %0[%arg10, %arg11] : memref<32x16xf32>
+CHECK-NEXT:                       %[[LOAD0:.*]] = affine.load %arg1[%arg3, %arg5 * 2 + %arg8 - 3, (%arg6 * 16 + %arg11) * 2 + %arg9 - 3, %arg7 * 4 + %arg12] : memref<128x224x224x4xf16>
+CHECK-NEXT:                       %[[EXT0:.*]] = arith.extf %[[LOAD0]] : f16 to f32
+CHECK-NEXT:                       %[[LOAD1:.*]] = affine.load %arg2[%arg4 * 32 + %arg10, %arg8, %arg9, %arg7 * 4 + %arg12] : memref<64x7x7x4xf16>
+CHECK-NEXT:                       %[[EXT1:.*]] = arith.extf %[[LOAD1]] : f16 to f32
+CHECK-NEXT:                       %[[LOAD2:.*]] = affine.load %[[ALLOC]][%arg10, %arg11] : memref<32x16xf32>
+CHECK-NEXT:                       %[[MUL:.*]] = arith.mulf %[[EXT0]], %[[EXT1]] : f32
+CHECK-NEXT:                       %[[ADD:.*]] = arith.addf %[[LOAD2]], %[[MUL]] : f32
+CHECK-NEXT:                       affine.store %[[ADD]], %[[ALLOC]][%arg10, %arg11] : memref<32x16xf32>
 CHECK-NEXT:                     }
 CHECK-NEXT:                   }
 CHECK-NEXT:                 }
@@ -127,9 +127,9 @@ CHECK-NEXT:             }
 CHECK-NEXT:           }
 CHECK-NEXT:           affine.for %arg7 = 0 to 32 {
 CHECK-NEXT:             affine.for %arg8 = 0 to 16 {
-CHECK-NEXT:               %1 = affine.load %0[%arg7, %arg8] : memref<32x16xf32>
-CHECK-NEXT:               %2 = arith.truncf %1 : f32 to f16
-CHECK-NEXT:               affine.store %2, %arg0[%arg3, %arg5, %arg6 * 16 + %arg8, %arg4 * 32 + %arg7] : memref<128x112x112x64xf16>
+CHECK-NEXT:               %[[LOAD:.*]] = affine.load %[[ALLOC]][%arg7, %arg8] : memref<32x16xf32>
+CHECK-NEXT:               %[[TRUNC:.*]] = arith.truncf %[[LOAD]] : f32 to f16
+CHECK-NEXT:               affine.store %[[TRUNC]], %arg0[%arg3, %arg5, %arg6 * 16 + %arg8, %arg4 * 32 + %arg7] : memref<128x112x112x64xf16>
 CHECK-NEXT:             }
 CHECK-NEXT:           }
 CHECK-NEXT:         }

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -684,6 +685,19 @@ mlir::LogicalResult GetXlaOps(mlir::Operation* op,
   return mlir::success();
 }
 
+// Checks that the results of `op` are simply returned at the end of this
+// function rather than used by other ops in the same function.
+//
+// Used to check that new-style async ops on computations that contain sync
+// versions of old-style async ops can be exported by downgrading to old-style
+// async ops.
+bool SimplyReturnedOp(mlir::Operation* op) {
+  auto users = op->getResults().getUsers();
+  if (std::distance(users.begin(), users.end()) != 1) return false;
+  if (llvm::dyn_cast<mlir::mhlo::ReturnOp>((*users.begin()))) return true;
+  return false;
+}
+
 }  // namespace
 
 namespace mlir {
@@ -811,6 +825,29 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+
+  auto all_gather_op =
+      dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
+  if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
+    TensorType operand_type =
+        all_gather_op.getOperand().getType().cast<TensorType>();
+    TensorType result_type = all_gather_op.getType();
+    if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
+      return failure();
+    if (operands.size() != 1) return failure();
+    auto all_gather_dim = all_gather_op.getAllGatherDim();
+    int64_t shard_count = result_type.getDimSize(all_gather_dim) /
+                          operand_type.getDimSize(all_gather_dim);
+    value_map[result] = xla::internal::XlaBuilderFriend::BuildAllGatherStart(
+        ctx.builder, operands[0], all_gather_dim, shard_count,
+        Convert_replica_groups(all_gather_op.getReplicaGroups()),
+        Convert_channel_handle(all_gather_op.getChannelHandle()),
+        ExtractLayout(all_gather_op,
+                      result_type.cast<RankedTensorType>().getRank()),
+        Convert_use_global_device_ids(all_gather_op.getUseGlobalDeviceIds()));
+    return success();
+  }
+
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
@@ -910,6 +947,15 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+  auto all_gather_op =
+      dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
+  if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
+    value_map[all_gather_op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllGatherDone(
+            ctx.builder, operand, xla::TypeToShape(all_gather_op.getType()));
+    return success();
+  }
+
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
       ctx.converter->GetLoweredComputation(callee);
@@ -966,6 +1012,20 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   value_map[op] =
       BroadcastInDim(operand, Convert_ArrayRef(type.getShape()),
                      Convert_broadcast_dimensions(op.getBroadcastDimensions()));
+  return success();
+}
+
+LogicalResult ExportXlaOp(StochasticConvertOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaOp operand, random;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  if (failed(GetXlaOp(op.getRandom(), value_map, &random, op)))
+    return failure();
+
+  value_map[op] = xla::StochasticConvertType(
+      operand, random,
+      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 

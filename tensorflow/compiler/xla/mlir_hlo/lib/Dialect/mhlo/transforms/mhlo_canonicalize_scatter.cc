@@ -125,7 +125,7 @@ TypedValue<TensorType> ensureIndexVectorDimPosition(
     indices = insertDegenerateDimensions(b, loc, indices, {indicesRank});
   } else if (indexVectorDim != indicesRank - 1) {
     SmallVector<int64_t> permutation;
-    for (size_t i = 0; i < indicesRank; ++i)
+    for (int64_t i = 0; i < indicesRank; ++i)
       if (i != indexVectorDim) permutation.push_back(i);
     permutation.push_back(indexVectorDim);
     indices = b.create<TransposeOp>(loc, indices,
@@ -290,7 +290,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
 
     Location loc = scatterOp.getLoc();
     ScatterDimensionNumbersAttr dimsAttrs =
-        scatterOp.scatter_dimension_numbers();
+        scatterOp.getScatterDimensionNumbers();
 
     auto operandType =
         scatterOp.operands().front().getType().cast<RankedTensorType>();
@@ -324,8 +324,8 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
     auto newScatterOp = rewriter.create<ScatterOp>(
         loc, TypeRange(ValueRange(canonicalOperands)), canonicalOperands,
         canonicalIndices, canonicalUpdates, canonicalDimsAttrs);
-    Region& region = newScatterOp.update_computation();
-    rewriter.inlineRegionBefore(scatterOp.update_computation(), region,
+    Region& region = newScatterOp.getUpdateComputation();
+    rewriter.inlineRegionBefore(scatterOp.getUpdateComputation(), region,
                                 region.end());
 
     SmallVector<Value> transposedResults =

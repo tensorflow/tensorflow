@@ -55,8 +55,7 @@ module attributes {tf_saved_model.semantics} {
   func.func @lowers_variable_ops()
     attributes {tf_saved_model.exported_names = ["lowers_variable_ops"]}
   {
-    // CHECK: %0 = mhlo.constant dense<1> : tensor<i32>
-    // CHECK: ml_program.global_store @vars.v = %0 : tensor<i32>
+    // CHECK: ml_program.global_store
     tf_executor.graph {
       %0, %c0 = tf_executor.island wraps "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
       %1, %c1 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = "v"} : () -> tensor<!tf_type.resource<tensor<i32>>>

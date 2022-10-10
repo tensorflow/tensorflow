@@ -202,10 +202,10 @@ class CoordinationServiceRecoverableJobTest : public ::testing::Test {
     (*ps_job_def->mutable_tasks())[0] = "test_address_ps_0";
     (*ps_job_def->mutable_tasks())[1] = "test_address_ps_1";
 
-    auto worker_0_job_def = server_def_.mutable_cluster()->add_job();
-    worker_0_job_def->set_name(kWorkerJobName);
-    (*worker_0_job_def->mutable_tasks())[0] = "test_address_worker_0";
-    (*worker_0_job_def->mutable_tasks())[1] = "test_address_worker_1";
+    auto worker_job_def = server_def_.mutable_cluster()->add_job();
+    worker_job_def->set_name(kWorkerJobName);
+    (*worker_job_def->mutable_tasks())[0] = "test_address_worker_0";
+    (*worker_job_def->mutable_tasks())[1] = "test_address_worker_1";
 
     auto coordination_config = server_def_.mutable_default_session_config()
                                    ->mutable_experimental()

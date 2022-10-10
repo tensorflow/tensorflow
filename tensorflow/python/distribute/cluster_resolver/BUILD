@@ -1,6 +1,6 @@
 # Description: Operations defined for Cluster Resolvers
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     default_visibility = [

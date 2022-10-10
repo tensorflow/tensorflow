@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "clean_dep")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 

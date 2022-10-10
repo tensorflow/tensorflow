@@ -178,7 +178,7 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
 }  // namespace
 
 static TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
-    "tflite-flatbuffer-to-mlir",
+    "tflite-flatbuffer-to-mlir", "tflite-flatbuffer-to-mlir",
     [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
       return FlatBufferFileToMlirTrans(
           &source_mgr, context, use_external_constant,
@@ -186,8 +186,8 @@ static TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
     });
 
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
-    "mlir-to-tflite-flatbuffer", MlirToFlatBufferFileTranslateFunction,
-    [](DialectRegistry& registry) {
+    "mlir-to-tflite-flatbuffer", "mlir-to-tflite-flatbuffer",
+    MlirToFlatBufferFileTranslateFunction, [](DialectRegistry& registry) {
       registry.insert<quant::QuantizationDialect,
                       quantfork::QuantizationForkDialect>();
       mlir::RegisterAllTensorFlowDialects(registry);

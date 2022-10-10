@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "if_google", "if_not_windows", "if_oss", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow/lite:special_rules.bzl", "SPECIAL_RULES_DEPS", "internal_visibility_allowlist", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 

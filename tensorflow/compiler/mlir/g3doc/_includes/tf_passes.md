@@ -715,6 +715,31 @@ not required. We can use the output of first replica in such cases.
 -force-data-format : Force data format for all layout sensitive ops.
 ```
 ### `-tf-legalize-hlo`: Legalize from HLO to the TF dialect
+### `-tf-localize-var-handles`: Creates VarHandleOps next to the operations that use them.
+Creates VarHandleOps right next to the operations that use them, one
+per operation.
+This is useful for transformations that only end up with a few small
+snippets of remaining TF code, and wish for those snippets to be
+self-contained.
+For example, this would transform
+
+"tf_saved_model.global_tensor"() { sym_name = "v" ... }
+func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+  %1 = "tf.ReadVariableOp"(%arg0)
+  ...
+}
+
+to
+
+func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+  %0 = "tf.VarHandleOp"(sym_name = "v")
+  %1 = "tf.ReadVariableOp"(%0)
+  ...
+}
+
+Note that this pass might leave behind unused values
+(like e.g. %arg0 in the example above), which can later be
+pruned using DCE.
 ### `-tf-lower-quantized`: Lowers ops that require quantized input or output.
 This pass rewrites all ops that have at least one input or output that must
 be a quantized type to ops whose inputs and outputs allow non-quantized

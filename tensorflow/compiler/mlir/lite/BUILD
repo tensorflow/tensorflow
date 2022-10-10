@@ -1,7 +1,4 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_cloud")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
@@ -1195,7 +1192,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:expand_hlo_tuples",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_flags_proto_cc",

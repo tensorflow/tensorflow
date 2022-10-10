@@ -211,31 +211,48 @@ Status CpuExecutable::ExecuteComputeFunction(
                              profile_counters_size);
   VLOG(3) << absl::StrFormat("  Profile counters: %p", profile_counters);
 
-  XlaCustomCallStatus status;
-  // For the entry computation (like all global computations), all inputs and
-  // outputs are in the buffer table, and both the result pointer and args array
-  // pointers are unused (so we set them to 'nullptr').
-  compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
-                    &status, profile_counters);
-
-  uint64_t end_micros = tsl::Env::Default()->NowMicros();
-
-  if (run_options->execution_profile()) {
-    const double nanoseconds = (end_micros - start_micros) * 1000.0;
-    run_options->execution_profile()->set_compute_time_ns(
-        std::max(nanoseconds, 1.0));
-    // If hlo profiling was disabled then the cycle count is left empty.
-    if (hlo_execution_profile) {
-      run_options->execution_profile()->set_compute_cycle_count(
-          hlo_execution_profile->total_cycles_executed(
-              *module().entry_computation()));
+  auto record_profile = [&]() {
+    uint64_t end_micros = tsl::Env::Default()->NowMicros();
+    if (run_options->execution_profile()) {
+      const double nanoseconds = (end_micros - start_micros) * 1000.0;
+      run_options->execution_profile()->set_compute_time_ns(
+          std::max(nanoseconds, 1.0));
+      // If hlo profiling was disabled then the cycle count is left empty.
+      if (hlo_execution_profile) {
+        run_options->execution_profile()->set_compute_cycle_count(
+            hlo_execution_profile->total_cycles_executed(
+                *module().entry_computation()));
+      }
     }
-  }
+  };
 
-  std::optional<absl::string_view> error_message =
-      CustomCallStatusGetMessage(&status);
-  if (error_message) {
-    return InternalError("CustomCall failed: %s", *error_message);
+  if (IsXlaRuntime()) {
+    std::vector<BufferDesc> descriptor_table;
+    descriptor_table.reserve(buffers.size());
+    for (const auto& buffer : buffers) {
+      const tensorflow::se::DeviceMemoryBase& base =
+          buffer.AsDeviceMemoryBase();
+      BufferDesc desc(const_cast<void*>(base.opaque()), base.size());
+      descriptor_table.push_back(std::move(desc));
+    }
+    Status status = ExecuteXlaRuntime(descriptor_table);
+    record_profile();
+    if (!status.ok()) {
+      return status;
+    }
+  } else {
+    XlaCustomCallStatus status;
+    // For the entry computation (like all global computations), all inputs and
+    // outputs are in the buffer table, and both the result pointer and args
+    // array pointers are unused (so we set them to 'nullptr').
+    compute_function_(nullptr, run_options, nullptr, buffer_pointers.data(),
+                      &status, profile_counters);
+    record_profile();
+    std::optional<absl::string_view> error_message =
+        CustomCallStatusGetMessage(&status);
+    if (error_message) {
+      return InternalError("CustomCall failed: %s", *error_message);
+    }
   }
 
   return OkStatus();
@@ -560,6 +577,9 @@ const InstructionValueSet& CpuExecutable::GetRootValueSet() const {
 }
 
 int64_t CpuExecutable::SizeOfGeneratedCodeInBytes() const {
+  // TODO(b/233850967): support profiling in XLA:CPU-Next, instead of
+  // punting on it as we are doing here.
+  if (IsXlaRuntime()) return 0;
   return jit_->SizeOfGeneratedCodeInBytes();
 }
 

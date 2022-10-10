@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
@@ -336,6 +336,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:mangling",
@@ -344,6 +345,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:quantization_util",
+        "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_set",

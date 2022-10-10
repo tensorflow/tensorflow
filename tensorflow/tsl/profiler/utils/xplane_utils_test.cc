@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -572,6 +571,26 @@ TEST(XplaneutilsTest, TestEventMetadataStatsAreCopiedForRefValue) {
   ASSERT_TRUE(stat.has_value());
   EXPECT_EQ(stat->Name(), "tf_op");
   EXPECT_EQ(stat->StrOrRefValue(), "TestFunction");
+}
+
+TEST(XplaneutilsTest, TestIsXSpaceGrouped) {
+  XSpace space;
+  {
+    XPlaneBuilder p1(space.add_planes());
+    auto l1 = CreateXLine(&p1, "l1", "d1", 1, 100);
+    auto e1 = CreateXEvent(&p1, l1, "event1", "display1", 1, 2);
+    CreateXStats(&p1, &e1, "event_stat1", 2.0);
+  }
+  EXPECT_FALSE(IsXSpaceGrouped(space));
+
+  {
+    XPlaneBuilder p2(space.add_planes());
+    auto l2 = CreateXLine(&p2, "l2", "d2", 1, 100);
+    auto e2 = CreateXEvent(&p2, l2, "event2", "display2", 1, 2);
+    CreateXStats(&p2, &e2, "group_id", 1);
+  }
+  LOG(ERROR) << space.DebugString();
+  EXPECT_TRUE(IsXSpaceGrouped(space));
 }
 
 }  // namespace

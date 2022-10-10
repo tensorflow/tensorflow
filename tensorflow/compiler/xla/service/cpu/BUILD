@@ -1,7 +1,7 @@
 # Description:
 #    LLVM-based CPU backend for XLA.
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/compiler/xla:xla.bzl", "ORC_JIT_MEMORY_MAPPER_TARGETS")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -14,11 +14,8 @@ load(
     "acl_deps",
     "if_enable_acl",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
 load(":build_defs.bzl", "runtime_copts")
-load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_proto_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -218,9 +215,7 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/xla/mlir/transforms/cpu:passes",
-        "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
-        "//tensorflow/compiler/xla/mlir_hlo:scalarization",
-        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/mlir/xla:xla_framework",
         "//tensorflow/compiler/mlir/xla:xla_passes",
@@ -244,7 +239,8 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/transforms/runtime:calling_convention",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_trigonometric_to_approximation",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
         "//tensorflow/compiler/xla/service/spmd:stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla/service:all_gather_decomposer",
@@ -311,7 +307,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
-        "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:indexed_array_analysis",
         "//tensorflow/compiler/xla/service:llvm_compiler",
@@ -366,10 +361,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_legalize_to_memref",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
-        "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
-        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",

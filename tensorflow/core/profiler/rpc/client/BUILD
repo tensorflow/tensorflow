@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/profiler/builds:build_config.bzl",
@@ -35,7 +35,6 @@ cc_library(
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",

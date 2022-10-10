@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -680,9 +679,12 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+#define GEN_PASS_DEF_TRANSFORMEINSUMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
-    : public TransformEinsumPassBase<TransformEinsumPass> {
+    : public impl::TransformEinsumPassBase<TransformEinsumPass> {
   void runOnOperation() override;
 };
 

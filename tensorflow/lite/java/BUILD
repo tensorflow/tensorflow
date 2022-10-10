@@ -303,6 +303,7 @@ android_library(
     deps = [
         ":tensorflowlite_gpu_api",
         "//tensorflow/lite/java:tensorflowlite_api",
+        "//third_party/java/androidx/annotation",
     ],
 )
 
@@ -314,6 +315,7 @@ android_library(
     deps = [
         ":tensorflowlite_api",
         ":tensorflowlite_gpu_api",
+        "//third_party/java/androidx/annotation",
     ],
 )
 

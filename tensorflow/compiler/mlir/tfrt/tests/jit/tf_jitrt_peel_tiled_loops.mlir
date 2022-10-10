@@ -92,7 +92,7 @@ func.func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %dim_X = tensor.dim %in, %c0 : tensor<?x?xf32>
   %dim_Y = tensor.dim %in, %c1 : tensor<?x?xf32>
 
-  %1 = linalg.init_tensor [%dim_Y] : tensor<?xf32>
+  %1 = tensor.empty(%dim_Y) : tensor<?xf32>
   %2 = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
   %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%dim_Y, %dim_X)
          step (%c4, %c4)
@@ -168,7 +168,7 @@ func.func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %dim_X = tensor.dim %in, %c0 : tensor<?x?xf32>
   %dim_Y = tensor.dim %in, %c1 : tensor<?x?xf32>
 
-  %1 = linalg.init_tensor [%dim_X] : tensor<?xf32>
+  %1 = tensor.empty(%dim_X) : tensor<?xf32>
   %2 = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
   %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%dim_X, %dim_Y)
     step (%c4, %c4)

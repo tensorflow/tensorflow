@@ -122,6 +122,12 @@ struct AutoShardingOption {
   // If true, load solution vector from PassContext
   bool load_solution_vector = false;
 
+  // If true, N-D sharding (e.g., N maybe be 2 or 3) will be solved in N
+  // iterations, where one iteration chooses one tensor dimension to shard. If
+  // false, solve N-D sharding directly, i.e., generating all possible sharding
+  // strategies for N-D mesh shape.
+  bool solve_nd_sharding_iteratively = true;
+
   // If it is not empty, forcibly use simple heuristic strategies
   // instead of the ILP solver. This is used for ablation study.
   std::string force_simple_heuristic;

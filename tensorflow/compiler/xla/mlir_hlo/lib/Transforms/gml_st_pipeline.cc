@@ -48,7 +48,7 @@ void createGmlStPipeline(mlir::OpPassManager& pm,
   if (!options.lowerToLoops) return;
 
   // Bufferization-related passes.
-  pm.addNestedPass<FuncOp>(createLinalgInitTensorToAllocTensorPass());
+  pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());

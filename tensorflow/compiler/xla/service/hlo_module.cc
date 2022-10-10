@@ -172,22 +172,15 @@ void HloModule::ReplaceComputations(
 
   for (std::unique_ptr<HloComputation>& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
-      switch (instruction->opcode()) {
-        case HloOpcode::kAllReduce:
-        case HloOpcode::kCall:
-        case HloOpcode::kMap:
-        case HloOpcode::kReduce:
-        case HloOpcode::kReduceScatter:
-        case HloOpcode::kReduceWindow:
-        case HloOpcode::kScatter:
-        case HloOpcode::kSort: {
-          HloComputation* new_arg = tsl::gtl::FindWithDefault(
-              replacements, instruction->to_apply(), nullptr);
-          if (new_arg != nullptr) {
-            instruction->set_to_apply(new_arg);
-          }
-          break;
+      if (instruction->has_to_apply()) {
+        HloComputation* new_arg = tsl::gtl::FindWithDefault(
+            replacements, instruction->to_apply(), nullptr);
+        if (new_arg != nullptr) {
+          instruction->set_to_apply(new_arg);
         }
+        continue;
+      }
+      switch (instruction->opcode()) {
         case HloOpcode::kWhile: {
           HloComputation* new_condition = tsl::gtl::FindWithDefault(
               replacements, instruction->while_condition(), nullptr);

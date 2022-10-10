@@ -275,6 +275,20 @@ using float8_e5m2 = float8_internal::float8_e5m2;
 
 }  // namespace tensorflow
 
+// Standard-library overrides.  Note that these are picked up by Eigen as well.
+namespace std {
+template <>
+struct numeric_limits<tensorflow::float8_e4m3>
+    : public tensorflow::float8_internal::numeric_limits_float8<
+          tensorflow::float8_e4m3> {};
+
+template <>
+struct numeric_limits<tensorflow::float8_e5m2>
+    : public tensorflow::float8_internal::numeric_limits_float8<
+          tensorflow::float8_e5m2> {};
+
+}  // namespace std
+
 // Eigen-specific overrides.
 namespace Eigen {
 namespace numext {
@@ -304,20 +318,34 @@ bit_cast<uint8_t, tensorflow::float8_e5m2>(const tensorflow::float8_e5m2& src) {
 }
 
 }  // namespace numext
+
+// Work-around for isinf/isnan issue on aarch64.
+namespace internal {
+template <>
+EIGEN_DEVICE_FUNC inline bool isinf_impl<tensorflow::float8_e4m3>(
+    const tensorflow::float8_e4m3& x) {
+  return tensorflow::float8_internal::isinf(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC inline bool isinf_impl<tensorflow::float8_e5m2>(
+    const tensorflow::float8_e5m2& x) {
+  return tensorflow::float8_internal::isinf(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC inline bool isnan_impl<tensorflow::float8_e4m3>(
+    const tensorflow::float8_e4m3& x) {
+  return tensorflow::float8_internal::isnan(x);
+}
+
+template <>
+EIGEN_DEVICE_FUNC inline bool isnan_impl<tensorflow::float8_e5m2>(
+    const tensorflow::float8_e5m2& x) {
+  return tensorflow::float8_internal::isnan(x);
+}
+
+}  // namespace internal
 }  // namespace Eigen
-
-// Standard-library overrides.  Note that these are picked up by Eigen as well.
-namespace std {
-template <>
-struct numeric_limits<tensorflow::float8_e4m3>
-    : public tensorflow::float8_internal::numeric_limits_float8<
-          tensorflow::float8_e4m3> {};
-
-template <>
-struct numeric_limits<tensorflow::float8_e5m2>
-    : public tensorflow::float8_internal::numeric_limits_float8<
-          tensorflow::float8_e5m2> {};
-
-}  // namespace std
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_FLOAT8_H_

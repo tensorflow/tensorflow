@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
@@ -206,6 +207,10 @@ std::vector<const BenchmarkEvent*> ValidatorRunnerImpl::GetSuccessfulResults() {
     const BenchmarkEvent* event = storage_.Get(i);
     if (benchmark_evaluator_->IsValidationSuccessEvent(*event)) {
       results.push_back(event);
+    } else if (event->event_type() == BenchmarkEventType_ERROR) {
+      TFLITE_LOG(TFLITE_LOG_WARNING,
+                 "Benchmark event failed with error code (%d).",
+                 event->error()->error_code());
     }
   }
   return results;

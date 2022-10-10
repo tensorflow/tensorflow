@@ -438,7 +438,7 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  
     # output_shape tensor value. We update the output._dense_shape_default,
     # which populate output.shape as the best effort.
     output = sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
-    output._dense_shape_default = tensor_shape.TensorShape(static_output_shape)
+    output.set_shape(tensor_shape.TensorShape(static_output_shape))
     return output
 
 
@@ -852,10 +852,14 @@ def sparse_reorder(sp_input, name=None):
 
   if sp_input.get_shape().is_fully_defined():
     dense_shape = sp_input.get_shape().as_list()
+    return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
   else:
     dense_shape = array_ops.identity(sp_input.dense_shape)
-
-  return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
+    sp_output = sparse_tensor.SparseTensor(reordered_ind, reordered_val,
+                                           dense_shape)
+    # propagate the static shape
+    sp_output.set_shape(sp_input.shape)
+    return sp_output
 
 
 @tf_export("sparse.reshape", v1=["sparse.reshape", "sparse_reshape"])

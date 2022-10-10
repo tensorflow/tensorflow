@@ -18,6 +18,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/python/numpy.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/python/lib/core/numpy.h"
 
 namespace py = pybind11;
 

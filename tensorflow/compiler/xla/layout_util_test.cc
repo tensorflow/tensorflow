@@ -474,11 +474,12 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
        ->mutable_physical_shape()
        ->mutable_layout()
        ->mutable_physical_shape() = ShapeUtil::MakeShape(S32, {10});
-  EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
-              tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
-                  ::testing::HasSubstr("layout has a physical_shape, whose "
-                                       "layout also has a physical shape")));
+  EXPECT_THAT(
+      LayoutUtil::ValidateLayoutInShape(shape),
+      tsl::testing::StatusIs(
+          tensorflow::error::INVALID_ARGUMENT,
+          ::testing::HasSubstr(
+              "layout has a physical_shape, but is not a sparse array")));
   shape.mutable_layout()->mutable_physical_shape()->clear_layout();
   shape.mutable_layout()->clear_dim_level_types();
   EXPECT_THAT(

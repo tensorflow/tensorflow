@@ -1,6 +1,6 @@
 # Tools and utilities that aid in XLA development and usage.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -9,7 +9,7 @@ load(
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")

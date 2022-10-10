@@ -3,7 +3,7 @@ load(
     "if_google",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 
@@ -15,6 +15,19 @@ package(
     ],
     features = if_google(["-parse_headers"]),
     licenses = ["notice"],
+)
+
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["autotuning.proto"],
+    make_default_target_header_only = True,
+    protodeps = [":dnn_proto"],
+)
+
+tf_proto_library(
+    name = "dnn_proto",
+    srcs = ["dnn.proto"],
+    make_default_target_header_only = True,
 )
 
 tf_proto_library(

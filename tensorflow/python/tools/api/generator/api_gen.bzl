@@ -1,6 +1,6 @@
 """Targets for generating TensorFlow Python API __init__.py files."""
 
-load("//tensorflow:tensorflow.bzl", "if_indexing_source_code")
+load("//tensorflow:tensorflow.default.bzl", "if_indexing_source_code")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 
 TENSORFLOW_API_GEN_PACKAGES = [

@@ -40,9 +40,15 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
         unspecified_dims);
 
+int64_t ComputeNonRootUsers(const HloInstruction* instr);
+
 // Infers broadcast ops' operand sharding, based on its output sharding.
 std::optional<HloSharding> InferBroadcastOperandSharding(
     const HloInstruction& instruction, bool is_spmd = true);
+
+bool InferReduceShardingFromOperand(HloInstruction* instruction,
+                                    bool may_combine_partial_sharding,
+                                    bool is_spmd);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on

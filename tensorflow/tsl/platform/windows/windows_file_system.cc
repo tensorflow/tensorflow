@@ -27,7 +27,6 @@ limitations under the License.
 #include <sys/types.h>
 #include <time.h>
 
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/file_system_helper.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/strcat.h"
 #include "tensorflow/tsl/platform/windows/error_windows.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef DeleteFile

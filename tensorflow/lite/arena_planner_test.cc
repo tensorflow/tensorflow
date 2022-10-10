@@ -213,6 +213,8 @@ class ArenaPlannerTest : public ::testing::Test {
     CHECK(planner_->AcquireNonPersistentMemory() == kTfLiteOk);
   }
 
+  void ResetAllocations() { CHECK(planner_->ResetAllocations() == kTfLiteOk); }
+
   void ResetAllocationsAfter(int node) {
     CHECK(planner_->ResetAllocationsAfter(node) == kTfLiteOk);
   }
@@ -306,6 +308,46 @@ TEST_F(ArenaPlannerTest, SimpleGraph) {
   EXPECT_EQ(GetOffset(1), 4);
 }
 
+TEST_F(ArenaPlannerTest, AllocsCorrectlyReset) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {3});
+  SetGraph(&graph);
+  Execute(0, graph.nodes().size() - 1);
+
+  // Alloc(+) and dealloc(-) order: +0 +1 +2 +4 +5 -2 +3 -4 -5
+  EXPECT_EQ(GetOffset(5), 12);
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(1), 4);
+
+  // Increase tensor sizes to trigger a reallocation, but not enough to change
+  // their offsets. Adding one byte will fill the space left empty by alignment
+  // requirements. If the allocs have not been reset, then the offsets will have
+  // increased since the old allocs are still present preventing memory reuse.
+  ResetAllocations();
+  std::vector<TfLiteTensor>& tensors = *graph.tensors();
+  tensors[0].bytes += 1;
+  tensors[1].bytes += 1;
+  tensors[2].bytes += 1;
+  tensors[3].bytes += 1;
+  tensors[4].bytes += 1;
+  tensors[5].bytes += 1;
+  Execute(0, graph.nodes().size() - 1);
+
+  EXPECT_EQ(GetOffset(5), 12);
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(5));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(2), GetOffsetAfter(4));
+  EXPECT_EQ(GetOffset(1), 4);
+}
+
 TEST_F(ArenaPlannerTest, SimpleGraphInputsPreserved) {
   TestGraph graph({0, 1},
                   {
@@ -374,6 +416,15 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithResetAllocationsAfter) {
   EXPECT_TRUE(IsUnallocated(3));
   EXPECT_TRUE(IsUnallocated(4));
   EXPECT_TRUE(IsUnallocated(5));
+
+  // Trigger a reallocation after the 2nd op so that allocations are calculated
+  // from an intermediate node focing active allocs to be re-generated.
+  (*graph.tensors())[4].bytes += 64;
+  Execute(1, graph.nodes().size() - 1);
+  EXPECT_EQ(GetOffset(3), 12);
+  EXPECT_EQ(GetOffset(5), 12);
+  EXPECT_EQ(GetOffset(4), GetOffsetAfter(2));
+  EXPECT_EQ(GetOffset(2), 48);
 }
 
 TEST_F(ArenaPlannerTest, SimpleGraphWithPersistentResetAllocationsAfter) {

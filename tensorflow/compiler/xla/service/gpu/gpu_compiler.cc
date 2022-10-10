@@ -139,6 +139,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
@@ -150,7 +151,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
-#include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/layout_normalization.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -298,9 +298,7 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
 }
 
 bool ConvIsLowerable(HloInstruction* conv) {
-  return conv_matchers::CanImplementAsGpuForwardConv(conv) ||
-         std::get<0>(conv_matchers::MatchBackwardFilter(conv)) ||
-         std::get<0>(conv_matchers::MatchBackwardInput(conv));
+  return GpuConvRewriter::ConvIsLowerable(conv);
 }
 
 }  // end anonymous namespace
@@ -311,21 +309,23 @@ using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
 StatusOr<std::unique_ptr<Executable>>
 GpuXlaRuntimeAotCompilationResult::LoadExecutable(
     Compiler* compiler, se::StreamExecutor* executor) const {
+  XlaRuntimeExecutableProto xla_runtime_executable =
+      xla_runtime_gpu_executable_.xla_runtime_executable();
   TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
                       HloModule::CreateModuleConfigFromProto(
-                          xla_runtime_executable_.hlo_module_proto(),
+                          xla_runtime_executable.hlo_module_proto(),
                           GetDebugOptionsFromFlags()));
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
-      HloModule::CreateFromProto(xla_runtime_executable_.hlo_module_proto(),
+      HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
                                  hlo_module_config));
   auto gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler);
   return GpuExecutable::LoadFromObjFile(
-      std::move(hlo_module), xla_runtime_executable_.obj_file(),
-      xla_runtime_executable_.mlir_module(),
-      xla_runtime_executable_.entry_func_attrs(), GetDebugOptionsFromFlags(),
-      xla_runtime_executable_.gpu_asm_text(),
-      xla_runtime_executable_.gpu_binary(),
+      std::move(hlo_module), xla_runtime_executable.obj_file(),
+      xla_runtime_executable.mlir_module(),
+      xla_runtime_executable.entry_func_attrs(), GetDebugOptionsFromFlags(),
+      xla_runtime_gpu_executable_.gpu_asm_text(),
+      xla_runtime_gpu_executable_.gpu_binary(),
       gpu_compiler->GetGpuVersion(executor), executor);
 }
 
@@ -575,6 +575,7 @@ Status GpuCompiler::OptimizeHloModule(
     // annotations added by this pass may not be correct after the
     // modifications.
     pipeline.AddPass<WhileLoopTripCountAnnotator>();
+    pipeline.AddPass<HloComputationDeduplicator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -733,6 +734,11 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   }
   pipeline.AddPass<LoopScheduleLinearizer>(GetCanShareBuffer());
   pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
+  // To fuse the copy.
+  pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
+  // To remove temporary fused_computation created by GpuHorizontalLoopFusion
+  pipeline.AddPass<HloDCE>();
+
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
@@ -748,6 +754,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     pipeline.AddPass<ReduceDecomposer>([&](const HloInstruction* r) {
       return IsReductionFromOrToContiguousDimensions(*r);
     });
+    pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
     if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
       pipeline.AddPass<LayoutNormalization>();
     }
@@ -765,7 +772,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
 
-  pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
 
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();

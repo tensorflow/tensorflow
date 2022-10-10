@@ -18,14 +18,14 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
-load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_default_visibility_allowlist")
+load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-] + minibenchmark_default_visibility_allowlist()
+] + minibenchmark_visibility_allowlist()
 
 minibenchmark_visibility_group = default_visibility_group + [
-    "//tensorflow_lite_support/cc:__subpackages__",
+    "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
 ]
 
 package(
@@ -438,10 +438,12 @@ cc_library(
 
 cc_library(
     name = "validator_runner_options",
+    srcs = ["validator_runner_options.cc"],
     hdrs = ["validator_runner_options.h"],
     deps = [
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],

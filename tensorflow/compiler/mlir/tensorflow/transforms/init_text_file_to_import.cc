@@ -27,7 +27,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/lib/io/path.h"
 
 namespace mlir {
@@ -37,10 +37,13 @@ namespace {
 static constexpr int kTextFileIndex_WholeLine = -2;
 static constexpr int kTextFileIndex_LineNumber = -1;
 
+#define GEN_PASS_DEF_INITTEXTFILETOIMPORTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // InitTextFileToImportPass converts InitializeTableFromTextFileV2Op to the
 // corresponding LookupTableImportV2Op if possible.
 class InitTextFileToImportPass
-    : public InitTextFileToImportPassBase<InitTextFileToImportPass> {
+    : public impl::InitTextFileToImportPassBase<InitTextFileToImportPass> {
  public:
   InitTextFileToImportPass() {}
   InitTextFileToImportPass(const InitTextFileToImportPass&) {}

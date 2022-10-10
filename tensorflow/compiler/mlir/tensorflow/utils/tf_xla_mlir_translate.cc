@@ -426,24 +426,25 @@ static mlir::LogicalResult MlirTfToHloTextViaBuilderTranslateFunction(
 }  // namespace tensorflow
 
 static mlir::TranslateFromMLIRRegistration MlirTfToHloTextTranslate(
-    "mlir-tf-to-hlo-text", tensorflow::MlirTfToHloTextTranslateFunction,
+    "mlir-tf-to-hlo-text", "mlir-tf-to-hlo-text",
+    tensorflow::MlirTfToHloTextTranslateFunction,
     tensorflow::RegisterMlirInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirTfToHloTextViaBuilderTranslate(
-    "mlir-tf-to-hlo-text-via-builder",
+    "mlir-tf-to-hlo-text-via-builder", "mlir-tf-to-hlo-text-via-builder",
     tensorflow::MlirTfToHloTextViaBuilderTranslateFunction,
     tensorflow::RegisterMlirInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirTfGraphToHloTextTranslate(
-    "mlir-tf-graph-to-hlo-text",
+    "mlir-tf-graph-to-hlo-text", "mlir-tf-graph-to-hlo-text",
     tensorflow::MlirTfGraphToHloTextTranslateFunction,
     tensorflow::RegisterGraphInputDialects);
 
 static mlir::TranslateToMLIRRegistration SerializedMlirStringAttrToMlirModule(
-    "mlir-tf-str-attr-to-mlir",
+    "mlir-tf-str-attr-to-mlir", "mlir-tf-str-attr-to-mlir",
     tensorflow::SerializedMlirStringAttrToMlirModuleTranslate);
 
 static mlir::TranslateFromMLIRRegistration MlirModuleToSerializedMlirStringAttr(
-    "mlir-tf-mlir-to-str-attr",
+    "mlir-tf-mlir-to-str-attr", "mlir-tf-mlir-to-str-attr",
     tensorflow::MlirModuleToSerializedMlirStringAttrTranslate,
     tensorflow::RegisterMlirInputDialects);

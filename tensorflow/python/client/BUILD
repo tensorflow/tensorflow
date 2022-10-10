@@ -1,13 +1,13 @@
 # Contains targets that expose client session APIs
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(

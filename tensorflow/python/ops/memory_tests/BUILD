@@ -1,12 +1,7 @@
 # python/ops/memory_tests package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_xla_deps_py")
 
 package(licenses = ["notice"])

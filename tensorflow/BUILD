@@ -23,12 +23,11 @@ load(
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
@@ -809,7 +808,7 @@ selects.config_setting_group(
         ":emscripten",
         ":ios",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # This flag disables all google production dependencies, intended for
@@ -873,7 +872,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -882,7 +881,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -1004,6 +1003,13 @@ bzl_library(
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
     ],
+)
+
+bzl_library(
+    name = "tensorflow_default_bzl",
+    srcs = ["tensorflow.default.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":tensorflow_bzl"],
 )
 
 # copybara:comment_begin(oss-only)

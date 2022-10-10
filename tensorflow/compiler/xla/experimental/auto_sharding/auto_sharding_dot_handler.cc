@@ -179,6 +179,7 @@ class DotHandler {
                            device_mesh_.dim(mesh_dim1))) {
             continue;
           }
+
           HloSharding output_spec = Tile(ins_->shape(), {space_base_dim_ + i},
                                          {mesh_dim0}, device_mesh_);
           HloSharding lhs_spec =
@@ -372,6 +373,43 @@ class DotHandler {
     }
   }
 
+  void SplitBothContractTwoDims(int mesh_dim0, int mesh_dim1) {
+    // Applies when there are more than one contracting dimension.
+    if (lhs_con_dims_.size() >= 2 && rhs_con_dims_.size() >= 2 &&
+        device_mesh_.dim(mesh_dim0) > 1 && device_mesh_.dim(mesh_dim1) > 1) {
+      std::string name =
+          absl::StrFormat("RR = SS x SS @ {%d,%d} (allreduce @ {%d, %d}}",
+                          mesh_dim0, mesh_dim1, mesh_dim0, mesh_dim1);
+      for (int64_t i = 0; i < lhs_con_dims_.size(); ++i) {
+        for (int64_t j = i + 1; j < lhs_con_dims_.size(); ++j) {
+          if (!IsDivisible(lhs_->shape().dimensions().at(lhs_con_dims_.at(i)),
+                           device_mesh_.dim(mesh_dim0)) ||
+              !IsDivisible(lhs_->shape().dimensions().at(lhs_con_dims_.at(j)),
+                           device_mesh_.dim(mesh_dim1)) ||
+              !IsDivisible(rhs_->shape().dimensions().at(rhs_con_dims_.at(i)),
+                           device_mesh_.dim(mesh_dim0)) ||
+              !IsDivisible(rhs_->shape().dimensions().at(rhs_con_dims_.at(j)),
+                           device_mesh_.dim(mesh_dim1))) {
+            continue;
+          }
+          HloSharding output_spec = HloSharding::Replicate();
+          HloSharding lhs_spec =
+              Tile(lhs_->shape(), {lhs_con_dims_[i], lhs_con_dims_[j]},
+                   {mesh_dim0, mesh_dim1}, device_mesh_);
+          HloSharding rhs_spec =
+              Tile(rhs_->shape(), {rhs_con_dims_[i], rhs_con_dims_[j]},
+                   {mesh_dim0, mesh_dim1}, device_mesh_);
+          double memory_cost = GetBytes(ins_->shape()) / output_spec.NumTiles();
+          double communication_cost =
+              cluster_env_.AllReduceCost(memory_cost, mesh_dim0, mesh_dim1);
+          AppendNewStrategy(ins_, name, output_spec, {lhs_spec, rhs_spec}, 0,
+                            communication_cost, cluster_env_, strategy_map_,
+                            strategies_);
+        }
+      }
+    }
+  }
+
   void RecomputeSplitBothContract(int mesh_dim0, int mesh_dim1) {
     if (device_mesh_.dim(mesh_dim0) > 1 && device_mesh_.dim(mesh_dim1) > 1) {
       std::string name = absl::StrFormat("RR = RS x SR @ {%d} (allreduce @ %d)",
@@ -526,6 +564,17 @@ class DotHandler {
                                   shardable_mesh_dims[j]);
         SplitRhsSpaceBothContract(shardable_mesh_dims[j],
                                   shardable_mesh_dims[i]);
+      }
+    }
+
+    // RR = SS x SS
+    // Split two contracting dims on lhs and rhs.
+    for (int64_t i = 0; i < shardable_mesh_dims.size(); ++i) {
+      for (int64_t j = (i + 1); j < shardable_mesh_dims.size(); ++j) {
+        SplitBothContractTwoDims(shardable_mesh_dims[i],
+                                 shardable_mesh_dims[j]);
+        SplitBothContractTwoDims(shardable_mesh_dims[j],
+                                 shardable_mesh_dims[i]);
       }
     }
 

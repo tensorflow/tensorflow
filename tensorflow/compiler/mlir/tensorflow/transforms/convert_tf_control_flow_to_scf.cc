@@ -18,7 +18,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -187,8 +186,12 @@ void populateTfControlFlowToScfPatterns(MLIRContext* context,
   patterns->add<ConvertIfRegionOp, ConvertWhileRegionOp>(context);
 }
 
+#define GEN_PASS_DEF_CONVERTTFCONTROLFLOWTOSCFPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ConvertTfControlFlowToScf
-    : public ConvertTfControlFlowToScfPassBase<ConvertTfControlFlowToScf> {
+    : public impl::ConvertTfControlFlowToScfPassBase<
+          ConvertTfControlFlowToScf> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     populateTfControlFlowToScfPatterns(&getContext(), &patterns);

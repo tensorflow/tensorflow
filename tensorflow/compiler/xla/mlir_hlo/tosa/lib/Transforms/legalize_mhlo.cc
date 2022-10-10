@@ -259,7 +259,7 @@ struct ConvertMhloSliceOp : public OpRewritePattern<mhlo::SliceOp> {
     }
 
     rewriter.replaceOpWithNewOp<tosa::SliceOp>(
-        op, op.getResult().getType(), op.operand(),
+        op, op.getResult().getType(), op.getOperand(),
         rewriter.getI64ArrayAttr(startIndicesI64),
         rewriter.getI64ArrayAttr(size));
     return success();
@@ -277,7 +277,7 @@ struct ConvertMhloTransposeOp : public OpRewritePattern<mhlo::TransposeOp> {
           op, "tosa.transpose only supports 1D to 6D tensors");
     }
 
-    auto perms = op.permutation();
+    auto perms = op.getPermutation();
     auto constOp = rewriter.create<tosa::ConstOp>(
         op->getLoc(),
         RankedTensorType::get({perms.size()}, rewriter.getI64Type()), perms);

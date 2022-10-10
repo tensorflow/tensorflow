@@ -13,7 +13,7 @@ load(
     "generated_test_models_all",
 )
 load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",

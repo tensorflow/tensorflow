@@ -2318,11 +2318,11 @@ func.func @convert_round(%arg0: tensor<8x128xbf16>) -> tensor<8x128xbf16> {
   func.return %15 : tensor<8x128xbf16>
 }
 
-// CHECK-LABEL: func @convert_floor_mod
+// CHECK-LABEL: func @convert_floor_mod_float
 // CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %arg1) : (tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xbf16>
 // CHECK: return %[[RESULT]]
 // CHECK: }
-func.func @convert_floor_mod(%arg0: tensor<192x8xbf16>, %arg1: tensor<192x8xbf16>) -> tensor<192x8xbf16> {
+func.func @convert_floor_mod_float(%arg0: tensor<192x8xbf16>, %arg1: tensor<192x8xbf16>) -> tensor<192x8xbf16> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<192x8xbf16>
   %1 = mhlo.remainder %arg0, %arg1 : tensor<192x8xbf16>
   %2 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xi1>
@@ -2335,13 +2335,30 @@ func.func @convert_floor_mod(%arg0: tensor<192x8xbf16>, %arg1: tensor<192x8xbf16
   func.return %8 : tensor<192x8xbf16>
 }
 
-// CHECK-LABEL: func @convert_floor_mod_cst
+// CHECK-LABEL: func @convert_floor_mod_int
+// CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %arg1) : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+// CHECK: return %[[RESULT]]
+// CHECK: }
+func.func @convert_floor_mod_int(%arg0: tensor<192x8xi32>, %arg1: tensor<192x8xi32>) -> tensor<192x8xi32> {
+  %0 = mhlo.constant dense<0> : tensor<192x8xi32>
+  %1 = mhlo.remainder %arg0, %arg1 : tensor<192x8xi32>
+  %2 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %3 = "mhlo.compare"(%arg1, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %4 = "mhlo.compare"(%2, %3) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi1>, tensor<192x8xi1>) -> tensor<192x8xi1>
+  %5 = "mhlo.compare"(%1, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %6 = mhlo.and %4, %5 : tensor<192x8xi1>
+  %7 = mhlo.add %1, %arg1 : tensor<192x8xi32>
+  %8 = "mhlo.select"(%6, %7, %1) : (tensor<192x8xi1>, tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+  func.return %8 : tensor<192x8xi32>
+}
+
+// CHECK-LABEL: func @convert_floor_mod_float_cst
 // CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<192x8xbf16>} : () -> tensor<192x8xbf16>
 // CHECK-DAG: %[[CST2:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<192x8xbf16>} : () -> tensor<192x8xbf16>
 // CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %[[CST2]]) : (tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xbf16>
 // CHECK: return %[[RESULT]] : tensor<192x8xbf16>
 // CHECK: }
-func.func @convert_floor_mod_cst(%arg0: tensor<192x8xbf16>) -> tensor<192x8xbf16> {
+func.func @convert_floor_mod_float_cst(%arg0: tensor<192x8xbf16>) -> tensor<192x8xbf16> {
   %0 = mhlo.constant dense<0.000000e+00> : tensor<192x8xbf16>
   %1 = mhlo.constant dense<2.000000e+00> : tensor<192x8xbf16>
   %2 = mhlo.remainder %arg0, %1 : tensor<192x8xbf16>
@@ -2351,6 +2368,24 @@ func.func @convert_floor_mod_cst(%arg0: tensor<192x8xbf16>) -> tensor<192x8xbf16
   %6 = mhlo.add %2, %1 : tensor<192x8xbf16>
   %7 = "mhlo.select"(%5, %6, %2) : (tensor<192x8xi1>, tensor<192x8xbf16>, tensor<192x8xbf16>) -> tensor<192x8xbf16>
   func.return %7 : tensor<192x8xbf16>
+}
+
+// CHECK-LABEL: func @convert_floor_mod_int_cst
+// CHECK-DAG: %[[CST1:.*]] = "tf.Const"() {value = dense<2> : tensor<192x8xi32>} : () -> tensor<192x8xi32>
+// CHECK-DAG: %[[CST2:.*]] = "tf.Const"() {value = dense<2> : tensor<192x8xi32>} : () -> tensor<192x8xi32>
+// CHECK: %[[RESULT:.*]] = "tf.FloorMod"(%arg0, %[[CST2]]) : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+// CHECK: return %[[RESULT]] : tensor<192x8xi32>
+// CHECK: }
+func.func @convert_floor_mod_int_cst(%arg0: tensor<192x8xi32>) -> tensor<192x8xi32> {
+  %0 = mhlo.constant dense<0> : tensor<192x8xi32>
+  %1 = mhlo.constant dense<2> : tensor<192x8xi32>
+  %2 = mhlo.remainder %arg0, %1 : tensor<192x8xi32>
+  %3 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %4 = "mhlo.compare"(%2, %0) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi1>
+  %5 = mhlo.and %3, %4 : tensor<192x8xi1>
+  %6 = mhlo.add %2, %1 : tensor<192x8xi32>
+  %7 = "mhlo.select"(%5, %6, %2) : (tensor<192x8xi1>, tensor<192x8xi32>, tensor<192x8xi32>) -> tensor<192x8xi32>
+  func.return %7 : tensor<192x8xi32>
 }
 
 // CHECK-LABEL: func @convert_floor_div

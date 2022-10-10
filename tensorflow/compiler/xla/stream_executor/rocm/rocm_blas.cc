@@ -51,8 +51,6 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 extern void broadcast_fp32(void* stream, float* dst, int dst_stride,
                            int batches, int src_batches, float* src, int size);
 
-namespace wrap = tensorflow::wrap;
-
 template <class T>
 const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
     const DeviceMemory<T> &a) {

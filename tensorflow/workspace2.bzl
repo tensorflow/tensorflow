@@ -186,26 +186,27 @@ def _tf_repositories():
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = "//third_party/mkl_dnn:mkldnn_v1.BUILD",
-        sha256 = "0ff70240378aa26e1fc3edf66d14964e614ef2f9278514182cd43b34ced9af21",
-        strip_prefix = "oneDNN-2.6.1",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.6.1.tar.gz"),
+        sha256 = "fc2b617ec8dbe907bb10853ea47c46f7acd8817bc4012748623d911aca43afbb",
+        strip_prefix = "oneDNN-2.7",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/refs/tags/v2.7.tar.gz"),
     )
 
     tf_http_archive(
         name = "mkl_dnn_acl_compatible",
         build_file = "//third_party/mkl_dnn:mkldnn_acl.BUILD",
-        sha256 = "990fdce84197d68064e615d91c182c5bc6baa446348c3c1fe71b7e9a345badc2",
-        strip_prefix = "oneDNN-70d1198de554e61081147c199d661df049233279",
-        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/70d1198de554e61081147c199d661df049233279.tar.gz"),
+        patch_file = ["//third_party/mkl_dnn:onednn_acl_threadcap.patch", "//third_party/mkl_dnn:onednn_acl_fixed_format_kernels.patch", "//third_party/mkl_dnn:onednn_acl_depthwise_convolution.patch"],
+        sha256 = "fc2b617ec8dbe907bb10853ea47c46f7acd8817bc4012748623d911aca43afbb",
+        strip_prefix = "oneDNN-2.7",
+        urls = tf_mirror_urls("https://github.com/oneapi-src/oneDNN/archive/v2.7.tar.gz"),
     )
 
     tf_http_archive(
         name = "compute_library",
-        sha256 = "94e2e9ff87c261a9c9987bc9024c449c48014f7fe707311bdfa76b87f3dda5c5",
-        strip_prefix = "ComputeLibrary-22.05",
+        sha256 = "ac2ce7b5636e99f175b084362f83fe24d72e6ceb0bd62ee5866772f7355d024d",
+        strip_prefix = "ComputeLibrary-22.08",
         build_file = "//third_party/compute_library:BUILD",
-        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:activation_func_correct_args.patch"],
-        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.05.tar.gz"),
+        patch_file = ["//third_party/compute_library:compute_library.patch", "//third_party/compute_library:acl_fixed_format_kernels_striding.patch", "//third_party/compute_library:acl_depthwise_updateable_weights.patch", "//third_party/compute_library:acl_fixup_SVE_merges.patch"],
+        urls = tf_mirror_urls("https://github.com/ARM-software/ComputeLibrary/archive/v22.08.tar.gz"),
     )
 
     tf_http_archive(
@@ -535,6 +536,7 @@ def _tf_repositories():
     tf_http_archive(
         name = "llvm_openmp",
         build_file = "//third_party/llvm_openmp:BUILD",
+        patch_file = ["//third_party/llvm_openmp:openmp_switch_default_patch.patch"],
         sha256 = "d19f728c8e04fb1e94566c8d76aef50ec926cd2f95ef3bf1e0a5de4909b28b44",
         strip_prefix = "openmp-10.0.1.src",
         urls = tf_mirror_urls("https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz"),

@@ -9,7 +9,7 @@ load(
     "tf_opts_nortti_if_android",
     "tf_py_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
 package(
     default_visibility = ["//visibility:public"],

@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     licenses = ["notice"],

@@ -55,6 +55,10 @@ class Sharding {
   std::optional<int> num_devices_;
 };
 
+size_t ShardingHash(const pybind11::object& obj);
+
+bool ShardingEqual(const pybind11::object& a, const pybind11::object& b);
+
 class XLACompatibleSharding : public Sharding {
  public:
   using Sharding::Sharding;
@@ -72,6 +76,11 @@ class MeshPspecSharding : public XLACompatibleSharding {
   const pybind11::object& parsed_pspec() const { return parsed_pspec_; }
   void set_parsed_pspec(pybind11::object parsed_pspec) {
     parsed_pspec_ = std::move(parsed_pspec);
+  }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<MeshPspecSharding>();
+    return type;
   }
 
  private:
@@ -123,12 +132,40 @@ class OpShardingSharding : public XLACompatibleSharding {
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
         op_sharding_(std::move(op_sharding)) {}
 
+  OpShardingSharding(pybind11::tuple devices, xla::OpSharding op_sharding)
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+        devices_(std::move(devices)),
+        op_sharding_(std::move(op_sharding)) {}
+
   const pybind11::tuple& devices() const { return devices_; }
   const xla::OpSharding& op_sharding() const { return op_sharding_; }
 
+  size_t Hash() {
+    if (!hash_.has_value()) {
+      hash_ = CalculateHash();
+    }
+    return *hash_;
+  }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<OpShardingSharding>();
+    return type;
+  }
+
  private:
+  size_t CalculateHash() const {
+    // We only hash `op_sharding_` here for performance.
+    auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
+    if (!hlo_sharding.ok()) {
+      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+    }
+    return absl::Hash<xla::HloSharding>()(*hlo_sharding);
+  }
+
   pybind11::tuple devices_;
   xla::OpSharding op_sharding_;
+
+  std::optional<size_t> hash_;
 };
 
 void RegisterSharding(pybind11::module& m);

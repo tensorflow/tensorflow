@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -81,7 +80,7 @@ Operation* GetHandleSource(Operation* op, DataFlowSolver& solver) {
 
 Attribute GetInitialValue(Operation* source) {
   if (auto global = dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
-    return global.value();
+    return global.getValue();
   }
   return nullptr;
 }
@@ -99,7 +98,7 @@ Type GetGlobalType(Operation* source) {
     return resource.getSubtypes().front();
   } else if (auto global_tensor_op =
                  dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
-    return global_tensor_op.type();
+    return global_tensor_op.getType();
   }
   // Likely can't actually happen, assuming tf_saved_model.semantics checks
   // already ran.
@@ -132,8 +131,11 @@ ml_program::GlobalOp CreateGlobalOpFromOp(Operation* source, OpBuilder& builder,
 
 }  // namespace
 
+#define GEN_PASS_DEF_LOWERVARIABLEOPSTOMLPROGRAMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
+
 struct LowerVariableOpsToMlProgramPass
-    : public LowerVariableOpsToMlProgramPassBase<
+    : public impl::LowerVariableOpsToMlProgramPassBase<
           LowerVariableOpsToMlProgramPass> {
   explicit LowerVariableOpsToMlProgramPass() {}
   void getDependentDialects(DialectRegistry& registry) const override {

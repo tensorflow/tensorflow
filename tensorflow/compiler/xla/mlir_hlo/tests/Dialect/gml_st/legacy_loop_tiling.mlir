@@ -54,7 +54,7 @@ func.func @generic_op_tensors(
   %0 = tensor.dim %arg0, %c0 : tensor<?x?x?xf32>
   %1 = tensor.dim %arg0, %c1 : tensor<?x?x?xf32>
   %2 = tensor.dim %arg0, %c2 : tensor<?x?x?xf32>
-  %3 = linalg.init_tensor [%0, %1, %2] : tensor<?x?x?xf32>
+  %3 = tensor.empty(%0, %1, %2) : tensor<?x?x?xf32>
   %4 = linalg.generic
     {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1, d2)>,
                       affine_map<(d0, d1, d2) -> (d0, d2, d1)>,
@@ -78,7 +78,7 @@ func.func @generic_op_tensors(
 // CHECK-DAG: %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG: %[[C4:.*]] = arith.constant 4 : index
 
-// CHECK:     %[[INIT:.*]] = linalg.init_tensor
+// CHECK:     %[[INIT:.*]] = tensor.empty
 // CHECK:     %[[ARG_0_X:.*]] = tensor.dim %[[ARG_0]], %[[C0]] : [[TY]]
 // CHECK:     %[[ARG_0_Y:.*]] = tensor.dim %[[ARG_0]], %[[C1]] : [[TY]]
 // CHECK:     %[[ARG_0_Z:.*]] = tensor.dim %[[ARG_0]], %[[C2]] : [[TY]]

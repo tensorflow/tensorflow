@@ -1,17 +1,7 @@
 # platform package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 visibility = [
     "//tensorflow:__subpackages__",

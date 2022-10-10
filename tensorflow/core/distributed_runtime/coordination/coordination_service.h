@@ -140,6 +140,10 @@ class CoordinationServiceInterface {
   // Set a task in error state permanently.
   virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
 
+  // Get the state and the error status of the tasks.
+  virtual std::vector<CoordinatedTaskStateInfo> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
+
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.
   // The key-values are not persisted and will be lost if the leader fails.

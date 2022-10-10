@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",

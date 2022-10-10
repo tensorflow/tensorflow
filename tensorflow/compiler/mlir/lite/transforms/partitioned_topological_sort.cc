@@ -26,7 +26,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PARTITIONEDTOPOLOGICALSORTPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 bool IsFlexDelegate(Operation *op) {
@@ -168,7 +168,7 @@ bool PartitionedTopologicalSort(
 }
 
 class PartitionedTopologicalSortPass
-    : public PartitionedTopologicalSortPassBase<
+    : public impl::PartitionedTopologicalSortPassBase<
           PartitionedTopologicalSortPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PartitionedTopologicalSortPass);

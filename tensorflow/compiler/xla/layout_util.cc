@@ -232,13 +232,16 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     int64_t dim = layout.minor_to_major(i);
     if (dim < 0 || dim >= shape.rank()) {
       return InvalidArgument(
-          "layout minor_to_major field has out-of-bounds value: %s",
-          HumanString(layout));
+          "layout minor_to_major field has out-of-bounds value: {%s}; shape: "
+          "%s",
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
     if (dimensions_in_layout[dim]) {
       return InvalidArgument(
-          "layout minor_to_major field has duplicate values: {%s}",
-          HumanString(layout));
+          "layout minor_to_major field has duplicate values: {%s}; shape: %s",
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
     dimensions_in_layout[dim] = true;
   }
@@ -265,6 +268,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           shape.ShortDebugString());
     }
     if (layout.has_physical_shape()) {
+      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           layout.physical_shape(),
           [&](const Shape& subshape, const ShapeIndex& index) {
@@ -277,7 +281,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
             }
             return OkStatus();
           }));
-      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
     }
   } else if (layout.has_physical_shape()) {
     return InvalidArgument(

@@ -7,7 +7,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
   %0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %c1 = arith.constant 1 : index
   %1 = tensor.dim %arg1, %c1 : tensor<?x?xf32>
-  %2 = linalg.init_tensor [%0, %1] : tensor<?x?xf32>
+  %2 = tensor.empty(%0, %1) : tensor<?x?xf32>
   %cst = arith.constant 0.000000e+00 : f32
   %3 = linalg.fill ins(%cst : f32) outs(%2 : tensor<?x?xf32>) -> tensor<?x?xf32>
   %4 = linalg.matmul ins(%arg0, %arg1 : tensor<?x?xf32>, tensor<?x?xf32>) outs(%3 : tensor<?x?xf32>) -> tensor<?x?xf32>
@@ -24,7 +24,7 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?x
 
 // CHECK:      %[[DIM_0:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D:.*]]
 // CHECK:      %[[DIM_1:.*]] = tensor.dim %[[RHS]], %[[C1]] : [[TY_2D]]
-// CHECK:      %[[INIT:.*]] = linalg.init_tensor [%[[DIM_0]], %[[DIM_1]]] : [[TY_2D]]
+// CHECK:      %[[INIT:.*]] = tensor.empty(%[[DIM_0]], %[[DIM_1]]) : [[TY_2D]]
 // CHECK:      %[[FILL:.*]] = linalg.fill ins(%[[C0_F32]]{{.*}}outs(%[[INIT]]
 // CHECK:      %[[DIM_0_:.*]] = tensor.dim %[[LHS]], %[[C0]] : [[TY_2D]]
 // CHECK:      %[[DIM_1_:.*]] = tensor.dim %[[RHS]], %[[C1]] : [[TY_2D]]

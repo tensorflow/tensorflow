@@ -49,6 +49,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
 from tensorflow.python.util import deprecation
@@ -1570,12 +1571,10 @@ class TrtGraphConverterV2(object):
 
     self._for_each_trt_node(self._converted_graph_def,
                             _serialize_and_track_engine)
-    self._saved_model.trt_engine_resources = resource_map
-
-    # Rewrite the signature map using the optimized ConcreteFunction.
-    signatures = {
-        key: value for key, value in self._saved_model.signatures.items()
-    }
+    # If the graph is frozen, tracked variables are not needed by the converted model.
+    trackable = autotrackable.AutoTrackable(
+    ) if self.freeze else self._saved_model
+    trackable.trt_engine_resources = resource_map
 
     # Set allow_build_at_runtime=False if asked by user.
     #
@@ -1600,9 +1599,9 @@ class TrtGraphConverterV2(object):
           self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 
-    signatures[self._input_saved_model_signature_key] = self._converted_func
-    save.save(
-        self._saved_model, output_saved_model_dir, signatures, options=options)
+    # Rewrite the signature map using the optimized ConcreteFunction.
+    signatures = {self._input_saved_model_signature_key: self._converted_func}
+    save.save(trackable, output_saved_model_dir, signatures, options=options)
 
   def summary(self, line_length=160, detailed=True, print_fn=None):
     """This method describes the results of the conversion by TF-TRT.

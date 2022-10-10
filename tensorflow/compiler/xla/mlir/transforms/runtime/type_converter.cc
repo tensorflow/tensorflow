@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -91,12 +92,24 @@ static std::unique_ptr<Type> ConvertCanonicalType(
       return std::make_unique<UnrankedMemrefType>(*dtype);
   }
 
+  // mlir::TupleType -> xla::runtime::TupleType
+  if (auto tuple = type.dyn_cast<mlir::TupleType>()) {
+    llvm::SmallVector<std::unique_ptr<Type>> conv_elems;
+    llvm::transform(tuple, std::back_inserter(conv_elems),
+                    [&convert](mlir::Type type) {
+                      return ConvertCanonicalType(type, convert);
+                    });
+    return std::make_unique<TupleType>(std::move(conv_elems));
+  }
+
   // For non-canonical types the user must provide type conversion function.
   return {};
 }
 
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
     mlir::Type type) {
+  if (type.isBF16()) return PrimitiveType::BF16;
+  if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
   if (type.isUnsignedInteger(8)) return PrimitiveType::U8;

@@ -38,7 +38,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let cppNamespace = "::mlir::tf_device";
 }
 
@@ -359,7 +359,7 @@ This op is used for outlining a cluster.
   let extraClassDeclaration = [{
     // returns the function that this operation will launch.
     func::FuncOp getFuncOp() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, funcAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFuncAttr());
     }
   }];
 }

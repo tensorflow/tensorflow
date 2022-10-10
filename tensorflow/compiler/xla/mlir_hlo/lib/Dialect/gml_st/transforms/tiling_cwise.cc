@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"

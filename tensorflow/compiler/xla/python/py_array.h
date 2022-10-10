@@ -150,15 +150,7 @@ class PyArray : public pybind11::object {
     return arg.get_type().is(PyArray::type());
   }
 
-  Status BlockUntilReady() const {
-    pybind11::gil_scoped_release gil_release;
-    Status status;
-    for (const auto& pjrt_buffer : pjrt_buffers()) {
-      auto s = pjrt_buffer->GetReadyFuture().Await();
-      if (!s.ok()) status = std::move(s);
-    }
-    return status;
-  }
+  Status BlockUntilReady() const;
 
  private:
   void CheckAndRearrange();

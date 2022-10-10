@@ -133,7 +133,7 @@ mlir::LogicalResult ReplaceClusterWithPartitionCallOp(
       cluster_func.getResultTypes().begin(),
       cluster_func.getResultTypes().end()};
 
-  llvm::StringRef function_name = cluster_func.func();
+  llvm::StringRef function_name = cluster_func.getFunc();
 
   builder->setInsertionPoint(cluster_func);
   auto call_op = builder->create<mlir::TF::StatefulPartitionedCallOp>(

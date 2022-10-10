@@ -3,15 +3,10 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -1696,8 +1691,6 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
-    # TODO(b/215243829): 3 tests fail with the GLC latency table.
-    backend_tags = {"ghostlite_iss": ["broken"]},
     tags = [
         "nomac",  # b/194731834
         "nozapfhahn",

@@ -57,17 +57,17 @@ SmallVector<StringRef, 3> getParallelAndReductionIterators(unsigned nLoops,
 SmallVector<StringRef, 3> getNParallelLoopsAttrs(unsigned nParallelLoops);
 
 /// Generates an init sparse tensor.
-Value getInitSparseTensor(OpBuilder& b, Location loc, ShapedType type,
-                          ArrayRef<Value> dynSizes);
+Value getEmptySparseTensor(OpBuilder& b, Location loc, ShapedType type,
+                           ArrayRef<Value> dynSizes);
 
-/// Generates an initTensor op in the linalg dialect.
-Value getInitTensor(OpBuilder& b, Location loc, ShapedType type,
-                    ArrayRef<Value> dynSizes);
+/// Generates a tensor.empty op.
+Value getEmptyTensor(OpBuilder& b, Location loc, ShapedType type,
+                     ArrayRef<Value> dynSizes);
 
-/// Generates an tensor initialization for the result of the operation, which
-/// would be a dense tensor or a sparse tensor.
-Value getInitTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
-                       Operation* op, ValueRange operands);
+/// Generates an empty tensor for the result of the operation, which could be a
+/// dense tensor or a sparse tensor.
+Value getEmptyTensorFor(OpBuilder& b, Location loc, ShapedType resultType,
+                        Operation* op, ValueRange operands);
 
 /// Sparsifies a (block of) operation(s) that cannot be handled directly
 /// by the sparse compiler but has well-known semi-ring semantics.
@@ -154,7 +154,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // Find input/output values and types.
     ValueRange inputs = adaptor.getOperands();
     Value output =
-        getInitTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
+        getEmptyTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
 
     // Create indexing maps.
     AffineMap scalarMap = AffineMap::get(nloops, 0, rewriter.getContext());

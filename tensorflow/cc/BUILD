@@ -12,10 +12,10 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
+load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_wrappers_cc")
 
 package(
     default_visibility = ["//visibility:public"],

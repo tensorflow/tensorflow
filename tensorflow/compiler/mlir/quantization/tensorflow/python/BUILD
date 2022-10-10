@@ -1,16 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pytype_library")
+load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -34,6 +23,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -61,6 +52,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/platform:path",
     ] + if_static(
         extra_deps = [
             "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",

@@ -34,7 +34,7 @@ def FallbackAsync_Dialect : Dialect {
 
   let cppNamespace = "::tfrt::fallback_async";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 class FallbackAsync_Op<string mnemonic, list<Trait> traits = []> :
@@ -181,7 +181,7 @@ def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
   let description = [{
     Convert the fallback tensor to corert tensorhandle.
 
-    operands: a list of fallback tensors.
+    args: a list of fallback tensors.
     device: the name of the tensorflow device that is associated with the
       input fallback tensors.
 
@@ -189,7 +189,7 @@ def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
   }];
 
   let arguments = (ins
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>:$args,
     StrAttr:$device
   );
 
@@ -197,7 +197,7 @@ def FallbackTensorToCoreRTTensorHandleOp : FallbackAsync_Op<
     Variadic<CoreRT_TensorHandleType>:$results
   );
 
-  let assemblyFormat = "operands attr-dict `:` `(` type($operands) `)` `->` `(` type($results) `)`";
+  let assemblyFormat = "operands attr-dict `:` `(` type($args) `)` `->` `(` type($results) `)`";
 }
 
 def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
@@ -209,7 +209,7 @@ def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
   let description = [{
     Convert the corert tensorhandle to the fallback tensor.
 
-    operands: a list of corert tensorhandles.
+    args: a list of corert tensorhandles.
     device: the name of the tensorflow device that is associated with the
       output fallback tensor.
 
@@ -217,7 +217,7 @@ def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
   }];
 
   let arguments = (ins
-    Variadic<CoreRT_TensorHandleType>:$operands,
+    Variadic<CoreRT_TensorHandleType>:$args,
     StrAttr:$device
   );
 
@@ -225,7 +225,7 @@ def CoreRTTensorHandleToFallbackTensorOp : FallbackAsync_Op<
     Variadic<TFTensorType>:$results
   );
 
-  let assemblyFormat = "operands attr-dict `:` `(` type($operands) `)` `->` `(` type($results) `)`";
+  let assemblyFormat = "operands attr-dict `:` `(` type($args) `)` `->` `(` type($results) `)`";
 
   let hasCanonicalizer = 1;
 }
@@ -355,7 +355,7 @@ def ExecuteOp : FallbackAsync_Op<"executeop",
   }];
 
   let arguments = (ins
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>:$args,
     StrAttr:$device,
     ArrayAttr:$op_attrs,
     // TODO(b/173025975): consider using DictionaryAttr after we support
@@ -375,7 +375,7 @@ def ExecuteOp : FallbackAsync_Op<"executeop",
   }];
 
   let builders = [
-    OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$operands,
+    OpBuilder<(ins "ArrayRef<Type>":$results, "ValueRange":$args,
       "StringRef":$device,
       "::llvm::ArrayRef<std::pair<::llvm::StringRef, ::mlir::Attribute>>":$op_attrs,
       "::llvm::ArrayRef<std::pair<::llvm::StringRef, ::mlir::Attribute>>":$op_func_attrs,
@@ -418,7 +418,7 @@ def ExecuteOpSeq : FallbackAsync_Op<"executeop.seq",
 
   let arguments = (ins
     TFRT_ChainType:$in_op_chain,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>:$args,
     StrAttr:$device,
     ArrayAttr:$op_attrs,
     // TODO(b/173025975): consider using DictionaryAttr after we support
@@ -463,7 +463,7 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
 
   let arguments = (ins
                    TFRT_ChainType:$in_op_chain,
-    Variadic<CoreRT_TensorHandleType>:$operands,
+    Variadic<CoreRT_TensorHandleType>:$args,
     SymbolRefAttr:$f,
     ArrayAttr:$op_attrs
   );
@@ -486,7 +486,7 @@ def ExecuteOpWithAllocator : FallbackAsync_Op<"executeop.allocator",
 
   let arguments = (ins
     TFAllocatorType:$allocator,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>:$args,
     StrAttr:$device,
     ArrayAttr:$op_attrs,
     ArrayAttr:$op_func_attrs,
@@ -517,7 +517,7 @@ def ExecuteOpSeqWithAllocator : FallbackAsync_Op<"executeop.seq.allocator",
   let arguments = (ins
     TFRT_ChainType:$in_op_chain,
     TFAllocatorType:$allocator,
-    Variadic<TFTensorType>:$operands,
+    Variadic<TFTensorType>:$args,
     StrAttr:$device,
     ArrayAttr:$op_attrs,
     // TODO(b/173025975): consider using DictionaryAttr after we support

@@ -111,10 +111,10 @@ std::vector<py::object> PyClient::LiveBuffersOnDevice(PjRtDevice* device) {
   return buffers;
 }
 
-std::vector<std::shared_ptr<PyExecutable>> PyClient::LiveExecutables() {
+std::vector<std::shared_ptr<PyLoadedExecutable>> PyClient::LiveExecutables() {
   CHECK(PyGILState_Check());
-  std::vector<std::shared_ptr<PyExecutable>> executables;
-  for (PyExecutable* exec = executables_; exec; exec = exec->next_) {
+  std::vector<std::shared_ptr<PyLoadedExecutable>> executables;
+  for (PyLoadedExecutable* exec = executables_; exec; exec = exec->next_) {
     if (!exec->is_deleted()) {
       executables.push_back(exec->shared_from_this());
     }
@@ -315,7 +315,7 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
   return result;
 }
 
-StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
+StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<PjRtLoadedExecutable> executable;
@@ -328,12 +328,12 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_shared<PyExecutable>(
+  return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint), std::move(host_callbacks));
 }
 
-StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
+StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::CompileMlir(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<PjRtLoadedExecutable> executable;
@@ -349,17 +349,17 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::CompileMlir(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_shared<PyExecutable>(
+  return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint), std::move(host_callbacks));
 }
 
 StatusOr<py::bytes> PyClient::SerializeExecutable(
-    const PyExecutable& executable) const {
+    const PyLoadedExecutable& executable) const {
   return pjrt_client_->SerializeExecutable(executable.pjrt_executable());
 }
 
-StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
+StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
     const std::string& serialized, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<PjRtLoadedExecutable> executable;
@@ -372,7 +372,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::DeserializeExecutable(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_shared<PyExecutable>(
+  return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint), std::move(host_callbacks));
 }
@@ -429,7 +429,7 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
     }
   }
 
-  for (PyExecutable* executable = executables_; executable;
+  for (PyLoadedExecutable* executable = executables_; executable;
        executable = executable->next_) {
     if (!executable->is_deleted()) {
       HeapProfileKey key{executable->traceback(),

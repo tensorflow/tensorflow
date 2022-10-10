@@ -177,6 +177,7 @@ struct TestGmlStBufferizationPass
 
   void runOnOperation() override {
     bufferization::OneShotBufferizationOptions opts;
+    opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
     opts.functionBoundaryTypeConversion =
         bufferization::BufferizationOptions::LayoutMapOption::IdentityLayoutMap;

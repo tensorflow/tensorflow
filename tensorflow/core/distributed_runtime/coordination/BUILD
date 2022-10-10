@@ -1,10 +1,10 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
@@ -139,6 +139,7 @@ cc_library(
     deps = [
         ":coordination_service_error_util",
         ":coordination_service_agent",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/time",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",

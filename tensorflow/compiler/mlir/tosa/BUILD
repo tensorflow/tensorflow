@@ -3,7 +3,7 @@
 #   https://developer.mlplatform.org/w/tosa/
 #   https://github.com/llvm/llvm-project/blob/main/mlir/docs/Dialects/TOSA.md
 
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 # TODO: Tighten visibility once targets are at the right granularity.

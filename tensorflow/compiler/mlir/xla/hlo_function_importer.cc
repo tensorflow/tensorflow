@@ -721,7 +721,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           instruction->source_target_pairs(), builder_));
       return ImportOldStyleAsyncStart<mlir::mhlo::CollectivePermuteOp>(
           attributes, operands, loc, result_type, func_builder,
-          "collective_permute_", [&](auto) { return Status::OK(); });
+          "collective_permute_", [&](auto) { return ::tsl::OkStatus(); });
     }
     case HloOpcode::kCollectivePermuteDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1010,7 +1010,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kCopyStart: {
       return ImportOldStyleAsyncStart<mlir::mhlo::CopyOp>(
           attributes, operands, loc, result_type, func_builder, "copy_",
-          [](auto) { return Status::OK(); });
+          [](auto) { return ::tsl::OkStatus(); });
     }
     case HloOpcode::kCopyDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1132,7 +1132,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllGatherOp>(
           attributes, operands, loc, result_type, func_builder, "all_gather_",
-          [](auto) { return Status::OK(); });
+          [](auto) { return ::tsl::OkStatus(); });
     }
     case HloOpcode::kAllGatherDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1169,7 +1169,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             TF_RETURN_IF_ERROR(ImportAsRegion(
                 *instruction->to_apply(), &all_reduce_sync.getComputation(),
                 /*flatten_region_arg_tuple=*/true));
-            return Status::OK();
+            return ::tsl::OkStatus();
           });
     }
     case HloOpcode::kAllReduceDone: {
@@ -1635,6 +1635,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       NO_ATTRIBUTE_CASE(kReal, RealOp);
       NO_ATTRIBUTE_CASE(kRemainder, RemOp);
       NO_ATTRIBUTE_CASE(kReplicaId, ReplicaIdOp);
+      NO_ATTRIBUTE_CASE(kStochasticConvert, StochasticConvertOp);
       NO_ATTRIBUTE_CASE(kLogistic, LogisticOp);
       // The dimensions attribute is not present on the HLO Reshape
       // instruction. If dimensions are non-default, the XLA builder

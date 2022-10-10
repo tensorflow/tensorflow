@@ -43,7 +43,7 @@ def RuntimeFallback_Dialect : Dialect {
 
   let cppNamespace = "::mlir::tfd";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//

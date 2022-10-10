@@ -1,7 +1,6 @@
 # Description: Operations defined for Cloud TPUs
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "pytype_library")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:pytype.default.bzl", "pytype_library", "pytype_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 

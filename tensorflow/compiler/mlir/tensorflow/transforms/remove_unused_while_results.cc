@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 namespace mlir {
@@ -36,9 +35,13 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_REMOVEUNUSEDWHILERESULTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Removes unused results and related ops from while loops.
 struct RemoveUnusedWhileResultsPass
-    : public RemoveUnusedWhileResultsPassBase<RemoveUnusedWhileResultsPass> {
+    : public impl::RemoveUnusedWhileResultsPassBase<
+          RemoveUnusedWhileResultsPass> {
   void runOnOperation() override;
 };
 

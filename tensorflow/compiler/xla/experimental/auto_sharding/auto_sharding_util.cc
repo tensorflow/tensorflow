@@ -464,6 +464,7 @@ void BatchDimMapForward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightArithmetic:
       case HloOpcode::kShiftRightLogical:
+      case HloOpcode::kStochasticConvert:
       // Ternary elementwise operations.
       case HloOpcode::kSelect:
       case HloOpcode::kClamp: {
@@ -721,6 +722,7 @@ void BatchDimMapBackward(const std::vector<HloInstruction*>& instructions,
       case HloOpcode::kShiftLeft:
       case HloOpcode::kShiftRightArithmetic:
       case HloOpcode::kShiftRightLogical:
+      case HloOpcode::kStochasticConvert:
       // Ternary elementwise operations.
       case HloOpcode::kSelect:
       case HloOpcode::kClamp: {
@@ -899,6 +901,23 @@ InstructionBatchDimMap BuildInstructionBatchDimMap(
   return batch_map;
 }
 
+// Returns true if there is one row with only infinity cost.
+bool AllInfinityCosts(
+    const std::vector<std::vector<double>>& resharding_costs) {
+  for (const auto& costs : resharding_costs) {
+    bool all_infinity = true;
+    for (const auto& cost : costs) {
+      if (cost < kInfinityCost) {
+        all_infinity = false;
+      }
+    }
+    if (all_infinity) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Remove duplicated strategies with the same output sharding spec.
 // If duplicates strategies have different costs, an arbitrary one will be
 // chosen. A exception is replicated strategy. Only *real* replicated strategies
@@ -912,30 +931,36 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     for (auto& child : strategies->childs) {
       RemoveDuplicatedStrategy(child);
     }
-  } else {
+  } else if (!strategies->following) {
     std::vector<ShardingStrategy> new_vector;
-    absl::flat_hash_set<HloSharding> added;
-    int32_t replicated_index = -1;
+    std::vector<ShardingStrategy> deduped_replicated_strategies;
+    absl::flat_hash_set<std::string> added;
     for (size_t i = 0; i < strategies->leaf_vector.size(); ++i) {
-      if (strategies->leaf_vector[i].output_sharding.IsReplicated() &&
-          !(strategies->leaf_vector[i].name == "R" ||
-            absl::StrContains(strategies->leaf_vector[i].name,
-                              "R (allreduce"))) {
+      if (AllInfinityCosts(strategies->leaf_vector[i].resharding_costs)) {
         continue;
       }
-      if (strategies->leaf_vector[i].output_sharding.IsReplicated()) {
-        replicated_index = i;
-        continue;
+      std::string key = strategies->leaf_vector[i].output_sharding.ToString();
+      if (!strategies->leaf_vector[i].input_shardings.empty()) {
+        for (const auto& sharding :
+             strategies->leaf_vector[i].input_shardings) {
+          key += "/" + sharding.ToString();
+        }
       }
-      if (!added.count(strategies->leaf_vector[i].output_sharding)) {
-        added.insert(strategies->leaf_vector[i].output_sharding);
-        new_vector.push_back(std::move(strategies->leaf_vector[i]));
+      if (!added.contains(key)) {
+        added.insert(key);
+        if (!strategies->leaf_vector[i].output_sharding.IsReplicated()) {
+          new_vector.push_back(std::move(strategies->leaf_vector[i]));
+        } else {
+          deduped_replicated_strategies.push_back(
+              std::move(strategies->leaf_vector[i]));
+        }
       }
     }
-    // Keeps replicated strategy as the last one.
-    if (replicated_index >= 0) {
-      new_vector.push_back(
-          std::move(strategies->leaf_vector[replicated_index]));
+    // Keeps replicated strategies as the last ones.
+    if (!deduped_replicated_strategies.empty()) {
+      for (size_t i = 0; i < deduped_replicated_strategies.size(); ++i) {
+        new_vector.push_back(std::move(deduped_replicated_strategies[i]));
+      }
     }
     strategies->leaf_vector = std::move(new_vector);
   }
@@ -2474,6 +2499,190 @@ HloInstruction* FindInstruction(
     return *it;
   }
   return nullptr;
+}
+
+double AllToAllCostUtil(double num_bytes, int mesh_dim, int64_t num_devices,
+                        const std::vector<double>& mesh_alpha,
+                        const std::vector<double>& mesh_beta) {
+  // A penalty factor to make the theoretical cost match the
+  // empirical cost on v100 + nvlink.
+  double penalty_factor = static_cast<double>(num_devices) / 2.0;
+  return (round(mesh_alpha[mesh_dim] + mesh_beta[mesh_dim] * (num_devices - 1) /
+                                           num_devices / num_devices *
+                                           num_bytes * penalty_factor) +
+          0.001);
+}
+
+// Do not consider device id changes yet.
+double ReshardingCostMixedMeshShape(
+    const Shape& shape, std::vector<int64_t> src_tensor_dim_to_mesh_dim,
+    std::vector<int64_t> dst_tensor_dim_to_mesh_dim, int64_t num_devices,
+    const std::vector<double>& mesh_alpha,
+    const std::vector<double>& mesh_beta) {
+  double resharding_costs = 0.0;
+  for (size_t i = 0; i < shape.rank(); ++i) {
+    // Only consider sharded dimensions, do not consider replicate_on_last_dim.
+    if (src_tensor_dim_to_mesh_dim[i] == dst_tensor_dim_to_mesh_dim[i]) {
+      continue;
+    }
+    if (dst_tensor_dim_to_mesh_dim[i] == -1 ||
+        src_tensor_dim_to_mesh_dim[i] == -1) {
+      // AllToAll cost
+      int64_t communication_dim;
+      if (dst_tensor_dim_to_mesh_dim[i] != -1) {
+        communication_dim = dst_tensor_dim_to_mesh_dim[i];
+      } else {
+        communication_dim = src_tensor_dim_to_mesh_dim[i];
+      }
+      int64_t communication_bytes = GetBytes(shape);
+      resharding_costs +=
+          AllToAllCostUtil(communication_bytes, communication_dim, num_devices,
+                           mesh_alpha, mesh_beta);
+    } else {
+      // Do not support this sharding, assuming it is gonna be very expensive.
+      return kInfinityCost;
+    }
+  }
+  return resharding_costs;
+}
+
+std::optional<HloSharding> AdjustShardingWithPartialMeshShapePerElement(
+    const HloSharding& sharding,
+    const absl::flat_hash_set<int64_t>& valid_shards,
+    int64_t total_num_devices) {
+  if (sharding.TotalNumTiles() > total_num_devices &&
+      VectorGreaterThanOneElementCount(
+          sharding.tile_assignment().dimensions()) > valid_shards.size()) {
+    std::vector<int64_t> new_tile_assignment_dimensions;
+    if (sharding.ReplicateOnLastTileDim()) {
+      // If replicate on valid_shards dimensions, turns this instruction
+      // into replicate.
+      // If two mesh dimensions are the same size, it becomes replicated too.
+      if (valid_shards.find(sharding.tile_assignment().dim(
+              sharding.tile_assignment().num_dimensions() - 1)) !=
+          valid_shards.end()) {
+        HloSharding new_sharding = HloSharding::Replicate();
+        return new_sharding;
+      }
+      // If replicate on other dimensions, remove the
+      // replicate_on_last_tile
+      new_tile_assignment_dimensions = sharding.tile_assignment().dimensions();
+      new_tile_assignment_dimensions.erase(
+          new_tile_assignment_dimensions.end() - 1);
+    } else {
+      new_tile_assignment_dimensions = sharding.tile_assignment().dimensions();
+      absl::flat_hash_set<int64_t> current_shards;
+      for (const auto dim : new_tile_assignment_dimensions) {
+        if (dim > 1) {
+          current_shards.insert(dim);
+        }
+      }
+      if (current_shards.size() == 1) {
+        // Two mesh dimensions are the same size. Keep the first sharded
+        // dimension.
+        for (int32_t i = new_tile_assignment_dimensions.size() - 1; i >= 0;
+             i--) {
+          if (new_tile_assignment_dimensions[i] > 1 &&
+              valid_shards.find(new_tile_assignment_dimensions[i]) !=
+                  valid_shards.end()) {
+            new_tile_assignment_dimensions[i] = 1;
+            break;
+          }
+        }
+      } else {
+        for (size_t i = 0; i < new_tile_assignment_dimensions.size(); i++) {
+          if (new_tile_assignment_dimensions[i] > 1 &&
+              valid_shards.find(new_tile_assignment_dimensions[i]) ==
+                  valid_shards.end()) {
+            new_tile_assignment_dimensions[i] = 1;
+          }
+        }
+      }
+    }
+    Array<int64_t> tile_assignment(new_tile_assignment_dimensions);
+    std::vector<int64_t> device_ids = std::vector<int64_t>(total_num_devices);
+    // Set arbitrary values because it will not be used.
+    std::iota(device_ids.begin(), device_ids.end(), 0);
+    tile_assignment.SetValues(device_ids);
+    HloSharding new_sharding = HloSharding::Tile(std::move(tile_assignment));
+    return new_sharding;
+  }
+  return std::nullopt;
+}
+
+bool AdjustShardingsWithPartialMeshShape(
+    const std::vector<HloInstruction*>& instructions,
+    const std::vector<int64_t>& mesh_shape, int64_t total_num_devices) {
+  bool changed = false;
+  absl::flat_hash_set<int64_t> valid_shards;
+  for (const auto shape : mesh_shape) {
+    if (shape > 1) {
+      valid_shards.insert(shape);
+    }
+  }
+  for (HloInstruction* inst : instructions) {
+    if (!inst->has_sharding()) {
+      continue;
+    }
+    LOG(INFO) << inst->ToString();
+    if (inst->shape().IsTuple()) {
+      ShapeTree<HloSharding> output_tuple_sharding(inst->shape(), Undefined());
+      std::vector<HloSharding> output_flattened_shardings;
+      for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+        auto shape = inst->shape().tuple_shapes(i);
+        auto sharding = inst->sharding().tuple_elements()[i];
+        std::optional<HloSharding> new_sharding =
+            AdjustShardingWithPartialMeshShapePerElement(sharding, valid_shards,
+                                                         total_num_devices);
+        if (new_sharding.has_value()) {
+          output_flattened_shardings.push_back(*new_sharding);
+        } else {
+          output_flattened_shardings.push_back(sharding);
+        }
+      }
+      size_t i = 0;
+      for (auto& leaf : output_tuple_sharding.leaves()) {
+        leaf.second = output_flattened_shardings[i++];
+      }
+      inst->set_sharding(HloSharding::Tuple(output_tuple_sharding));
+    } else {
+      std::optional<HloSharding> sharding =
+          AdjustShardingWithPartialMeshShapePerElement(
+              inst->sharding(), valid_shards, total_num_devices);
+      if (sharding.has_value()) {
+        inst->set_sharding(*sharding);
+        changed = true;
+      }
+    }
+  }
+  return changed;
+}
+
+std::vector<std::vector<int64_t>> DecomposeMeshShapes(
+    std::vector<int64_t> mesh_shape) {
+  // Get the ranking order based on the size of each value.
+  std::vector<int64_t> ranking_order;
+  std::vector<std::vector<int64_t>> partial_mesh_shapes;
+  std::vector<std::pair<int64_t, size_t>> pairs(mesh_shape.size());
+  for (size_t i = 0; i < mesh_shape.size(); i++) {
+    pairs[i] = std::make_pair(mesh_shape[i], i);
+  }
+  // For vector of size 3, the sorted indices happen to be the same as their
+  // rankings. mesh_shapes over 3 elements are not supported by AutoSharding.
+  std::sort(pairs.begin(), pairs.end(),
+            std::greater<std::pair<int64_t, size_t>>());
+
+  std::vector<int64_t> partial_mesh_shape(mesh_shape.size(), 1);
+  // Starts from the largest dimension of mesh_shape.
+  for (size_t i = 0; i < pairs.size(); i++) {
+    if (pairs[i].first == 1) {
+      break;
+    }
+    partial_mesh_shape[pairs[i].second] = pairs[i].first;
+    // Needs to copy partial_mesh_shape.
+    partial_mesh_shapes.push_back(partial_mesh_shape);
+  }
+  return partial_mesh_shapes;
 }
 
 }  // namespace spmd

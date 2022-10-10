@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 package(
     default_visibility = ["//tensorflow/core/function:__subpackages__"],

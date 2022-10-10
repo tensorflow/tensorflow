@@ -139,6 +139,9 @@ class ArenaPlanner : public MemoryPlanner {
 
   // Number of bytes that tensor buffers should be aligned to.
   int tensor_alignment_;
+
+  // Index of the last node whose tensors were allocated.
+  int last_active_node_;
 };
 
 }  // namespace tflite

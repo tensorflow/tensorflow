@@ -1,7 +1,6 @@
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 
 package(
     default_visibility = [

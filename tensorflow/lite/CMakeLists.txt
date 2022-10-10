@@ -156,7 +156,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
 endif()
 # Additional compiler flags used when compiling TF Lite.
 set(TFLITE_TARGET_PUBLIC_OPTIONS "")
-set(TFLITE_TARGET_PRIVATE_OPTIONS "")
+set(TFLITE_TARGET_PRIVATE_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
 # Additional library dependencies based upon enabled features.
 set(TFLITE_TARGET_DEPENDENCIES "")

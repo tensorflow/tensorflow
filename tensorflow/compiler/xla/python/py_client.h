@@ -32,7 +32,7 @@ namespace xla {
 
 class PyBuffer;
 class PyClient;
-class PyExecutable;
+class PyLoadedExecutable;
 
 // Custom holder types.
 //
@@ -121,10 +121,10 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<pybind11::object> LiveBuffers();
   std::vector<pybind11::object> LiveBuffersOnDevice(PjRtDevice* device);
 
-  // Returns a vector of live PyExecutable objects.
+  // Returns a vector of live PyLoadedExecutable objects.
   // note: must return std::shared_ptr instead of raw ptrs
   // https://pybind11.readthedocs.io/en/stable/advanced/smart_ptrs.html#std-shared-ptr
-  std::vector<std::shared_ptr<PyExecutable>> LiveExecutables();
+  std::vector<std::shared_ptr<PyLoadedExecutable>> LiveExecutables();
 
   // TODO(zhangqiaorjc): Remove when we have transparent defragmentation.
   Status Defragment();
@@ -152,21 +152,21 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       pybind11::handle argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);
 
-  StatusOr<std::shared_ptr<PyExecutable>> Compile(
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
-  StatusOr<std::shared_ptr<PyExecutable>> CompileMlir(
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> CompileMlir(
       std::string mlir_module, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
 
   StatusOr<pybind11::bytes> SerializeExecutable(
-      const PyExecutable& executable) const;
-  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+      const PyLoadedExecutable& executable) const;
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
       const std::string& serialized, CompileOptions options,
       std::vector<pybind11::capsule> host_callbacks);
 
   // TODO(skyewm): remove when jax stop providing hlo_module
-  StatusOr<std::shared_ptr<PyExecutable>> DeserializeExecutable(
+  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
       const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
       CompileOptions options, std::vector<pybind11::capsule> host_callbacks) {
     return DeserializeExecutable(serialized, options,
@@ -211,8 +211,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // program through `send_channel_ids` and the results correspond to Recv ops
   // through `recv_channel_ids`. It returns the host callback as an opaque
   // object whose reference will keep the Python callback alive. The host
-  // callback can be passed to PyExecutable::Execute() so that the corresponding
-  // Send/Recv ops can trigger the execution of this host callback.
+  // callback can be passed to PyLoadedExecutable::Execute() so that the
+  // corresponding Send/Recv ops can trigger the execution of this host
+  // callback.
   StatusOr<pybind11::object> MakePythonCallbackUsingHostSendAndRecv(
       pybind11::function callable, absl::Span<Shape const> operand_shapes,
       absl::Span<Shape const> result_shapes,
@@ -221,7 +222,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
  private:
   friend class PyBuffer;
-  friend class PyExecutable;
+  friend class PyLoadedExecutable;
 
   std::shared_ptr<PjRtClient> pjrt_client_;
 
@@ -231,7 +232,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
   // buffers_ is a per-device list, indexed by device->id().
   std::vector<PyBuffer*> buffers_;
-  PyExecutable* executables_ = nullptr;
+  PyLoadedExecutable* executables_ = nullptr;
 };
 
 }  // namespace xla

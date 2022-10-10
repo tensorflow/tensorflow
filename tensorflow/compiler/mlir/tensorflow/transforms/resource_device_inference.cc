@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-resource-device-inference"
 
@@ -54,6 +53,9 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
+#define GEN_PASS_DEF_RESOURCEDEVICEINFERENCEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // A pass that propagates device assignment of resources on a module. It
 // performs in-function propagation, as well as cross-function propagation from
 // callers to callees.
@@ -61,7 +63,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
 struct ResourceDeviceInference
-    : public ResourceDeviceInferencePassBase<ResourceDeviceInference> {
+    : public impl::ResourceDeviceInferencePassBase<ResourceDeviceInference> {
   void runOnOperation() override;
 };
 

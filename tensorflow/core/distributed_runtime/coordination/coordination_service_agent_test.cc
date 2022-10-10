@@ -78,6 +78,8 @@ class TestCoordinationClient : public CoordinationClient {
                     ReportErrorToServiceResponse*, StatusCallback));
   MOCK_METHOD3(BarrierAsync,
                void(const BarrierRequest*, BarrierResponse*, StatusCallback));
+  MOCK_METHOD3(GetTaskStateAsync, void(const GetTaskStateRequest*,
+                                       GetTaskStateResponse*, StatusCallback));
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -116,6 +118,8 @@ class CoordinationServiceAgentTest : public ::testing::Test {
     ON_CALL(*client_, ResetTaskAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(OkStatus()));
     ON_CALL(*client_, BarrierAsync(_, _, _))
+        .WillByDefault(InvokeArgument<2>(OkStatus()));
+    ON_CALL(*client_, GetTaskStateAsync(_, _, _))
         .WillByDefault(InvokeArgument<2>(OkStatus()));
   }
 

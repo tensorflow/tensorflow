@@ -1,7 +1,7 @@
 // RUN: xla-opt -split-input-file -hlo-xla-runtime-pipeline %s | FileCheck %s
 
 // CHECK-LABEL: func.func @simple_add(
-func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> attributes {rt.entrypoint} {
+func.func @simple_add(%arg0: tensor<f64>) -> tensor<f64> {
   // CHECK: linalg.generic
   // CHECK: addf
   %0 = mhlo.add %arg0, %arg0 : tensor<f64>

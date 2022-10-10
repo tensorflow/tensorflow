@@ -9721,12 +9721,13 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[4,2,2,2]"), op::Copy());
-  auto indices = AllOf(op::Shape("s32[2,4,4]"), op::Subtract());
-  auto gather = AllOf(op::Shape("s32[4,4,2,2]"), op::Gather(operand, indices));
-  EXPECT_THAT(root,
-              op::AllReduce(op::DynamicUpdateSlice(
-                  _, op::AllReduce(op::Select(_, _, gather)), _, _, _, _)));
+  auto operand = AllOf(op::Shape("s32[4,4,2,2]"), op::AllReduce());
+  auto indices = AllOf(op::Shape("s32[2,4,2]"), op::Subtract());
+  auto gather = AllOf(op::Shape("s32[4,2,2,2]"), op::Gather(operand, indices));
+  EXPECT_THAT(
+      root, op::AllReduce(op::DynamicUpdateSlice(
+                _, op::AllReduce(op::DynamicUpdateSlice(_, gather, _, _, _, _)),
+                _, _, _, _)));
 }
 
 TEST_F(SpmdPartitioningTest, GatherMergedIndexParallelAndOperandPassthrough) {
@@ -10402,13 +10403,14 @@ ENTRY %module {
                           PartitionComputation(hlo_string, /*num_devices=*/4));
   const auto root = module->entry_computation()->root_instruction();
   VLOG(1) << module->ToString();
-  auto operand = AllOf(op::Shape("s32[4,2,2,2]"));
-  auto indices = AllOf(op::Shape("s32[2,4,4]"));
-  auto update = AllOf(op::Shape("s32[4,4,2,2]"));
+  auto operand = AllOf(op::Shape("s32[4,4,2,2]"));
+  auto indices = AllOf(op::Shape("s32[2,4,2]"));
+  auto update = AllOf(op::Shape("s32[4,2,2,2]"));
   auto scatter =
-      AllOf(op::Shape("s32[4,2,2,2]"), op::Scatter(operand, indices, update));
-  EXPECT_THAT(root, op::AllReduce(op::AllReduce(
-                        op::DynamicUpdateSlice(_, scatter, _, _, _, _))));
+      AllOf(op::Shape("s32[4,4,2,2]"), op::Scatter(operand, indices, update));
+  EXPECT_THAT(root, op::AllReduce(op::AllReduce(op::DynamicUpdateSlice(
+                        _, op::DynamicSlice(op::AllReduce(scatter), _, _, _, _),
+                        _, _, _, _))));
 }
 
 TEST_F(SpmdPartitioningTest, ScatterMergedIndexParallelAndOperandPassthrough) {

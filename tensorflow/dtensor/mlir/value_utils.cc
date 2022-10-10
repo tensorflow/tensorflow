@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -176,31 +177,40 @@ mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
   }
 }
 
-absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
-                                                  mlir::Location loc,
-                                                  mlir::Type type) {
+StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
+                                            mlir::Location loc,
+                                            mlir::Type type) {
   if (type.isF64()) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseFPElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getF64Type()),
-                 static_cast<double>(0.)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseFPElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getF64Type()),
+                     static_cast<double>(0.)))
+        .getResult();
   } else if (type.isF32()) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseFPElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getF32Type()),
-                 static_cast<float>(0.f)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseFPElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getF32Type()),
+                     static_cast<float>(0.f)))
+        .getResult();
   } else if (type.isInteger(32)) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseIntElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getI32Type()),
-                 static_cast<int32_t>(0)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseIntElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getI32Type()),
+                     static_cast<int32_t>(0)))
+        .getResult();
   } else if (type.isInteger(64)) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseIntElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getI64Type()),
-                 static_cast<int64_t>(0)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseIntElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getI64Type()),
+                     static_cast<int64_t>(0)))
+        .getResult();
   } else {
-    return absl::nullopt;
+    return errors::InvalidArgument(
+        "Unsupported element type. Please file a bug to the DTensor team.");
   }
 }
 

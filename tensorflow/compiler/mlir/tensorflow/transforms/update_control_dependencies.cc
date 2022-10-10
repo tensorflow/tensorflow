@@ -26,15 +26,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
 namespace mlir {
 namespace tf_executor {
 namespace {
 
+#define GEN_PASS_DEF_EXECUTORUPDATECONTROLDEPENDENCIESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class UpdateControlDependenciesPass
-    : public TF::ExecutorUpdateControlDependenciesPassBase<
+    : public impl::ExecutorUpdateControlDependenciesPassBase<
           UpdateControlDependenciesPass> {
  public:
   void runOnOperation() override;
