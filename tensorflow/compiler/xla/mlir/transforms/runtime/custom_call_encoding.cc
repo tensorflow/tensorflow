@@ -524,18 +524,19 @@ mlir::FailureOr<mlir::LLVM::GlobalOp> Globals::TryGetOrCreate(
 // Helper functions for encoding attributes and values for custom calls.
 //===----------------------------------------------------------------------===//
 
+static bool IsAnyOf(unsigned width, ArrayRef<unsigned> supported) {
+  return llvm::any_of(supported, [&](unsigned w) { return w == width; });
+}
+
 static bool IsSupportedScalarType(Type type) {
-  auto is_supported_width = [](unsigned width, ArrayRef<unsigned> supported) {
-    return llvm::any_of(supported, [&](unsigned w) { return w == width; });
-  };
+  if (auto idx = type.dyn_cast<mlir::IndexType>()) return true;
 
   if (auto i = type.dyn_cast<mlir::IntegerType>())
-    return i.isUnsigned()
-               ? is_supported_width(i.getWidth(), {8, 16, 32, 64})
-               : is_supported_width(i.getWidth(), {1, 8, 16, 32, 64});
+    return i.isUnsigned() ? IsAnyOf(i.getWidth(), {8, 16, 32, 64})
+                          : IsAnyOf(i.getWidth(), {1, 8, 16, 32, 64});
 
   if (auto fp = type.dyn_cast<mlir::FloatType>())
-    return is_supported_width(fp.getWidth(), {16, 32, 64});
+    return IsAnyOf(fp.getWidth(), {16, 32, 64});
 
   return false;
 }
@@ -547,6 +548,8 @@ static bool IsSupportedScalarAttribute(Attribute attr) {
 }
 
 static TypeID ScalarRuntimeTypeId(Type type) {
+  if (type.isIndex()) return TypeID::get<Tagged<int64_t>>();
+
   if (type.isUnsignedInteger(8)) return TypeID::get<Tagged<uint8_t>>();
   if (type.isUnsignedInteger(16)) return TypeID::get<Tagged<uint16_t>>();
   if (type.isUnsignedInteger(32)) return TypeID::get<Tagged<uint32_t>>();

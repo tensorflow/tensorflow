@@ -58,8 +58,8 @@ static std::unique_ptr<Type> ConvertCanonicalType(
       return std::make_unique<AsyncValueType>(std::move(*value_type));
   }
 
-  // mlir::{IntegerType, FloatType} -> xla::runtime::ScalarType
-  if (type.isa<mlir::IntegerType, mlir::FloatType>()) {
+  // mlir::{IndexType, IntegerType, FloatType} -> xla::runtime::ScalarType
+  if (type.isa<mlir::IndexType, mlir::IntegerType, mlir::FloatType>()) {
     if (auto dtype = TypeConverter::ConvertElementType(type); dtype.ok())
       return std::make_unique<ScalarType>(*dtype);
   }
@@ -108,6 +108,7 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
     mlir::Type type) {
+  if (type.isIndex()) return PrimitiveType::S64;
   if (type.isBF16()) return PrimitiveType::BF16;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
