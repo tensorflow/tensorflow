@@ -2494,3 +2494,13 @@ def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
   }];
   let constructor = "TF::CreateLocalizeVarHandlesPass()";
 }
+
+def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "func::FuncOp"> {
+  let summary = "Removes TF specific attributes";
+  let description = [{
+      Removes attributes that are TF specific (start with "tf.") or that
+      have a value from the TF dialect. Useful after legalizing TF graphs
+      to other dialects, to remove any TF remnants.
+  }];
+  let constructor = "TF::CreateStripTfAttributesPass()";
+}

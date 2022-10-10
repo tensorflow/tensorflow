@@ -298,6 +298,9 @@ CreateRemoveUnusedWhileResultsPass();
 // Creates VarHandleOps right next to the operations that use them.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLocalizeVarHandlesPass();
 
+// Removes all TF attributes
+std::unique_ptr<OperationPass<func::FuncOp>> CreateStripTfAttributesPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
