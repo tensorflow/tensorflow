@@ -406,6 +406,24 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv, /*test_name=*/Uint64, uint64_t, uint64_t,
     test::DefaultInput<uint64_t>(), test::DefaultInputNonZero<uint64_t>(),
     baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(TruncateDiv, /*test_name=*/Float, float, float, baseline_div,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(TruncateDiv, /*test_name=*/Double, double, double,
+                       baseline_div,  test::OpsTestConfig().ExpectStrictlyEqual())
+    
+                                                  
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(TruncateDiv,
+                       /*test_name=*/Complex64, std::complex<float>,
+                       std::complex<float>, baseline_div,
+                       test::OpsTestConfig().ATol(1e-6).RTol(1e-6))
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(TruncateDiv,
+                       /*test_name=*/Complex128, std::complex<double>,
+                       std::complex<double>, baseline_div,
+                       test::OpsTestConfig())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(TruncatedDiv,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_div,
+                       test::OpsTestConfig().ExpectStrictlyEqual())
 #endif
 
 /// Test `tf.DivNoNan`.
