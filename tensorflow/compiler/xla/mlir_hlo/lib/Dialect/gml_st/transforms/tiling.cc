@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
+
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -24,7 +26,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
@@ -169,11 +169,6 @@ llvm::Optional<SmallVector<int64_t>> parseTileSizes(
   return tileSizes;
 }
 
-struct TilingResult {
-  TilingInterface tiledOp;
-  Operation *loop;
-};
-
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
 // for the tensor with the dimension size `dimSize`.
 // The tile size is static when `tileSize` divides `dimSize` or when the
@@ -292,7 +287,8 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
-  TilingPattern(MLIRContext *context, OpFilterFn filterFn,
+  TilingPattern(MLIRContext *context,
+                llvm::function_ref<LogicalResult(Operation *)> filterFn,
                 TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         filterFn(filterFn),
@@ -303,75 +299,16 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (!filterFn || failed(filterFn(op)) || hasTransformationAttr(op))
       return failure();
 
-    if (!options.tileSizeComputationFn) {
-      return rewriter.notifyMatchFailure(
-          op, "missing tile size computation function");
-    }
+    auto tilingResult = tile(options, rewriter, op);
+    if (failed(tilingResult)) return failure();
 
-    // Implement adding accumulator to the gml_st.parallel terminator.
-    if (options.distribute && llvm::count(op.getLoopIteratorTypes(),
-                                          utils::IteratorType::reduction) > 0)
-      return failure();
-
-    // 1. Get the range of the loops that are represented by the operation.
-    SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
-    size_t numLoops = iterationDomain.size();
-    if (numLoops == 0)
-      return rewriter.notifyMatchFailure(op, "missing iteration domain");
-
-    // 2. Materialize the tile sizes. Enforce the convention that "tiling by
-    // zero" skips tiling a particular dimension. This convention is
-    // significantly simpler to handle instead of adjusting affine maps to
-    // account for missing dimensions.
-    SmallVector<Value> tileSizeVector;
-    {
-      OpBuilder::InsertionGuard guard(rewriter);
-      tileSizeVector = options.tileSizeComputationFn(rewriter, op);
-    }
-    if (tileSizeVector.size() < iterationDomain.size()) {
-      auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
-      tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
-    }
-
-    // 3. Materialize an empty loop nest that iterates over the tiles.
-    auto dstOperands = op.getDestinationOperands(rewriter);
-    SmallVector<OpFoldResult> offsets, sizes;
-    TilingResult tilingResult;
-    tilingResult.loop = generateTileLoopNest(
-        rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
-        options.distribute, offsets, sizes);
-    Block *loopBody = &tilingResult.loop->getRegion(0).front();
-    Operation *terminator = loopBody->getTerminator();
-    rewriter.setInsertionPoint(terminator);
-
-    // 4. Insert the tiled implementation within the loop.
-    tilingResult.tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
-
-    // 5. Add `gml_st.set_yield` terminator.
-    SmallVector<Value> dstSubsets;
-    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter))
-      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
-    rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
-                                            tilingResult.tiledOp->getResults(),
-                                            dstOperands, dstSubsets);
-
-    // 6. Replace the uses of `outputs` with the output block arguments.
-    if (!options.distribute) {
-      auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
-      for (auto [dst, regionArg] :
-           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
-        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-          return operand.getOwner()->getBlock() == loopBody;
-        });
-      }
-    }
-    rewriter.replaceOp(op, tilingResult.loop->getResults());
-    setTransformationAttr(rewriter, tilingResult.tiledOp);
+    rewriter.replaceOp(op, tilingResult->loop->getResults());
+    setTransformationAttr(rewriter, tilingResult->tiledOp);
     return success();
   }
 
  private:
-  OpFilterFn filterFn;
+  llvm::function_ref<LogicalResult(Operation *)> filterFn;
   TilingOptions options;
 };
 
@@ -427,9 +364,78 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
 
 }  // namespace
 
-void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
-                            const TilingOptions &opts,
-                            RewritePatternSet *patterns) {
+FailureOr<TilingResult> tile(const TilingOptions &options,
+                             PatternRewriter &rewriter, TilingInterface op) {
+  if (!options.tileSizeComputationFn) {
+    return rewriter.notifyMatchFailure(
+        op, "missing tile size computation function");
+  }
+
+  // Implement adding accumulator to the gml_st.parallel terminator.
+  if (options.distribute && llvm::count(op.getLoopIteratorTypes(),
+                                        utils::IteratorType::reduction) > 0) {
+    return failure();
+  }
+
+  // 1. Get the range of the loops that are represented by the operation.
+  SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
+  size_t numLoops = iterationDomain.size();
+  if (numLoops == 0) return failure();
+
+  // 2. Materialize the tile sizes. Enforce the convention that "tiling by
+  // zero" skips tiling a particular dimension. This convention is
+  // significantly simpler to handle instead of adjusting affine maps to
+  // account for missing dimensions.
+  SmallVector<Value> tileSizeVector;
+  {
+    OpBuilder::InsertionGuard guard(rewriter);
+    tileSizeVector = options.tileSizeComputationFn(rewriter, op);
+  }
+  if (tileSizeVector.size() < iterationDomain.size()) {
+    auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+    tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
+  }
+
+  // 3. Materialize an empty loop nest that iterates over the tiles.
+  auto dstOperands = op.getDestinationOperands(rewriter);
+  SmallVector<OpFoldResult> offsets, sizes;
+  TilingResult tilingResult;
+  tilingResult.loop = generateTileLoopNest(
+      rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
+      options.distribute, offsets, sizes);
+  Block *loopBody = &tilingResult.loop->getRegion(0).front();
+  Operation *terminator = loopBody->getTerminator();
+  rewriter.setInsertionPoint(terminator);
+
+  // 4. Insert the tiled implementation within the loop.
+  TilingInterface tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
+  tilingResult.tiledOp = tiledOp.getOperation();
+
+  // 5. Add `gml_st.set_yield` terminator.
+  SmallVector<Value> dstSubsets;
+  for (Value dst : tiledOp.getDestinationOperands(rewriter))
+    dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
+  rewriter.replaceOpWithNewOp<SetYieldOp>(
+      terminator, tilingResult.tiledOp->getResults(), dstOperands, dstSubsets);
+
+  // 6. Replace the uses of `outputs` with the output block arguments.
+  if (!options.distribute) {
+    auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
+    for (auto [dst, regionArg] :
+         llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
+      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+        return operand.getOwner()->getBlock() == loopBody;
+      });
+    }
+  }
+
+  return tilingResult;
+}
+
+void populateTilingPatterns(
+    MLIRContext *context,
+    llvm::function_ref<LogicalResult(Operation *)> filterFn,
+    const TilingOptions &opts, RewritePatternSet *patterns) {
   patterns->add<TilingPattern>(context, filterFn, opts);
 }
 

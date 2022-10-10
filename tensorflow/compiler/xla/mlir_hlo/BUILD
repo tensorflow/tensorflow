@@ -1307,6 +1307,7 @@ cc_library(
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/tiling.h",
     ],
     deps = [
         ":compose_set_interface",
