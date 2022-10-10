@@ -1,6 +1,10 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library")
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -787,6 +791,17 @@ config_setting(
     },
 )
 
+# We cannot nest select and if_cuda_is_configured so we introduce
+# a standalone cc_library target.
+cc_library(
+    name = "gpu_plugin_deps",
+    deps = [
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ]),
+)
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -863,7 +878,9 @@ pybind_extension(
         ],
         "//conditions:default": [],
     }) + select({
-        ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        ":link_gpu_plugin": [
+            ":gpu_plugin_deps",
+        ],
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": [
@@ -876,5 +893,5 @@ pybind_extension(
             "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
         ],
         "//conditions:default": [],
-    }) + if_cuda(["//tensorflow/compiler/xla/stream_executor:cuda_platform"]),
+    }),
 )
