@@ -3,10 +3,10 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "replace_with_portable_tf_lib_when_required")
+load("//tensorflow:tensorflow.default.bzl", "replace_with_portable_tf_lib_when_required")
 
 package(
     default_visibility = [

@@ -1555,12 +1555,16 @@ TEST(CastOperationParserTest, TestIsSupported) {
           .ok());
 
   context->tensor(1)->type = kTfLiteBool;
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())
           .ok());
   // Valid
   context->registration(0)->builtin_code = kTfLiteBuiltinGreater;
+  EXPECT_TRUE(
+      parser
+          ->IsSupported(context.get(), context->node(), context->registration())
+          .ok());
   EXPECT_TRUE(
       parser
           ->IsSupported(context.get(), context->node(), context->registration())

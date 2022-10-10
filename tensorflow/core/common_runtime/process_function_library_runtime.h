@@ -383,6 +383,27 @@ class ProcessFunctionLibraryRuntime {
 
   Status ReleaseMultiDeviceHandle(FunctionLibraryRuntime::Handle handle);
 
+  // Function graph related information after optimizations.
+  struct OptimizedFunctionGraphInfo {
+    // Optimized graph.
+    std::unique_ptr<Graph> graph;
+    // Optimized function library.
+    FunctionLibraryDefinition lib_def;
+    // Map from original node names to control return names.
+    std::unordered_map<string, string> node_name_to_control_ret;
+    // Return node types of the function.
+    DataTypeVector ret_types;
+    // Number of return nodes.
+    size_t num_return_nodes;
+  };
+
+  // Outputs graph optimization result after all the graph optimization (up till
+  // before graph partitioning); returns error if optimization fails.
+  StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
+      const string& function_name, AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const std::shared_ptr<DeviceSet>& dev_set);
+
   Status InstantiateMultiDevice(
       const string& function_name, AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,

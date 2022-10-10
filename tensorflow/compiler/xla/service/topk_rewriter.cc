@@ -182,9 +182,11 @@ std::optional<int64_t> TopkRewriter::SortIsInTopK(HloInstruction* inst) {
   return k;
 }
 
-StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
+StatusOr<bool> TopkRewriter::TransformToCustomCall(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* inst : comp->MakeInstructionPostOrder()) {
       // Check if sort is in TopK.
       std::optional<int64_t> k = SortIsInTopK(inst);
@@ -269,10 +271,12 @@ StatusOr<bool> TopkRewriter::TransformToCustomCall(HloModule* module) {
   return changed;
 }
 
-StatusOr<bool> TopkRewriter::Run(HloModule* module) {
+StatusOr<bool> TopkRewriter::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   TF_ASSIGN_OR_RETURN(auto transform_to_customcall_changed,
-                      TransformToCustomCall(module));
+                      TransformToCustomCall(module, execution_threads));
   changed |= transform_to_customcall_changed;
   return changed;
 }

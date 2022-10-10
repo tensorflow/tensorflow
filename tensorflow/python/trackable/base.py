@@ -22,11 +22,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.trackable import constants
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
-
 
 OBJECT_GRAPH_PROTO_KEY = constants.OBJECT_GRAPH_PROTO_KEY
 VARIABLE_VALUE_KEY = constants.VARIABLE_VALUE_KEY
@@ -91,8 +89,8 @@ class WeakTrackableReference(TrackableReference):
 
 
 # TODO(bfontain):  Update once sharded initialization interface is finalized.
-ShardInfo = collections.namedtuple(
-    "CheckpointInitialValueShardInfo", ["shape", "offset"])
+ShardInfo = collections.namedtuple("CheckpointInitialValueShardInfo",
+                                   ["shape", "offset"])
 
 
 @tf_export("__internal__.tracking.CheckpointInitialValueCallable", v1=[])
@@ -475,8 +473,7 @@ class Trackable(object):
         # we can set that value as an initializer rather than initializing and
         # then assigning (when executing eagerly). This call returns None if
         # there is nothing to restore.
-        checkpoint_initializer = self._preload_simple_restoration(
-            name=name)
+        checkpoint_initializer = self._preload_simple_restoration(name=name)
       else:
         checkpoint_initializer = None
       if (checkpoint_initializer is not None and
@@ -676,8 +673,10 @@ class Trackable(object):
     from tensorflow.python.training.saving import saveable_object_util
     # pylint: enable=g-import-not-at-top
     if saveable_object_util.trackable_has_serialize_to_tensor(self):
+
       def create_saveable(name=""):
         return saveable_object_util.TrackableSaveable(self, name)
+
       return {"": create_saveable}
     else:
       return getattr(self, "_self_saveable_object_factories", {})
@@ -791,9 +790,14 @@ class Trackable(object):
     return None
 
   @classmethod
-  def _deserialize_from_proto(
-      cls, proto=None, dependencies=None, object_proto=None, export_dir=None,
-      asset_file_def=None, operation_attributes=None, **kwargs):
+  def _deserialize_from_proto(cls,
+                              proto=None,
+                              dependencies=None,
+                              object_proto=None,
+                              export_dir=None,
+                              asset_file_def=None,
+                              operation_attributes=None,
+                              **kwargs):
     """Returns a new object restored by the SavedModel.
 
     Trackable classes decorated with `register_serializable` should overwrite
@@ -1024,8 +1028,8 @@ class Trackable(object):
     Args:
       save_type: A string, can be 'savedmodel' or 'checkpoint'. Defaults to
         SaveType.CHECKPOINT.
-      cache: May be `None`, or a dictionary. When `save_type == savedmodel`,
-        a new cache is created at the start of the SavedModel export, and shared
+      cache: May be `None`, or a dictionary. When `save_type == savedmodel`, a
+        new cache is created at the start of the SavedModel export, and shared
         between all `Trackables` in the same object graph. This cache may be
         used for advanced saving functionality.
       **kwargs: Additional kwargs that may be added at a later time.
@@ -1072,10 +1076,3 @@ class Trackable(object):
     object_map.update(self_object_map)
     tensor_map.update(self_tensor_map)
     return list(self_tensor_map.keys())
-
-
-# TODO(kathywu): Delete the imports below once dependencies have been migrated.
-python_state = lazy_loader.LazyLoader(
-    "python_state", globals(),
-    "tensorflow.python.trackable.python_state")
-PythonStateSaveable = python_state.PythonStateSaveable

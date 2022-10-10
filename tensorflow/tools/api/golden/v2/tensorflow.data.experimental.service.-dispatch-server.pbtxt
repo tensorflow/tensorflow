@@ -18,4 +18,8 @@ tf_class {
     name: "start"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "stop"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
 }

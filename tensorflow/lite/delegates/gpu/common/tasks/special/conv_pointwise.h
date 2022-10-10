@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_CONV_POINTWISE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TASKS_SPECIAL_CONV_POINTWISE_H_
 
+#include <map>
+#include <set>
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
-#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {

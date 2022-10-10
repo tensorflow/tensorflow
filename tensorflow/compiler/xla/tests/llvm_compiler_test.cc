@@ -24,10 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -153,7 +153,7 @@ class LLVMCompilerTest : public ::testing::Test {
  private:
   Platform* FindPlatform() {
     auto status_or_platform = PlatformUtil::GetPlatform(platform_name_);
-    return status_or_platform.ok() ? status_or_platform.ValueOrDie() : nullptr;
+    return status_or_platform.ok() ? status_or_platform.value() : nullptr;
   }
 
   std::string platform_name_;

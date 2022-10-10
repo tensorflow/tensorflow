@@ -26,7 +26,7 @@ namespace tensorflow {
 // convenience in functional tests only.
 class GpuManagedAllocator : public Allocator {
  public:
-  string Name() override { return "GpuManagedAllocator"; }
+  std::string Name() override { return "GpuManagedAllocator"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
 };

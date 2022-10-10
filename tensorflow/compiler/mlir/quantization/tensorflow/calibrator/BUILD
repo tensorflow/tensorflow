@@ -1,8 +1,4 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_custom_op_py_library", "tf_py_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -22,6 +18,7 @@ cc_library(
     name = "calibrator_singleton",
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
@@ -44,10 +41,10 @@ tf_cc_test(
 tf_kernel_library(
     name = "custom_aggregator_op_and_kernels",
     srcs = ["custom_aggregator_op.cc"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":calibrator_singleton",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -75,6 +72,9 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_custom_aggregator_op_wrapper",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform",
     ],
 )
 

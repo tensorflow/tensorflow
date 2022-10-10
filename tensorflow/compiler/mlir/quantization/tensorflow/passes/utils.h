@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTILS_H_
+
 #include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -21,15 +24,22 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
-#ifndef TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
 namespace mlir {
 namespace quant {
 
-// Returns true if the op has any quantized tensors as input or output.
-bool HasQuantizedTensors(Operation *op);
+// TODO(b/238829558): Populate quantization config based on the
+// QuantizationOptions proto. We might want to clean QuantizationMethod as well
+// as this can be inferred from the proto.
+using OpSet = tensorflow::quantization::OpSet;
+
+enum class QuantizationMethod {
+  kQuantizationAwareTraining,
+  kPostTrainingQuantization,
+  kDynamicRangeQuantization
+};
 
 // Returns true if the value has static shape.
 bool HasStaticShape(Value value);
@@ -37,11 +47,8 @@ bool HasStaticShape(Value value);
 // Returns true if the value has static shape at given dims.
 bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims);
 
-enum class QuantizationMethod {
-  kQuantizationAwareTraining,
-  kPostTrainingQuantization,
-  kDynamicRangeQuantization
-};
+// Returns true if the op has any quantized tensors as input or output.
+bool HasQuantizedTensors(Operation *op);
 
 // Creates a new type that has the shape from the `old_type` and the element
 // type from the `element_type`.
@@ -123,6 +130,12 @@ bool AreSplatValuesEqual(Value x, Value y) {
   return splat_x == splat_y;
 }
 
+// TODO(b/241488936): Remove this function after adding a new constant folding
+// pass to TensorFlow.
+// Applies constant folding to the operation if possible and return the folded
+// results.
+llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation *op);
+
 }  // namespace quant
 }  // namespace mlir
-#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_QUANTIZATION_TENSORFLOW_PASSES_UTILS_H_

@@ -155,7 +155,10 @@ class InstructionFusion : public HloModulePass {
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Returns true if the computation of the given instruction is significantly
   // more expensive than just writing all the values of the instructions' result
@@ -172,7 +175,9 @@ class InstructionFusion : public HloModulePass {
 
  protected:
   // Returns a list of computations on which Fusion is performed.
-  virtual std::vector<HloComputation*> GetFusionComputations(HloModule* module);
+  virtual std::vector<HloComputation*> GetFusionComputations(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Returns a FusionQueue that implements custom order of instructions being
   // fused. The default implementation processes consumers in reverse post

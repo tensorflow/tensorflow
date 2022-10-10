@@ -129,11 +129,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <typename IndicesT, typename UpdatesT>
 TfLiteStatus ScatterNd(const TfLiteTensor* indices, const TfLiteTensor* updates,
                        TfLiteTensor* output) {
-  reference_ops::ScatterNd(
+  return reference_ops::ScatterNd(
       GetTensorShape(indices), GetTensorData<IndicesT>(indices),
       GetTensorShape(updates), GetTensorData<UpdatesT>(updates),
       GetTensorShape(output), GetTensorData<UpdatesT>(output));
-  return kTfLiteOk;
 }
 
 template <typename IndicesT>
@@ -149,25 +148,36 @@ TfLiteStatus EvalScatterNd(TfLiteContext* context, const TfLiteTensor* indices,
                       ResizeOutputTensor<IndicesT>(context, shape, output));
   }
 
+  TfLiteStatus status = kTfLiteError;
   switch (updates->type) {
     case kTfLiteFloat32:
-      return ScatterNd<IndicesT, float>(indices, updates, output);
+      status = ScatterNd<IndicesT, float>(indices, updates, output);
+      break;
     case kTfLiteUInt8:
-      return ScatterNd<IndicesT, uint8_t>(indices, updates, output);
+      status = ScatterNd<IndicesT, uint8_t>(indices, updates, output);
+      break;
     case kTfLiteBool:
-      return ScatterNd<IndicesT, bool>(indices, updates, output);
+      status = ScatterNd<IndicesT, bool>(indices, updates, output);
+      break;
     case kTfLiteInt8:
-      return ScatterNd<IndicesT, int8_t>(indices, updates, output);
+      status = ScatterNd<IndicesT, int8_t>(indices, updates, output);
+      break;
     case kTfLiteInt32:
-      return ScatterNd<IndicesT, int32_t>(indices, updates, output);
+      status = ScatterNd<IndicesT, int32_t>(indices, updates, output);
+      break;
     case kTfLiteInt64:
-      return ScatterNd<IndicesT, int64_t>(indices, updates, output);
+      status = ScatterNd<IndicesT, int64_t>(indices, updates, output);
+      break;
     default:
       TF_LITE_KERNEL_LOG(
           context, "Updates of type '%s' are not supported by scatter_nd.",
           TfLiteTypeGetName(updates->type));
       return kTfLiteError;
   }
+  if (status != kTfLiteOk) {
+    TF_LITE_KERNEL_LOG(context, "scatter_nd index out of bounds");
+  }
+  return status;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -27,7 +27,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_TILEFILL
+#define GEN_PASS_DEF_TILECWISE
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 using mlir::failure;
@@ -45,21 +46,19 @@ using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
-using mlir::linalg::LinalgTransformationFilter;
 
 struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
-  /// MatchAnyOpTag-based constructor with a mandatory `filter`.
-  TileCWisePattern(LinalgTilingOptions options,
-                   LinalgTransformationFilter filter, MLIRContext *context,
+  TileCWisePattern(LinalgTilingOptions options, MLIRContext *context,
+                   llvm::function_ref<bool(Operation *)> match_fn,
                    mlir::PatternBenefit benefit = 1)
       : mlir::OpInterfaceRewritePattern<LinalgOp>(context, benefit),
-        filter(filter),
+        match_fn(match_fn),
         options(options) {}
 
   LogicalResult matchAndRewrite(LinalgOp linalg_op,
                                 PatternRewriter &rewriter) const override {
-    // Check if it is cwise on tensors.
-    if (failed(filter.checkAndNotify(rewriter, linalg_op))) return failure();
+    if (hasTransformationAttr(linalg_op)) return failure();
+    if (!match_fn(linalg_op)) return failure();
 
     auto tiled_linalg_op =
         mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
@@ -70,16 +69,15 @@ struct TileCWisePattern : public mlir::OpInterfaceRewritePattern<LinalgOp> {
         mlir::dyn_cast<LoopOp>(*tiled_linalg_op.getValue().loops.front());
     if (!tiled_loop) return failure();
 
-    tiled_loop->walk([&](LinalgOp tiledOp) {
-      filter.replaceLinalgTransformationFilter(rewriter, tiledOp);
-    });
+    tiled_loop->walk(
+        [&](LinalgOp tiledOp) { setTransformationAttr(rewriter, tiledOp); });
 
     rewriter.replaceOp(linalg_op, tiled_loop->getResults());
     return success();
   }
 
  private:
-  LinalgTransformationFilter filter;
+  llvm::function_ref<bool(Operation *)> match_fn;
   LinalgTilingOptions options;
 };
 
@@ -90,9 +88,8 @@ bool isNonTiledCwiseGeneric(Operation *op) {
   auto linalg_op = mlir::dyn_cast<GenericOp>(op);
   if (linalg_op) {
     if (!linalg_op.hasTensorSemantics()) return false;
-    return llvm::all_of(linalg_op.iterator_types(), [](auto type) {
-      return mlir::isParallelIterator(type);
-    });
+    return llvm::all_of(linalg_op.getIteratorTypesArray(),
+                        mlir::linalg::isParallelIterator);
   }
   if (auto fill_op = mlir::dyn_cast<FillOp>(op)) {
     return fill_op.hasTensorSemantics();
@@ -110,10 +107,8 @@ bool isNonTiledFill(Operation *op) {
   return false;
 }
 
-static constexpr llvm::StringRef kTiledId = "tiled";
-
 void Tile(mlir::func::FuncOp func, int64_t tile_size,
-          LinalgTransformationFilter &filter) {
+          llvm::function_ref<bool(Operation *)> match_fn) {
   LinalgTilingOptions tiling_options;
   // Tile the innermost dimension by `tile_size` for vectorization and scalarize
   // the other dimensions.
@@ -128,44 +123,31 @@ void Tile(mlir::func::FuncOp func, int64_t tile_size,
       });
 
   mlir::RewritePatternSet patterns(func.getContext());
-  patterns.add<TileCWisePattern>(tiling_options, filter, patterns.getContext());
+  patterns.add<TileCWisePattern>(tiling_options, patterns.getContext(),
+                                 match_fn);
   (void)mlir::applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Ensure we drop the marker in the end.
-  func.walk([](LinalgOp op) {
-    op->removeAttr(mlir::linalg::LinalgTransforms::kLinalgTransformMarker);
-  });
+  func.walk([](LinalgOp op) { removeTransformationAttr(op); });
 }
 
-struct TileCWisePass : public TileCWiseBase<TileCWisePass> {
+struct TileCWisePass : public impl::TileCWiseBase<TileCWisePass> {
   TileCWisePass() = default;
   explicit TileCWisePass(int64_t tile_size) { cwise_tile_size = tile_size; }
 
   void runOnOperation() override {
     auto func = getOperation();
-    auto filter = LinalgTransformationFilter(
-                      llvm::ArrayRef<mlir::StringAttr>{},
-                      {mlir::StringAttr::get(func.getContext(), kTiledId)})
-                      .addFilter([](Operation *op) {
-                        return success(isNonTiledCwiseGeneric(op));
-                      });
-    Tile(func, cwise_tile_size, filter);
+    Tile(func, cwise_tile_size, isNonTiledCwiseGeneric);
   }
 };
 
-struct TileFillPass : public TileFillBase<TileFillPass> {
+struct TileFillPass : public impl::TileFillBase<TileFillPass> {
   TileFillPass() = default;
   explicit TileFillPass(int64_t tile_size) { cwise_tile_size = tile_size; }
 
   void runOnOperation() override {
     auto func = getOperation();
-    auto filter = LinalgTransformationFilter(
-                      llvm::ArrayRef<mlir::StringAttr>{},
-                      {mlir::StringAttr::get(func.getContext(), kTiledId)})
-                      .addFilter([](Operation *op) {
-                        return success(isNonTiledFill(op));
-                      });
-    Tile(func, cwise_tile_size, filter);
+    Tile(func, cwise_tile_size, isNonTiledFill);
   }
 };
 

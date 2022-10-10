@@ -17,6 +17,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -38,6 +39,11 @@ struct LegalizeTFToQuant
 
   /// Performs the lowering to Quant ops dialect.
   void runOnOperation() override;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<quant::QuantizationDialect,
+                    quantfork::QuantizationForkDialect>();
+  }
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -88,7 +94,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
                                 PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
-    if (!res.hasOneUse() || isa<quant::QuantizeCastOp>(*res.user_begin()))
+    if (!res.hasOneUse() || isa<quantfork::QuantizeCastOp>(*res.user_begin()))
       return failure();
 
     // Extract the min/max constant values from the operands. We also consider
@@ -130,9 +136,9 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
     Value value = tf_op.outputs();
-    auto quantize = rewriter.create<quant::QuantizeCastOp>(
+    auto quantize = rewriter.create<quantfork::QuantizeCastOp>(
         tf_op.getLoc(), qtype.getValue(), value);
-    auto dequantize = rewriter.create<quant::DequantizeCastOp>(
+    auto dequantize = rewriter.create<quantfork::DequantizeCastOp>(
         tf_op.getLoc(), res_type, quantize.getResult());
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);

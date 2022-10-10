@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -305,7 +305,7 @@ std::optional<int64_t> HloModuleGroupMetadata::GetInstructionDevice(
   // In such cases the VerifyChannelInstructions() will return proper errors.
   std::optional<int64_t> device = instruction.sharding_unique_device();
   if (!device) {
-    device = GetModuleId(instruction.parent()->parent());
+    device = GetModuleId(instruction.GetModule());
   }
   return device;
 }

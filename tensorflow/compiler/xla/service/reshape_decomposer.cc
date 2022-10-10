@@ -71,8 +71,10 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> ReshapeDecomposer::Run(HloModule* module) {
-  return ReshapeDecomposerVisitor{}.RunOnModule(module);
+StatusOr<bool> ReshapeDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return ReshapeDecomposerVisitor{}.RunOnModule(module, execution_threads);
 }
 
 }  // namespace xla

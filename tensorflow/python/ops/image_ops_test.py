@@ -2335,6 +2335,29 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
         self.evaluate(v)
 
 
+class ImageProjectiveTransformV2(test_util.TensorFlowTestCase):
+
+  def testShapeTooLarge(self):
+    interpolation = "BILINEAR"
+    fill_mode = "REFLECT"
+    images = constant_op.constant(
+        0.184634328, shape=[2, 5, 8, 3], dtype=dtypes.float32)
+    transforms = constant_op.constant(
+        0.378575385, shape=[2, 8], dtype=dtypes.float32)
+    output_shape = constant_op.constant([1879048192, 1879048192],
+                                        shape=[2],
+                                        dtype=dtypes.int32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"Encountered overflow when multiplying"):
+      self.evaluate(
+          gen_image_ops.ImageProjectiveTransformV2(
+              images=images,
+              transforms=transforms,
+              output_shape=output_shape,
+              interpolation=interpolation,
+              fill_mode=fill_mode))
+
+
 class InternalPadToBoundingBoxTest(test_util.TensorFlowTestCase,
                                    parameterized.TestCase):
 
@@ -4152,6 +4175,25 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     self._assertReturns(x, x_shape, y, y_shape)
 
 
+class ResizeNearestNeighborGrad(test_util.TensorFlowTestCase):
+
+  def testSizeTooLarge(self):
+    align_corners = True
+    half_pixel_centers = False
+    grads = constant_op.constant(1, shape=[1, 8, 16, 3], dtype=dtypes.float16)
+    size = constant_op.constant([1879048192, 1879048192],
+                                shape=[2],
+                                dtype=dtypes.int32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"Encountered overflow when multiplying"):
+      self.evaluate(
+          gen_image_ops.ResizeNearestNeighborGrad(
+              grads=grads,
+              size=size,
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers))
+
+
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithCropOrPad(self, x, target_height, target_width,
@@ -5778,6 +5820,27 @@ class SSIMTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       self.assertAllClose(
           self.evaluate(ssim_uint8), self.evaluate(ssim_float32), atol=0.001)
+
+  def testWithIndexMap(self):
+    img1 = self._RandomImage((1, 16, 16, 3), 255)
+    img2 = self._RandomImage((1, 16, 16, 3), 255)
+
+    ssim_locals = image_ops.ssim(
+        img1,
+        img2,
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03,
+        return_index_map=True)
+    self.assertEqual(ssim_locals.shape, (1, 6, 6))
+
+    ssim_global = image_ops.ssim(
+        img1, img2, 1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
+
+    axes = constant_op.constant([-2, -1], dtype=dtypes.int32)
+    self.assertAllClose(ssim_global, math_ops.reduce_mean(ssim_locals, axes))
 
 
 class MultiscaleSSIMTest(test_util.TensorFlowTestCase):

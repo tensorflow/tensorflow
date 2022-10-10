@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -1320,9 +1320,10 @@ InstructionValueSet& HloDataflowAnalysis::GetInstructionValueSet(
 }
 
 Status HloDataflowAnalysis::InitializeInstructionValueSets() {
-  for (const HloComputation* computation : module_.computations()) {
+  for (const HloComputation* computation : module_.MakeComputationSorted()) {
     const CallGraphNode& call_graph_node = call_graph_->GetNode(computation);
-    for (HloInstruction* instruction : computation->instructions()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       // Create an empty shape tree.
       value_sets_.insert({instruction, std::make_unique<InstructionValueSet>(
                                            instruction->shape())});

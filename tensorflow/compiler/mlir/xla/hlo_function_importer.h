@@ -13,26 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_
 
+#include <string>
 #include <unordered_map>
 
 #include "absl/types/optional.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -55,7 +58,7 @@ class HloFunctionImporter {
       const xla::HloComputation& computation, mlir::ModuleOp module,
       std::unordered_map<const xla::HloComputation*, mlir::func::FuncOp>*
           function_map,
-      mlir::Builder* builder);
+      mlir::Builder* builder, bool is_main);
 
   // Imports the given hlo computation to the specified region. If
   // 'flatten_region_arg_tuple' is true, then flatten the tuple-typed region
@@ -140,26 +143,27 @@ class HloFunctionImporter {
         module_(module),
         builder_(builder),
         function_map_(function_map) {
-    context_->loadDialect<mlir::arith::ArithmeticDialect>();
+    context_->loadDialect<mlir::arith::ArithDialect>();
     context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
+    context_->loadDialect<mlir::sparse_tensor::SparseTensorDialect>();
   }
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.
   StatusOr<mlir::func::FuncOp> ImportAsFunc(
-      const xla::HloComputation& computation);
+      const xla::HloComputation& computation, bool is_main);
 
   // Imports the given computation in the specified region.
-  tensorflow::Status ImportAsRegion(const HloComputation& computation,
-                                    mlir::Region* region,
-                                    bool flatten_region_arg_tuple = false);
+  tsl::Status ImportAsRegion(const HloComputation& computation,
+                             mlir::Region* region,
+                             bool flatten_region_arg_tuple = false);
 
   // Imports instructions from the given computation in the specified block.
   // Assumes that the block already has correct arguments populated.
-  tensorflow::Status ImportInstructions(const HloComputation& computation,
-                                        mlir::Block* block,
-                                        bool flatten_region_arg_tuple);
+  tsl::Status ImportInstructions(const HloComputation& computation,
+                                 mlir::Block* block,
+                                 bool flatten_region_arg_tuple);
   StatusOr<mlir::Value> ImportInstructionsImpl(
       const xla::HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
@@ -226,8 +230,39 @@ class HloFunctionImporter {
   // Converts channel id to attribute
   mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id);
 
+  // Convert use global device ids flag to attribute
+  mlir::NamedAttribute ConvertUseGlobalDeviceIds();
+
   // Converts channel handle to attribute
   mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
+
+  // ============
+  // Imports an old-style async start op. E.g. an HLO all-gather-start
+  // instruction is imported as an async-start associated with an all-gather
+  // computation.
+  //
+  // Eventually, old-style async ops (e.g. all-gather-start) and new-style async
+  // ops (i.e. async-start, async-update and async-done) will converge on the
+  // HLO side, so we decided to not introduce new MHLO ops for all-gather-start
+  // and friends.
+  //
+  // In the end, there may be new ops added in the old-style because they're not
+  // compatible with the new-style async semantics, but those should be handled
+  // on their own, rather than this function which "upgrades" ops to the
+  // new-style async API.
+  // ============
+  template <typename SyncOp>
+  StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
+      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+      mlir::Type result_type, mlir::OpBuilder* func_builder,
+      std::string func_name, std::function<Status(SyncOp)> mutate_op);
+
+  // Imports an old-style async done op
+  StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
+      llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+      const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+      mlir::Type result_type, mlir::OpBuilder* func_builder);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;
@@ -244,4 +279,4 @@ class HloFunctionImporter {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_FUNCTION_IMPORTER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_FUNCTION_IMPORTER_H_

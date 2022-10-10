@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LINALGTRIVIALBUFFERFORWARDING
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // Returns true if all linalg.generic operation iterators are "parallel".
@@ -115,8 +115,8 @@ struct LinalgTrivialBufferForwardingPattern
         if (input_buffer->get().getType() != output_buffer->get().getType())
           continue;
 
-        mlir::AffineMap src_map = op.getTiedIndexingMap(input_buffer);
-        mlir::AffineMap dst_map = op.getTiedIndexingMap(output_buffer);
+        mlir::AffineMap src_map = op.getMatchingIndexingMap(input_buffer);
+        mlir::AffineMap dst_map = op.getMatchingIndexingMap(output_buffer);
 
         // Only support identity maps for the output for now.
         if (!dst_map.isIdentity()) continue;
@@ -192,7 +192,7 @@ struct LinalgTrivialBufferForwardingPattern
 // Trivial buffer forwarding for the linalg.generic operations.
 // -------------------------------------------------------------------------- //
 struct LinalgTrivialBufferForwardingPass
-    : public LinalgTrivialBufferForwardingBase<
+    : public impl::LinalgTrivialBufferForwardingBase<
           LinalgTrivialBufferForwardingPass> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();

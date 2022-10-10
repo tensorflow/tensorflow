@@ -45,7 +45,7 @@ bool IsSessionInitializer(mlir::func::FuncOp op) {
       op->getParentOfType<mlir::ModuleOp>());
   if (!session_initializer_op) return false;
 
-  for (auto sym_ref : session_initializer_op.initializers()) {
+  for (auto sym_ref : session_initializer_op.getInitializers()) {
     if (op.getSymName() == sym_ref.cast<mlir::FlatSymbolRefAttr>().getValue())
       return true;
   }
@@ -362,6 +362,15 @@ void HoistInvariantOps(mlir::ModuleOp module) {
     if (IsSessionInitializer(func) ||
         init_callees.contains(func.getSymName()) || func == init_func_op)
       continue;
+
+    // Skips hoisting if this function runs on TPU. This is will happen when
+    // fallback to TPUPartitionedCallOp is enabled for SPMD.
+    // TODO(b/214039254): remove this once tfrt support native SPMD.
+    bool has_tpu_op = false;
+    func.walk([&has_tpu_op](mlir::Operation *op) {
+      if (op->hasAttr("_tpu_replicate")) has_tpu_op = true;
+    });
+    if (has_tpu_op) continue;
 
     HoistInvariantOpsInFunction(func, read_only_vars,
                                 side_effect_analysis.GetAnalysisForFunc(func),

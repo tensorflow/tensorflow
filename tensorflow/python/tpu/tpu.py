@@ -1416,7 +1416,7 @@ def split_compile_and_replicate(
     replicas = [flat_inputs[replica][i] for replica in range(num_replicas)]
     flat_replicated_inputs.append(
         tpu_ops.tpu_replicated_input(
-            replicas, name="input{}".format(i), index=i))
+            replicas, name="input{}".format(i)))
   if isinstance(graph, func_graph.FuncGraph):
     # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
     # object. If both outside graph and this function have a TPU cluster,

@@ -215,14 +215,15 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   return kTfLiteOk;
 }
 
-void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                 bool preserve_data) {
   if (tensor->allocation_type != kTfLiteDynamic &&
       tensor->allocation_type != kTfLitePersistentRo) {
     return;
   }
   // TODO(b/145340303): Tensor data should be aligned.
-  if (!tensor->data.raw) {
-    tensor->data.raw = (char*)malloc(num_bytes);
+  if (!tensor->data.data) {
+    tensor->data.data = (char*)malloc(num_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
 #endif
@@ -230,12 +231,23 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorDealloc(tensor);
 #endif
-    tensor->data.raw = (char*)realloc(tensor->data.raw, num_bytes);
+    if (preserve_data) {
+      tensor->data.data = (char*)realloc(tensor->data.data, num_bytes);
+    } else {
+      // Calling free and malloc can be more efficient as it avoids needlessly
+      // copying the data when it is not required.
+      free(tensor->data.data);
+      tensor->data.data = (char*)malloc(num_bytes);
+    }
 #ifdef TF_LITE_TENSORFLOW_PROFILER
     tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
 #endif
   }
   tensor->bytes = num_bytes;
+}
+
+void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
+  return TfLiteTensorResizeMaybeCopy(num_bytes, tensor, true);
 }
 #endif  // TF_LITE_STATIC_MEMORY
 
@@ -282,5 +294,26 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 }
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
+
+struct TfLiteOpaqueDelegateStruct* TfLiteOpaqueDelegateCreate(
+    const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
+  if (!opaque_delegate_builder) return nullptr;
+
+  TfLiteDelegate* result = new TfLiteDelegate{};
+  result->opaque_delegate_builder = new TfLiteOpaqueDelegateBuilder{};
+  *(result->opaque_delegate_builder) = *opaque_delegate_builder;
+
+  return reinterpret_cast<struct TfLiteOpaqueDelegateStruct*>(result);
+}
+
+void TfLiteOpaqueDelegateDelete(
+    const struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  if (!opaque_delegate) return;
+
+  const TfLiteDelegate* tflite_delegate =
+      reinterpret_cast<const TfLiteDelegate*>(opaque_delegate);
+  delete tflite_delegate->opaque_delegate_builder;
+  delete tflite_delegate;
+}
 
 }  // extern "C"

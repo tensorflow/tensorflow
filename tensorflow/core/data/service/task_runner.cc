@@ -134,7 +134,7 @@ FirstComeFirstServedTaskRunner::GetNextFromInputIterator()
     TF_LOCKS_EXCLUDED(mu_) {
   GetElementResult result;
   std::vector<Tensor> element;
-  bool end_of_task;
+  bool end_of_task = false;
   result.skip = false;
   {
     mutex_lock l(mu_);
@@ -180,6 +180,11 @@ StatusOr<GetElementResult>
 CachingTaskRunner::GetElementResultSequence::GetNext() {
   GetElementResult result;
   TF_RETURN_IF_ERROR(fcfs_task_runner_.GetNext(result));
+  if (result.end_of_sequence) {
+    return errors::InvalidArgument(
+        "Cross-trainer caching requires the input dataset to be infinite. "
+        "However, it reached the end of sequence.");
+  }
   return result;
 }
 

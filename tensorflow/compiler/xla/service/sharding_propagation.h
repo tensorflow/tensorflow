@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SHARDING_PROPAGATION_H_
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -33,9 +34,21 @@ namespace xla {
 // partially_specified will be populated with the converted copies if the custom
 // call is partially specified.
 StatusOr<bool> ProcessShardingInstruction(
-    HloModule* module, bool replace_sharding_with_copy,
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    bool replace_sharding_with_copy,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
         unspecified_dims);
+
+int64_t ComputeNonRootUsers(const HloInstruction* instr);
+
+// Infers broadcast ops' operand sharding, based on its output sharding.
+std::optional<HloSharding> InferBroadcastOperandSharding(
+    const HloInstruction& instruction, bool is_spmd = true);
+
+bool InferReduceShardingFromOperand(HloInstruction* instruction,
+                                    bool may_combine_partial_sharding,
+                                    bool is_spmd);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
@@ -61,7 +74,10 @@ class ShardingPropagation : public HloModulePass {
     }
   }
   absl::string_view name() const override { return "sharding-propagation"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Function which can be used to apply a spatially partitioned sharding onto a
   // given domain. It will apply the sharding into the exit edges of the domain

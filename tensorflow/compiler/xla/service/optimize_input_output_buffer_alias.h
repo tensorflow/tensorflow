@@ -46,7 +46,10 @@ class OptimizeInputOutputBufferAlias : public HloModulePass {
     return "optimize_input_output_buffer_alias.h";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   friend class OptimizeInputOutputBufferAliasTest;

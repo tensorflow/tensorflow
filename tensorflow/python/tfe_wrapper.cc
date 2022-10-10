@@ -461,7 +461,7 @@ static py::bytes TFE_GetCompilerIr(py::handle& ctx,
             .c_str());
   }
 
-  xla::StatusOr<std::string> hlo_str =
+  StatusOr<std::string> hlo_str =
       GetCompilerIr(selected_stage, context->pflr(), concrete_function_name,
                     *selected_device, context, input_handles);
 
@@ -1625,6 +1625,12 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     PyObject* pyhandle = EagerTensorFromHandle(thandle);
     return tensorflow::PyoOrThrow(pyhandle);
   });
+
+  m.def("TFE_Py_IsCustomDevice",
+        [](const py::handle& context, const char* device_name) {
+          return TFE_IsCustomDevice(tensorflow::InputTFE_Context(context),
+                                    device_name);
+        });
 
   m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,
                                           const py::capsule& device,

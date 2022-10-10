@@ -32,11 +32,12 @@ from tensorflow.python.checkpoint import checkpoint
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util as checkpoint_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
-from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.eager.polymorphic_function import saved_model_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -60,6 +61,7 @@ from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.saved_model import tracing_utils
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting
@@ -145,13 +147,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     for obj in trackable_objects:
       if isinstance(obj, asset.Asset):
         asset_paths[obj.asset_path] = obj
-      if isinstance(obj, function_saved_model_utils.TrackableConstant):
+      if isinstance(obj, saved_model_utils.TrackableConstant):
         constant_captures[obj.capture] = obj
 
     def _get_merged_trackable(x):
       if isinstance(x, asset.Asset):
         return asset_paths[x.asset_path]
-      if isinstance(x, function_saved_model_utils.TrackableConstant):
+      if isinstance(x, saved_model_utils.TrackableConstant):
         if x.capture in asset_paths:
           return asset_paths[x.capture]
         else:
@@ -295,7 +297,7 @@ class _SaveableView(object):
     the `saveable_objects` map in the `SavedObject` proto.
     """
     checkpoint_factory_map, registered_savers = (
-        checkpoint_util.get_checkpoint_factories_and_keys(self.object_names))
+        save_util_v1.get_checkpoint_factories_and_keys(self.object_names))
     self._obj_to_registered_saver = object_identity.ObjectIdentityDictionary()
     for saver_name, trackables in registered_savers.items():
       for trackable in trackables.values():
@@ -433,12 +435,12 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   for resources.
 
   This function is intended to run on the output of
-  `checkpoint_util.get_checkpoint_factories_and_keys(object_names)`,
+  `save_util_v1.get_checkpoint_factories_and_keys(object_names)`,
   which returns the generated a map of `_CheckpointFactoryData`.
 
   Args:
     checkpoint_factory_map: A dictionary mapping trackable objects to
-      _CheckpointFactoryData.
+      a list of `_CheckpointFactoryData`.
 
   Returns:
     Tuple of (
@@ -450,23 +452,20 @@ def _gen_save_and_restore_functions(checkpoint_factory_map):
   saveable_fn_map = object_identity.ObjectIdentityDictionary()
 
   for obj, factory_data_list in checkpoint_factory_map.items():
-    for factory_data in factory_data_list:
-      saveable_factory = factory_data.factory
-      attribute_name = factory_data.name
+    if resource_variable_ops.is_resource_variable(obj) or not factory_data_list:
+      # There is no need to trace the save and restore functions for variables.
+      continue
 
-      # If object revives as a resource (or TPU/Mirrored) variable,
-      # there is no need to trace the save and restore functions.
-      if (resource_variable_ops.is_resource_variable(obj) or
-          resource_variable_ops.is_resource_variable(saveable_factory) or
-          not callable(saveable_factory)):
-        continue
-      concrete_save, concrete_restore = (
-          saveable_object_util.trace_save_restore_functions(
-              saveable_factory, obj))
-      if not concrete_save:
-        continue
-      saveable_fn_map.setdefault(obj, {})[attribute_name] = (concrete_save,
-                                                             concrete_restore)
+    if factory_data_list[0].name == trackable_utils.SERIALIZE_TO_TENSORS_NAME:
+      # Trace Trackable save and restore functions.
+      assert len(factory_data_list) == 1
+      saveable_fn_map[obj] = {trackable_utils.SERIALIZE_TO_TENSORS_NAME: (
+          tracing_utils.trace_save_and_restore(obj))}
+    else:
+      # Trace deprecated SaveableObject save and restore functions.
+      saveable_fn_map[obj] = (
+          saveable_object_util.trace_save_restore_function_map(
+              obj, factory_data_list))
   return saveable_fn_map
 
 
@@ -712,7 +711,8 @@ def _trace_gradient_functions(graph, saveable_view):
             "Check the error log to see the error that was raised when "
             "converting a gradient function to a concrete function. You may "
             "need to update the custom gradient, or disable saving gradients "
-            "with the option tf.saved_model.SaveOptions(custom_gradients=False)"
+            "with the option "
+            "tf.saved_model.SaveOptions(experimental_custom_gradients=False)"
             f".\n\tProblematic op name: {op.name}\n\tGradient inputs: "
             f"{op.inputs}") from exc
 
@@ -828,20 +828,19 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions,
       return object_map[function](*args)
     # Registered saver/restore functions do not appear in `object_map`, because
     # they are not in the object graph.
-    return function_saved_model_utils.ExportedConcreteFunction(
+    return saved_model_utils.ExportedConcreteFunction(
         function, tensor_map)(*args)
 
   for obj in object_map.values():
     obj._maybe_initialize_trackable()  # pylint: disable=protected-access
   named_saveable_objects, registered_savers = (
-      checkpoint_util.frozen_saveables_and_savers(
+      save_util_v1.frozen_saveables_and_savers(
           graph_view=saveable_view.augmented_graph_view,
           object_map=object_map,
           to_graph=exported_graph,
           call_with_mapped_captures=call_with_mapped_captures))
-  saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
-                                            registered_savers,
-                                            call_with_mapped_captures)
+  saver = functional_saver.MultiDeviceSaver.from_saveables(
+      named_saveable_objects, registered_savers, call_with_mapped_captures)
 
   with exported_graph.as_default():
     saver_def = saver.to_proto()
@@ -1304,7 +1303,7 @@ def save_and_return_nodes(obj,
         compat.as_str(export_dir),
         compat.as_str(constants.FINGERPRINT_FILENAME))
     fingerprint_proto = fingerprinting.CreateFingerprintDef(
-        saved_model_serialized)
+        saved_model_serialized, export_dir)
     file_io.atomic_write_string_to_file(fingerprint_path, fingerprint_proto)
 
   path = file_io.join(

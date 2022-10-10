@@ -36,12 +36,12 @@ namespace {
 
 constexpr char kNoOp[] = "NoOp";
 constexpr char kConfigureOp[] = "ConfigureTPUEmbedding";
-constexpr char kExecutePartitionerOp[] = "_ExecuteTPUEmbeddingPartitioner";
-constexpr char kConfigureMemoryOp[] = "_ConfigureTPUEmbeddingMemory";
-constexpr char kCollateMemoryOp[] = "_CollateTPUEmbeddingMemory";
-constexpr char kConfigureHostOp[] = "_ConfigureTPUEmbeddingHost";
-constexpr char kConnectHostsOp[] = "_ConnectTPUEmbeddingHosts";
-constexpr char kFinalizeOp[] = "_FinalizeTPUEmbedding";
+constexpr char kExecutePartitionerOp[] = "ExecuteTPUEmbeddingPartitioner";
+constexpr char kConfigureMemoryOp[] = "ConfigureTPUEmbeddingMemory";
+constexpr char kCollateMemoryOp[] = "CollateTPUEmbeddingMemory";
+constexpr char kConfigureHostOp[] = "ConfigureTPUEmbeddingHost";
+constexpr char kConnectHostsOp[] = "ConnectTPUEmbeddingHosts";
+constexpr char kFinalizeOp[] = "FinalizeTPUEmbedding";
 constexpr char kEmbeddingConfigurationAttr[] = "config";
 
 Status AddSynchronizationNode(

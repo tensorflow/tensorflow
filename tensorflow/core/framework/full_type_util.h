@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
-#define CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
 
 #include <functional>
 #include <string>
@@ -107,6 +107,17 @@ inline bool IsHostMemoryType(const FullTypeDef& t) {
       return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
     case TFT_STRING:
       return true;
+    case TFT_ITERATOR:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_OPTIONAL:
+      return IsHostMemoryType(full_type::GetArgDefaultAny(t, 0));
+    case TFT_PRODUCT:
+      for (int i = 0; i < t.args_size(); i++) {
+        if (IsHostMemoryType(full_type::GetArgDefaultAny(t, i))) {
+          return true;
+        }
+      }
+      return false;
     default:
       return false;
   }
@@ -116,4 +127,4 @@ inline bool IsHostMemoryType(const FullTypeDef& t) {
 
 }  // namespace tensorflow
 
-#endif  // CORE_FRAMEWORK_FULL_TYPE_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FULL_TYPE_UTIL_H_

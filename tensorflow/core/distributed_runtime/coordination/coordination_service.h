@@ -27,10 +27,13 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
+using tsl::Env;
 class CoordinationServiceDeviceInfo;
 class ServerDef;
-class Env;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -136,6 +139,10 @@ class CoordinationServiceInterface {
 
   // Set a task in error state permanently.
   virtual Status ReportTaskError(const CoordinatedTask& task, Status error) = 0;
+
+  // Get the state and the error status of the tasks.
+  virtual std::vector<CoordinatedTaskStateInfo> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
 
   // Insert a configuration key-value in the coordination service.
   // For now, a key-value can only be inserted once and cannot be updated.

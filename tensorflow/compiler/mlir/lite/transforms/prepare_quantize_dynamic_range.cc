@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/CommandLine.h"
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -30,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/types.h"
 
 // NOLINTNEXTLINE
 //===----------------------------------------------------------------------===//
@@ -40,7 +41,7 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPAREDYNAMICRANGEQUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // A boolean attribute used to describe whether input activations need to be
@@ -53,7 +54,7 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
 class PrepareDynamicRangeQuantizePass
-    : public PrepareDynamicRangeQuantizePassBase<
+    : public impl::PrepareDynamicRangeQuantizePassBase<
           PrepareDynamicRangeQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareDynamicRangeQuantizePass)
@@ -398,7 +399,7 @@ class PrepareDynamicRangeQuantizableOp
 
 // Remove all the stats ops which are redundant for dynamic range quantizaiton.
 void PrepareDynamicRangeQuantizePass::removeAllStatsOp(func::FuncOp func) {
-  func.walk([&](quant::StatisticsOp stats_op) {
+  func.walk([&](quantfork::StatisticsOp stats_op) {
     stats_op.replaceAllUsesWith(stats_op.getArg());
     stats_op.erase();
   });

@@ -602,7 +602,7 @@ TEST(CAPI, TensorHandleDevices) {
 }
 
 void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
-#ifdef WINDOWS_PLATFORM
+#ifdef PLATFORM_WINDOWS
   // On windows, we flakily get a failure due to pointer instability.
   // Disable the 4 tests using this helper until we fix the issue.
   return;
@@ -707,7 +707,7 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   }
   TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
-#endif
+#endif  // PLATFORM_WINDOWS
 }
 TEST(CAPI, ExecuteAdd) {
   ExecuteAdd(
@@ -715,7 +715,8 @@ TEST(CAPI, ExecuteAdd) {
       /*forward_input*/ false,
       /*tfrt*/ false);
 }
-TEST(CAPI, ExecuteAddAsync) {
+// TODO(b/234067483): Investigate flakiness and re-enable.
+TEST(CAPI, DISABLED_ExecuteAddAsync) {
   ExecuteAdd(
       /*async=*/true,
       /*forward_input*/ false,

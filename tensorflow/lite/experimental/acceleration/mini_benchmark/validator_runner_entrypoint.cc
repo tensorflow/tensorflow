@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "absl/strings/string_view.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/file.h>
@@ -28,9 +26,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/file_lock.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/set_big_core_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
@@ -65,7 +67,7 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
       CreateComputeSettings(fbb, ExecutionPreference_ANY,
                             CreateTFLiteSettings(fbb, &tflite_settings)));
   std::unique_ptr<ModelLoader> model_loader =
-      ModelLoader::CreateFromFdOrPath(model_path);
+      CreateModelLoaderFromPath(model_path);
   if (!model_loader) {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -80,6 +82,7 @@ MinibenchmarkStatus RunValidator(absl::string_view model_path,
 }  // namespace
 
 extern "C" {
+// TODO(b/232085640): Add documentation to this function.
 int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
                                                                 char** argv) {
   if (argc < 6) return 1;
@@ -94,6 +97,18 @@ int Java_org_tensorflow_lite_acceleration_validation_entrypoint(int argc,
   if (!lock.TryLock()) {
     return kMinibenchmarkChildProcessAlreadyRunning;
   }
+
+  // Write subprocess id first after getting the lock. The length is fixed to
+  // make sure the first read on the reader side won't block.
+  // Note: The ProcessRunner implementation expects the subprocess to not block
+  // on write(). It may hang if this function start to write more data to
+  // stdout.
+  std::string pid = std::to_string(getpid());
+  pid.resize(kPidBufferLength);
+  if (write(1, pid.data(), kPidBufferLength) != kPidBufferLength) {
+    return kMinibenchmarkPreconditionNotMet;
+  }
+
   FlatbufferStorage<BenchmarkEvent> storage(storage_path);
   MinibenchmarkStatus status = storage.Read();
   if (status != kMinibenchmarkSuccess) {

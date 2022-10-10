@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -67,10 +67,13 @@ static bool AreInstructionSupported(HloComputation* comp) {
   return true;
 }
 
-StatusOr<bool> FusionBitcastLift::Run(HloModule* module) {
+StatusOr<bool> FusionBitcastLift::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(2, "FusionBitcastLift::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     // Copy the instruction list as we modify the HloComputation.
     std::vector<HloInstruction*> comp_instruction(comp->instructions().begin(),
                                                   comp->instructions().end());

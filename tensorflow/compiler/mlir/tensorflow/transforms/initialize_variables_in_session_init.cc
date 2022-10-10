@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
@@ -41,7 +40,7 @@ void InitializeVariable(TF::VarHandleOp var_handle_op,
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
-  ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
+  ElementsAttr tensor_attr = tensor_attr_or.value();
 
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();
@@ -91,9 +90,11 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   if (!session_init_op) return CreateSessionInitFunc(module);
 
   SymbolTable symbol_table(module);
-  if (!session_init_op.initializers().empty()) {
+  if (!session_init_op.getInitializers().empty()) {
     func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+        session_init_op.getInitializers()[0]
+            .cast<FlatSymbolRefAttr>()
+            .getValue());
     return init_func_op;
   }
   return CreateSessionInitFunc(module);

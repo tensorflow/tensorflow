@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_transfer.h"
@@ -70,6 +69,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // dataset id in `dataset_id`.
   Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
+                         const std::optional<std::string>& requested_dataset_id,
                          std::string& dataset_id);
 
   // If `job_name` is set, looks up a job matching `job_name`.
@@ -77,7 +77,7 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // new job. The resulting job id is stored in `job_id`.
   Status GetOrCreateJob(const std::string& dataset_id,
                         const ProcessingModeDef& processing_mode,
-                        const absl::optional<std::string>& job_name,
+                        const std::optional<std::string>& job_name,
                         std::optional<int64_t> num_consumers,
                         bool use_cross_trainer_cache,
                         TargetWorkers target_workers, int64_t& job_id);

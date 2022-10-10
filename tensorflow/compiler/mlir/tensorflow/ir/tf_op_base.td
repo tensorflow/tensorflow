@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
@@ -69,9 +70,13 @@ def TF_SameOperandsAndResultElementTypeResolveRef : NativeOpTrait<
 
 // Op has the same operand and result types after resolving reference types
 // (i.e., after converting reference types to their corresponding TensorFlow or
-// standard types).
-def TF_SameOperandsAndResultTypeResolveRef : NativeOpTrait<
-  "TF::SameOperandsAndResultTypeResolveRef">;
+// standard types). Also, this allows compatible types so it is legal to have
+// tensor<*xf32> and tensor<4xf32> types.
+def TF_SameOperandsAndResultTypeResolveRef : TraitList<
+  InferTensorType.traits #
+  [
+    NativeOpTrait<"TF::SameOperandsAndResultTypeResolveRef">
+  ]>;
 
 // Layout agnostic operations do not depend on the operands data layout (data
 // format), as an example all element wise operations are layout agnostic.
@@ -90,6 +95,20 @@ def TF_CwiseBinary : NativeOpTrait<"TF::CwiseBinary">;
 
 // Coefficient wise unary operation, for example tf.Sqrt operation.
 def TF_CwiseUnary : NativeOpTrait<"TF::CwiseUnary">;
+
+// op op X == op X (unary) / X op X == X (binary)
+// This version requires TF_SameOperandsAndResultTypeResolveRef trait unlike
+// the core implementation requiring SameOperandsAndResultType.
+//
+// This shouldn't be used for side effecting ops.
+def TF_Idempotent : NativeOpTrait<"TF::IsIdempotent">;
+
+// op op X == X
+// This version requires TF_SameOperandsAndResultTypeResolveRef trait unlike
+// the core implementation requiring SameOperandsAndResultType.
+//
+// This shouldn't be used for side effecting ops.
+def TF_Involution : NativeOpTrait<"TF::IsInvolution">;
 
 // Variant of broadcastable trait that considers TF's subtype behavior.
 class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[

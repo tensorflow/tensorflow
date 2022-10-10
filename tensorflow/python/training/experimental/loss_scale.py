@@ -15,8 +15,6 @@
 """Contains LossScale classes."""
 import abc
 
-import six
-
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
@@ -32,7 +30,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
-@six.add_metaclass(abc.ABCMeta)
 @deprecation.deprecated_endpoints('mixed_precision.experimental.LossScale',
                                   'train.experimental.LossScale')
 @tf_export(
@@ -41,7 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
         'mixed_precision.experimental.LossScale',
         'train.experimental.LossScale'
     ])
-class LossScale(trackable.Trackable):
+class LossScale(trackable.Trackable, metaclass=abc.ABCMeta):
   """Base class for all TF1 loss scales.
 
   This is an abstract base class, so you cannot instantiate it directly.
@@ -231,7 +228,7 @@ class FixedLossScale(LossScale):
       ValueError: If loss_scale_value is less than 1.
     """
     super(FixedLossScale, self).__init__()
-    if not isinstance(loss_scale_value, six.integer_types + (float,)):
+    if not isinstance(loss_scale_value, (int, float)):
       raise ValueError('loss_scale_value must be a Python int or float.')
     if loss_scale_value < 1:
       raise ValueError('loss_scale_value must be at least 1.')
@@ -435,7 +432,7 @@ class DynamicLossScale(LossScale):
 
 def get(identifier):
   """Get a loss scale object."""
-  if isinstance(identifier, six.integer_types + (float,)):
+  if isinstance(identifier, (int, float)):
     return FixedLossScale(identifier)
   if identifier == 'dynamic':
     return DynamicLossScale()

@@ -29,7 +29,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
@@ -52,7 +51,7 @@ bool IsSupportedGraph(func::FuncOp func) {
 
   Operation* terminator = block.getTerminator();
   if (graph.getNumResults() != terminator->getNumOperands()) return false;
-  for (auto result : llvm::zip(graph.results(), terminator->getOperands()))
+  for (auto result : llvm::zip(graph.getResults(), terminator->getOperands()))
     if (std::get<0>(result) != std::get<1>(result)) return false;
 
   return true;
@@ -227,8 +226,11 @@ void PropagateDevicesToResults(
   }
 }
 
+#define GEN_PASS_DEF_TPUDEVICEPROPAGATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUDevicePropagation
-    : public TF::TPUDevicePropagationPassBase<TPUDevicePropagation> {
+    : public impl::TPUDevicePropagationPassBase<TPUDevicePropagation> {
   void runOnOperation() override;
 };
 

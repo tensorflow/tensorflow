@@ -31,13 +31,15 @@ namespace xla {
 
 // Remove Sharding custom-call instruction by assigning its users to
 // to its operand.
-StatusOr<bool> ShardingRemover::Run(HloModule* module) {
+StatusOr<bool> ShardingRemover::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
 
   const absl::flat_hash_set<absl::string_view> to_remove_sharding_ops = {
       "Sharding", "SPMDShardToFullShape", "SPMDFullToShardShape"};
 
-  for (HloComputation* computation : module->computations()) {
+  for (HloComputation* computation : module->computations(execution_threads)) {
     auto instructions = computation->MakeInstructionPostOrder();
     std::reverse(instructions.begin(), instructions.end());
     for (HloInstruction* instruction : instructions) {

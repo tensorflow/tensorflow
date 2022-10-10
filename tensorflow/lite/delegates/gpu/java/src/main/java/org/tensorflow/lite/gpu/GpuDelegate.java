@@ -15,7 +15,7 @@ limitations under the License.
 
 package org.tensorflow.lite.gpu;
 
-import java.io.Closeable;
+import androidx.annotation.Nullable;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.annotations.UsedByReflection;
 
@@ -30,102 +30,40 @@ import org.tensorflow.lite.annotations.UsedByReflection;
  * Interpreter.Options.addDelegate()} was called.
  */
 @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
-public class GpuDelegate implements Delegate, Closeable {
+public class GpuDelegate implements Delegate {
 
+  @Nullable
+  private static final Throwable LOAD_LIBRARY_EXCEPTION;
   private static final long INVALID_DELEGATE_HANDLE = 0;
   private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
+  private static volatile boolean isInit = false;
 
   private long delegateHandle;
 
-  /** Delegate options. */
-  public static final class Options {
-    public Options() {}
-
-    /**
-     * Delegate will be used only once, therefore, bootstrap/init time should be taken into account.
-     */
-    public static final int INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0;
-
-    /**
-     * Prefer maximizing the throughput. Same delegate will be used repeatedly on multiple inputs.
-     */
-    public static final int INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1;
-
-    /**
-     * Sets whether precision loss is allowed.
-     *
-     * @param precisionLossAllowed When `true` (default), the GPU may quantify tensors, downcast
-     *     values, process in FP16. When `false`, computations are carried out in 32-bit floating
-     *     point.
-     */
-    public Options setPrecisionLossAllowed(boolean precisionLossAllowed) {
-      this.precisionLossAllowed = precisionLossAllowed;
-      return this;
-    }
-
-    /**
-     * Enables running quantized models with the delegate.
-     *
-     * <p>WARNING: This is an experimental API and subject to change.
-     *
-     * @param quantizedModelsAllowed When {@code true} (default), the GPU may run quantized models.
-     */
-    public Options setQuantizedModelsAllowed(boolean quantizedModelsAllowed) {
-      this.quantizedModelsAllowed = quantizedModelsAllowed;
-      return this;
-    }
-
-    /**
-     * Sets the inference preference for precision/compilation/runtime tradeoffs.
-     *
-     * @param preference One of `INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER` (default),
-     *     `INFERENCE_PREFERENCE_SUSTAINED_SPEED`.
-     */
-    public Options setInferencePreference(int preference) {
-      this.inferencePreference = preference;
-      return this;
-    }
-
-    /**
-     * Enables serialization on the delegate. Note non-null {@code serializationDir} and {@code
-     * modelToken} are required for serialization.
-     *
-     * <p>WARNING: This is an experimental API and subject to change.
-     *
-     * @param serializationDir The directory to use for storing data. Caller is responsible to
-     *     ensure the model is not stored in a public directory. It's recommended to use {@link
-     *     android.content.Context#getCodeCacheDir()} to provide a private location for the
-     *     application on Android.
-     * @param modelToken The token to be used to identify the model. Caller is responsible to ensure
-     *     the token is unique to the model graph and data.
-     */
-    public Options setSerializationParams(String serializationDir, String modelToken) {
-      this.serializationDir = serializationDir;
-      this.modelToken = modelToken;
-      return this;
-    }
-
-    boolean precisionLossAllowed = true;
-    boolean quantizedModelsAllowed = true;
-    int inferencePreference = INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
-    String serializationDir = null;
-    String modelToken = null;
-  }
-
-  public GpuDelegate(Options options) {
+  @UsedByReflection("GpuDelegateFactory")
+  public GpuDelegate(GpuDelegateFactory.Options options) {
+    init();
     delegateHandle =
         createDelegate(
-            options.precisionLossAllowed,
-            options.quantizedModelsAllowed,
-            options.inferencePreference,
-            options.serializationDir,
-            options.modelToken);
+            options.isPrecisionLossAllowed(),
+            options.areQuantizedModelsAllowed(),
+            options.getInferencePreference(),
+            options.getSerializationDir(),
+            options.getModelToken());
   }
 
   @UsedByReflection("TFLiteSupport/model/GpuDelegateProxy")
   public GpuDelegate() {
-    this(new Options());
+    this(new GpuDelegateFactory.Options());
   }
+
+  /**
+   * Inherits from {@link GpuDelegateFactory.Options} for compatibility with existing code.
+   *
+   * @deprecated Use {@link GpuDelegateFactory.Options} instead.
+   */
+  @Deprecated
+  public static class Options extends GpuDelegateFactory.Options {}
 
   @Override
   public long getNativeHandle() {
@@ -146,8 +84,50 @@ public class GpuDelegate implements Delegate, Closeable {
   }
 
   static {
-    System.loadLibrary(TFLITE_GPU_LIB);
+    Throwable exception = null;
+    try {
+      System.loadLibrary(TFLITE_GPU_LIB);
+    } catch (UnsatisfiedLinkError e) {
+      exception = e;
+    }
+    LOAD_LIBRARY_EXCEPTION = exception;
   }
+
+  /**
+   * Ensure the GpuDelegate native library has been loaded.
+   *
+   * <p>If unsuccessful, throws an UnsatisfiedLinkError with the appropriate error message.
+   */
+  private static void init() {
+    if (isInit) {
+      return;
+    }
+
+    try {
+      // Try to invoke a native method (which itself does nothing) to ensure that native libs are
+      // available.
+      // This code is thread safe without synchronization, as multiple concurrent callers will
+      // either throw an exception without setting this value or set it to true several times.
+      nativeDoNothing();
+      isInit = true;
+    } catch (UnsatisfiedLinkError originalUnsatisfiedLinkError) {
+      // Prefer logging the original library loading exception if native methods are unavailable.
+      Throwable exceptionToLog =
+          LOAD_LIBRARY_EXCEPTION != null ? LOAD_LIBRARY_EXCEPTION : originalUnsatisfiedLinkError;
+      UnsatisfiedLinkError exceptionToThrow =
+          new UnsatisfiedLinkError(
+              "Failed to load native GpuDelegate methods. Check that the correct native"
+                  + " libraries are present, and, if using a custom native library, have been"
+                  + " properly loaded via System.loadLibrary():\n"
+                  + "  "
+                  + exceptionToLog);
+      exceptionToThrow.initCause(originalUnsatisfiedLinkError);
+      exceptionToThrow.addSuppressed(exceptionToLog);
+      throw exceptionToThrow;
+    }
+  }
+
+  private static native void nativeDoNothing();
 
   private static native long createDelegate(
       boolean precisionLossAllowed,

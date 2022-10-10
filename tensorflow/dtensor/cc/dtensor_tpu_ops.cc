@@ -52,5 +52,14 @@ REGISTER_OP("ShutdownTPUSystem")
     .Output("success: bool")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("DTensorSetGlobalTPUArray")
+    .Input("topology: string")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
+      return OkStatus();
+    });
+
 }  // namespace dtensor
 }  // namespace tensorflow

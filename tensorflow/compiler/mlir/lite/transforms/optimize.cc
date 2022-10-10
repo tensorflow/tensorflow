@@ -36,7 +36,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -64,7 +64,7 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_OPTIMIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 constexpr char kRelu[] = "RELU";
@@ -95,7 +95,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-class OptimizePass : public OptimizePassBase<OptimizePass> {
+class OptimizePass : public impl::OptimizePassBase<OptimizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizePass)
 
@@ -1577,7 +1577,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
 
     auto k_values_or = ComputeSliceK(values);
     auto k_indices_or = ComputeSliceK(indices);
-    if (!k_values_or.hasValue() || !k_indices_or.hasValue()) return failure();
+    if (!k_values_or.has_value() || !k_indices_or.has_value()) return failure();
     int32_t k_values = k_values_or.getValue();
     int32_t k_indices = k_indices_or.getValue();
     // We don't match two SliceOp with different sizes.

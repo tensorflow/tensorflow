@@ -33,14 +33,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORUPDATETPUMETADATA
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
@@ -62,7 +64,7 @@ void UpdateTPUDeviceAssignment(mlir::func::FuncOp function,
     auto enclosing_launch = op->getParentOfType<mlir::tf_device::LaunchOp>();
     if (!enclosing_launch) return;
 
-    enclosing_launch.deviceAttr(builder->getStringAttr(""));
+    enclosing_launch.setDeviceAttr(builder->getStringAttr(""));
 
     // Remove placeholder device attributes of resource arguments to TPU
     // computation.
@@ -145,7 +147,7 @@ mlir::LogicalResult UpdateTPUCompileMetadata(const Mesh& mesh_config,
 // Pass that updates TPU specific metadata including `num_replicas` and device
 // assignment of TPUCompileMlirOp and TPUExecute ops.
 struct DTensorUpdateTPUMetadata
-    : public DTensorUpdateTPUMetadataBase<DTensorUpdateTPUMetadata> {
+    : public impl::DTensorUpdateTPUMetadataBase<DTensorUpdateTPUMetadata> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);
@@ -158,7 +160,7 @@ struct DTensorUpdateTPUMetadata
       auto mesh_or_status = Mesh::FromString(call_config.str());
       if (!mesh_or_status.ok()) return mlir::WalkResult::advance();
 
-      const auto mesh = mesh_or_status.ValueOrDie();
+      const auto mesh = mesh_or_status.value();
       if (!mesh.is_tpu_mesh()) return mlir::WalkResult::advance();
 
       auto function = MaybeFindFunction(op);

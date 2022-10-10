@@ -17,7 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <map>
+#include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -31,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -126,6 +130,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   Status RecordHeartbeat(const CoordinatedTask& task,
                          uint64_t incarnation) override;
   Status ReportTaskError(const CoordinatedTask& task, Status error) override;
+  std::vector<CoordinatedTaskStateInfo> GetTaskState(
+      const std::vector<CoordinatedTask>& task) override;
   Status InsertKeyValue(const std::string& key,
                         const std::string& value) override;
   void GetKeyValueAsync(const std::string& key,
@@ -150,14 +156,15 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // Report service error to a specified task.
   void ReportServiceErrorToTaskAsync(const CoordinatedTask& destination_task,
                                      Status error);
-  // Report error from a task to all other connected tasks.
+  // Report error from a task to all other connected tasks if the task is not
+  // recoverable.
   // Note: SetTaskError() must be called before propagating its error.
   void PropagateError(const CoordinatedTask& source_task,
                       bool is_reported_by_task = false)
       TF_LOCKS_EXCLUDED(state_mu_);
   void SetTaskError(absl::string_view task_name, Status error)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  void SetXlaGlobalDeviceIds() TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
+  void AggregateClusterDevices() TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   Status DisconnectTask(const CoordinatedTask& task)
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
@@ -182,6 +189,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                                 CoordinatedTaskEqual>& tasks_at_barrier,
       int64_t cluster_size);
+  bool isRecoverableJob(const absl::string_view task_name) const;
 
   class TaskState {
    public:
@@ -194,13 +202,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     //
     // When task state becomes ERROR, propagate this status to other CONNECTED
     // tasks in the cluster.
-    enum class State {
-      DISCONNECTED,
-      CONNECTED,
-      ERROR,
-    };
 
-    State GetState() { return state_; }
+    CoordinatedTaskState GetState() { return state_; }
     Status GetStatus() { return status_; }
     void SetConnected(uint64_t task_incarnation);
     void Disconnect(uint64_t grace_period_duration_us);
@@ -211,8 +214,17 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t GetDisconnectedGracePeriodMicros();
     void SetError(Status status);
-    bool GetDeviceInfoCollected() { return device_info_collected_; }
-    void MarkDeviceInfoCollected() { device_info_collected_ = true; }
+    CoordinationServiceDeviceInfo GetDeviceInfo() { return devices_; }
+    void CollectDeviceInfo(const CoordinationServiceDeviceInfo& devices) {
+      devices_ = devices;
+    }
+    // Checks if task has called WaitForAllTasks() previously, which gathers the
+    // local device info.
+    bool DeviceInfoIsCollected() {
+      return devices_.type_case() !=
+             CoordinationServiceDeviceInfo::TYPE_NOT_SET;
+    }
+
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
     void ExitBarrier(absl::string_view barrier_id);
@@ -221,7 +233,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // Incarnation ID for CPU:0 on remote task.
     uint64_t task_incarnation_ = 0;
 
-    State state_ = State::DISCONNECTED;
+    CoordinatedTaskState state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
     Status status_;
     mutex last_heartbeat_mu_;
     uint64_t last_heartbeat_us_ TF_GUARDED_BY(last_heartbeat_mu_);
@@ -229,9 +241,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // disconnected task. This grace period accounts for the lag time between
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t disconnect_grace_period_us_ = 0;
-    // Checks if task has called WaitForAllTasks() previously, which gathers the
-    // local device info.
-    bool device_info_collected_ = false;
+    CoordinationServiceDeviceInfo devices_;
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
@@ -271,12 +281,14 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   // use a set.
   absl::flat_hash_set<std::string> ongoing_barriers_ TF_GUARDED_BY(state_mu_);
 
+  absl::flat_hash_set<std::string> recoverable_jobs_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceStandaloneImpl);
 };
 
 void CoordinationServiceStandaloneImpl::TaskState::SetConnected(
     uint64_t task_incarnation) {
-  state_ = State::CONNECTED;
+  state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
   status_ = OkStatus();
   task_incarnation_ = task_incarnation;
   mutex_lock l(last_heartbeat_mu_);
@@ -287,14 +299,14 @@ void CoordinationServiceStandaloneImpl::TaskState::Disconnect(
     uint64_t grace_period_duration_us) {
   disconnect_grace_period_us_ =
       Env::Default()->NowMicros() + grace_period_duration_us;
-  state_ = State::DISCONNECTED;
+  state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
   status_ = OkStatus();
 }
 
 void CoordinationServiceStandaloneImpl::TaskState::SetError(
     const Status status) {
-  if (state_ == State::ERROR) return;
-  state_ = State::ERROR;
+  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) return;
+  state_ = CoordinatedTaskState::TASKSTATE_ERROR;
   status_ = status;
 }
 
@@ -358,6 +370,8 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
       server_def.default_session_config().experimental().coordination_config();
   const std::unordered_set<std::string> coordinated_jobs(
       configs.coordinated_jobs().cbegin(), configs.coordinated_jobs().cend());
+  recoverable_jobs_ = absl::flat_hash_set<std::string>(
+      configs.recoverable_jobs().cbegin(), configs.recoverable_jobs().cend());
   const auto& cluster_def = server_def.cluster();
   for (const auto& job : cluster_def.job()) {
     // If `coordinated_jobs` is specified, skip jobs that are not included there
@@ -396,7 +410,8 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             mutex_lock l(state_mu_);
             for (const auto& [task_name, task_state] : cluster_state_) {
               // Skip tasks that are not registered or in error state
-              if (task_state->GetState() != TaskState::State::CONNECTED) {
+              if (task_state->GetState() !=
+                  CoordinatedTaskState::TASKSTATE_CONNECTED) {
                 continue;
               }
               const bool is_stale = task_state->TimeSinceLastHeartbeatMs() >
@@ -519,7 +534,9 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
           "Unexpected task registered with task_name=", task_name));
     }
     if (cluster_state_[task_name]->GetState() ==
-        TaskState::State::DISCONNECTED) {
+            CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
+        (errors::IsUnavailable(cluster_state_[task_name]->GetStatus()) &&
+         isRecoverableJob(task.job_name()))) {
       // This task is currently disconnected (registering for the first time or
       // has called ResetTask() previously).
       cluster_state_[task_name]->SetConnected(incarnation);
@@ -548,12 +565,12 @@ void CoordinationServiceStandaloneImpl::WaitForAllTasks(
   {
     mutex_lock l(state_mu_);
     const auto& task_state = cluster_state_.find(GetTaskName(task));
-    // Add task device info to global device state for the first time that task
-    // has called WaitForAllTasks().
+    // Collect task device info for the first time that task
+    // has called WaitForAllTasks(). This will be aggregated when the barrier
+    // passes.
     if (task_state != cluster_state_.end() &&
-        !task_state->second->GetDeviceInfoCollected()) {
-      cluster_devices_.MergeFrom(devices);
-      task_state->second->MarkDeviceInfoCollected();
+        !task_state->second->DeviceInfoIsCollected()) {
+      task_state->second->CollectDeviceInfo(devices);
     }
   }
   BarrierAsync(device_propagation_barrier_id_, kDevicePropagationTimeout, task,
@@ -591,7 +608,7 @@ Status CoordinationServiceStandaloneImpl::DisconnectTask(
     return MakeCoordinationError(errors::InvalidArgument(
         "Unexpected disconnect request with task_name=", task_name));
   } else if (cluster_state_[task_name]->GetState() ==
-             TaskState::State::DISCONNECTED) {
+             CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
     return MakeCoordinationError(errors::FailedPrecondition(
         "The task is already disconnected: ", task_name));
   }
@@ -629,7 +646,7 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
       return MakeCoordinationError(
           errors::InvalidArgument("Unexpected request from task ", task_name));
     } else if (cluster_state_[task_name]->GetState() !=
-               TaskState::State::CONNECTED) {
+               CoordinatedTaskState::TASKSTATE_CONNECTED) {
       return MakeCoordinationError(errors::FailedPrecondition(
           "The task is not connected or already has an error."));
     } else {
@@ -638,6 +655,30 @@ Status CoordinationServiceStandaloneImpl::ReportTaskError(
   }
   PropagateError(task, /*is_reported_by_task=*/true);
   return OkStatus();
+}
+
+std::vector<CoordinatedTaskStateInfo>
+CoordinationServiceStandaloneImpl::GetTaskState(
+    const std::vector<CoordinatedTask>& tasks) {
+  std::vector<CoordinatedTaskStateInfo> states_info;
+  for (const auto& task : tasks) {
+    const std::string task_name = GetTaskName(task);
+    auto& state_info = states_info.emplace_back();
+    Status error;
+    {
+      mutex_lock l(state_mu_);
+      state_info.set_state(cluster_state_[task_name]->GetState());
+      error = cluster_state_[task_name]->GetStatus();
+    }
+    *state_info.mutable_task() = task;
+    state_info.set_error_code(error.code());
+    state_info.set_error_message(error.error_message());
+    if (!error.ok()) {
+      *state_info.mutable_error_payload()->mutable_source_task() = task;
+      state_info.mutable_error_payload()->set_is_reported_error(false);
+    }
+  }
+  return states_info;
 }
 
 Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
@@ -653,7 +694,7 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
     } else if (cluster_state_[task_name]->GetState() ==
-                   TaskState::State::DISCONNECTED &&
+                   CoordinatedTaskState::TASKSTATE_DISCONNECTED &&
                // We accept heartbeats for a short grace period to account for
                // the lag time between the service recording the state change
                // and the agent stopping heartbeats.
@@ -713,6 +754,9 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
 
 void CoordinationServiceStandaloneImpl::PropagateError(
     const CoordinatedTask& source_task, bool is_reported_by_task) {
+  // If the error task is recoverable, do not propagate the error to other
+  // connected tasks.
+  if (isRecoverableJob(source_task.job_name())) return;
   Status error;
   {
     mutex_lock l(state_mu_);
@@ -741,7 +785,8 @@ void CoordinationServiceStandaloneImpl::PropagateError(
     {
       mutex_lock l(state_mu_);
       // Propagate error only to tasks that are connected
-      if (cluster_state_[task]->GetState() != TaskState::State::CONNECTED)
+      if (cluster_state_[task]->GetState() !=
+          CoordinatedTaskState::TASKSTATE_CONNECTED)
         continue;
     }
 
@@ -953,7 +998,8 @@ void CoordinationServiceStandaloneImpl::BarrierAsync(
     // Fail the barrier immediately if any tasks are already in error.
     for (const auto& pending_task : barrier->tasks_at_barrier) {
       const std::string task_name = GetTaskName(pending_task.first);
-      if (cluster_state_[task_name]->GetState() == TaskState::State::ERROR) {
+      if (cluster_state_[task_name]->GetState() ==
+          CoordinatedTaskState::TASKSTATE_ERROR) {
         Status error = MakeCoordinationError(errors::Internal(
             absl::StrCat("Task (", task_name,
                          ") is already in error before the barrier "
@@ -1065,7 +1111,7 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
   barrier->result = result;
   // Special hook for device propagation barrier to set global device ids.
   if (barrier_id == device_propagation_barrier_id_) {
-    SetXlaGlobalDeviceIds();
+    AggregateClusterDevices();
   }
   for (const auto& task_at_barrier : barrier->tasks_at_barrier) {
     // Clean up task state (used as error hooks).
@@ -1133,15 +1179,29 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
   return true;
 }
 
-void CoordinationServiceStandaloneImpl::SetXlaGlobalDeviceIds() {
-  // No-op if TF devices are specified.
+void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
+  assert(cluster_devices_.type_case() ==
+         CoordinationServiceDeviceInfo::TYPE_NOT_SET);
+  std::vector<std::string> ordered_tasks;
+  // Sort by task name to set deterministic order for cluster devices.
+  ordered_tasks.reserve(cluster_state_.size());
+  for (const auto& task : cluster_state_) {
+    ordered_tasks.push_back(task.first);
+  }
+  std::sort(ordered_tasks.begin(), ordered_tasks.end());
+
+  // Aggregate to global device list.
+  for (const auto& task : ordered_tasks) {
+    cluster_devices_.MergeFrom(cluster_state_[task]->GetDeviceInfo());
+  }
+
   if (cluster_devices_.has_xla()) {
-    int global_id = 0;
+    // Set global device id.
+    int xla_global_id = 0;
     for (xla::LocalTopologyProto& local_topology :
          *cluster_devices_.mutable_xla()->mutable_devices()->mutable_nodes()) {
       for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
-        device.set_global_device_id(global_id);
-        ++global_id;
+        device.set_global_device_id(xla_global_id++);
       }
     }
   }
@@ -1157,6 +1217,11 @@ std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
         std::move(cache), env, server_def);
   }
   return coord_service;
+}
+
+bool CoordinationServiceStandaloneImpl::isRecoverableJob(
+    const absl::string_view task_name) const {
+  return recoverable_jobs_.find(task_name) != recoverable_jobs_.end();
 }
 
 // Register standalone coordination service implementation.

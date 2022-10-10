@@ -11,7 +11,7 @@ module attributes {tf_saved_model.semantics}  {
       // CHECK-SAME: Tcaptured = [!corert.resource]
       // CHECK-SAME: Tin = []
       // CHECK-SAME: Tout = [f32]
-      %outputs_2, %control_2 = tf_executor.island wraps "tf.BatchFunction"(%outputs_1) {batch_timeout_micros = 5000 : i64, batching_queue = "", container = "", f = @batched_func, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operand_segment_sizes = dense<[0, 1]> : vector<2xi32>, shared_name = ""} : (tensor<*x!tf_type.resource>) -> tensor<*xf32>
+      %outputs_2, %control_2 = tf_executor.island wraps "tf.BatchFunction"(%outputs_1) {batch_timeout_micros = 5000 : i64, batching_queue = "", container = "", f = @batched_func, max_batch_size = 256 : i64, num_batch_threads = 2 : i64, operand_segment_sizes = array<i32: 0, 1>, shared_name = ""} : (tensor<*x!tf_type.resource>) -> tensor<*xf32>
       tf_executor.fetch %outputs_2 : tensor<*xf32>
     }
     func.return %0 : tensor<*xf32>

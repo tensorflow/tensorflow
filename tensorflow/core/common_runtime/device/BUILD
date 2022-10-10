@@ -5,10 +5,10 @@ load(
 )
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # For platform specific build config
 load(
@@ -43,6 +43,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/framework:device_id",
     ] + if_static([
         ":device_id_impl",
     ]),
@@ -50,7 +52,6 @@ cc_library(
 
 cc_library(
     name = "device_id_impl",
-    srcs = ["device_id_manager.cc"],
     hdrs = [
         "device_id.h",
         "device_id_manager.h",
@@ -59,6 +60,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/framework:device_id_impl",
     ],
 )
 
@@ -74,6 +76,7 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":device_id",
+        "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:allocator",
@@ -90,6 +93,7 @@ filegroup(
         "device_id_manager.h",
         "device_id_utils.h",
         "device_mem_allocator.h",
+        "//tensorflow/tsl/framework:device_runtime_headers",
     ],
 )
 

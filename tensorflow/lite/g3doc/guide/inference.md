@@ -572,7 +572,7 @@ print(output_data)
 
 As an alternative to loading the model as a pre-converted `.tflite` file, you
 can combine your code with the
-[TensorFlow Lite Converter Python API](../api_docs/python/tf/lite/TFLiteConverter)
+[TensorFlow Lite Converter Python API](https://www.tensorflow.org/lite/api_docs/python/tf/lite/TFLiteConverter)
 (`tf.lite.TFLiteConverter`), allowing you to convert your TensorFlow model into
 the TensorFlow Lite format and then run inference:
 

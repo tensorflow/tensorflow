@@ -17,34 +17,30 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <numeric>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -373,7 +369,7 @@ std::vector<std::string> Mesh::hosts() const {
   std::vector<std::string> host_list;
   if (IsEmpty()) return host_list;
 
-  const auto parsed_devices = ParsedDevices().ValueOrDie();
+  const auto parsed_devices = ParsedDevices().value();
   for (const DeviceNameUtils::ParsedName& dev : parsed_devices) {
     std::string host = HostFromParsedDev(dev);
     if (std::find(host_list.begin(), host_list.end(), host) == host_list.end())
@@ -662,6 +658,42 @@ StatusOr<int32> Mesh::idx_for_dim(absl::string_view dim_name) const {
                                  " does not exist on mesh : ", ToString());
 }
 
+Mesh Mesh::CreateMesh(
+    const std::string& mesh_name, const std::vector<std::string>& dim_names,
+    const std::vector<std::int64_t>& global_device_ids_shape,
+    const std::vector<std::int64_t>& global_device_ids_flatten,
+    const std::vector<std::string>& global_devices_str,
+    const std::vector<std::int64_t>& local_device_ids,
+    const std::vector<std::string>& local_devices_str) {
+  Mesh mesh;
+  mesh.name_ = mesh_name;
+
+  mesh.mesh_dims_.resize(dim_names.size());
+
+  for (int i = 0; i < dim_names.size(); ++i) {
+    mesh.mesh_dims_[i].name = dim_names[i];
+    mesh.mesh_dims_[i].size = global_device_ids_shape[i];
+  }
+
+  for (const auto& id : global_device_ids_flatten) {
+    mesh.global_device_ids_.push_back(id);
+  }
+
+  for (const auto& d : global_devices_str) {
+    mesh.global_devices_.push_back(d);
+  }
+
+  for (const auto& id : local_device_ids) {
+    mesh.local_device_ids_.push_back(id);
+  }
+
+  for (const auto& d : local_devices_str) {
+    mesh.local_devices_.push_back(d);
+  }
+
+  return mesh;
+}
+
 StatusOr<Layout> Layout::GetLayout(
     const std::vector<std::string>& sharding_spec_strs, const Mesh& mesh) {
   // Re-format sharding specs.
@@ -742,7 +774,7 @@ Mesh ReducedAbstractMesh(const Layout* layout) {
         IsMeshDimInShardingSpecs ? mesh_dim : MeshDimension(mesh_dim.name, 1);
     reduced_mesh_dims.push_back(reduced_dim);
   }
-  return Mesh::GetAbstractMesh("", reduced_mesh_dims).ValueOrDie();
+  return Mesh::GetAbstractMesh("", reduced_mesh_dims).value();
 }
 
 }  // namespace
@@ -782,7 +814,7 @@ Mesh Layout::ReducedMesh() const {
   return Mesh::GetMesh(reduced_mesh.name(), reduced_mesh.dims(),
                        reduced_global_device_ids, reduced_local_device_ids,
                        reduced_local_devs, reduced_global_devs)
-      .ValueOrDie();
+      .value();
 }
 
 namespace {
@@ -792,7 +824,7 @@ Layout ReducedLayout(const Layout* layout) {
   for (size_t i = 0; i < shard_specs.size(); ++i)
     shard_specs[i] = layout->dim(i);
   // Retrieve layout.
-  return Layout::GetLayout(shard_specs, layout->ReducedMesh()).ValueOrDie();
+  return Layout::GetLayout(shard_specs, layout->ReducedMesh()).value();
 }
 
 // Returns index of the given mesh dimension or mesh dim size if not found.
@@ -818,8 +850,7 @@ ShardVector Layout::GetShardVector() const {
       if (spec == Layout::kUnshardedDim) {
         shard.push_back(1);
       } else {
-        int mesh_index =
-            IndexOfMeshDimension(mesh(), sharding_spec(i)).ValueOrDie();
+        int mesh_index = IndexOfMeshDimension(mesh(), sharding_spec(i)).value();
         int shard_number = loc[mesh_index] + 1;
         shard.push_back(shard_number);
       }
@@ -833,7 +864,7 @@ ShardVector Layout::GetShardVector() const {
       ShardingSpec spec = sharding_specs()[i];
       if (Layout::IsShardedSpec(spec)) {
         StatusOr<int64> dim_size = mesh().dim_size(spec.sharding_spec());
-        num_shards_per_dim[i] = dim_size.ValueOrDie();
+        num_shards_per_dim[i] = dim_size.value();
       } else {
         num_shards_per_dim[i] = 1;
       }
@@ -858,7 +889,7 @@ std::map<std::string, ShardVector> Layout::HostShardMap() const {
   std::map<HostName, ShardVector> host_shards_map;
   ShardVector shard_vec_in_red_layout = reduced_layout.GetShardVector();
 
-  const auto parsed_devs = reduced_mesh.ParsedDevices().ValueOrDie();
+  const auto parsed_devs = reduced_mesh.ParsedDevices().value();
   for (size_t i = 0; i < parsed_devs.size(); ++i) {
     HostName host = HostFromParsedDev(parsed_devs[i]);
     Shard shard_in_device = shard_vec_in_red_layout.shards[i];
@@ -904,7 +935,7 @@ size_t Layout::num_shards_for_dim(const ShardingSpec& dim) const {
   if (name == Layout::kUnshardedDim) return 1;
   if (name == Layout::kMatch) return -1;
 
-  return mesh().dim_size(name).ValueOrDie();
+  return mesh().dim_size(name).value();
 }
 
 bool Layout::IsFullyReplicated() const {
@@ -951,6 +982,20 @@ LayoutProto Layout::ToProto() const {
     *proto.add_sharding_specs() = dim;
   }
   return proto;
+}
+
+bool Layout::IsEquivalent(const Layout& b) const {
+  if (this->rank() != b.rank()) return false;
+  if (this->mesh() != b.mesh()) return false;
+  for (int i = 0; i < this->rank(); ++i) {
+    if (this->sharding_specs_[i].sharding_spec() !=
+        b.sharding_specs_[i].sharding_spec()) {
+      if ((this->num_shards_for_dim(this->sharding_specs_[i]) != 1) ||
+          (b.num_shards_for_dim(b.sharding_specs_[i]) != 1))
+        return false;
+    }
+  }
+  return true;
 }
 
 bool Layout::operator==(const Layout& b) const {
@@ -1014,12 +1059,12 @@ StatusOr<Layout> Layout::FromProto(const LayoutProto& proto) {
 
 Layout Layout::ReplicatedOnMesh(const Mesh& mesh, int rank) {
   std::vector<std::string> specs(rank, kUnshardedDim);
-  return Layout::GetLayout(specs, mesh).ValueOrDie();
+  return Layout::GetLayout(specs, mesh).value();
 }
 
 Layout Layout::AnyOnMesh(const Mesh& mesh, int rank) {
   std::vector<std::string> specs(rank, kAny);
-  return Layout::GetLayout(specs, mesh).ValueOrDie();
+  return Layout::GetLayout(specs, mesh).value();
 }
 
 StatusOr<Layout> Layout::Transposed2D(const Layout& layout) {
@@ -1028,7 +1073,7 @@ StatusOr<Layout> Layout::Transposed2D(const Layout& layout) {
   }
   std::vector<std::string> transposed_specs = layout.sharding_spec_strs();
   std::iter_swap(transposed_specs.end() - 2, transposed_specs.end() - 1);
-  return Layout::GetLayout(transposed_specs, layout.mesh()).ValueOrDie();
+  return Layout::GetLayout(transposed_specs, layout.mesh()).value();
 }
 
 // static
@@ -1097,7 +1142,7 @@ Layout Layout::GetLayoutWithReducedDims(
       replicated_dim->set_sharding_spec(kUnshardedDim);
     }
   }
-  return Layout::FromProto(output_layout).ValueOrDie();
+  return Layout::FromProto(output_layout).value();
 }
 
 Layout Layout::Truncate(int64 split_point, bool end) const {
@@ -1114,7 +1159,7 @@ Layout Layout::Truncate(int64 split_point, bool end) const {
     for (int i = 0; i < split_point; ++i)
       *output_layout.add_sharding_specs() = dim(i);
   }
-  return Layout::FromProto(output_layout).ValueOrDie();
+  return Layout::FromProto(output_layout).value();
 }
 
 namespace {
@@ -1135,7 +1180,7 @@ Layout PadLayout(const int64 rank, const bool is_padding_before,
   // Concatenate old layout specs and new unsharded specs.
   new_specs.insert(concat_point, layout.sharding_specs().begin(),
                    layout.sharding_specs().end());
-  return Layout::GetLayout(new_specs, layout.mesh()).ValueOrDie();
+  return Layout::GetLayout(new_specs, layout.mesh()).value();
 }
 }  // namespace
 

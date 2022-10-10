@@ -305,10 +305,10 @@ class NcclTestBase : public ::testing::Test {
       // Prepare inputs and outputs to OpKernel.
       gtl::InlinedVector<TensorValue, 4> inputs;
       inputs.push_back(TensorValue(&input_));
-      op_params.inputs = &inputs;
+      op_params.inputs = inputs;
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
-      op_params.input_alloc_attrs = &input_aa;
+      op_params.input_alloc_attrs = input_aa;
       int forward_from = 0;
       op_params.forward_from_array = &forward_from;
       AllocatorAttributes generic_alloc_attr;

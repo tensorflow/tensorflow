@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/opdefs/tf_jitrt_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_clustering.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/attr_lowering_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/fallback_converter.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -152,7 +154,8 @@ class FallbackExecuteOpConversion : public mlir::ConversionPattern {
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
 
-    mlir::ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(op->getAttrs());
+    Builder builder(op->getContext());
+    mlir::ArrayAttr op_attrs = CreateTfrtOpAttrs(op->getAttrs(), builder);
     if (!op_attrs) return op->emitWarning("failed to lower attributes.");
 
     mlir::StringAttr op_name =
@@ -261,7 +264,8 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
     // be relatively cheap for the host.
     cost = rewriter.getI64IntegerAttr(kDefaultCheapCost);
   } else {
-    cost = rewriter.getI64IntegerAttr(cost_analysis_.GetCost(op));
+    cost = rewriter.getI64IntegerAttr(
+        cost_analysis_.GetCost(op, fallback_key.getInt()));
   }
 
   if (mlir::MemoryEffectOpInterface::hasNoEffect(op)) {
@@ -269,7 +273,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
         op->getLoc(), result_types, new_operands, device, op_attrs,
         op_func_attrs, fallback_key, op_name, cost);
     fallback_converter.RegisterFallbackOp(new_op);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
   } else {
     auto in_chain = corert_converter_.GetLocalSideEffectChain(op, &rewriter);
     auto out_chain = in_chain;
@@ -282,7 +286,7 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
           op->getLoc(), result_types, new_operands, device, op_attrs,
           op_func_attrs, fallback_key, op_name, cost);
       fallback_converter.RegisterFallbackOp(new_op);
-      rewriter.replaceOp(op, new_op.results());
+      rewriter.replaceOp(op, new_op.getResults());
     } else {
       // Create tfrt_fallback.executeop.seq if it is a side-effecting op.
       auto new_op = rewriter.create<tfrt::fallback_async::ExecuteOpSeq>(
@@ -290,8 +294,8 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToFallbackExecuteOp(
           new_operands, device, op_attrs, op_func_attrs, fallback_key, op_name,
           cost);
       fallback_converter.RegisterFallbackOp(new_op);
-      rewriter.replaceOp(op, new_op.results());
-      out_chain = new_op.out_op_chain();
+      rewriter.replaceOp(op, new_op.getResults());
+      out_chain = new_op.getOutOpChain();
     }
 
     // Register the converted op so that it can be retrieved by successors.
@@ -325,17 +329,17 @@ mlir::LogicalResult FallbackExecuteOpConversion::ConvertToCoreRTExecuteOp(
     auto new_op = rewriter.create<tfrt::corert::ExecuteOp>(
         op->getLoc(), result_types, op_handler, new_operands, op_attrs,
         op_func_attrs, op_name);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
   } else {
     // Create corert.executeop.seq if it is a side-effecting op.
     auto new_op = rewriter.create<tfrt::corert::ExecuteOpSeq>(
         op->getLoc(), corert_converter_.chain_type(), result_types, op_handler,
         corert_converter_.GetLocalSideEffectChain(op, &rewriter), new_operands,
         op_attrs, op_func_attrs, op_name);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
 
     // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_op_chain());
+    corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutOpChain());
   }
 
   return success();
@@ -353,7 +357,7 @@ class FallbackConstOpConversion
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
     // Some data types are handled separately using a fast path.
-    if (corert_converter_.IsSupportedNumericDType(op.dtype()) ||
+    if (IsSupportedTfrtNumericDType(op.dtype()) ||
         op.dtype().isa<mlir::TF::StringType>())
       return failure();
 
@@ -407,7 +411,7 @@ class FallbackSetResourceOp
         new_operands[0], device.getValue(), op.index());
 
     // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_ch());
+    corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutCh());
 
     rewriter.eraseOp(op);
 
@@ -443,7 +447,7 @@ class FallbackGetResourceOp
         op.getLoc(), corert_converter_.chain_type(), result_types, ready_chain,
         device.getValue(), op.indices());
 
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
 
     return success();
   }
@@ -490,22 +494,22 @@ class TFDeviceRemoteRunOpConversion
     mlir::Value in_op_chain =
         corert_converter_.GetLocalSideEffectChain(op, &rewriter);
     mlir::Value task_handle = corert_converter_.GetTaskHandle(
-        op.getOperation(), op.host(), &rewriter);
+        op.getOperation(), op.getHost(), &rewriter);
     mlir::Value remote_chain_mgr =
         corert_converter_.GetRemoteChainManager(op, &rewriter);
     mlir::Type remote_obj_id_ty =
         rewriter.getType<tfrt::dist::RemoteObjectIdType>();
     ModuleOp module = op->getParentOfType<ModuleOp>();
     SymbolTable symtab(module);
-    func::FuncOp callee = symtab.lookup<func::FuncOp>(op.callee());
+    func::FuncOp callee = symtab.lookup<func::FuncOp>(op.getCallee());
     if (!callee) {
-      op.emitOpError("callee function ") << op.callee() << " is not found";
+      op.emitOpError("callee function ") << op.getCallee() << " is not found";
       return failure();
     }
     StringAttr host = callee->getAttrOfType<StringAttr>(kHostAttr);
     if (!host) {
       op.emitOpError("callee function ")
-          << op.callee() << " should have the host attribute";
+          << op.getCallee() << " should have the host attribute";
       return failure();
     }
 
@@ -515,7 +519,7 @@ class TFDeviceRemoteRunOpConversion
     // TFRT dialect.
     arguments.push_back(corert_converter_.GetRemoteSideEffectChain(
         op, host.getValue(), &rewriter));
-    for (mlir::Value argument : op.callee_args()) {
+    for (mlir::Value argument : op.getCalleeArgs()) {
       arguments.push_back(argument);
     }
 
@@ -530,16 +534,16 @@ class TFDeviceRemoteRunOpConversion
     auto remote_execute_func_op =
         rewriter.create<tfrt::dist::RemoteExecuteFuncOp>(
             op.getLoc(), corert_converter_.chain_type(), result_types,
-            in_op_chain, distributed_context, task_handle, op.callee(),
+            in_op_chain, distributed_context, task_handle, op.getCallee(),
             arguments);
-    rewriter.replaceOp(op, remote_execute_func_op.results().drop_front(1));
+    rewriter.replaceOp(op, remote_execute_func_op.getResults().drop_front(1));
 
     auto set_chain_op = rewriter.create<tfrt::dist::SetChainForTaskHandleOp>(
         op.getLoc(), corert_converter_.chain_type(),
-        remote_execute_func_op.out_op_chain(), remote_chain_mgr, task_handle,
-        remote_execute_func_op.results().front());
-    corert_converter_.RegisterLocalSideEffectChain(op,
-                                                   set_chain_op.out_op_chain());
+        remote_execute_func_op.getOutOpChain(), remote_chain_mgr, task_handle,
+        remote_execute_func_op.getResults().front());
+    corert_converter_.RegisterLocalSideEffectChain(
+        op, set_chain_op.getOutOpChain());
 
     return success();
   }
@@ -582,7 +586,9 @@ class FallbackBatchFunctionOpConversion
       }
       attr_array.push_back(key_and_value);
     }
-    ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(attr_array);
+
+    Builder builder(op.getContext());
+    ArrayAttr op_attrs = CreateTfrtOpAttrs(attr_array, builder);
     if (!op_attrs) return op.emitWarning("failed to lower attributes.");
 
     llvm::SmallVector<Type, 4> result_types;
@@ -600,10 +606,10 @@ class FallbackBatchFunctionOpConversion
         op.getLoc(), corert_converter_.chain_type(), result_types,
         corert_converter_.GetLocalSideEffectChain(op, &rewriter), new_operands,
         f, op_attrs);
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
 
     // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.out_op_chain());
+    corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutOpChain());
 
     return success();
   }
@@ -625,8 +631,7 @@ class CoreRTConstDenseTensorOpConversion
   LogicalResult matchAndRewrite(
       mlir::TF::ConstOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    if (!corert_converter_.IsSupportedNumericDType(op.dtype()))
-      return failure();
+    if (!IsSupportedTfrtNumericDType(op.dtype())) return failure();
 
     // Only CPU ops can be lowered using this conversion. If there is no device
     // assignment, this op is treated as a CPU op and can be lowered.
@@ -770,7 +775,7 @@ class CoreRTConstStringTensorOpConversion
         op.getLoc(), corert_converter_.tensor_handle_type(),
         rewriter.getArrayAttr(dims), rewriter.getArrayAttr(values));
 
-    rewriter.replaceOp(op, new_op.result());
+    rewriter.replaceOp(op, new_op.getResult());
 
     return success();
   }
@@ -844,7 +849,8 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
     // Remove the function attributes, which have already been processed.
     for (const auto &key : func_attr_keys) op->removeAttr(key);
 
-    ArrayAttr op_attrs = corert_converter_.CreateOpAttrs(op->getAttrs());
+    Builder builder(op.getContext());
+    ArrayAttr op_attrs = CreateTfrtOpAttrs(op->getAttrs(), builder);
     if (!op_attrs) return op.emitError("failed to lower attributes.");
 
     llvm::SmallVector<mlir::Value, 4> new_operands;
@@ -863,7 +869,7 @@ class CoreRTExecuteOpConversion : public mlir::OpConversionPattern<TF_Op> {
         op.getLoc(), result_types, op_handler, new_operands, op_attrs,
         op_func_attrs, op_name);
 
-    rewriter.replaceOp(op, new_op.results());
+    rewriter.replaceOp(op, new_op.getResults());
     return success();
   }
 
@@ -1053,7 +1059,7 @@ class TFRTCaseOpConversion : public mlir::OpConversionPattern<TF::CaseOp> {
     auto new_op = rewriter.create<tfrt::compiler::CaseOp>(
         op.getLoc(), result_types, index_value, branches, branch_operands);
 
-    rewriter.replaceOp(op, new_op.branch_outputs().drop_front());
+    rewriter.replaceOp(op, new_op.getBranchOutputs().drop_front());
     return success();
   }
 
@@ -1479,7 +1485,7 @@ class JitRtCallToJitRtCompileAndExecuteConversion
 
     // Replace jitrt.call operation with a tf_jitrt.fallback.execute operation.
     rewriter.replaceOpWithNewOp<tf_jitrt::FallbackExecuteOp>(
-        call, result_types, call.callee(), fallback_operands, kJitRtDevice);
+        call, result_types, call.getCallee(), fallback_operands, kJitRtDevice);
 
     return success();
   }
@@ -1816,12 +1822,13 @@ class TfToTfrtConversionPass
     // Compile all kernels in parallell.
     module.walk([&](tf_jitrt::FallbackExecuteOp execute) {
       // Do not compiled the same kernel multiple times.
-      if (kernels.contains(execute.kernel())) return;
+      if (kernels.contains(execute.getKernel())) return;
 
       auto compile = builder.create<tf_jitrt::FallbackCompileOp>(
-          execute.getLoc(), chain_type, execute.kernel(), execute.device());
+          execute.getLoc(), chain_type, execute.getKernel(),
+          execute.getDevice());
       compiled.push_back(compile.getResult());
-      kernels.insert(compile.kernel());
+      kernels.insert(compile.getKernel());
     });
 
     // Wait for the compilation completion before returning from init function.
@@ -1838,19 +1845,19 @@ class TfToTfrtConversionPass
   int64_t GetNumArgs(mlir::Operation *fallback_op) {
     if (auto execute_op =
             llvm::dyn_cast<tfrt::fallback_async::ExecuteOp>(fallback_op)) {
-      return execute_op.operands().size();
+      return execute_op.getArgs().size();
     } else if (auto execute_op_seq =
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpSeq>(
                        fallback_op)) {
-      return execute_op_seq.operands().size();
+      return execute_op_seq.getArgs().size();
     } else if (auto execute_op_allocator =
                    llvm::dyn_cast<tfrt::fallback_async::ExecuteOpWithAllocator>(
                        fallback_op)) {
-      return execute_op_allocator.operands().size();
+      return execute_op_allocator.getArgs().size();
     } else if (auto execute_op_seq_allocator = llvm::dyn_cast<
                    tfrt::fallback_async::ExecuteOpSeqWithAllocator>(
                    fallback_op)) {
-      return execute_op_seq_allocator.operands().size();
+      return execute_op_seq_allocator.getArgs().size();
     }
     llvm_unreachable("invalid fallback op type");
   }
@@ -2027,7 +2034,7 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
 
   // Find out the cluster arguments and their types.
   llvm::SetVector<Value> live_ins;
-  getUsedValuesDefinedAbove(cluster.body(), cluster.body(), live_ins);
+  getUsedValuesDefinedAbove(cluster.getBody(), cluster.getBody(), live_ins);
 
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
@@ -2042,7 +2049,8 @@ OutlineJitRtClustersPass::CreateCompiledModule(tf_device::ClusterOp cluster,
   // Replace uses of live-in values within cluster region with block arguments.
   Block *compiled_func_block = compiled_func.addEntryBlock();
   for (auto p : llvm::zip(live_ins, compiled_func_block->getArguments()))
-    replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p), cluster.body());
+    replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p),
+                               cluster.getBody());
 
   // Move all operations in cluster into compiled_func's entry block.
   auto &cluster_body = cluster.GetBody().getOperations();
@@ -2117,7 +2125,7 @@ LogicalResult OutlineJitRtClustersPass::SetEntrypointConstraints(
     if (auto constraint = constraints.GetConstraint(func.getArgument(i))) {
       auto constraint_name = mlir::StringAttr::get(
           &getContext(), llvm::formatv("{0}", *constraint).str());
-      func.setArgAttr(i, "jitrt.constraint", constraint_name);
+      func.setArgAttr(i, "rt.constraint", constraint_name);
     }
   }
 

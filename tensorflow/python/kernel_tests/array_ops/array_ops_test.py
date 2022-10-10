@@ -1062,7 +1062,7 @@ class GradSliceChecker(object):
     np_val_grad = (2 * self.varnp * self.varnp)
     np_sliceval_grad = np.zeros(self.var.get_shape())
     if isinstance(spec, ops.Tensor):
-      spec = self.test.evaluate([spec])
+      spec = self.test.evaluate(spec)
     np_sliceval_grad[spec] = np_val_grad[spec]
     # verify gradient
     self.test.assertAllEqual(slice_val_grad_evaled, np_sliceval_grad)
@@ -2059,6 +2059,17 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
                 array_ops.ones([2, 0]),
                 side=side,
                 out_type=dtype), array_ops.zeros([2, 0], dtype))
+
+  def testZeroInputSize(self):
+    dtype = dtypes.int32
+    for side in ("left", "right"):
+      with self.subTest(side=side):
+        self.assertAllEqual(
+            array_ops.searchsorted(
+                array_ops.ones([2, 0]),
+                array_ops.ones([2, 3]),
+                side=side,
+                out_type=dtype), array_ops.zeros([2, 3], dtype))
 
   def testInt64(self):
 

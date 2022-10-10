@@ -59,6 +59,10 @@ constexpr char kModelInputTimeKey[] = "model_input_time";
 // Default share of available RAM that can be used by model's internal buffers.
 constexpr double kRamBudgetShare = 0.5;
 
+// Weight of the latest processing time used in computing the exponential moving
+// average of processing time per element.
+constexpr double kProcessingTimeEmaWeight = 0.1;
+
 enum class TraversalOrder {
   BFS = 0,
   REVERSE_BFS = 1,
@@ -308,16 +312,26 @@ class Node {
   void record_buffer_event(int64_t bytes_delta, int64_t elements_delta) {
     buffered_bytes_ += bytes_delta;
     buffered_elements_ += elements_delta;
-    int64_t low_watermark =
-        std::min(buffered_elements_low_, buffered_elements_);
-    buffered_elements_low_ = low_watermark;
-    int64_t high_watermark =
-        std::max(buffered_elements_high_, buffered_elements_);
-    buffered_elements_high_ = high_watermark;
+    // There is no need to maintain watermarks for synchronous ops because we
+    // will not upsize or downsize the buffers of synchronous ops.
+    if (IsAsync()) {
+      int64_t low_watermark =
+          std::min(buffered_elements_low_, buffered_elements_);
+      buffered_elements_low_ = low_watermark;
+      int64_t high_watermark =
+          std::max(buffered_elements_high_, buffered_elements_);
+      buffered_elements_high_ = high_watermark;
+    }
   }
 
   // Records that the node produced an element.
-  void record_element() TF_LOCKS_EXCLUDED(mu_) { num_elements_++; }
+  void record_element() TF_LOCKS_EXCLUDED(mu_) {
+    num_elements_++;
+    {
+      mutex_lock l(mu_);
+      UpdateProcessingTimeEma();
+    }
+  }
 
   // Records that a node thread has started executing.
   void record_start(int64_t time_nanos) TF_LOCKS_EXCLUDED(mu_) {
@@ -351,8 +365,11 @@ class Node {
     autotune_.store(autotune);
   }
 
-  // Resets buffer watermarks to the current buffer size.
+  // Resets buffer watermarks to the current buffered elements.
   void ResetBufferWatermarks() {
+    if (!IsAsync()) {
+      return;
+    }
     int64_t current_buffer_size = buffered_elements_;
     buffered_elements_low_ = current_buffer_size;
     buffered_elements_high_ = current_buffer_size;
@@ -463,8 +480,9 @@ class Node {
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_LOCKS_EXCLUDED(mu_);
 
-  // Downsizes buffer parameters of this node.
-  void TryDownsizeBuffer();
+  // Downsizes buffer parameters of this node. Returns true if any buffer is
+  // downsized.
+  bool TryDownsizeBuffer();
 
   // Collects buffer parameters of this node that should be upsized.
   void CollectBufferParametersToUpsize(
@@ -514,6 +532,24 @@ class Node {
     std::atomic<int64_t> recorded_bytes_produced_;
     std::atomic<int64_t> recorded_num_elements_;
   };
+
+  // Computes the exponential moving average of processing time per element.
+  void UpdateProcessingTimeEma() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (previous_processing_time_ == 0) {
+      if (num_elements_ > 0) {
+        processing_time_ema_ = static_cast<double>(processing_time_) /
+                               static_cast<double>(num_elements_);
+      } else {
+        processing_time_ema_ = static_cast<double>(processing_time_);
+      }
+    } else {
+      processing_time_ema_ =
+          (1.0 - kProcessingTimeEmaWeight) * processing_time_ema_ +
+          kProcessingTimeEmaWeight *
+              static_cast<double>(processing_time_ - previous_processing_time_);
+    }
+    previous_processing_time_ = processing_time_;
+  }
 
   // Returns the number of inputs.
   int64_t num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
@@ -660,6 +696,11 @@ class Node {
   double input_processing_time_sum_ = 0.0L;
   int64_t input_processing_time_count_ = 0;
 
+  // Holds the previous processing time and the per element processing time
+  // exponential moving average.
+  int64_t previous_processing_time_ TF_GUARDED_BY(mu_) = 0;
+  double processing_time_ema_ TF_GUARDED_BY(mu_) = 0.0;
+
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
   // functions of `flat_map` or `interleave`).
@@ -771,7 +812,8 @@ class Model {
 
   // Optimizes buffers in the pipeline rooted at `snapshot`. It downsizes
   // buffers that are too large and upsizes buffers that are too small while
-  // respecting the ram budget.
+  // respecting the ram budget. If any node is downsized or upsized, the
+  // watermarks of all nodes are reset to the buffered elements.
   void OptimizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
@@ -821,12 +863,17 @@ class Model {
   // a vector which contains pairs of node names and tunable parameters.
   ModelParameters CollectTunableParameters(std::shared_ptr<Node> node);
 
-  // Downsizes buffers that are too large for all nodes rooted at `snapshot.
-  void DownsizeBuffers(std::shared_ptr<Node> snapshot);
+  // Downsizes buffers that are too large for all nodes rooted at `snapshot`.
+  // Returns true if any buffer is downsized.
+  bool DownsizeBuffers(std::shared_ptr<Node> snapshot);
 
   // Upsizes buffers that are too small for all nodes rooted at `snapshot` while
-  // respecting the ram budget.
-  void UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
+  // respecting the ram budget. Returns true if any buffer is upsized.
+  bool UpsizeBuffers(std::shared_ptr<Node> snapshot, int64_t ram_budget);
+
+  // Reset buffer watermarks of all asynchronous nodes to their buffered
+  // elements.
+  void ResetBufferWatermarks();
 
   // Collects buffer parameters of all nodes in the model that should be
   // upsized.
@@ -926,6 +973,15 @@ class Model {
   // Gauge cell that can be used to collect the state of the model.
   monitoring::GaugeCell<std::function<std::string()>>* model_gauge_cell_ =
       nullptr;
+  // Used to synchronize metrics collection attempts against the model's
+  // destruction.
+  struct GuardedBool {
+    explicit GuardedBool(bool val) : val(val) {}
+    bool val TF_GUARDED_BY(mu);
+    mutex mu;
+  };
+  std::shared_ptr<GuardedBool> safe_to_collect_metrics_;
+
   // Time use for rate limitting the recomputation of human-readable string
   // represention of the model.
   absl::Time cache_until_ = absl::InfinitePast();

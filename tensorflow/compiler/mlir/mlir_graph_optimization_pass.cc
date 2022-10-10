@@ -18,11 +18,12 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -59,13 +60,6 @@ auto* mlir_graph_optimization_pass_fallback_count = monitoring::Counter<1>::New(
 // function/graph optimization passes.
 constexpr char kSuccess[] = "kSuccess";
 constexpr char kFailure[] = "kFailure";
-
-// Graph <-> MLIR transformations outcomes (for logging)
-constexpr char kGraphImportFallbackFail[] = "kGraphImportFallbackFail";
-constexpr char kGraphImportFail[] = "kGraphImportFail";
-constexpr char kGraphImportSuccess[] = "kGraphImportSuccess";
-constexpr char kRoundTripSuccess[] = "kRoundTripSuccess";
-constexpr char kRoundTripFailure[] = "kRoundTripFailure";
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -124,7 +118,7 @@ MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
 
 static void RegisterDialects(mlir::DialectRegistry& registry) {
   // clang-format off
-  registry.insert<mlir::arith::ArithmeticDialect,
+  registry.insert<mlir::arith::ArithDialect,
                   mlir::func::FuncDialect,
                   mlir::TF::TensorFlowDialect,
                   mlir::shape::ShapeDialect,
@@ -178,12 +172,7 @@ Status MlirFunctionOptimizationPass::Run(
   tensorflow::metrics::ScopedCounter<2> timings(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {kTfMlirCategory, "graph_analysis"});
-  // Capture stats on graph properties analyzed before running the MLIR bridge.
-  // We set `uses_uninitialized_resource_args` to false here because function
-  // optimization is not affected by uninitialized resource args.
-  GetMlirBridgeRolloutPolicy(**graph, flib_def, config_proto,
-                             /*uses_uninitialized_resource_args=*/false,
-                             /*record_stats=*/true);
+
   timings.ReportAndStop();
 
   if (overall_state == MlirOptimizationPassState::Disabled) {
@@ -192,6 +181,13 @@ Status MlirFunctionOptimizationPass::Run(
           << "None of the MLIR Optimization Passes are enabled "
           << "(registered " << registry_->passes().size() << ")";
     }
+    // Capture stats on graph properties analyzed before running the MLIR
+    // bridge. We set `uses_uninitialized_resource_args` to false here because
+    // function optimization is not affected by uninitialized resource args.
+    // TODO(b/241853328): Remove LogGraphFeatures when fixed
+    LogGraphFeatures(**graph, flib_def, config_proto,
+                     /*uses_uninitialized_resource_args=*/false,
+                     /*is_v1_compat=*/false);
     return OkStatus();
   }
 
@@ -227,22 +223,23 @@ Status MlirFunctionOptimizationPass::Run(
     // If at least one pass is enabled, return failure to the caller
     // immediately.
     if (overall_state == MlirOptimizationPassState::Enabled) {
-      metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
-                                                             kGraphImportFail);
       return module_ref_status.status();
     }
-
     // Do not fail, just keep the original TF graph unchanged in fallback mode.
-    metrics::UpdateTfMlirGraphOptimizationPassStateCounter(
-        "", kGraphImportFallbackFail);
     return OkStatus();
   }
-  metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
-                                                         kGraphImportSuccess);
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      std::move(module_ref_status.ValueOrDie());
+      std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, &device_set);
+
+  // Capture stats on graph properties analyzed before running the MLIR
+  // bridge. We set `uses_uninitialized_resource_args` to false here because
+  // function optimization is not affected by uninitialized resource args.
+  // TODO (b/241853328) Remove LogGraphFeatures when fixed
+  LogGraphFeatures(**graph, flib_def, config_proto,
+                   /*uses_uninitialized_resource_args=*/false,
+                   /*is_v1_compat=*/false);
 
   int per_pass_state_index = 0;
   for (auto& pass_registration : registry_->passes()) {
@@ -313,13 +310,10 @@ Status MlirFunctionOptimizationPass::Run(
   Status status = ConvertMlirToGraph(*module_ref, export_config, graph,
                                      flib_def, &control_ret_nodes);
   if (!status.ok()) {
-    metrics::UpdateTfMlirGraphOptimizationPassStateCounter("",
-                                                           kRoundTripFailure);
     errors::AppendToMessage(&status,
                             "Error converting MLIR module back to graph");
     return status;
   }
-  metrics::UpdateTfMlirGraphOptimizationPassStateCounter("", kRoundTripSuccess);
 
   timings.ReportAndStop();
 
@@ -350,6 +344,15 @@ Status MlirV1CompatGraphOptimizationPass::Run(
       pass->GetPassState(options.device_set, options.session_options->config,
                          **options.graph, *options.flib_def);
 
+  // If we ever have more than one MlirV1CompatOptimization pass we need to
+  // ensure the logging only happens once per graph to avoid redundant logging
+  // (see how it is used in the MLIRFunctionOptimizationPass as an example)
+  // TODO(b/241853328): Remove LogGraphFeatures when fixed
+  LogGraphFeatures(**options.graph, options.flib_def,
+                   options.session_options->config,
+                   /*uses_uninitialized_resource_args=*/false,
+                   /*is_v1_compat=*/true);
+
   if (pass_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "MLIR V1 optimization pass is not enabled";
     return OkStatus();
@@ -376,7 +379,7 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   }
 
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
-      std::move(module_ref_status.ValueOrDie());
+      std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, options.device_set);
 
   llvm::StringRef name = pass->name();
@@ -385,7 +388,6 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   if (VLOG_IS_ON(1)) {
     DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
   }
-
   Status pass_status = pass->Run(options, *module_ref);
 
   if (!pass_status.ok()) {

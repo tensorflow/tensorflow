@@ -19,7 +19,6 @@ import math
 import timeit
 
 import numpy as np
-from six.moves import range  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -44,7 +43,7 @@ def _get_stddev_inside_bounds_before_using_randn(gpu):
     return 1.7
 
 
-class TruncatedNormalMoments(object):
+class TruncatedNormalMoments:
   memoized_moments = None
   mean = None
   stddev = None

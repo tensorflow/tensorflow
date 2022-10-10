@@ -121,7 +121,7 @@ struct OpKernelRunState {
     // `input_tf_tensors`, we need to change those pointers to the correct ones
     // after copying.
     params = p;
-    params.inputs = &input_tf_tensor_values;
+    params.inputs = input_tf_tensor_values;
     // Clear eigen_gpu_device to ensure OpKernelContext constructor will make a
     // new eigen GPU device.
     params.eigen_gpu_device = nullptr;

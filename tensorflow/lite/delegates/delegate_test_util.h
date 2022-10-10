@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_
-#define TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_
+#ifndef TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_H_
+#define TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_H_
 
 #include <stdint.h>
 
@@ -189,4 +189,4 @@ class TestFP16Delegation : public ::testing::TestWithParam<int> {
 }  // namespace delegates
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_
+#endif  // TENSORFLOW_LITE_DELEGATES_DELEGATE_TEST_UTIL_H_

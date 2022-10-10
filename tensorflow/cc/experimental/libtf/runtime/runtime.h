@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_H_
-#define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_H_
+#ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_RUNTIME_H_
+#define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_RUNTIME_H_
 
 #include <sys/types.h>
 
@@ -84,7 +84,7 @@ tensorflow::StatusOr<Tensor> Runtime::CreateHostTensor(
   if (!maybe_capsule.status().ok()) {
     return maybe_capsule.status();
   }
-  auto capsule = maybe_capsule.ValueOrDie();
+  auto capsule = maybe_capsule.value();
   auto ctx = capsule.cast<tensorflow::ImmediateExecutionContext*>();
   tensorflow::AbstractTensorPtr t(
       ctx->CreateTensor(static_cast<tensorflow::DataType>(dtype), shape));
@@ -104,4 +104,4 @@ tensorflow::StatusOr<Tensor> Runtime::CreateHostTensor(
 }  // namespace libtf
 }  // namespace tf
 
-#endif  // TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_H_
+#endif  // TENSORFLOW_CC_EXPERIMENTAL_LIBTF_RUNTIME_RUNTIME_H_

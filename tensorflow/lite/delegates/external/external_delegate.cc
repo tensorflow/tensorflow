@@ -24,6 +24,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+// TODO(b/245168068): Add support for `TfLiteOpaqueDelegateBuilder`.
+
 // External delegate library construct
 struct ExternalLib {
   using CreateDelegatePtr = std::add_pointer<TfLiteDelegate*(
@@ -31,11 +33,11 @@ struct ExternalLib {
       void (*report_error)(const char*))>::type;
   using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
   struct wchar_codecvt : public std::codecvt<wchar_t, char, std::mbstate_t> {};
-  std::wstring_convert<wchar_codecvt> converter;
 
   // Open a given delegate library and load the create/destroy symbols
   bool load(const std::string library) {
 #if defined(_WIN32)
+    std::wstring_convert<wchar_codecvt> converter;
     void* handle = SharedLibrary::LoadLibrary(
         converter.from_bytes(library.c_str()).c_str());
 #else
@@ -154,14 +156,12 @@ ExternalDelegateWrapper::ExternalDelegateWrapper(
     external_delegate_ = external_lib_.create(ckeys.data(), cvalues.data(),
                                               ckeys.size(), nullptr);
     if (external_delegate_) {
-      wrapper_delegate_ = {
-          reinterpret_cast<void*>(this),  // .data =
-          DelegatePrepare,                // .Prepare =
-          nullptr,                        // .CopyFromBufferHandle =
-          nullptr,                        // .CopyToBufferHandle =
-          nullptr,                        // .FreeBufferHandle =
-          external_delegate_->flags,      // .flags =
-      };
+      wrapper_delegate_.data_ = reinterpret_cast<void*>(this);
+      wrapper_delegate_.Prepare = DelegatePrepare;
+      wrapper_delegate_.CopyFromBufferHandle = nullptr;
+      wrapper_delegate_.CopyToBufferHandle = nullptr;
+      wrapper_delegate_.FreeBufferHandle = nullptr;
+      wrapper_delegate_.flags = external_delegate_->flags;
       if (external_delegate_->CopyFromBufferHandle) {
         wrapper_delegate_.CopyFromBufferHandle = DelegateCopyFromBufferHandle;
       }

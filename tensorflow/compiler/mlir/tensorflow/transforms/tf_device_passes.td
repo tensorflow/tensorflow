@@ -287,3 +287,35 @@ def XlaInlineDeviceOpsPass : Pass<"tf-xla-inline-device-ops", "ModuleOp"> {
   let constructor = "TFDevice::CreateXlaInlineDeviceOpsPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }
+
+def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::func::FuncOp"> {
+  let summary = "Rewrites stateful parition calls into Xla launch ops to make the attached function run on XLA.";
+
+  let description = [{
+    This pass rewrites `tf.StatefulPartitionedCall` operations with
+    `_xla_compile_device_type` attribute into `tf.XlaLaunch` operations. This
+    makes the attached function execute with XLA.
+
+    For example, the `tf.StatefulPartitionedCall` operation in the following
+    code
+
+    ```mlir
+    func.func @convert_stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
+      %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+      func.return %0 : tensor<i32>
+    }
+    ```
+
+    wll be replaced by a `tf.XlaLaunch` operation.
+
+    ```mlir
+    func.func @convert_stateful_partitioned_call(%arg0: tensor<i32>) -> tensor<i32> {
+      %0 = "tf.XlaLaunch"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", function = @stateful_pcall_func, operand_segment_sizes = array<i32: 0, 1, 0>} : (tensor<i32>) -> tensor<i32>
+      func.return %0 : tensor<i32>
+    }
+    ```
+  }];
+
+  let constructor = "TFDevice::CreateXlaRewritePass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}

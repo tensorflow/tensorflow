@@ -17,6 +17,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util
@@ -170,6 +171,14 @@ class RandomPoissonTest(test.TestCase):
   def testInfRate(self):
     sample = random_ops.random_poisson(shape=[2], lam=np.inf)
     self.assertAllEqual([np.inf, np.inf], self.evaluate(sample))
+
+  def testSizeTooLarge(self):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "overflow"):
+      rate = constant_op.constant(1.0, shape=(4, 4, 4, 4, 4))
+      self.evaluate(
+          random_ops.random_poisson(
+              shape=[46902, 51188, 34063, 59195], lam=rate))
 
 
 if __name__ == "__main__":

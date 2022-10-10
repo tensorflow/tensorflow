@@ -43,11 +43,13 @@ Status CanonicalizeNonTupleConditional(HloInstruction* conditional) {
 }
 }  // namespace
 
-StatusOr<bool> ConditionalCanonicalizer::Run(HloModule* module) {
+StatusOr<bool> ConditionalCanonicalizer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "ConditionalCanonicalizer::Run(), before:\n" + module->ToString());
   bool changed = false;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       if (inst->opcode() == HloOpcode::kConditional &&
           !inst->shape().IsTuple()) {

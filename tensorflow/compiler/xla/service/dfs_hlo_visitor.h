@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -86,6 +86,9 @@ class DfsHloVisitorBase {
   }
   virtual Status HandleBitcastConvert(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleStochasticConvert(HloInstructionPtr hlo) {
+    return HandleElementwiseBinary(hlo);
   }
   virtual Status HandleCopy(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);

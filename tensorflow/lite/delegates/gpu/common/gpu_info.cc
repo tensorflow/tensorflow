@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 
@@ -355,12 +357,15 @@ AppleInfo::AppleInfo(const std::string& gpu_description) {
       {"apple a13 gpu", AppleGpu::kA13},
       {"apple a14 gpu", AppleGpu::kA14},
       {"apple a15 gpu", AppleGpu::kA15},
+      {"apple a16 gpu", AppleGpu::kA16},
       // on tablets we have metal device name "apple m1 gpu"
       // and on notebooks "apple m1"
       {"apple m1 gpu", AppleGpu::kM1},
       {"apple m1", AppleGpu::kM1},
       {"apple m1 pro", AppleGpu::kM1Pro},
       {"apple m1 max", AppleGpu::kM1Max},
+      {"apple m1 ultra", AppleGpu::kM1Ultra},
+      {"apple m2", AppleGpu::kM2},
   };
   auto it = kMapping.find(gpu_description);
   if (it != kMapping.end()) {
@@ -383,18 +388,22 @@ bool AppleInfo::IsBionic() const {
   return gpu_type == AppleGpu::kA11 || gpu_type == AppleGpu::kA12 ||
          gpu_type == AppleGpu::kA12X || gpu_type == AppleGpu::kA12Z ||
          gpu_type == AppleGpu::kA13 || gpu_type == AppleGpu::kA14 ||
-         gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kM1 ||
-         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max;
+         gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
+         gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
+         gpu_type == AppleGpu::kM1Max || gpu_type == AppleGpu::kM1Ultra ||
+         gpu_type == AppleGpu::kM2;
 }
 
 bool AppleInfo::IsSIMDMatMulSupported() const {
   return gpu_type == AppleGpu::kA14 || gpu_type == AppleGpu::kA15 ||
-         gpu_type == AppleGpu::kM1 || gpu_type == AppleGpu::kM1Pro ||
-         gpu_type == AppleGpu::kM1Max;
+         gpu_type == AppleGpu::kA16 || gpu_type == AppleGpu::kM1 ||
+         gpu_type == AppleGpu::kM1Pro || gpu_type == AppleGpu::kM1Max ||
+         gpu_type == AppleGpu::kM1Ultra || gpu_type == AppleGpu::kM2;
 }
 
 bool AppleInfo::IsSIMDMatMulFp32Perf2x() const {
-  return gpu_type == AppleGpu::kA15;
+  return gpu_type == AppleGpu::kA15 || gpu_type == AppleGpu::kA16 ||
+         gpu_type == AppleGpu::kM2;
 }
 
 bool AppleInfo::IsRoundToNearestSupported() const { return IsBionic(); }
@@ -427,12 +436,14 @@ int AppleInfo::GetComputeUnitsCount() const {
       return 4;
     case AppleGpu::kA14:
       return 4;
-    // For A15, M1, M1 Pro and M1 Max we can not receive exact CU count from
-    // name. No official Metal API to receive this info.
+    // For some apple GPUs we can not receive exact CU count from name.
+    // No official Metal API to receive this info.
     case AppleGpu::kA15:
       if (compute_units != -1) {
         return compute_units;
       }
+      return 5;
+    case AppleGpu::kA16:
       return 5;
     case AppleGpu::kM1:
       // approximate, can be 7 or 8
@@ -443,6 +454,12 @@ int AppleInfo::GetComputeUnitsCount() const {
     case AppleGpu::kM1Max:
       // approximate, can be 24 or 32
       return 32;
+    case AppleGpu::kM1Ultra:
+      // approximate, 64 is max possible
+      return 64;
+    case AppleGpu::kM2:
+      // approximate, 10 is max possible
+      return 10;
     case AppleGpu::kUnknown:
       return 4;
   }

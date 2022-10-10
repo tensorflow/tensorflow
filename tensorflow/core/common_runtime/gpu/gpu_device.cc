@@ -62,10 +62,12 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -77,8 +79,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #if GOOGLE_CUDA
@@ -108,13 +108,8 @@ using se::rocm::ScopedActivateExecutorContext;
 // during OpKernel::Compute().  The recommended way of allocating such
 // memory is via OpKernelContext::allocate_temp().  However, Eigen Ops
 // don't have access to OpKernelContext, instead they get access to
-// memory directly through the device allocator.  As an Open Source
-// project, Eigen assumes allocator semantics similar to those of the
-// CUDA or ROCm memory allocator, and may not work correctly due to race
-// conditions if used with some other allocator.  For safety, we need
-// to delay deallocation calls out of Eigen until all events on the
-// corresponding stream have completed.  The following two classes
-// serve this purpose in two different compilation environments.
+// memory directly through the device allocator. The following class
+// wraps the device allocator for use by Eigen.
 
 class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
@@ -173,12 +168,13 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
     AsyncFreeData* afData =
         new AsyncFreeData(allocator_, buffer, operation_, step_id_);
 #if GOOGLE_CUDA
-    cudaError_t err = cudaStreamAddCallback(*stream_, asyncFree, afData, 0);
+    cudaError_t err = cudaStreamAddCallback(*stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, cudaSuccess);
 #elif TENSORFLOW_USE_ROCM
-    hipError_t err = hipStreamAddCallback(*stream_, asyncFree, afData, 0);
+    hipError_t err = hipStreamAddCallback(*stream_, asyncLogFree, afData, 0);
     CHECK_EQ(err, hipSuccess);
 #endif
+    allocator_->DeallocateRaw(buffer);
   }
 
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
@@ -205,10 +201,11 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   };
 
 #if GOOGLE_CUDA
-  static void CUDART_CB asyncFree(gpuStream_t stream, cudaError_t status,
-                                  void* userData)
+  static void CUDART_CB asyncLogFree(gpuStream_t stream, cudaError_t status,
+                                     void* userData)
 #elif TENSORFLOW_USE_ROCM
-  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData)
+  static void asyncLogFree(gpuStream_t stream, hipError_t status,
+                           void* userData)
 #endif
   {
     AsyncFreeData* data = static_cast<AsyncFreeData*>(userData);
@@ -216,7 +213,6 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
       LogMemory::RecordRawDeallocation(data->operation_, data->step_id_,
                                        data->address_, data->allocator_, false);
     }
-    data->allocator_->DeallocateRaw(data->address_);
     delete data;
   }
 
@@ -441,7 +437,7 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
                             tf_device_id_.value());
   }
 
-  executor_ = executor_status.ValueOrDie();
+  executor_ = executor_status.value();
 
   stream_ = StreamGroupFactory::Global().GetOrCreate(
       tf_device_id_, 0, executor_, options.config.gpu_options());
@@ -1089,7 +1085,7 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   int64_t available_memory = 0;
   se::StreamExecutor* se = DeviceIdUtil::ExecutorForPlatformDeviceId(
                                GPUMachineManager(), platform_device_id)
-                               .ValueOrDie();
+                               .value();
   if (!se->DeviceMemoryUsage(&available_memory, &total_memory)) {
     return errors::Unknown("Failed to query available memory for GPU ",
                            platform_device_id.value());
@@ -1633,10 +1629,10 @@ GetPeerAccessMap(se::Platform* platform,
     for (PlatformDeviceId platform_gpu_j : visible_gpu_order) {
       se::StreamExecutor* from =
           DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_i)
-              .ValueOrDie();
+              .value();
       se::StreamExecutor* to =
           DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_gpu_j)
-              .ValueOrDie();
+              .value();
       (*map)[{platform_gpu_i, platform_gpu_j}] =
           from->CanEnablePeerAccessTo(to);
     }
@@ -1854,10 +1850,10 @@ Status BaseGPUDeviceFactory::EnablePeerAccess(
       // We have already validated that ExecutorForDevice() calls return OK.
       se::StreamExecutor* from =
           DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_i)
-              .ValueOrDie();
+              .value();
       se::StreamExecutor* to =
           DeviceIdUtil::ExecutorForPlatformDeviceId(gpu_manager, platform_gpu_j)
-              .ValueOrDie();
+              .value();
 
       if (from->CanEnablePeerAccessTo(to)) {
         ++possible_peer_count;

@@ -198,13 +198,13 @@ TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
   DeviceNameUtils::ParsedName parsed_name;
   DeviceNameUtils::ParseFullName(gpu0, &parsed_name);
   auto meta_0 = devices.GetGpuDeviceMetadata(parsed_name);
-  ASSERT_TRUE(meta_0.hasValue());
+  ASSERT_TRUE(meta_0.has_value());
   ASSERT_EQ(meta_0->getCcMajor(), 1);
   ASSERT_EQ(meta_0->getCcMinor(), 2);
 
   DeviceNameUtils::ParseFullName(gpu1, &parsed_name);
   auto meta_1 = devices.GetGpuDeviceMetadata(parsed_name);
-  ASSERT_FALSE(meta_1.hasValue());
+  ASSERT_FALSE(meta_1.has_value());
 }
 
 TEST(DeviceUtilTest, GetDeviceOrdinalFromDeviceString) {

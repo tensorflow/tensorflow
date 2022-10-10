@@ -77,7 +77,7 @@ LogicalResult TFAllocOp::verify() {
   // Check that the total number of operands matches the number of dynamic
   // dimensions specified in the memref type.
   unsigned result_dyn_dims = op.getType().getNumDynamicDims();
-  unsigned dyn_sizes_count = op.dyn_sizes().size();
+  unsigned dyn_sizes_count = op.getDynSizes().size();
   if (dyn_sizes_count != result_dyn_dims)
     return op.emitOpError()
            << "`dyn_sizes` count " << dyn_sizes_count

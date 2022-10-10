@@ -129,10 +129,10 @@ struct InferenceDeviceType {
 inline llvm::Optional<InferenceDeviceType> GetInferenceDeviceTypeForOp(
     Operation* op) {
   auto hardware = GetTargetAnnotation(op);
-  if (!hardware.hasValue()) return llvm::None;
+  if (!hardware.has_value()) return llvm::None;
 
   auto inference_type = GetInferenceTypeAnnotation(op);
-  if (!inference_type.hasValue()) return llvm::None;
+  if (!inference_type.has_value()) return llvm::None;
 
   InferenceDeviceType inference_device_type;
   inference_device_type.hardware = hardware.getValue();

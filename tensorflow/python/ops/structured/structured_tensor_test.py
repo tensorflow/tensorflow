@@ -262,6 +262,18 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           "expected_shape": [2, None],  # ragged shape = [[*], [*, *]]
       },
       {
+          "testcase_name": "Rank2_WithDiffDTypes",
+          "fields": lambda: {
+              # Note: fields must have identical row_splits.
+              "a": ragged_factory_ops.constant_value(
+                  [[1], [2, 3]], row_splits_dtype=dtypes.int32),
+              "b": ragged_factory_ops.constant_value(
+                  [["a"], ["b", "c"]], row_splits_dtype=dtypes.int64),
+          },
+          "rank": 2,
+          "expected_shape": [2, None],  # ragged shape = [[*], [*, *]]
+      },
+      {
           "testcase_name": "Rank2_WithMixedFields",
           "fields": lambda: {
               "a": [[1, 2], [3, 4]],
@@ -548,6 +560,25 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           },
           "expected_shape": [1, 2, 3, 1],  # inferred from field values.
       },
+      {
+          "testcase_name": "mixed_shape_dtype",
+          "fields": {},
+          "shape": [None, None],
+          "nrows": (lambda: constant_op.constant(2, dtypes.int32)),
+          "row_partitions": (
+              lambda: [row_partition.RowPartition.from_row_lengths([3, 4])]),
+          "expected_shape": [2, None],
+      },
+      {
+          "testcase_name": "mixed_shape_dtype_fields",
+          "fields": (lambda: {
+              "a": ragged_factory_ops.constant(
+                  [[1]], row_splits_dtype=dtypes.int32),
+              "b": ragged_factory_ops.constant(
+                  [[1]], row_splits_dtype=dtypes.int64)}),
+          "shape": [None, None],
+          "expected_shape": [1, None],
+      }
   ])  # pyformat: disable
   def testFromFields(self,
                      shape,
@@ -661,26 +692,6 @@ class StructuredTensorTest(test_util.TensorFlowTestCase,
           err=ValueError,
           msg="Must specify row_partitions, a fully specified shape, "
           "or have fields if rank > 1"),
-      dict(
-          fields={},
-          shape=[None, None],
-          nrows=lambda: constant_op.constant(2, dtypes.int32),
-          row_partitions=lambda:
-          [row_partition.RowPartition.from_row_lengths([3, 4])],
-          err=ValueError,
-          msg="row_partition dtypes are inconsistent"),
-      dict(
-          fields=lambda: {
-              "a":
-                  ragged_factory_ops.constant([[1]],
-                                              row_splits_dtype=dtypes.int32),
-              "b":
-                  ragged_factory_ops.constant([[1]],
-                                              row_splits_dtype=dtypes.int64)
-          },
-          shape=[None, None],
-          err=ValueError,
-          msg="field values have incompatible row_partition dtypes"),
   ])
   def testFromFieldsErrors(self,
                            fields,

@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -15,7 +15,7 @@ cc_library(
     hdrs = ["grpc_eager_service.h"],
     deps = [
         "//tensorflow/core/protobuf:eager_service_cc_grpc_proto",
-        "//tensorflow/stream_executor/platform",
+        "//tensorflow/compiler/xla/stream_executor/platform",
     ] + tf_grpc_cc_dependencies(),
 )
 

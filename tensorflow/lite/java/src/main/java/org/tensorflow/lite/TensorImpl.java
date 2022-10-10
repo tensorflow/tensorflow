@@ -24,6 +24,7 @@ import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.nio.ShortBuffer;
 import java.util.Arrays;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 /** Implementation of {@link Tensor}. */
 // TODO(b/153882978): Add scalar getters similar to TF's Java API.
@@ -121,7 +122,7 @@ final class TensorImpl implements Tensor {
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
-   * this tensor, a {@link ByteByffer} of compatible primitive type with a matching flat size, or
+   * this tensor, a {@link ByteBuffer} of compatible primitive type with a matching flat size, or
    * {@code null} iff the tensor has an underlying delegate buffer handle.
    *
    * @throws IllegalArgumentException if the tensor is a scalar or if {@code src} is not compatible
@@ -193,7 +194,7 @@ final class TensorImpl implements Tensor {
   }
 
   /**
-   * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
+   * Copies the contents of the tensor to {@code dst}.
    *
    * @param dst the destination buffer, either an explicitly-typed array, a compatible {@link
    *     Buffer} or {@code null} iff the tensor has an underlying delegate buffer handle. If
@@ -203,10 +204,10 @@ final class TensorImpl implements Tensor {
    * @throws IllegalArgumentException if {@code dst} is not compatible with the tensor (for example,
    *     mismatched data types or shapes).
    */
-  Object copyTo(Object dst) {
+  void copyTo(Object dst) {
     if (dst == null) {
       if (hasDelegateBufferHandle(nativeHandle)) {
-        return dst;
+        return;
       }
       throw new IllegalArgumentException(
           "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
@@ -218,7 +219,6 @@ final class TensorImpl implements Tensor {
     } else {
       readMultiDimensionalArray(nativeHandle, dst);
     }
-    return dst;
   }
 
   private void copyTo(Buffer dst) {
@@ -267,54 +267,52 @@ final class TensorImpl implements Tensor {
   }
 
   /** Returns the type of the data. */
-  DataType dataTypeOf(Object o) {
-    if (o != null) {
-      Class<?> c = o.getClass();
-      // For arrays, the data elements must be a *primitive* type, e.g., an
-      // array of floats is fine, but not an array of Floats.
-      if (c.isArray()) {
-        while (c.isArray()) {
-          c = c.getComponentType();
-        }
-        if (float.class.equals(c)) {
-          return DataType.FLOAT32;
-        } else if (int.class.equals(c)) {
-          return DataType.INT32;
-        } else if (short.class.equals(c)) {
-          return DataType.INT16;
-        } else if (byte.class.equals(c)) {
-          // Byte array can be used for storing string tensors, especially for ParseExample op.
-          if (dtype == DataType.STRING) {
-            return DataType.STRING;
-          }
-          return DataType.UINT8;
-        } else if (long.class.equals(c)) {
-          return DataType.INT64;
-        } else if (boolean.class.equals(c)) {
-          return DataType.BOOL;
-        } else if (String.class.equals(c)) {
+  DataType dataTypeOf(@NonNull Object o) {
+    Class<?> c = o.getClass();
+    // For arrays, the data elements must be a *primitive* type, e.g., an
+    // array of floats is fine, but not an array of Floats.
+    if (c.isArray()) {
+      while (c.isArray()) {
+        c = c.getComponentType();
+      }
+      if (float.class.equals(c)) {
+        return DataType.FLOAT32;
+      } else if (int.class.equals(c)) {
+        return DataType.INT32;
+      } else if (short.class.equals(c)) {
+        return DataType.INT16;
+      } else if (byte.class.equals(c)) {
+        // Byte array can be used for storing string tensors, especially for ParseExample op.
+        if (dtype == DataType.STRING) {
           return DataType.STRING;
         }
-      } else {
-        // For scalars, the type will be boxed.
-        if (Float.class.equals(c) || o instanceof FloatBuffer) {
-          return DataType.FLOAT32;
-        } else if (Integer.class.equals(c) || o instanceof IntBuffer) {
-          return DataType.INT32;
-        } else if (Short.class.equals(c) || o instanceof ShortBuffer) {
-          return DataType.INT16;
-        } else if (Byte.class.equals(c)) {
-          // Note that we don't check for ByteBuffer here; ByteBuffer payloads
-          // are allowed to map to any type, and should be handled earlier
-          // in the input/output processing pipeline.
-          return DataType.UINT8;
-        } else if (Long.class.equals(c) || o instanceof LongBuffer) {
-          return DataType.INT64;
-        } else if (Boolean.class.equals(c)) {
-          return DataType.BOOL;
-        } else if (String.class.equals(c)) {
-          return DataType.STRING;
-        }
+        return DataType.UINT8;
+      } else if (long.class.equals(c)) {
+        return DataType.INT64;
+      } else if (boolean.class.equals(c)) {
+        return DataType.BOOL;
+      } else if (String.class.equals(c)) {
+        return DataType.STRING;
+      }
+    } else {
+      // For scalars, the type will be boxed.
+      if (Float.class.equals(c) || o instanceof FloatBuffer) {
+        return DataType.FLOAT32;
+      } else if (Integer.class.equals(c) || o instanceof IntBuffer) {
+        return DataType.INT32;
+      } else if (Short.class.equals(c) || o instanceof ShortBuffer) {
+        return DataType.INT16;
+      } else if (Byte.class.equals(c)) {
+        // Note that we don't check for ByteBuffer here; ByteBuffer payloads
+        // are allowed to map to any type, and should be handled earlier
+        // in the input/output processing pipeline.
+        return DataType.UINT8;
+      } else if (Long.class.equals(c) || o instanceof LongBuffer) {
+        return DataType.INT64;
+      } else if (Boolean.class.equals(c)) {
+        return DataType.BOOL;
+      } else if (String.class.equals(c)) {
+        return DataType.STRING;
       }
     }
     throw new IllegalArgumentException(
@@ -322,7 +320,7 @@ final class TensorImpl implements Tensor {
   }
 
   /** Returns the shape of an object as an int array. */
-  int[] computeShapeOf(Object o) {
+  private int[] computeShapeOf(Object o) {
     int size = computeNumDimensions(o);
     if (dtype == DataType.STRING) {
       Class<?> c = o.getClass();
@@ -345,8 +343,8 @@ final class TensorImpl implements Tensor {
   /** Returns the number of elements in a flattened (1-D) view of the tensor's shape. */
   static int computeNumElements(int[] shape) {
     int n = 1;
-    for (int i = 0; i < shape.length; ++i) {
-      n *= shape[i];
+    for (int j : shape) {
+      n *= j;
     }
     return n;
   }
@@ -384,7 +382,7 @@ final class TensorImpl implements Tensor {
     }
   }
 
-  private void throwIfTypeIsIncompatible(Object o) {
+  private void throwIfTypeIsIncompatible(@NonNull Object o) {
     // ByteBuffer payloads can map to any type, so exempt it from the check.
     if (isByteBuffer(o)) {
       return;

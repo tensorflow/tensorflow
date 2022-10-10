@@ -12,6 +12,7 @@ cc_library(
     srcs = if_with_tpu_support(["tpu_tracer.cc"]),
     copts = tf_profiler_copts(),
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/lib:profiler_factory",
@@ -22,7 +23,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/stream_executor/tpu:status_helper",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,

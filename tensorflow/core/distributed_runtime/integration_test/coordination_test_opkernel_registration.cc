@@ -102,7 +102,7 @@ class TestGetConfigKeyValueOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output("value", key_tensor->shape(), &val_tensor));
     auto value = val_tensor->scalar<tstring>()();
-    val_tensor->scalar<tstring>()() = status_or_val.ValueOrDie();
+    val_tensor->scalar<tstring>()() = status_or_val.value();
   }
 
  private:

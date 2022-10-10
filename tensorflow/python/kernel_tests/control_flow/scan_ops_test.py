@@ -34,7 +34,7 @@ def numpy_reverse(x, axis):
   ix = [
       slice(None, None, -1) if i == axis else slice(None) for i in range(length)
   ]
-  return x[ix]
+  return x[tuple(ix)]
 
 
 def handle_options(func, x, axis, exclusive, reverse):
@@ -52,12 +52,12 @@ def handle_options(func, x, axis, exclusive, reverse):
         slice(0, -1) if i == axis else slice(None) for i in range(length)
     ]
     if func == np.cumsum:
-      init = np.zeros_like(x[ix_head])
+      init = np.zeros_like(x[tuple(ix_head)])
     elif func == np.cumprod:
-      init = np.ones_like(x[ix_head])
+      init = np.ones_like(x[tuple(ix_head)])
     else:
       raise ValueError("Unknown scan function.")
-    x = np.concatenate([init, func(x[ix_init], axis)], axis=axis)
+    x = np.concatenate([init, func(x[tuple(ix_init)], axis)], axis=axis)
   else:
     x = func(x, axis=axis)
 

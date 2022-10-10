@@ -19,7 +19,7 @@ limitations under the License.
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"
+#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/Passes.h"
@@ -28,12 +28,13 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 
 // -------------------------------------------------------------------------- //
 // Custom passes that are missing upstream.
@@ -86,6 +87,9 @@ void AddLinalgTransformations(OpPassManager& pm,
       options.vector_size, options.reduction_1d_tile_size,
       reduction_2d_tile_sizes));
 
+  if (options.matmul_tile_sizes.hasValue())
+    pm.addNestedPass<FuncOp>(CreateTileMatmulPass(options.matmul_tile_sizes));
+
   if (options.vectorize && options.codegen_transpose)
     pm.addNestedPass<FuncOp>(CreateTileTransposePass());
   pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
@@ -98,12 +102,13 @@ void AddLinalgTransformations(OpPassManager& pm,
     pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
   }
   pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
-  pm.addNestedPass<FuncOp>(CreateVectorizeTiledOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass());
 }
 
 void AddBufferizationPasses(OpPassManager& pm, bool one_shot_bufferize) {
-  // Rewrite init_tensor ops to alloc_tensor ops.
-  pm.addNestedPass<FuncOp>(mlir::createLinalgInitTensorToAllocTensorPass());
+  // Rewrite tensor.empty ops to bufferization.alloc_tensor ops.
+  pm.addNestedPass<FuncOp>(
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
   // Run One-Shot Bufferize.
   if (one_shot_bufferize) {
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
@@ -116,7 +121,14 @@ void AddBufferizationPasses(OpPassManager& pm, bool one_shot_bufferize) {
   // bufferizing anything.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::createFinalBufferizePass(/*alignment=*/64));
+  pm.addPass(mlir::createFinalBufferizePass(
+      /*alignment=*/64, {},
+      // Mark Xla runtime dialect operations legal in the bufferization target.
+      [](mlir::ConversionTarget& target, mlir::MLIRContext*,
+         mlir::bufferization::BufferizeTypeConverter*,
+         mlir::RewritePatternSet*) {
+        target.addLegalDialect<xla::runtime::RuntimeDialect>();
+      }));
 }
 
 }  // namespace

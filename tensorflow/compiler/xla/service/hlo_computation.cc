@@ -49,8 +49,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -127,6 +127,14 @@ HloInstruction* HloComputation::AddInstruction(
     instruction->SetAndSanitizeName(new_name);
   }
   return AddInstructionInternal(std::move(instruction));
+}
+
+HloInstruction* HloComputation::AddInstruction(
+    std::unique_ptr<HloInstruction> instruction, const OpMetadata* metadata) {
+  if (metadata != nullptr) {
+    instruction->set_metadata(*metadata);
+  }
+  return AddInstruction(std::move(instruction));
 }
 
 HloInstruction* HloComputation::AddInstructionInternal(
@@ -447,7 +455,7 @@ void HloComputation::ComputeInstructionPostOrder(
     if (!result.second) {  // We've already seen this instruction.
       dfs_stack.pop_back();
       if (result.first->second != kVisited) {
-        CHECK_EQ(current.parent(), this)
+        DCHECK_EQ(current.parent(), this)
             << "Instruction " << current.name()
             << " is not in the current computation (" << name() << ").";
         post_order.push_back(&current);
@@ -502,26 +510,18 @@ HloComputation::ComputeChannelDependencies() const {
   return channel_dependencies;
 }
 
-static inline bool HasOnlyTraceUsers(const HloInstruction* instruction) {
-  return absl::c_all_of(instruction->users(),
-                        [](HloInstruction* user) { return false; });
-}
-
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
   ChannelDependencyGroup channel_dependencies = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
-  std::vector<HloInstruction*> trace_instructions;
   absl::flat_hash_map<HloInstruction*, VisitState> visited;
   visited.reserve(instruction_count());
   for (auto& instruction : instructions_) {
-    if (HasOnlyTraceUsers(instruction.get())) {
+    if (instruction->users().empty()) {
       ComputeInstructionPostOrder(instruction.get(), channel_dependencies,
                                   visited, post_order);
     }
   }
-  post_order.insert(post_order.end(), trace_instructions.begin(),
-                    trace_instructions.end());
   CHECK_EQ(instructions_.size(), post_order.size())
       << "number of instructions does not match post order size";
   return post_order;
@@ -551,13 +551,65 @@ std::vector<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
 }
 
 std::string HloComputation::ToString(const HloPrintOptions& options) const {
-  return std::string(ToCord(options));
+  return ToString(options, MakeInstructionPostOrder());
 }
 
 std::string HloComputation::ToString(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  return std::string(ToCord(options, instruction_order));
+  CHECK_EQ(instruction_order.size(), instruction_count());
+  const std::string tab(2 * options.indent_amount(), ' ');
+
+  std::string result;
+  absl::StrAppend(&result, tab);
+
+  if (!options.is_in_nested_computation()) {
+    if (options.print_percent()) {
+      absl::StrAppend(&result, "%");
+    }
+    if (options.print_ids()) {
+      // When print_ids() is false, exclude entry computation's name because it
+      // includes and leads to non-deterministic fingerprint.
+      absl::StrAppend(&result, name(), " ");
+    }
+  }
+
+  if (options.print_program_shape()) {
+    absl::StrAppend(
+        &result,
+        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())), " ");
+  }
+  absl::StrAppend(&result, "{\n");
+
+  {
+    // Print the instructions in this computation.
+    HloPrintOptions new_options =
+        HloPrintOptions(options)
+            .set_indent_amount(options.indent_amount() + 1)
+            .set_is_in_nested_computation(true);
+
+    CanonicalNameMap name_map;
+    for (const HloInstruction* const instruction : instruction_order) {
+      DCHECK_EQ(this, instruction->parent());
+      // 2 more spaces than just 'tab' due to indent_amount()+1 above
+      absl::StrAppend(&result, tab, "  ");
+      if (instruction == root_instruction_) {
+        absl::StrAppend(&result, "ROOT ");
+      }
+      absl::StrAppend(
+          &result,
+          instruction->ToStringWithCanonicalNameMap(new_options, &name_map),
+          "\n");
+    }
+  }
+
+  absl::StrAppend(&result, tab, "}");
+  if (options.print_ids() && !IsMainThread()) {
+    // When print_ids() is false, exclude entry computation's thread name
+    // because it includes and leads to non-deterministic fingerprint.
+    absl::StrAppend(&result, ", execution_thread=\"", execution_thread(), "\"");
+  }
+  return result;
 }
 
 absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
@@ -567,61 +619,7 @@ absl::Cord HloComputation::ToCord(const HloPrintOptions& options) const {
 absl::Cord HloComputation::ToCord(
     const HloPrintOptions& options,
     absl::Span<const HloInstruction* const> instruction_order) const {
-  CHECK_EQ(instruction_order.size(), instruction_count());
-  const std::string tab(2 * options.indent_amount(), ' ');
-
-  absl::Cord result;
-  result.Append(tab);
-
-  if (!options.is_in_nested_computation()) {
-    if (options.print_percent()) {
-      result.Append("%");
-    }
-    if (options.print_ids()) {
-      // When print_ids() is false, exclude entry computation's name because it
-      // includes and leads to non-deterministic fingerprint.
-      result.Append(name());
-      result.Append(" ");
-    }
-  }
-
-  if (options.print_program_shape()) {
-    result.Append(
-        ShapeUtil::HumanString(ComputeProgramShape(options.print_ids())));
-    result.Append(" ");
-  }
-  result.Append("{\n");
-
-  {
-    // Print the instructions in this computation.
-    HloPrintOptions new_options =
-        HloPrintOptions(options)
-            .set_indent_amount(options.indent_amount() + 1)
-            .set_is_in_nested_computation(true);
-
-    const std::string new_tab(2 * new_options.indent_amount(), ' ');
-
-    CanonicalNameMap name_map;
-    for (const HloInstruction* const instruction : instruction_order) {
-      DCHECK_EQ(this, instruction->parent());
-      result.Append(new_tab);
-      if (instruction == root_instruction_) {
-        result.Append("ROOT ");
-      }
-      result.Append(
-          instruction->ToStringWithCanonicalNameMap(new_options, &name_map));
-      result.Append("\n");
-    }
-  }
-
-  result.Append(tab);
-  result.Append("}");
-  if (options.print_ids() && !IsMainThread()) {
-    // When print_ids() is false, exclude entry computation's thread name
-    // because it includes and leads to non-deterministic fingerprint.
-    result.Append(StrCat(", thread_name=\"", thread_name(), "\""));
-  }
-  return result;
+  return absl::Cord(ToString(options, instruction_order));
 }
 
 HloComputationProto HloComputation::ToProto() const {
@@ -638,7 +636,8 @@ HloComputationProto HloComputation::ToProto() const {
   proto.set_root_id(root_instruction()->unique_id());
   *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   proto.set_is_fusion_computation(is_fusion_computation_);
-  proto.set_thread_name(IsMainThread() ? "" : std::string(thread_name()));
+  proto.set_execution_thread(IsMainThread() ? ""
+                                            : std::string(execution_thread()));
   return proto;
 }
 
@@ -702,8 +701,8 @@ HloComputation::CreateFromProto(
                          /*fusion_instruction=*/nullptr));
   computation->unique_id_ = proto.id();
   computation->is_fusion_computation_ = proto.is_fusion_computation();
-  if (!proto.thread_name().empty()) {
-    computation->SetThreadName(proto.thread_name());
+  if (!proto.execution_thread().empty()) {
+    computation->SetExecutionThread(proto.execution_thread());
   }
   return std::move(computation);
 }
@@ -749,7 +748,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-    absl::string_view async_thread_name) {
+    absl::string_view async_execution_thread) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -770,10 +769,11 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   }
   HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
       ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation, /*async_group_id=*/std::nullopt, async_thread_name));
+      async_computation, /*async_group_id=*/std::nullopt,
+      async_execution_thread));
   HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
       root->shape(), async_start, async_computation,
-      /*async_group_id=*/std::nullopt, async_thread_name));
+      /*async_group_id=*/std::nullopt, async_execution_thread));
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
@@ -878,10 +878,11 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   return program_shape;
 }
 
-bool HloComputation::EqualInternal(const HloComputation& other,
-                                   bool is_layout_sensitive,
-                                   bool ignore_channel_id_values,
-                                   bool ignore_thread) const {
+bool HloComputation::EqualInternal(
+    const HloComputation& other, bool is_layout_sensitive,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        computations_comparator,
+    bool ignore_channel_id_values, bool ignore_execution_thread) const {
   if (this == &other) {
     return true;
   }
@@ -904,16 +905,23 @@ bool HloComputation::EqualInternal(const HloComputation& other,
     auto operands_eq = [](const HloInstruction*, const HloInstruction*) {
       return true;
     };
+
     auto comp_eq = [&](const HloComputation* a, const HloComputation* b) {
-      return a->EqualInternal(*b, is_layout_sensitive, ignore_channel_id_values,
-                              ignore_thread);
+      return a->EqualInternal(*b, is_layout_sensitive, computations_comparator,
+                              ignore_channel_id_values,
+                              ignore_execution_thread);
     };
+
     bool identical_ignoring_operands =
         ignore_channel_id_values
             ? pair.first->IdenticalIgnoringChannelIdValues(
-                  *pair.second, operands_eq, comp_eq, is_layout_sensitive)
-            : pair.first->Identical(*pair.second, operands_eq, comp_eq,
-                                    is_layout_sensitive);
+                  *pair.second, operands_eq,
+                  (computations_comparator ? computations_comparator : comp_eq),
+                  is_layout_sensitive)
+            : pair.first->Identical(
+                  *pair.second, operands_eq,
+                  (computations_comparator ? computations_comparator : comp_eq),
+                  is_layout_sensitive);
     if (!identical_ignoring_operands) {
       return false;
     }
@@ -922,8 +930,8 @@ bool HloComputation::EqualInternal(const HloComputation& other,
     }
   }
 
-  if (!ignore_thread) {
-    return thread_name() == other.thread_name();
+  if (!ignore_execution_thread) {
+    return execution_thread() == other.execution_thread();
   }
   return true;
 }
@@ -1306,7 +1314,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
   SortClonedInstructionUsersAndControlLists(*context, replace, instructions_);
 
   context->MapComputation(this, result.get());
-  result->SetThreadName(thread_name());
+  result->SetExecutionThread(execution_thread());
 
   return result;
 }

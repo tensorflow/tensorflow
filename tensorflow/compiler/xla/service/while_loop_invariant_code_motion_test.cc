@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -491,7 +491,7 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
-  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -532,7 +532,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsConstantWhenAsked) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
-  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kConstantHoistingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
                           WhileLoopInvariantCodeMotion{}.Run(m.get()));
@@ -604,7 +604,7 @@ ENTRY entry {
 )";
 
 TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
-  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
@@ -617,7 +617,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
 }
 
 TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
-  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).value();
 
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,

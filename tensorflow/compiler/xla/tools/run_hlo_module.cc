@@ -39,9 +39,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/run_hlo_module.pb.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -52,25 +52,22 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
   // Bazel likes for tests to write "debugging outputs" like these to
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   std::string binary_filename;
   std::string text_filename;
   std::string outdir;
-  if (tensorflow::io::GetTestUndeclaredOutputsDir(&outdir)) {
-    std::string filename = tensorflow::io::JoinPath(
+  if (tsl::io::GetTestUndeclaredOutputsDir(&outdir)) {
+    std::string filename = tsl::io::JoinPath(
         outdir, absl::StrFormat("tempfile-%d-%s", env->NowMicros(), name));
     binary_filename = absl::StrCat(filename, ".pb");
     text_filename = absl::StrCat(filename, ".txt");
   } else {
-    binary_filename =
-        tensorflow::io::GetTempFilename(absl::StrCat(name, ".pb"));
-    text_filename = tensorflow::io::GetTempFilename(absl::StrCat(name, ".txt"));
+    binary_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".pb"));
+    text_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".txt"));
   }
 
-  TF_CHECK_OK(
-      tensorflow::WriteBinaryProto(env, binary_filename, literal.ToProto()));
-  TF_CHECK_OK(
-      tensorflow::WriteStringToFile(env, text_filename, literal.ToString()));
+  TF_CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
+  TF_CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
   LOG(ERROR) << "wrote Literal to " << name << " binary: " << binary_filename
              << " text: " << text_filename;
 }
@@ -135,9 +132,11 @@ Status RunAndCompare(
 
   const HloModuleProto test_module_proto = test_module->ToProto();
 
-  std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
-                                                options.use_large_float_range)
-                                  .value();
+  std::vector<Literal> args =
+      MakeFakeArguments(test_module.get(), engine,
+                        options.use_large_float_range,
+                        options.treat_gte_as_data_formatting)
+          .value();
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {
@@ -235,7 +234,7 @@ Status RunAndCompare(
   std::unique_ptr<HloModule> test_module =
       LoadModuleFromFile(hlo_filename, hlo_module_loader_details::Config(),
                          options.input_format, config_modifier_hook)
-          .ValueOrDie();
+          .value();
   return RunAndCompare(std::move(test_module), test_runner, reference_runner,
                        engine, options, iteration_literals_proto,
                        reference_module_modifier_hook, config_modifier_hook);

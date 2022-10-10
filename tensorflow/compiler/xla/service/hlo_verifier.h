@@ -50,6 +50,26 @@ struct HloVerifierOpts {
     return std::move(*this);
   }
 
+  HloVerifierOpts&& VerifyBroadcastDimensionsOrder() {
+    verify_broadcast_dimensions_order = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& VerifyReshapeIsBitcast() {
+    verify_reshape_is_bitcast = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& VerifyCustomCallNestedComputationThreadName() {
+    verify_custom_call_nested_computation_thread_name = true;
+    return std::move(*this);
+  }
+
+  HloVerifierOpts&& WithAllowBitcastToHaveDifferentSize(bool allow) {
+    allow_bitcast_to_have_different_size = allow;
+    return std::move(*this);
+  }
+
   HloVerifierOpts&& WithInstructionCanChangeLayout(
       const HloPredicate& instruction_can_change_layout_p) {
     instruction_can_change_layout = instruction_can_change_layout_p;
@@ -69,12 +89,12 @@ struct HloVerifierOpts {
     return instruction_can_change_layout;
   }
 
-  int64_t ShapeSize(const Shape& shape) const { return shape_size(shape); }
-
-  bool InstructionCanChangeLayout(const HloInstruction* instr) const {
+  bool InstructionCanChangeLayout(const HloInstruction* instruction) const {
     return !instruction_can_change_layout ||
-           instruction_can_change_layout(instr);
+           instruction_can_change_layout(instruction);
   }
+
+  int64_t ShapeSize(const Shape& shape) const { return shape_size(shape); }
 
   // If the verifier is layout-sensitive, shapes must be equal to what's
   // expected.  Otherwise, the shapes must simply be compatible.
@@ -84,6 +104,19 @@ struct HloVerifierOpts {
   // BF16s. Tuples that include both F32s and BF16s are allowed regardless of
   // this flag.
   bool allow_mixed_precision = false;
+
+  // Check that `dimensions` attribute of broadcast is sorted.
+  bool verify_broadcast_dimensions_order = false;
+
+  // Check that reshape is a physical bitcast.
+  bool verify_reshape_is_bitcast = false;
+
+  // Check that custom call's called computations have same thread name as
+  // parent computation.
+  bool verify_custom_call_nested_computation_thread_name = true;
+
+  // Whether bitcast should have the same size, including all paddings.
+  bool allow_bitcast_to_have_different_size = false;
 
   HloPredicate instruction_can_change_layout;
 
@@ -113,6 +146,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleIota(HloInstruction* hlo) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
+  Status HandleStochasticConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
@@ -335,7 +369,11 @@ class HloVerifier : public HloModulePass {
   absl::string_view name() const override { return "hlo-verifier"; }
 
   // Never returns true; no instructions are ever modified by this pass.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  using HloPassInterface::RunOnModuleGroup;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Owns verifier config.

@@ -237,6 +237,7 @@ def DTensorEmbedding
     "::mlir::shape::ShapeDialect",
     "::mlir::scf::SCFDialect",
     "::mlir::tensor::TensorDialect",
+    "::mlir::sparse_tensor::SparseTensorDialect",
   ];
 }
 
@@ -300,6 +301,14 @@ def DTensorSparseExpansion
     : Pass<"dtensor-sparse-expansion", "mlir::ModuleOp"> {
   let summary = "Convert ops that take in SparseTensor input to its corresponding Sparse or Dense ops.";
   let constructor = "CreateDTensorSparseExpansion()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorInferShapesForRestoreV2Op
+    : Pass<"dtensor-infer-shapes-for-restorev2-op", "mlir::ModuleOp"> {
+  let summary = "Infer shapes of the outputs of tf.RestoreV2Op from the AssignVariableOps that consume those outputs. This is used for DTensor integration with TF Checkpoint.";
+  let constructor = "CreateDTensorInferShapesForRestoreV2Op()";
   let dependentDialects = [
   ];
 }
