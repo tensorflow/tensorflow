@@ -1,43 +1,7 @@
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -108,9 +108,9 @@
-   return etp1 == etp2;
- }
- 
--bool isCompatibleForHloTypeInference(TypeRange l, TypeRange r) {
--  if (l.size() != r.size()) return false;
--  for (auto [lt, rt] : llvm::zip(l, r))
-+bool isCompatibleForHloTypeInference(TypeRange tp1, TypeRange tp2) {
-+  if (tp1.size() != tp2.size()) return false;
-+  for (auto [lt, rt] : llvm::zip(tp1, tp2))
-     if (!isCompatibleForHloTypeInference(lt, rt)) return false;
-   return true;
- }
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -559,19 +559,6 @@
- }
- 
- //===----------------------------------------------------------------------===//
--// AllReduceOp
--//===----------------------------------------------------------------------===//
--
--void AllReduceOp::build(
--    ::mlir::OpBuilder& ods_builder, ::mlir::OperationState& ods_state,
--    ::mlir::Type result_type, ::mlir::Value operand,
--    ::mlir::DenseIntElementsAttr replica_groups,
--    /*optional*/ ::mlir::stablehlo::ChannelHandleAttr channel_handle) {
--  AllReduceOp::build(ods_builder, ods_state, result_type, operand,
--                     replica_groups, channel_handle, nullptr);
--}
--
--//===----------------------------------------------------------------------===//
- // ReduceScatterOp
- //===----------------------------------------------------------------------===//
- 
-@@ -641,9 +628,9 @@
+@@ -253,9 +253,9 @@
      return failure();
  
    return verifyReduceScatter(*this,
@@ -50,21 +14,27 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
  }
  
  //===----------------------------------------------------------------------===//
-diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
---- stablehlo/stablehlo/dialect/StablehloOps.td
-+++ stablehlo/stablehlo/dialect/StablehloOps.td
-@@ -1265,13 +1265,6 @@
-   );
-   let regions = (region SizedRegion<1>:$computation);
-   let results = (outs HLO_Tensor);
--  // use_global_device_ids is rarely used, so we add a simplified
--  // builder method for convenience.
--  let builders = [
--    OpBuilder<(ins
--      "::mlir::Type":$result_type, "::mlir::Value":$operand,
--      "::mlir::DenseIntElementsAttr":$replica_groups,
--      "::mlir::stablehlo::ChannelHandleAttr":$channel_handle)>];
- }
+@@ -4361,7 +4361,7 @@
+   if (failed(windowStridesOrErr)) return failure();
+   auto windowOrErr = hlo::verifyWindowAttributesAndInferWindowDimensions(
+       *windowDimsOrErr, *windowStridesOrErr, *paddingOrErr,
+-      /*lhs_dilation=*/{}, /*rhs_dilation=*/{}, getLoc());
++      /*lhsDilation=*/{}, /*rhsDilation=*/{}, getLoc());
+   if (failed(windowOrErr)) return failure();
  
- def StableHLO_ReduceScatterOp : StableHLO_Op<"reduce_scatter",
+   // P5.
+diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
+--- stablehlo/stablehlo/dialect/TypeInference.cpp
++++ stablehlo/stablehlo/dialect/TypeInference.cpp
+@@ -867,8 +867,8 @@
+   if (failed(windowDilationsOrErr)) return failure();
+   auto windowOrErr = verifyWindowAttributesAndInferWindowDimensions(
+       *windowDimsOrErr, *windowStridesOrErr, *paddingOrErr,
+-      /*lhs_dilation=*/*baseDilationsOrErr,
+-      /*rhs_dilation=*/*windowDilationsOrErr, location);
++      /*lhsDilation=*/*baseDilationsOrErr,
++      /*rhsDilation=*/*windowDilationsOrErr, location);
+   if (failed(windowOrErr)) return failure();
+ 
+   // P5.
 
