@@ -34,6 +34,7 @@ cc_library(
         "convert_asserts.cc",
         "convert_custom_calls.cc",
         "export_functions.cc",
+        "ordinal_assignment.cc",
         "rt_to_llvm.cc",
     ],
     hdrs = ["passes.h"],

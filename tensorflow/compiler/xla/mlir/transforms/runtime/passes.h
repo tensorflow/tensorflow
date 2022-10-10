@@ -27,6 +27,7 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+#define GEN_PASS_DECL_ORDINALASSIGNMENT
 #define GEN_PASS_DECL_EXPORTFUNCTIONS
 #define GEN_PASS_DECL_CONVERTCUSTOMCALLS
 #define GEN_PASS_DECL_CONVERTASSERTS
@@ -39,6 +40,9 @@ namespace runtime {
 //===-----------------------------------------------------------------------===/
 
 static constexpr char const* kExportedAttrName = "rt.exported";
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateOrdinalAssignmentPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateExportRuntimeFunctionsPass();
