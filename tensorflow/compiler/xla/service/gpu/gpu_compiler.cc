@@ -821,7 +821,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   pipeline.AddPass<CopyInsertion>(GetCanShareBuffer());
   // To fuse the copy.
   pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
-
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
 }
