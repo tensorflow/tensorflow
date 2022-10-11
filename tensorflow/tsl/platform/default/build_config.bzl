@@ -689,6 +689,7 @@ def tf_protos_profiler_impl():
     return [
         clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
         clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
+        clean_dep("//tensorflow/tsl/profiler/protobuf:xplane_proto_cc_impl"),
     ]
 
 def tf_protos_profiler_service():
