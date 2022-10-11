@@ -9246,7 +9246,14 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertPad) {
 }
 
 #if IS_TRT_VERSION_GE(8, 2, 0, 0)
-TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
+
+class OpConverter_Select : public ParameterizedOpConverterTestBase {
+ public:
+  void RunTest(const string& opName);
+};
+
+void OpConverter_Select::RunTest(const string& opName) {
+  const auto testing_SelectV2 = opName == "SelectV2";
   const int maxVal = 32;
   const std::array<const char*, 3> par_name = {"cond", "then", "else"};
   std::array<DataType, 3> par_type = {DT_BOOL, tf_type_, tf_type_};
@@ -9310,12 +9317,12 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   auto assign_values = [this](
                            const std::array<const std::vector<int>*, 3>& dims,
                            std::array<std::vector<float>*, 3> par_value,
-                           std::vector<int>& data_cond,
-                           std::vector<int>* expect_dims_pntr = nullptr,
-                           bool use_indices = false,
-                           const std::vector<float>* expected_out = nullptr) {
+                           std::vector<int>& data_cond, int use_indices = 0,
+                           const std::vector<float>* expected_out = nullptr,
+                           std::vector<int>* expect_dims_pntr = nullptr) {
     size_t rank[3];
-    const auto dim_len = dims[0]->size();
+    const auto dim_len =
+        dims[0]->size() > dims[1]->size() ? dims[0]->size() : dims[1]->size();
     std::vector<int> exp_dims;
     if (!expect_dims_pntr) expect_dims_pntr = &exp_dims;
 
@@ -9325,7 +9332,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     for (int i = 0; i < 3; i++) {
       if (dims[i]) {
         const auto& dim = *dims[i];
-        for (auto j = dim_len; j--;) {
+        for (auto j = 0; j < dims[i]->size(); j++) {
           if (expect_dims[j] < dim[j]) expect_dims[j] = dim[j];
         }
 
@@ -9341,13 +9348,14 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     for (int k = 1; k <= 2; k++) {
       auto& data = *par_value[k];
       data.resize(rank[k]);
-      const int mult = k == 1 ? 1 : -1;
-      for (int i = 0; i < rank[k]; i++) {
-        if (use_indices) {
+      if (use_indices) {
+        const int mult = k == 1 ? 1 : -1;
+        for (int i = 0; i < rank[k]; i++) {
           data[i] = mult * (i + 1);
-        } else {
-          data.at(i) =
-              k == 1 ? data[i >> 1] + i % 2 : maxVal - par_value[1]->at(i);
+        }
+      } else {
+        for (int i = 0; i < rank[k]; i++) {
+          data[i] = k == 1 ? data[i >> 1] + i % 2 : maxVal - (*par_value[1])[i];
         }
       }
     }
@@ -9358,34 +9366,59 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
       data_cond[i] = i % 2 ? 1 - data_cond[i >> 1] : data_cond[i >> 1];
     }
 
-    auto& expected_output = *par_value[0];
-    const auto rank_out =
-        std::accumulate(std::begin(expect_dims), std::end(expect_dims), 1,
-                        std::multiplies<int>());
+    if (!expected_out || expected_out->size() > 0) {
+      auto& expected_output = *par_value[0];
+      const auto rank_out =
+          std::accumulate(std::begin(expect_dims), std::end(expect_dims), 1,
+                          std::multiplies<int>());
 
-    assert(rank_out == (expected_out ? expected_out->size() : rank[0]));
-    expected_output.resize(rank_out);
-    const auto& data_then = *par_value[1];
-    const auto& data_else = *par_value[2];
-    for (int i = 0; i < rank_out; i++) {
-      expected_output[i] = expected_out      ? (*expected_out)[i]
-                           : data_cond.at(i) ? data_then[i]
-                                             : data_else[i];
+      assert(rank_out == expected_out ? expected_out->size()
+                                      : rank[use_indices >= 0 ? 0 : 1]);
+
+      expected_output.resize(rank_out);
+      const auto& data_then = *par_value[1];
+      const auto& data_else = *par_value[2];
+      const auto div = use_indices >= 0 ? 1 : rank_out / rank[0];
+      for (int i = 0; i < rank_out; i++) {
+        expected_output[i] = expected_out         ? (*expected_out)[i]
+                             : data_cond[i / div] ? data_then[i]
+                                                  : data_else[i];
+      }
     }
   };
 
+  auto shape_error_msg = [&](const NodeDef& node, bool same_then_else) {
+    nvinfer1::Dims shape[3];
+    const auto j = same_then_else ? 0 : 1;
+    for (int i = 0; i < 2; i++) {
+      DimsAdapter(*par_dims[i + j]).TrtDims(&shape[i + j]);
+    }
+
+    return input_shapes_error_msg(shape[j], shape[j + 1], node,
+                                  !same_then_else);
+  };
+
   auto run_test = [&](const NodeDef& node, const std::vector<int>& exp_dims) {
-    for (int n = 0; n < 2; n++) {
+    const bool same_then_else_shapes = *par_dims[1] == *par_dims[2];
+    const bool same_cond_chape = *par_dims[0] == *par_dims[1];
+    const auto nMax = testing_SelectV2 ? 2 : 1;
+    for (int n = 0; n < nMax; n++) {
       set_parameters();
-      TestOpConverter(node, exp_dims, OkStatus(), OkStatus(),
-                      ElementsAreArray(expected_output));
+      if (testing_SelectV2 || same_then_else_shapes && same_cond_chape) {
+        TestOpConverter(node, exp_dims, OkStatus(), OkStatus(),
+                        ElementsAreArray(expected_output));
+      } else {
+        const auto err_msg = shape_error_msg(node, same_then_else_shapes);
+        RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
+      }
+
       if (!n) {
         // Changing the condition and expected_output.
         for (auto idx = data_cond.size(); idx--;)
           data_cond[idx] = 1 - data_cond[idx];
 
         // Compare of the shapes if the tensors "then" and "else".
-        if (*par_dims[1] != *par_dims[2]) {
+        if (!same_then_else_shapes) {
           // Shapes are different:
           //     assigning +1's and -1's to the elements
           //     of the tensors "then" and "else", respectively
@@ -9408,15 +9441,15 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   };
 
   std::array<DataType, 3> data_types = {DT_FLOAT, DT_HALF, DT_INT32};
-  Scope s = Scope::NewRootScope();
-  const auto op =
-      ops::SelectV2(s.WithOpName("my_select"),
-                    ops::Placeholder(s.WithOpName(par_name[0]), par_type[0]),
-                    ops::Placeholder(s.WithOpName(par_name[1]), par_type[1]),
-                    ops::Placeholder(s.WithOpName(par_name[2]), par_type[2]));
-  const auto& node = op.operation.node()->def();
+  NodeDef node;
+  TF_CHECK_OK(NodeDefBuilder("op", opName)
+                  .Input("cond", 0, DT_BOOL)
+                  .Input("then", 0, tf_type_)
+                  .Input("else", 0, tf_type_)
+                  .Finalize(&node));
 
-  std::vector<std::vector<int>> dims_params = {{8}, {8, 2, 4}, {32, 32, 3200}};
+  const std::vector<std::vector<int>> dims_params = {
+      {8}, {8, 2, 4}, {32, 32, 3200}};
 
   // All parameters passed as the weights OR 1-element tensors.
   par_dims = {&dims_params[0], &dims_params[0], &dims_params[0]};
@@ -9429,7 +9462,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     return;
   }
 
-  // Parameter 'cond' cannot be only of type DT_BOOL.
+  // Parameter 'cond' can only be of type DT_BOOL.
   do {
     for (auto cond_type : {DT_INT32, DT_FLOAT, DT_HALF}) {
       nvinfer1::DataType trt_type;
@@ -9442,7 +9475,6 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   } while (nextTensorWeightConfiguration(config));
 
   std::string err_msg = bool_weight_error_msg(node);
-  const auto status = OkStatus();
 
   std::vector<int> dims_const = {1};
   par_dims = {&dims_const, &dims_const, &dims_const};
@@ -9452,7 +9484,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     do {
       set_parameters();
       if (config[0]) {
-        TestOpConverter(node, {1}, status, status,
+        TestOpConverter(node, {1}, OkStatus(), OkStatus(),
                         ElementsAreArray(expected_output));
       } else {
         RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
@@ -9472,34 +9504,42 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
   par_value[0] = &expected_output;
   if (trt_mode_ == TrtTestMode::kExplicitBatch) {
     // Testing infeasible broadcast schemes.
+    // For that subtest dims('then') will be equal to dims('else').
     std::string bc_comment[2];
     std::vector<int> dims[4];
     par_dims = {dims, dims + 1, dims + 1};
-    nvinfer1::Dims infeasible_dims[] = {{3, {4, 3, 2}}, {4, {4, 3, 2, 5}},
-                                        {3, {4, 1, 3}}, {3, {4, 3, 2}},
-                                        {3, {4, 3, 2}}, {5, {4, 3, 2, 5, 2}}};
+    const nvinfer1::Dims infeasible_dims[] = {
+        {3, {4, 3, 2}}, {4, {4, 3, 2, 5}}, {3, {4, 1, 3}},
+        {3, {4, 3, 2}}, {3, {4, 3, 2}},    {5, {4, 3, 2, 5, 2}}};
 
     auto iMax = sizeof(infeasible_dims) / sizeof(infeasible_dims[0]);
     // Loop for all pairs of nvinfer1::Dims from infeasible_dims.
     for (int i = 0; i < iMax; i += 2) {
-      // Loop for all permutations on 2 elements.
+      // Loop for all permutations on 2 elements which will assign
+      // each pairs of nvinfer1::Dims from infeasible_dims to
+      // (dims('cond'), dims('then')) and (dims('then'), dims('cond')),
+      // respectively.
       for (int k = 0; k < 2; k++) {
         for (int j = 0; j < 2; j++) {
           set_dimension(infeasible_dims + i + (j + k) % 2, dims[j],
                         bc_comment + (j + k) % 2);
         }
 
-        adjust_comments(infeasible_dims + i, bc_comment);
+        if (testing_SelectV2) {
+          adjust_comments(infeasible_dims + i, bc_comment);
+          err_msg = "Infeasible broadcast scheme (" + bc_comment[k] + " vs " +
+                    bc_comment[1 - k];
+        } else {
+          err_msg = shape_error_msg(node, true);
+        }
+
         set_parameters();
-        RunValidationAndConversion(node, error::INVALID_ARGUMENT,
-                                   "Infeasible broadcast scheme (" +
-                                       bc_comment[k] + " vs " +
-                                       bc_comment[1 - k]);
+        RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
       }
     }
 
     // Tests for exactly two identical dims for any two out of 3 tensors.
-    nvinfer1::Dims feasible_dims_2[] = {
+    const nvinfer1::Dims feasible_dims_2[] = {
         {3, {1, 3, 2}}, {3, {4, 3, 2}}, {3, {4, 1, 2}}, {3, {4, 3, 2}},
         {3, {4, 3, 1}}, {3, {4, 3, 2}}, {3, {1, 1, 2}}, {3, {4, 3, 2}},
         {3, {1, 3, 1}}, {3, {4, 3, 2}}, {3, {4, 1, 1}}, {3, {4, 3, 2}},
@@ -9507,7 +9547,7 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     };
 
     // Expected values will be definded directly.
-    std::vector<float> expected_val_2[] = {
+    const std::vector<float> expected_val_2[] = {
         // Expected values for all feasible ordered pairs of dims
         // for dims('then') == dims('else'), dims('then') != dims('cond').
         {-1,  2,  3,  -4,  5,  -6,  -7,  8,  9,  -10, 11, -12,
@@ -9592,10 +9632,10 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
         for (int j = 0; j < 2; j++)
           set_dimension(feasible_dims_2 + i + (j + k) % 2, dims[j]);
 
-        std::vector<float>* expect = expected_val_2 + i + k;
+        const std::vector<float>* expect = expected_val_2 + i + k;
         // Loop where the tensor shapes for 'cond' and 'then' are swapping.
         for (int m = 0; m < 2; m++) {
-          assign_values(par_dims, par_value, data_cond, exp_dims, true, expect);
+          assign_values(par_dims, par_value, data_cond, 1, expect, exp_dims);
           run_test(node, *exp_dims);
 
           // Swapping dims for 'cond' and 'then' tensors.
@@ -9608,13 +9648,13 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
     }
 
     // Tests for pairwise different dims('cond'), dims('then'), dims('else').
-    nvinfer1::Dims feasible_dims_3[] = {
+    const nvinfer1::Dims feasible_dims_3[] = {
         {2, {3, 2}},    {2, {3, 1}},    {2, {1, 1}},    {3, {2, 2, 1}},
         {3, {2, 1, 2}}, {3, {1, 2, 2}}, {3, {2, 1, 1}}, {3, {2, 1, 2}},
         {3, {1, 2, 2}}, {3, {2, 1, 1}}, {3, {1, 1, 2}}, {3, {1, 2, 1}},
     };
 
-    std::vector<float> expected_val_3[] = {
+    const std::vector<float> expected_val_3[] = {
         {-1, 1, 2, -1, 3, -1},        {-1, 1, 1, -2, 1, -3},
         {-1, -1, 3, 4, 5, 6},         {-1, -2, 1, 1, 1, 1},
         {-1, -1, -2, -2, -3, -3},     {-1, -2, -3, -4, -5, -6},
@@ -9645,8 +9685,46 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
           set_dimension(feasible_dims_3 + i + perm[k][j], dims[j]);
 
         const auto* expect = expected_val_3 + kMax3 * (i / 3) + k;
-        assign_values(par_dims, par_value, data_cond, exp_dims, true, expect);
+        assign_values(par_dims, par_value, data_cond, 1, expect, exp_dims);
         run_test(node, *exp_dims);
+      }
+    }
+
+    if (!testing_SelectV2) {
+      // Tests for `cond` passed as a vector with N elements, where N is a batch
+      // size. The subtest should not pass a ConvertSelect::Validate() when one
+      // of following is true:
+      //    (a) N is NOT equal to the first dimention of dims('then');
+      //    (b dims('cond').nbDims > 1.
+      //
+      // For all these subtest dims('then') == dims('else').
+      const nvinfer1::Dims vect_dim[] = {
+          {1, {4}}, {3, {5, 2, 3}}, {2, {5, 2}}, {3, {5, 2, 3}},
+          {1, {5}}, {3, {5, 2, 3}}, {1, {4}},    {4, {4, 3, 5, 2}},
+      };
+
+      std::vector<int> dims[4];
+      par_dims = {dims, dims + 1, dims + 1};
+      auto iMax = sizeof(vect_dim) / sizeof(vect_dim[0]);
+      // Loop for all pairs of nvinfer1::Dims from vector_dims.
+      for (int i = 0; i < iMax; i += 2) {
+        err_msg =
+            vect_dim[i].nbDims != 1 || vect_dim[i].d[0] != vect_dim[i + 1].d[0]
+                ? input_shapes_error_msg(vect_dim[i], vect_dim[i + 1], node)
+                : "";
+
+        for (int j = 0; j < 2; j++) {
+          set_dimension(vect_dim + i + j, dims[j]);
+        }
+
+        assign_values(par_dims, par_value, data_cond, -1);
+        set_parameters();
+        if (err_msg.empty()) {
+          TestOpConverter(node, dims[1], OkStatus(), OkStatus(),
+                          ElementsAreArray(expected_output));
+        } else {
+          RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
+        }
       }
     }
   }  // trt_mode_ == TrtTestMode::kExplicitBatch
@@ -9672,12 +9750,23 @@ TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertSelectV2) {
         err_msg = then_else_dtypes_error_msg(trt_type[0], trt_type[1], node);
         RunValidationAndConversion(node, error::INVALID_ARGUMENT, err_msg);
       } else {
-        TestOpConverter(node, dims, status, status,
+        TestOpConverter(node, dims, OkStatus(), OkStatus(),
                         ElementsAreArray(expected_output));
       }
     }
   }
 }
+
+INSTANTIATE_TEST_CASE_P(
+    OpConvTestInstantiation, OpConverter_Select,
+    ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
+                       ::testing::Values(DT_FLOAT, DT_HALF, DT_INT32),
+                       ::testing::Values(TrtPrecisionMode::FP32)));
+
+TEST_P(OpConverter_Select, ConvertSelectV2) { RunTest("SelectV2"); }
+
+TEST_P(OpConverter_Select, Convert_Select) { RunTest("Select"); }
+
 #endif
 
 }  // namespace convert
