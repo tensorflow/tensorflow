@@ -771,6 +771,7 @@ REGISTER_OP("_FusedQuantizedConv3D")
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("fused_ops: list(string) = []")
+    .Attr("alpha: float = 0.0")
     .SetShapeFn(shape_inference::FusedQuantizedConv3DShape);
 
 REGISTER_OP("_MklQuantizedConv2D")
