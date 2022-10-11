@@ -65,7 +65,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-bool IsJitRtExecutableEnabled(const HloModuleConfig& config) {
+bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config) {
   return config.debug_options().xla_gpu_enable_xla_runtime_executable();
 }
 
@@ -85,10 +85,11 @@ bool NeedsAsyncCommsStream(Thunk& thunk) {
 
 }  // namespace
 
-class GpuExecutable::JitRtExecutable {
+class GpuExecutable::XlaRuntimeGpuExecutable {
  public:
-  static StatusOr<JitRtExecutable*> Create(OwnedJitRtProgram program) {
-    // Options for the default JitRt compilation pipeline.
+  static StatusOr<XlaRuntimeGpuExecutable*> Create(
+      OwnedXlaRuntimeProgram program) {
+    // Options for the default XLA Runtim compilation pipeline.
     runtime::CompilationPipelineOptions copts;
 
     // Populate mapping from XLA (SE) enums/structs type id to symbol names.
@@ -111,10 +112,10 @@ class GpuExecutable::JitRtExecutable {
         PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
 
     // We just use the default compilation pipeline provided by the XLA runtime.
-    // Alternatively instead of having a separate JitRtProgram (LMHLO lowered to
-    // canonical dialects), we can assemble a pipeline that will compile
-    // starting from the LMHLO dialect. However this intermediate step helps
-    // with debugging, by materializing IR with XLA runtime custom calls.
+    // Alternatively instead of having a separate Xla Runtime program(LMHLO
+    // lowered to canonical dialects), we can assemble a pipeline that will
+    // compile starting from the LMHLO dialect. However this intermediate step
+    // helps with debugging, by materializing IR with XLA runtime custom calls.
     opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
       runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
     };
@@ -129,22 +130,22 @@ class GpuExecutable::JitRtExecutable {
     auto jit_executable = runtime::JitExecutable::Instantiate(
         program->module, program->entry_point, opts);
     if (!jit_executable.ok())
-      return InternalError("Failed to compile JitRt program: %s",
+      return InternalError("Failed to compile XLA Runtime program: %s",
                            jit_executable.status().message());
 
     // Pass ownership to the GpuExecutable.
-    return new JitRtExecutable(
+    return new XlaRuntimeGpuExecutable(
         std::move(program->buffer_sizes),
         std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
         std::move(program->debug_options));
   }
 
-  // Create JitRtExecutable from the AOT compiled binary.
-  static StatusOr<JitRtExecutable*> Create(
+  // Create XlaRuntimeGpuExecutable from the AOT compiled binary.
+  static StatusOr<XlaRuntimeGpuExecutable*> Create(
       absl::Span<const int64_t> buffer_sizes, runtime::Executable executable,
       DebugOptions debug_options) {
     // Pass ownership to the GpuExecutable.
-    return new JitRtExecutable(
+    return new XlaRuntimeGpuExecutable(
         std::vector<int64_t>(buffer_sizes.begin(), buffer_sizes.end()),
         std::make_unique<runtime::Executable>(std::move(executable)),
         std::move(debug_options));
@@ -206,16 +207,17 @@ class GpuExecutable::JitRtExecutable {
   }
 
  private:
-  JitRtExecutable(std::vector<int64_t> buffer_sizes,
-                  std::unique_ptr<runtime::JitExecutable> jit_executable,
-                  DebugOptions debug_options)
+  XlaRuntimeGpuExecutable(
+      std::vector<int64_t> buffer_sizes,
+      std::unique_ptr<runtime::JitExecutable> jit_executable,
+      DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         executable_(std::move(jit_executable)),
         debug_options_(std::move(debug_options)) {}
 
-  JitRtExecutable(std::vector<int64_t> buffer_sizes,
-                  std::unique_ptr<runtime::Executable> aot_executable,
-                  DebugOptions debug_options)
+  XlaRuntimeGpuExecutable(std::vector<int64_t> buffer_sizes,
+                          std::unique_ptr<runtime::Executable> aot_executable,
+                          DebugOptions debug_options)
       : buffer_sizes_(std::move(buffer_sizes)),
         executable_(std::move(aot_executable)),
         debug_options_(std::move(debug_options)) {}
@@ -249,10 +251,10 @@ StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(Params params) {
     return result;
   }
 
-  if (std::holds_alternative<OwnedJitRtProgram>(executable)) {
-    auto& program = std::get<OwnedJitRtProgram>(executable);
-    TF_ASSIGN_OR_RETURN(result->jitrt_executable_,
-                        JitRtExecutable::Create(std::move(program)));
+  if (std::holds_alternative<OwnedXlaRuntimeProgram>(executable)) {
+    auto& program = std::get<OwnedXlaRuntimeProgram>(executable);
+    TF_ASSIGN_OR_RETURN(result->xla_runtime_executable_,
+                        XlaRuntimeGpuExecutable::Create(std::move(program)));
     return result;
   }
 
@@ -299,7 +301,7 @@ GpuExecutable::~GpuExecutable() {
     }
   }
 
-  delete jitrt_executable_;
+  delete xla_runtime_executable_;
 }
 
 Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
@@ -589,15 +591,14 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
   return out.ConsumeResult();
 }
 
-static Status ExecuteJitRt(const std::string& module_name,
-                           GpuExecutable::JitRtExecutable* jitrt_executable,
-                           const ServiceExecutableRunOptions* run_options,
-                           const std::string& asm_text,
-                           const std::vector<uint8_t>& binary,
-                           const BufferAllocations& buffer_allocations,
-                           size_t num_allocations,
-                           std::optional<const BufferAllocation*> temp_buffer,
-                           bool block_host_until_done) {
+static Status ExecuteXlaRuntime(
+    const std::string& module_name,
+    GpuExecutable::XlaRuntimeGpuExecutable* xla_runtime_executable,
+    const ServiceExecutableRunOptions* run_options, const std::string& asm_text,
+    const std::vector<uint8_t>& binary,
+    const BufferAllocations& buffer_allocations, size_t num_allocations,
+    std::optional<const BufferAllocation*> temp_buffer,
+    bool block_host_until_done) {
   uint64_t start_micros = tsl::Env::Default()->NowMicros();
 
   tsl::profiler::TraceMe hlo_module_activity(
@@ -605,7 +606,7 @@ static Status ExecuteJitRt(const std::string& module_name,
       tsl::profiler::TraceMeLevel::kInfo);
 
   ScopedAnnotation annotation(
-      []() -> std::string { return "JitRtExecutable"; });
+      []() -> std::string { return "XlaRuntimeGpuExecutable"; });
 
   // TODO(ezhulenev): Here we rely on implementation details of passing memrefs
   // to the compiled kernel. We should have a nicer API to do this, without
@@ -638,7 +639,7 @@ static Status ExecuteJitRt(const std::string& module_name,
   // Initialize arguments for the buffer operands.
   for (unsigned i = 0; i < num_allocations; ++i) {
     void* data = &(ptrs[i] = buffer_allocations.GetDeviceAddress(i).opaque());
-    void* size = const_cast<int64_t*>(&jitrt_executable->buffer_size(i));
+    void* size = const_cast<int64_t*>(&xla_runtime_executable->buffer_size(i));
     unsigned idx = 1 + i * 5;
     call_frame.args[idx + 0] = data;
     call_frame.args[idx + 1] = data;
@@ -647,13 +648,13 @@ static Status ExecuteJitRt(const std::string& module_name,
     call_frame.args[idx + 4] = stride;
   }
 
-  // JitRt executables do not return any values.
+  // XLA Runtime executables do not return any values.
   runtime::NoResultConverter converter;
 
-  // Prepare options for executing JitRt program.
+  // Prepare options for executing XLA Runtime program.
   runtime::Executable::ExecuteOpts opts;
 
-  // We don't expect to see any async tasks in the JitRt executable.
+  // We don't expect to see any async tasks in the XLA Runtime executable.
   opts.async_task_runner =
       reinterpret_cast<runtime::AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -679,9 +680,10 @@ static Status ExecuteJitRt(const std::string& module_name,
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data;
   user_data.insert_all(
-      run_options, &jitrt_executable->debug_options(), &asm_text, &binary,
-      &dm_buffer, &jitrt_executable->kernels_cache(),
-      &jitrt_executable->gemm_configs_cache(), &jitrt_executable->collectives(),
+      run_options, &xla_runtime_executable->debug_options(), &asm_text, &binary,
+      &dm_buffer, &xla_runtime_executable->kernels_cache(),
+      &xla_runtime_executable->gemm_configs_cache(),
+      &xla_runtime_executable->collectives(),
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
   opts.custom_call_data = &user_data;
 
@@ -696,12 +698,12 @@ static Status ExecuteJitRt(const std::string& module_name,
   opts.diagnostic_engine = &diagnostic_engine;
 
   // Execute with the prepared call frame.
-  runtime::Executable& executable = jitrt_executable->executable();
+  runtime::Executable& executable = xla_runtime_executable->executable();
   executable.Execute(call_frame, opts);
 
   if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
     return InternalError(
-        "Failed to execute JitRt executable: %s.",
+        "Failed to execute XLA Runtime executable: %s.",
         tfrt::StrCat(st.message(),
                      diagnostic.empty() ? "" : tfrt::StrCat(": ", diagnostic)));
   }
@@ -858,8 +860,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  TF_RETURN_IF_ERROR(ExecuteThunksOrJitRt(run_options, buffer_allocations,
-                                          block_host_until_done));
+  TF_RETURN_IF_ERROR(ExecuteThunksOrXlaRuntime(run_options, buffer_allocations,
+                                               block_host_until_done));
 
   // Free all temporary allocations.
   TF_RETURN_IF_ERROR(
@@ -872,7 +874,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   return std::move(result);
 }
 
-Status GpuExecutable::ExecuteThunksOrJitRt(
+Status GpuExecutable::ExecuteThunksOrXlaRuntime(
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done) {
   TF_RETURN_IF_ERROR(
@@ -887,7 +889,7 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
                          buffer_allocations, block_host_until_done);
   }
 
-  if (jitrt_executable_) {
+  if (xla_runtime_executable_) {
     // Match IrEmitter's temp buffer allocation for kernel launches. See
     // IrEmitterUnnested::BuildKernelThunkImpl().
     std::optional<const BufferAllocation*> temp_buffer;
@@ -899,9 +901,10 @@ Status GpuExecutable::ExecuteThunksOrJitRt(
         }
       }
     }
-    return ExecuteJitRt(module_name_, jitrt_executable_, run_options, text_,
-                        binary_, buffer_allocations, allocations_.size(),
-                        temp_buffer, block_host_until_done);
+    return ExecuteXlaRuntime(module_name_, xla_runtime_executable_, run_options,
+                             text_, binary_, buffer_allocations,
+                             allocations_.size(), temp_buffer,
+                             block_host_until_done);
   }
 
   return FailedPrecondition("Expected XLA gpu executable is not supplied.");
@@ -1050,7 +1053,7 @@ GpuExecutable::GpuExecutable(
     absl::string_view module_name, Shape xla_output_shape,
     std::vector<BufferAllocation> allocations,
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-    JitRtExecutable* jitrt_executable)
+    XlaRuntimeGpuExecutable* xla_runtime_executable)
     : Executable(std::move(hlo_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -1060,7 +1063,7 @@ GpuExecutable::GpuExecutable(
       output_shape_(xla_output_shape),
       allocations_(std::move(allocations)),
       output_info_(std::move(output_info)),
-      jitrt_executable_(jitrt_executable) {
+      xla_runtime_executable_(xla_runtime_executable) {
   XlaDebugInfoManager::Get()->RegisterModule(
       module().unique_id(), shared_module(), debug_buffer_assignment_);
 }
@@ -1110,7 +1113,8 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   llvm::StringRef data(obj_file.data(), obj_file.size());
   auto buffer = llvm::MemoryBuffer::getMemBuffer(data, hlo_module->name());
 
-  // Create a JitRt function signature (all arguments passed as 1d memrefs).
+  // Create a XLA Runtime function signature (all arguments passed as 1d
+  // memrefs).
   std::vector<std::unique_ptr<runtime::Type>> args;
   std::vector<std::unique_ptr<runtime::Type>> rt_args;
   rt_args.push_back(std::make_unique<runtime::ExecutionContextOperandType>());
@@ -1133,22 +1137,22 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   functions.push_back({hlo_module->entry_computation()->name(),
                        std::move(signature), std::move(rt_signature)});
 
-  // Load JitRt executable from an object file, and link it with Gpu runtime
-  // intrinsics implementing Gpu custom calls.
+  // Load XLA Runtime executable from an object file, and link it with Gpu
+  // runtime intrinsics implementing Gpu custom calls.
   auto executable = runtime::Executable::LoadFromObjFile(
       hlo_module->name(), std::move(buffer), std::move(functions), symbol_map);
 
   if (!executable.ok())
-    return InternalError("Failed to load JitRt executable: %s",
+    return InternalError("Failed to load XLA Runtime executable: %s",
                          executable.status().message());
 
-  // Move runtime::Executable ownership to the JitRtExecutable.
+  // Move runtime::Executable ownership to the XlaRuntimeGpuExecutable.
   TF_ASSIGN_OR_RETURN(
-      JitRtExecutable * jitrt_executable,
-      JitRtExecutable::Create(buffer_sizes, std::move(*executable),
-                              std::move(debug_options)));
+      XlaRuntimeGpuExecutable * xla_runtime_executable,
+      XlaRuntimeGpuExecutable::Create(buffer_sizes, std::move(*executable),
+                                      std::move(debug_options)));
 
-  // Construct GpuExecutable for the loaded JitRt executable.
+  // Construct GpuExecutable for the loaded XLA Runtime executable.
   std::string name = hlo_module->name();
   std::string asm_text_string = std::string(asm_text);
   std::vector<uint8_t> binary_vector(binary.begin(), binary.end());
@@ -1156,17 +1160,19 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
       new GpuExecutable(std::move(hlo_module), std::move(asm_text_string),
                         std::move(binary_vector), gpu_version, entry_func_attrs,
                         name, result_xla_shape, std::move(allocations),
-                        std::move(output_info), jitrt_executable));
+                        std::move(output_info), xla_runtime_executable));
 }
 
 StatusOr<std::string> GpuExecutable::GetObjFile() const {
-  if (!jitrt_executable_) return Internal("xla_runtime_executable is null");
-  return jitrt_executable_->GetObjFile();
+  if (!xla_runtime_executable_)
+    return Internal("xla_runtime_executable is null");
+  return xla_runtime_executable_->GetObjFile();
 }
 
 StatusOr<std::string> GpuExecutable::GetMlirModule() const {
-  if (!jitrt_executable_) return Internal("xla_runtime_executable is null");
-  return jitrt_executable_->GetMlirModule();
+  if (!xla_runtime_executable_)
+    return Internal("xla_runtime_executable is null");
+  return xla_runtime_executable_->GetMlirModule();
 }
 
 }  // namespace gpu

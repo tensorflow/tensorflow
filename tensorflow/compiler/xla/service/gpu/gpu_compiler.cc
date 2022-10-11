@@ -294,7 +294,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 }  // end anonymous namespace
 
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
-using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
+using OwnedJitRtProgram = GpuExecutable::OwnedXlaRuntimeProgram;
 
 StatusOr<std::unique_ptr<Executable>>
 GpuXlaRuntimeAotCompilationResult::LoadExecutable(
@@ -938,7 +938,7 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
 
   // TODO(b/232033540): Pass MLIR module directly to JitRt to instantiate an
   // executable, without forcing serialization.
-  return std::make_unique<GpuExecutable::JitRtProgram>(
+  return std::make_unique<GpuExecutable::XlaRuntimeProgram>(
       entry_function_name.str(), os.str(), buffer_sizes.vec(),
       hlo_module->config().debug_options());
 }
@@ -1117,7 +1117,7 @@ static Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  if (IsJitRtExecutableEnabled(hlo_module->config())) {
+  if (IsXlaRuntimeExecutableEnabled(hlo_module->config())) {
     std::vector<int64_t> buffer_sizes;
     llvm::transform(
         results->allocations, std::back_inserter(buffer_sizes),

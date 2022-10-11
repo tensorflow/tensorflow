@@ -2128,7 +2128,7 @@ Status IrEmitterUnnested::EmitWhile(mlir::Operation* op) {
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
   // XLA runtime always lowers lmhlo.while to scf.while, not 'for'.
   if (while_op.getTripCount() &&
-      !IsJitRtExecutableEnabled(hlo_module_config_)) {
+      !IsXlaRuntimeExecutableEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(while_op, GetThunkInfo(op),
                                                   *while_op.getTripCount()));
     AddThunkToThunkSequence(std::move(thunk));
