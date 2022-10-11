@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/xla/hlo_module_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_module_importer.h"
 
 #include <iterator>
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
@@ -111,12 +111,12 @@ Status HloModuleImporter::Import(const xla::HloModule& module) {
         &builder_, /*is_main*/ true);
 
   auto* module_entry_computation = module_to_convert->entry_computation();
-  for (const auto* computation : module_to_convert->computations()) {
+  for (const auto* computation : module_to_convert->computations())
     TF_RETURN_IF_ERROR(HloFunctionImporter::ImportAsFunc(
         *computation, module_, &function_map_, &builder_,
         /*is_main*/ computation == module_entry_computation));
-  }
-  return ::tsl::OkStatus();
+
+  return OkStatus();
 }
 
 Status HloModuleImporter::Import(const xla::HloModuleProto& module_proto) {

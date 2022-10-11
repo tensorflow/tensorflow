@@ -20,12 +20,12 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
-#include "tensorflow/compiler/mlir/xla/xla_mlir_translate.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
+#include "tensorflow/compiler/xla/translate/xla_mlir_translate.h"
 namespace {
 // NOLINTNEXTLINE
 llvm::cl::opt<bool> emit_use_tuple_arg(
@@ -136,7 +136,7 @@ Status ConvertMlirHloToHloViaBuilder(mlir::ModuleOp module,
   auto hlo_module = computation.proto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
 
-  return ::tsl::OkStatus();
+  return OkStatus();
 }
 
 static mlir::LogicalResult MlirHloToHloTextTranslateFunction(

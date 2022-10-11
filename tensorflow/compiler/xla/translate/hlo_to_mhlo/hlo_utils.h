@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -128,7 +127,7 @@ template <>
 inline StatusOr<mlir::MemRefType> ConvertTensorShapeToType(
     const Shape& shape, mlir::Builder builder) {
   if (shape.is_dynamic()) {
-    return tsl::errors::FailedPrecondition(  // NOLINT
+    return FailedPrecondition(  // NOLINT
         "MemRefType don't support dynamic shapes");
   }
   return ConvertTensorShapeToMemRefType(shape, builder);
@@ -158,4 +157,4 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_UTILS_H_

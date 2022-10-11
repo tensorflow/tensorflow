@@ -19,20 +19,20 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
+#include "mlir/IR/Matchers.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 #define DEBUG_TYPE "xla-prepare-for-export"
 
@@ -41,7 +41,7 @@ namespace mhlo {
 namespace {
 
 #define GEN_PASS_DEF_PREPAREFOREXPORTPASS
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 // Prepare module for export to XLA HLO.
 struct PrepareForExportPass
@@ -163,7 +163,7 @@ void PrepareForExportPass::runOnOperation() {
   });
 }
 
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareForExport() {
+std::unique_ptr<Pass> createPrepareForExportPass() {
   return std::make_unique<PrepareForExportPass>();
 }
 

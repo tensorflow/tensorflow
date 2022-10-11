@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_IMPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_IMPORTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_
 
 #include <utility>
 #include <vector>
@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -77,4 +76,4 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const xla::Shape shape,
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_IMPORTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_ATTRIBUTE_IMPORTER_H_

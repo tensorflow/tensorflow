@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 
 #include <string>
 #include <utility>
@@ -25,14 +25,14 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
-#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {

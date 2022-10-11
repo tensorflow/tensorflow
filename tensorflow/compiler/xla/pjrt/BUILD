@@ -446,11 +446,11 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:error_util",
-        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

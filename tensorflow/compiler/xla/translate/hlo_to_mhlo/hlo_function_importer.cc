@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
 
 #include <unordered_map>
 
@@ -30,9 +30,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -45,10 +42,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/statusor.h"
 
 using llvm::APInt;
 using llvm::makeArrayRef;
@@ -182,12 +179,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncDone(
     const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
     mlir::Type result_type, mlir::OpBuilder* func_builder) {
   if (operands.size() != 1) {
-    return tsl::errors::InvalidArgument(  // NOLINT
+    return InvalidArgument(
         "async-done must take only a single async_bundle operand");
   }
   auto async_start = operands[0].getDefiningOp<mlir::mhlo::AsyncStartOp>();
-  if (!async_start)
-    return tsl::errors::InvalidArgument("*-start requires *-done as input");
+  if (!async_start) return InvalidArgument("*-start requires *-done as input");
   attributes.push_back(builder_->getNamedAttr(
       "called_computation",
       mlir::FlatSymbolRefAttr::get(builder_->getContext(),
@@ -357,8 +353,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   if (computation.root_instruction()->has_sharding()) {
     auto result = computation.root_instruction();
     if (function.getNumResults() != 1) {
-      return tsl::errors::Internal(absl::StrCat(
-          "Expected only a single result but got ", function.getNumResults()));
+      return Internal("Expected only a single result but got %d",
+                      function.getNumResults());
     }
     function.setResultAttr(
         0, kShardingAttr,
@@ -380,9 +376,9 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   return function;
 }
 
-tsl::Status HloFunctionImporter::ImportAsRegion(
-    const HloComputation& computation, mlir::Region* region,
-    bool flatten_region_arg_tuple) {
+Status HloFunctionImporter::ImportAsRegion(const HloComputation& computation,
+                                           mlir::Region* region,
+                                           bool flatten_region_arg_tuple) {
   auto loc = region->getLoc();
   // TODO(hinsu): Store computation name as an attribute for round-trip.
   auto* block = new mlir::Block;
@@ -1184,14 +1180,14 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       // the former (tuple all-to-all) is not supported yet.
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
       if (all_to_all->shape().IsTuple())
-        return tsl::errors::Unimplemented(
+        return Unimplemented(
             "Importing tuple all-to-all HLO is not supported yet");
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
       if (!all_to_all->split_dimension().has_value() || operands.size() != 1 ||
           all_to_all->replica_groups().empty())
-        return tsl::errors::InvalidArgument(
+        return InvalidArgument(
             "Array all-to-all should have a split dimension, one operand and "
             "non-empty replica groups");
 
@@ -1262,9 +1258,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
               .getOperation();
 
         default:
-          return tsl::errors::InvalidArgument(absl::StrCat(
-              "Unsupported distribution: ",
-              RandomDistributionToString(instruction->random_distribution())));
+          return InvalidArgument(
+              "Unsupported distribution: %s",
+              RandomDistributionToString(instruction->random_distribution()));
       }
     }
     case HloOpcode::kRngBitGenerator: {
@@ -1560,7 +1556,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       auto domain_kind = mlir::mhlo::symbolizeDomainKind(
           instruction->user_side_metadata().Kind());
       if (!domain_kind || *domain_kind != mlir::mhlo::DomainKind::sharding) {
-        return tsl::errors::InvalidArgument(
+        return InvalidArgument(
             "Invalid domain kind in hlo -> mhlo import. Only 'sharding' is "
             "supported");
       }
@@ -1758,16 +1754,15 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
   for (const auto& operand : instruction->operands()) {
     auto input_it = instruction_value_map_.find(operand);
     if (input_it == instruction_value_map_.end()) {
-      return tsl::errors::Internal(
-          absl::StrCat("Could not find input value: ", operand->name(),
-                       " for instruction ", instruction->name()));
+      return Internal("Could not find input value: %s for instruction %s",
+                      operand->name(), instruction->name());
     }
     operands.push_back(input_it->second);
   }
   return operands;
 }
 
-tsl::Status HloFunctionImporter::GetMlirTypes(
+Status HloFunctionImporter::GetMlirTypes(
     const std::vector<HloInstruction*>& instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
@@ -1785,8 +1780,8 @@ StatusOr<Value> HloFunctionImporter::GetMlirValue(
     return lookup->second;
   }
 
-  return tsl::errors::Internal(absl::StrCat("Unable to find value for input: ",
-                                            instruction->ToString()));
+  return Internal("Unable to find value for input: %s",
+                  instruction->ToString());
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertComparisonDirection(
@@ -1933,7 +1928,7 @@ Status HloFunctionImporter::ConvertShapeToMlirLayout(
     flattened_attr.push_back(builder_->getArrayAttr(array_ref));
     return ::tsl::OkStatus();
   }
-  return tsl::errors::Internal("Couldn't convert layout.");
+  return Internal("Couldn't convert layout.");
 }
 
 }  // namespace xla

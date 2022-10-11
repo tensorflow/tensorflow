@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_TYPE_TO_SHAPE_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_TYPE_TO_SHAPE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -32,4 +32,4 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_TYPE_TO_SHAPE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_TYPE_TO_SHAPE_H_

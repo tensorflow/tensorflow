@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_
 
 #include <utility>
 
@@ -55,4 +55,4 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
 ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr);
 }  // namespace xla
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_ATTRIBUTE_EXPORTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_ATTRIBUTE_EXPORTER_H_

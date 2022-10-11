@@ -13,43 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_
 
-#include <memory>
-
-#include "tensorflow/compiler/xla/statusor.h"
-
-namespace llvm {
-class StringRef;
-}  // namespace llvm
+#include "tensorflow/compiler/xla/status.h"
 
 namespace mlir {
-class MLIRContext;
 class ModuleOp;
-template <typename OpTy>
-class OwningOpRef;
 }  // namespace mlir
 
 namespace xla {
+class HloModule;
+class HloModuleProto;
 
-// Converts a HloModuleProto stored in the file with the given `input_filename`
-// into a MLIR module. Creates MLIR entities into the given MLIR `context`.
+// Converts an HLO module proto to a MLIR module in HLO dialect.
 // If import_all_computation is set to true, imports all computations
 // irrespective if transitively called from entry computation.
-mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations = false);
+Status ConvertHloToMlirHlo(mlir::ModuleOp module,
+                           xla::HloModuleProto const* hlo_module,
+                           bool import_all_computations = false);
 
-// Converts a HloModule stored in text form for a file with the given
-// `input_filename` into a MLIR module. Creates MLIR entities into the given
-// MLIR `context`.
+// Converts an HLO module to a MLIR module in HLO dialect.
 // If import_all_computation is set to true, imports all computations
 // irrespective if transitively called from entry computation.
-mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context,
-    bool import_all_computations = false);
+Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
+                           bool import_all_computations = false);
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_TO_MLIR_HLO_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_MODULE_IMPORTER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_MODULE_IMPORTER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_
 
 #include <unordered_map>
 
@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -61,4 +60,4 @@ class HloModuleImporter {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_MODULE_IMPORTER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_HLO_MODULE_IMPORTER_H_

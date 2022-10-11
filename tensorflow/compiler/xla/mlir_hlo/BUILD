@@ -599,6 +599,7 @@ cc_library(
         "lib/Dialect/mhlo/transforms/mhlo_flatten_tuple.cc",
         "lib/Dialect/mhlo/transforms/optimize_mhlo.cc",
         "lib/Dialect/mhlo/transforms/optimize_mhlo_pass.cc",
+        "lib/Dialect/mhlo/transforms/prepare_for_export.cc",
         "lib/Dialect/mhlo/transforms/rank_specialization.cc",
         "lib/Dialect/mhlo/transforms/restrict_max_rank.cc",
         "lib/Dialect/mhlo/transforms/shape_reification_pass.cc",

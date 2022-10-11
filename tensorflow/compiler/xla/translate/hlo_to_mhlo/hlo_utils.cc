@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -24,9 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/tsl/platform/bfloat16.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace {
@@ -53,15 +50,14 @@ StatusOr<AffineMap> GetPermutationIfAvailable(const Shape& shape,
   // layouts, so the check to rule out tiling has to come /before/ the
   // early-return branch, or we'd miss tiled monotonic layouts.
   if (!shape.layout().tiles().empty()) {
-    return tsl::errors::Internal("Tiled layouts are not yet supported");
+    return Internal("Tiled layouts are not yet supported");
   }
   if (!shape.has_layout() ||
       LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
     return AffineMap();
   }
   if (!shape.is_static()) {
-    return tsl::errors::Internal(
-        "Permutations for dynamic shapes are not yet supported");
+    return Internal("Permutations for dynamic shapes are not yet supported");
   }
   int64_t accumulated_stride = 1;
   llvm::SmallVector<int64_t, 4> strides(shape.rank(), 1);
@@ -144,8 +140,7 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     case PrimitiveType::C128:
       return CreateDenseAttrFromLiteral<complex128>(type, literal);
     default:
-      return tsl::errors::Internal(
-          absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
+      return Internal("Unsupported type: %s", PrimitiveType_Name(element_type));
   }
 }
 
@@ -156,52 +151,51 @@ Status CopyDenseElementsDataToXlaFormat(mlir::DenseElementsAttr data,
   // TODO(hinsu): Support remaining XLA primitive types.
   if (element_type.isInteger(1)) {
     CopyDenseElementsBy<bool>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isInteger(8)) {
     CopyDenseElementsBy<uint8_t>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isInteger(16)) {
     CopyDenseElementsBy<uint16_t>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isInteger(32)) {
     CopyDenseElementsBy<uint32_t>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isInteger(64)) {
     CopyDenseElementsBy<uint64_t>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isBF16()) {
     CopyDenseElementsBy<bfloat16>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isF16()) {
     CopyDenseElementsBy<half>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isF32()) {
     CopyDenseElementsBy<float>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (element_type.isF64()) {
     CopyDenseElementsBy<double>(data, output);
-    return ::tsl::OkStatus();
+    return OkStatus();
   }
   if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
     if (complex_type.getElementType().isF32()) {
       CopyDenseElementsBy<complex64>(data, output);
-      return ::tsl::OkStatus();
+      return OkStatus();
     }
     if (complex_type.getElementType().isF64()) {
       CopyDenseElementsBy<complex128>(data, output);
-      return ::tsl::OkStatus();
+      return OkStatus();
     }
   }
-  return tsl::errors::Internal(
-      "Unsupported type in CopyDenseElementsDataToXlaFormat");
+  return Internal("Unsupported type in CopyDenseElementsDataToXlaFormat");
 }
 
 StatusOr<int> GetElementTypeBytes(mlir::Type type) {
@@ -262,8 +256,7 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return mlir::ComplexType::get(builder.getF64Type());
     // TODO(b/130356985): Support unsigned primitive types.
     default:
-      return tsl::errors::Internal(
-          absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
+      return Internal("Unsupported type: %s", PrimitiveType_Name(element_type));
   }
 }
 
@@ -491,8 +484,7 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
       llvm::raw_string_ostream os(s);
       op->print(os);
     }
-    return tsl::errors::Unimplemented(  // NOLINT
-        "Unimplemented MHLO -> HloOpcode: ", s);
+    return Unimplemented("Unimplemented MHLO -> HloOpcode: %s", s);
   }
 }
 

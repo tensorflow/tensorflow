@@ -63,6 +63,7 @@ add_mlir_library(MhloPasses
   mhlo_canonicalize_reduction.cc
   mhlo_canonicalize_scatter.cc
   mhlo_flatten_tuple.cc
+  prepare_for_export.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc

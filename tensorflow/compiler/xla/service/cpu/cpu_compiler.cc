@@ -87,8 +87,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
@@ -197,6 +195,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"

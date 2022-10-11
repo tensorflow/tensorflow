@@ -15,8 +15,8 @@ limitations under the License.
 
 // Utilities for working with XLA layout and shapes.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_LAYOUT_UTIL_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_LAYOUT_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_LAYOUT_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_LAYOUT_UTIL_H_
 
 #include <functional>
 #include <vector>
@@ -81,4 +81,4 @@ xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_TF2XLA_SHAPE_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_LAYOUT_UTIL_H_

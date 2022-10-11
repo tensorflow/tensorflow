@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_MLIR_HLO_BUILDER_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_MLIR_HLO_BUILDER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_MLIR_HLO_BUILDER_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_MLIR_HLO_BUILDER_H_
 
 #include <memory>
 #include <string>
@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/tsl/platform/types.h"
 
 namespace xla {
 
@@ -291,4 +290,4 @@ class MlirHloBuilder : public XlaBuilder {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_MLIR_HLO_BUILDER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_MLIR_HLO_BUILDER_H_

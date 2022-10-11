@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_
+
+#include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/layout_util.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/layout_util.h"
 
 namespace mlir {
 
@@ -55,23 +56,24 @@ struct MlirToHloConversionOptions {
 // are converted to a tuple even when there is only a single return value.
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, ::xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool return_tuple,
-                           MlirToHloConversionOptions options = {});
+xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module,
+                                ::xla::HloProto* hlo_proto, bool use_tuple_args,
+                                bool return_tuple,
+                                MlirToHloConversionOptions options = {});
 
 // Transforms a Block into HLO, where the HLO is represented as calls into an
 // XlaBuilder. Callee functions are allowed in the Block's ancestor ModuleOp.
 // xla_params are inputs to block. returns are the returned XlaOps.
-Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
-                           llvm::ArrayRef<xla::XlaOp> xla_params,
-                           std::vector<xla::XlaOp>& returns,
-                           MlirToHloConversionOptions options = {});
+xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                                llvm::ArrayRef<xla::XlaOp> xla_params,
+                                std::vector<xla::XlaOp>& returns,
+                                MlirToHloConversionOptions options = {});
 
 // Converts a region to a computation. It returns a standalone module that
 // contains the converted region as the entry computation.
-Status ConvertRegionToComputation(mlir::Region* region,
-                                  ::xla::XlaComputation* func,
-                                  MlirToHloConversionOptions options = {});
+xla::Status ConvertRegionToComputation(mlir::Region* region,
+                                       ::xla::XlaComputation* func,
+                                       MlirToHloConversionOptions options = {});
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.
@@ -81,4 +83,4 @@ llvm::Optional<::xla::XlaOp> CreateXlaOperator(
 
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_MLIR_HLO_TO_HLO_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_MLIR_HLO_TO_HLO_H_

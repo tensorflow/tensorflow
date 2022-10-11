@@ -13,33 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_TO_MLIR_HLO_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_HLO_TO_MLIR_HLO_H_
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/xla/status.h"
-
-namespace mlir {
-class ModuleOp;
-}  // namespace mlir
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_module_importer.h"
 
 namespace xla {
-class HloModule;
-class HloModuleProto;
 
-// Converts an HLO module proto to a MLIR module in HLO dialect.
-// If import_all_computation is set to true, imports all computations
-// irrespective if transitively called from entry computation.
 Status ConvertHloToMlirHlo(mlir::ModuleOp module,
-                           xla::HloModuleProto const* hlo_module,
-                           bool import_all_computations = false);
+                           xla::HloModuleProto const* hlo_module_proto,
+                           bool import_all_computation) {
+  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  return HloModuleImporter(module, import_all_computation)
+      .Import(*hlo_module_proto);
+}
 
-// Converts an HLO module to a MLIR module in HLO dialect.
-// If import_all_computation is set to true, imports all computations
-// irrespective if transitively called from entry computation.
 Status ConvertHloToMlirHlo(mlir::ModuleOp module, xla::HloModule* hlo_module,
-                           bool import_all_computations = false);
+                           bool import_all_computation) {
+  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  return HloModuleImporter(module, import_all_computation).Import(*hlo_module);
+}
 
 }  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_HLO_TO_MLIR_HLO_H_

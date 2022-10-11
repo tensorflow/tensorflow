@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 
 #include <utility>
 
