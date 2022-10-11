@@ -24,12 +24,12 @@ namespace {
 
 TEST_F(OpenCLOperationTest, CumsumHWCTest) {
   absl::Status status = CumsumHWCTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status;
 }
 
 TEST_F(OpenCLOperationTest, CumsumBHWCTest) {
   absl::Status status = CumsumBHWCTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status;
 }
 }  // namespace
 }  // namespace cl
