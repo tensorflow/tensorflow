@@ -55,6 +55,16 @@ cc_library_with_tflite(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "gpu_delegate_native_jni",
+    srcs = ["gpu_delegate_native_jni.cc"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite/java/jni",
+    ],
+    alwayslink = 1,
+)
+
 cc_library_with_tflite(
     name = "native",
     linkopts = select({
@@ -67,5 +77,8 @@ cc_library_with_tflite(
     tflite_deps = [
         ":compatibility_list_jni",
         ":gpu_delegate_jni",
+    ],
+    deps = [
+        ":gpu_delegate_native_jni",
     ],
 )
