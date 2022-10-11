@@ -490,6 +490,28 @@ func.func @custom_call(%ctx: !rt.execution_context) -> (memref<2x2xf32>) {
 
 // -----
 
+// Test that custom call encoding can pass a reference to exported function as a
+// custom call attribute.
+func.func @init(%ctx: !rt.execution_context)
+  attributes {rt.exported = 0: i32} { return }
+
+// CHECK-DAG: mlir.global internal constant @__rt_num_attrs(1 : i64)
+// CHECK-DAG: mlir.global external constant @__type_id_function_ordinal()
+// CHECK-DAG: mlir.global internal constant @__rt_attr_value(0 : i32)
+
+// CHECK: mlir.global internal constant @__rt_custom_call_attrs
+// CHECK:  mlir.addressof @__type_id_function_ordinal
+// CHECK:  mlir.addressof @__rt_attr_value
+// CHECK:  llvm.return {{.*}} : !llvm.array<4 x ptr>
+
+// CHECK: @custom_call_exported_function_ref
+func.func @custom_call_exported_function_ref(%ctx: !rt.execution_context) {
+  %status = rt.custom_call %ctx["call_init"] () { init = @init } : () -> ()
+  return
+}
+
+// -----
+
 func.func private @compute() -> tensor<?xf32>
 
 // CHECK: mlir.global internal constant @__rt_aggregate_hlo_trace

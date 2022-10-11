@@ -62,8 +62,9 @@ struct TestOpts {
   DiagnosticEngine diagnostic_engine;
 };
 
-static absl::StatusOr<JitExecutable> Compile(std::string_view module,
-                                             const TestOpts& test_opts) {
+static absl::StatusOr<JitExecutable> Compile(
+    std::string_view module, const TestOpts& test_opts,
+    absl::Span<const std::string_view> exported = {"test"}) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.symbols_binding =
@@ -85,13 +86,13 @@ static absl::StatusOr<JitExecutable> Compile(std::string_view module,
     CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
   };
 
-  return JitExecutable::Instantiate(module, "test", opts);
+  return JitExecutable::Instantiate(module, opts, exported);
 }
 
-static absl::Status CompileAndExecute(std::string_view module,
-                                      ArgumentsRef args,
-                                      const TestOpts& test_opts) {
-  StatusOr<JitExecutable> jit_executable = Compile(module, test_opts);
+static absl::Status CompileAndExecute(
+    std::string_view module, ArgumentsRef args, const TestOpts& test_opts,
+    absl::Span<const std::string_view> exported = {"test"}) {
+  StatusOr<JitExecutable> jit_executable = Compile(module, test_opts, exported);
   if (!jit_executable.ok()) return jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
@@ -108,9 +109,14 @@ static absl::Status CompileAndExecute(std::string_view module,
   if (test_opts.dynamic_custom_calls)
     test_opts.dynamic_custom_calls(dynamic_custom_calls);
 
+  // Always add a pointer to `self` to user data.
+  CustomCall::UserData user_data;
+  user_data.insert(&executable.get());
+
   Executable::ExecuteOpts execute_opts;
   execute_opts.custom_call_registry = &dynamic_custom_calls;
   execute_opts.diagnostic_engine = &test_opts.diagnostic_engine;
+  execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -906,6 +912,69 @@ TEST(CustomCallTest, StructAttr) {
   EXPECT_EQ(rank, 2);
   EXPECT_EQ(a, std::vector<int64_t>(2, 1));
   EXPECT_EQ(b, std::vector<int64_t>(2, 2));
+}
+
+TEST(CustomCallTest, FunctionOrdinalAttr) {
+  using FunctionOrdinal = CustomCall::FunctionOrdinal;
+
+  absl::string_view module = R"(
+    func.func private @init()
+      attributes { rt.dynamic, rt.custom_call = "test.init" }
+
+    func.func private @custom_call()
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    // We use a nested call to `@init` custom call as a simple way of proving
+    // that `@call_init` was called from `@custom_call` handler.
+    func.func @call_init() {
+      call @init() : () -> ()
+      return
+    }
+
+    func.func @test() {
+      call @custom_call() { func = @call_init }: () -> ()
+      return
+    }
+  )";
+
+  bool called_init = false;
+
+  // Custom call handler for `@init` custom call.
+  auto init = [&]() {
+    called_init = true;
+    return success();
+  };
+
+  // Dynamic custom call registry for resolving nested custom calls.
+  DynamicCustomCallRegistry registry;
+  registry.Register(CustomCall::Bind("test.init").To(init));
+
+  // Execute options for nested custom calls.
+  Executable::ExecuteOpts execute_opts;
+  execute_opts.custom_call_registry = &registry;
+  execute_opts.async_task_runner =
+      reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
+
+  // Custom call handler for `@custom_call` custom call.
+  auto handler = [&](Executable* executable, FunctionOrdinal exported) {
+    FunctionRef fn = executable->function_ref(exported.ordinal);
+    return success(fn({}, NoResultConverter{}, execute_opts).ok());
+  };
+
+  auto custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.init").To(init));
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .UserData<Executable*>()
+                          .Attr<FunctionOrdinal>("func")
+                          .To(handler));
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = custom_calls;
+
+  std::vector<std::string_view> exported = {"test", "call_init"};
+  EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts, exported).ok());
+  EXPECT_TRUE(called_init);
 }
 
 //===----------------------------------------------------------------------===//

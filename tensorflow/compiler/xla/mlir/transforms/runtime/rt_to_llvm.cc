@@ -290,7 +290,8 @@ static FailureOr<Value> EncodeArguments(
 // Encodes attributes into the global constant (array of pointers to the
 // attributes data, which are also stored as global constants).
 static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
-                                         Globals &g, ImplicitLocOpBuilder &b,
+                                         SymbolTable &sym_table, Globals &g,
+                                         ImplicitLocOpBuilder &b,
                                          ArrayRef<NamedAttribute> attrs) {
   // Forward attributes that are not part of the custom call operation itself.
   auto forward_attr = [](NamedAttribute attr) -> bool {
@@ -306,7 +307,7 @@ static FailureOr<Value> EncodeAttributes(CustomCallAttrEncodingSet &encodings,
     return a.getName().strref() < b.getName().strref();
   });
 
-  return EncodeAttributes(g, b, encodings, "__rt_custom_call_attrs",
+  return EncodeAttributes(sym_table, g, b, encodings, "__rt_custom_call_attrs",
                           custom_call_attrs);
 }
 
@@ -398,12 +399,13 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
   using OpConversionPattern::OpConversionPattern;
 
   CustomCallOpLowering(
-      TypeConverter &converter, MLIRContext *ctx, Globals &globals,
-      CustomCallArgEncodingSet &arg_encoding,
+      TypeConverter &converter, MLIRContext *ctx, SymbolTable &sym_table,
+      Globals &globals, CustomCallArgEncodingSet &arg_encoding,
       CustomCallAttrEncodingSet &attr_encoding,
       CustomCallRetEncodingSet &ret_encoding,
       DenseMap<Value, CustomCallArgEncoding::Encoded> &encoded_args)
       : OpConversionPattern(converter, ctx),
+        sym_table_(sym_table),
         globals_(globals),
         arg_encoding_(arg_encoding),
         attr_encoding_(attr_encoding),
@@ -421,7 +423,8 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
     if (failed(args)) return op.emitOpError() << "failed to encode arguments";
 
     // Encode operation attributes as a runtime API argument.
-    auto attrs = EncodeAttributes(attr_encoding_, globals_, b, op->getAttrs());
+    auto attrs = EncodeAttributes(attr_encoding_, sym_table_, globals_, b,
+                                  op->getAttrs());
     if (failed(attrs)) return op.emitOpError() << "failed to encode attributes";
 
     // Encode operation results as a runtime API arguments.
@@ -472,6 +475,7 @@ class CustomCallOpLowering : public OpConversionPattern<CustomCallOp> {
   }
 
  private:
+  SymbolTable &sym_table_;
   Globals &globals_;
   CustomCallArgEncodingSet &arg_encoding_;
   CustomCallAttrEncodingSet &attr_encoding_;
@@ -633,6 +637,9 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   PopulateTraceTypeIdNames(type_id_names);
   if (opts_.populate_type_id_names) opts_.populate_type_id_names(type_id_names);
 
+  // A symbol table for resolving symbol references attributes.
+  SymbolTable sym_table(module);
+
   // A helper class to create unique global constants.
   Globals globals(module, type_id_names);
 
@@ -660,8 +667,8 @@ void ConvertRuntimeToLLVMPass::runOnOperation() {
   if (opts_.populate_attr_encodings) opts_.populate_attr_encodings(attrs);
   if (opts_.populate_ret_encodings) opts_.populate_ret_encodings(rets);
 
-  patterns.add<CustomCallOpLowering>(llvm_converter, ctx, globals, args, attrs,
-                                     rets, encoded_args);
+  patterns.add<CustomCallOpLowering>(llvm_converter, ctx, sym_table, globals,
+                                     args, attrs, rets, encoded_args);
 
   // Convert function signatures and call sites.
   mlir::populateFunctionOpInterfaceTypeConversionPattern<FuncOp>(patterns,

@@ -18,6 +18,8 @@ limitations under the License.
 #include <iterator>
 
 #include "llvm/ADT/None.h"
+#include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.h"
@@ -53,13 +55,6 @@ LogicalResult ExportOp::verifySymbolUses(SymbolTableCollection &symbolTable) {
   if (!func) {
     return op->emitError() << "func.func op named '" << getFunctionRef()
                            << "' not found for export";
-  }
-
-  // Function must have just once symbol use.
-  auto uses = func.getSymbolUses(op->getParentOp());
-  if (std::distance(uses->begin(), uses->end()) != 1) {
-    return op->emitError() << "func.func op named '" << getFunctionRef()
-                           << "' has multiple uses and can't be exported";
   }
 
   return success();

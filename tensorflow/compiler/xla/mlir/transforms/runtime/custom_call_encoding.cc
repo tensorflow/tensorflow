@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
+#include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
@@ -101,11 +102,11 @@ FailureOr<Value> CustomCallRetEncodingSet::Decode(ImplicitLocOpBuilder &b,
 using EncodedAttr = CustomCallAttrEncodingSet::Encoded;
 
 FailureOr<EncodedAttr> CustomCallAttrEncodingSet::Encode(
-    Globals &g, ImplicitLocOpBuilder &b, std::string_view name,
-    Attribute attr) const {
+    mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
   for (auto &encoding : encodings_)
-    if (succeeded(encoding->Match(name, attr)))
-      return encoding->Encode(g, b, name, attr);
+    if (succeeded(encoding->Match(sym_table, name, attr)))
+      return encoding->Encode(sym_table, g, b, name, attr);
   return failure();
 }
 
@@ -636,12 +637,14 @@ static TypeID DenseElementsRuntimeTypeId(Type elem_type) {
 // Custom call attributes encoding.
 //===----------------------------------------------------------------------===//
 
-LogicalResult StringAttrEncoding::Match(std::string_view name,
+LogicalResult StringAttrEncoding::Match(mlir::SymbolTable &,
+                                        std::string_view name,
                                         Attribute attr) const {
   return success(attr.isa<StringAttr>());
 }
 
-FailureOr<EncodedAttr> StringAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> StringAttrEncoding::Encode(mlir::SymbolTable &,
+                                                  Globals &g,
                                                   ImplicitLocOpBuilder &b,
                                                   std::string_view name,
                                                   Attribute attr) const {
@@ -656,12 +659,14 @@ FailureOr<EncodedAttr> StringAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult ScalarAttrEncoding::Match(std::string_view name,
+LogicalResult ScalarAttrEncoding::Match(mlir::SymbolTable &,
+                                        std::string_view name,
                                         Attribute attr) const {
   return success(IsSupportedScalarAttribute(attr));
 }
 
-FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(mlir::SymbolTable &,
+                                                  Globals &g,
                                                   ImplicitLocOpBuilder &b,
                                                   std::string_view name,
                                                   Attribute attr) const {
@@ -677,7 +682,8 @@ FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult DenseElementsAttrEncoding::Match(std::string_view name,
+LogicalResult DenseElementsAttrEncoding::Match(mlir::SymbolTable &,
+                                               std::string_view name,
                                                Attribute attr) const {
   if (auto dense = attr.dyn_cast<DenseIntOrFPElementsAttr>())
     return success(IsSupportedScalarType(dense.getElementType()));
@@ -685,8 +691,8 @@ LogicalResult DenseElementsAttrEncoding::Match(std::string_view name,
 }
 
 FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
-    Globals &g, ImplicitLocOpBuilder &b, std::string_view name,
-    Attribute attr) const {
+    mlir::SymbolTable &, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
   auto dense = attr.cast<DenseIntOrFPElementsAttr>();
   Type elem_type = dense.getType().getElementType();
 
@@ -700,7 +706,8 @@ FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult ArrayAttrEncoding::Match(std::string_view name,
+LogicalResult ArrayAttrEncoding::Match(mlir::SymbolTable &,
+                                       std::string_view name,
                                        Attribute attr) const {
   if (auto array = attr.dyn_cast<ArrayAttr>();
       array && !array.empty() && array[0].isa<TypedAttr>()) {
@@ -709,7 +716,8 @@ LogicalResult ArrayAttrEncoding::Match(std::string_view name,
   return failure();
 }
 
-FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(mlir::SymbolTable &,
+                                                 Globals &g,
                                                  ImplicitLocOpBuilder &b,
                                                  std::string_view name,
                                                  Attribute attr) const {
@@ -733,7 +741,8 @@ FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult DenseArrayAttrEncoding::Match(std::string_view name,
+LogicalResult DenseArrayAttrEncoding::Match(mlir::SymbolTable &,
+                                            std::string_view name,
                                             Attribute attr) const {
   if (auto array = attr.dyn_cast<DenseArrayAttr>()) {
     return success();
@@ -741,7 +750,8 @@ LogicalResult DenseArrayAttrEncoding::Match(std::string_view name,
   return failure();
 }
 
-FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(mlir::SymbolTable &,
+                                                      Globals &g,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
@@ -757,7 +767,8 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult EmptyArrayAttrEncoding::Match(std::string_view name,
+LogicalResult EmptyArrayAttrEncoding::Match(mlir::SymbolTable &,
+                                            std::string_view name,
                                             Attribute attr) const {
   if (auto array = attr.dyn_cast<ArrayAttr>(); array && array.empty()) {
     return success();
@@ -765,7 +776,8 @@ LogicalResult EmptyArrayAttrEncoding::Match(std::string_view name,
   return failure();
 }
 
-FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(mlir::SymbolTable &,
+                                                      Globals &g,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
@@ -778,10 +790,44 @@ FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(Globals &g,
 }
 
 //===----------------------------------------------------------------------===//
+
+LogicalResult SymbolRefAttrEncoding::Match(mlir::SymbolTable &sym_table,
+                                           std::string_view name,
+                                           Attribute attr) const {
+  if (auto ref = attr.dyn_cast<FlatSymbolRefAttr>()) {
+    auto exported = sym_table.lookup<func::FuncOp>(ref.getValue());
+    return success(exported && exported->hasAttr(kExportedAttrName));
+  }
+  return failure();
+}
+
+FailureOr<EncodedAttr> SymbolRefAttrEncoding::Encode(
+    mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
+  // Get the exported function ordinal.
+  auto ref = attr.cast<FlatSymbolRefAttr>();
+  auto func = sym_table.lookup<func::FuncOp>(ref.getValue());
+  auto ordinal = func->getAttrOfType<IntegerAttr>(kExportedAttrName);
+  assert(ordinal.getType().isSignlessInteger(32));
+
+  // Encode exported function ordinal as a scalar constant with function ordinal
+  // type id.
+  auto type_id = TypeID::get<Tagged<CustomCall::FunctionOrdinal>>();
+
+  Encoded encoded;
+  encoded.name = PackString(g, b, name, kAttrName);
+  encoded.type_id = PackTypeId(g, b, type_id);
+  encoded.value = PackScalarAttribute(g, b, ordinal, kAttrValue);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Encoding for collection of attributes.
 //===----------------------------------------------------------------------===//
 
-FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
+FailureOr<Value> EncodeAttributes(mlir::SymbolTable &sym_table, Globals &g,
+                                  ImplicitLocOpBuilder &b,
                                   const CustomCallAttrEncodingSet &encoding,
                                   std::string_view symbol_base,
                                   ArrayRef<NamedAttribute> attrs) {
@@ -800,8 +846,8 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
     // Try to encode each individual attribute.
     llvm::SmallVector<EncodedAttr> encoded_attrs;
     for (auto &attr : attrs) {
-      auto encoded =
-          encoding.Encode(g, b, attr.getName().getValue(), attr.getValue());
+      auto encoded = encoding.Encode(sym_table, g, b, attr.getName().getValue(),
+                                     attr.getValue());
       if (failed(encoded)) return failure();
       encoded_attrs.emplace_back(attr.getName().getValue(), *encoded);
     }
@@ -1154,7 +1200,8 @@ CustomCallAttrEncodingSet DefaultAttrEncodings() {
   CustomCallAttrEncodingSet encodings;
   encodings
       .Add<StringAttrEncoding, ScalarAttrEncoding, DenseElementsAttrEncoding,
-           ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding>();
+           ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding,
+           SymbolRefAttrEncoding>();
 
   encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
       encodings, AggregateAttrDef<HloTraceAttr>()

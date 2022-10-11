@@ -86,6 +86,11 @@ class CustomCall {
     llvm::ArrayRef<T> data;
   };
 
+  // An ordinal of a function exported from executable.
+  struct FunctionOrdinal {
+    unsigned ordinal;
+  };
+
   // Custom call handler can check arguments and attributes types and names
   // at runtime, however this comes at extra cost and can be optionally
   // disabled. If the version of the compiler that generated the XLA executable
@@ -1317,6 +1322,21 @@ struct CustomCallAttrDecoding<std::string_view, checks> {
 
     auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
     return std::string_view(encoded->data, encoded->size);
+  }
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<CustomCall::FunctionOrdinal, checks> {
+  using FunctionOrdinal = CustomCall::FunctionOrdinal;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<FunctionOrdinal> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    if (!CustomCall::Isa<FunctionOrdinal>(checks, type_id)) {
+      return failure();
+    }
+
+    unsigned ordinal = *reinterpret_cast<int32_t*>(value);
+    return FunctionOrdinal{ordinal};
   }
 };
 

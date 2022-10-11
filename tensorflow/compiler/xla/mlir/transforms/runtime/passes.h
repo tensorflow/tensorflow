@@ -39,8 +39,6 @@ namespace runtime {
 // Transformations targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
 
-static constexpr char const* kExportedAttrName = "rt.exported";
-
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateOrdinalAssignmentPass();
 
