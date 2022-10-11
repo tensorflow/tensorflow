@@ -55,11 +55,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -71,7 +71,7 @@ bool IsJitRtExecutableEnabled(const HloModuleConfig& config) {
 
 namespace {
 
-using ::tensorflow::profiler::ScopedAnnotation;
+using ::tsl::profiler::ScopedAnnotation;
 
 bool NeedsAsyncCommsStream(Thunk& thunk) {
   switch (thunk.kind()) {

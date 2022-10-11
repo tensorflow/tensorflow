@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
-#include "tensorflow/core/profiler/lib/scoped_annotation_stack.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
 
 namespace xla {
 namespace gpu {
@@ -31,7 +31,7 @@ using ::xla::runtime::CustomCall;
 using ::xla::runtime::Executable;
 using ::xla::runtime::HloTrace;
 
-using ::tensorflow::profiler::ScopedAnnotationStack;
+using ::tsl::profiler::ScopedAnnotationStack;
 
 static absl::StatusOr<int64_t> ActivityStart(runtime::HloTrace annotation) {
   return ScopedAnnotationStack::ActivityStart([&] {

@@ -49,7 +49,7 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:tracing",
         "//tensorflow/compiler/xla/runtime:type_id",
-        "//tensorflow/core/profiler/lib:scoped_annotation_stack",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
