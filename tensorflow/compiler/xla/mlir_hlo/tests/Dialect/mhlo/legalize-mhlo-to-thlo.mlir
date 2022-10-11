@@ -880,7 +880,7 @@ func.func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
 func.func @select(%pred: tensor<2x2xi1>, %lhs: tensor<2x2xf32>,
              %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.select"(%pred, %lhs, %rhs)
-         : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) 
+         : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>)
          -> (tensor<2x2xf32>)
   func.return %0 : tensor<2x2xf32>
 }
@@ -909,3 +909,37 @@ func.func @select_scalar_pred_dyn(%pred : tensor<i1>, %lhs: tensor<2x?xf32>,
 // CHECK-SAME: (%[[LHS_IN:[a-zA-Z0-9]*]]: f32, %[[RHS_IN:.*]]: f32) {
 // CHECK-NEXT:   %[[RES:.*]] = arith.select %[[PRED_]], %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   thlo.yield %[[RES]]
+
+// -----
+
+// CHECK-LABEL: func @sort
+// CHECK-SAME:  (%[[IN0:.*]]: tensor<16x16xf32>, %[[IN1:.*]]: tensor<16x16xi32>)
+func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>,
+       %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "mhlo.compare"(%arg0, %arg1)
+      {comparison_direction = #mhlo<comparison_direction GT>}
+        : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = -1 : i64, is_stable = true}
+     : (tensor<16x16xf32>, tensor<16x16xi32>)
+    -> (tensor<16x16xf32>, tensor<16x16xi32>)
+  func.return
+}
+// CHECK-DAG:   %[[INIT0:.*]] = tensor.empty() : tensor<16x16xf32>
+// CHECK-DAG:   %[[INIT1:.*]] = tensor.empty() : tensor<16x16xi32>
+// CHECK:       thlo.sort
+// CHECK-SAME:  ins(%[[IN0]] : tensor<16x16xf32>, %[[IN1]] : tensor<16x16xi32>)
+// CHECK-SAME:  outs(%[[INIT0]] : tensor<16x16xf32>, %[[INIT1]] : tensor<16x16xi32>)
+// CHECK-DAG:   dimension = 1 : i64
+// CHECK-DAG:   is_stable = true
+// CHECK:       (%[[FLOAT0:.*]]: f32, %[[FLOAT1:.*]]: f32, %[[INT0:.*]]: i32, %[[INT1:.*]]: i32)
+// CHECK-DAG:     %[[TENSOR0:.*]] = tensor.from_elements %[[FLOAT0]] : tensor<f32>
+// CHECK-DAG:     %[[TENSOR1:.*]] = tensor.from_elements %[[FLOAT1]] : tensor<f32>
+// CHECK-DAG:     %[[EXTRACTED0:.*]] = tensor.extract %[[TENSOR0]][] : tensor<f32>
+// CHECK-DAG:     %[[EXTRACTED1:.*]] = tensor.extract %[[TENSOR1]][] : tensor<f32>
+// CHECK:         %[[CMPRESULT:.*]] = arith.cmpf ogt, %[[EXTRACTED0]], %[[EXTRACTED1]] : f32
+// CHECK-NEXT:    %[[RESULT:.*]] = tensor.from_elements %[[CMPRESULT]] : tensor<i1>
+// CHECK-NEXT:    %[[EXTRACTED_RESULT:.*]] = tensor.extract %[[RESULT]][] : tensor<i1>
+// CHECK-NEXT:    thlo.yield %[[EXTRACTED_RESULT]] : i1
