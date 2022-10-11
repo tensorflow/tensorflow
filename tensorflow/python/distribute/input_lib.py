@@ -1128,7 +1128,7 @@ class DistributedDataset(_IterableInput, composite_tensor.CompositeTensor):
     # `num_replicas_in_sync` smaller batches to be distributed among that
     # worker's replicas, so that the batch size for a global step (across all
     # workers and replicas) adds up to the original dataset's batch size.
-    if num_replicas_in_sync is not None:
+    if num_replicas_in_sync is not None and num_replicas_in_sync > 1:
       num_workers = input_context.num_input_pipelines if input_context else len(
           input_workers.worker_devices)
       rebatch_fn = self._make_rebatch_fn(dataset, num_workers,
