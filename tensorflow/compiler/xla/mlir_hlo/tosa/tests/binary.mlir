@@ -7,6 +7,13 @@ func.func @add(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32>
   return %0 : tensor<10xf32>
 }
 
+// CHECK-LABEL: @and
+func.func @and(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> {
+  // CHECK: tosa.bitwise_and
+  %0 = "mhlo.and"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+  return %0 : tensor<10xi32>
+}
+
 // CHECK-LABEL: @compare_eq
 func.func @compare_eq(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xi1> {
   // CHECK: tosa.equal
@@ -27,6 +34,13 @@ func.func @compare_ne(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<
   // CHECK-DAG: %[[VAR1:.*]] = "tosa.logical_not"(%[[VAR0]])
   %0 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction NE>} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi1>
   return %0 : tensor<10xi1>
+}
+
+// CHECK-LABEL: @concatenate
+func.func @concatenate(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x3xf32>) -> tensor<6x3xf32> {
+  // CHECK: "tosa.concat"(%arg0, %arg1) {axis = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+  %0 = "mhlo.concatenate"(%arg0, %arg1) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+  return %0 : tensor<6x3xf32>
 }
 
 // CHECK-LABEL: @divide
@@ -98,6 +112,13 @@ func.func @maximum_f64(%arg0 : tensor<10xf64>, %arg1 : tensor<10xf64>) -> tensor
   return %0 : tensor<10xf64>
 }
 
+// CHECK-LABEL: @minimum
+func.func @minimum(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: tosa.minimum
+  %0 = "mhlo.minimum"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
+}
+
 // CHECK-LABEL: @multiply
 func.func @multiply(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
   // CHECK: tosa.mul
@@ -110,6 +131,13 @@ func.func @or(%arg0 : tensor<10xi32>, %arg1 : tensor<10xi32>) -> tensor<10xi32> 
   // CHECK: tosa.bitwise_or
   %0 = "mhlo.or"(%arg0, %arg1) : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
   return %0 : tensor<10xi32>
+}
+
+// CHECK-LABEL: @power
+func.func @power(%arg0 : tensor<10xf32>, %arg1 : tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: tosa.pow
+  %0 = "mhlo.power"(%arg0, %arg1) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %0 : tensor<10xf32>
 }
 
 // CHECK-LABEL: @reduce_max
