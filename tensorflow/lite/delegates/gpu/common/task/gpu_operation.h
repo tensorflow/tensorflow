@@ -94,6 +94,7 @@ class GPUOperation {
 
   absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
 
+  int GetElementwiseInputsCount() const { return elementwise_inputs_; }
   //    input       input
   //      |           |
   //    elem0         |

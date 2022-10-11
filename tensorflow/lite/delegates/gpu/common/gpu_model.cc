@@ -442,7 +442,8 @@ absl::Status MergeElementwiseNodes(const GpuInfo& gpu_info,
 
     // check TYPE_1/2/3
     if (prev_nodes.size() == 2) {
-      if (elem_root.inputs.size() != 2) {
+      if (elem_root.inputs.size() != 2 ||
+          elem_root.gpu_operation->GetElementwiseInputsCount() != 2) {
         continue;
       }
       const int prev_first_node_index = prev_nodes[0];
