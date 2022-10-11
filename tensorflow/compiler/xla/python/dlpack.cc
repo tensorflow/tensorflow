@@ -27,7 +27,7 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
-#include "tensorflow/compiler/xla/pjrt/gpu_device.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -226,7 +226,7 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   if (device.client()->platform_id() == CpuId()) {
     return kDLCPU;
   } else if (device.client()->platform_id() == GpuId()) {
-    const GpuDevice& gdevice = dynamic_cast<const GpuDevice&>(device);
+    const StreamExecutorGpuDevice& gdevice = dynamic_cast<const StreamExecutorGpuDevice&>(device);
 
     if(absl::StrContains(gdevice.device_vendor(),"Advanced Micro Devices")){
       return kDLROCM;
