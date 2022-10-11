@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_PJRT_API_H_
-#define TENSORFLOW_CORE_TPU_PJRT_API_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_
 
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api.h"
 
@@ -29,4 +29,4 @@ void SetPjrtApi(const PJRT_Api* api);
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_PJRT_API_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_PJRT_API_H_

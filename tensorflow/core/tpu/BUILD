@@ -191,12 +191,12 @@ cc_library(
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "//tensorflow/core/tpu:pjrt_api",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -222,15 +222,6 @@ cc_library(
     deps = [
         ":libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "pjrt_api",
-    srcs = ["pjrt_api.cc"],
-    hdrs = ["pjrt_api.h"],
-    deps = [
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )
 

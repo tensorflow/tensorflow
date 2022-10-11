@@ -21,6 +21,15 @@ package(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "c_api_decl",
     hdrs = [
         "c_api_decl.h",

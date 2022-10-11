@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/pjrt_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 
 namespace tensorflow {
 namespace tpu {
