@@ -344,8 +344,10 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         //     target_machine_features_.minimum_alignment_for_allocation(
         //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
         mlir::linalg::CodegenStrategy strategy;
-        strategy.tile(mlir::linalg::GenericOp::getOperationName(),
-                      tilingOptions);
+        // TODO(kramerb): this has been retired upstream, reevaluate whether
+        // this path really needs it or if it is even relevant anymore.
+        // strategy.tile(mlir::linalg::GenericOp::getOperationName(),
+        //               tilingOptions);
         // TODO(kramerb): this has been retired upstream, reevaluate whether
         // this path really needs it or if it is even relevant anymore.
         // .promote(mlir::linalg::GenericOp::getOperationName(),
