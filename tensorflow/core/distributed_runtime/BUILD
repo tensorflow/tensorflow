@@ -427,10 +427,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
-        ":session_mgr",
-        ":worker_cache",
         ":worker_env",
-        ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
