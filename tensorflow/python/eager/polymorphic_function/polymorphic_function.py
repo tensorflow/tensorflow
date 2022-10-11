@@ -91,16 +91,11 @@ from tensorflow.python.profiler import trace
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.tf_export import tf_export
-
-free_vars_detect = lazy_loader.LazyLoader(
-    "free_vars_detect", globals(),
-    "tensorflow.core.function.capture.free_vars_detect")
 
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
@@ -1604,10 +1599,6 @@ def function(
   # TODO(b/224808187): Remove after renaming usages.
   if experimental_relax_shapes:
     reduce_retracing = True
-
-  free_vars_logging = free_vars_detect.logging_free_vars(func)
-  if free_vars_logging:
-    logging.vlog(1, free_vars_logging)
 
   def decorated(inner_function):
     try:

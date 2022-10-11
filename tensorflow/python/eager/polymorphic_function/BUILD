@@ -52,7 +52,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":function_spec",
-        "//tensorflow/core/function/capture:free_vars_detect",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
