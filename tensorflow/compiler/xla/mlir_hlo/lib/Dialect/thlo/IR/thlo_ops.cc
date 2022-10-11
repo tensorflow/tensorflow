@@ -544,6 +544,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   // Create tile subset.
   auto loc = getLoc();
   auto tile = createTileOp(b, loc, getInit(), offsets, sizes);
+  auto initRank = getInit().getType().cast<RankedTensorType>().getRank();
 
   // Create the needed constants only once.
   DenseMap<uint64_t, Value> localIndexConstants;
@@ -554,6 +555,9 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
     localIndexConstants[c] = cst;
     return cst;
   };
+
+  DenseSet<int64_t> dimensionsThatStay(getBroadcastDimensions().begin(),
+                                       getBroadcastDimensions().end());
 
   // Materialize operand space.
   auto operandTy = getOperand().getType().cast<RankedTensorType>();
@@ -574,11 +578,6 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
     operandDims.push_back(dim);
   }
 
-  // Collapse the subset to operate only on corresponding dimensions.
-  // TODO(frgossen): Only generate this when needed.
-  auto collapsedSubset =
-      b.create<gml_st::DropDimsOp>(loc, tile, getBroadcastDimensionsAttr());
-
   // Find the expanding dimensions. If corresponding operand and result
   // dimensions are different then the dimension is expanding.
   // TODO(frgossen): Use info from known expanding and known non-expanding
@@ -598,10 +597,11 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
   SmallVector<Value> operandOffsets;
   Value zero = getIndexConstant(0);
-  for (int i = 0; i < operandRank; ++i) {
-    Value isExpanding = operandExpandingDims[i];
+  for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
+    if (!dimensionsThatStay.contains(initId)) continue;
+    Value isExpanding = operandExpandingDims[operandId++];
     Value collapsedSubsetOffset =
-        b.create<gml_st::OffsetOp>(loc, collapsedSubset, getIndexConstant(i));
+        b.create<gml_st::OffsetOp>(loc, tile, getIndexConstant(initId));
     operandOffsets.push_back(b.create<arith::SelectOp>(loc, isExpanding, zero,
                                                        collapsedSubsetOffset));
   }
@@ -611,10 +611,11 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
   SmallVector<Value> tileSizes;
   Value one = getIndexConstant(1);
-  for (int i = 0; i < operandRank; ++i) {
-    Value isExpanding = operandExpandingDims[i];
+  for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
+    if (!dimensionsThatStay.contains(initId)) continue;
+    Value isExpanding = operandExpandingDims[operandId++];
     Value tileSize =
-        b.create<gml_st::SizeOp>(loc, collapsedSubset, getIndexConstant(i));
+        b.create<gml_st::SizeOp>(loc, tile, getIndexConstant(initId));
     tileSizes.push_back(
         b.create<arith::SelectOp>(loc, isExpanding, one, tileSize));
   }

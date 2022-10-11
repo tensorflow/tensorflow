@@ -1576,32 +1576,6 @@ Value TileOp::compose(OpBuilder &builder) {
                                 getMixedSizes(), composedStrides);
 }
 
-//===----------------------------------------------------------------------===//
-// DropDimsOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult DropDimsOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  DropDimsOp::Adaptor adaptor(operands, attributes, regions);
-  Type argTy = adaptor.getSuperset().getType();
-
-  // If the argument is of tile type, we can skip the dropped dimensions to
-  // derive the result type.
-  if (auto tileTy = argTy.dyn_cast<TileType>()) {
-    auto argShape = tileTy.getShape();
-    SmallVector<int64_t> resultShape = llvm::to_vector(
-        llvm::map_range(adaptor.getRemainingDims(),
-                        [&](const auto &d) { return argShape[d]; }));
-    auto resultTy = TileType::get(ctx, resultShape);
-    inferredReturnTypes.push_back(resultTy);
-    return success();
-  }
-
-  return failure();
-}
-
 namespace {
 
 SmallVector<OpFoldResult> selectMixedValues(
@@ -1659,13 +1633,6 @@ Value selectDimsFromSet(OpBuilder &builder, Location loc, Type type, Value set,
 }
 
 }  // namespace
-
-Value DropDimsOp::compose(OpBuilder &builder) {
-  // We can compose with a TileOp operand which has a SpaceOp operand, or
-  // compose with a SpaceOp operand.
-  return selectDimsFromSet(builder, getLoc(), getType(), getSuperset(),
-                           getRemainingDims());
-}
 
 //===----------------------------------------------------------------------===//
 // TransposeDimsOp

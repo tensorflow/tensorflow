@@ -155,32 +155,3 @@ func.func @transpose_dims_of_space(
       : tensor<5x10x?xf32>[!gml_st.tile<5x10x?>] to tensor<5x10x?xf32>
   func.return %res : tensor<5x10x?xf32>
 }
-
-// -----
-
-// CHECK-LABEL: @drop_dims_of_space
-// CHECK-SAME:  %[[ARG0:.*]]: index
-func.func @drop_dims_of_space(%a: index) -> !gml_st.tile<?x10> {
-  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[ARG0]], 10]
-  // CHECK:     return %[[SPACE]]
-  %space = gml_st.space [%a, 5, 10] : !gml_st.tile<?x5x10>
-  %space_ = gml_st.drop_dims %space, [0, 2]
-      : !gml_st.tile<?x5x10> to !gml_st.tile<?x10>
-  func.return %space_ : !gml_st.tile<?x10>
-}
-
-//-----
-
-// CHECK-LABEL: @drop_dims_of_tile
-// CHECK-SAME:  %[[ARG0:.*]]: index
-func.func @drop_dims_of_tile(%a: index) -> !gml_st.tile<2x2> {
-  // CHECK-DAG: %[[SPACE:.*]] = gml_st.space [%[[ARG0]], 10]
-  // CHECK-DAG: %[[TILE:.*]] = gml_st.tile %[[SPACE]] [2, 4] [2, 2] [1, 1]
-  // CHECK:     return %[[TILE]]
-  %space = gml_st.space [%a, 5, 10] : !gml_st.tile<?x5x10>
-  %tile = gml_st.tile %space [2, 0, 4] [2, 4, 2] [1, 1, 1]
-      : !gml_st.tile<?x5x10> to !gml_st.tile<2x4x2>
-  %tile_ = gml_st.drop_dims %tile, [0, 2]
-      : !gml_st.tile<2x4x2> to !gml_st.tile<2x2>
-  func.return %tile_ : !gml_st.tile<2x2>
-}
