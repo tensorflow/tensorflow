@@ -6656,15 +6656,32 @@ func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset t
 	return op.Output(0)
 }
 
+// ConfigureAndInitializeGlobalTPUAttr is an optional argument to ConfigureAndInitializeGlobalTPU.
+type ConfigureAndInitializeGlobalTPUAttr func(optionalAttr)
+
+// ConfigureAndInitializeGlobalTPUUseTfrtHostRuntime sets the optional use_tfrt_host_runtime attribute to value.
+// If not specified, defaults to true
+func ConfigureAndInitializeGlobalTPUUseTfrtHostRuntime(value bool) ConfigureAndInitializeGlobalTPUAttr {
+	return func(m optionalAttr) {
+		m["use_tfrt_host_runtime"] = value
+	}
+}
+
 // An op that sets up the centralized structures for a distributed TPU system.
 //
 // Returns A vector containing the global TPU id of each TPU on the host.
-func ConfigureAndInitializeGlobalTPU(scope *Scope) (output tf.Output) {
+func ConfigureAndInitializeGlobalTPU(scope *Scope, optional ...ConfigureAndInitializeGlobalTPUAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ConfigureAndInitializeGlobalTPU",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
