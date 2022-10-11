@@ -34,7 +34,6 @@ tf_cuda_cc_test(
     deps = [
         ":coordination_test_opkernel_registration",
         "//tensorflow/c:c_api_experimental",
-        "//tensorflow/c:c_test_util",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
@@ -69,8 +68,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime:server_lib",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service",
-        "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/platform:env",
     ],

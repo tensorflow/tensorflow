@@ -149,6 +149,7 @@ cc_library(
         ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",

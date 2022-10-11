@@ -26,8 +26,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
