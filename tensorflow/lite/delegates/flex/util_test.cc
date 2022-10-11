@@ -130,6 +130,8 @@ TEST(UtilTest, TypeConversionsFromTFLite) {
   EXPECT_EQ(TF_BOOL, GetTensorFlowDataType(kTfLiteBool));
   EXPECT_EQ(TF_RESOURCE, GetTensorFlowDataType(kTfLiteResource));
   EXPECT_EQ(TF_VARIANT, GetTensorFlowDataType(kTfLiteVariant));
+  // TODO(b/246806634): Tensorflow DT_INT4 type doesn't exist yet
+  EXPECT_EQ(TF_INT8, GetTensorFlowDataType(kTfLiteInt4));
 }
 
 TEST(UtilTest, TypeConversionsFromTensorFlow) {
