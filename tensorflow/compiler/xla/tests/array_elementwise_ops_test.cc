@@ -2453,11 +2453,27 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {-2.5f, 3.14f, 2.25f});
+  auto inf = std::numeric_limits<float>::infinity();
+  auto nan = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder, {-inf, -2.5f, 3.14f, -0.0f, 0.0f, 2.25f, inf, nan});
+
   Tanh(a);
 
-  ComputeAndCompareR1<float>(&builder, {-0.986614f, 0.996260f, 0.978026}, {},
-                             error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, TanhF64s) {
+  XlaBuilder builder(TestName());
+  auto inf = std::numeric_limits<double>::infinity();
+  auto nan = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(&builder,
+                              {-inf, -2.5, 3.14, -0.0, 0.0, 2.25, inf, nan});
+
+  Tanh(a);
+
+  ErrorSpec strict_but_not_too_strict_error_spec_{7e-15, 7e-15};
+  ComputeAndCompare(&builder, {}, strict_but_not_too_strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
