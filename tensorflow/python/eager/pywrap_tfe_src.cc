@@ -856,7 +856,7 @@ PyObject* gradient_function = nullptr;
 // Python function that returns output gradients given input gradients.
 PyObject* forward_gradient_function = nullptr;
 
-static std::atomic<int64_t> _uid;
+static std::atomic<int64_t> _uid = ATOMIC_VAR_INIT(int64_t{0});
 
 // This struct is responsible for marking thread_local storage as destroyed.
 // Access to the `alive` field in already-destroyed ThreadLocalDestructionMarker
