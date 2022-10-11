@@ -16,9 +16,9 @@
 
 import os.path
 import tempfile
-import tensorflow_datasets as tfds
 from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.keras.datasets import mnist
 from tensorflow.python.client import session
 from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.data.ops import dataset_ops
@@ -60,20 +60,22 @@ OUTPUT_NODE_NAME = 'output'
 MNIST_TEST_DIR_PATH = 'python/compiler/tensorrt/test/testdata/mnist'
 
 
-def _PreprocessFn(entry):
+def _PreprocessFn(x, y):
   """Normalizes the pixel values to lay within the [-1, 1] range.
 
    The same normalization shall be used during training and inference.
   """
-  x, y = entry['image'], entry['label']
+  x = array_ops.expand_dims(x, axis=-1)
   x = math_ops.cast(x, dtypes.float32)
   x = 2.0 * (x / 255.0) - 1.0
+
   y = math_ops.cast(y, dtypes.int32)
   return x, y
 
 
 def _GetDataSet(batch_size):
-  dataset = tfds.load('mnist', split='test')
+  _, (data_x, data_y) = mnist.load_data()
+  dataset = dataset_ops.Dataset.from_tensor_slices((data_x, data_y))
   dataset = dataset.map(
       map_func=_PreprocessFn, num_parallel_calls=8).batch(batch_size=batch_size)
   dataset = dataset.repeat(count=1)
@@ -212,7 +214,8 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
       return features, labels
 
     def _TrainInputFn():
-      dataset = tfds.load('mnist', split='train')
+      (data_x, data_y), _ = mnist.load_data()
+      dataset = dataset_ops.Dataset.from_tensor_slices((data_x, data_y))
       dataset = dataset.shuffle(60000)
       dataset = dataset.map(
           map_func=_PreprocessFn,

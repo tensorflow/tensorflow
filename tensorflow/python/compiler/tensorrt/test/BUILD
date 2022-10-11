@@ -3,7 +3,8 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load("//tensorflow/python/compiler/tensorrt:tensorrt.bzl", "tensorrt_py_test")
+load("//tensorflow/python/compiler/tensorrt:tensorrt.bzl", "tftrt_py_tests")
+load("//tensorflow/python/compiler/tensorrt:tensorrt.bzl", "tftrt_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -61,7 +62,11 @@ filegroup(
     visibility = ["//tensorflow/python/compiler/tensorrt:__pkg__"],
 )
 
+# ============================= TESTS DEFINITION ============================= #
+
 oss_tests = [
+    "annotate_max_batch_sizes_test",
+    "base_test",
     "batch_matmul_test",
     "biasadd_matmul_test",
     "binary_tensor_weight_broadcast_test",
@@ -69,6 +74,7 @@ oss_tests = [
     "cast_test",
     "concatenation_test",
     "const_broadcast_test",
+    # "conv2d_test",  # b/198501457
     "data_dependent_shape_test",
     "dynamic_input_shapes_test",
     "identity_output_test",
@@ -80,6 +86,7 @@ oss_tests = [
     "quantization_test",
     "rank_two_test",
     "reshape_transpose_test",
+    "shape_output_test",
     "topk_test",
     "trt_engine_op_shape_test",
     "trt_mode_test",
@@ -88,46 +95,65 @@ oss_tests = [
     "vgg_block_test",
 ]
 
-no_oss_tests = [
-    "base_test",
-    "conv2d_test",  # "conv2d_test.py",  # b/198501457
-]
-# "base_test.py", # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
-
-base_tags = [
-    "no_cuda_on_cpu_tap",
-    "no_rocm",
-    "no_windows",
-    "nomac",
-]
-
-tensorrt_py_test(
+tftrt_py_tests(
     name = "oss_tests",
-    tags = base_tags,
     test_names = oss_tests,
 )
 
-tensorrt_py_test(
+no_oss_tests = [
+    "combined_nms_test",
+]
+
+tftrt_py_tests(
     name = "no_oss_tests",
-    tags = base_tags + ["no_oss"],
-    test_names = no_oss_tests + ["combined_nms_test"],
+    test_names = no_oss_tests,
+    extra_tags = ["no_oss"],
 )
 
-tensorrt_py_test(
+# no_oss_tests.append("quantization_mnist_test")
+# tftrt_py_test(
+#     name = "quantization_mnist_test",
+#     srcs = [
+#         "//tensorflow/python/compiler/tensorrt/test:quantization_mnist_test_srcs"
+#     ],
+#     data = [
+#         "//tensorflow/python/compiler/tensorrt/test:quantization_mnist_test_data",
+#     ],
+#     extra_tags = [
+#         "no_pip",
+#         "no_oss"
+#     ],
+#     deps = [
+#         "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+#         "//tensorflow/python:client_testlib",
+#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python/estimator",
+#     ],
+# )
+
+no_oss_tests.append("tf_function_test")
+tftrt_py_test(
     name = "tf_function_test",
-    tags = base_tags + [
+    srcs = [
+        "tf_function_test.py",
+    ],
+    extra_tags = [
         "manual",  # TODO(b/231239602): re-enable once naming issue is resolved.
-        "notap",  # TODO(b/231239602): re-enable once naming issue is resolved.
         "no_oss",  # TODO(b/231239602): re-enable once naming issue is resolved.
+        "notap",  # TODO(b/231239602): re-enable once naming issue is resolved.
     ],
 )
+
+# ========================== TEST SUITES DEFINITION ========================== #
 
 test_suite(
     name = "tf_trt_integration_test",
-    tests = oss_tests + [
-        "combined_nms_test",
-        "tf_function_test",
-    ],
+    tests = oss_tests + no_oss_tests,
+)
+
+test_suite(
+    name = "tf_trt_integration_test_oss",
+    tests = oss_tests,
 )
 
 test_suite(
