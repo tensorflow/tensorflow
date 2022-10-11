@@ -23,11 +23,11 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -64,7 +64,7 @@ namespace tensorflow {
 // driver can return the excess memory to other processes.
 class GpuCudaMallocAsyncAllocator : public Allocator {
  public:
-  explicit GpuCudaMallocAsyncAllocator(PlatformDeviceId platform_device_id,
+  explicit GpuCudaMallocAsyncAllocator(tsl::PlatformDeviceId platform_device_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = true);
