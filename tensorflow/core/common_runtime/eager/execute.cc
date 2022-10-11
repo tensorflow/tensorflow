@@ -313,6 +313,10 @@ bool IsHostMemoryArg(const EagerOperation& op, const NodeDef* node_def,
   const auto& host_memory_args = kernel_def->host_memory_arg();
   const OpDef& op_def = OpRegistry::Global()->LookUp(op.Name())->op_def;
   const int arg_id = OpPortIdToArgId(*node_def, op_def.input_arg(), port_id);
+  // Fail if argument ID not found.
+  if (arg_id < 0) {
+    return false;
+  }
   return std::find(host_memory_args.begin(), host_memory_args.end(),
                    op_def.input_arg(arg_id).name()) != host_memory_args.end();
 }
