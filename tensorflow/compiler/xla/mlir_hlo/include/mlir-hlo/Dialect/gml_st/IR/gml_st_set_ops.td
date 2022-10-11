@@ -114,24 +114,4 @@ def GMLST_TileOp : GMLST_Op<"tile", [
   let hasVerifier = 1;
 }
 
-def GMLST_TransposeDimsOp : GMLST_Op<"transpose_dims", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let summary = "Transposes the dimensions of a subset.";
-  let description = [{
-    Transposes the dimensions of a subset by applying the permutation to the
-    offsets, sizes, and strides.
-  }];
-  let arguments = (ins
-    AnySet:$superset,
-    DenseI64ArrayAttr:$permutation);
-  let results = (outs AnySet:$result);
-  let assemblyFormat = [{
-    $superset `,` $permutation attr-dict `:`
-    qualified(type($superset)) `to` qualified(type($result))
-  }];
-  let hasVerifier = 1;
-}
-
 #endif // GML_ST_SET_OPS

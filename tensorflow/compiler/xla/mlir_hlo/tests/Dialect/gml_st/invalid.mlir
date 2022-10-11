@@ -255,33 +255,6 @@ func.func @tile_op_offset_out_of_bounds_considering_size_and_stride(%i: index) {
 
 // -----
 
-func.func @transpose_tile_op_permutation_out_of_bounds() {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.transpose_dims' op permutation[1] = 2 is outside of range [0, 1]}}
-  %1 = gml_st.transpose_dims %0, [0, 2] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
-  func.return
-}
-
-// -----
-
-func.func @transpose_tile_op_permutation_wrong_size() {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.transpose_dims' op expected result rank 2 to match the permutation size of 1}}
-  %1 = gml_st.transpose_dims %0, [0] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
-  func.return
-}
-
-// -----
-
-func.func @transpose_tile_op_permutation_duplicate_value() {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.transpose_dims' op expected permutation attribute to contain no duplicate values, but got 0 at positions 0 and 1}}
-  %1 = gml_st.transpose_dims %0, [0, 0] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
-  func.return
-}
-
-// -----
-
 func.func @for_loop_wrong_yield_target(
     %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
   %c0 = arith.constant 0 : index

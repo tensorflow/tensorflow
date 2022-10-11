@@ -11,8 +11,6 @@ func.func @types() {
   %1 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // CHECK: %{{.*}} = gml_st.tile %[[ARG2]] [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
   %3 = gml_st.tile %1 [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
-  // CHECK: %{{.*}} = gml_st.transpose_dims %[[ARG2]], [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
-  %4 = gml_st.transpose_dims %1, [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
   func.return
 }
 
