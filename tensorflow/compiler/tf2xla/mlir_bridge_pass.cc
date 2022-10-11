@@ -31,10 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Values for the label 'PassState'
-constexpr char kEnabled[] = "kEnabled";
-constexpr char kDisabled[] = "kDisabled";
-
 auto* mlir_bridge_gauge_v1 = monitoring::Gauge<bool, 0>::New(
     "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v1",
     "Tracks usage of the MLIR-based TF2XLA bridge among TF1 models");
