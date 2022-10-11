@@ -80,15 +80,24 @@ struct GenericOpToWarpReductionPattern : OpRewritePattern<linalg::GenericOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
+struct MultiDimReductionOpToWarpReductionPattern
+    : OpRewritePattern<vector::MultiDimReductionOp> {
+  using OpRewritePattern<vector::MultiDimReductionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(vector::MultiDimReductionOp reductionOp,
+                                PatternRewriter& rewriter) const override;
+};
+
 /// Implements the GmlStToGpuPass declared in
 /// include/mlir-hlo/Dialect/gml_st/transforms/passes.td.
 struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<ParallelOpToGpuPattern, GenericOpToWarpReductionPattern>(
-        &getContext());
+    patterns.add<ParallelOpToGpuPattern, GenericOpToWarpReductionPattern,
+                 MultiDimReductionOpToWarpReductionPattern>(&getContext());
     ConversionTarget target(getContext());
     target.addIllegalDialect<GmlStDialect>();
+    target.addIllegalOp<vector::MultiDimReductionOp>();
     target.addDynamicallyLegalOp<linalg::GenericOp>([](linalg::GenericOp op) {
       return llvm::none_of(op.iterator_types().getAsValueRange<StringAttr>(),
                            [](StringRef type) {
@@ -350,7 +359,7 @@ LogicalResult GenericOpToWarpReductionPattern::matchAndRewrite(
   Block* epilogue = rewriter.splitBlock(prologue, genericOp->getIterator());
   rewriter.setInsertionPointToEnd(prologue);
 
-  // Preamble: extract lane id element from inpt.
+  // Preamble: extract lane id element from input.
   Location loc = genericOp->getLoc();
   Value laneId = rewriter.create<gpu::LaneIdOp>(loc);
   Value cast = rewriter.create<vector::ShapeCastOp>(
@@ -382,6 +391,85 @@ LogicalResult GenericOpToWarpReductionPattern::matchAndRewrite(
 
   // Erase linalg.generic op.
   rewriter.eraseOp(genericOp);
+
+  return success();
+}
+
+static Value createCombineOp(Location loc, Value lhs, Value rhs,
+                             vector::CombiningKind kind,
+                             PatternRewriter& rewriter) {
+  auto helper = [&](auto dummy) {
+    return rewriter.create<decltype(dummy)>(loc, lhs, rhs);
+  };
+  switch (kind) {
+    case vector::CombiningKind::ADD:
+      return helper(arith::AddFOp());
+    case vector::CombiningKind::MUL:
+      return helper(arith::MulFOp());
+    case vector::CombiningKind::MINUI:
+      return helper(arith::MinUIOp());
+    case vector::CombiningKind::MINSI:
+      return helper(arith::MinSIOp());
+    case vector::CombiningKind::MINF:
+      return helper(arith::MinFOp());
+    case vector::CombiningKind::MAXUI:
+      return helper(arith::MaxUIOp());
+    case vector::CombiningKind::MAXSI:
+      return helper(arith::MaxSIOp());
+    case vector::CombiningKind::MAXF:
+      return helper(arith::MaxFOp());
+    case vector::CombiningKind::AND:
+      return helper(arith::AndIOp());
+    case vector::CombiningKind::OR:
+      return helper(arith::OrIOp());
+    case vector::CombiningKind::XOR:
+      return helper(arith::XOrIOp());
+    default:
+      llvm_unreachable("unhandled");
+  }
+}
+
+LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
+    vector::MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
+  auto inType = reductionOp.getSourceVectorType();
+  auto outType = reductionOp.getDestType().dyn_cast<VectorType>();
+  auto isNumElementsEqual = [](auto type, int64_t size) {
+    return type && type.getNumElements() == size;
+  };
+  if (!isNumElementsEqual(inType, 32)) {
+    return rewriter.notifyMatchFailure(reductionOp, "Expected 32-vector input");
+  }
+  if (!isNumElementsEqual(outType, 1)) {
+    return rewriter.notifyMatchFailure(reductionOp, "Expected 1-vector output");
+  }
+
+  // Preamble: extract lane id element from input.
+  Location loc = reductionOp->getLoc();
+  Value laneId = rewriter.create<gpu::LaneIdOp>(loc);
+  Value cast = rewriter.create<vector::ShapeCastOp>(
+      loc, VectorType::get(inType.getNumElements(), inType.getElementType()),
+      reductionOp.getSource());
+  Value lhs = rewriter.create<vector::ExtractElementOp>(loc, cast, laneId);
+
+  auto getI32Attr = [&](int32_t value) {
+    return rewriter.getI32IntegerAttr(value);
+  };
+  Value width = rewriter.create<arith::ConstantOp>(loc, getI32Attr(32));
+
+  // Create warp shuffles of increasing offset and interleave with a clone of
+  // the accumulate block.
+  for (int i = 1; i < 32; i *= 2) {
+    Value offset = rewriter.create<arith::ConstantOp>(loc, getI32Attr(i));
+    auto shuffleOp = rewriter.create<gpu::ShuffleOp>(loc, lhs, offset, width,
+                                                     gpu::ShuffleMode::XOR);
+    lhs = createCombineOp(loc, lhs, shuffleOp.getShuffleResult(),
+                          reductionOp.getKind(), rewriter);
+  }
+
+  // Combine with init element and broadcast result back to vector.
+  Value acc = rewriter.create<vector::ExtractOp>(loc, reductionOp.getAcc(), 0);
+  lhs = createCombineOp(loc, lhs, acc, reductionOp.getKind(), rewriter);
+  rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType, lhs);
 
   return success();
 }
