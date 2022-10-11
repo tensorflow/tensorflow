@@ -128,6 +128,9 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32_t env_inter_op = GetEnvNumInterOpThreads();
   if (env_inter_op > 0) return env_inter_op;
 
+  // Reset inter to 1 since negative value means running in caller thread.
+  if (inter_op < 0 || env_inter_op < 0) return 1;
+
 #if defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
   if (IsMKLEnabled()) {
     // MKL library executes ops in parallel using OMP threads.
