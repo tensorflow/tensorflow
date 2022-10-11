@@ -43,7 +43,8 @@ class ReLU : public NodeShader {
     std::vector<Variable> params;
     std::string min;
     if (attr.alpha == 0) {
-      min = "vec4(0.0)";
+      min = "vec4($activation_min$)";
+      params.push_back({"activation_min", attr.activation_min});
     } else {
       min = "min($alpha$ * value_0, 0.0)";
       params.push_back({"alpha", attr.alpha});

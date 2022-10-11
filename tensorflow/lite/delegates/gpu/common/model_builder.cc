@@ -1937,7 +1937,8 @@ class QuantizeOperationParser : public TFLiteOperationParser {
 
 class ReLUOperationParser : public TFLiteOperationParser {
  public:
-  explicit ReLUOperationParser(int activation_max) : activation_max_(activation_max) {}
+  explicit ReLUOperationParser(int activation_min, int activation_max)
+    : activation_min_(activation_min), activation_max_(activation_max) {}
 
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
@@ -1957,12 +1958,14 @@ class ReLUOperationParser : public TFLiteOperationParser {
     const TfLiteLeakyReluParams* tf_options;
     auto status = RetrieveBuiltinData(tflite_node, &tf_options);
     attr.alpha = status.ok() ? tf_options->alpha : 0;
+    attr.activation_min = activation_min_;
     attr.activation_max = activation_max_;
     node->operation.attributes = attr;
     return reader->AddOutputs(node);
   }
 
  private:
+  const int activation_min_;
   const int activation_max_;
 };
 
@@ -3190,13 +3193,13 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       break;
     case kTfLiteBuiltinRelu:
-      return std::make_unique<ReLUOperationParser>(0);
+      return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinRelu6:
-      return std::make_unique<ReLUOperationParser>(6);
+      return std::make_unique<ReLUOperationParser>(0, 6);
     case kTfLiteBuiltinReluN1To1:
-      return std::make_unique<ClampOperationsParser>(-1.0, 1.0);
+      return std::make_unique<ReLUOperationParser>(-1.0, 1.0);
     case kTfLiteBuiltinLeakyRelu:
-      return std::make_unique<ReLUOperationParser>(0);
+      return std::make_unique<ReLUOperationParser>(0, 0);
     case kTfLiteBuiltinPrelu:
       return std::make_unique<PReLUOperationParser>();
     case kTfLiteBuiltinReshape:

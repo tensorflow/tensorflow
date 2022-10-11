@@ -35,7 +35,12 @@ ElementwiseDescriptor CreateReLU(const ReLUAttributes& attr,
       result.args.AddHalf("alpha", half(attr.alpha));
     }
   } else {
-    min_func = "INIT_FLT4(0.0f)";
+    min_func = "INIT_FLT4(args.activation_min)";
+    if (precision == CalculationsPrecision::F32) {
+      result.args.AddFloat("activation_min", attr.activation_min);
+    } else {
+      result.args.AddHalf("activation_min", half(attr.activation_min));
+    }
   }
   if (attr.activation_max != 0.0f) {
     if (precision == CalculationsPrecision::F32) {
