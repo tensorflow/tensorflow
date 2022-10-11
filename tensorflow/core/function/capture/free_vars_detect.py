@@ -299,3 +299,13 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
     logging_txt.append(ellipsis_line)
 
   return "\n".join(logging_txt)
+
+
+def logging_free_vars(fn):
+  """Return logging string for free vars detection."""
+  try:
+    logging_txt = generate_free_var_logging(fn)
+  except Exception:  # pylint: disable=broad-except
+    # Only for logging purpose, do not raise errors to users
+    logging_txt = None
+  return logging_txt
