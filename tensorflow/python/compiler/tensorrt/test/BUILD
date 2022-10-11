@@ -69,6 +69,7 @@ oss_tests = [
     "cast_test",
     "concatenation_test",
     "const_broadcast_test",
+    "data_dependent_shape_test",
     "dynamic_input_shapes_test",
     "identity_output_test",
     "int32_test",
