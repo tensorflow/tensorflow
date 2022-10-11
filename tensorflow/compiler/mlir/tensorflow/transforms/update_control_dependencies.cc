@@ -55,12 +55,12 @@ void UpdateAllControlDependencies(
          analysis_for_func.DirectControlPredecessors(island)) {
       if (auto control_input_island =
               dyn_cast<mlir::tf_executor::IslandOp>(control_predecessor)) {
-        new_control_inputs.push_back(control_input_island.control());
+        new_control_inputs.push_back(control_input_island.getControl());
       }
     }
     // None of the originally given control deps are necessary.
-    island.controlInputsMutable().clear();
-    island.controlInputsMutable().append(new_control_inputs);
+    island.getControlInputsMutable().clear();
+    island.getControlInputsMutable().append(new_control_inputs);
     control_inputs_added += new_control_inputs.size();
     new_control_inputs.clear();
   });
@@ -71,8 +71,8 @@ void UpdateAllControlDependencies(
   int num_control_fetches =
       fetch_op.getNumOperands() - graph_op.getNumResults();
   if (num_control_fetches > 0) {
-    fetch_op.fetchesMutable().erase(graph_op.getNumResults(),
-                                    num_control_fetches);
+    fetch_op.getFetchesMutable().erase(graph_op.getNumResults(),
+                                       num_control_fetches);
   }
 
   // Collect control inputs for `fetch_op` by querying side effect analysis.
@@ -80,11 +80,11 @@ void UpdateAllControlDependencies(
        analysis_for_func.DirectControlPredecessors(fetch_op)) {
     if (auto control_input_island =
             dyn_cast<tf_executor::IslandOp>(control_predecessor)) {
-      new_control_inputs.push_back(control_input_island.control());
+      new_control_inputs.push_back(control_input_island.getControl());
     }
   }
   control_inputs_added += new_control_inputs.size();
-  fetch_op.fetchesMutable().append(new_control_inputs);
+  fetch_op.getFetchesMutable().append(new_control_inputs);
 
   VLOG(2) << "Number of control inputs added: " << control_inputs_added;
 }
