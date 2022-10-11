@@ -388,18 +388,23 @@ Padding3D CalculateSamePadding(const BHWDC& input,
                                const DepthwiseConvolution3DAttributes& attr);
 
 // f(x):= {
-//   if x < 0  : x -> alpha * x
-//   if x >= 0 : x -> min(clip, x)
+//   if x < lclip  : x -> min(lclip, alpha * x)
+//   if x >= lclip : x -> min(clip, x)
 // }
 //
 // Examples:
-//   - ReLU: clip = 0, alpha = 0
-//   - ReLU6: clip = 6, alpha = 0
-//   - Leaky ReLU: clip = 0, alpha = a
+//   - ReLU: clip = 0, alpha = 0, lclip = 0
+//   - ReLU6: clip = 6, alpha = 0, lclip = 0
+//   - Leaky ReLU: clip = 0, alpha = a, lclip = 0
+//   - ReLUN1To1: clip = 1, alpha = 0, lclip = -1
 struct ReLUAttributes {
   // clip <= 0 mean it is not set.
   float clip = 0;
 
+  // lclip must be < clip
+  float lclip = 0;
+
+  // alpha must be <= 1
   float alpha = 0;
 };
 

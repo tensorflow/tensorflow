@@ -28,14 +28,21 @@ ElementwiseDescriptor CreateReLU(const ReLUAttributes& attr,
   ElementwiseDescriptor result;
   std::string min_func;
   if (attr.alpha != 0.0f) {
-    min_func = "min(in_value * args.alpha, INIT_FLT(0.0f))";
+    min_func = "min(in_value * args.alpha, INIT_FLT4(args.lclip))";
     if (precision == CalculationsPrecision::F32) {
       result.args.AddFloat("alpha", attr.alpha);
+      result.args.AddFloat("lclip", attr.lclip);
     } else {
       result.args.AddHalf("alpha", half(attr.alpha));
+      result.args.AddHalf("lclip", half(attr.lclip));
     }
   } else {
-    min_func = "INIT_FLT4(0.0f)";
+    min_func = "INIT_FLT4(args.lclip)";
+    if (precision == CalculationsPrecision::F32) {
+      result.args.AddFloat("lclip", attr.lclip);
+    } else {
+      result.args.AddHalf("lclip", half(attr.lclip));
+    }
   }
   if (attr.clip != 0.0f) {
     if (precision == CalculationsPrecision::F32) {

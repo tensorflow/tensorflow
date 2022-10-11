@@ -400,6 +400,7 @@ absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
       attr.clip = fused_activation == kTfLiteActRelu
                       ? 0.0f
                       : (fused_activation == kTfLiteActReluN1To1 ? 1.0f : 6.0f);
+      attr.lclip = fused_activation == kTfLiteActReluN1To1 ? -1.0f : 0.0f;
       Node* activation_node;
       RETURN_IF_ERROR(
           NewPassthroughNode(graph, node, outputs[0], &activation_node));

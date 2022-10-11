@@ -94,6 +94,62 @@ TEST_F(ReluTest, ClipAndAlpha) {
               Pointwise(FloatNear(1e-6), {-3.0, 0.0, 2.0, 6.0}));
 }
 
+TEST_F(ReluTest, ReLULClipNoAlphaNoClip) {
+  OperationType op_type = OperationType::RELU;
+  ReLUAttributes attr;
+  attr.lclip = -1;
+  attr.clip = 0;
+  attr.alpha = 0;
+  SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
+                      {GetTensorRef(1)});
+  ASSERT_TRUE(model.PopulateTensor(0, {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f}));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-1.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f}));
+}
+
+TEST_F(ReluTest, ReLUAlphaLClipNoClip) {
+  OperationType op_type = OperationType::RELU;
+  ReLUAttributes attr;
+  attr.lclip = -1;
+  attr.clip = 0;
+  attr.alpha = 0.5;
+  SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
+                      {GetTensorRef(1)});
+  ASSERT_TRUE(model.PopulateTensor(0, {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f}));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-6.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f}));
+}
+
+TEST_F(ReluTest, ReLULClipClipNoAlpha) {
+  OperationType op_type = OperationType::RELU;
+  ReLUAttributes attr;
+  attr.lclip = -1;
+  attr.clip = 1;
+  attr.alpha = 0;
+  SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
+                      {GetTensorRef(1)});
+  ASSERT_TRUE(model.PopulateTensor(0, {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f}));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-1.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 1.0f}));
+}
+
+TEST_F(ReluTest, ReLUAlphaLClipClip) {
+  OperationType op_type = OperationType::RELU;
+  ReLUAttributes attr;
+  attr.lclip = -1;
+  attr.clip = 3;
+  attr.alpha = 0.5;
+  SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
+                      {GetTensorRef(1)});
+  ASSERT_TRUE(model.PopulateTensor(0, {-12.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.2f}));
+  ASSERT_OK(model.Invoke(*NewReLUNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {-6.0f, -1.0f, -0.5f, 0.0f, 0.8f, -0.6f, 1.0f, 3.0f}));
+}
+
 }  // namespace
 }  // namespace gl
 }  // namespace gpu

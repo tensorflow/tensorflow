@@ -43,10 +43,12 @@ class ReLU : public NodeShader {
     std::vector<Variable> params;
     std::string min;
     if (attr.alpha == 0) {
-      min = "vec4(0.0)";
+      min = "vec4($lclip$)";
+      params.push_back({"lclip", attr.lclip});
     } else {
-      min = "min($alpha$ * value_0, 0.0)";
+      min = "min($alpha$ * value_0, $lclip$)";
       params.push_back({"alpha", attr.alpha});
+      params.push_back({"lclip", attr.lclip});
     }
     std::string code;
     if (attr.clip == 0) {

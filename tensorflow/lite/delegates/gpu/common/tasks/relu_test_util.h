@@ -26,6 +26,10 @@ absl::Status ReLUNoClipNoAlphaTest(TestExecutionEnvironment* env);
 absl::Status ReLUClipTest(TestExecutionEnvironment* env);
 absl::Status ReLUAlphaTest(TestExecutionEnvironment* env);
 absl::Status ReLUAlphaClipTest(TestExecutionEnvironment* env);
+absl::Status ReLULClipNoAlphaNoClipTest(TestExecutionEnvironment* env);
+absl::Status ReLUAlphaLClipNoClipTest(TestExecutionEnvironment* env);
+absl::Status ReLULClipClipNoAlphaTest(TestExecutionEnvironment* env);
+absl::Status ReLUAlphaLClipClipTest(TestExecutionEnvironment* env);
 
 }  // namespace gpu
 }  // namespace tflite
