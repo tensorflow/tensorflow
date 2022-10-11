@@ -56,9 +56,11 @@ bool isRootOfCwiseExpr(Operation *op) {
 
 struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
   TilingCwisePass() = default;
-  TilingCwisePass(bool distribute, ArrayRef<int64_t> tileSizes) {
+  TilingCwisePass(bool distribute, ArrayRef<int64_t> tileSizes,
+                  StringRef distributionLabel) {
     distribute_ = distribute;
     tileSizes_ = tileSizes;
+    distributionLabel_ = distributionLabel.str();
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -90,6 +92,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
 
       return tileSizesValues;
     };
+    opts.distributionLabel = distributionLabel_;
 
     // Tile the roots of cwise expressions and fuse all cwise operands greedily.
     auto tileRootOfCwiseExprFn = [](Operation *op) {
@@ -124,8 +127,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass() {
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
-    bool distribute, ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TilingCwisePass>(distribute, tileSizes);
+    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel) {
+  return std::make_unique<TilingCwisePass>(distribute, tileSizes,
+                                           distributionLabel);
 }
 
 }  // namespace gml_st

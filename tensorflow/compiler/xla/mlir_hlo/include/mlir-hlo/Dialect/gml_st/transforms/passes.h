@@ -39,7 +39,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createFusionPass(
 
 /// Pass to tile and fuse all cwise ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
-    bool distribute, ArrayRef<int64_t> tileSizes);
+    bool distribute, ArrayRef<int64_t> tileSizes,
+    StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 
 /// Pass to tile a linalg.generic reduction.

@@ -205,6 +205,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                                 ArrayRef<Range> loopRanges,
                                 ArrayRef<Value> tileSizeVals,
                                 ArrayRef<Value> dstOperands, bool distribute,
+                                StringRef distributionLabel,
                                 SmallVector<OpFoldResult> &offsets,
                                 SmallVector<OpFoldResult> &sizes) {
   assert(!loopRanges.empty() && "expected at least one loop range");
@@ -238,6 +239,11 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
           nestedBuilder, bodyLoc, steps[index], ubs[index], iv);
     }
   };
+  Optional<StringAttr> distributionLabelAttr;
+  if (!distributionLabel.empty()) {
+    distributionLabelAttr =
+        StringAttr::get(builder.getContext(), distributionLabel);
+  }
   Operation *loop =
       distribute ? builder
                        .create<gml_st::ParallelOp>(
@@ -245,7 +251,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                            getValueOrCreateConstantIndexOp(builder, loc, lbs),
                            getValueOrCreateConstantIndexOp(builder, loc, ubs),
                            getValueOrCreateConstantIndexOp(builder, loc, steps),
-                           llvm::None,
+                           distributionLabelAttr,
                            [&](OpBuilder &nestedBuilder, Location bodyLoc,
                                ValueRange ivs) {
                              buildBody(nestedBuilder, bodyLoc, ivs);
@@ -402,7 +408,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   TilingResult tilingResult;
   tilingResult.loop = generateTileLoopNest(
       rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
-      options.distribute, offsets, sizes);
+      options.distribute, options.distributionLabel, offsets, sizes);
   Block *loopBody = &tilingResult.loop->getRegion(0).front();
   Operation *terminator = loopBody->getTerminator();
   rewriter.setInsertionPoint(terminator);

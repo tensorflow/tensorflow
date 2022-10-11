@@ -50,6 +50,8 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
     ListOption<"tileSizes_", "tile-sizes", "int64_t", 
                "Right-aligned tile sizes. Do not tile possible remaining "
                "dimensions", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel_", "distribution-label", "std::string",
+            /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
 }
 

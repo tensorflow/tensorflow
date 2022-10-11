@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_TRANSFORMS_TILING_H
 
 #include <functional>
+#include <string>
 
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir/IR/PatternMatch.h"
@@ -41,6 +42,9 @@ struct TilingOptions {
 
   /// If `true`, generate a `gml_st.parallel` loop nest.
   bool distribute = true;
+
+  // Distribution label to add to the gml_st.parallel op
+  std::string distributionLabel = "";
 };
 
 /// Create tiled operation based on the specified tiling options. The result is
