@@ -62,6 +62,18 @@ def TilingReductionPass : Pass<"gml-tiling-reduction", "mlir::func::FuncOp"> {
                            "::mlir::arith::ArithDialect"];
 }
 
+def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
+  let summary = "Match, tile, and fuse softmax implementations";
+  let constructor = "::mlir::gml_st::createTilingSoftmaxPass()";
+  let options = [
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Right-aligned tile sizes. Do not tile possible remaining "
+               "dimensions", "llvm::cl::ZeroOrMore">,
+  ];
+}
+
 def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
   let summary = "Compose set operations.";
   let constructor = "::mlir::gml_st::createComposeSetOpsPass()";

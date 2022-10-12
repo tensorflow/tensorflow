@@ -27,9 +27,9 @@ FailureOr<Value> createFusedOp(OpBuilder &b, Location loc,
                                MaterializeOp materializeOp);
 
 /// Populate fusion patterns.
-void populateFusionPatterns(
-    MLIRContext *ctx, llvm::function_ref<LogicalResult(Operation *)> filterFn,
-    RewritePatternSet *patterns);
+void populateFusionPatterns(MLIRContext *ctx,
+                            function_ref<LogicalResult(Operation *)> filterFn,
+                            RewritePatternSet *patterns);
 
 }  // namespace gml_st
 }  // namespace mlir
