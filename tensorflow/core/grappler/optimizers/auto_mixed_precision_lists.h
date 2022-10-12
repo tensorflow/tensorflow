@@ -375,7 +375,11 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "DepthwiseConv2dNativeBackpropInput",
                                      "MatMul",
                                      "BatchMatMul",
-                                     "BatchMatMulV2"};
+                                     "BatchMatMulV2",
+#ifndef DNNL_AARCH64_USE_ACL
+                                     "Einsum"
+#endif  // DNNL_AARCH64_USE_ACL
+    };
 
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
