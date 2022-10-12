@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_UTIL_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -64,6 +65,8 @@ absl::Status CreateRGBAImage2D(cl_context context, int width, int height,
 absl::Status CreateQcomConvolutionFilter(cl_context context, int kernel_x,
                                          int kernel_y, cl_mem* filter,
                                          const void* data);
+
+std::vector<std::pair<std::string, std::string>> GetClSpecificDefines();
 
 // Vendor extensions that cannot be used in open-source
 std::vector<std::string> GetUnsupportedExtensions();
