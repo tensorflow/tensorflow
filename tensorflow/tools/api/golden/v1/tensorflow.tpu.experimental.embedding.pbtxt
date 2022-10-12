@@ -21,10 +21,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "QuantizationConfig"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SGD"
     mtype: "<type \'type\'>"
   }

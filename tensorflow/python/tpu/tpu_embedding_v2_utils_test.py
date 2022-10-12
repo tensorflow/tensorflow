@@ -84,8 +84,7 @@ class ConfigTest(test.TestCase):
     self.assertEqual(
         repr(table),
         'TableConfig(vocabulary_size=2, dim=4, initializer=None, '
-        'optimizer=None, combiner=\'sum\', quantization_config=None, '
-        'name=\'table\')')
+        'optimizer=None, combiner=\'sum\', name=\'table\')')
 
   def test_feature_config_repr(self):
     table = tpu_embedding_v2_utils.TableConfig(
@@ -98,21 +97,9 @@ class ConfigTest(test.TestCase):
     self.assertEqual(
         repr(feature_config),
         'FeatureConfig(table=TableConfig(vocabulary_size=2, dim=4, '
-        'initializer=None, optimizer=None, combiner=\'sum\', '
-        'quantization_config=None, name=\'table\'), max_sequence_length=0, '
-        'validate_weights_and_indices=True, name=\'feature\')')
-
-  def test_quantization_config_num_buckets(self):
-    with self.assertRaisesRegex(ValueError, 'num_buckets'):
-      tpu_embedding_v2_utils.QuantizationConfig(0, -1, 1)
-
-  def test_quantization_config_repr(self):
-    quantization_config = tpu_embedding_v2_utils.QuantizationConfig(
-        num_buckets=10, lower=-1.0, upper=1.0)
-
-    self.assertEqual(
-        repr(quantization_config),
-        'QuantizationConfig(num_buckets=10, lower=-1.0, upper=1.0)')
+        'initializer=None, optimizer=None, combiner=\'sum\', name=\'table\'), '
+        'max_sequence_length=0, validate_weights_and_indices=True, '
+        'name=\'feature\')')
 
 
 class TPUEmbeddingConfigurationTest(test.TestCase):
