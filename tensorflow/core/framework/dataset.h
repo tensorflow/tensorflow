@@ -902,14 +902,14 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
-  // Initializes the dataset.
-  void Initialize(const Metadata& metadata);
-
   const Metadata& metadata() const { return metadata_; }
 
   const Options& options() const { return options_; }
 
   int64_t num_sources() const { return num_sources_; }
+
+  // Initializes the dataset using the given metadata.
+  void Initialize(const Metadata& metadata);
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
