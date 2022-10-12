@@ -746,6 +746,23 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
   return nullptr;
 }
 
+/// Lower bitcast operations where the input and resulting type are the same
+/// bitwidth, thus implying that the operation is fully defined by parallel
+/// loops and scalar operations without any shape dimension changes.
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::BitcastConvertOp>(
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> argTypes,
+    mhlo::BitcastConvertOp::Adaptor adaptor, OpBuilder* b) {
+  Type argType = getElementTypeOrSelf(argTypes.front());
+  Type resultType = getElementTypeOrSelf(resultTypes.front());
+
+  if (resultType.getIntOrFloatBitWidth() != argType.getIntOrFloatBitWidth())
+    return nullptr;
+
+  return b->create<mlir::arith::BitcastOp>(loc, resultTypes,
+                                           adaptor.getOperands());
+}
+
 template <>
 inline Value mapMhloOpToStdScalarOp<mhlo::DotOp>(Location loc,
                                                  ArrayRef<Type> resultTypes,

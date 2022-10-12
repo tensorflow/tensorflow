@@ -48,7 +48,6 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -56,7 +55,6 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
-#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
@@ -851,14 +849,10 @@ class BitcastConvertConverter
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
     auto loc = op.getLoc();
 
-    // Don't emit a loop for scalar types. This can occur inside of a reduction.
-    if (inputType.getRank() == 0 && outputType.getRank() == 0) {
-      Value scalarResult = rewriter.create<arith::BitcastOp>(
-          loc, outputType.getElementType(),
-          rewriter.create<tensor::ExtractOp>(loc, adaptor.getOperand()));
-      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, outputType,
-                                                          scalarResult);
-      return success();
+    // Fallback to pointwise conversion if the tensor dimensions are not
+    // changing.
+    if (inputType.getRank() == outputType.getRank()) {
+      return failure();
     }
 
     auto inputBitWidth = inputType.getElementType().getIntOrFloatBitWidth();
@@ -3426,6 +3420,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::AddOp>,
       PointwiseToLinalgConverter<mhlo::AndOp>,
       PointwiseToLinalgConverter<mhlo::Atan2Op>,
+      PointwiseToLinalgConverter<mhlo::BitcastConvertOp>,
       PointwiseToLinalgConverter<mhlo::CbrtOp>,
       PointwiseToLinalgConverter<mhlo::CeilOp>,
       PointwiseToLinalgConverter<mhlo::ClampOp>,
