@@ -578,3 +578,55 @@ func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>,
 
 // CHECK-PARALLEL-LABEL: @gather
 // CHECK-PARALLEL: gml_st.parallel
+
+// -----
+
+func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
+                %init1: tensor<?x?x?xf32>, %init2: tensor<?x?x?xi32>)
+    -> (tensor<?x?x?xf32>, tensor<?x?x?xi32>) {
+  %sorted1, %sorted2 = thlo.sort
+      ins(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>)
+      outs(%init1: tensor<?x?x?xf32>, %init2: tensor<?x?x?xi32>)
+      { dimension = 1 : i64, is_stable = true, op_label = "tile-3d" }
+      (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
+        %gt = arith.cmpf ogt, %e11, %e12: f32
+        thlo.yield %gt : i1
+      }
+  func.return %sorted1, %sorted2 : tensor<?x?x?xf32>, tensor<?x?x?xi32>
+}
+
+// CHECK-FOR-LABEL: func.func @sort
+// CHECK-FOR-SAME:    (%[[IN0:[a-zA-Z_0-9]*]]: tensor<?x?x?xf32>,
+// CHECK-FOR-SAME:     %[[IN1:[a-zA-Z_0-9]*]]: tensor<?x?x?xi32>,
+// CHECK-FOR-SAME:     %[[INIT0:[a-zA-Z_0-9]*]]: tensor<?x?x?xf32>,
+// CHECK-FOR-SAME:     %[[INIT1:[a-zA-Z_0-9]*]]: tensor<?x?x?xi32>)
+// CHECK-FOR-DAG:   %[[C0:[a-zA-Z_0-9]*]] = arith.constant 0
+// CHECK-FOR-DAG:   %[[C2:.*]] = arith.constant 2
+// CHECK-FOR-DAG:   %[[C1:.*]] = arith.constant 1
+// CHECK-FOR-DAG:   %[[DIM0:.*]] = tensor.dim %[[INIT0]], %[[C0]]
+// CHECK-FOR-DAG:   %[[DIM2:.*]] = tensor.dim %[[INIT0]], %[[C2]]
+// CHECK-FOR:       gml_st.for
+// CHECK-FOR-SAME:      (%[[START0:.*]], %[[START2:.*]]) = (%[[C0]], %[[C0]]) to (%[[DIM0]], %[[DIM2]])
+// CHECK-FOR-SAME:      outs (%[[INIT0_:.*]] = %[[INIT0]]: tensor<?x?x?xf32>,
+// CHECK-FOR-SAME:            %[[INIT1_:.*]] = %[[INIT1]]: tensor<?x?x?xi32>) {
+// CHECK-FOR-DAG:     %[[TILE_SIZE0:.*]] = affine.min #map0(%[[START0]])[%[[DIM0]]]
+// CHECK-FOR-DAG:     %[[TILE_SIZE2:.*]] = affine.min #map1(%[[START2]])[%[[DIM2]]]
+// CHECK-FOR-DAG:     %[[DIM1:.*]] = tensor.dim %[[IN0]], %[[C1]]
+// CHECK-FOR-DAG:     %[[DIM0_:.*]] = tensor.dim %[[IN0]], %[[C0]]
+// CHECK-FOR-DAG:     %[[DIM2_:.*]] = tensor.dim %[[IN0]], %[[C2]]
+// CHECK-FOR:         %[[SPACE:.*]] = gml_st.space [%[[DIM0_]], %[[DIM1]], %[[DIM2_]]]
+// CHECK-FOR:         %[[TILE:.*]] = gml_st.tile
+// CHECK-FOR-SAME:        %[[SPACE]]
+// CHECK-FOR-SAME:        [%[[START0]], 0, %[[START2]]]
+// CHECK-FOR-SAME:        [%[[TILE_SIZE0]], %[[DIM1]], %[[TILE_SIZE2]]]
+// CHECK-FOR-SAME:        [1, 1, 1]
+// CHECK-FOR-DAG:     %[[IN0_SUB:.*]] = gml_st.materialize %[[IN0]][%[[TILE]]]
+// CHECK-FOR-DAG:     %[[IN1_SUB:.*]] = gml_st.materialize %[[IN1]][%[[TILE]]]
+// CHECK-FOR-DAG:     %[[INIT0_SUB:.*]] = gml_st.materialize %[[INIT0_]][%[[TILE]]]
+// CHECK-FOR-DAG:     %[[INIT1_SUB:.*]] = gml_st.materialize %[[INIT1_]][%[[TILE]]]
+// CHECK-FOR:         thlo.sort
+// CHECK-FOR-SAME:        ins(%[[IN0_SUB]] : tensor<?x?x?xf32>, %[[IN1_SUB]] : tensor<?x?x?xi32>)
+// CHECK-FOR-SAME:        outs(%[[INIT0_SUB]] : tensor<?x?x?xf32>, %[[INIT1_SUB]] : tensor<?x?x?xi32>)
+// CHECK-FOR:         gml_st.set_yield
+// CHECK-FOR-SAME:        %[[RESULT_TILE:.*]]#0 into %[[INIT0_]][%[[TILE]]]
+// CHECK-FOR:             %[[RESULT_TILE]]#1 into %[[INIT1_]][%[[TILE]]]

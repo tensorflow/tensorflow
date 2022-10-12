@@ -324,7 +324,8 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
 }
 
 def THLO_SortOp : THLO_DstStyleOp<"sort", [RecursiveSideEffects,
-        SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">]> {
+        DeclareOpInterfaceMethods<TilingInterface>, SameVariadicOperandSize,
+        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for the `mhlo.sort`";
   let description = [{
     Sorts the given `operands` along the given `dimension` using the given
