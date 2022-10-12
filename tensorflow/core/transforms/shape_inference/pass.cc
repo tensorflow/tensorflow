@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
@@ -207,8 +208,8 @@ void ShapeInference::runOnOperation() {
       ShapedTypeComponents result = std::get<1>(it);
       TensorType inferred_type;
       if (result.hasRank()) {
-        inferred_type =
-            RankedTensorType::get(result.getDims(), result.getElementType());
+        inferred_type = tensorflow::GetTypeFromTFTensorShape(
+            result.getDims(), result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }

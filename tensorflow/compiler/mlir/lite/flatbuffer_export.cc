@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -71,6 +72,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -914,9 +916,13 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
     shape.reserve(shape_ref.size());
     for (auto& dim : shape_ref) {
-      shape.push_back(dim == -1 ? 1 : dim);
+      // translate dynamic shapes from mlir to tfl values
+      shape.push_back(
+          dim == mlir::ShapedType::kDynamicSize ? 1 : static_cast<int>(dim));
+      shape_signature.push_back(static_cast<int>(
+          dim == mlir::ShapedType::kDynamicSize ? tensorflow::kTFDynamicSize
+                                                : dim));
     }
-    shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
 
   BufferOffset<tflite::SparsityParameters> s_params = 0;

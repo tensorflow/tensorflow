@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
@@ -179,7 +180,7 @@ TensorType CreateTensorType(InferenceContext& context, const ShapeHandle& sh,
                             Type element_type) {
   auto shape = GetShapeFromHandle(context, sh);
   if (shape.has_value())
-    return RankedTensorType::get(shape.getValue(), element_type);
+    return tensorflow::GetTypeFromTFTensorShape(shape.getValue(), element_type);
   return UnrankedTensorType::get(element_type);
 }
 

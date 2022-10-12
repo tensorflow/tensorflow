@@ -1803,7 +1803,8 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   output_ty_shape.reserve(shape_attr.getNumElements());
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
-    if (size == tensorflow::kTFDynamicSize) {
+    if (size == tensorflow::kTFDynamicSize ||  // NOLINT
+        size == ShapedType::kDynamicSize) {    // NOLINT
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
