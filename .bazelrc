@@ -210,6 +210,7 @@ build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 # By default, TensorFlow will build with a dependence on
 # //tensorflow:libtensorflow_framework.so.
 build:monolithic --define framework_shared_object=false
+build:monolithic --define tsl_link_protobuf=true
 build:monolithic --experimental_link_static_libraries_once=false  # b/229868128
 
 # Please note that MKL on MacOS or windows is still not supported.

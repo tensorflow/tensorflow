@@ -55,6 +55,12 @@ def if_google(google_value, oss_value = []):
     """
     return oss_value  # copybara:comment_replace return google_value
 
+def if_tsl_link_protobuf(if_true, if_false = []):
+    return select({
+        clean_dep("//tensorflow/tsl:tsl_link_protobuf"): if_true,
+        "//conditions:default": if_false,
+    })
+
 def if_libtpu(if_true, if_false = []):
     """Shorthand for select()ing whether to build backend support for TPUs when building libtpu.so"""
     return select({
