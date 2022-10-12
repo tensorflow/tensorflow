@@ -94,6 +94,10 @@ ParseResult parseAssignmentListWithTypes(
 #define GET_TYPEDEF_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
 
+// Generated attribute classes.
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_attrs.cc.inc"
+
 namespace mlir {
 namespace gml_st {
 
@@ -109,6 +113,10 @@ void GmlStDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_attrs.cc.inc"
       >();
 }
 
@@ -295,8 +303,8 @@ void LoopOp::print(OpAsmPrinter &p) {
   }
 
   if (llvm::any_of(getIteratorTypes(), [](Attribute attr) {
-        return attr.cast<StringAttr>().getValue() !=
-               LoopOp::getParallelIteratorTypeName();
+        return attr.cast<IteratorTypeAttr>().getValue() !=
+               utils::IteratorType::parallel;
       }))
     p << " iterators" << getIteratorTypes();
 
@@ -375,39 +383,26 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
       if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
   }
 
-  // Parse attributes.
-  SmallVector<Attribute, 4> iterTypes, distributionTypes;
-  auto parseAttr = [&](StringRef keyword, SmallVector<Attribute, 4> *attrs) {
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      StringAttr attr;
-
-      if (parser.parseLSquare() || parser.parseAttribute(attr))
-        return failure();
-      attrs->push_back(attr);
-      for (int i = 1, e = ivs.size(); i < e; ++i) {
-        if (parser.parseComma() || parser.parseAttribute(attr))
-          return failure();
-        attrs->push_back(attr);
-      }
-      if (parser.parseRSquare()) return failure();
-    }
-    return success();
-  };
-  if (failed(parseAttr("iterators", &iterTypes)) ||
-      failed(parseAttr("distribution", &distributionTypes)))
-    return failure();
-
-  // Set all loop iterator types to "parallel" if they are not printed in IR.
-  if (iterTypes.empty()) {
+  Attribute iterTypes;
+  if (succeeded(parser.parseOptionalKeyword("iterators"))) {
+    if (parser.parseAttribute(iterTypes)) return failure();
+  } else {
+    // Set all loop iterator types to "parallel" if they are not printed in IR.
     auto parallelIter =
-        builder.getStringAttr(LoopOp::getParallelIteratorTypeName());
-    iterTypes = SmallVector<Attribute, 4>(ivs.size(), parallelIter);
+        builder.getAttr<IteratorTypeAttr>(utils::IteratorType::parallel);
+    iterTypes = builder.getArrayAttr(
+        SmallVector<Attribute, 4>(ivs.size(), parallelIter));
   }
-  result.addAttribute(LoopOp::getIteratorTypesAttrStrName(),
-                      builder.getArrayAttr(iterTypes));
-  if (!distributionTypes.empty())
+
+  result.addAttribute(LoopOp::getIteratorTypesAttrStrName(), iterTypes);
+
+  if (succeeded(parser.parseOptionalKeyword("distribution"))) {
+    Attribute distributionTypes;
+    if (failed(parser.parseAttribute(distributionTypes))) return failure();
     result.addAttribute(LoopOp::getDistributionTypesAttrStrName(),
-                        builder.getArrayAttr(distributionTypes));
+                        distributionTypes);
+  }
+
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       builder.getDenseI32ArrayAttr({static_cast<int32_t>(lower.size()),

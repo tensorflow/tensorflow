@@ -120,7 +120,7 @@ func.func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> ()
       gml_st.yield %CT_ : tensor<192x192xf32>
     }) {
-      iterator_types = ["parallel"],
+      iterator_types = [#gml_st.iterator_type<parallel>],
       operand_segment_sizes = array<i32: 2, 2, 2, 2, 2>
     } : (index, index, index, index, index, index, memref<192x192xf32>,
       memref<192x192xf32>, tensor<192x192xf32>, memref<192x192xf32>
@@ -142,7 +142,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
       func.call @foo(%A_) : (memref<100xf32>)-> ()
       gml_st.yield
     }) {
-      iterator_types = ["parallel"],
+      iterator_types = [#gml_st.iterator_type<parallel>],
       operand_segment_sizes = array<i32: 1, 1, 1, 0, 1>
     } : (index, index, index, memref<192xf32>) -> ()
   func.return
