@@ -802,6 +802,13 @@ def tf_protobuf_deps():
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
 
+# Link protobuf, unless the tsl_link_protobuf build flag is explicitly set to false.
+def tsl_protobuf_deps():
+    return select({
+        clean_dep("//tensorflow/tsl:tsl_link_protobuf"): [clean_dep("@com_google_protobuf//:protobuf")],
+        "//conditions:default": [clean_dep("@com_google_protobuf//:protobuf_headers")],
+    })
+
 def tf_portable_proto_lib():
     return ["//tensorflow/core:protos_all_cc_impl"]
 

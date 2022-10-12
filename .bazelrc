@@ -98,6 +98,7 @@
 # nothing in a bazelrc will default to a monolithic build. The following line
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
+build --define tsl_link_protobuf=false
 
 build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
