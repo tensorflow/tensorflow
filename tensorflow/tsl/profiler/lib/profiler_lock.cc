@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/profiler_lock.h"
+#include "tensorflow/tsl/profiler/lib/profiler_lock.h"
 
 #include <atomic>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/util/env_var.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 namespace {
 
@@ -64,4 +64,4 @@ void ProfilerLock::ReleaseIfActive() {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl

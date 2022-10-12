@@ -103,6 +103,28 @@ cc_library(
 )
 
 cc_library(
+    name = "profiler_lock",
+    srcs = ["profiler_lock.cc"],
+    hdrs = ["profiler_lock.h"],
+    copts = tf_profiler_copts(),
+    visibility = ["//tensorflow/core/profiler:internal"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "profiler_lock_test",
+    srcs = ["profiler_lock_test.cc"],
+    deps = [
+        ":profiler_lock",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "traceme_encode",
     hdrs = ["traceme_encode.h"],
     visibility = ["//visibility:public"],
