@@ -1049,6 +1049,7 @@ cc_library(
         "lib/Transforms/symbolic_shape_optimization.cc",
         "lib/Transforms/tile_loops_pass.cc",
         "lib/Transforms/unbufferize_pass.cc",
+        "lib/Transforms/unroll_loops.cc",
     ],
     hdrs = ["include/mlir-hlo/Transforms/passes.h"],
     deps = [

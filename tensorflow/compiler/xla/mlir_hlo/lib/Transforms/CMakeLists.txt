@@ -29,6 +29,7 @@ add_mlir_library(MLIRBufferTransforms
   shape_simplification.cc
   tile_loops_pass.cc
   collapse_parallel_loops_to_1d_pass.cc
+  unroll_loops.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen
