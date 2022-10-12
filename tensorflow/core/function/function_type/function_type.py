@@ -15,8 +15,9 @@
 """Represents the types of TF functions."""
 
 import inspect
-from typing import Any, Optional, Dict, Callable, Mapping
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
+from tensorflow.core.function import trace_type
 from tensorflow.python.types import trace
 
 # Represents a defined parameter default value that is saved alongside the
@@ -113,3 +114,53 @@ class FunctionType(inspect.Signature):
   def __repr__(self):
     return ("FunctionType(" +
             ", ".join([repr(p) for p in self.parameters.values()]) + ")")
+
+
+# TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.
+def _make_validated_mono_param(name, value, kind, type_context, poly_type):
+  """Generates and validates a parameter for Monomorphic FunctionType."""
+  mono_type = trace_type.from_value(value, type_context)
+
+  if poly_type and not mono_type.is_subtype_of(poly_type):
+    raise TypeError(f"Parameter {name} was expected to be of type "
+                    f"{poly_type} but is {mono_type}")
+
+  return Parameter(name, kind, False, mono_type)
+
+
+def canonicalize_to_monomorphic(
+    args: Tuple[Any, ...], kwargs: Dict[Any,
+                                        Any], polymorphic_type: FunctionType,
+    monomorphic_type_context: trace_type.InternalTracingContext
+) -> Tuple[inspect.BoundArguments, FunctionType]:
+  """Converts polymorphic parameters to monomorphic and associated type."""
+  poly_bound_arguments = polymorphic_type.bind(*args, **kwargs)
+  parameters = []
+
+  for name, arg in poly_bound_arguments.arguments.items():
+    poly_parameter = polymorphic_type.parameters[name]
+    if poly_parameter.kind is Parameter.VAR_POSITIONAL:
+      for i, value in enumerate(arg):
+        parameters.append(
+            _make_validated_mono_param(f"{poly_parameter.name}_{i}",
+                                       value, Parameter.POSITIONAL_ONLY,
+                                       monomorphic_type_context,
+                                       poly_parameter.type_constraint))
+    elif poly_parameter.kind is Parameter.VAR_KEYWORD:
+      for kwarg_name, kwarg_value in arg.items():
+        parameters.append(
+            _make_validated_mono_param(kwarg_name, kwarg_value,
+                                       Parameter.KEYWORD_ONLY,
+                                       monomorphic_type_context,
+                                       poly_parameter.type_constraint))
+    else:
+      parameters.append(
+          _make_validated_mono_param(name, arg, poly_parameter.kind,
+                                     monomorphic_type_context,
+                                     poly_parameter.type_constraint))
+
+  monomorphic_function_type = FunctionType(parameters)
+  mono_bound_arguments = monomorphic_function_type.bind(
+      *poly_bound_arguments.args, **poly_bound_arguments.kwargs)
+
+  return mono_bound_arguments, monomorphic_function_type

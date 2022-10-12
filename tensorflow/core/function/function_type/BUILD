@@ -31,5 +31,6 @@ py_strict_test(
         ":function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

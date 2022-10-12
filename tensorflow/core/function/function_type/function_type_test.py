@@ -16,6 +16,9 @@
 
 import pickle
 
+from absl.testing import parameterized
+
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.function_type import function_type
 from tensorflow.python.platform import test
 
@@ -224,6 +227,281 @@ class FunctionTypeTest(test.TestCase):
     ])
     cloned = pickle.loads(pickle.dumps(original))
     self.assertEqual(original, cloned)
+
+
+class CanonicalizationTest(test.TestCase, parameterized.TestCase):
+  args_1_2_3 = {"args": (1, 2, 3), "kwargs": {}}
+  args_1_2_kwargs_z_3 = {"args": (1, 2), "kwargs": {"z": 3}}
+  kwargs_x_1_y_2_z_3 = {"args": (), "kwargs": {"x": 1, "y": 2, "z": 3}}
+  args_1_2 = {"args": (1, 2), "kwargs": {}}
+  args_1_kwargs_y_2 = {"args": (1,), "kwargs": {"y": 2}}
+  kwargs_x_1_y_2 = {"args": (), "kwargs": {"x": 1, "y": 2}}
+
+  @parameterized.parameters(
+      args_1_2_3,
+      args_1_2_kwargs_z_3,
+      kwargs_x_1_y_2_z_3,
+  )
+  def test_required_only(self, args, kwargs):
+
+    def foo(x, y, z):
+      del x, y, z
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2, 3))
+    self.assertEqual(bound_args.kwargs, {})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  @parameterized.parameters(
+      args_1_2_3,
+      args_1_2_kwargs_z_3,
+      kwargs_x_1_y_2_z_3,
+  )
+  def test_optional_all(self, args, kwargs):
+
+    def foo(x=1, y=2, z=3):
+      del x, y, z
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2, 3))
+    self.assertEqual(bound_args.kwargs, {})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  @parameterized.parameters(
+      args_1_2,
+      args_1_kwargs_y_2,
+      kwargs_x_1_y_2
+  )
+  def test_optional_some(self, args, kwargs):
+
+    def foo(x=1, y=2, z=3):
+      del x, y, z
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2))
+    self.assertEqual(bound_args.kwargs, {})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(2, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  @parameterized.parameters(
+      args_1_2_3,
+      args_1_2_kwargs_z_3,
+      kwargs_x_1_y_2_z_3,
+  )
+  def test_mixed(self, args, kwargs):
+
+    def foo(x, y, z=3):
+      del x, y, z
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2, 3))
+    self.assertEqual(bound_args.kwargs, {})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  def test_varargs(self):
+
+    def foo(*my_var_args):
+      del my_var_args
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        (1, 2, 3), {}, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2, 3))
+    self.assertEqual(bound_args.kwargs, {})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("my_var_args_0",
+                                function_type.Parameter.POSITIONAL_ONLY, False,
+                                trace_type.from_value(1, type_context)),
+        function_type.Parameter("my_var_args_1",
+                                function_type.Parameter.POSITIONAL_ONLY, False,
+                                trace_type.from_value(2, type_context)),
+        function_type.Parameter("my_var_args_2",
+                                function_type.Parameter.POSITIONAL_ONLY, False,
+                                trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  def test_varkwargs(self):
+
+    def foo(**kwargs):
+      del kwargs
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic((), {
+        "x": 1,
+        "y": 2,
+        "z": 3
+    }, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, ())
+    self.assertEqual(bound_args.kwargs, {"x": 1, "y": 2, "z": 3})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  def test_varargs_and_varkwargs(self):
+
+    def foo(*args, **kwargs):
+      del args, kwargs
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic((1,), {
+        "y": 2,
+        "z": 3
+    }, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1,))
+    self.assertEqual(bound_args.kwargs, {"y": 2, "z": 3})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("args_0",
+                                function_type.Parameter.POSITIONAL_ONLY, False,
+                                trace_type.from_value(1, type_context)),
+        function_type.Parameter("y", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  @parameterized.parameters(
+      args_1_2_kwargs_z_3,
+      kwargs_x_1_y_2_z_3,
+  )
+  def test_kwonly(self, args, kwargs):
+
+    def foo(x, y, *, z):
+      del x, y, z
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2))
+    self.assertEqual(bound_args.kwargs, {"z": 3})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
+  @parameterized.parameters(
+      args_1_2_3,
+      args_1_2_kwargs_z_3,
+  )
+  def test_posonly(self, args, kwargs):
+
+    def foo(x, y, /, z):
+      del x, y, z
+
+    polymorphic_type = function_type.FunctionType.from_callable(foo)
+    bound_args, mono_type = function_type.canonicalize_to_monomorphic(
+        args, kwargs, polymorphic_type, trace_type.InternalTracingContext())
+
+    self.assertEqual(bound_args.args, (1, 2, 3))
+    self.assertEqual(bound_args.kwargs, {})
+
+    type_context = trace_type.InternalTracingContext()
+    expected_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(mono_type, expected_type)
+
 
 if __name__ == "__main__":
   test.main()
