@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -547,7 +548,7 @@ class Translator {
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
   // and returns llvm::None on failure.
-  Optional<BufferOffset<tflite::Buffer>> BuildBuffer(Operation* inst);
+  Optional<BufferOffset<tflite::Buffer>> BuildBuffer(Value value);
 
   // Build TFLite tensor from the given type. This function is for tfl.lstm
   // intermediates, which should have UniformQuantizedType.
@@ -747,7 +748,8 @@ std::string Translator::UniqueName(mlir::Value val) {
 }
 
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
-    Operation* inst) {
+    mlir::Value value) {
+  auto inst = value.getDefiningOp();
   ElementsAttr attr;
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
     // arith::ConstantOp have ElementAttr at this point due to validation of the
@@ -765,6 +767,24 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = cst.compressed_data();
   } else {
     return empty_buffer_;
+  }
+
+  // TF doesn't currently support 4-bit types (DT_INT4), so we'll run into
+  // trouble calling ConvertToTensor(). For now, extract the tensor data from
+  // ElementsAttr directly in this and read type from tflite::TensorType instead
+  // of tensorflow::DataType.
+  auto type = value.getType().cast<TensorType>();
+  tflite::TensorType tflite_element_type =
+      GetTFLiteType(type.getElementType()).ValueOrDie();
+  if (tflite_element_type == tflite::TensorType_INT4) {
+    std::vector<uint8_t> data;
+    for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
+      data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
+    }
+    auto packed_buffer = tflite::PackInt4ValuesDensely(data);
+    auto buffer_data =
+        builder_.CreateVector(packed_buffer.data(), packed_buffer.size());
+    return tflite::CreateBuffer(builder_, buffer_data);
   }
 
   tensorflow::Tensor tensor;
@@ -1501,7 +1521,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
     if (auto* inst = value.getDefiningOp()) {
-      auto buffer_or = BuildBuffer(inst);
+      auto buffer_or = BuildBuffer(value);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
     } else {

@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -465,6 +466,14 @@ StatusOr<mlir::ElementsAttr> ConvertIntBuffer(
       }
       return mlir::ElementsAttr(
           DenseElementsAttr::get(shaped_type, ArrayRef<bool>(values)));
+    }
+    case 4: {
+      auto values =
+          tflite::UnpackDenseInt4IntoInt8(buffer, shaped_type.getNumElements());
+      // Use `getFromRawBuffer()` instead of `get()` to bypass a templated size
+      // check which doesn't work with int4 because int4_t doesn't exist.
+      return mlir::ElementsAttr(DenseElementsAttr::getFromRawBuffer(
+          shaped_type, ArrayRef<char>(values)));
     }
     case 8: {
       return mlir::ElementsAttr(

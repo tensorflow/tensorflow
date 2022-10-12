@@ -399,6 +399,16 @@ cc_library(
 )
 
 cc_library(
+    name = "low_bit_utils",
+    srcs = [
+        "utils/low_bit_utils.cc",
+    ],
+    hdrs = [
+        "utils/low_bit_utils.h",
+    ],
+)
+
+cc_library(
     name = "lstm_utils",
     srcs = [
         "utils/lstm_utils.cc",
@@ -920,6 +930,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
+        ":low_bit_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -971,6 +982,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
+        ":low_bit_utils",
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
