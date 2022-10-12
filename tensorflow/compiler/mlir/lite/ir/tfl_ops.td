@@ -2909,6 +2909,35 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
   ];
 }
 
+def TFL_Relu0To1Op: TFL_Op<"relu_0_to_1", [
+    PredOpTrait<"x and y must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    NoSideEffect,
+    QuantizableResult,
+    SameOperandsAndResultShape]> {
+  let summary = "Relu0To1 operator";
+
+  let description = [{
+    Element-wise Relu0To1 operator
+      x -> max(0, min(1, x))
+  }];
+
+  let arguments = (ins TFL_TensorOf<[F32, QUI8, QI8]>:$x);
+
+  let results = (outs TFL_TensorOf<[F32, QUI8, QI8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [
+    OpBuilder<(ins "Value":$input),
+    [{
+      $_state.addOperands({input});
+      $_state.addTypes(input.getType());
+    }]>
+  ];
+}
+
 def TFL_ReshapeOp: TFL_Op<"reshape", [
     QuantizableResult,
     NoSideEffect,
@@ -4992,7 +5021,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 
   let summary = "Atan2 operation";
   let description = [{
-    The "atan2" operation computes the arctangent of y/x element-wise, 
+    The "atan2" operation computes the arctangent of y/x element-wise,
     respecting signs of the arguments.
   }];
 
@@ -5011,7 +5040,7 @@ def TFL_SignOp: TFL_Op<"sign", [
   SameOperandsAndResultShape,
   SameOperandsAndResultElementType
   ]> {
-  
+
   let summary = "Sign operation";
   let description = [{
     Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
