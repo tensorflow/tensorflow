@@ -2240,9 +2240,6 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   pm.addNestedPass<mlir::func::FuncOp>(
       tfrt_compiler::CreateOptimizeTfForTfrtPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
-  // Guarantee all functions have one use, which enables more exact shape
-  // inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   pm.addPass(mlir::createInlinerPass());
   pm.addPass(mlir::createSymbolDCEPass());
@@ -2273,15 +2270,6 @@ void CreateTFExecutorToTFPipeline(mlir::OpPassManager &pm,
   // shared_name
   pm.addPass(
       tfrt_compiler::CreateDeduplicateFunctionsInovkedByBatchFunctionPass());
-
-  // RemoveUnusedWhileResultsPass operates on the region-based control flow, so
-  // the functional control flow is first converted to region-based control
-  // flow, which is converted back after the optimization passes are performed.
-  pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addNestedPass<func::FuncOp>(
-      mlir::TF::CreateRemoveUnusedWhileResultsPass());
-  pm.addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
 
   // Apply standard optimization after optimizing control flow ops.
   pm.addPass(mlir::createInlinerPass());
