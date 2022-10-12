@@ -49,6 +49,7 @@ inline void Conv3DTransposePerChannel(
   const int filter_depth = filter_shape.Dims(0);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
+  const int filter_output_depth = filter_shape.Dims(3);
   const int output_depth = output_shape.Dims(1);
   const int output_height = output_shape.Dims(2);
   const int output_width = output_shape.Dims(3);
@@ -68,40 +69,55 @@ inline void Conv3DTransposePerChannel(
 
   // Loop through input elements one at a time.
   for (int batch = 0; batch < batches; ++batch) {
+    const int in_idx_b = batch * input_depth;
+    const int out_idx_b = batch * output_depth;
     for (int in_d = 0; in_d < input_depth; ++in_d) {
+      const int in_idx_d = (in_idx_b + in_d) * input_height;
       for (int in_y = 0; in_y < input_height; ++in_y) {
+        const int in_idx_y = (in_idx_d + in_y) * input_width;
         for (int in_x = 0; in_x < input_width; ++in_x) {
+          const int in_idx_x = (in_idx_y + in_x) * input_num_channels;
           for (int in_channel = 0; in_channel < input_num_channels;
                ++in_channel) {
+            const int in_idx = in_idx_x + in_channel;
             // Loop through the output elements it will influence.
             const int out_x_origin = (in_x * stride_width) - pad_width;
             const int out_y_origin = (in_y * stride_height) - pad_height;
             const int out_d_origin = (in_d * stride_depth) - pad_depth;
             for (int filter_d = 0; filter_d < filter_depth; ++filter_d) {
+              const int out_d = out_d_origin + params.dilation_depth * filter_d;
+              const int flt_idx_d = filter_d * filter_height;
+              const int out_idx_d = (out_idx_b + out_d) * output_height;
               for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+                const int out_y =
+                    out_y_origin + params.dilation_height * filter_y;
+                const int flt_idx_y = (flt_idx_d + filter_y) * filter_width;
+                const int out_idx_y = (out_idx_d + out_y) * output_width;
                 for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+                  const int out_x =
+                      out_x_origin + params.dilation_width * filter_x;
+                  const int flt_idx_x =
+                      (flt_idx_y + filter_x) * filter_output_depth;
+                  const int out_idx_x =
+                      (out_idx_y + out_x) * output_num_channels;
                   for (int out_channel = 0; out_channel < output_num_channels;
                        ++out_channel) {
-                    // Compute output element location.
-                    const int out_x =
-                        out_x_origin + params.dilation_width * filter_x;
-                    const int out_y =
-                        out_y_origin + params.dilation_height * filter_y;
-                    const int out_d =
-                        out_d_origin + params.dilation_depth * filter_d;
-                    // We cannot accumulate out of bounds.
-                    if ((out_x >= 0) && (out_x < output_width) &&
+                    // Zero padding by omitting the areas outside the output.
+                    const bool is_point_inside_output =
+                        (out_x >= 0) && (out_x < output_width) &&
                         (out_y >= 0) && (out_y < output_height) &&
-                        (out_d >= 0) && (out_d < output_depth)) {
-                      const int32_t input_value = input_data[Offset(
-                          input_shape, batch, in_d, in_y, in_x, in_channel)];
-                      const int32_t filter_value = filter_data[Offset(
-                          filter_shape, filter_d, filter_y, filter_x,
-                          out_channel, in_channel)];
-                      scratch_buffer[Offset(output_shape, batch, out_d, out_y,
-                                            out_x, out_channel)] +=
-                          (input_value + input_offset) * filter_value;
+                        (out_d >= 0) && (out_d < output_depth);
+                    if (!is_point_inside_output) {
+                      continue;
                     }
+                    const int flt_idx =
+                        (flt_idx_x + out_channel) * input_num_channels +
+                        in_channel;
+                    const int out_idx = out_idx_x + out_channel;
+                    const int32_t input_value = input_data[in_idx];
+                    const int32_t filter_value = filter_data[flt_idx];
+                    scratch_buffer[out_idx] +=
+                        (input_value + input_offset) * filter_value;
                   }
                 }
               }
@@ -113,13 +129,17 @@ inline void Conv3DTransposePerChannel(
   }
 
   for (int batch = 0; batch < batches; ++batch) {
+    const int out_idx_b = batch * output_depth;
     for (int out_d = 0; out_d < output_depth; ++out_d) {
+      const int out_idx_d = (out_idx_b + out_d) * output_height;
       for (int out_y = 0; out_y < output_height; ++out_y) {
+        const int out_idx_y = (out_idx_d + out_y) * output_width;
         for (int out_x = 0; out_x < output_width; ++out_x) {
+          const int out_idx_x = (out_idx_y + out_x) * output_num_channels;
           for (int out_channel = 0; out_channel < output_num_channels;
                ++out_channel) {
-            AccumulatorType acc = scratch_buffer[Offset(
-                output_shape, batch, out_d, out_y, out_x, out_channel)];
+            const int out_idx = out_idx_x + out_channel;
+            AccumulatorType acc = scratch_buffer[out_idx];
             if (bias_data) {
               acc += bias_data[out_channel];
             }
@@ -128,9 +148,7 @@ inline void Conv3DTransposePerChannel(
             scaled_acc += output_offset;
             scaled_acc = std::max(scaled_acc, output_activation_min);
             scaled_acc = std::min(scaled_acc, output_activation_max);
-            output_data[Offset(output_shape, batch, out_d, out_y, out_x,
-                               out_channel)] =
-                static_cast<InputType>(scaled_acc);
+            output_data[out_idx] = static_cast<InputType>(scaled_acc);
           }
         }
       }
