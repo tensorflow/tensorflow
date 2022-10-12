@@ -12,20 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
+#ifndef TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
+#define TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/backends/cpu/host_tracer_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-using tsl::profiler::ConvertCompleteEventsToXPlane;  // NOLINT
+// Convert complete events to XPlane format.
+void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
+                                   TraceMeRecorder::Events&& events,
+                                   tensorflow::profiler::XPlane* raw_plane);
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
+#endif  // TENSORFLOW_TSL_PROFILER_BACKENDS_CPU_HOST_TRACER_UTILS_H_
