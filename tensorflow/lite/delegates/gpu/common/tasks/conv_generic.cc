@@ -1778,6 +1778,11 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
           conv_params.weights_upload_type =
               WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
           conv_params.simd_size = kSubGroupSize;
+        } else if (gpu_info.opencl_info.platform_version.find("clvk")) {
+          // It will work because of specific driver using subgroup size 16
+          conv_params.weights_upload_type =
+              WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+          conv_params.simd_size = 16;
         } else {
           // no support of subgroup size control
           // only smallest subgroup size (8) can be used safely, otherwise
