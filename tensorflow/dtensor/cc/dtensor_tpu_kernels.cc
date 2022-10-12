@@ -285,6 +285,10 @@ class SetGlobalTPUArrayOpKernel : public OpKernel {
       : OpKernel(ctx) {}
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "SetGlobalTPUArrayOpKernel op";
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(0).DebugString()));
     auto tpu_topology = ctx->input(0).scalar<tstring>()();
     TF_Status* status = TF_NewStatus();
 
