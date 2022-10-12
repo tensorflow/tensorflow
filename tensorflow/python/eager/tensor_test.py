@@ -475,6 +475,24 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(
         f"{t!r}", "<tf.Tensor: shape=(), dtype=variant, value=<TensorList>>")
 
+  def testNumpyTooManyDimensions(self):
+    t = constant_op.constant(1., shape=[1] * 33)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Cannot convert tensor with 33 dimensions to NumPy array. NumPy arrays "
+        "can have at most 32 dimensions"):
+      t.numpy()
+
+  def testNumpyDimsTooBig(self):
+    # Creating a Numpy array fails in some cases if the product of non-zero
+    # dimensions is very big, even if the shape also has a zero in it.
+    t = array_ops.ones((0, 2**31, 2**31))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Failed to create numpy array from tensor of shape "
+        r"\[0, 2147483648, 2147483648\]. Numpy error.*array is too big"):
+      t.numpy()
+
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):
 
