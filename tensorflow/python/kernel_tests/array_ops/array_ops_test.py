@@ -1617,6 +1617,21 @@ class PadTest(test_util.TensorFlowTestCase):
                           [[0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 2, 3, 0, 0],
                            [0, 0, 4, 5, 6, 0, 0], [0, 0, 0, 0, 0, 0, 0]])
 
+  # b/246325518: Bad shape size. Explicitly testing different execution paths.
+  def testInvalidMirrorPadGradEagerMode(self):
+    with context.eager_mode():
+      with self.assertRaises(Exception):
+        gen_array_ops.MirrorPadGrad(
+            input=[1], paddings=[[0x77f00000, 0xa000000]], mode="REFLECT")
+
+  # b/246325518: Bad shape size. Explicitly testing different execution paths.
+  def testInvalidMirrorPadGradGraphMode(self):
+    with context.graph_mode():
+      with self.assertRaises(Exception):
+        result = gen_array_ops.MirrorPadGrad(
+            input=[1], paddings=[[0x77f00000, 0xa000000]], mode="REFLECT")
+        self.evaluate(result)
+
   def testSymmetricMirrorPadGrad(self):
     t = np.broadcast_to(np.arange(0, 7), (3, 2, 1, 7))
     paddings = constant_op.constant([
