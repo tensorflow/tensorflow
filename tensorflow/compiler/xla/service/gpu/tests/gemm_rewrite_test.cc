@@ -1800,7 +1800,7 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(2)
 ; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{[{][{]}}}: (2, {})},
 ; CHECK:           backend_config="{
@@ -1818,7 +1818,7 @@ ENTRY test {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
-; CHECK-NEXT:    ROOT [[OUT_BITCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[OUT]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
 
@@ -1854,7 +1854,7 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[6]{0} parameter(2)
 ; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           output_to_operand_aliasing={{[{][{]}}}: (2, {})},
 ; CHECK:           backend_config="{
@@ -1872,7 +1872,7 @@ ENTRY test {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
 ; CHECK:           }"
-; CHECK-NEXT:    ROOT [[OUT_BITCAST:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[OUT]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
 
@@ -2190,6 +2190,51 @@ ENTRY test {
       )");
 }
 
+TEST_F(CublasLtGemmRewriteTest, BatchedReluActivation) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3,4] parameter(0)
+  y = f32[4,5,6] parameter(1)
+  dot_a = f32[2,3,5,6] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+  c = f32[] constant(0)
+  c_bcast = f32[2,3,5,6] broadcast(c), dimensions={}
+  ROOT out = f32[2,3,5,6] maximum(dot_a, c_bcast)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+
+; CHECK-LABEL: ENTRY %test (x: f32[2,3,4], y: f32[4,5,6]) -> f32[2,3,5,6] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[2,3,4]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P0_BITCAST:%[^ ]+]] = f32[6,4]{1,0} bitcast([[P0]])
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[4,5,6]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"0\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
+      )");
+}
+
 TEST_F(CublasLtGemmRewriteTest, ReluActivationSliced) {
   const char* hlo_text = R"(
 HloModule test
@@ -2360,7 +2405,7 @@ ENTRY test {
 ; CHECK-NEXT:    [[P1_BITCAST:%[^ ]+]] = f32[4,30]{1,0}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[3,5,6]{2,1,0} parameter(2)
 ; CHECK-NEXT:    [[FUSION:%[^ ]+]] = f32[6,30]{1,0} fusion([[P2]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
+; CHECK-NEXT:    [[MATMUL:%[^ ]+]] = f32[6,30]{1,0} custom-call([[P0_BITCAST]], [[P1_BITCAST]], [[FUSION]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -2377,6 +2422,7 @@ ENTRY test {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"epilogue\":\"RELU\"
 ; CHECK:           }"
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[2,3,5,6]{3,2,1,0} bitcast([[MATMUL]])
       )");
 }
 
@@ -2521,8 +2567,8 @@ ENTRY test {
       )");
 }
 
-// For F16, the operands are padded so that the sizes of all dimensions are
-// multiples of 8.
+// For F16, the operands are padded on GPUs with Tensor Cores (i.e. Volta and
+// newer architectures) so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, VectorBiasF16Unpadded) {
   const char* hlo_text = R"(
 HloModule test
@@ -2566,6 +2612,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasF16Padded) {
+  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Padding of GEMM operands only implemented on "
+                    "architectures with Tensor Cores.";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -2611,8 +2661,8 @@ ENTRY test {
       )");
 }
 
-// For F16, the operands are padded so that the sizes of all dimensions are
-// multiples of 8.
+// For F16, the operands are padded on GPUs with Tensor Cores (i.e. Volta and
+// newer architectures) so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, ReluActivationF16Unpadded) {
   const char* hlo_text = R"(
 HloModule test
@@ -2655,6 +2705,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, ReluActivationF16Padded) {
+  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Padding of GEMM operands only implemented on "
+                    "architectures with Tensor Cores.";
+  }
   const char* hlo_text = R"(
 HloModule test
 
@@ -2744,8 +2798,8 @@ ENTRY test {
       )");
 }
 
-// For F16, the operands are padded so that the sizes of all dimensions are
-// multiples of 8.
+// For F16, the operands are padded on GPUs with Tensor Cores (i.e. Volta and
+// newer architectures) so that the sizes of all dimensions are multiples of 8.
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationF16Unpadded) {
   const char* hlo_text = R"(
 HloModule test
@@ -2792,6 +2846,10 @@ ENTRY test {
 }
 
 TEST_F(CublasLtGemmRewriteTest, VectorBiasReluActivationF16Padded) {
+  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Padding of GEMM operands only implemented on "
+                    "architectures with Tensor Cores.";
+  }
   const char* hlo_text = R"(
 HloModule test
 

@@ -313,7 +313,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                   m::Broadcast(&zeros, m::ConstantScalar(0)).WithOneUser()))) {
       TF_RETURN_IF_ERROR(FuseReluActivation(
           instr, zeros, existing_gemm,
-          (optional_slice_or_bitcast->opcode() == HloOpcode::kSlice
+          (optional_slice_or_bitcast->opcode() == HloOpcode::kSlice ||
+                   optional_slice_or_bitcast->opcode() == HloOpcode::kBitcast
                ? optional_slice_or_bitcast
                : nullptr)));
     }
@@ -340,17 +341,19 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
-  // Replaces binary(slice(gemm), broadcast) with
-  // slice(binary(gemm, broadcast)) and changes the shape of broadcast from
-  // that of slice to that of the GEMM, i.e. the operand of slice.
-  Status SinkSliceBelowBinaryOp(HloInstruction *slice, HloInstruction **binary,
-                                HloInstruction **broadcast) {
-    TF_RET_CHECK(slice->user_count() == 1);
+  // Replaces binary(slice/bitcast(gemm), broadcast) with
+  // slice/bitcast(binary(gemm, broadcast)) and changes the shape of broadcast
+  // from that of slice/bitcast to that of the GEMM, i.e. the operand of
+  // slice/bitcast.
+  Status SinkSliceOrBitcastBelowBinaryOp(HloInstruction *slice_or_bitcast,
+                                         HloInstruction **binary,
+                                         HloInstruction **broadcast) {
+    TF_RET_CHECK(slice_or_bitcast->user_count() == 1);
     TF_RET_CHECK((*broadcast)->user_count() == 1);
     TF_RET_CHECK((*binary)->IsRoot() || (*binary)->user_count() == 1);
 
     // Re-broadcast the operand of broadcast to the shape of the GEMM.
-    HloInstruction *gemm = slice->mutable_operand(0);
+    HloInstruction *gemm = slice_or_bitcast->mutable_operand(0);
     HloInstruction *new_broadcast = (*binary)->AddInstruction(
         (*broadcast)->CloneWithNewShape(gemm->shape()));
 
@@ -359,9 +362,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(
         HloInstruction * new_binary,
         MakeBinaryHlo((*binary)->opcode(), gemm, new_broadcast));
-    TF_RETURN_IF_ERROR(slice->ReplaceOperandWith(0, new_binary));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(*binary, slice));
-    *binary = slice->mutable_operand(0);
+    TF_RETURN_IF_ERROR(slice_or_bitcast->ReplaceOperandWith(0, new_binary));
+    TF_RETURN_IF_ERROR(ReplaceInstruction(*binary, slice_or_bitcast));
+    *binary = slice_or_bitcast->mutable_operand(0);
     *broadcast = new_broadcast;
 
     return OkStatus();
@@ -482,7 +485,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // add(slice(gemm), broadcast_bias) with
     // slice(add(gemm, broadcast_bias)) to enable fusing.
     if (slice) {
-      TF_RETURN_IF_ERROR(SinkSliceBelowBinaryOp(slice, &add, &broadcast_bias));
+      TF_RETURN_IF_ERROR(
+          SinkSliceOrBitcastBelowBinaryOp(slice, &add, &broadcast_bias));
       bias = broadcast_bias->mutable_operand(0);
     }
 
@@ -502,7 +506,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status FuseReluActivation(HloInstruction *maximum,
                             HloInstruction *broadcast_zeros,
                             HloInstruction *gemm,
-                            HloInstruction *slice = nullptr) {
+                            HloInstruction *slice_or_bitcast = nullptr) {
+    TF_RET_CHECK(ShapeUtil::Compatible(
+        broadcast_zeros->shape(),
+        (slice_or_bitcast ? slice_or_bitcast->shape() : gemm->shape())));
     auto out_type = gemm->shape().element_type();
     // Verify that the data type is supported by Epilogue Fusion.
     if (!SupportsEpilogueFusion(out_type)) {
@@ -526,12 +533,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    // When slicing is applied to the GEMM, replace
-    // maximum(slice(gemm), broadcast_zeros) with
-    // slice(maximum(gemm, broadcast_zeros)) to enable fusing.
-    if (slice) {
-      TF_RETURN_IF_ERROR(
-          SinkSliceBelowBinaryOp(slice, &maximum, &broadcast_zeros));
+    // When slicing or bitcasting is applied to the GEMM, replace
+    // maximum(slice/bitcast(gemm), broadcast_zeros) with
+    // slice/bitcast(maximum(gemm, broadcast_zeros)) to enable fusing.
+    if (slice_or_bitcast) {
+      TF_RETURN_IF_ERROR(SinkSliceOrBitcastBelowBinaryOp(
+          slice_or_bitcast, &maximum, &broadcast_zeros));
     }
 
     // Replace maximum(gemm, broadcast_zeros) with fused new_gemm.
