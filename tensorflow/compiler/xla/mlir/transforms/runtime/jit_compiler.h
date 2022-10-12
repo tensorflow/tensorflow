@@ -151,6 +151,8 @@ class JitCompiler {
     return *module_;
   }
 
+  size_t num_exported() const { return exported_.size(); }
+
   absl::Span<const mlir::func::FuncOp> exported() const { return exported_; }
 
   mlir::func::FuncOp exported(unsigned ordinal) const {

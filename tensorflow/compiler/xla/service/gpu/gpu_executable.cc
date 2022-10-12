@@ -677,11 +677,15 @@ static Status ExecuteXlaRuntime(
         buffer_allocations.GetDeviceAddress(temp_buffer.value()->index());
   }
 
+  // We pass a pointer to the executable through UserData, so that we can
+  // get access to other exported functions from custom call handlers.
+  runtime::Executable& executable = xla_runtime_executable->executable();
+
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data;
   user_data.insert_all(
-      run_options, &xla_runtime_executable->debug_options(), &asm_text, &binary,
-      &dm_buffer, &xla_runtime_executable->kernels_cache(),
+      &executable, run_options, &xla_runtime_executable->debug_options(),
+      &asm_text, &binary, &dm_buffer, &xla_runtime_executable->kernels_cache(),
       &xla_runtime_executable->gemm_configs_cache(),
       &xla_runtime_executable->collectives(),
       async_collectives.async_comm_stream() ? &async_collectives : nullptr);
@@ -698,7 +702,6 @@ static Status ExecuteXlaRuntime(
   opts.diagnostic_engine = &diagnostic_engine;
 
   // Execute with the prepared call frame.
-  runtime::Executable& executable = xla_runtime_executable->executable();
   executable.Execute(call_frame, opts);
 
   if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {

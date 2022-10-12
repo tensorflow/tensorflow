@@ -559,6 +559,8 @@ cc_library(
     ] + if_gpu_is_configured([
         ":cholesky_thunk",
         ":triangular_solve_thunk",
+    ]) + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service/gpu/runtime:graph_launch",
     ]),
 )
 
