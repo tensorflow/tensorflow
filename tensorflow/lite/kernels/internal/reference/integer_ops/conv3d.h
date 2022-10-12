@@ -59,20 +59,29 @@ inline void Conv3DPerChannel(
   const int32_t output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
   for (int batch = 0; batch < batches; ++batch) {
+    const int in_idx_b = batch * input_depth;
+    const int out_idx_b = batch * output_depth;
     for (int out_d = 0; out_d < output_depth; ++out_d) {
       const int in_d_origin = (out_d * params.stride_depth) - pad_depth;
+      const int out_idx_d = (out_idx_b + out_d) * output_height;
       for (int out_y = 0; out_y < output_height; ++out_y) {
         const int in_y_origin = (out_y * params.stride_height) - pad_height;
+        const int out_idx_y = (out_idx_d + out_y) * output_width;
         for (int out_x = 0; out_x < output_width; ++out_x) {
           const int in_x_origin = (out_x * params.stride_width) - pad_width;
+          const int out_idx_x = (out_idx_y + out_x) * output_num_channels;
           for (int out_channel = 0; out_channel < output_num_channels;
                ++out_channel) {
             AccumulatorType total = 0;
             for (int filter_d = 0; filter_d < filter_depth; ++filter_d) {
               const int in_d = in_d_origin + params.dilation_depth * filter_d;
+              const int in_idx_d = (in_idx_b + in_d) * input_height;
+              const int flt_idx_d = filter_d * filter_height;
               for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
                 const int in_y =
                     in_y_origin + params.dilation_height * filter_y;
+                const int in_idx_y = (in_idx_d + in_y) * input_width;
+                const int flt_idx_y = (flt_idx_d + filter_y) * filter_width;
                 for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                   const int in_x =
                       in_x_origin + params.dilation_width * filter_x;
@@ -86,14 +95,18 @@ inline void Conv3DPerChannel(
                     continue;
                   }
 
+                  int in_idx = (in_idx_y + in_x) * input_num_channels;
+                  int flt_idx = (flt_idx_y + filter_x) * input_num_channels *
+                                    output_num_channels +
+                                out_channel;
                   for (int in_channel = 0; in_channel < input_num_channels;
                        ++in_channel) {
-                    int32_t input_value = input_data[Offset(
-                        input_shape, batch, in_d, in_y, in_x, in_channel)];
+                    const int32_t input_value = input_data[in_idx];
+                    in_idx += 1;
 
-                    int32_t filter_value =
-                        filter_data[Offset(filter_shape, filter_d, filter_y,
-                                           filter_x, in_channel, out_channel)];
+                    const int32_t filter_value = filter_data[flt_idx];
+                    flt_idx += output_num_channels;
+
                     total += filter_value * (input_value + input_offset);
                   }
                 }
@@ -108,16 +121,14 @@ inline void Conv3DPerChannel(
             scaled_total += output_offset;
             scaled_total = std::max(scaled_total, output_activation_min);
             scaled_total = std::min(scaled_total, output_activation_max);
-            output_data[Offset(output_shape, batch, out_d, out_y, out_x,
-                               out_channel)] =
-                static_cast<InputType>(scaled_total);
+            const int out_idx = out_idx_x + out_channel;
+            output_data[out_idx] = static_cast<InputType>(scaled_total);
           }
         }
       }
     }
   }
 }
-
 }  // namespace reference_integer_ops
 }  // namespace tflite
 
