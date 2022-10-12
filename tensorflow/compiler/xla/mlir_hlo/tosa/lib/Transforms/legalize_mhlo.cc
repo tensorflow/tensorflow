@@ -81,7 +81,7 @@ struct ConvertMhloConcatenateOp : public OpRewritePattern<mhlo::ConcatenateOp> {
   LogicalResult matchAndRewrite(mhlo::ConcatenateOp op,
                                 PatternRewriter& rewriter) const override {
     rewriter.replaceOpWithNewOp<tosa::ConcatOp>(op, op.getResult().getType(),
-                                                op.val(), op.dimension());
+                                                op.getVal(), op.getDimension());
     return success();
   }
 };
