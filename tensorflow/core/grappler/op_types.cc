@@ -389,6 +389,10 @@ bool IsMirrorPadGrad(const NodeDef& node) {
   return node.op() == "MirrorPadGrad";
 }
 
+bool IsMklFusedMish(const NodeDef& node) {
+  return node.op() == "_MklFusedMish";
+}
+
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
