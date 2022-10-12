@@ -50940,7 +50940,9 @@ func TensorArrayConcatV3ElementShapeExcept0(value tf.Shape) TensorArrayConcatV3A
 //
 // and concatenates them into a Tensor of shape:
 //
-//	```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```
+//	```
+//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)
+//	```
 //
 // All elements must have the same shape (excepting the first dimension).
 //
