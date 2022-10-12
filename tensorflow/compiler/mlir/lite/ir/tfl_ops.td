@@ -487,18 +487,6 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index,
       `inputs[2]`: optional: the bias tensor
   }];
 
-  let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
-    I32Attr:$dilation_h_factor,
-    I32Attr:$dilation_w_factor,
-    TFL_AFAttr:$fused_activation_function,
-    TFL_PaddingAttr:$padding,
-    I32Attr:$stride_h,
-    I32Attr:$stride_w
-  );
-
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 0b1;
@@ -923,6 +911,18 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
        DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
        DynamicRangeQuantizedOpInterface]> {
+  let arguments = (
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
+    TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
+    I32Attr:$dilation_h_factor,
+    I32Attr:$dilation_w_factor,
+    TFL_AFAttr:$fused_activation_function,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -4003,7 +4003,7 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", []> {
     quantization parameters.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI8, QUI8, QI16, F16]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI4, QI8, QUI8, QI16, F16]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
 }
@@ -4110,11 +4110,11 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 
-  let results = (outs TFL_TensorOf<[QI8, QUI8, QI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QI4, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 }
 
 def TFL_DensifyOp: TFL_Op<"densify", [

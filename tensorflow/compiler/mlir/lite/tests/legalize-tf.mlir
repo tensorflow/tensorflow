@@ -147,7 +147,7 @@ func.func @softplus(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 }
 
 func.func @fakeQuantArgsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
-  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 5, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantArgsFalse
@@ -156,7 +156,7 @@ func.func @fakeQuantArgsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
 }
 
 func.func @fakeQuantArgsTrue(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
-  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = true} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 5, narrow_range = true} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantArgsTrue
@@ -167,7 +167,7 @@ func.func @fakeQuantArgsTrue(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> 
 func.func @fakeQuantVarsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
   %arg1 = "tf.Const"() { value = dense<-0.1> : tensor<f32> } : () -> tensor<f32>
   %arg2 = "tf.Const"() { value = dense<0.2> : tensor<f32> } : () -> tensor<f32>
-  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 5, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 
   // CHECK-LABEL: fakeQuantVarsFalse
@@ -176,6 +176,43 @@ func.func @fakeQuantVarsFalse(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
 }
 
 func.func @fakeQuantVarsTrue(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<8x8x8x8xf32> {
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {min = 0.0 : f32, max = 1.0 : f32, num_bits = 5, narrow_range = true} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantVarsTrue
+  // CHECK: "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {max = 1.000000e+00 : f32, min = 0.000000e+00 : f32, narrow_range = true, num_bits = 5 : i64}
+}
+
+func.func @fakeQuantArgsFalse4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantArgsFalse
+  // CHECK: "tfl.quantize"(%arg0) {qtype = tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>}
+  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>) -> tensor<8x8x8x8xf32>
+}
+
+func.func @fakeQuantArgsTrue4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {min = -0.1 : f32, max = 0.2 : f32, num_bits = 3, narrow_range = true} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantArgsTrue
+  // CHECK: "tfl.quantize"(%arg0) {qtype = tensor<8x8x8x8x!quant.uniform<u4<1:15>:f32, 0.021428571747882024:6>>} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8x!quant.uniform<u4<1:15>:f32, 0.021428571747882024:6>>
+  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<8x8x8x8x!quant.uniform<u4<1:15>:f32, 0.021428571747882024:6>>) -> tensor<8x8x8x8xf32>
+}
+
+func.func @fakeQuantVarsFalse4Bits(%arg0: tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32> {
+  %arg1 = "tf.Const"() { value = dense<-0.1> : tensor<f32> } : () -> tensor<f32>
+  %arg2 = "tf.Const"() { value = dense<0.2> : tensor<f32> } : () -> tensor<f32>
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
+  func.return %0 : tensor<8x8x8x8xf32>
+
+  // CHECK-LABEL: fakeQuantVarsFalse
+  // CHECK: "tfl.quantize"(%arg0) {qtype = tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>}
+  // CHECK: %1 = "tfl.dequantize"(%0) : (tensor<8x8x8x8x!quant.uniform<u4:f32, 0.020000000298023225:5>>) -> tensor<8x8x8x8xf32>
+}
+
+func.func @fakeQuantVarsTrue4Bits(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<8x8x8x8xf32> {
   %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {min = 0.0 : f32, max = 1.0 : f32, num_bits = 3, narrow_range = true} : (tensor<8x8x8x8xf32>, tensor<f32>, tensor<f32>) -> tensor<8x8x8x8xf32>
   func.return %0 : tensor<8x8x8x8xf32>
 

@@ -45,7 +45,8 @@ from tensorflow.lite.python.interpreter import OpResolverType
 from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.lite.python.testdata import double_op
 from tensorflow.lite.python.util import get_conversion_metadata
-from tensorflow.lite.toco import types_pb2 as _types_pb2
+# TODO(b/175659372): We should support 16x8 mode in the mlir quantizer
+# from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.lite.tools.flatbuffer_utils import convert_bytearray_to_object as _convert_bytearray_to_object
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -516,12 +517,16 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions([func], root)
     # TODO(b/156309549): We should add INT16 to the builtin types.
     converter.optimizations = [lite.Optimize.DEFAULT]
-    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.target_spec.supported_ops = [
+        lite.OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+    ]
     converter.representative_dataset = calibration_gen
-    converter._experimental_calibrate_only = True
-    calibrated_tflite = converter.convert()
-    quantized_tflite_model = mlir_quantize(
-        calibrated_tflite, inference_type=_types_pb2.QUANTIZED_INT16)
+    # TODO(b/175659372): We should support 16x8 mode in the mlir quantizer
+    # converter._experimental_calibrate_only = True
+    # calibrated_tflite = converter.convert()
+    # quantized_tflite_model = mlir_quantize(
+    #     calibrated_tflite, inference_type=_types_pb2.QUANTIZED_INT16)
+    quantized_tflite_model = converter.convert()
 
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -534,6 +539,21 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 1)
     self.assertEqual(np.float32, output_details[0]['dtype'])
+
+    # The weights tensor should be quantized to 8 bits,
+    # the bias tensor should be 32 bits to utilize optimized kernels,
+    # and the activations should be 16 bits.
+    tensor_details = interpreter.get_tensor_details()
+    # TODO(b/175659372): The old quantizer yields a 64 bit bias and a
+    # slightly different tensor order than the new one.
+    # self.assertEqual(np.int8, tensor_details[1]['dtype'])
+    # self.assertEqual(np.int32, tensor_details[0]['dtype'])
+    # self.assertEqual(np.int16, tensor_details[2]['dtype'])
+    # self.assertEqual(np.int16, tensor_details[3]['dtype'])
+    self.assertEqual(np.int8, tensor_details[2]['dtype'])
+    self.assertEqual(np.int64, tensor_details[1]['dtype'])
+    self.assertEqual(np.int16, tensor_details[0]['dtype'])
+    self.assertEqual(np.int16, tensor_details[3]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
@@ -2852,10 +2872,13 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     else:
       self.assertEqual(np.int8, quantized_weight['dtype'])
 
+  # TODO(b/242081598): The num_bits parameter should be restored to (2, 4, 6)
+  # once a 4-bit conv kernel is available.
   @parameterized.named_parameters([
       ('{}BitWeightOnly={}LowBit={}'.format(num_bits, weight_only, low_bit),
        num_bits, weight_only, low_bit) for num_bits, weight_only, low_bit
-      in itertools.product((2, 4, 6), (True, False), (True, False))])
+      in itertools.product((5, 7, 6), (True, False), (True, False))
+  ])
   @test_util.run_v2_only
   def testQATLowBitKerasModel(self, num_bits, weight_only, low_bit):
     bit_max = (1 << (num_bits - 1)) - 1
