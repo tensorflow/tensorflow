@@ -17,8 +17,12 @@
 #
 # setup.clang.sh: Clone and install Clang at HEAD.
 
-git clone https://github.com/llvm/llvm-project.git
+apt-get cmake
+git clone --depth=1 https://github.com/llvm/llvm-project.git
 cd llvm-project
+mkdir build
+cd build
 # TODO(juanantoniomc): Change "Debug" to "Release" after successful compilation
-cmake -S llvm -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE="Debug" -DLLVM_ENABLE_PROJECTS="clang"
-cmake --build build -- -j$(nproc) check-all
+cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ../llvm
+# make -j$(nproc)
+
