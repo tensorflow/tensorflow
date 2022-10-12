@@ -478,7 +478,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
 
   std::string c;
   if (use_simd_broadcast && gpu_info.IsApiOpenCl()) {
-    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0) {
+    if (gpu_info.opencl_info.cl_version == OpenClVersion::kCl2_0 ||
+        gpu_info.SupportsExtension("cl_khr_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_khr_subgroups : enable\n";
     } else if (gpu_info.SupportsExtension("cl_intel_subgroups")) {
       c += "#pragma OPENCL EXTENSION cl_intel_subgroups : enable\n";
@@ -491,7 +492,8 @@ std::string ConvGeneric::GenerateConv(const GpuInfo& gpu_info,
          std::to_string(work_group_size_.y) + ", " +
          std::to_string(work_group_size_.z) + ")))\n";
   }
-  if (use_simd_broadcast && gpu_info.IsIntel() && gpu_info.IsApiOpenCl()) {
+  if (use_simd_broadcast && gpu_info.IsIntel() && gpu_info.IsApiOpenCl() &&
+      gpu_info.SupportsExtension("cl_intel_required_subgroup_size")) {
     c += "__attribute__((intel_reqd_sub_group_size(" +
          std::to_string(simd_size) + ")))\n";
   }
@@ -1746,18 +1748,28 @@ ConvGeneric::ConvParams ConvGeneric::GuessBestParams(
           WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
       conv_params.simd_size = 8;
     }
-    if (gpu_info.IsApiOpenCl()) {
-      const int kSubGroupSize = 16;
+    if (gpu_info.IsApiOpenCl() &&
+        definition.precision != CalculationsPrecision::F32_F16) {
       const bool supports_subgroups =
           gpu_info.SupportsExtension("cl_khr_subgroups") ||
           gpu_info.SupportsExtension("cl_intel_subgroups");
-      if (definition.precision != CalculationsPrecision::F32_F16 &&
-          supports_subgroups &&
-          gpu_info.SupportsExtension("cl_intel_required_subgroup_size") &&
-          gpu_info.SupportsSubGroupWithSize(kSubGroupSize)) {
-        conv_params.weights_upload_type =
-            WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
-        conv_params.simd_size = kSubGroupSize;
+      if (supports_subgroups) {
+        const int kSubGroupSize = 16;
+        const bool supports_subgroup_size_control =
+            gpu_info.SupportsExtension("cl_intel_required_subgroup_size");
+        if (supports_subgroup_size_control &&
+            gpu_info.SupportsSubGroupWithSize(kSubGroupSize)) {
+          conv_params.weights_upload_type =
+              WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+          conv_params.simd_size = kSubGroupSize;
+        } else {
+          // no support of subgroup size control
+          // only smallest subgroup size (8) can be used safely, otherwise
+          // correctness can not be guaranteed
+          // conv_params.weights_upload_type =
+          //    WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
+          // conv_params.simd_size = 8;
+        }
       }
     }
     if (dst_depth % 4 == 0 || dst_depth >= 8) {
