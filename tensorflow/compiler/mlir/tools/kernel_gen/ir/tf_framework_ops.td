@@ -322,15 +322,15 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
   let arguments = (ins
     Optional<TFFramework_OpKernelContextType>:$ctx,
     TFFramework_JITCallableType:$callable,
-    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$operands
+    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$inputs
   );
   let results = (outs
     Res<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]> , "",
         [MemAlloc<DefaultResource>]>:$result);
 
   let assemblyFormat = [{
-    (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
-        `:` type($operands) `->` type($result)
+    (`ctx` `(` $ctx^ `)`)? $callable `(` $inputs `)` attr-dict
+        `:` type($inputs) `->` type($result)
   }];
 }
 
