@@ -984,6 +984,7 @@ cc_library(
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
+        "//tensorflow/tsl/util:env_var",
     ] + if_cuda_is_configured([
         ":buffer_comparator",
         "@local_config_cuda//cuda:cudnn_header",
@@ -1765,6 +1766,7 @@ cc_library(
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
@@ -2192,6 +2194,7 @@ cc_library(
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
