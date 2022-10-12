@@ -18,7 +18,6 @@ This module contains whatever inspect doesn't offer out of the box.
 """
 
 import builtins
-import collections
 import inspect
 import itertools
 import linecache
@@ -30,14 +29,6 @@ from tensorflow.python.util import tf_inspect
 
 # This lock seems to help avoid linecache concurrency errors.
 _linecache_lock = threading.Lock()
-
-# Cache all the builtin elements in a frozen set for faster lookup. We need to
-# skip the __spec__ element of the module as ModuleSpec is not hashable.
-_UNHASHABLE_BUILTINS = (
-    '__spec__',
-)
-_BUILTIN_FUNCTIONS = frozenset(
-    v for k, v in builtins.__dict__.items() if k not in _UNHASHABLE_BUILTINS)
 
 
 def islambda(f):
@@ -67,7 +58,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if isinstance(f, collections.Hashable) and f in _BUILTIN_FUNCTIONS:
+  if any(f is builtin for builtin in builtins.__dict__.values()):
     return True
   elif isinstance(f, types.BuiltinFunctionType):
     return True
