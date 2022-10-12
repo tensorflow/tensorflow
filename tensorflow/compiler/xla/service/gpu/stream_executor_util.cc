@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/determinism.h"
 #include "tensorflow/tsl/util/env_var.h"
 #include "tensorflow/tsl/util/proto/proto_utils.h"
 
@@ -510,7 +510,7 @@ bool RequireDeterminism(const HloModuleConfig& config) {
                                         &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return tensorflow::OpDeterminismRequired() || require_cudnn_determinism ||
+  return tsl::OpDeterminismRequired() || require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
