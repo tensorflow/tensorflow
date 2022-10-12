@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <iterator>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,14 +30,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -1767,7 +1767,7 @@ bool AggressiveConcatOperandShardingCanPassThrough(
        concat_operand->operand(0)->opcode() == HloOpcode::kGetTupleElement));
 }
 
-// DyanmicSlice or DynamicUpdateSlice handling for InferShardingFromOperands().
+// DynamicSlice or DynamicUpdateSlice handling for InferShardingFromOperands().
 bool InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
     HloInstruction* instruction, int64_t aggressiveness,
     bool may_combine_partial_sharding) {
@@ -1922,37 +1922,36 @@ bool ShardingPropagation::InferShardingFromOperands(
         return false;
       }
       const Shape& shape = instruction->shape();
-      bool changed = false;
       if (!instruction->has_sharding()) {
-        // Set the sharding for all elements in the tuple because it isn't
-        // possible to set a partial sharding.
-        changed = true;
+        // Propagate sharding from operands to the tuple output. If an operand
+        // does not have a sharding, set the corresponding output sharding as
+        // replicated so that it could be refined further.
+        std::vector<HloSharding> sub_shardings;
+
+        auto add_sub_sharding = [&sub_shardings](const HloSharding& sharding) {
+          if (!sharding.IsTuple()) {
+            sub_shardings.push_back(sharding);
+            return;
+          }
+          const auto& elements = sharding.tuple_elements();
+          sub_shardings.insert(sub_shardings.end(), elements.begin(),
+                               elements.end());
+        };
+
         for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
           const HloInstruction* operand = instruction->operand(i);
           if (!operand->has_sharding()) {
-            continue;
-          }
-          if (operand->sharding().IsTuple()) {
-            if (operand->sharding().tuple_elements().empty()) {
-              continue;
+            HloSharding replicate = HloSharding::Replicate();
+            if (operand->shape().IsTuple()) {
+              replicate = HloSharding::SingleTuple(operand->shape(), replicate);
             }
-            // Use ReplicateAllDataDims to preserve manual subgroups.
-            instruction->set_sharding(HloSharding::SingleTuple(
-                instruction->shape(),
-                hlo_sharding_util::ReplicateAllDataDims(
-                    operand->sharding().tuple_elements()[0])
-                    .WithoutMetadata()));
+            add_sub_sharding(replicate);
           } else {
-            instruction->set_sharding(HloSharding::SingleTuple(
-                instruction->shape(),
-                hlo_sharding_util::ReplicateAllDataDims(operand->sharding())
-                    .WithoutMetadata()));
+            add_sub_sharding(operand->sharding());
           }
-          break;
         }
-      }
-      if (!instruction->has_sharding()) {
-        return false;
+        instruction->set_sharding(HloSharding::Tuple(shape, sub_shardings));
+        return true;
       }
       // Go through each operand and if the operand has a sharding that is
       // better than the current sharding for that tuple element then update
@@ -1988,7 +1987,7 @@ bool ShardingPropagation::InferShardingFromOperands(
         instruction->set_sharding(std::move(new_sharding));
         return true;
       }
-      return changed;
+      return false;
     }
     case HloOpcode::kReduce: {
       // Reduce could have a tuple shape, where the first half of operands are
