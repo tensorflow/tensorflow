@@ -28,7 +28,9 @@ limitations under the License.
 #include "dnnl_threadpool.hpp"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 #define EIGEN_USE_THREADS
 
 namespace tensorflow {
@@ -89,18 +91,44 @@ struct MklDnnThreadPool : public threadpool_iface {
     int nthr = get_num_threads();
     int njobs = std::min(n, nthr);
     bool balance = (nthr < n);
-    for (int i = 0; i < njobs; i++) {
-      eigen_interface_->ScheduleWithHint(
-          [balance, i, n, njobs, fn]() {
-            if (balance) {
-              int start, end;
-              balance211(n, njobs, i, &start, &end);
-              for (int j = start; j < end; j++) fn(j, n);
-            } else {
-              fn(i, n);
-            }
-          },
-          i, i + 1);
+
+    if (ThreadPoolUseCallerThread() && nthr == port::NumSchedulableCPUs()) {
+      // schedule njobs-1 jobs to thread pool
+      for (int i = 0; i < njobs - 1; i++) {
+        eigen_interface_->ScheduleWithHint(
+            [balance, i, n, njobs, fn]() {
+              if (balance) {
+                int start, end;
+                balance211(n, njobs, i, &start, &end);
+                for (int j = start; j < end; j++) fn(j, n);
+              } else {
+                fn(i, n);
+              }
+            },
+            i, i + 1);
+      }
+      // run last job in caller thread
+      if (balance) {
+        int start, end;
+        balance211(n, njobs, njobs - 1, &start, &end);
+        for (int j = start; j < end; j++) fn(j, n);
+      } else {
+        fn(n - 1, n);
+      }
+    } else {
+      for (int i = 0; i < njobs; i++) {
+        eigen_interface_->ScheduleWithHint(
+            [balance, i, n, njobs, fn]() {
+              if (balance) {
+                int start, end;
+                balance211(n, njobs, i, &start, &end);
+                for (int j = start; j < end; j++) fn(j, n);
+              } else {
+                fn(i, n);
+              }
+            },
+            i, i + 1);
+      }
     }
   }
   ~MklDnnThreadPool() {}
