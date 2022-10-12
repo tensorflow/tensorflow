@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/util/determinism.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tensorflow/tsl/util/env_var.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -545,8 +545,8 @@ StatusOr<AutotuneResult> PickBestResult(
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+          return tsl::proto_utils::FromDurationProto(lhs.run_time()) <
+                 tsl::proto_utils::FromDurationProto(rhs.run_time());
         });
   }
   return *selected_result;

@@ -39,10 +39,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/util/env_var.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -542,7 +542,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
   tensorflow::AutotuneResult result;
   *result.mutable_algorithm() = alg.ToProto();
   result.set_scratch_bytes(scratch_bytes_used);
-  *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+  *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(
       absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
   if (!ShouldCheckConv(instr)) {
@@ -848,7 +848,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     // needed, plumb it via OpRunner; we'll need to do this to let TF ops avoid
     // re-profiling ROCm algorithms anyway.
     *result.mutable_run_time() =
-        tensorflow::proto_utils::ToDurationProto(absl::Milliseconds(-1));
+        tsl::proto_utils::ToDurationProto(absl::Milliseconds(-1));
   } else {
     TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
     for (auto& runner : runners) {
@@ -894,7 +894,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 
       int64_t scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       result.set_scratch_bytes(scratch_bytes_used);
-      *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+      *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }
