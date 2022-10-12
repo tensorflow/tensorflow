@@ -351,8 +351,8 @@ def THLO_SortOp : THLO_DstStyleOp<"sort", [RecursiveSideEffects,
     // Output args
     Variadic<TensorOrMemref>:$inits,
 
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$dimension,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$is_stable
+    I64Attr:$dimension,
+    BoolAttr:$is_stable
   );
 
   let results = (outs Variadic<AnyTensor>:$result);
