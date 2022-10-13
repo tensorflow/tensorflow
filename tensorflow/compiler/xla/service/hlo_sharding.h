@@ -20,6 +20,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
 
 #include <map>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
