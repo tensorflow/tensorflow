@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -58,20 +59,42 @@ class BufferDesc {
 class XlaRuntimeCpuExecutable {
  public:
   explicit XlaRuntimeCpuExecutable(
-      std::unique_ptr<xla::runtime::JitExecutable> jit_executable,
+      std::unique_ptr<runtime::JitExecutable> jit_executable,
       const XlaFrameworkMapping& xla_framework_mapping)
-      : jit_executable_(std::move(jit_executable)),
-        default_executable_(&jit_executable_->DefaultExecutable().get()),
+      : executable_(std::move(jit_executable)),
         xla_framework_mapping_(xla_framework_mapping) {}
+
+  explicit XlaRuntimeCpuExecutable(
+      std::unique_ptr<runtime::Executable> executable,
+      const XlaFrameworkMapping& xla_framework_mapping)
+      : executable_(std::move(executable)),
+        xla_framework_mapping_(xla_framework_mapping) {}
+
   Status Execute(const std::vector<BufferDesc>& descriptor_table);
-  xla::runtime::Executable& default_executable() {
-    return *default_executable_;
+
+  runtime::Executable& GetExecutable() {
+    if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      runtime::JitExecutable* jit_executable =
+          std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+      return *jit_executable->DefaultExecutable();
+    } else {
+      runtime::Executable* aot_executable =
+          std::get<std::unique_ptr<runtime::Executable>>(executable_).get();
+      return *aot_executable;
+    }
   }
 
   StatusOr<std::string> GetObjFile() const {
-    std::unique_ptr<llvm::MemoryBuffer> obj_file =
-        jit_executable_->DefaultExecutable()->obj_file();
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
+    }
 
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+    std::unique_ptr<llvm::MemoryBuffer> obj_file =
+        jit_executable->DefaultExecutable()->obj_file();
     if (!obj_file)
       return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
 
@@ -81,14 +104,25 @@ class XlaRuntimeCpuExecutable {
   }
 
   StatusOr<std::string> GetMlirModule() const {
-    return jit_executable_->mlir_module();
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
+    }
+
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+    return jit_executable->mlir_module();
   }
 
   XlaFrameworkMapping xla_framework_mapping() { return xla_framework_mapping_; }
 
  private:
-  std::unique_ptr<xla::runtime::JitExecutable> jit_executable_;
-  xla::runtime::Executable* default_executable_;  // owned by jit_executable_.
+  // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
+  // `Executable` is used.
+  std::variant<std::unique_ptr<runtime::JitExecutable>,
+               std::unique_ptr<runtime::Executable>>
+      executable_;
+
   XlaFrameworkMapping xla_framework_mapping_;
 };
 
