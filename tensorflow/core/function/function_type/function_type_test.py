@@ -21,6 +21,7 @@ from absl.testing import parameterized
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.function_type import function_type
 from tensorflow.python.platform import test
+from tensorflow.python.types import trace
 
 
 class FunctionTypeTest(test.TestCase):
@@ -301,11 +302,7 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(mono_type, expected_type)
 
-  @parameterized.parameters(
-      args_1_2,
-      args_1_kwargs_y_2,
-      kwargs_x_1_y_2
-  )
+  @parameterized.parameters(args_1_2, args_1_kwargs_y_2, kwargs_x_1_y_2)
   def test_optional_some(self, args, kwargs):
 
     def foo(x=1, y=2, z=3):
@@ -502,6 +499,125 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(mono_type, expected_type)
 
+
+class TypeHierarchyTest(test.TestCase):
+
+  def test_same_type(self):
+    foo_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(1))
+    ])
+    self.assertEqual(foo_type, foo_type)
+    self.assertTrue(foo_type.is_supertype_of(foo_type))
+    self.assertEqual(
+        foo_type,
+        foo_type.most_specific_common_subtype([foo_type, foo_type, foo_type]))
+
+  def test_unrelated_types(self):
+    foo_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(1))
+    ])
+    bar_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(2))
+    ])
+    self.assertNotEqual(foo_type, bar_type)
+    self.assertFalse(foo_type.is_supertype_of(bar_type))
+    self.assertIsNone(
+        foo_type.most_specific_common_subtype([bar_type, bar_type]))
+    self.assertIsNone(
+        foo_type.most_specific_common_subtype([bar_type, foo_type]))
+
+  def test_partial_raises_error(self):
+    foo_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(1)),
+    ])
+    bar_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, None)
+    ])
+    self.assertNotEqual(foo_type, bar_type)
+
+    with self.assertRaises(TypeError):
+      foo_type.is_supertype_of(bar_type)
+
+    with self.assertRaises(TypeError):
+      bar_type.is_supertype_of(foo_type)
+
+    with self.assertRaises(TypeError):
+      foo_type.most_specific_common_subtype([bar_type, bar_type])
+
+    with self.assertRaises(TypeError):
+      bar_type.most_specific_common_subtype([foo_type, bar_type])
+
+  def test_related_types(self):
+
+    class MockAlwaysSuperType(trace.TraceType):
+
+      def is_subtype_of(self, other: trace.TraceType) -> bool:
+        return False
+
+      def most_specific_common_supertype(self, others):
+        return self
+
+      def __eq__(self, other):
+        return self is other
+
+      def __hash__(self):
+        return 0
+
+    supertype = MockAlwaysSuperType()
+
+    class MockAlwaysSubtype(trace.TraceType):
+
+      def is_subtype_of(self, other) -> bool:
+        return True
+
+      def most_specific_common_supertype(self, others):
+        return supertype
+
+      def __eq__(self, other):
+        return self is other
+
+      def __hash__(self):
+        return 1
+
+    subtype = MockAlwaysSubtype()
+
+    foo_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, supertype),
+    ])
+    bar_type = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, subtype)
+    ])
+
+    self.assertNotEqual(foo_type, bar_type)
+    self.assertTrue(bar_type.is_supertype_of(foo_type))
+    self.assertFalse(foo_type.is_supertype_of(bar_type))
+
+    self.assertEqual(
+        foo_type.most_specific_common_subtype([bar_type, foo_type]), foo_type)
+    self.assertEqual(
+        bar_type.most_specific_common_subtype([bar_type, foo_type]), foo_type)
+
+  def test_placeholder_arg(self):
+    type_context = trace_type.InternalTracingContext()
+    foo = function_type.FunctionType([
+        function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                                False, trace_type.from_value(1, type_context)),
+        function_type.Parameter("y",
+                                function_type.Parameter.POSITIONAL_OR_KEYWORD,
+                                False, trace_type.from_value(2, type_context)),
+        function_type.Parameter("z", function_type.Parameter.KEYWORD_ONLY,
+                                False, trace_type.from_value(3, type_context)),
+    ])
+
+    self.assertEqual(foo.placeholder_arguments().args, (1, 2))
+    self.assertEqual(foo.placeholder_arguments().kwargs, {"z": 3})
 
 if __name__ == "__main__":
   test.main()

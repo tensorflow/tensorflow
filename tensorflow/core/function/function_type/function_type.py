@@ -14,8 +14,9 @@
 # ==============================================================================
 """Represents the types of TF functions."""
 
+import collections
 import inspect
-from typing import Any, Callable, Dict, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 from tensorflow.core.function import trace_type
 from tensorflow.python.types import trace
@@ -59,6 +60,39 @@ class Parameter(inspect.Parameter):
   def type_constraint(self) -> Optional[trace.TraceType]:
     """A supertype that the parameter's type must subtype for validity."""
     return self.annotation if self.annotation is not self.empty else None
+
+  def is_subtype_of(self, other: "Parameter") -> bool:
+    """Returns True if self is a supertype of other Parameter."""
+    if not self.type_constraint or not other.type_constraint:
+      raise TypeError(
+          "Can not determine relationship between partially specified types.")
+
+    if ((self.name, self.kind, self.optional) !=
+        (other.name, other.kind, other.optional)):
+      return False
+
+    return self.type_constraint.is_subtype_of(other.type_constraint)
+
+  def most_specific_common_supertype(
+      self, others: Sequence["Parameter"]) -> Optional["Parameter"]:
+    """Returns a common supertype (if exists)."""
+    if not self.type_constraint or any(
+        not other.type_constraint for other in others):
+      raise TypeError(
+          "Can not determine relationship between partially specified types.")
+
+    for other in others:
+      if ((self.name, self.kind, self.optional) !=
+          (other.name, other.kind, other.optional)):
+        return None
+
+    supertyped_constraint = self.type_constraint.most_specific_common_supertype(
+        [other.type_constraint for other in others])
+    if supertyped_constraint:
+      return Parameter(self.name, self.kind, self.optional,
+                       supertyped_constraint)
+    else:
+      return None
 
   def __repr__(self):
     return ("Parameter(name=" + self.name + ", kind" + str(self.kind) +
@@ -111,6 +145,53 @@ class FunctionType(inspect.Signature):
         default_values[p.name] = p.default
     return default_values
 
+  def is_supertype_of(self, other: "FunctionType") -> bool:
+    """Returns True if self is a supertype of other FunctionType."""
+    if len(self.parameters) != len(other.parameters):
+      return False
+
+    for self_param, other_param in zip(self.parameters.values(),
+                                       other.parameters.values()):
+      # Functions are contravariant on their parameter types.
+      if not self_param.is_subtype_of(other_param):
+        return False
+
+    return True
+
+  def most_specific_common_subtype(
+      self, others: Sequence["FunctionType"]) -> Optional["FunctionType"]:
+    """Returns a common subtype (if exists)."""
+    subtyped_parameters = []
+
+    for i, parameter in enumerate(self.parameters.values()):
+      # Functions are contravariant on their parameter types.
+      subtyped_parameter = parameter.most_specific_common_supertype(
+          [list(other.parameters.values())[i] for other in others])
+      if subtyped_parameter is None:
+        return None
+      subtyped_parameters.append(subtyped_parameter)
+
+    if all(subtyped_parameters):
+      return FunctionType(subtyped_parameters)
+    else:
+      return None
+
+  def placeholder_arguments(self) -> inspect.BoundArguments:
+    """Returns BoundArguments of values that can be used for tracing."""
+    arguments = collections.OrderedDict()
+    for parameter in self.parameters.values():
+      if parameter.kind in {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}:
+        raise ValueError("Can not generate placeholder values for "
+                         "variable length function type.")
+
+      if not parameter.type_constraint:
+        raise ValueError("Can not generate placeholder value for "
+                         "partially defined function type.")
+
+      arguments[parameter.name] = parameter.type_constraint._placeholder_value()    # pylint: disable=protected-access
+
+    return inspect.BoundArguments(self, arguments)
+
   def __repr__(self):
     return ("FunctionType(" +
             ", ".join([repr(p) for p in self.parameters.values()]) + ")")
@@ -142,8 +223,8 @@ def canonicalize_to_monomorphic(
     if poly_parameter.kind is Parameter.VAR_POSITIONAL:
       for i, value in enumerate(arg):
         parameters.append(
-            _make_validated_mono_param(f"{poly_parameter.name}_{i}",
-                                       value, Parameter.POSITIONAL_ONLY,
+            _make_validated_mono_param(f"{poly_parameter.name}_{i}", value,
+                                       Parameter.POSITIONAL_ONLY,
                                        monomorphic_type_context,
                                        poly_parameter.type_constraint))
     elif poly_parameter.kind is Parameter.VAR_KEYWORD:
