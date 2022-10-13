@@ -177,6 +177,64 @@ struct ConvertMhloDotOp : public OpRewritePattern<mhlo::DotOp> {
   }
 };
 
+// TODO(jennik): Consider the case of a non-constant expansion.
+struct ConvertMhloIotaOp : public OpRewritePattern<mhlo::IotaOp> {
+  using OpRewritePattern<mhlo::IotaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::IotaOp op,
+                                PatternRewriter& rewriter) const override {
+    auto resultType = op.getResult().getType();
+    auto elementType = resultType.cast<ShapedType>().getElementType();
+    auto resultRankedType = resultType.dyn_cast<RankedTensorType>();
+
+    if (!resultRankedType) {
+      return rewriter.notifyMatchFailure(op, "result tensor must be ranked");
+    }
+    if (!resultRankedType.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "result tensor must be static");
+    }
+
+    auto resultShape = resultRankedType.getShape();
+    auto iotaDimension = op.getIotaDimension();
+    int64_t iotaArrayLength = resultShape[iotaDimension];
+
+    // Create a const op of [0, 1, 2...iotaArrayLength - 1] to be tiled.
+    llvm::SmallVector<mlir::Attribute, 4> constValues;
+    constValues.resize(iotaArrayLength);
+    for (int i = 0; i < iotaArrayLength; i++) {
+      if (elementType.isa<FloatType>()) {
+        constValues[i] = rewriter.getFloatAttr(elementType, i);
+      } else {
+        constValues[i] = rewriter.getIntegerAttr(elementType, i);
+      }
+    }
+
+    RankedTensorType constType =
+        RankedTensorType::get(iotaArrayLength, elementType);
+    auto constOp = rewriter.create<tosa::ConstOp>(
+        op.getLoc(), constType, DenseElementsAttr::get(constType, constValues));
+
+    // Create the multiples attr for the tile op, where all dimensions except
+    // the iota dimension are multiplied.
+    llvm::SmallVector<int64_t, 4> tileMultiples;
+    size_t tileMultiplesSize = resultShape.size();
+    tileMultiples.resize(tileMultiplesSize);
+
+    for (int i = 0; i < tileMultiplesSize; i++) {
+      if (i == iotaDimension) {
+        tileMultiples[i] = 1;
+      } else {
+        tileMultiples[i] = resultShape[i];
+      }
+    }
+
+    // Tile the const array to the result shape of the iota op.
+    rewriter.replaceOpWithNewOp<tosa::TileOp>(
+        op, resultType, constOp, rewriter.getI64ArrayAttr(tileMultiples));
+    return success();
+  }
+};
+
 struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
   using OpRewritePattern<mhlo::ReduceOp>::OpRewritePattern;
 
@@ -305,6 +363,7 @@ LogicalResult LegalizeMhlo::initialize(MLIRContext* ctx) {
   patternList.addWithLabel<ConvertMhloCompareOp>({"MhloCompare"}, ctx);
   patternList.addWithLabel<ConvertMhloConcatenateOp>({"MhloConcatenate"}, ctx);
   patternList.addWithLabel<ConvertMhloDotOp>({"MhloDot"}, ctx);
+  patternList.addWithLabel<ConvertMhloIotaOp>({"MhloIota"}, ctx);
   patternList.addWithLabel<ConvertMhloReduceOp>({"MhloReduce"}, ctx);
   patternList.addWithLabel<ConvertMhloSliceOp>({"MhloSlice"}, ctx);
   patternList.addWithLabel<ConvertMhloTransposeOp>({"MhloTranspose"}, ctx);
