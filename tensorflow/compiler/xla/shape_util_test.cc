@@ -632,8 +632,10 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
   int init = 5;
-  auto set_func = [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
   };
 
   ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},

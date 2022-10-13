@@ -25,6 +25,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -193,6 +194,23 @@ const Shape* TryInternShape(const Shape& shape) {
 }  // namespace
 
 LiteralBase::~LiteralBase() {}
+
+const Shape& LiteralBase::shape() const { return root_piece().subshape(); }
+
+const char* LiteralBase::Piece::buffer() const {
+  return std::visit(BufferVisitor{}, rep_);
+}
+
+const LiteralBase::Piece& LiteralBase::piece(
+    const ShapeIndex& shape_index) const {
+  Piece* piece = &const_cast<Piece&>(root_piece());
+  for (const auto i : shape_index) {
+    DCHECK_GE(i, 0);
+    DCHECK_LT(i, piece->children_size());
+    piece = &piece->child(i);
+  }
+  return *piece;
+}
 
 std::ostream& operator<<(std::ostream& out, const Literal& literal) {
   out << literal.ToString();
