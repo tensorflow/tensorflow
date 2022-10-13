@@ -164,8 +164,7 @@ absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
-      GetCommonOpenCLDefines(operation_->GetDefinition().precision) +
-      operation_->code_;
+      GetCommonOpenCLDefines(operation_->GetPrecision()) + operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       creation_context.context, &operation_->args_, &operation_->code_));

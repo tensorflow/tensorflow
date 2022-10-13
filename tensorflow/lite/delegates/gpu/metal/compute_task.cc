@@ -200,7 +200,7 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
   ReplaceAllWords("half16", "half4x4", &operation_->code_);
   ReplaceAllWords("float8", "float2x4", &operation_->code_);
   ReplaceAllWords("half8", "half2x4", &operation_->code_);
-  defines_ = GetMetalDefines(device, operation_->GetDefinition().precision);
+  defines_ = GetMetalDefines(device, operation_->GetPrecision());
   return CompileProgram(device, operation_->code_, defines_);
 }
 
