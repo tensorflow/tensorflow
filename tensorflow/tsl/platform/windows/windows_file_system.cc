@@ -320,10 +320,22 @@ static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool isE
   #define MAX_PATH_LONG 400
   WCHAR path[MAX_PATH_LONG];
 
+  // boundary case check
+  if (linkPath.size() >= MAX_PATH_LONG) {
+    string context = "ERROR: GetSymbolicLinkTarget cannot handle path size >= " + std::to_string(MAX_PATH_LONG) + ", " + WideCharToUtf8(linkPath);
+    VLOG(0) << context;
+    return linkPath;
+  }
+
   auto rcode = GetFullPathNameW(linkPath.c_str(), MAX_PATH_LONG, path, NULL);
-  std::wcout << "GetSymbolicLinkTarget GetFullPathNameW for " << linkPath.c_str() << " => rcode=" << rcode << " , " << path << "\n";
+  VLOG(5) << "GetSymbolicLinkTarget GetFullPathNameW for " << linkPath.c_str() << " => rcode=" << rcode << " , " << path << "\n";
   std::wstring path2(path);
-  std::wstring uncLinkPath = L"\\\\?\\" + path2;
+  std::wstring uncLinkPath;
+  if (path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\') {
+    uncLinkPath = path2;
+  } else {
+    uncLinkPath = L"\\\\?\\" + path2;
+  }
   if(isExisting) {
     HANDLE hFile = ::CreateFileW( uncLinkPath.c_str(),
     // HANDLE hFile = ::CreateFileW( linkPath.c_str(),
@@ -345,7 +357,7 @@ static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool isE
       }
     } else {
       DWORD dwErr = GetLastError();
-      std::wcout << "Cannot GetSymbolicLinkTarget for " << uncLinkPath.c_str() << " GetLastError: " << dwErr << "\n";
+      VLOG(0) << "ERROR: GetSymbolicLinkTarget cannot open file for " << uncLinkPath.c_str() << " GetLastError: " << dwErr << "\n";
     }
   }
 
@@ -358,8 +370,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
-  std::wcout << "WindowsFileSystem::NewRandomAccessFile 0 => " << ws_final_fname << "\n";
-  // std::cout << "WindowsFileSystem::NewRandomAccessFile 1 => " << fname << "\n";
+  VLOG(5) << "WindowsFileSystem::NewRandomAccessFile 0 => " << ws_final_fname.c_str() << "\n";
   result->reset();
 
   // Open the file for read-only random access
@@ -389,7 +400,7 @@ Status WindowsFileSystem::NewWritableFile(
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, false);
-  std::wcout << "WindowsFileSystem::NewWritableFile 0 => " << ws_final_fname << "\n";
+  VLOG(5) << "WindowsFileSystem::NewWritableFile => " << ws_final_fname.c_str() << "\n";
   result->reset();
 
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -565,9 +576,10 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 Status WindowsFileSystem::DeleteFile(const string& fname,
                                      TransactionToken* token) {
   Status result;
-  std::wstring file_name = Utf8ToWideChar(fname);
-  std::cout << "WindowsFileSystem::DeleteFile => " << fname << "\n";
-  if (_wunlink(file_name.c_str()) != 0) {
+  std::wstring ws_fname = Utf8ToWideChar(fname);
+  std::wstring ws_fname_final = GetSymbolicLinkTarget(ws_fname, true);
+  VLOG(5) << "WindowsFileSystem::DeleteFile => " << ws_fname_final.c_str() << "\n";
+  if (_wunlink(ws_fname_final.c_str()) != 0) {
   //if (_wremove(file_name.c_str()) != 0) {
     // while (int fh1 = _wopen(file_name.c_str(), _O_RDONLY == 0) {
     //   _close( fh1 );
@@ -645,12 +657,12 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   WIN32_FIND_DATAW ffd;
   LARGE_INTEGER filesize;
   // HANDLE hFind = FindFirstFileW(ws_name.c_str(), &ffd);
-  std::cout << "WindowsFileSystem::DeleteDir => " << name.c_str() << "\n";
+  VLOG(5) << "WindowsFileSystem::DeleteDir => " << name.c_str() << "\n";
 
-  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, true);
+  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, false);
   std::string s2( ws1.begin(), ws1.end() );
   string cmd1 = std::string("dir ") + s2;
-  std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
+  VLOG(5) << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
   // string cmd2 = cmd1 + "\\..";
   // std::cout << cmd2 << " -> " << windows_exec(cmd2.c_str()) << "\n";
   // cmd2 = "cd";
@@ -666,9 +678,11 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   //     filesize.HighPart = ffd.nFileSizeHigh;
   //     _tprintf(TEXT("  %s   %ld bytes\n"), ffd.cFileName, filesize.QuadPart);
   // }
-  if (RemoveDirectoryW (ws1.c_str()) == 0) {
+
+  if (RemoveDirectoryW (ws_name.c_str()) == 0) {
+  // if (RemoveDirectoryW (ws1.c_str()) == 0) {
   // if (_DeleteDirectory (ws1.c_str()) == 0) {
-    std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
+    VLOG(0) << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
     result = IOError("Failed to remove a directory: " + name, errno);
   }
   return result;
@@ -730,11 +744,11 @@ int _DelDirRecursive2(const std::wstring &dirname) {
         {
           hr = pfo->PerformOperations();
         } else {
-          std::cout << "_DelDirRecursive2 => DeleteItem FAILED for " << dirname.c_str() << "\n";
+          VLOG(0) << "_DelDirRecursive2 => DeleteItem FAILED for " << dirname.c_str() << "\n";
         }
         pfo->Release();
     } else {
-      std::cout << "_DelDirRecursive2 => CreateAndInitializeFileOperation FAILED for " << dirname.c_str() << "\n";
+      VLOG(0) << "_DelDirRecursive2 => CreateAndInitializeFileOperation FAILED for " << dirname.c_str() << "\n";
     }
   }
   return (int)hr;
@@ -803,7 +817,7 @@ void recursiveDeleteDirectory(const std::wstring &path) {
             std::string s2( filePath.begin(), filePath.end() );
             string cmd1 = std::string("dir ") + s2;
             // std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
-            std::cout << cmd1 << " , DeleteFileW FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "<-- lastError=" << lastError << "\n";
+            VLOG(0) << cmd1 << " , DeleteFileW FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "<-- lastError=" << lastError << "\n";
             throw std::runtime_error("Could not delete file");
           }
         }
@@ -829,7 +843,7 @@ void recursiveDeleteDirectory(const std::wstring &path) {
     std::string s2( path.begin(), path.end() );
     string cmd1 = std::string("dir ") + s2;
     // std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
-    std::cout << cmd1 << " , RemoveDirectoryW FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "<-- lastError=" << lastError << "\n";
+    VLOG(0) << cmd1 << " , RemoveDirectoryW FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "<-- lastError=" << lastError << "\n";
     // result = IOError("Failed to remove a directory 818: " + dirname, errno);
     throw std::runtime_error("Could not remove directory");
   }
@@ -843,12 +857,13 @@ Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
   Status result;
   std::wstring ws_name = Utf8ToWideChar(dirname);
 
-  std::cout << "WindowsFileSystem::DeleteRecursively => " << dirname.c_str() << "\n";
+  VLOG(5) << "WindowsFileSystem::DeleteRecursively => " << dirname.c_str() << "\n";
 
-  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, true);
-  std::string s2( ws1.begin(), ws1.end() );
-  string cmd1 = std::string("dir ") + s2;
-  std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
+  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, false);
+  // DEBUG
+  // std::string s2( ws1.begin(), ws1.end() );
+  // string cmd1 = std::string("dir ") + s2;
+  // std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
 
 
   // IShellItem *pSI;
@@ -867,9 +882,13 @@ Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
   // std::cout << cmd1 << " PASS 1 -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
   // DeleteDir(dirname, NULL);
   // std::cout << cmd1 << " PASS 2 -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
-  recursiveDeleteDirectory(ws1);
-  result = OkStatus();
-  return result;
+
+  std::string dirname_final( ws1.begin(), ws1.end() );
+  return FileSystem::DeleteRecursively(dirname_final, token, undeleted_files, undeleted_dirs);
+  // ALTERNATE
+  // recursiveDeleteDirectory(ws1);
+  // result = OkStatus();
+  // return result;
 }
 
 Status WindowsFileSystem::GetFileSize(const string& fname,
@@ -879,15 +898,15 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
-  std::wcout << "WindowsFileSystem::GetFileSize 0 => " << ws_final_fname << "\n";
-  std::cout << "WindowsFileSystem::GetFileSize 1 => " << fname << "\n";
+  VLOG(5) << "WindowsFileSystem::GetFileSize 0 => " << ws_final_fname.c_str() << "\n";
+  // std::cout << "WindowsFileSystem::GetFileSize 1 => " << fname << "\n";
   if (TRUE == ::GetFileAttributesExW(ws_final_fname.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
     ULARGE_INTEGER file_size;
     file_size.HighPart = attrs.nFileSizeHigh;
     file_size.LowPart = attrs.nFileSizeLow;
     *size = file_size.QuadPart;
-    std::cout << "WindowsFileSystem::GetFileSize => GetFileAttributesExW H/L/Q => " << file_size.HighPart << 
+    VLOG(5) << "WindowsFileSystem::GetFileSize => GetFileAttributesExW H/L/Q => " << file_size.HighPart << 
       " " << file_size.LowPart << " " << file_size.QuadPart << "\n";
   } else {
     string context = "Can not get size for: " + fname;
