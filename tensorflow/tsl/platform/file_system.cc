@@ -147,6 +147,11 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     std::vector<string> children;
     // GetChildren might fail if we don't have appropriate permissions.
     Status s = GetChildren(dir, &children);
+    std::cout << "FileSystem::DeleteRecursively GetChildren => " << dir << "\n";
+    for (const string& child : children) {
+      std::cout << child << ", ";
+    }
+    std::cout << "\n";
     ret.Update(s);
     if (!s.ok()) {
       (*undeleted_dirs)++;
@@ -171,6 +176,11 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   // Now reverse the list of directories and delete them. The BFS ensures that
   // we can delete the directories in this order.
   std::reverse(dir_list.begin(), dir_list.end());
+  std::cout << "FileSystem::DeleteRecursively => " << dirname << "\n";
+  for (const string& dir : dir_list) {
+    std::cout << dir << ", ";
+  }
+  std::cout << "\n";
   for (const string& dir : dir_list) {
     // Delete dir might fail because of permissions issues or might be
     // unimplemented.

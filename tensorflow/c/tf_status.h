@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_STATUS_H_
 #define TENSORFLOW_C_TF_STATUS_H_
 
+#define TF_COMPILE_LIBRARY
+
 #ifdef SWIG
 #define TF_CAPI_EXPORT
 #else

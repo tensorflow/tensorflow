@@ -22,10 +22,18 @@ limitations under the License.
 #include <fcntl.h>
 #include <io.h>
 #undef StrCat
+#include <tchar.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <time.h>
+#include <shellapi.h>
+#include <shlobj.h>
+#include <Shobjidl.h>
+#include <Combaseapi.h>
+
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "ole32.lib")
 
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -308,11 +316,50 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 }  // namespace
 
+static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool isExisting = true) {
+  #define MAX_PATH_LONG 400
+  WCHAR path[MAX_PATH_LONG];
+
+  auto rcode = GetFullPathNameW(linkPath.c_str(), MAX_PATH_LONG, path, NULL);
+  std::wcout << "GetSymbolicLinkTarget GetFullPathNameW for " << linkPath.c_str() << " => rcode=" << rcode << " , " << path << "\n";
+  std::wstring path2(path);
+  std::wstring uncLinkPath = L"\\\\?\\" + path2;
+  if(isExisting) {
+    HANDLE hFile = ::CreateFileW( uncLinkPath.c_str(),
+    // HANDLE hFile = ::CreateFileW( linkPath.c_str(),
+      GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,  
+      0,
+      OPEN_EXISTING,
+      FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED,
+      0);
+
+    if (INVALID_HANDLE_VALUE != hFile) {
+      auto rcode = GetFinalPathNameByHandleW(hFile, path, MAX_PATH_LONG, FILE_NAME_NORMALIZED);
+      ::CloseHandle(hFile);
+      if (rcode) {
+          // if (path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\')
+          //     return std::wstring(path + 4, path + rcode);
+          // else
+              return std::wstring(path, path + rcode);
+      }
+    } else {
+      DWORD dwErr = GetLastError();
+      std::wcout << "Cannot GetSymbolicLinkTarget for " << uncLinkPath.c_str() << " GetLastError: " << dwErr << "\n";
+    }
+  }
+
+  return uncLinkPath;
+}
+
 Status WindowsFileSystem::NewRandomAccessFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
+  std::wcout << "WindowsFileSystem::NewRandomAccessFile 0 => " << ws_final_fname << "\n";
+  // std::cout << "WindowsFileSystem::NewRandomAccessFile 1 => " << fname << "\n";
   result->reset();
 
   // Open the file for read-only random access
@@ -324,7 +371,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
 
   HANDLE hfile =
-      ::CreateFileW(ws_translated_fname.c_str(), GENERIC_READ, share_mode, NULL,
+      ::CreateFileW(ws_final_fname.c_str(), GENERIC_READ, share_mode, NULL,
                     OPEN_EXISTING, file_flags, NULL);
 
   if (INVALID_HANDLE_VALUE == hfile) {
@@ -341,6 +388,8 @@ Status WindowsFileSystem::NewWritableFile(
     std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, false);
+  std::wcout << "WindowsFileSystem::NewWritableFile 0 => " << ws_final_fname << "\n";
   result->reset();
 
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -517,9 +566,15 @@ Status WindowsFileSystem::DeleteFile(const string& fname,
                                      TransactionToken* token) {
   Status result;
   std::wstring file_name = Utf8ToWideChar(fname);
+  std::cout << "WindowsFileSystem::DeleteFile => " << fname << "\n";
   if (_wunlink(file_name.c_str()) != 0) {
+  //if (_wremove(file_name.c_str()) != 0) {
+    // while (int fh1 = _wopen(file_name.c_str(), _O_RDONLY == 0) {
+    //   _close( fh1 );
+    // }
     result = IOError("Failed to delete a file: " + fname, errno);
   }
+  // ::Sleep(100); // allow actual deletion to finish
   return result;
 }
 
@@ -536,51 +591,304 @@ Status WindowsFileSystem::CreateDir(const string& name,
   return result;
 }
 
+static std::string windows_exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd, "r"), _pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
+}
+
+/*
+static bool _DeleteDirectory(LPCWSTR lpszDir, bool noRecycleBin = true)
+{
+    int len = wcslen(lpszDir);
+    WCHAR* pszFrom = new WCHAR[len+2]; //4 to handle wide char
+    //_tcscpy(pszFrom, lpszDir); //todo:remove warning//;//convet wchar to char*
+    wcscpy_s (pszFrom, len+2, lpszDir);
+    pszFrom[len] = 0;
+    pszFrom[len+1] = 0;
+
+    SHFILEOPSTRUCTW fileop;
+    fileop.hwnd   = NULL;    // no status display
+    fileop.wFunc  = FO_DELETE;  // delete operation
+    fileop.pFrom  = pszFrom;  // source file name as double null terminated string
+    fileop.pTo    = NULL;    // no destination needed
+    fileop.fFlags = FOF_NOCONFIRMATION|FOF_SILENT;  // do not prompt the user
+
+    if(!noRecycleBin)
+        fileop.fFlags |= FOF_ALLOWUNDO;
+
+    fileop.fAnyOperationsAborted = FALSE;
+    fileop.lpszProgressTitle     = NULL;
+    fileop.hNameMappings         = NULL;
+
+    int ret = SHFileOperationW(&fileop); //SHFileOperation returns zero if successful; otherwise nonzero 
+    // int ret = 0;
+    delete [] pszFrom;  
+    return (0 == ret);
+}
+*/
+
 Status WindowsFileSystem::DeleteDir(const string& name,
                                     TransactionToken* token) {
   Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
-  if (_wrmdir(ws_name.c_str()) != 0) {
+  // if (_wrmdir(ws_name.c_str()) != 0) {
+  //   result = IOError("Failed to remove a directory: " + name, errno);
+  // }
+  WIN32_FIND_DATAW ffd;
+  LARGE_INTEGER filesize;
+  // HANDLE hFind = FindFirstFileW(ws_name.c_str(), &ffd);
+  std::cout << "WindowsFileSystem::DeleteDir => " << name.c_str() << "\n";
+
+  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, true);
+  std::string s2( ws1.begin(), ws1.end() );
+  string cmd1 = std::string("dir ") + s2;
+  std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
+  // string cmd2 = cmd1 + "\\..";
+  // std::cout << cmd2 << " -> " << windows_exec(cmd2.c_str()) << "\n";
+  // cmd2 = "cd";
+  // std::cout << cmd2 << " -> " << windows_exec(cmd2.c_str()) << "\n";
+
+  // if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+  // {
+  //     _tprintf(TEXT("  [%s]   <DIR>\n"), ffd.cFileName);
+  // }
+  // else
+  // {
+  //     filesize.LowPart = ffd.nFileSizeLow;
+  //     filesize.HighPart = ffd.nFileSizeHigh;
+  //     _tprintf(TEXT("  %s   %ld bytes\n"), ffd.cFileName, filesize.QuadPart);
+  // }
+  if (RemoveDirectoryW (ws1.c_str()) == 0) {
+  // if (_DeleteDirectory (ws1.c_str()) == 0) {
+    std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
     result = IOError("Failed to remove a directory: " + name, errno);
   }
   return result;
 }
 
-static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath) {
-  TCHAR path[MAX_PATH];
-  HANDLE hFile = ::CreateFileW( linkPath.c_str(),
-    0,
-    0,  
-    0,
-    OPEN_EXISTING,
-    FILE_FLAG_BACKUP_SEMANTICS,
-    0);
-  if (INVALID_HANDLE_VALUE != hFile) {
-    auto rcode = GetFinalPathNameByHandle(hFile, path, MAX_PATH, FILE_NAME_NORMALIZED);
-    if (rcode) {
-        if (path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\')
-            return std::wstring(path + 4, path + rcode);
-        else
-            return std::wstring(path, path + rcode);
+
+/// <summary>Deletes a directory and everything in it</summary>
+/// <param name="path">Path of the directory that will be deleted</param>
+int _DelDirRecursive(const std::wstring &path) {
+  std::vector<std::wstring::value_type> doubleNullTerminatedPath;
+  std::copy(path.begin(), path.end(), std::back_inserter(doubleNullTerminatedPath));
+  doubleNullTerminatedPath.push_back(L'\0');
+  doubleNullTerminatedPath.push_back(L'\0');
+ 
+  SHFILEOPSTRUCTW fileOperation;
+  fileOperation.wFunc = FO_DELETE;
+  fileOperation.pFrom = &doubleNullTerminatedPath[0];
+  fileOperation.fFlags = FOF_NO_UI | FOF_NOCONFIRMATION;
+ 
+  int result = SHFileOperationW(&fileOperation);
+  return result;
+}
+
+// See https://github.com/microsoft/Windows-classic-samples/blob/main/Samples/Win7Samples/winui/shell/appplatform/fileoperations/FileOperationSample.cpp
+HRESULT CreateAndInitializeFileOperation(REFIID riid, void **ppv)
+{
+    *ppv = NULL;
+    // Create the IFileOperation object
+    IFileOperation *pfo;
+    HRESULT hr = CoCreateInstance(__uuidof(FileOperation), NULL, CLSCTX_ALL, IID_PPV_ARGS(&pfo));
+    if (SUCCEEDED(hr))
+    {
+        // Set the operation flags.  Turn off  all UI
+        // from being shown to the user during the
+        // operation.  This includes error, confirmation
+        // and progress dialogs.
+        hr = pfo->SetOperationFlags(FOF_NO_UI);
+        if (SUCCEEDED(hr))
+        {
+            hr = pfo->QueryInterface(riid, ppv);
+        }
+        pfo->Release();
+    }
+    return hr;
+}
+
+int _DelDirRecursive2(const std::wstring &dirname) {
+  IShellItem *pSI;
+  // Creates and initializes a Shell item object from a parsing name
+  // When this method returns successfully, pSI contains the interface pointer requested in REFIID. This is typically IShellItem or IShellItem2.
+  HRESULT hr = SHCreateItemFromParsingName(dirname.c_str(), NULL, IID_IShellItem, (void**) &pSI);
+  if(SUCCEEDED(hr)) {
+    IFileOperation *pfo;
+    HRESULT hr = CreateAndInitializeFileOperation(IID_PPV_ARGS(&pfo));
+    if (SUCCEEDED(hr))
+    {
+        hr = pfo->DeleteItem(pSI, NULL);
+        if (SUCCEEDED(hr))
+        {
+          hr = pfo->PerformOperations();
+        } else {
+          std::cout << "_DelDirRecursive2 => DeleteItem FAILED for " << dirname.c_str() << "\n";
+        }
+        pfo->Release();
+    } else {
+      std::cout << "_DelDirRecursive2 => CreateAndInitializeFileOperation FAILED for " << dirname.c_str() << "\n";
     }
   }
+  return (int)hr;
+}
 
-  return std::wstring();
+
+/// <summary>Automatically closes a search handle upon destruction</summary>
+class SearchHandleScope {
+ 
+  /// <summary>Initializes a new search handle closer</summary>
+  /// <param name="searchHandle">Search handle that will be closed on destruction</param>
+  public: SearchHandleScope(HANDLE searchHandle) :
+    searchHandle(searchHandle) {}
+ 
+  /// <summary>Closes the search handle</summary>
+  public: ~SearchHandleScope() {
+    ::FindClose(this->searchHandle);
+  }
+ 
+  /// <summary>Search handle that will be closed when the instance is destroyed</summary>
+  private: HANDLE searchHandle;
+ 
+};
+ 
+/// <summary>Recursively deletes the specified directory and all its contents</summary>
+/// <param name="path">Absolute path of the directory that will be deleted</param>
+/// <remarks>
+///   The path must not be terminated with a path separator.
+/// </remarks>
+void recursiveDeleteDirectory(const std::wstring &path) {
+  static const std::wstring allFilesMask(L"\\*");
+ 
+  WIN32_FIND_DATAW findData;
+ 
+  // First, delete the contents of the directory, recursively for subdirectories
+  std::wstring searchMask = path + allFilesMask;
+  HANDLE searchHandle = ::FindFirstFileExW(
+    searchMask.c_str(), FindExInfoBasic, &findData, FindExSearchNameMatch, nullptr, 0
+  );
+  if(searchHandle == INVALID_HANDLE_VALUE) {
+    DWORD lastError = ::GetLastError();
+    if(lastError != ERROR_FILE_NOT_FOUND) { // or ERROR_NO_MORE_FILES, ERROR_NOT_FOUND?
+      throw std::runtime_error("Could not start directory enumeration");
+    }
+  }
+ 
+  // Did this directory have any contents? If so, delete them first
+  if(searchHandle != INVALID_HANDLE_VALUE) {
+    SearchHandleScope scope(searchHandle);
+    for(;;) {
+ 
+      // Do not process the obligatory '.' and '..' directories
+      if(findData.cFileName[0] != '.') {
+        bool isDirectory = 
+          ((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) ||
+          ((findData.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+ 
+        // Subdirectories need to be handled by deleting their contents first
+        std::wstring filePath = path + L'\\' + findData.cFileName;
+        if(isDirectory) {
+          recursiveDeleteDirectory(filePath);
+        } else {
+          BOOL result = ::DeleteFileW(filePath.c_str());
+          if(result == FALSE) {
+            DWORD lastError = ::GetLastError();
+            std::string s2( filePath.begin(), filePath.end() );
+            string cmd1 = std::string("dir ") + s2;
+            // std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
+            std::cout << cmd1 << " , DeleteFileW FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "<-- lastError=" << lastError << "\n";
+            throw std::runtime_error("Could not delete file");
+          }
+        }
+      }
+ 
+      // Advance to the next file in the directory
+      BOOL result = ::FindNextFileW(searchHandle, &findData);
+      if(result == FALSE) {
+        DWORD lastError = ::GetLastError();
+        if(lastError != ERROR_NO_MORE_FILES) {
+          throw std::runtime_error("Error enumerating directory");
+        }
+        break; // All directory contents enumerated and deleted
+      }
+ 
+    } // for
+  }
+ 
+  // The directory is empty, we can now safely remove it
+  BOOL result = ::RemoveDirectoryW(path.c_str());
+  if(result == FALSE) {
+    DWORD lastError = ::GetLastError();
+    std::string s2( path.begin(), path.end() );
+    string cmd1 = std::string("dir ") + s2;
+    // std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
+    std::cout << cmd1 << " , RemoveDirectoryW FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "<-- lastError=" << lastError << "\n";
+    // result = IOError("Failed to remove a directory 818: " + dirname, errno);
+    throw std::runtime_error("Could not remove directory");
+  }
+}
+
+
+Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
+                                        TransactionToken* token,
+                                        int64_t* undeleted_files,
+                                        int64_t* undeleted_dirs) {
+  Status result;
+  std::wstring ws_name = Utf8ToWideChar(dirname);
+
+  std::cout << "WindowsFileSystem::DeleteRecursively => " << dirname.c_str() << "\n";
+
+  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, true);
+  std::string s2( ws1.begin(), ws1.end() );
+  string cmd1 = std::string("dir ") + s2;
+  std::cout << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
+
+
+  // IShellItem *pSI;
+  // HRESULT hr = SHCreateItemFromParsingName(ws1.c_str(), NULL, IID_IShellItem, (void**) &pSI);
+  // if(SUCCEEDED(hr)) {
+
+  // }
+
+  // if (RemoveDirectoryW (ws1.c_str()) == 0) {
+  // if (_DeleteDirectory (ws1.c_str()) == 0) {
+  // if (_DelDirRecursive2 (ws1) != 0) {
+  //   std::cout << cmd1 << " FAIL -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
+  //   result = IOError("Failed to remove a directory: " + dirname, errno);
+  // }
+  // Sleep(1000);
+  // std::cout << cmd1 << " PASS 1 -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
+  // DeleteDir(dirname, NULL);
+  // std::cout << cmd1 << " PASS 2 -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
+  recursiveDeleteDirectory(ws1);
+  result = OkStatus();
+  return result;
 }
 
 Status WindowsFileSystem::GetFileSize(const string& fname,
                                       TransactionToken* token, uint64* size) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
-  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
+  std::wcout << "WindowsFileSystem::GetFileSize 0 => " << ws_final_fname << "\n";
+  std::cout << "WindowsFileSystem::GetFileSize 1 => " << fname << "\n";
   if (TRUE == ::GetFileAttributesExW(ws_final_fname.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
     ULARGE_INTEGER file_size;
     file_size.HighPart = attrs.nFileSizeHigh;
     file_size.LowPart = attrs.nFileSizeLow;
     *size = file_size.QuadPart;
+    std::cout << "WindowsFileSystem::GetFileSize => GetFileAttributesExW H/L/Q => " << file_size.HighPart << 
+      " " << file_size.LowPart << " " << file_size.QuadPart << "\n";
   } else {
     string context = "Can not get size for: " + fname;
     result = IOErrorFromWindowsError(context);
