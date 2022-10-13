@@ -414,9 +414,21 @@ TfLiteStatus Interpreter::RemoveAllDelegates() {
 TfLiteStatus Interpreter::SetMetadata(
     const std::map<std::string, std::string>& metadata) {
   metadata_ = metadata;
+  const auto maybe_model_control_dependencies =
+      metadata_.find(kModelControlDependenciesMetadataKey);
+  if (maybe_model_control_dependencies == metadata_.end() ||
+      !ParseModelControlDependencies(
+          maybe_model_control_dependencies->second.data(),
+          maybe_model_control_dependencies->second.size(),
+          &model_control_dependencies_)) {
+    model_control_dependencies_.clear();
+  }
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
+    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(
+        &metadata_, model_control_dependencies_.empty()
+                        ? nullptr
+                        : &model_control_dependencies_[subgraph_index]));
   }
   return kTfLiteOk;
 }

@@ -9,6 +9,7 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/lite/...",
     ],
 )
 

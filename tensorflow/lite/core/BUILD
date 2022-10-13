@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -71,6 +72,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/internal:signature_def",
         "//tensorflow/lite/profiling:root_profiler",
@@ -115,6 +117,7 @@ cc_library(
         "//tensorflow/lite/c:common_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/resource",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/profiling:root_profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
