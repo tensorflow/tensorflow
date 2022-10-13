@@ -851,7 +851,7 @@ selects.config_setting_group(
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
