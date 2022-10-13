@@ -826,6 +826,70 @@ class Adam(_Optimizer):
     return tpu_ops.retrieve_tpu_embedding_adam_parameters
 
 
+@tf_export("tpu.experimental.embedding.QuantizationConfig")
+class QuantizationConfig:
+  """Settings for simulated quantization of the tpu embedding table.
+
+  When simulated quantization is enabled, the results of the embedding lookup
+  are clipped and quantized according to the settings here before the combiner
+  is applied.
+
+  For example, to quantize `input` the following is done:
+  ```python
+  if input < lower
+    input = lower
+  if input > upper
+    input = upper
+  quantum = (upper - lower) / (num_buckets - 1)
+  input = math.floor((input - lower) / quantum + 0.5) * quantium + lower
+  ```
+
+  See tensorflow/core/protobuf/tpu/optimization_parameters.proto for more
+  details.
+
+  NOTE: This does not change the storage type of the embedding table, that will
+  continue to be float32 as will the saved variable in the checkpoint. You will
+  have to manually quantize the variable (typically with the same algorithm and
+  settings as above) manually.
+  """
+
+  def __init__(self, num_buckets: int, lower: float, upper: float):
+    """Simulated quantizaiton configuration.
+
+    Args:
+      num_buckets: The number of quantization buckets, must be atleast 2.
+      lower: The lower bound for the quantization range.
+      upper: The upper bound for the quantization range.
+
+    Returns:
+      `QuantizationConfig`.
+
+    Raises:
+      ValueError: if `num_buckets` is less than 2.
+    """
+    if num_buckets < 2:
+      raise ValueError(f"num_buckets is {num_buckets}, must be at least 2 for "
+                       f"simulated quantization.")
+
+    self.num_buckets = num_buckets
+    self.lower = lower
+    self.upper = upper
+
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+    parameters.simulated_quantization.enabled = True
+    parameters.simulated_quantization.num_buckets = self.num_buckets
+    parameters.simulated_quantization.clipping_limits.lower.value = self.lower
+    parameters.simulated_quantization.clipping_limits.upper.value = self.upper
+
+  def __repr__(self):
+    return ("QuantizationConfig(num_buckets={num_buckets!r}, lower={lower!r}, "
+            "upper={upper!r})".format(
+                num_buckets=self.num_buckets,
+                lower=self.lower,
+                upper=self.upper))
+
+
 @tf_export("tpu.experimental.embedding.TableConfig")
 class TableConfig:
   """Configuration data for one embedding table.
@@ -869,7 +933,8 @@ class TableConfig:
                initializer: Optional[Callable[[Any], None]] = None,
                optimizer: Optional[_Optimizer] = None,
                combiner: Text = "mean",
-               name: Optional[Text] = None):
+               name: Optional[Text] = None,
+               quantization_config: QuantizationConfig = None):
     """Embedding table configuration.
 
     Args:
@@ -891,6 +956,9 @@ class TableConfig:
         with bag-of-words columns. For more information, see
         `tf.nn.embedding_lookup_sparse`.
       name: An optional string used to name the table. Useful for debugging.
+      quantization_config: The simulated quantization config. An instance of
+        `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
+        more documentation.
 
     Returns:
       `TableConfig`.
@@ -930,6 +998,7 @@ class TableConfig:
     self.optimizer = optimizer
     self.combiner = combiner
     self.name = name
+    self.quantization_config = quantization_config
 
   def __repr__(self):
     # If using the default initializer, just print "None" for clarity.
@@ -939,20 +1008,51 @@ class TableConfig:
       # PY2 type checking can't infer type of initializer even after if.
       initializer = typing.cast(init_ops_v2.TruncatedNormal, initializer)
       if (initializer.mean == 0.0
-          and math.isclose(initializer.stddev, 1/math.sqrt(self.dim))):  # pytype: disable=module-attr (math.isclose not in PY2)
+          and math.isclose(initializer.stddev, 1/math.sqrt(self.dim))):
         initializer = None
 
-    return (
-        "TableConfig(vocabulary_size={vocabulary_size!r}, dim={dim!r}, "
-        "initializer={initializer!r}, optimizer={optimizer!r}, "
-        "combiner={combiner!r}, name={name!r})".format(
-            vocabulary_size=self.vocabulary_size,
-            dim=self.dim,
-            initializer=initializer,
-            optimizer=self.optimizer,
-            combiner=self.combiner,
-            name=self.name,)
-    )
+    return ("TableConfig(vocabulary_size={vocabulary_size!r}, dim={dim!r}, "
+            "initializer={initializer!r}, optimizer={optimizer!r}, "
+            "combiner={combiner!r}, name={name!r}, "
+            "quantization_config={quantization!r})".format(
+                vocabulary_size=self.vocabulary_size,
+                dim=self.dim,
+                initializer=initializer,
+                optimizer=self.optimizer,
+                combiner=self.combiner,
+                name=self.name,
+                quantization=self.quantization_config,
+            ))
+
+  def _set_table_descriptor(
+      self,
+      table_descriptor: tpu_embedding_configuration_pb2
+      .TPUEmbeddingConfiguration.TableDescriptor,
+      num_hosts: int,
+      learning_rate_index: Dict[Callable[[], Any], int]):
+    """Set the table descriptor from the table data."""
+    table_descriptor.name = self.name
+
+    # For small tables, we pad to the number of hosts so that at least one
+    # id will be assigned to each host.
+    table_descriptor.vocabulary_size = max(self.vocabulary_size, num_hosts)
+    table_descriptor.dimension = self.dim
+
+    parameters = table_descriptor.optimization_parameters
+
+    # We handle the learning rate separately here and don't allow the
+    # optimization class to handle this, as it doesn't know about dynamic
+    # rates.
+    if callable(self.optimizer.learning_rate):
+      parameters.learning_rate.dynamic.tag = (
+          learning_rate_index[self.optimizer.learning_rate])
+    else:
+      parameters.learning_rate.constant = self.optimizer.learning_rate
+
+    # Use optimizer to handle the rest of the parameters.
+    self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+    if self.quantization_config:
+      self.quantization_config._set_quantization_parameters(parameters)  # pylint: disable=protected-access
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
