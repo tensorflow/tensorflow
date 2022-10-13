@@ -76,27 +76,52 @@ TfLiteStatus InferenceProfilerStage::Init(
   // TfliteInferenceParams.
   test_stage_ = std::make_unique<TfliteInferenceStage>(config_);
   if (test_stage_->Init(delegate_providers) != kTfLiteOk) return kTfLiteError;
-  LOG(INFO) << "Test interpreter has been initialized.";
+  auto test_delegate = config_.specification().tflite_inference_params().delegate();
+  auto test_delegate_name = config_.specification().tflite_inference_params().Delegate_Name(test_delegate);
+  auto test_model_path = config_.specification().tflite_inference_params().model_file_path();
+  auto test_num_threads = config_.specification().tflite_inference_params().num_threads();
+  auto test_invocations = config_.specification().tflite_inference_params().invocations_per_run();
+  LOG(INFO) << "Test interpreter has been initialized. Using model " << test_model_path << ", delegate " << test_delegate_name << ", " << test_num_threads << " threads and " << test_invocations << " invocations pre run.";
 
   // Initialize a reference TfliteInferenceStage that uses the given model &
   // num_runs, but maintains the rest of TfliteInferenceParams to default.
-  EvaluationStageConfig reference_config;
-  reference_config.set_name("reference_inference");
-  auto* params = reference_config.mutable_specification()
-                     ->mutable_tflite_inference_params();
-  params->set_model_file_path(
-      config_.specification().tflite_inference_params().model_file_path());
-  params->set_invocations_per_run(
-      config_.specification().tflite_inference_params().invocations_per_run());
-  reference_stage_ = std::make_unique<TfliteInferenceStage>(reference_config);
+  reference_stage_ = std::make_unique<TfliteInferenceStage>(reference_config_);
   if (reference_stage_->Init() != kTfLiteOk) return kTfLiteError;
-  LOG(INFO) << "Reference interpreter (1 thread on CPU) has been initialized.";
+  auto ref_delegate = reference_config_.specification().tflite_inference_params().delegate();
+  auto ref_delegate_name = reference_config_.specification().tflite_inference_params().Delegate_Name(ref_delegate);
+  auto ref_model_path = reference_config_.specification().tflite_inference_params().model_file_path();
+  auto ref_num_threads = reference_config_.specification().tflite_inference_params().num_threads();
+  auto ref_invocations = reference_config_.specification().tflite_inference_params().invocations_per_run();
+  LOG(INFO) << "Reference interpreter has been initialized. Using model " << ref_model_path << ", delegate " << ref_delegate_name << ", " << ref_num_threads << " threads and " << ref_invocations << " invocations pre run.";
 
-  model_info_ = reference_stage_->GetModelInfo();
+  reference_model_info_ = reference_stage_->GetModelInfo();
+  test_model_info_ = test_stage_->GetModelInfo();
 
+  //Check whether reference and test models have the same inputs/outputs
+  if (reference_model_info_->inputs.size() != test_model_info_->inputs.size()) {
+    LOG(ERROR) << "Reference and test model have different input sizes.";
+    return kTfLiteError;
+  }
+  for (int i = 0; i < reference_model_info_->inputs.size(); i++ ) {
+    if (reference_model_info_->inputs[i]->dims->size != test_model_info_->inputs[i]->dims->size) {
+      LOG(ERROR) << "Reference and test model have different input shapes.";
+      return kTfLiteError;
+    }
+  }
+
+  if (reference_model_info_->outputs.size() != test_model_info_->outputs.size()) {
+    LOG(ERROR) << "Reference and test model have different output sizes.";
+    return kTfLiteError;
+  }
+  for (int i = 0; i < reference_model_info_->outputs.size(); i++ ) {
+    if (reference_model_info_->outputs[i]->dims->size != test_model_info_->outputs[i]->dims->size) {
+      LOG(ERROR) << "Reference and test model have different output shapes.";
+      return kTfLiteError;
+    } 
+  }
   // Preprocess model input metadata for generating random data later.
-  for (int i = 0; i < model_info_->inputs.size(); ++i) {
-    const TfLiteType model_input_type = model_info_->inputs[i]->type;
+  for (int i = 0; i < reference_model_info_->inputs.size(); ++i) {
+    const TfLiteType model_input_type = reference_model_info_->inputs[i]->type;
     if (model_input_type == kTfLiteUInt8 || model_input_type == kTfLiteInt8 ||
         model_input_type == kTfLiteInt64 ||
         model_input_type == kTfLiteFloat32 ||
@@ -107,7 +132,7 @@ TfLiteStatus InferenceProfilerStage::Init(
                     "input types";
       return kTfLiteError;
     }
-    auto* input_shape = model_info_->inputs[i]->dims;
+    auto* input_shape = reference_model_info_->inputs[i]->dims;
     int64_t total_num_elements = 1;
     for (int i = 0; i < input_shape->size; i++) {
       total_num_elements *= input_shape->data[i];
@@ -120,8 +145,8 @@ TfLiteStatus InferenceProfilerStage::Init(
     int64_tensors_.emplace_back();
   }
   // Preprocess output metadata for calculating diffs later.
-  for (int i = 0; i < model_info_->outputs.size(); ++i) {
-    const TfLiteType model_output_type = model_info_->outputs[i]->type;
+  for (int i = 0; i < reference_model_info_->outputs.size(); ++i) {
+    const TfLiteType model_output_type = reference_model_info_->outputs[i]->type;
     if (model_output_type == kTfLiteUInt8 || model_output_type == kTfLiteInt8 ||
         model_output_type == kTfLiteFloat32) {
     } else {
@@ -129,7 +154,7 @@ TfLiteStatus InferenceProfilerStage::Init(
                     "output types";
       return kTfLiteError;
     }
-    auto* output_shape = model_info_->outputs[i]->dims;
+    auto* output_shape = reference_model_info_->outputs[i]->dims;
     int64_t total_num_elements = 1;
     for (int i = 0; i < output_shape->size; i++) {
       total_num_elements *= output_shape->data[i];
@@ -145,8 +170,8 @@ TfLiteStatus InferenceProfilerStage::Init(
 TfLiteStatus InferenceProfilerStage::Run() {
   // Generate random inputs.
   std::vector<void*> input_ptrs;
-  for (int i = 0; i < model_info_->inputs.size(); ++i) {
-    const TfLiteType model_input_type = model_info_->inputs[i]->type;
+  for (int i = 0; i < reference_model_info_->inputs.size(); ++i) {
+    const TfLiteType model_input_type = reference_model_info_->inputs[i]->type;
     if (model_input_type == kTfLiteUInt8) {
       GenerateRandomGaussianData(
           input_num_elements_[i], std::numeric_limits<uint8_t>::min(),
@@ -189,8 +214,8 @@ TfLiteStatus InferenceProfilerStage::Run() {
   if (reference_stage_->Run() != kTfLiteOk) return kTfLiteError;
 
   // Calculate errors per output vector.
-  for (int i = 0; i < model_info_->outputs.size(); ++i) {
-    const TfLiteType model_output_type = model_info_->outputs[i]->type;
+  for (int i = 0; i < reference_model_info_->outputs.size(); ++i) {
+    const TfLiteType model_output_type = reference_model_info_->outputs[i]->type;
     void* reference_ptr = reference_stage_->GetOutputs()->at(i);
     void* test_ptr = test_stage_->GetOutputs()->at(i);
     float output_diff = 0;

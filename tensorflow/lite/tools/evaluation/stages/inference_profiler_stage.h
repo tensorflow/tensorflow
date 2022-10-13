@@ -32,13 +32,15 @@ namespace evaluation {
 
 // An EvaluationStage to profile a custom TFLite inference config by comparing
 // performance in two settings:
-// 1. User-defined TfliteInferenceParams (The 'test' setting)
-// 2. Default TfliteInferenceParams (The 'reference' setting)
-// The latter essentially implies single-threaded CPU execution.
+// 1. The 'test' setting: User-defined TfliteInferenceParams
+// 2. The 'reference' setting: User-defined or default TfliteInferenceParams
+// The default essentially implies single-threaded CPU execution.
 class InferenceProfilerStage : public EvaluationStage {
  public:
   explicit InferenceProfilerStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
+  explicit InferenceProfilerStage(const EvaluationStageConfig& config, const EvaluationStageConfig& ref_config)
+      : EvaluationStage(config), reference_config_(ref_config) {}
 
   TfLiteStatus Init() override { return Init(nullptr); }
   TfLiteStatus Init(const DelegateProviders* delegate_providers);
@@ -49,10 +51,13 @@ class InferenceProfilerStage : public EvaluationStage {
   EvaluationStageMetrics LatestMetrics() override;
 
  private:
+  EvaluationStageConfig reference_config_;
+
   std::unique_ptr<TfliteInferenceStage> reference_stage_;
   std::unique_ptr<TfliteInferenceStage> test_stage_;
 
-  const TfLiteModelInfo* model_info_;
+  const TfLiteModelInfo* reference_model_info_;
+  const TfLiteModelInfo* test_model_info_;
   std::vector<int64_t> input_num_elements_;
   std::vector<int64_t> output_num_elements_;
 

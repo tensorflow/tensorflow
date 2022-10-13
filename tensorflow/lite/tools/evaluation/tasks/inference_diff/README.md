@@ -41,6 +41,9 @@ The binary takes the following parameters:
 
 and the following optional parameters:
 
+*   `ref_model_file` : `string` \
+    Path to the TFlite model file. If not set, the model from `model_file` will be used for reference.
+
 *   `num_runs`: `int` \
     How many runs to perform to compare execution in reference and test setting.
     Default: 50. The binary performs runs 3 invocations per 'run', to get more
