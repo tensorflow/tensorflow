@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_OPERATION_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -60,10 +61,6 @@ class ClOperation {
   GPUOperation& GetGpuOperation() { return *operation_; }
   const GPUOperation& GetGpuOperation() const { return *operation_; }
   uint64_t GetKernelFingerprint() const { return kernel_fingerprint_; }
-
-  const OperationDef& GetDefinition() const {
-    return operation_->GetDefinition();
-  }
 
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();

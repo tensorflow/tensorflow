@@ -185,10 +185,6 @@ void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
   operation_ = std::move(operation);
 }
 
-const OperationDef& ComputeTask::GetDefinition() const {
-  return operation_->GetDefinition();
-}
-
 absl::Status ComputeTask::Compile(MetalDevice* device) {
   RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));
