@@ -431,6 +431,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_compile_util",
+    srcs = ["xla_compile_util.cc"],
+    hdrs = ["xla_compile_util.h"],
+    visibility = [
+        ":internal",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compile_util_test",
+    srcs = [
+        "xla_compile_util_test.cc",
+    ],
+    deps = [
+        ":xla_compile_util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_proto_library(
     name = "xla_compilation_cache_proto",
     srcs = ["xla_compilation_cache.proto"],
@@ -450,6 +478,7 @@ cc_library(
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
         ":xla_compilation_cache_proto_cc",
+        ":xla_compile_util",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",
