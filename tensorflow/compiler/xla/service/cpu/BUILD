@@ -192,6 +192,7 @@ cc_library(
         ":ir_emitter",
         ":parallel_task_assignment",
         ":simple_orc_jit",
+        ":xla_framework",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -355,6 +356,11 @@ cc_library(
 )
 
 cc_library(
+    name = "xla_framework",
+    hdrs = ["xla_framework.h"],
+)
+
+cc_library(
     name = "hlo_xla_runtime_pipeline",
     srcs = ["hlo_xla_runtime_pipeline.cc"],
     hdrs = ["hlo_xla_runtime_pipeline.h"],
@@ -469,6 +475,7 @@ cc_library(
     hdrs = ["cpu_executable.h"],
     deps = [
         ":simple_orc_jit",
+        ":xla_framework",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
+#include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
@@ -41,23 +42,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-// Maps the descriptor table with inputs/outputs. Note that flattened_outputs
-// and result are mutually exclusive -- see below.
-//
-// Contains the same info as "xla_framework" MLIR annotations. That is:
-// - inputs: indices in the descriptor table of the input arguments.
-// - output_is_tuple: if set, the output is a tuple.
-// - flattened_outputs: if the output is a tuple, this contains the indices
-//   (if any) in the descriptor table that correspond to the expanded tuple.
-// - result: if the output is NOT a tuple, contains the index in the descriptor
-//   table of the result.
-struct XlaFrameworkMapping {
-  std::vector<int64_t> inputs;
-  std::vector<int64_t> flattened_outputs;
-  int64_t result = -1;
-  bool output_is_tuple = false;
-};
 
 // BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
 class BufferDesc {
