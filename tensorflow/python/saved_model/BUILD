@@ -76,8 +76,8 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
 )
