@@ -19636,6 +19636,42 @@ def TF_UncompressElementOp : TF_Op<"UncompressElement", [NoSideEffect]> {
   TF_DerivedResultTypeListAttr output_types = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_UniformQuantizedDotHybridOp : TF_Op<"UniformQuantizedDotHybrid", [NoSideEffect]> {
+  let summary = [{
+Perform hybrid quantized dot of float Tensor `lhs` and quantized Tensor `rhs`.
+  }];
+
+  let description = [{
+Given float `lhs` and quantized `rhs`, internally performs quantization on `lhs`, and then performs quantized dot on quantized lhs and `rhs`.
+The internal quantization on `lhs` is a quantization to qint8, dynamic range, per-batch (per-axis along axis 0), asymmetric, and not narrow range (the range is [-128, 127]).
+`lhs` and `rhs` must be 2D Tensors and the lhs.dim_size(1) must match rhs.dim_size(0).
+`rhs` must be quantized Tensor, where its data value is quantized using the formula:
+quantized_data = clip(original_data / scale + zero_point, quantization_min_val, quantization_max_val).
+  }];
+
+  let arguments = (ins
+    Arg<TF_Float32Tensor, [{Must be a 2D Tensor of Tlhs.}]>:$lhs,
+    Arg<TF_Qint8Tensor, [{Must be a 2D Tensor of Trhs.}]>:$rhs,
+    Arg<TF_Float32Tensor, [{The float value(s) used as scale when quantizing original data that rhs represents.
+Must be a scalar Tensor (per-tensor quantization) or 1D Tensor of size (rhs.dim_size(1),) (per-channel quantization).}]>:$rhs_scales,
+    Arg<TF_Int32Tensor, [{The int32 value(s) used as zero_point when quantizing original data that rhs represents.
+Same shape condition as rhs_scales.}]>:$rhs_zero_points,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
+    I64Attr:$rhs_quantization_min_val,
+    I64Attr:$rhs_quantization_max_val
+  );
+
+  let results = (outs
+    Res<TF_Float32Tensor, [{The output 2D Tensor of Tout, whose shape is (lhs.dim_size(0), rhs.dim_size(1)).
+The output data is the original output data itself (Not quantized).}]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tlhs = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Trhs = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
   let summary = "Finds unique elements in a 1-D tensor.";
 

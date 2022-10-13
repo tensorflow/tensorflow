@@ -236,28 +236,3 @@ def TF_UniformQuantizedDotGeneralOp : TF_Op<"UniformQuantizedDotGeneral", [NoSid
   TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
-
-def TF_UniformQuantizedDotHybridOp : TF_Op<"UniformQuantizedDotHybrid", [NoSideEffect]> {
-  // TODO(b/230804708): Improve the operator description.
-  let summary = "Quantized hybrid dot operator.";
-
-  let arguments = (ins
-    TF_Float32Tensor:$lhs,
-    TensorOf<[TF_Qint8]>:$rhs,
-    TF_Float32Tensor:$rhs_scales,
-    TF_Int32Tensor:$rhs_zps,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val
-  );
-
-  let results = (outs
-    TF_Float32Tensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
