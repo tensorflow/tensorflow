@@ -165,6 +165,7 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto",
         "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/protobuf:coordination_config_proto",
         "//tensorflow/core/protobuf:error_codes_proto_impl",
