@@ -49,7 +49,7 @@ def BufferPacking : Pass<"buffer-packing", "func::FuncOp"> {
   After this sorting, the buffers are checked whether subsequent buffers can be
   packed into them.}];
   let dependentDialects = ["func::FuncDialect","memref::MemRefDialect",
-    "arith::ArithmeticDialect"];
+    "arith::ArithDialect"];
   let constructor = "createBufferPackingPass()";
   let options = [
    Option<"window_size_", "window-size", "unsigned",
@@ -169,6 +169,11 @@ def UnbufferizePass : Pass<"unbufferize", "mlir::func::FuncOp"> {
   let constructor = "hlo::createUnbufferizePass()";
 }
 
+def UnrollLoopsPass : Pass<"unroll-loops"> {
+  let summary = "Unrolls scf.for loops with small static iteration counts.";
+  let constructor = "hlo::createUnrollLoopsPass()";
+}
+
 def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let summary = "Hoist memref allocations to function arguments.";
   let description = [{
@@ -177,5 +182,14 @@ def AllocToArgPass : Pass<"alloc-to-arg", "mlir::func::FuncOp"> {
   let constructor = "hlo::createAllocToArgPass()";
 }
 
+def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
+  let summary = "Converts ops on tensors with 1 element to scalar ops.";
+  let dependentDialects = [
+    "arith::ArithDialect",
+    "gml_st::GmlStDialect",
+    "tensor::TensorDialect"
+  ];
+  let constructor = "createScalarizationPass()";
+}
 
 #endif // TENSORFLOW_COMPILER_MLIR_HLO_TRANSFORMS_PASSES

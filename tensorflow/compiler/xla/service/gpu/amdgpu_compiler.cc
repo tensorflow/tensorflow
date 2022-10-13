@@ -60,7 +60,7 @@ std::string GetROCDLDir(const HloModuleConfig& config) {
   // Tries all potential ROCDL directories in the order they are inserted.
   // Returns the first directory that exists in the file system.
   for (const std::string& potential_rocdl_dir : potential_rocdl_dirs) {
-    if (tensorflow::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
+    if (tsl::Env::Default()->IsDirectory(potential_rocdl_dir).ok()) {
       VLOG(2) << "Found ROCm-Device-Libs dir " << potential_rocdl_dir;
       return potential_rocdl_dir;
     }
@@ -103,7 +103,7 @@ Status AMDGPUCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<HloConstantFolding>();
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
@@ -120,7 +120,7 @@ Status AMDGPUCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 AMDGPUCompiler::AMDGPUCompiler()

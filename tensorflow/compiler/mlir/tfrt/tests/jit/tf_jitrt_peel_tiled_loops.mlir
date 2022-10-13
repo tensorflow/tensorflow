@@ -34,9 +34,9 @@ func.func @tanh_1d(%arg0: memref<102401xf32>) -> memref<102401xf32> {
 
 // CHECK:       gml_st.loop
 // CHECK:           memref.subview
-// CHECK-SAME:        memref<102401xf32> to memref<8xf32, #[[$MAP]]>
+// CHECK-SAME:        memref<102401xf32> to memref<8xf32, strided<[1], offset: ?>>
 // CHECK:           memref.subview
-// CHECK-SAME:        memref<102401xf32> to memref<8xf32, #[[$MAP]]>
+// CHECK-SAME:        memref<102401xf32> to memref<8xf32, strided<[1], offset: ?>>
 
 // CHECK:       gml_st.loop
 // CHECK:           memref.subview
@@ -92,13 +92,14 @@ func.func @reduce_column_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %dim_X = tensor.dim %in, %c0 : tensor<?x?xf32>
   %dim_Y = tensor.dim %in, %c1 : tensor<?x?xf32>
 
-  %1 = linalg.init_tensor [%dim_Y] : tensor<?xf32>
+  %1 = tensor.empty(%dim_Y) : tensor<?xf32>
   %2 = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
   %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%dim_Y, %dim_X)
          step (%c4, %c4)
          ins (%in_ = %in: tensor<?x?xf32>, %cst_ = %cst: f32)
          outs (%out_ = %2: tensor<?xf32>)
-         iterators["parallel", "reduction"] {
+         iterators[#gml_st.iterator_type<parallel>,
+                   #gml_st.iterator_type<reduction>] {
     %6 = affine.min affine_map<(d0)[s0] -> (4, -d0 + s0)>(%j)[%dim_X]
     %9 = affine.min affine_map<(d0)[s0] -> (4, -d0 + s0)>(%i)[%dim_Y]
 
@@ -168,13 +169,14 @@ func.func @reduce_row_sum_2d_dynamic(%in: tensor<?x?xf32>) -> tensor<?xf32> {
   %dim_X = tensor.dim %in, %c0 : tensor<?x?xf32>
   %dim_Y = tensor.dim %in, %c1 : tensor<?x?xf32>
 
-  %1 = linalg.init_tensor [%dim_X] : tensor<?xf32>
+  %1 = tensor.empty(%dim_X) : tensor<?xf32>
   %2 = linalg.fill ins(%cst : f32) outs(%1 : tensor<?xf32>) -> tensor<?xf32>
   %5 = gml_st.loop (%i, %j) = (%c0, %c0) to (%dim_X, %dim_Y)
-    step (%c4, %c4)
-    ins (%in_ = %in: tensor<?x?xf32>, %cst_ = %cst: f32)
-    outs (%out_ = %2: tensor<?xf32>)
-    iterators["parallel", "reduction"] {
+         step (%c4, %c4)
+         ins (%in_ = %in: tensor<?x?xf32>, %cst_ = %cst: f32)
+         outs (%out_ = %2: tensor<?xf32>)
+         iterators[#gml_st.iterator_type<parallel>,
+                   #gml_st.iterator_type<reduction>] {
     %6 = affine.min affine_map<(d0)[s0] -> (4, -d0 + s0)>(%i)[%dim_X]
     %7 = affine.min affine_map<(d0)[s0] -> (4, -d0 + s0)>(%j)[%dim_Y]
 

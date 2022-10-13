@@ -99,12 +99,12 @@ Status ShapeProfileBinaryOp(std::vector<nvinfer1::Dims>* x,
       x->at(i).d[j] = op(x->at(i).d[j], y[i].d[j]);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::RangeStrategy(
     const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes) {
-  if (collected_shapes.empty()) return Status::OK();
+  if (collected_shapes.empty()) return OkStatus();
 
   std::vector<nvinfer1::Dims> min = collected_shapes[0];
   std::vector<nvinfer1::Dims> max = min;
@@ -121,7 +121,7 @@ Status TrtShapeOptimizationProfile::RangeStrategy(
           << DebugString(min) << ", opt=max=" << DebugString(max);
   OptimizationProfileConfig profConfig{min, max, max};
   profiles_.push_back(std::move(profConfig));
-  return Status::OK();
+  return OkStatus();
 }
 
 void TrtShapeOptimizationProfile::OptimalStrategy(
@@ -187,7 +187,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(OpKernelContext* ctx) {
     // to host.
     cudaStreamSynchronize(*stream);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Collects the values of tensors that are ShapeTensorCompatible to. To be used
@@ -212,7 +212,7 @@ Status TrtShapeOptimizationProfile::CollectShapeValues(const DataVec& input) {
       actual_shape_values_[i] = {0, {}};
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Adjusts shape value profile to prevent TRT from removing shape value input
@@ -311,7 +311,9 @@ void TrtShapeOptimizationProfile::InitProfiles(
   if (input_partial_shapes.size() > 0) {
     for (OptimizationProfileConfig& prof : profiles_) {
       // TODO: Remove this when the bug is fixed.
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
       FixShapeValueProfile(&prof, is_shape_tensor_);
+#endif
       for (int i = 0; i < input_partial_shapes.size(); i++) {
         auto network_input = input_partial_shapes[i];
         EnforceCompatibility(&prof.min[i], network_input);
@@ -405,14 +407,14 @@ Status TrtShapeOptimizationProfile::AddProfiles(
   SetShapeTensorMask(network);
   is_pruned_input_.resize(network->getNbInputs());
   absl::c_fill(is_pruned_input_, false);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::ConfigureBuilder(
     nvinfer1::IBuilder* builder, nvinfer1::IBuilderConfig* config,
     const nvinfer1::INetworkDefinition* network) {
   TF_RETURN_IF_ERROR(AddProfiles(builder, config, network));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets the shape tensor mask from the TRT engine definition.
@@ -512,7 +514,7 @@ Status TrtShapeOptimizationProfile::CreateExecutionContexts(
     i++;
   } while (i < profiles_.size());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::SetInputShapeBinding(
@@ -536,7 +538,7 @@ Status TrtShapeOptimizationProfile::SetInputShapeBinding(
                               binding_index);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // If binding_idx is a shape tensor, then returns the associated min/max/opt
@@ -579,7 +581,7 @@ Status TrtShapeOptimizationProfile::SetPrunedMask(
       continue;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtShapeOptimizationProfile::RestoreProfiles(
@@ -587,11 +589,11 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
   need_profiles_ = false;
   if (!engine) {
     // We do not need to restore profiles for an empty engine.
-    return Status::OK();
+    return OkStatus();
   }
   if (engine->hasImplicitBatchDimension()) {
     // Nothing to do, we cannot have profiles in implicit batch mode.
-    return Status::OK();
+    return OkStatus();
   }
   int n_profiles = engine->getNbOptimizationProfiles();
   need_profiles_ = n_profiles > 0;
@@ -637,7 +639,7 @@ Status TrtShapeOptimizationProfile::RestoreProfiles(
     VLOG(2) << "Restored profile " << cfg.DebugString();
     profiles_.push_back(std::move(cfg));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int TrtShapeOptimizationProfile::GetNumProfiles() const {

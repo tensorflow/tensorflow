@@ -41,21 +41,23 @@ CallingConvention DefaultCallingConvention(mlir::TypeConverter type_converter) {
 
     // Track if all type conversions were successful.
     bool failed_conversion = false;
-    auto convert = [&](mlir::Type type) -> mlir::Type {
-      auto converted = c.convertType(type);
-      if (!converted) failed_conversion = true;
-      return converted;
-    };
 
+    auto convert = [&](llvm::ArrayRef<mlir::Type> types,
+                       llvm::SmallVector<mlir::Type>& converted) {
+      llvm::for_each(types, [&](mlir::Type type) {
+        mlir::LogicalResult result = c.convertType(type, converted);
+        if (result.failed()) failed_conversion = true;
+      });
+    };
     // Add execution context as the first argument.
     llvm::SmallVector<mlir::Type> inputs = {ExecutionContextType::get(ctx)};
     inputs.reserve(1 + func.getNumInputs());
-    llvm::transform(func.getInputs(), std::back_inserter(inputs), convert);
+    convert(func.getInputs(), inputs);
 
     // Apply type conversion to all results types.
     llvm::SmallVector<mlir::Type> results;
     results.reserve(func.getNumResults());
-    llvm::transform(func.getResults(), std::back_inserter(results), convert);
+    convert(func.getResults(), results);
 
     // Return null if any of the type conversions failed.
     if (failed_conversion) return mlir::FunctionType();
@@ -72,17 +74,19 @@ CallingConvention ResultsToOutsCallingConvention(
     // Track if all type conversions were successful.
     bool failed_conversion = false;
 
-    auto convert = [&](mlir::Type type) -> mlir::Type {
-      auto converted = c.convertType(type);
-      if (!converted) failed_conversion = true;
-      return converted;
+    auto convert = [&](llvm::ArrayRef<mlir::Type> types,
+                       llvm::SmallVector<mlir::Type>& converted) {
+      llvm::for_each(types, [&](mlir::Type type) {
+        mlir::LogicalResult result = c.convertType(type, converted);
+        if (result.failed()) failed_conversion = true;
+      });
     };
 
     llvm::SmallVector<mlir::Type> inputs;
     inputs.reserve(1 + func.getNumInputs() + func.getNumResults());
     inputs.push_back(ExecutionContextType::get(ctx));
-    llvm::transform(func.getInputs(), std::back_inserter(inputs), convert);
-    llvm::transform(func.getResults(), std::back_inserter(inputs), convert);
+    convert(func.getInputs(), inputs);
+    convert(func.getResults(), inputs);
 
     // Return null if any of the type conversions failed.
     if (failed_conversion) return mlir::FunctionType();

@@ -117,6 +117,8 @@ class ContextInterface : public tensorflow::ImmediateExecutionContext {
 
   tensorflow::CustomDeviceOpHandler& GetCustomDeviceOpHandler() override;
 
+  bool IsCustomDevice(const std::string& device_name) override;
+
   tensorflow::Status RegisterCustomDevice(
       const std::string& name,
       std::unique_ptr<tensorflow::CustomDevice> device) override;

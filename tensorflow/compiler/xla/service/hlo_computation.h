@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -288,12 +288,11 @@ class HloComputation {
     return H::combine(std::move(h), instructions.size());
   }
 
-  using InstructionSequence = tensorflow::gtl::iterator_range<
+  using InstructionSequence = tsl::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;
 
-  using ConstInstructionSequence =
-      tensorflow::gtl::iterator_range<UnwrappingIterator<
-          std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
+  using ConstInstructionSequence = tsl::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>;
 
   // Gets the instructions in this computation.
   //
@@ -383,8 +382,11 @@ class HloComputation {
   ProgramShape ComputeProgramShape(bool include_ids = true) const;
 
   // Return whether `*this` and `other` are functionally equivalent.
-  bool Equal(const HloComputation& other, bool is_layout_sensitive) const {
-    return EqualInternal(other, is_layout_sensitive,
+  bool Equal(
+      const HloComputation& other, bool is_layout_sensitive,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator = nullptr) const {
+    return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          /*ignore_channel_id_values=*/false,
                          /*ignore_execution_thread=*/false);
   }
@@ -392,17 +394,22 @@ class HloComputation {
   // Same as Equal() but ignores channel ID value mismatches on instructions, as
   // long as the two instructions both have channel IDs or neither has a channel
   // ID.
-  bool EqualIgnoringChannelIdValues(const HloComputation& other,
-                                    bool is_layout_sensitive) const {
-    return EqualInternal(other, is_layout_sensitive,
+  bool EqualIgnoringChannelIdValues(
+      const HloComputation& other, bool is_layout_sensitive,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator = nullptr) const {
+    return EqualInternal(other, is_layout_sensitive, computations_comparator,
                          /*ignore_channel_id_values=*/true,
                          /*ignore_execution_thread=*/false);
   }
 
-  bool EqualIgnoringExecutionThread(const HloComputation& other,
-                                    bool is_layout_sensitive,
-                                    bool ignore_channel_id_values) const {
-    return EqualInternal(other, is_layout_sensitive, ignore_channel_id_values,
+  bool EqualIgnoringExecutionThread(
+      const HloComputation& other, bool is_layout_sensitive,
+      bool ignore_channel_id_values,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator = nullptr) const {
+    return EqualInternal(other, is_layout_sensitive, computations_comparator,
+                         ignore_channel_id_values,
                          /*ignore_execution_thread=*/true);
   }
 
@@ -672,10 +679,11 @@ class HloComputation {
       std::unique_ptr<HloInstruction> instruction);
 
   // Internal helper for comparison with different options.
-  bool EqualInternal(const HloComputation& other, bool is_layout_sensitive,
-                     bool ignore_channel_id_values,
-                     bool ignore_execution_thread) const;
-
+  bool EqualInternal(
+      const HloComputation& other, bool is_layout_sensitive,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          computations_comparator,
+      bool ignore_channel_id_values, bool ignore_execution_thread) const;
   // Appends (fuses) HLOs in instructions_to_append into the called computation
   // of the caller.
   void AppendInstructionsIntoCalledComputation(

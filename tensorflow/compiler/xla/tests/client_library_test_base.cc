@@ -39,7 +39,7 @@ namespace {
 constexpr char kInterpreter[] = "interpreter";
 
 // Wrapper function that creates a nicer error message (than a bare
-// ValueOrDie()) if the platform we intend to test is not available.
+// value()) if the platform we intend to test is not available.
 LocalClient* GetOrCreateLocalClientOrDie(
     const LocalClientOptions& client_options) {
   StatusOr<LocalClient*> result =
@@ -159,7 +159,7 @@ std::string ClientLibraryTestBase::ExecuteToString(
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
-    XlaBuilder* builder, const tensorflow::core::Bitmap& expected,
+    XlaBuilder* builder, const tsl::core::Bitmap& expected,
     absl::Span<GlobalData* const> arguments) {
   Literal expected_literal = LiteralUtil::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,

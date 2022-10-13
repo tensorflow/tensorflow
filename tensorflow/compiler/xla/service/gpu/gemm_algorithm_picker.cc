@@ -35,10 +35,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logger.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
+#include "tensorflow/tsl/platform/logger.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -141,7 +141,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     VLOG(2) << "gemm algorithm " << profile_result.algorithm() << " took "
             << profile_result.elapsed_time_in_ms() << "ms";
 
-    *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+    *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     if (!autotune_config.should_check_correctness()) {
@@ -187,7 +187,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     for (const AutotuneResult& result : results) {
       *log.add_results() = result;
     }
-    tensorflow::Logger::GetSingleton()->LogProto(log);
+    tsl::Logger::GetSingleton()->LogProto(log);
   }
 
   StatusOr<AutotuneResult> best = PickBestResult(results, gemm);
@@ -345,7 +345,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
                       allocator->GetStream(executor->device_ordinal()));
 
   GemmBackendConfig gemm_config =
-      instr->backend_config<GemmBackendConfig>().ValueOrDie();
+      instr->backend_config<GemmBackendConfig>().value();
 
   TF_ASSIGN_OR_RETURN(std::optional<se::blas::AlgorithmType> gemm_algorithm,
                       DoGemmAutotune(instr, gemm_config, allocator, stream));
@@ -367,7 +367,7 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
                                 se::DeviceMemoryAllocator* allocator) {
   bool changed = false;
   for (HloInstruction* instr : computation->instructions()) {
-    if (IsCublasGemm(*instr) || IsCublasLtMatmul(*instr)) {
+    if (IsCublasGemm(*instr)) {
       TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(instr, se, allocator));
       changed |= result;
     }

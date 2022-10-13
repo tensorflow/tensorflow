@@ -431,7 +431,7 @@ tensorflow::Status TensorHandleInterface::Shape(
     tensorflow::PartialTensorShape* shape) const {
   auto metadata = Metadata();
   if (!metadata.hasValue()) {
-    return CreateTfErrorStatus(
+    return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
   int num_dims = metadata.getValue()->shape.GetRank();
@@ -447,7 +447,7 @@ tensorflow::Status TensorHandleInterface::Shape(
 tensorflow::Status TensorHandleInterface::NumDims(int* num_dims) const {
   auto metadata = Metadata();
   if (!metadata.hasValue()) {
-    return CreateTfErrorStatus(
+    return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
   *num_dims = metadata.getValue()->shape.GetRank();
@@ -459,7 +459,7 @@ tensorflow::Status TensorHandleInterface::NumElements(
     int64_t* num_elements) const {
   auto metadata = Metadata();
   if (!metadata.hasValue()) {
-    return CreateTfErrorStatus(
+    return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
   *num_elements = metadata.getValue()->shape.GetNumElements();
@@ -471,7 +471,7 @@ tensorflow::Status TensorHandleInterface::Dim(int dim_index,
                                               int64_t* dim) const {
   auto metadata = Metadata();
   if (!metadata.hasValue()) {
-    return CreateTfErrorStatus(
+    return tensorflow::FromAbslStatus(
         value_.get<TensorHandle>().GetAsyncMetadata().GetError());
   }
   *dim = metadata.getValue()->shape.GetDimensionSize(dim_index);
@@ -486,7 +486,7 @@ const char* TensorHandleInterface::DeviceName(
     context_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
   }
   if (th.IsDeviceError()) {
-    *status = CreateTfErrorStatus(th.GetAsyncDevice().GetError());
+    *status = tensorflow::FromAbslStatus(th.GetAsyncDevice().GetError());
     return nullptr;
   }
   return th.GetAvailableDevice()->name().data();
@@ -504,7 +504,7 @@ const char* TensorHandleInterface::DeviceType(
     context_.GetHostContext()->Await(th.GetAsyncDevice().CopyRCRef());
   }
   if (th.IsDeviceError()) {
-    *status = CreateTfErrorStatus(th.GetAsyncDevice().GetError());
+    *status = tensorflow::FromAbslStatus(th.GetAsyncDevice().GetError());
     return nullptr;
   }
   return th.GetAvailableDevice()->type().name().data();
@@ -521,7 +521,7 @@ tensorflow::AbstractTensorInterface* TensorHandleInterface::Resolve(
     host_ctx->Await(FormRef(tensor_av));
   }
   if (auto* error = tensor_av->GetErrorIfPresent()) {
-    *status = CreateTfErrorStatus(*error);
+    *status = tensorflow::FromAbslStatus(*error);
     return nullptr;
   }
   assert(th.IsMetadataAvailable());
@@ -961,6 +961,7 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
   // initialized. Currently one such use case is the TPU_SYSTEM device, which
   // is a virtual device specifically used to initialize TPUs.
   std::vector<std::string> virtual_device_names;
+  int64_t ncpus = 0;
 
   for (const auto& d :
        GetHostContext()->GetDeviceManager()->ListDevices<Device>()) {
@@ -974,6 +975,9 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
       virtual_device_names.push_back(tensorflow::DeviceNameUtils::FullName(
           server_def.job_name(), /*replica=*/0, server_def.task_index(), p.type,
           p.id));
+    }
+    if (d->IsDeviceType(tfrt::CpuDevice::kDeviceType)) {
+      ++ncpus;
     }
   }
 
@@ -991,10 +995,15 @@ tensorflow::Status ContextInterface::EnableCollectiveOps(
   GetHostContext()->ResetHostDevice(
       GetHostContext()
           ->GetDeviceManager()
-          ->MaybeAddDevice(TakeRef(
-              new CpuDevice(absl::StrCat(name_prefix, "/device:CPU:0"))))
+          ->MaybeAddDevice(
+              MakeRef<CpuDevice>(absl::StrCat(name_prefix, "/device:CPU:0")))
           .release());
 
+  // Create additional host logical CPU devices.
+  for (int64_t i = 1; i < ncpus; ++i) {
+    GetHostContext()->GetDeviceManager()->MaybeAddDevice(
+        MakeRef<CpuDevice>(absl::StrCat(name_prefix, "/device:CPU:", i)));
+  }
   // Update virtual devices in TFRT HostContext.
   AddDummyTfrtDevices(virtual_device_names, GetHostContext());
 
@@ -1124,6 +1133,10 @@ const std::string& ContextInterface::HostCPUName() const {
 tensorflow::CustomDeviceOpHandler&
 ContextInterface::GetCustomDeviceOpHandler() {
   return context_.GetEagerContext()->GetCustomDeviceOpHandler();
+}
+
+bool ContextInterface::IsCustomDevice(const std::string& device_name) {
+  return context_.GetEagerContext()->IsCustomDevice(device_name);
 }
 
 tensorflow::Status ContextInterface::RegisterCustomDevice(
@@ -1393,7 +1406,7 @@ tensorflow::Status OperationInterface::Execute(
     host->Await({chain->CopyRCRef()});
 
   if (TF_PREDICT_FALSE(chain->IsError())) {
-    s = CreateTfErrorStatus(chain->GetError());
+    s = tensorflow::FromAbslStatus(chain->GetError());
     // TODO(tfrt-devs): Assess if we need a explicit API to clear error.
     *chain = GetReadyChain();
   }
@@ -1411,7 +1424,7 @@ tensorflow::Status OperationInterface::Execute(
     // mode.
     if (TF_PREDICT_FALSE(!this->context_->IsAsync() &&
                          th_ref.GetAsyncTensor()->IsError() && s.ok()))
-      s = CreateTfErrorStatus(th_ref.GetAsyncTensor()->GetError());
+      s = tensorflow::FromAbslStatus(th_ref.GetAsyncTensor()->GetError());
 
     if (function_state_ && context_->IsAsync()) {
       retvals[i] = new TensorHandleInterface(function_state_->GetRetTypes()[i],

@@ -99,7 +99,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << executable->GetError().message();
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   return {std::move(host), &executable->get(), exec_ctx, std::move(ctx),

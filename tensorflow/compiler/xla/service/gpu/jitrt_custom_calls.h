@@ -26,6 +26,7 @@
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/tracing.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 
@@ -76,10 +77,13 @@ namespace runtime {
 
 using llvm::ArrayRef;
 
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
+#if GOOGLE_CUDA
 XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(
     stream_executor::cuda::BlasLt::Epilogue);
+#endif  // GOOGLE_CUDA
+
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::dnn::ActivationMode);
+XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
 
 XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
     xla::gpu::DotDimensionNumbers,
@@ -118,27 +122,6 @@ XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
 }  // namespace runtime
 }  // namespace xla
 
-// Declare explicit dense type ids for all types passed to the custom calls
-// as a user data to generate template specializations for fast id lookup.
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                           xla::gpu::JitRtKernelsCache);
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                           xla::gpu::JitRtGemmConfigCache);
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                           xla::gpu::JitRtCollectiveSupport);
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
-    xla::runtime::CustomCall, xla::gpu::JitRtAsyncCollectiveSupport);
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
-    xla::runtime::CustomCall, const xla::ServiceExecutableRunOptions);
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                           const xla::DebugOptions);
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(xla::runtime::CustomCall,
-                                           const std::string);  // ptx
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
-    xla::runtime::CustomCall, const std::vector<uint8_t>);  // cubin
-XLA_RUNTIME_DECLARE_EXPLICIT_DENSE_TYPE_ID(
-    xla::runtime::CustomCall, se::DeviceMemoryBase);  // temp buffer
-
 namespace xla {
 namespace gpu {
 
@@ -151,28 +134,6 @@ void PopulateXlaGpuTypeIdNames(runtime::TypeIDNameRegistry& registry);
 // Populate encoding from LMHLO attributes to XLA(SE) enums and structs.
 void PopulateLmhloToXlaAttrEncoding(
     runtime::CustomCallAttrEncodingSet& encoding);
-
-class JitRtKernelsCache {
- public:
-  JitRtKernelsCache() = default;
-
-  ::stream_executor::KernelBase* Get(
-      ::stream_executor::StreamExecutor* executor, const char* data,
-      llvm::StringRef name);
-
-  ::stream_executor::KernelBase* Set(
-      ::stream_executor::StreamExecutor* executor, const char* data,
-      llvm::StringRef name,
-      std::unique_ptr<::stream_executor::KernelBase> kernel);
-
- private:
-  mutable absl::Mutex mutex_;
-
-  using Key = std::tuple<::stream_executor::StreamExecutor*, const char*,
-                         llvm::StringRef>;
-  llvm::SmallDenseMap<Key, std::unique_ptr<::stream_executor::KernelBase>>
-      kernels_cache_ ABSL_GUARDED_BY(mutex_);
-};
 
 class JitRtGemmConfigCache {
  public:

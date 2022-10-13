@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -162,6 +162,7 @@ cc_library(
     hdrs = ["utils/shape_inference_utils.h"],
     deps = [
         ":Dialect",
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",

@@ -25,7 +25,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 def GMLST_LoopOp : GMLST_Op<"loop", [
      AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-     RecursiveSideEffects,
+     RecursiveMemoryEffects,
      SingleBlockImplicitTerminator<"gml_st::YieldOp">
     ]> {
   let summary = "Loop-like operation";
@@ -102,7 +102,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                        Variadic<Index>:$step,
                        Variadic<AnyType>:$inputs,
                        Variadic<AnyShaped>:$outputs,
-                       ArrayAttr:$iterator_types,
+                       IteratorTypeArrayAttr:$iterator_types,
                        OptionalAttr<ArrayAttr>:$distribution_types);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
@@ -124,13 +124,13 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
 
   let extraClassDeclaration = [{
     /// Number of loops
-    unsigned getNumLoops() { return step().size(); }
+    unsigned getNumLoops() { return getStep().size(); }
 
     /// Number of input operands
-    unsigned getNumInputs() { return inputs().size(); }
+    unsigned getNumInputs() { return getInputs().size(); }
 
     /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
+    unsigned getNumOutputs() { return getOutputs().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -139,16 +139,16 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       return getBody()->getArguments().take_front(getNumLoops());
     }
     ValueRange getRegionInputArgs() {
-      return getBody()->getArguments().slice(getNumLoops(), inputs().size());
+      return getBody()->getArguments().slice(getNumLoops(), getInputs().size());
     }
     ValueRange getRegionOutputArgs() {
-      return getBody()->getArguments().take_back(outputs().size());
+      return getBody()->getArguments().take_back(getOutputs().size());
     }
 
     void setDistributionTypes(Builder& b, ArrayRef<StringRef> types) {
       assert(types.size() == getNumLoops() &&
              "expected distribution type for every dimension");
-      distribution_typesAttr(b.getStrArrayAttr(types));
+      setDistributionTypesAttr(b.getStrArrayAttr(types));
     }
 
     void setLowerBounds(ValueRange lowerBounds) {
@@ -199,8 +199,8 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
       // Check whether the operand index is in bounds of `outputs()` arg.
       int operandIndex = opOperand.getOperandNumber();
       int outputIndexStart =
-          getNumControlOperands() + inputs().size();
-      int outputIndexEnd = outputIndexStart + outputs().size();
+          getNumControlOperands() + getInputs().size();
+      int outputIndexEnd = outputIndexStart + getOutputs().size();
       if (operandIndex < outputIndexStart || operandIndex >= outputIndexEnd)
         return OpResult();
 
@@ -272,14 +272,14 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
     }
 
     OpOperand* findInputOperand(Value value) {
-      OperandRange::iterator it = llvm::find(inputs(), value);
-      if (it == inputs().end()) return nullptr;
+      OperandRange::iterator it = llvm::find(getInputs(), value);
+      if (it == getInputs().end()) return nullptr;
       return it.getBase();
     }
 
     OpOperand* findOutputOperand(Value value) {
-      OperandRange::iterator it = llvm::find(outputs(), value);
-      if (it == outputs().end()) return nullptr;
+      OperandRange::iterator it = llvm::find(getOutputs(), value);
+      if (it == getOutputs().end()) return nullptr;
       return it.getBase();
     }
 
@@ -293,9 +293,6 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
              });
     }
 
-    static constexpr StringRef getParallelIteratorTypeName() {
-      return "parallel";
-    }
     static constexpr StringRef getDistributionTypesAttrStrName() {
       return "distribution_types";
     }
@@ -306,8 +303,9 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
 
     /// Return whether the loop dimension is parallel or not.
     bool isParallelDimension(unsigned dim) {
-      StringAttr attr = this->iterator_types()[dim].cast<StringAttr>();
-      return attr.getValue() == getParallelIteratorTypeName();
+      IteratorTypeAttr attr =
+          this->getIteratorTypes()[dim].cast<IteratorTypeAttr>();
+      return attr.getValue() == utils::IteratorType::parallel;
     }
   }];
 
@@ -316,7 +314,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   let hasFolder = 1;
 }
 
-def GMLST_YieldOp : GMLST_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
     HasParent<"::mlir::gml_st::LoopOp, ::mlir::gml_st::SetYieldOp">]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation";

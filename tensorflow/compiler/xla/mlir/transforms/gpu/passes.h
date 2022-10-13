@@ -24,6 +24,23 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+#define GEN_PASS_DECL_ADDHLOTRACEANNOTATIONSPASS
+#define GEN_PASS_DECL_CONVERTGPUTOGPURUNTIMEPASS
+#define GEN_PASS_DECL_CONVERTLMHLOGPUTOGPURUNTIMEPASS
+#define GEN_PASS_DECL_CONVERTLMHLOTOGPULAUNCHPASS
+#define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
+#define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
+#define GEN_PASS_DECL_CONVERTLAUNCHFUNCTOCUDAGRAPHPASS
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
+
+class ThunkSequence;  // forward declare
+
+// Populate passes that lower MLIR modules from a combination of LMHLO and
+// LMHLO_GPU dialects to the XLA Gpu runtime. This pipeline is composed from
+// the passes defined below, and few builtin MLIR passes.
+void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
+                                 ThunkSequence* thunk_sequence);
+
 //===----------------------------------------------------------------------===//
 // Auxiliary passes for lowering to XLA Gpu runtime.
 //===----------------------------------------------------------------------===//
@@ -46,7 +63,31 @@ createConvertGpuToGpuRuntimePass();
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLmhloToGpuLaunchPass(ThunkSequence* thunk_sequence = nullptr);
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToGpuRuntimePass();
+
+//===----------------------------------------------------------------------===//
+// Passes for lowering from the `lmhlo_gpu` dialect.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLmhloGpuToGpuRuntimePass();
+
+//===----------------------------------------------------------------------===//
+// XLA runtime performance tracing passes.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAddHloTraceAnnotationsPass();
+
+//===----------------------------------------------------------------------===//
+// XLA runtime <-> Cuda Graphs experimental integration.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLaunchFuncToCudaGraphPass();
 
 //===-----------------------------------------------------------------------===/
 

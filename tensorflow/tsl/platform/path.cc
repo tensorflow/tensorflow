@@ -29,16 +29,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/scanner.h"
 #include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tsl {
-// TODO(aminim): remove after scanner migration.
-namespace strings {
-using tensorflow::strings::Scanner;
-}
 namespace io {
 namespace internal {
 namespace {

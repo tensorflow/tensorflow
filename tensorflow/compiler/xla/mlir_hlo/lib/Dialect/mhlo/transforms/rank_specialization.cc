@@ -24,7 +24,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -138,7 +138,7 @@ struct RankSpecializationClusterPattern : public RewritePattern {
     auto operandTypes = llvm::to_vector<16>(
         llvm::map_range(operandSet, [](Value v) { return v.getType(); }));
     Block *block =
-        rewriter.createBlock(&clusterOp.body(), {}, operandTypes,
+        rewriter.createBlock(&clusterOp.getBody(), {}, operandTypes,
                              SmallVector<Location>(operandTypes.size(), loc));
 
     // Copy operations into the body.
@@ -154,7 +154,7 @@ struct RankSpecializationClusterPattern : public RewritePattern {
     rewriter.create<chlo::RankSpecializationClusterYieldOp>(loc, mappedResults);
 
     // Replace original ops with the new results.
-    for (auto it : llvm::zip(results, clusterOp.results()))
+    for (auto it : llvm::zip(results, clusterOp.getResults()))
       bvm.map(std::get<0>(it), std::get<1>(it));
     for (Operation *it : cluster) {
       if (it->getUses().empty()) {
@@ -180,13 +180,13 @@ struct MergeRankSpecializationClusterOpsPattern
         llvm::dyn_cast_or_null<chlo::RankSpecializationClusterOp>(
             op->getPrevNode());
     if (!precedingOp) return failure();
-    Block *body = op.getBody();
-    Block *precedingBody = precedingOp.getBody();
+    Block *body = op.SingleBlock::getBody();
+    Block *precedingBody = precedingOp.SingleBlock::getBody();
     auto yieldOp = llvm::dyn_cast<chlo::RankSpecializationClusterYieldOp>(
-        op.getBody()->getTerminator());
+        op.SingleBlock::getBody()->getTerminator());
     auto precedingYieldOp =
         llvm::dyn_cast<chlo::RankSpecializationClusterYieldOp>(
-            precedingOp.getBody()->getTerminator());
+            precedingOp.SingleBlock::getBody()->getTerminator());
 
     // Merge cluster operands. Consider only those operands of the second
     // cluster that do not originate in the preceding cluster.
@@ -203,7 +203,7 @@ struct MergeRankSpecializationClusterOpsPattern
     // cluster that are not exclusively used as operands to the second cluster.
     SmallVector<Value, 8> newUnmappedResults;
     for (auto it :
-         llvm::zip(precedingOp.results(), precedingYieldOp.results())) {
+         llvm::zip(precedingOp.getResults(), precedingYieldOp.getResults())) {
       Value result, innerResult;
       std::tie(result, innerResult) = it;
       if (!llvm::all_of(result.getUsers(),
@@ -211,7 +211,7 @@ struct MergeRankSpecializationClusterOpsPattern
         newUnmappedResults.push_back(innerResult);
       }
     }
-    for (Value v : yieldOp.results()) newUnmappedResults.push_back(v);
+    for (Value v : yieldOp.getResults()) newUnmappedResults.push_back(v);
 
     // Create merged cluster op.
     rewriter.setInsertionPoint(precedingOp);
@@ -223,7 +223,7 @@ struct MergeRankSpecializationClusterOpsPattern
     auto operandTypes = llvm::to_vector<16>(
         llvm::map_range(newOperands, [](Value v) { return v.getType(); }));
     Block *newBody =
-        rewriter.createBlock(&newOp.body(), {}, operandTypes,
+        rewriter.createBlock(&newOp.getBody(), {}, operandTypes,
                              SmallVector<Location>(operandTypes.size(), loc));
     rewriter.setInsertionPointToStart(newBody);
 
@@ -242,7 +242,7 @@ struct MergeRankSpecializationClusterOpsPattern
       Value blockArg, operand;
       std::tie(blockArg, operand) = it;
       if (operand.getDefiningOp() == precedingOp) {
-        auto where = llvm::find(precedingOp.results(), operand);
+        auto where = llvm::find(precedingOp.getResults(), operand);
         assert(where.getBase() != nullptr && "expected to find ");
         bvm.map(blockArg,
                 bvm.lookup(precedingYieldOp.getOperand(where.getIndex())));
@@ -265,7 +265,7 @@ struct MergeRankSpecializationClusterOpsPattern
     // Replace the two cluster ops with the new corresponding results.
     SmallVector<Value, 8> precedingOpReplacements;
     int64_t i = 0;
-    for (Value result : precedingOp.results()) {
+    for (Value result : precedingOp.getResults()) {
       Value replacement = nullptr;
       if (!llvm::all_of(result.getUsers(),
                         [&](Operation *user) { return user == op; })) {
@@ -273,7 +273,8 @@ struct MergeRankSpecializationClusterOpsPattern
       }
       precedingOpReplacements.push_back(replacement);
     }
-    ValueRange opReplacements = newOp.results().take_back(op.getNumResults());
+    ValueRange opReplacements =
+        newOp.getResults().take_back(op.getNumResults());
     rewriter.replaceOp(op, opReplacements);
     rewriter.replaceOp(precedingOp, precedingOpReplacements);
 
@@ -327,7 +328,7 @@ SmallVector<Value, 8> materializeRankedOperations(
     OpBuilder &b, Location loc, BlockAndValueMapping &bvm,
     chlo::RankSpecializationClusterOp op) {
   // Create ranked operations.
-  for (Operation &nestedOp : op.getBody()->without_terminator()) {
+  for (Operation &nestedOp : op.SingleBlock::getBody()->without_terminator()) {
     auto mappedOperands = llvm::to_vector<4>(llvm::map_range(
         nestedOp.getOperands(), [&](Value v) { return bvm.lookup(v); }));
     int64_t targetRank = 0;
@@ -349,23 +350,23 @@ SmallVector<Value, 8> materializeRankedOperations(
 
   // Collect ranked results.
   auto yieldOp = llvm::cast<chlo::RankSpecializationClusterYieldOp>(
-      op.getBody()->getTerminator());
+      op.SingleBlock::getBody()->getTerminator());
   return llvm::to_vector<8>(llvm::map_range(
-      yieldOp.results(), [&](Value v) { return bvm.lookup(v); }));
+      yieldOp.getResults(), [&](Value v) { return bvm.lookup(v); }));
 }
 
 SmallVector<Value, 8> materializeFinalReshape(
     PatternRewriter &rewriter, Location loc,
     chlo::RankSpecializationClusterOp op, ValueRange unshapedResults) {
   auto yieldOp = llvm::cast<chlo::RankSpecializationClusterYieldOp>(
-      op.getBody()->getTerminator());
-  assert(unshapedResults.size() == 1 && yieldOp.results().size() == 1 &&
+      op.SingleBlock::getBody()->getTerminator());
+  assert(unshapedResults.size() == 1 && yieldOp.getResults().size() == 1 &&
          "Currently, rank specialization supports only one result.");
 
   // Reify result shape.
   Operation *lastOpBeforeShapeReification = op->getPrevNode();
   SmallVector<Value, 1> resultShape;
-  Value originalResult = yieldOp.results().front();
+  Value originalResult = yieldOp.getResults().front();
   auto originalResultIface =
       llvm::cast<InferShapedTypeOpInterface>(originalResult.getDefiningOp());
   if (failed(originalResultIface.reifyReturnTypeShapes(
@@ -387,7 +388,7 @@ SmallVector<Value, 8> materializeFinalReshape(
       bool advanced = false;
       if (auto shapeOfOp = llvm::dyn_cast<shape::ShapeOfOp>(it)) {
         Operation *def = shapeOfOp.getArg().getDefiningOp();
-        if (def && def->getBlock() == op.getBody()) {
+        if (def && def->getBlock() == op.SingleBlock::getBody()) {
           // Resolve `shape_of` op because it still depends on operation in the
           // original cluster.
           OpBuilder::InsertionGuard guard(rewriter);
@@ -411,11 +412,12 @@ SmallVector<Value, 8> materializeFinalReshape(
   }
 
   // Replace all remaining uses of the original cluster's block args.
-  for (auto it : llvm::zip(op.operands(), op.getBody()->getArguments())) {
+  for (auto it :
+       llvm::zip(op.operands(), op.SingleBlock::getBody()->getArguments())) {
     Value operand, barg;
     std::tie(operand, barg) = it;
     barg.replaceUsesWithIf(operand, [&](OpOperand &operand) {
-      return operand.getOwner()->getBlock() != op.getBody();
+      return operand.getOwner()->getBlock() != op.SingleBlock::getBody();
     });
   }
 
@@ -472,8 +474,8 @@ Value materializeScalarRankSpecializationCase(
         Value flatShape = materializeFlatShape(b, loc, nonScalarShapes);
 
         // Derive ranked operands.
-        auto rankedOperands =
-            llvm::to_vector<8>(llvm::map_range(op.operands(), [&](Value v) {
+        auto rankedOperands = llvm::to_vector<8>(
+            llvm::map_range(op.operands(), [&](Value v) -> Value {
               if (isScalarTensorType(v.getType())) return v;
               if (!llvm::is_contained(nonScalarsOfSameShape, v)) {
                 return b
@@ -491,7 +493,8 @@ Value materializeScalarRankSpecializationCase(
 
         // Materialize ranked variants for the element-wise operations.
         BlockAndValueMapping bvm;
-        for (auto it : llvm::zip(op.getBody()->getArguments(), rankedOperands))
+        for (auto it : llvm::zip(op.SingleBlock::getBody()->getArguments(),
+                                 rankedOperands))
           bvm.map(std::get<0>(it), std::get<1>(it));
         Value unshapedResult =
             materializeRankedOperations(b, loc, bvm, op).front();
@@ -543,7 +546,8 @@ Value materializeEqualShapesRankSpecializationCase(
 
         // Materialize ranked variants for the element-wise operations.
         BlockAndValueMapping bvm;
-        for (auto it : llvm::zip(op.getBody()->getArguments(), flatOperands))
+        for (auto it :
+             llvm::zip(op.SingleBlock::getBody()->getArguments(), flatOperands))
           bvm.map(std::get<0>(it), std::get<1>(it));
         Value unshapedResult =
             materializeRankedOperations(b, loc, bvm, op).front();
@@ -591,7 +595,7 @@ Value materializeTargetRankSpecializationCase(
 
   // Materialize ranked versions of the element-wise operations.
   BlockAndValueMapping bvm;
-  for (auto it : llvm::zip(op.body().front().getArguments(), rankedOperands))
+  for (auto it : llvm::zip(op.getBody().front().getArguments(), rankedOperands))
     bvm.map(std::get<0>(it), std::get<1>(it));
 
   // Return as unranked for compatibility with other target ranks.
@@ -652,7 +656,7 @@ Value materializeGenericRankSpecializationCases(
 
   // Find the maximum rank among the reduced operand shapes.
   Value maxRank;
-  for (Value shape : minBcastShapesOp.results()) {
+  for (Value shape : minBcastShapesOp.getResults()) {
     Value rank = b.create<shape::RankOp>(loc, b.getIndexType(), shape);
     if (!maxRank) {
       maxRank = rank;
@@ -704,7 +708,8 @@ materializeRankSpecializationForSingleNonScalarShapeEquivalenceClass(
 
   // Materialize ranked variants for the element-wise operations.
   BlockAndValueMapping bvm;
-  for (auto it : llvm::zip(op.getBody()->getArguments(), op.operands())) {
+  for (auto it :
+       llvm::zip(op.SingleBlock::getBody()->getArguments(), op.operands())) {
     Value operand;
     Value bbArg;
     std::tie(bbArg, operand) = it;
@@ -782,7 +787,8 @@ SmallVector<SmallVector<Value, 4>, 4> findNonScalarShapeEquivalences(
   llvm::EquivalenceClasses<Value> eqs;
 
   // Bridge the equivalences between operands and block arguments.
-  for (auto it : llvm::zip(op.operands(), op.getBody()->getArguments()))
+  for (auto it :
+       llvm::zip(op.operands(), op.SingleBlock::getBody()->getArguments()))
     eqs.unionSets(std::get<0>(it), std::get<1>(it));
 
   // Find equalities through `SameOperandsAndResultShape` trait.
@@ -791,7 +797,7 @@ SmallVector<SmallVector<Value, 4>, 4> findNonScalarShapeEquivalences(
     Value repr = vs.front();
     for (Value v : vs.drop_front()) eqs.unionSets(repr, v);
   };
-  for (Operation &nestedOp : op.getBody()->without_terminator()) {
+  for (Operation &nestedOp : op.SingleBlock::getBody()->without_terminator()) {
     if (nestedOp.hasTrait<mlir::OpTrait::SameOperandsAndResultShape>()) {
       unionSets(nestedOp.getOperands());
       unionSets(nestedOp.getResults());
@@ -831,12 +837,12 @@ SmallVector<SmallVector<Value, 4>, 4> findNonScalarShapeEquivalences(
   // Find equalities through special knowledge of ops.
   // TODO(frgossen): Remove this when these shape equalities can be inferred
   // from surrounding shape constraints.
-  for (Operation &nestedOp : op.getBody()->without_terminator()) {
+  for (Operation &nestedOp : op.SingleBlock::getBody()->without_terminator()) {
     if (auto selectOp = llvm::dyn_cast<mhlo::SelectOp>(nestedOp)) {
       unionSets(
-          {selectOp.on_true(), selectOp.on_false(), selectOp.getResult()});
+          {selectOp.getOnTrue(), selectOp.getOnFalse(), selectOp.getResult()});
     } else if (auto clampOp = llvm::dyn_cast<mhlo::ClampOp>(nestedOp)) {
-      unionSets({clampOp.operand(), clampOp.getResult()});
+      unionSets({clampOp.getOperand(), clampOp.getResult()});
     }
   }
 

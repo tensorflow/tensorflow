@@ -172,6 +172,26 @@ void populateDecomposeChloPatterns(MLIRContext *context,
 
 }  // namespace chlo
 
+namespace stablehlo {
+
+// Populates MHLO ops to StableHLO ops rewriting patterns.
+// Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
+// which make sure `func.func`, `func.call` and `func.return` which involve
+// illegal types also get converted.
+void populateHloToStablehloPatterns(RewritePatternSet *patterns,
+                                    TypeConverter *converter,
+                                    MLIRContext *context);
+
+// Populates StableHLO ops to MHLO ops rewriting patterns.
+// Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
+// which make sure `func.func`, `func.call` and `func.return` which involve
+// illegal types also get converted.
+void populateStablehloToHloPatterns(RewritePatternSet *patterns,
+                                    TypeConverter *converter,
+                                    MLIRContext *context);
+
+}  // namespace stablehlo
+
 }  // namespace mlir
 
 #endif  // MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H

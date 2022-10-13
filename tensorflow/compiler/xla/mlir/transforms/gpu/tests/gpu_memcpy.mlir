@@ -11,7 +11,7 @@ func.func @gpu_memcpy_d2d(%dst: memref<?xf32>, %src: memref<?xf32>) {
 }
 
 // CHECK: func private @[[MEMCPY]](memref<?xf32>, memref<?xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.memcpy.d2d"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.memcpy.d2d"}
 
 // -----
 
@@ -27,7 +27,7 @@ func.func @gpu_memcpy_h2d(%dst: memref<?xf32>, %dim: index) {
 }
 
 // CHECK: func private @[[MEMCPY]](memref<?xf32>, memref<?xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.memcpy.h2d"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.memcpy.h2d"}
 
 // -----
 
@@ -43,4 +43,4 @@ func.func @gpu_memcpy_d2h(%src: memref<?xf32>, %dim: index) {
 }
 
 // CHECK: func private @[[MEMCPY]](memref<?xf32>, memref<?xf32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.memcpy.d2h"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.memcpy.d2h"}

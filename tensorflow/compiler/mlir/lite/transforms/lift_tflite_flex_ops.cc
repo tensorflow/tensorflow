@@ -55,7 +55,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LIFTTFLITEFLEXOPSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 using ::tensorflow::StatusOr;
@@ -225,7 +225,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 };
 
 class LiftTfliteFlexOpsPass
-    : public LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
+    : public impl::LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }
@@ -238,7 +238,7 @@ class LiftTfliteFlexOpsPass
     func::FuncOp func = getOperation();
 
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LiftFlexCustomOp>(context);
+    AddLiftTfliteFlexOpsPatterns(context, patterns);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       signalPassFailure();
       return;
@@ -247,6 +247,11 @@ class LiftTfliteFlexOpsPass
 };
 
 }  // namespace
+
+void AddLiftTfliteFlexOpsPatterns(MLIRContext* context,
+                                  RewritePatternSet& patterns) {
+  patterns.add<LiftFlexCustomOp>(context);
+}
 
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass() {
   return std::make_unique<LiftTfliteFlexOpsPass>();

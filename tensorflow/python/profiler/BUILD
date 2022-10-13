@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 
 package(

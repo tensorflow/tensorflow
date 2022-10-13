@@ -36,7 +36,7 @@ port::Status ToStatus(cublasStatus_t status, const char* prefix) {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat(prefix, ": ", ToString(status)));
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 cudaDataType_t AsCudaDataType(blas::DataType type) {

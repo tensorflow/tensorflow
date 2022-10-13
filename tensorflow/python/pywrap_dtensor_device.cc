@@ -20,6 +20,7 @@ limitations under the License.
 #include "pybind11/stl.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/dtensor/cc/dtensor_device.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -38,6 +39,7 @@ using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
 using tensorflow::dtensor::GetFunctionCacheHitAndMissCount;
 using tensorflow::dtensor::IsSparseDTensor;
+using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
 using tensorflow::dtensor::SetSameShapePolicy;
 using tensorflow::dtensor::SetTPUCoreIDs;
@@ -325,4 +327,15 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
         static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
         device_info, status.get());
   });
+  py::class_<Mesh>(m, "Mesh")
+      .def(py::init(&Mesh::CreateMesh))
+      .def_property_readonly("name", &Mesh::name)
+      .def_property_readonly("dim_names", &Mesh::MeshDimNames)
+      .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
+      .def("to_string", &Mesh::ToString,
+           "Returns string representation of Mesh.")
+      .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
+           "Returns True if a Mesh contains the given dimension name.")
+      .def("device_type", &Mesh::device_type,
+           "Returns the device_type of a Mesh.");
 }

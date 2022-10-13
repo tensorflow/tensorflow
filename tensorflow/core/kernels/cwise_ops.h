@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <type_traits>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -1150,6 +1151,17 @@ struct scalar_atan2_op {
 #else
     return static_cast<Scalar>(std::atan2(y, x));
 #endif
+  }
+};
+
+// When invoked with Eigen::bfloat16 arguments, `std::atan2` resolves to its
+// double-precision overload. Force the single-precision implementation by
+// explicitly invoking `std::atan2f`.
+template <>
+struct scalar_atan2_op<Eigen::bfloat16> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Eigen::bfloat16 operator()(
+      const Eigen::bfloat16 y, const Eigen::bfloat16 x) const {
+    return static_cast<Eigen::bfloat16>(::atan2f(y, x));
   }
 };
 

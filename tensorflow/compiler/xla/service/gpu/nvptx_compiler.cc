@@ -38,8 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/metrics.h"
@@ -47,24 +45,20 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
-#include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -203,7 +197,7 @@ bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
        module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
-    auto filename = tensorflow::io::Basename(full_filename);
+    auto filename = tsl::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
       matched_filename = full_filename;
       VLOG(1) << "RunBackend() - Will load PTX from file: " << full_filename;
@@ -244,8 +238,7 @@ std::unique_ptr<llvm::Module> MaybeLoadLLVMFromFile(const HloModule* module,
       xla_gpu_llvm_ir_file, [prefix](const std::string& full_filename) {
         // To ease comparing many LLVM versions, accept different suffixes then
         // the original filename.
-        return absl::StartsWith(tensorflow::io::Basename(full_filename),
-                                prefix);
+        return absl::StartsWith(tsl::io::Basename(full_filename), prefix);
       });
   if (!xla_gpu_llvm_ir_file.empty() &&
       matched_filename == std::end(xla_gpu_llvm_ir_file)) {
@@ -359,11 +352,11 @@ NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
         MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t start_usecs = tsl::Env::Default()->NowMicros();
     TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(selected_module, gpu_version,
                                                  module_config, libdevice_dir));
 
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     // This won't record values for calls that error out (because if they error
     // out we have no way of telling how far through the process we got).
     RecordLlvmPassesAndLlvmToPtxDuration(end_usecs - start_usecs);
@@ -382,8 +375,8 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
     bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
-  tensorflow::profiler::TraceMe activity(
-      "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("PTX->CUBIN",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are
@@ -414,13 +407,13 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
         if (relocatable) {
           ptxas_config.extra_flags.push_back("-c");
         }
-        uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+        uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
         StatusOr<std::vector<uint8_t>> maybe_cubin = se::CompileGpuAsm(
             stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
 
         if (maybe_cubin.ok()) {
-          uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+          uint64_t end_usecs = tsl::Env::Default()->NowMicros();
           // This won't record values for calls that error out (because if they
           // error out we have no way of telling how far through the process we
           // got).

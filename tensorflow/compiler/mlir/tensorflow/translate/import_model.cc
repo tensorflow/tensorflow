@@ -86,6 +86,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
@@ -813,8 +814,8 @@ Status ImporterBase::GetInputOutputNodes(
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 Status ImporterBase::AddNodesToShapeRefiner(
     std::unordered_map<string, Node*>* node_name_map) {
-  shape_refiner_ = std::make_unique<ShapeRefiner>(graph_->versions(),
-                                                   graph_->op_registry());
+  shape_refiner_ =
+      std::make_unique<ShapeRefiner>(graph_->versions(), graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
   // function defined, so we should set this to false for adding nodes with
   // these types of operations.
@@ -1110,7 +1111,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
       TF_RETURN_IF_ERROR(
           ConvertDataType(element_dtype->type(), builder, &etype));
     }
-    return mlir::RankedTensorType::get(
+    return GetTypeFromTFTensorShape(
         {}, mlir::TF::VariantType::get({mlir::UnrankedTensorType::get(etype)},
                                        etype.getContext()));
   }
@@ -1166,7 +1167,7 @@ StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
           if (shape_proto.unknown_rank())
             return mlir::UnrankedTensorType::get(element_type);
           TF_RETURN_IF_ERROR(ConvertToMlirShape(shape_proto, &shape));
-          return mlir::RankedTensorType::get(shape, element_type);
+          return GetTypeFromTFTensorShape(shape, element_type);
         }
       }
     }
@@ -1276,7 +1277,7 @@ StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
       dimensions.push_back(context->Value(dim_handle));
   }
 
-  return mlir::RankedTensorType::get(
+  return GetTypeFromTFTensorShape(
       llvm::makeArrayRef(dimensions.begin(), dimensions.end()), element_type);
 }
 
@@ -1562,7 +1563,7 @@ Status ImporterBase::Convert(
   // Create the graph operation in which we will convert the individual nodes.
   auto graph = builder_.create<mlir::tf_executor::GraphOp>(
       function.getLoc(), func_type.getResults());
-  builder_.createBlock(&graph.body());
+  builder_.createBlock(&graph.getBody());
 
   for (const Node* node : ordered_nodes_) {
     TF_RETURN_IF_ERROR(ConvertNode(*node));
@@ -1710,7 +1711,7 @@ Status ImporterBase::ConvertFunctionArgAndRets(
 
   // Terminate the function by adding a Fetch operation to terminate the graph
   // and a return operation to return the Graph results.
-  builder_.setInsertionPointToEnd(&graph_op.body().front());
+  builder_.setInsertionPointToEnd(&graph_op.getBody().front());
   builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
                                               inst_to_return);
   builder_.setInsertionPointToEnd(bb);
@@ -1893,7 +1894,7 @@ mlir::Operation* ImporterBase::CreateOperation(
         builder_at_begin.create<mlir::tf_executor::NextIterationSourceOp>(
             loc, operands[0].getType(), result.attributes);
     return builder_.create<mlir::tf_executor::NextIterationSinkOp>(
-        loc, source_op.token(), operands, result.attributes);
+        loc, source_op.getToken(), operands, result.attributes);
   }
   if (node.IsLoopCond()) {
     return builder_.create<mlir::tf_executor::LoopCondOp>(loc, types, operands,
@@ -1909,13 +1910,13 @@ mlir::Operation* ImporterBase::CreateOperation(
   }
   if (node.IsControlTrigger()) {
     return builder_.create<mlir::tf_executor::ControlTriggerOp>(
-        loc, operands, result.attributes);
+        loc, mlir::ValueRange(operands), result.attributes);
   }
   // Regular TensorFlow operation are wrapped in a tf_executor.island.
   auto island = builder_.create<mlir::tf_executor::IslandOp>(
       result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
-  island.body().push_back(new mlir::Block);
+  island.getBody().push_back(new mlir::Block);
   mlir::OpBuilder island_builder =
       mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
@@ -1931,10 +1932,10 @@ mlir::Operation* ImporterBase::CreateOperation(
         values.reserve(args.size());
         for (const auto& arg : args) {
           auto range = arg_ranges.at(arg.name());
-          values.push_back(
-              range.second - range.first);
+          values.push_back(range.second - range.first);
         }
-        auto attr_value = mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
+        auto attr_value =
+            mlir::DenseI32ArrayAttr::get(inner_op->getContext(), values);
         inner_op->setAttr(attr_name, attr_value);
       };
 
@@ -2315,7 +2316,7 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
       } else {
         llvm::SmallVector<int64_t, 4> shape;
         TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-        arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+        arg_types.push_back(GetTypeFromTFTensorShape(shape, element_type));
       }
     }
   }
@@ -2610,7 +2611,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
         TF_RETURN_IF_ERROR(ConvertToMlirShape(st.shape, &shape));
         TF_RETURN_IF_ERROR(
             ConvertDataType(st.imported_dtype, builder, &st_data_type));
-        subtypes.push_back(mlir::RankedTensorType::get(shape, st_data_type));
+        subtypes.push_back(GetTypeFromTFTensorShape(shape, st_data_type));
       }
       if (imported_dtype == DT_RESOURCE) {
         element_type =
@@ -2631,7 +2632,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     } else {
       llvm::SmallVector<int64_t, 4> shape;
       TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-      arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+      arg_types.push_back(GetTypeFromTFTensorShape(shape, element_type));
     }
     i++;
   }
@@ -3187,7 +3188,7 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
         auto new_type =
             mlir::tf_saved_model::GetBoundInputArgTypeFor(global_tensor);
         arg.setType(new_type);
-        if (global_tensor.is_mutable()) {
+        if (global_tensor.getIsMutable()) {
           auto arg_with_original_type = builder.create<mlir::TF::CastOp>(
               global_tensor.getLoc(), old_type, arg,
               /*Truncate=*/builder.getBoolAttr(false));

@@ -38,7 +38,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let cppNamespace = "::mlir::tf_device";
 }
 
@@ -72,7 +72,6 @@ This op captures all needed live-in values.
 
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
-    StringRef getDevice() { return device(); }
     bool WrapsSingleOp();
   }];
 
@@ -88,7 +87,7 @@ This op captures all needed live-in values.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [Pure, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.
@@ -121,11 +120,6 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
   let results = (outs
     Variadic<AnyType>:$results
   );
-
-  let extraClassDeclaration = [{
-    StringRef getFunc() { return func(); }
-    StringRef getDevice() { return device(); }
-  }];
 }
 
 def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
@@ -364,8 +358,8 @@ This op is used for outlining a cluster.
 
   let extraClassDeclaration = [{
     // returns the function that this operation will launch.
-    func::FuncOp getFunc() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, funcAttr());
+    func::FuncOp getFuncOp() {
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFuncAttr());
     }
   }];
 }

@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_cc_library", "flatbuffer_java_library", "flatc_path")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "nnapi_plugin_impl_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
@@ -197,6 +197,7 @@ cc_test(
         ":nnapi_plugin",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate_mock_test",
         "//tensorflow/lite/kernels:test_util",

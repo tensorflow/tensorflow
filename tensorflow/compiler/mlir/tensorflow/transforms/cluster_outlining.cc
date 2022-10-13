@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -36,13 +35,19 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
+#define GEN_PASS_DEF_CLUSTEROUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ClusterOutliningPass
-    : public TF::ClusterOutliningPassBase<ClusterOutliningPass> {
+    : public impl::ClusterOutliningPassBase<ClusterOutliningPass> {
   void runOnOperation() override;
 };
 
+#define GEN_PASS_DEF_LAUNCHOUTLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct LaunchOutliningPass
-    : public TF::LaunchOutliningPassBase<LaunchOutliningPass> {
+    : public impl::LaunchOutliningPassBase<LaunchOutliningPass> {
   void runOnOperation() override;
 };
 
@@ -78,7 +83,7 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 
   // Replace uses of live-in values within cluster_op region with function
   // arguments.
-  Region& op_region = op.body();
+  Region& op_region = op.getBody();
   for (auto p : llvm::zip(live_ins, outlined_func_block->getArguments())) {
     replaceAllUsesInRegionWith(std::get<0>(p), std::get<1>(p), op_region);
   }
@@ -105,7 +110,8 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
                     OpBuilder* builder) {
   llvm::SetVector<Value> live_ins;
-  getUsedValuesDefinedAbove(cluster_op.body(), cluster_op.body(), live_ins);
+  getUsedValuesDefinedAbove(cluster_op.getBody(), cluster_op.getBody(),
+                            live_ins);
 
   func::FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
@@ -131,7 +137,7 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
 void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
                    OpBuilder* builder) {
   llvm::SetVector<Value> live_ins;
-  getUsedValuesDefinedAbove(launch_op.body(), launch_op.body(), live_ins);
+  getUsedValuesDefinedAbove(launch_op.getBody(), launch_op.getBody(), live_ins);
 
   func::FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), launch_op, symbol_table, builder);

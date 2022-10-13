@@ -912,7 +912,7 @@ class Stream {
         precision, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
     return st;
   }
@@ -949,7 +949,7 @@ class Stream {
         computation_type, algorithm, precision, output_profile_result);
     if (output_profile_result) {
       // The error is recorded in the profile.
-      return ::tensorflow::OkStatus();
+      return ::tsl::OkStatus();
     }
     return st;
   }
@@ -1531,7 +1531,7 @@ class Stream {
           blas::ComputationTypeString(computation_type), " for output type: ",
           blas::DataTypeString(blas::ToDataType<CType>::value)));
     }
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
@@ -1639,7 +1639,7 @@ inline port::Status Stream::ThenLaunch(ThreadDim thread_dims,
   kernel.PackParams(&kernel_args, args...);
   TF_RETURN_IF_ERROR(
       parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 template <typename T>

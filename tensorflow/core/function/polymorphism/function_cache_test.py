@@ -20,7 +20,7 @@ from typing import Optional
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_cache
-from tensorflow.python.eager import function_context
+from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace

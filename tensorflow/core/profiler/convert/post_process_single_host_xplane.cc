@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/post_process_single_host_xplane.h"
 
-#include "tensorflow/core/profiler/utils/derived_timeline.h"
-#include "tensorflow/core/profiler/utils/group_events.h"
+#include <vector>
+
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
@@ -49,11 +49,6 @@ void PostProcessSingleHostXSpace(XSpace* space, uint64 start_time_ns) {
   NormalizeTimestamps(space, start_time_ns);
   // 3. Sort each plane of the XSpace
   SortXSpace(space);
-  // 4. Grouping (i.e. marking step number) events in the XSpace.
-  EventForest event_forest;
-  GroupTfEvents(space, &event_forest);
-  // 5. Generated miscellaneous derived time lines for device planes.
-  GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space);
 }
 
 }  // namespace profiler

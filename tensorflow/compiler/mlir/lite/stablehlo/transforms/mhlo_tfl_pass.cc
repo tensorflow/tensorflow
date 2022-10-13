@@ -35,11 +35,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/Register.h"
 
 namespace mlir {
 namespace TFL {
@@ -61,7 +61,7 @@ class MhloToTflPass
   void getDependentDialects(DialectRegistry &registry) const override {
     mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect>();
+    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect>();
     registry.insert<::mlir::mhlo::MhloDialect>();
     registry.insert<shape::ShapeDialect>();
     registry.insert<TensorFlowLiteDialect>();

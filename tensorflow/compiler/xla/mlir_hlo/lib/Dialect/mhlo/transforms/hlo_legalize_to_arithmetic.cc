@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinDialect.h"
@@ -82,7 +82,7 @@ struct RngGetAndUpdateStatePattern
     Value oldVal = rewriter.create<memref::LoadOp>(loc, rngState);
     Value delta = rewriter.create<arith::ConstantOp>(
         loc, rewriter.getIntegerAttr(seedType,
-                                     static_cast<int64_t>(adaptor.delta())));
+                                     static_cast<int64_t>(adaptor.getDelta())));
     Value newVal = rewriter.create<arith::AddIOp>(loc, oldVal, delta);
     (void)rewriter.create<memref::StoreOp>(loc, newVal, rngState);
 
@@ -112,7 +112,7 @@ struct HloLegalizeToArithmeticPass
     : public impl::HloLegalizeToArithmeticPassBase<
           HloLegalizeToArithmeticPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<arith::ArithmeticDialect, memref::MemRefDialect,
+    registry.insert<arith::ArithDialect, memref::MemRefDialect,
                     tensor::TensorDialect>();
   }
 
@@ -125,7 +125,7 @@ struct HloLegalizeToArithmeticPass
     populateHloToArithmeticConversionPatterns(&patterns);
 
     target.addIllegalOp<XlaRngGetAndUpdateStateOp>();
-    target.addLegalDialect<arith::ArithmeticDialect, BuiltinDialect,
+    target.addLegalDialect<arith::ArithDialect, BuiltinDialect,
                            memref::MemRefDialect, tensor::TensorDialect>();
 
     auto module = getOperation();

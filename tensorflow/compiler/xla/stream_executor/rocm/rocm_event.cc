@@ -30,14 +30,14 @@ Event::Status GpuEvent::PollForStatus() {
     return Event::Status::kError;
   }
 
-  switch (status.ValueOrDie()) {
+  switch (status.value()) {
     case hipSuccess:
       return Event::Status::kComplete;
     case hipErrorNotReady:
       return Event::Status::kPending;
     default:
       LOG(INFO) << "Error condition returned for event status: "
-                << status.ValueOrDie();
+                << status.value();
       return Event::Status::kError;
   }
 }

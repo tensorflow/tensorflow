@@ -114,6 +114,10 @@ struct BenchmarkStoragePaths;
 struct BenchmarkStoragePathsBuilder;
 struct BenchmarkStoragePathsT;
 
+struct ValidationSettings;
+struct ValidationSettingsBuilder;
+struct ValidationSettingsT;
+
 struct MinibenchmarkSettings;
 struct MinibenchmarkSettingsBuilder;
 struct MinibenchmarkSettingsT;
@@ -164,6 +168,8 @@ bool operator==(const ModelFileT &lhs, const ModelFileT &rhs);
 bool operator!=(const ModelFileT &lhs, const ModelFileT &rhs);
 bool operator==(const BenchmarkStoragePathsT &lhs, const BenchmarkStoragePathsT &rhs);
 bool operator!=(const BenchmarkStoragePathsT &lhs, const BenchmarkStoragePathsT &rhs);
+bool operator==(const ValidationSettingsT &lhs, const ValidationSettingsT &rhs);
+bool operator!=(const ValidationSettingsT &lhs, const ValidationSettingsT &rhs);
 bool operator==(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs);
 bool operator!=(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs);
 
@@ -3134,11 +3140,64 @@ inline flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePathsDir
 
 flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(flatbuffers::FlatBufferBuilder &_fbb, const BenchmarkStoragePathsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ValidationSettingsT : public flatbuffers::NativeTable {
+  typedef ValidationSettings TableType;
+  int64_t per_test_timeout_ms = 0;
+};
+
+struct ValidationSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ValidationSettingsT NativeTableType;
+  typedef ValidationSettingsBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_PER_TEST_TIMEOUT_MS = 4
+  };
+  int64_t per_test_timeout_ms() const {
+    return GetField<int64_t>(VT_PER_TEST_TIMEOUT_MS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int64_t>(verifier, VT_PER_TEST_TIMEOUT_MS, 8) &&
+           verifier.EndTable();
+  }
+  ValidationSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ValidationSettingsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ValidationSettings> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ValidationSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ValidationSettingsBuilder {
+  typedef ValidationSettings Table;
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_per_test_timeout_ms(int64_t per_test_timeout_ms) {
+    fbb_.AddElement<int64_t>(ValidationSettings::VT_PER_TEST_TIMEOUT_MS, per_test_timeout_ms, 0);
+  }
+  explicit ValidationSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  flatbuffers::Offset<ValidationSettings> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ValidationSettings>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ValidationSettings> CreateValidationSettings(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int64_t per_test_timeout_ms = 0) {
+  ValidationSettingsBuilder builder_(_fbb);
+  builder_.add_per_test_timeout_ms(per_test_timeout_ms);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ValidationSettings> CreateValidationSettings(flatbuffers::FlatBufferBuilder &_fbb, const ValidationSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct MinibenchmarkSettingsT : public flatbuffers::NativeTable {
   typedef MinibenchmarkSettings TableType;
   std::vector<std::unique_ptr<tflite::TFLiteSettingsT>> settings_to_test{};
   std::unique_ptr<tflite::ModelFileT> model_file{};
   std::unique_ptr<tflite::BenchmarkStoragePathsT> storage_paths{};
+  std::unique_ptr<tflite::ValidationSettingsT> validation_settings{};
   MinibenchmarkSettingsT() = default;
   MinibenchmarkSettingsT(const MinibenchmarkSettingsT &o);
   MinibenchmarkSettingsT(MinibenchmarkSettingsT&&) FLATBUFFERS_NOEXCEPT = default;
@@ -3151,7 +3210,8 @@ struct MinibenchmarkSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_SETTINGS_TO_TEST = 4,
     VT_MODEL_FILE = 6,
-    VT_STORAGE_PATHS = 8
+    VT_STORAGE_PATHS = 8,
+    VT_VALIDATION_SETTINGS = 10
   };
   const flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>> *settings_to_test() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>> *>(VT_SETTINGS_TO_TEST);
@@ -3162,6 +3222,9 @@ struct MinibenchmarkSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
   const tflite::BenchmarkStoragePaths *storage_paths() const {
     return GetPointer<const tflite::BenchmarkStoragePaths *>(VT_STORAGE_PATHS);
   }
+  const tflite::ValidationSettings *validation_settings() const {
+    return GetPointer<const tflite::ValidationSettings *>(VT_VALIDATION_SETTINGS);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SETTINGS_TO_TEST) &&
@@ -3171,6 +3234,8 @@ struct MinibenchmarkSettings FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
            verifier.VerifyTable(model_file()) &&
            VerifyOffset(verifier, VT_STORAGE_PATHS) &&
            verifier.VerifyTable(storage_paths()) &&
+           VerifyOffset(verifier, VT_VALIDATION_SETTINGS) &&
+           verifier.VerifyTable(validation_settings()) &&
            verifier.EndTable();
   }
   MinibenchmarkSettingsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3191,6 +3256,9 @@ struct MinibenchmarkSettingsBuilder {
   void add_storage_paths(flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths) {
     fbb_.AddOffset(MinibenchmarkSettings::VT_STORAGE_PATHS, storage_paths);
   }
+  void add_validation_settings(flatbuffers::Offset<tflite::ValidationSettings> validation_settings) {
+    fbb_.AddOffset(MinibenchmarkSettings::VT_VALIDATION_SETTINGS, validation_settings);
+  }
   explicit MinibenchmarkSettingsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3206,8 +3274,10 @@ inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::TFLiteSettings>>> settings_to_test = 0,
     flatbuffers::Offset<tflite::ModelFile> model_file = 0,
-    flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths = 0) {
+    flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths = 0,
+    flatbuffers::Offset<tflite::ValidationSettings> validation_settings = 0) {
   MinibenchmarkSettingsBuilder builder_(_fbb);
+  builder_.add_validation_settings(validation_settings);
   builder_.add_storage_paths(storage_paths);
   builder_.add_model_file(model_file);
   builder_.add_settings_to_test(settings_to_test);
@@ -3218,13 +3288,15 @@ inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettingsDir
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<flatbuffers::Offset<tflite::TFLiteSettings>> *settings_to_test = nullptr,
     flatbuffers::Offset<tflite::ModelFile> model_file = 0,
-    flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths = 0) {
+    flatbuffers::Offset<tflite::BenchmarkStoragePaths> storage_paths = 0,
+    flatbuffers::Offset<tflite::ValidationSettings> validation_settings = 0) {
   auto settings_to_test__ = settings_to_test ? _fbb.CreateVector<flatbuffers::Offset<tflite::TFLiteSettings>>(*settings_to_test) : 0;
   return tflite::CreateMinibenchmarkSettings(
       _fbb,
       settings_to_test__,
       model_file,
-      storage_paths);
+      storage_paths,
+      validation_settings);
 }
 
 flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4585,11 +4657,49 @@ inline flatbuffers::Offset<BenchmarkStoragePaths> CreateBenchmarkStoragePaths(fl
 }
 
 
+inline bool operator==(const ValidationSettingsT &lhs, const ValidationSettingsT &rhs) {
+  return
+      (lhs.per_test_timeout_ms == rhs.per_test_timeout_ms);
+}
+
+inline bool operator!=(const ValidationSettingsT &lhs, const ValidationSettingsT &rhs) {
+    return !(lhs == rhs);
+}
+
+
+inline ValidationSettingsT *ValidationSettings::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = std::unique_ptr<ValidationSettingsT>(new ValidationSettingsT());
+  UnPackTo(_o.get(), _resolver);
+  return _o.release();
+}
+
+inline void ValidationSettings::UnPackTo(ValidationSettingsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = per_test_timeout_ms(); _o->per_test_timeout_ms = _e; }
+}
+
+inline flatbuffers::Offset<ValidationSettings> ValidationSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ValidationSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateValidationSettings(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ValidationSettings> CreateValidationSettings(flatbuffers::FlatBufferBuilder &_fbb, const ValidationSettingsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ValidationSettingsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _per_test_timeout_ms = _o->per_test_timeout_ms;
+  return tflite::CreateValidationSettings(
+      _fbb,
+      _per_test_timeout_ms);
+}
+
+
 inline bool operator==(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs) {
   return
       (lhs.settings_to_test == rhs.settings_to_test) &&
       ((lhs.model_file == rhs.model_file) || (lhs.model_file && rhs.model_file && *lhs.model_file == *rhs.model_file)) &&
-      ((lhs.storage_paths == rhs.storage_paths) || (lhs.storage_paths && rhs.storage_paths && *lhs.storage_paths == *rhs.storage_paths));
+      ((lhs.storage_paths == rhs.storage_paths) || (lhs.storage_paths && rhs.storage_paths && *lhs.storage_paths == *rhs.storage_paths)) &&
+      ((lhs.validation_settings == rhs.validation_settings) || (lhs.validation_settings && rhs.validation_settings && *lhs.validation_settings == *rhs.validation_settings));
 }
 
 inline bool operator!=(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSettingsT &rhs) {
@@ -4599,7 +4709,8 @@ inline bool operator!=(const MinibenchmarkSettingsT &lhs, const MinibenchmarkSet
 
 inline MinibenchmarkSettingsT::MinibenchmarkSettingsT(const MinibenchmarkSettingsT &o)
       : model_file((o.model_file) ? new tflite::ModelFileT(*o.model_file) : nullptr),
-        storage_paths((o.storage_paths) ? new tflite::BenchmarkStoragePathsT(*o.storage_paths) : nullptr) {
+        storage_paths((o.storage_paths) ? new tflite::BenchmarkStoragePathsT(*o.storage_paths) : nullptr),
+        validation_settings((o.validation_settings) ? new tflite::ValidationSettingsT(*o.validation_settings) : nullptr) {
   settings_to_test.reserve(o.settings_to_test.size());
   for (const auto &v : o.settings_to_test) { settings_to_test.emplace_back((v) ? new tflite::TFLiteSettingsT(*v) : nullptr); }
 }
@@ -4608,6 +4719,7 @@ inline MinibenchmarkSettingsT &MinibenchmarkSettingsT::operator=(MinibenchmarkSe
   std::swap(settings_to_test, o.settings_to_test);
   std::swap(model_file, o.model_file);
   std::swap(storage_paths, o.storage_paths);
+  std::swap(validation_settings, o.validation_settings);
   return *this;
 }
 
@@ -4623,6 +4735,7 @@ inline void MinibenchmarkSettings::UnPackTo(MinibenchmarkSettingsT *_o, const fl
   { auto _e = settings_to_test(); if (_e) { _o->settings_to_test.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { if(_o->settings_to_test[_i]) { _e->Get(_i)->UnPackTo(_o->settings_to_test[_i].get(), _resolver); } else { _o->settings_to_test[_i] = std::unique_ptr<tflite::TFLiteSettingsT>(_e->Get(_i)->UnPack(_resolver)); }; } } }
   { auto _e = model_file(); if (_e) { if(_o->model_file) { _e->UnPackTo(_o->model_file.get(), _resolver); } else { _o->model_file = std::unique_ptr<tflite::ModelFileT>(_e->UnPack(_resolver)); } } }
   { auto _e = storage_paths(); if (_e) { if(_o->storage_paths) { _e->UnPackTo(_o->storage_paths.get(), _resolver); } else { _o->storage_paths = std::unique_ptr<tflite::BenchmarkStoragePathsT>(_e->UnPack(_resolver)); } } }
+  { auto _e = validation_settings(); if (_e) { if(_o->validation_settings) { _e->UnPackTo(_o->validation_settings.get(), _resolver); } else { _o->validation_settings = std::unique_ptr<tflite::ValidationSettingsT>(_e->UnPack(_resolver)); } } }
 }
 
 inline flatbuffers::Offset<MinibenchmarkSettings> MinibenchmarkSettings::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MinibenchmarkSettingsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -4636,11 +4749,13 @@ inline flatbuffers::Offset<MinibenchmarkSettings> CreateMinibenchmarkSettings(fl
   auto _settings_to_test = _o->settings_to_test.size() ? _fbb.CreateVector<flatbuffers::Offset<tflite::TFLiteSettings>> (_o->settings_to_test.size(), [](size_t i, _VectorArgs *__va) { return CreateTFLiteSettings(*__va->__fbb, __va->__o->settings_to_test[i].get(), __va->__rehasher); }, &_va ) : 0;
   auto _model_file = _o->model_file ? CreateModelFile(_fbb, _o->model_file.get(), _rehasher) : 0;
   auto _storage_paths = _o->storage_paths ? CreateBenchmarkStoragePaths(_fbb, _o->storage_paths.get(), _rehasher) : 0;
+  auto _validation_settings = _o->validation_settings ? CreateValidationSettings(_fbb, _o->validation_settings.get(), _rehasher) : 0;
   return tflite::CreateMinibenchmarkSettings(
       _fbb,
       _settings_to_test,
       _model_file,
-      _storage_paths);
+      _storage_paths,
+      _validation_settings);
 }
 
 }  // namespace tflite

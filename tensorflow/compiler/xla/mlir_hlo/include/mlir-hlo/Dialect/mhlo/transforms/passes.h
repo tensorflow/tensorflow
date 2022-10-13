@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "llvm/ADT/ArrayRef.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 
@@ -37,10 +37,7 @@ class FusionOp;
 
 namespace mhlo {
 
-#define GEN_PASS_DECL_CHLOLEGALIZETOHLOPASS
-#define GEN_PASS_DECL_EXPANDHLOTUPLESPASS
-#define GEN_PASS_DECL_GROUPREDUCTIONDIMENSIONSPASS
-#define GEN_PASS_DECL_RANKSPECIALIZATIONTOSCFPASS
+#define GEN_PASS_DECL
 #include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 /// Lowers HLO control flow ops to SCF.
@@ -60,9 +57,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createChloLegalizeToHloPass(
 std::unique_ptr<OperationPass<func::FuncOp>>
 createLegalizeSparseChloToLinalgPass();
 
-// canonicalize reduction ops to be suitable for codegen.
+// Canonicalize reduction ops to be suitable for codegen.
 std::unique_ptr<OperationPass<func::FuncOp>>
 createHloCanonicalizeReductionPass();
+
+// Rewrites scatter into transposes, reshapes and a simpler scatter.
+std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
+
+// Rewrites gather into transposes, reshapes and a simpler gather.
+std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeGatherPass();
 
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
@@ -155,6 +158,20 @@ std::unique_ptr<OperationPass<ModuleOp>> createConvertToSignlessPass();
 
 /// Creates pass for rewriting sparse mhlo ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createSparseRewritingPass();
+
+// Legalizes from the MHLO dialect to the StableHLO dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createHloLegalizeToStablehloPass();
+
+// Legalizes from the StableHLO dialect to the MHLO dialect.
+std::unique_ptr<OperationPass<ModuleOp>> createStablehloLegalizeToHloPass();
+
+// Test passes.
+std::unique_ptr<Pass> createTestInferShapedTypeMethodsPass();
+std::unique_ptr<Pass> createTestMaterializeBroadcastsPass();
+std::unique_ptr<Pass> createTestUnfuseBatchNormPass();
+
+#define GEN_PASS_REGISTRATION
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_passes.h.inc"
 
 }  // namespace mhlo
 }  // namespace mlir

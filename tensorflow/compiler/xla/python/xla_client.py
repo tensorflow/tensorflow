@@ -43,7 +43,7 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 92
+_version = 98
 
 # Version number for MLIR:Python components.
 mlir_api_version = 34
@@ -121,6 +121,18 @@ def make_tpu_client():
         f'got {max_inflight_computations}') from e
   return _xla.get_tpu_client(
       max_inflight_computations=max_inflight_computations)
+
+
+def make_plugin_device_client():
+  """Returns a plugin device client."""
+  try:
+    return _xla.get_plugin_device_client()
+  except AttributeError as e:
+    raise AttributeError(
+        'xla_extension has no attributes named get_plugin_device_client. '
+        'Compile TensorFlow with '
+        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
+        '(defaults to false) to enable this.') from e
 
 
 class OpMetadata:
@@ -404,11 +416,17 @@ FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
 ShardedBuffer = _xla.ShardedBuffer
-Array = _xla.Array
+ArrayImpl = _xla.ArrayImpl
 DeviceArrayBase = _xla.DeviceArrayBase
-Executable = _xla.Executable
+LoadedExecutable = _xla.LoadedExecutable
 OpSharding = _xla.OpSharding
 HloSharding = _xla.HloSharding
+Sharding = _xla.Sharding
+XLACompatibleSharding = _xla.XLACompatibleSharding
+MeshPspecSharding = _xla.MeshPspecSharding
+SingleDeviceSharding = _xla.SingleDeviceSharding
+PmapSharding = _xla.PmapSharding
+OpShardingSharding = _xla.OpShardingSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -427,6 +445,8 @@ def register_custom_call_target(name, fn, platform='cpu'):
 
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
+register_custom_call_partitioner = _xla.register_custom_call_partitioner
+hlo_sharding_util = _xla.hlo_sharding_util
 
 
 class PaddingConfigDimension:

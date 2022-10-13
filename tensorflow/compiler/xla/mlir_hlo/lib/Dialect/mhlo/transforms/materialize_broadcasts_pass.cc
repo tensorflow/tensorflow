@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
@@ -42,7 +42,7 @@ struct TestMaterializeBroadcastsPass
     conversionTarget.addLegalDialect<MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget
-        .addLegalDialect<arith::ArithmeticDialect, mlir::func::FuncDialect>();
+        .addLegalDialect<arith::ArithDialect, mlir::func::FuncDialect>();
 
     setupMaterializeBroadcastsLegality(&getContext(), &conversionTarget);
     populateMaterializeBroadcastsPatterns(&getContext(), &conversionPatterns);

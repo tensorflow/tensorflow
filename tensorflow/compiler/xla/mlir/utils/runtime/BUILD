@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -49,5 +49,17 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "custom_calls",
+    srcs = ["custom_calls.cc"],
+    hdrs = ["custom_calls.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )

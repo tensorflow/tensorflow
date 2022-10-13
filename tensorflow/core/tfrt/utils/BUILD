@@ -12,6 +12,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        "//smartass/brain/inference/...",
         # copybara:uncomment "//smartass/brain/ops/...",
         "//tensorflow/c/eager/...",
         "//tensorflow/compiler/mlir/tfrt/...",
@@ -136,6 +137,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],

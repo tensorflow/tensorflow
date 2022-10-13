@@ -96,6 +96,16 @@ cc_library(
 )
 
 cc_library(
+    name = "qcom_thin_filter_desc",
+    srcs = ["qcom_thin_filter_desc.cc"],
+    hdrs = ["qcom_thin_filter_desc.h"],
+    deps = [
+        ":gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common:status",
+    ],
+)
+
+cc_library(
     name = "serialization_base",
     srcs = ["serialization_base.cc"],
     hdrs = ["serialization_base.h"],

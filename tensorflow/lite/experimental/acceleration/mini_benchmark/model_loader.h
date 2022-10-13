@@ -40,6 +40,10 @@ class ModelLoader {
 
   const FlatBufferModel* GetModel() const { return model_.get(); }
 
+  // Return whether the FlatBufferModel is created from FlatbufferBuilder
+  // directly.
+  virtual bool IsLoadedFromFlatbufferBuilder() = 0;
+
  protected:
   // ModelLoader() = default;
 
@@ -56,6 +60,8 @@ class PathModelLoader : public ModelLoader {
  public:
   explicit PathModelLoader(absl::string_view model_path)
       : ModelLoader(), model_path_(model_path) {}
+
+  bool IsLoadedFromFlatbufferBuilder() override { return false; }
 
  protected:
   MinibenchmarkStatus InitInternal() override;
@@ -83,6 +89,8 @@ class MmapModelLoader : public ModelLoader {
     }
   }
 
+  bool IsLoadedFromFlatbufferBuilder() override { return false; }
+
  protected:
   MinibenchmarkStatus InitInternal() override;
 
@@ -107,6 +115,8 @@ class PipeModelLoader : public ModelLoader {
   PipeModelLoader& operator=(PipeModelLoader&&) = default;
 
   ~PipeModelLoader() override { std::free(model_buffer_); }
+
+  bool IsLoadedFromFlatbufferBuilder() override { return true; }
 
  protected:
   // Read the serialized Model from read_pipe_fd. Return ModelReadFailed if the

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/host_callback.h"
 
+#include <memory>
 #include <utility>
 
 namespace xla {
@@ -40,7 +41,9 @@ Status HostCallbackContext::OnSend(int arg_num,
   args_.at(arg_num) = std::move(delinearized);
 
   DCHECK_GE(ready_count_.load(), 1);
-  if (ready_count_.fetch_sub(1) != 1) return Status::OK();
+  if (ready_count_.fetch_sub(1) != 1) {
+    return OkStatus();
+  }
 
   // This atomic store won't race against the next invocation of OnSend()
   // (e.g. by the next iteration of while loop) because send callbacks are
@@ -94,7 +97,9 @@ void HostCallbackContext::Receive(int res_num,
 
   auto statusor_linearized = host_memory_for_device_manager_->ToDeviceLayout(
       chunk.data(), chunk.size(), host_shape, device_shape);
-  TF_CHECK_OK(stream.AddChunk(std::move(statusor_linearized).value()));
+  stream.AddChunk(std::move(statusor_linearized).value()).OnReady([](Status s) {
+    TF_CHECK_OK(s);
+  });
 }
 
 std::unique_ptr<HostCallbackContext>
@@ -120,13 +125,13 @@ CreateHostCallbackStateAndAppendSendRecvCallbacks(
 
   for (int res_num = 0; res_num < hb.results.size(); ++res_num) {
     const auto& result_info = hb.results[res_num];
-    recv_callbacks.push_back(
-        RecvCallback{/*channel_id=*/result_info.channel_id,
-                     /*callback=*/[res_num, context = context.get()](
-                                      const PjRtTransferMetadata& metadata,
-                                      CopyToDeviceStream& stream) {
-                       context->Receive(res_num, metadata, stream);
-                     }});
+    recv_callbacks.push_back(RecvCallback{
+        /*channel_id=*/result_info.channel_id,
+        /*callback=*/[res_num, context = context.get()](
+                         const PjRtTransferMetadata& metadata,
+                         std::unique_ptr<CopyToDeviceStream> stream) {
+          context->Receive(res_num, metadata, *stream);
+        }});
   }
 
   return context;

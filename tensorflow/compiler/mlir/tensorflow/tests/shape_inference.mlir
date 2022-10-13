@@ -1865,4 +1865,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.XlaConvV2"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi64>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<?x?x?x?x?xf32>
     func.return %0 : tensor<?x?x?x?x?xf32>
   }
+
+  // CHECK-LABEL: testSameOperandsAndResultTypeResolveRefBinary
+  func.func @testSameOperandsAndResultTypeResolveRefBinary(%lhs: tensor<2x3x?x?xf32>, %rhs: tensor<2x?x5x?xf32>) -> (tensor<?x?x?x?xf32>) {
+    // CHECK: (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<2x3x5x?xf32>
+    %0 = "tf.ReluGrad"(%lhs, %rhs) : (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<?x?x?x?xf32>
+    func.return %0 : tensor<?x?x?x?xf32>
+  }
 }

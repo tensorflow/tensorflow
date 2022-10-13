@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -14,6 +14,7 @@ cc_library(
     srcs = ["pass.cc"],
     hdrs = ["pass.h"],
     deps = [
+        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:PassIncGen",

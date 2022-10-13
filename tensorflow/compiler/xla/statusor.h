@@ -21,7 +21,7 @@ limitations under the License.
 namespace xla {
 
 // Use steam_executor's StatusOr so we don't duplicate code.
-using tensorflow::StatusOr;  // TENSORFLOW_STATUS_OK
+using tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla
 

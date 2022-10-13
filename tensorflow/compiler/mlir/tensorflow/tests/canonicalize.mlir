@@ -2121,3 +2121,20 @@ func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg
   // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
   // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
 }
+
+// CHECK-LABEL: testUnaryIdempotent
+func.func @testUnaryIdempotent(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {
+  // CHECK: tf.Abs
+  // CHECK-NOT: tf.Abs
+  %0 = "tf.Abs"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "tf.Abs"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: testInvolution
+func.func @testInvolution(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {
+  // CHECK-NOT: tf.Invert
+  %0 = "tf.Invert"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tf.Invert"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}

@@ -23,9 +23,10 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Utils/Utils.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -33,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/service/cpu/backend_config.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
@@ -316,8 +318,8 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         }
 
         llvm::SmallVector<llvm::StringRef, 4> iteratorTypes(
-            parallel_exprs.size(), toString(mlir::IteratorType::Parallel));
-        iteratorTypes.push_back(toString(mlir::IteratorType::Reduction));
+            parallel_exprs.size(), mlir::getParallelIteratorTypeName());
+        iteratorTypes.push_back(mlir::getReductionIteratorTypeName());
         builder->create<mlir::linalg::GenericOp>(
             function.getLoc(),
             /*inputs=*/mlir::ValueRange{b, c},
@@ -334,33 +336,31 @@ Status DotOpEmitter::EmitLinalgMatmul() {
             });
         builder->create<mlir::func::ReturnOp>(function.getLoc());
 
-        mlir::linalg::LinalgTilingOptions tilingOptions;
-        tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
         // TODO(kramerb): this has been retired upstream, reevaluate whether
         // this path really needs it or if it is even relevant anymore.
+        // mlir::linalg::LinalgTilingOptions tilingOptions;
+        // tilingOptions = tilingOptions.setTileSizes(GetMlirGemmTileSize());
         // int64_t alignment =
         //     target_machine_features_.minimum_alignment_for_allocation(
         //         ShapeUtil::ByteSizeOf(dot_info_.result_shape));
-        mlir::linalg::CodegenStrategy strategy;
-        strategy
-            .tile(mlir::linalg::GenericOp::getOperationName(), tilingOptions)
-            // TODO(kramerb): this has been retired upstream, reevaluate whether
-            // this path really needs it or if it is even relevant anymore.
-            // .promote(mlir::linalg::GenericOp::getOperationName(),
-            //          mlir::linalg::LinalgPromotionOptions()
-            //              .setAlignment(alignment)
-            //              .setUseFullTileBuffersByDefault(true)
-            //              .setUseAlloca(true))
-            .vectorize(mlir::linalg::GenericOp::getOperationName())
-            .vectorLowering(
-                mlir::linalg::LinalgVectorLoweringOptions()
-                    .setVectorTransformsOptions(
-                        mlir::vector::VectorTransformsOptions()
-                            .setVectorTransformsOptions(
-                                mlir::vector::VectorContractLowering::
-                                    OuterProduct))
-                    .setVectorTransferToSCFOptions(
-                        mlir::VectorTransferToSCFOptions().enableFullUnroll()));
+        // mlir::linalg::CodegenStrategy strategy;
+        // strategy.tile(mlir::linalg::GenericOp::getOperationName(),
+        //               tilingOptions);
+        // .promote(mlir::linalg::GenericOp::getOperationName(),
+        //          mlir::linalg::LinalgPromotionOptions()
+        //              .setAlignment(alignment)
+        //              .setUseFullTileBuffersByDefault(true)
+        //              .setUseAlloca(true))
+        // .vectorize(mlir::linalg::GenericOp::getOperationName())
+        // .vectorLowering(
+        //    mlir::linalg::LinalgVectorLoweringOptions()
+        //        .setVectorTransformsOptions(
+        //            mlir::vector::VectorTransformsOptions()
+        //                .setVectorTransformsOptions(
+        //                    mlir::vector::VectorContractLowering::
+        //                        OuterProduct))
+        //        .setVectorTransferToSCFOptions(
+        //            mlir::VectorTransferToSCFOptions().enableFullUnroll()));
         // TODO(kramerb): this should be within a pass and we should be able to
         // create a nested OpPassManager.
         // Created a nested OpPassManager, populate the strategy and run.
@@ -368,11 +368,11 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         // strategy.configurePassPipeline(dynamicPM, function.getContext());
         // Propagate pass failure?
         // (void)mlir::runPipeline(dynamicPM, function);
-        mlir::PassManager pm(function.getContext(),
-                             function.getOperationName());
-        strategy.configurePassPipeline(pm, function.getContext());
+        // mlir::PassManager pm(function.getContext(),
+        //                      function.getOperationName());
+        // strategy.configurePassPipeline(pm, function.getContext());
         // Propagate pass failure?
-        (void)pm.run(function);
+        // (void)pm.run(function);
       });
 }
 
@@ -997,7 +997,7 @@ Status DotOpEmitter::EmitCallToBatchRuntime() {
        b_->getInt64(mat_mult_dims.k), b_->getInt64(lhs_shape.dimensions(0)),
        b_->getInt32(static_cast<uint32_t>(transpose_lhs)),
        b_->getInt32(static_cast<uint32_t>(transpose_rhs))});
-  return Status::OK();
+  return OkStatus();
 }
 
 DotOpEmitter::MatMultDims DotOpEmitter::GetMatMultDims() const {
@@ -1510,7 +1510,11 @@ Status EmitDotOperation(const HloInstruction& dot,
                         const TargetMachineFeatures& target_machine_features) {
   // This routine assumes that the dot operation is not in a parallelized
   // enclosing computation.
-  CHECK(dot.parent()->root_instruction()->outer_dimension_partitions().empty());
+  CHECK(dot.parent()
+            ->root_instruction()
+            ->backend_config<BackendConfig>()
+            ->outer_dimension_partitions()
+            .empty());
 
   if (IsBatchDot(dot)) {
     TF_RET_CHECK(addend_array == nullptr);

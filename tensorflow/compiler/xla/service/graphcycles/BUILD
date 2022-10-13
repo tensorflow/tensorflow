@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -41,9 +41,10 @@ tf_cc_test(
     deps = [
         ":graphcycles",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -54,8 +55,9 @@ tf_cc_test(
     deps = [
         ":ordered_set",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

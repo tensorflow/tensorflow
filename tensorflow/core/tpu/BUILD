@@ -10,6 +10,7 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/jit:__subpackages__",
         "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
         "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/compiler/xla:__subpackages__",
@@ -190,12 +191,12 @@ cc_library(
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "//tensorflow/core/tpu:pjrt_api",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -208,28 +209,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        ":tpu_executor_api",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "tpu_executor_api",
-    srcs = ["tpu_executor_api.cc"],
-    hdrs = ["tpu_executor_api.h"],
-    deps = [
-        ":libtftpu_header",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "pjrt_api",
-    srcs = ["pjrt_api.cc"],
-    hdrs = ["pjrt_api.h"],
-    deps = [
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )
 

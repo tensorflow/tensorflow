@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -133,10 +132,10 @@ TEST_F(BlockingInfeedTest, TestNoOoms) {
     }
   };
 
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
 
-  std::unique_ptr<tensorflow::Thread> thread{env->StartThread(
-      tensorflow::ThreadOptions{}, "transfer_infeeds", transfer_infeeds)};
+  std::unique_ptr<tsl::Thread> thread{env->StartThread(
+      tsl::ThreadOptions{}, "transfer_infeeds", transfer_infeeds)};
 
   // Sleep for 30s waiting for the infeed thread to "catch up".
   //

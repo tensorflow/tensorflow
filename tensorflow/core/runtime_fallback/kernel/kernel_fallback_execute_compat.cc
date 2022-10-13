@@ -270,8 +270,9 @@ static void KernelFallbackExecuteCompatAsyncInternal(
                        tfrt::StrCat("error running kernel fallback kernel ",
                                     context.op_kernel().name(), ": ",
                                     context.status().error_message())));
-      for (auto& result : async_state->result_refs) result.SetError(diag);
-      async_state->chain.SetError(diag);
+      for (auto& result : async_state->result_refs)
+        result.SetError(diag.status);
+      async_state->chain.SetError(diag.status);
       return;
     }
 
@@ -698,7 +699,7 @@ void FallbackGetResource(tfrt::Argument<tfrt::Chain> in_ch,
   llvm::ArrayRef<int64_t> indices = indices_attr.GetValue<int64_t>();
 
   for (int i = 0; i < indices.size(); ++i) {
-    results[i] = tfrt::FormRef(resource_array->GetResource(indices[i]));
+    results[i] = resource_array->GetResource(indices[i]).CopyRef();
   }
 
   out_ch.Set(in_ch);

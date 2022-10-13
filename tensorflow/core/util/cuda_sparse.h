@@ -491,7 +491,7 @@ class GpuSparseMatrixDescriptor {
 #if GOOGLE_CUDA
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descr_));
 #elif TENSORFLOW_USE_ROCM
-    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descr_));
+    TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreateMatDescr(&descr_));
 #endif
     initialized_ = true;
     return OkStatus();
@@ -513,7 +513,7 @@ class GpuSparseMatrixDescriptor {
 #if GOOGLE_CUDA
       cusparseDestroyMatDescr(descr_);
 #elif TENSORFLOW_USE_ROCM
-      wrap::hipsparseDestroyMatDescr(descr_);
+      se::wrap::hipsparseDestroyMatDescr(descr_);
 #endif
       initialized_ = false;
     }

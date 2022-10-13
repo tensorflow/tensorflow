@@ -113,6 +113,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTileLoopsPass(
 // and scf.if.
 std::unique_ptr<OperationPass<func::FuncOp>> createDetensorizeScfOpsPass();
 
+// Converts ops on tensors with 1 element to scalar ops.
+std::unique_ptr<OperationPass<func::FuncOp>> createScalarizationPass();
+
 namespace hlo {
 std::unique_ptr<OperationPass<ModuleOp>> createOneShotBufferizePass();
 
@@ -120,6 +123,12 @@ std::unique_ptr<OperationPass<ModuleOp>> createGenericHostToLLVMPass();
 
 std::unique_ptr<OperationPass<func::FuncOp>> createUnbufferizePass();
 std::unique_ptr<OperationPass<func::FuncOp>> createAllocToArgPass();
+
+// Unrolls scf.for loops with static iteration count no larger than 8.
+std::unique_ptr<Pass> createUnrollLoopsPass();
+
+#define GEN_PASS_REGISTRATION
+#include "mlir-hlo/Transforms/passes.h.inc"
 
 }  // namespace hlo
 }  // namespace mlir

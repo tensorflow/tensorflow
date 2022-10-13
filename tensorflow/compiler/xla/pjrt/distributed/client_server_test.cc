@@ -30,14 +30,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 constexpr absl::Duration kHeartbeatInterval = absl::Milliseconds(500);
 constexpr int kMaxMissingHeartbeats = 3;
+constexpr absl::Duration kBarrierTimeout = absl::Milliseconds(200);
 
 struct ServiceParams {
   std::string test_name;
@@ -165,8 +166,8 @@ TEST_P(ClientServerTest, ConnectAndShutdownAreBarriers) {
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -248,8 +249,8 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
                                                          thread1_fn};
   std::vector<xla::Status> statuses(functions.size());
   {
-    tensorflow::thread::ThreadPool thread_pool(
-        tensorflow::Env::Default(), "test_threads", functions.size());
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        functions.size());
     for (int i = 0; i < functions.size(); ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = functions[i](); });
     }
@@ -284,8 +285,8 @@ TEST_P(ClientServerTest, ZeroInitTimeoutShouldStillWaitForOtherTasks) {
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -321,8 +322,8 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -337,8 +338,8 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
       // 1. Internal: node turns into ERROR state during the shutdown call.
       // 2. Failed Precondition: node is already in ERROR state before the
       // shutdown call (note: agent will still stop sending heartbeats).
-      EXPECT_TRUE(tensorflow::errors::IsInternal(statuses[i]) ||
-                  tensorflow::errors::IsFailedPrecondition(statuses[i]));
+      EXPECT_TRUE(tsl::errors::IsInternal(statuses[i]) ||
+                  tsl::errors::IsFailedPrecondition(statuses[i]));
     } else {
       EXPECT_EQ(statuses[i].code(), tensorflow::error::ABORTED);
     }
@@ -371,8 +372,8 @@ TEST_P(ClientServerTest, ClientsReceiveMissedHeartbeatIfAnyClientGoesAway) {
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -387,7 +388,7 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
   // We use a socket connection for this test case because the in-process API
   // does not react well to the server being told to shutdown while there are
   // active clients.
-  int port = tensorflow::testing::PickUnusedPortOrDie();
+  int port = tsl::testing::PickUnusedPortOrDie();
   StartService(num_nodes, GetParam().use_coordination_service,
                /*service_options=*/{}, absl::StrCat("[::]:", port));
 
@@ -420,8 +421,8 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -447,7 +448,7 @@ TEST_P(ClientServerTest, LateClientsAreOk) {
 
   auto thread_fn = [&](int node_id) -> xla::Status {
     DistributedRuntimeClient::Options client_options;
-    client_options.init_timeout = absl::Milliseconds(20000);
+    client_options.init_timeout = absl::Seconds(20);
     client_options.rpc_timeout = absl::Milliseconds(200);
     auto client =
         GetClient(node_id, GetParam().use_coordination_service, client_options);
@@ -461,8 +462,8 @@ TEST_P(ClientServerTest, LateClientsAreOk) {
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -485,6 +486,11 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     DistributedRuntimeClient::Options client_options;
     client_options.init_timeout = timeout;
     client_options.rpc_timeout = timeout;
+    // Overwrite the default error callback which invokes LOG(QFATAL).
+    client_options.missed_heartbeat_callback =
+        [](xla::Status status, bool coordinator_reported_failure) {
+          LOG(ERROR) << "Distributed client has missing heartbeats: " << status;
+        };
     auto client =
         GetClient(node_id, GetParam().use_coordination_service, client_options);
 
@@ -496,8 +502,8 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
   // Note: one fewer thread than 'num_nodes'.
   std::vector<xla::Status> statuses(num_nodes - 1);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes - 1; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -515,19 +521,17 @@ TEST_P(ClientServerTest, WaitAtBarrier_Succeed) {
     auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_2", absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_2", kBarrierTimeout));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -550,8 +554,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
     if (node_id == 1) {
       n.WaitForNotification();
     }
-    Status barrier_status =
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100));
+    Status barrier_status = client->WaitAtBarrier("barrier_1", kBarrierTimeout);
     // Node 0 notifies that barrier has already timed out.
     if (node_id == 0) {
       n.Notify();
@@ -559,13 +562,13 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
     TF_RETURN_IF_ERROR(barrier_status);
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -603,17 +606,16 @@ TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
     } else if (node_id == 1) {
       barrier_id = "barrier_1";
     }
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier(barrier_id, absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier(barrier_id, kBarrierTimeout));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }
@@ -632,19 +634,17 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     auto client = GetClient(node_id, GetParam().use_coordination_service);
     TF_RETURN_IF_ERROR(client->Connect());
 
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
-    TF_RETURN_IF_ERROR(
-        client->WaitAtBarrier("barrier_1", absl::Milliseconds(100)));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout));
+    TF_RETURN_IF_ERROR(client->WaitAtBarrier("barrier_1", kBarrierTimeout));
 
     TF_RETURN_IF_ERROR(client->Shutdown());
-    return xla::Status::OK();
+    return xla::OkStatus();
   };
 
   std::vector<xla::Status> statuses(num_nodes);
   {
-    tensorflow::thread::ThreadPool thread_pool(tensorflow::Env::Default(),
-                                               "test_threads", num_nodes);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "test_threads",
+                                        num_nodes);
     for (int i = 0; i < num_nodes; ++i) {
       thread_pool.Schedule([&, i]() { statuses[i] = thread_fn(i); });
     }

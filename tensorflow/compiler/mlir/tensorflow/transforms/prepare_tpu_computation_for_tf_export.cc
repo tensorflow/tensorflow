@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 
@@ -52,8 +51,11 @@ bool SupportsCommunicationComputation(Operation* op) {
              TF::LegacyCallOp>(op);
 }
 
+#define GEN_PASS_DEF_PREPARETPUCOMPUTATIONFORTFEXPORTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class PrepareTpuComputationForTfExportPass
-    : public PrepareTpuComputationForTfExportPassBase<
+    : public impl::PrepareTpuComputationForTfExportPassBase<
           PrepareTpuComputationForTfExportPass> {
   void runOnOperation() override;
 };

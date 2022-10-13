@@ -64,7 +64,7 @@ namespace tensorflow {
 //      });
 //
 //    // Block current thread until preemption
-//    absl::Time preempt_time = notifier->WillBePreemptedAt().ValueOrDie();
+//    absl::Time preempt_time = notifier->WillBePreemptedAt().value();
 //
 // Users can extend this class to support custom preemption signals, by subclass
 // `PreemptionNotifier` with a custom constructor, register its creator (factory

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -534,6 +534,19 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
     }) + if_mkl([":mkl_eager_op_rewrite"]),
+)
+
+tf_cc_test(
+    name = "execute_test",
+    srcs = ["execute_test.cc"],
+    deps = [
+        ":core",
+        ":execute",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:math",
+    ],
 )
 
 tf_cc_test(

@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -43,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -121,6 +124,10 @@ void DefaultOptimizationGraphRewrites(
     if (optimization_options.optional_parallel_batch_case() !=
         OptimizationOptions::kParallelBatch) {
       optimization_default->insert(kParallelBatchOpt);
+    }
+    if (optimization_options.optional_inject_prefetch_case() !=
+        OptimizationOptions::kInjectPrefetch) {
+      optimization_default->insert(kInjectPrefetchOpt);
     }
   }
   if (OpDeterminismRequired()) {
@@ -789,13 +796,17 @@ Status CopyBatch(CopyBatchParams params,
           std::move(batch_elements.at(index)[component_index]),
           &batch_component, index);
     };
-    if (parallel_copy && first_element.AllocatedBytes() > (1 << 15)) {
+    const auto total_bytes =
+        first_element.AllocatedBytes() * num_batch_elements;
+    // Use parallelism for creating the batch as long as the final batch is at
+    // least 1MB.
+    if (parallel_copy && total_bytes >= (1 << 20)) {
       Status status;
       mutex status_mu;
-      BlockingCounter counter(num_batch_elements);
       const auto num_threads = params.runner_threadpool_size;
       const auto slice_size = num_batch_elements / num_threads;
       int64_t offset = 0;
+      BlockingCounter counter(num_threads);
       for (size_t i = 0; i < num_threads; ++i) {
         int64_t length = slice_size;
         // When the number of threads does not divide the number of elements
@@ -804,14 +815,15 @@ Status CopyBatch(CopyBatchParams params,
         if (i < num_batch_elements % num_threads) ++length;
         (*params.runner)([offset, length, &status, &status_mu, &counter,
                           &copy_element_fn]() {
+          Status s;
           for (size_t j = offset; j < offset + length; ++j) {
-            {
-              Status s = copy_element_fn(j);
-              mutex_lock l(status_mu);
-              status.Update(s);
-            }
-            counter.DecrementCount();
+            s.Update(copy_element_fn(j));
           }
+          {
+            mutex_lock l(status_mu);
+            status.Update(s);
+          }
+          counter.DecrementCount();
         });
         offset += length;
       }
@@ -929,8 +941,6 @@ REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", RandomJobSamplePercentage<100>,
-                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",

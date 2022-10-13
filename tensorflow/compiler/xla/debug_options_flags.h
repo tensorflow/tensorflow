@@ -20,13 +20,13 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 
 // Appends flag definitions for debug options to flag_list.
-void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list);
+void AppendDebugOptionsFlags(std::vector<tsl::Flag>* flag_list);
 
 // Fetches a DebugOptions proto message from flags provided to the program.
 // Flags must be registered with the flags parser using AppendDebugOptionsFlags

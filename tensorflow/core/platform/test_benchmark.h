@@ -19,4 +19,12 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
+namespace tensorflow {
+namespace testing {
+using tsl::testing::DoNotOptimize;         // NOLINT
+using tsl::testing::InitializeBenchmarks;  // NOLINT
+using tsl::testing::RunBenchmarks;         // NOLINT
+}  // namespace testing
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_PLATFORM_TEST_BENCHMARK_H_

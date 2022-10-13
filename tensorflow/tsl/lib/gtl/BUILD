@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -8,22 +9,21 @@ package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
-        # tensorflow/core/lib/random uses on gtl:array_slice
-        "//tensorflow/core/lib/random:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
-        # tensorflow/core/lib/histogram uses array_slice
-        "//tensorflow/core/lib/histogram:__pkg__",
-        # tensorflow/core/framework uses array_slice, map_util, and flatmap
+        "//tensorflow/tsl/lib/strings:__pkg__",
+        # tensorflow/core/framework uses map_util, and flatmap
         "//tensorflow/core/framework:__pkg__",
-        # tensorflow/core/util uses array_slice, inlined_vector
+        "//tensorflow/tsl/framework:__pkg__",
+        # tensorflow/core/util uses inlined_vector
         "//tensorflow/core/util:__pkg__",
-        # tensorflow/core/tfrt/utils uses array_slice, inlined_vector
+        # tensorflow/core/tfrt/utils uses inlined_vector
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
-        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/core/lib/gtl:__subpackages__",
+        "//tensorflow/tsl/profiler/utils:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -33,7 +33,18 @@ package(
 cc_library(
     name = "compactptrset",
     hdrs = ["compactptrset.h"],
-    deps = ["//tensorflow/tsl/lib/gtl:flatset"],
+    deps = [":flatset"],
+)
+
+cc_library(
+    name = "flatmap",
+    hdrs = ["flatmap.h"],
+    deps = [
+        ":flatrep",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:types",
+    ],
 )
 
 cc_library(
@@ -49,7 +60,7 @@ cc_library(
     name = "flatset",
     hdrs = ["flatset.h"],
     deps = [
-        "//tensorflow/tsl/lib/gtl:flatrep",
+        ":flatrep",
         "//tensorflow/tsl/platform:hash",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:types",
@@ -93,6 +104,7 @@ filegroup(
     name = "legacy_lib_gtl_headers",
     srcs = [
         "compactptrset.h",
+        "flatmap.h",
         "flatset.h",
         "inlined_vector.h",
         "iterator_range.h",
@@ -139,12 +151,14 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "flatmap.h",
         "flatrep.h",
         "inlined_vector.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/tsl:__subpackages__",
     ],
 )
 
@@ -167,6 +181,7 @@ filegroup(
     name = "legacy_lib_gtl_all_headers",
     srcs = [
         "compactptrset.h",
+        "flatmap.h",
         "flatrep.h",
         "flatset.h",
         "inlined_vector.h",
@@ -181,12 +196,27 @@ filegroup(
     ],
 )
 
-filegroup(
-    name = "legacy_lib_gtl_tests",
+tf_cc_tests(
+    name = "tsl_lib_gtl_tests",
     srcs = [
-    ],  # TODO(ddunleavy) move tests once core/platform/test.h is in tsl
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/core/lib/gtl:__pkg__",
+        "compactptrset_test.cc",
+        "flatmap_test.cc",
+        "flatset_test.cc",
+        "int_type_test.cc",
+        "iterator_range_test.cc",
+        "map_util_test.cc",
+    ],
+    deps = [
+        ":compactptrset",
+        ":flatmap",
+        ":flatset",
+        ":int_type",
+        ":iterator_range",
+        ":map_util",
+        "//tensorflow/tsl/platform:hash",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/platform:types",
     ],
 )

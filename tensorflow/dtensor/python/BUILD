@@ -1,6 +1,6 @@
 # DTensor Python API and libraries.
 
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 default_visibility = [
@@ -13,21 +13,18 @@ package(
 )
 
 # -----------------------------------------------------------------------------
-# Public API.
+# A list of all modules linked into TensorFlow.
 
-pytype_strict_library(
+py_library(
     name = "core",
     srcs = ["__init__.py"],
-    srcs_version = "PY3",
-    visibility = default_visibility + [
-        "//tensorflow/dtensor:dtensor-users",
-    ],
+    visibility = ["//tensorflow/python:__pkg__"],
     deps = [
+        ":accelerator_util",
         ":api",
         ":config",
         ":d_checkpoint",
         ":d_variable",
-        ":gen_dtensor_ops",
         ":input_util",
         ":layout",
         ":mesh_util",
@@ -81,6 +78,7 @@ pytype_strict_library(
     deps = [
         ":gen_dtensor_ops",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
+        "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:config",
         "//tensorflow/python:device",
         "//tensorflow/python:framework_ops",

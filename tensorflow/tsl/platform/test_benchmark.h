@@ -30,7 +30,7 @@ using ::benchmark::State;  // NOLINT
 }  // namespace benchmark
 }  // namespace testing
 
-namespace tensorflow {
+namespace tsl {
 namespace testing {
 
 inline void RunBenchmarks() { benchmark::RunSpecifiedBenchmarks(); }
@@ -43,6 +43,6 @@ void DoNotOptimize(const T& var) {
   ::benchmark::DoNotOptimize(var);
 }
 }  // namespace testing
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_TEST_BENCHMARK_H_

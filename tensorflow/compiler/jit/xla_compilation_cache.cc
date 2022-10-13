@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -492,18 +493,8 @@ Status XlaCompilationCache::CompileStrict(
   entry->compile_state = CompileState::kCompiled;
   entry->compilation_status = [&] {
     if (scope == CompileScope::kOp) {
-      XlaCompiler::SingleOpCompileArgument single_op_arg;
-      std::vector<DataType> output_dtypes(ctx->num_outputs());
-      for (int i = 0; i < output_dtypes.size(); ++i) {
-        output_dtypes[i] = ctx->expected_output_dtype(i);
-      }
-      single_op_arg.output_dtypes = std::move(output_dtypes);
-      single_op_arg.node_def = ctx->op_kernel().def();
-      auto* config_proto = ctx->function_library()->config_proto();
-      if (config_proto != nullptr) {
-        single_op_arg.config_proto = *config_proto;
-      }
-      return XlaSingleOpToHlo(&compiler, options, args, single_op_arg,
+      return XlaSingleOpToHlo(&compiler, options, args,
+                              BuildSingleOpCompileArgument(ctx),
                               compile_options, &entry->compilation_result);
 
     } else {
@@ -693,6 +684,50 @@ bool XlaCompilationCache::ShouldCompileCluster(CompileMode compile_mode,
             << current_request_count << ".";
   }
   return reached_compile_threshold;
+}
+
+StatusOr<XlaCompilationCache::CompilationResultAndExecutable>
+XlaCompilationCache::GetCompilationResultIfAlreadyCompiled(
+    const NameAttrList& function,
+    absl::Span<const XlaCompiler::Argument> args) {
+  CompilationResultAndExecutable result{nullptr, nullptr};
+
+  TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));
+
+  // The outer lock protects the existence of the cache entry. It does not
+  // protect the contents of the cache entry.
+  Entry* entry;
+  {
+    mutex_lock lock(compile_cache_mu_);
+    // Try to find a cache entry.
+    auto cache_entry = cache_.find(signature);
+    if (cache_entry == cache_.end()) {
+      return result;
+    }
+    entry = cache_entry->second.get();
+  }
+
+  // Acquire the cache entry lock.
+  // TODO(phawkins): this locking will need to be restructured when we implement
+  // cache eviction.
+  mutex_lock entry_lock(entry->mu);
+
+  const CompileState state = entry->compile_state;
+  if (state != CompileState::kCompiled) {
+    return result;
+  }
+
+  int64_t current_request_count = ++entry->request_count;
+
+  VLOG(2) << "Compilation cache entry hit and is already compiled : "
+          << static_cast<int>(entry->compile_state)
+          << " signature: " << signature.HumanString() << " with request count "
+          << current_request_count;
+
+  result.compilation_result = &entry->compilation_result;
+  result.executable = entry->executable.get();
+
+  return result;
 }
 
 Status XlaCompilationCache::CompileImpl(

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -1329,10 +1330,19 @@ TEST(ModelTest, ModelMetrics) {
   std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
   model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
                 nullptr, &root);
-  std::string model_id = strings::StrCat(reinterpret_cast<uint64>(&model));
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
   EXPECT_THAT(cell_reader.Read(model_id),
               AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
                     HasSubstr("autotune: true")));
+}
+
+TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  auto* model = new model::Model();
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(model));
+  thread::ThreadPool threads(Env::Default(), "collect_and_destroy_race", 2);
+  threads.Schedule([&]() { cell_reader.Read(model_id); });
+  threads.Schedule([&]() { delete model; });
 }
 
 class ModelTimingTest : public ::testing::Test {

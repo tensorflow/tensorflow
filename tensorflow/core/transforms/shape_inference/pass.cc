@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
@@ -207,8 +208,8 @@ void ShapeInference::runOnOperation() {
       ShapedTypeComponents result = std::get<1>(it);
       TensorType inferred_type;
       if (result.hasRank()) {
-        inferred_type =
-            RankedTensorType::get(result.getDims(), result.getElementType());
+        inferred_type = tensorflow::GetTypeFromTFTensorShape(
+            result.getDims(), result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }
@@ -241,7 +242,7 @@ void ShapeInference::runOnOperation() {
   getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
     if (auto func = dyn_cast<GraphFuncOp>(op)) {
       // Don't infer the shape of ops in generic function, just skip it.
-      if (func.generic()) return WalkResult::skip();
+      if (func.getGeneric()) return WalkResult::skip();
       return WalkResult::advance();
     }
     if (isa<ModuleOp, GraphOp>(op) || op->getNumResults() == 0)
@@ -268,7 +269,7 @@ void ShapeInference::runOnOperation() {
   getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
     if (auto func = dyn_cast<GraphFuncOp>(op)) {
       // Don't infer the shape of ops in generic function, just skip it.
-      if (func.generic()) return WalkResult::skip();
+      if (func.getGeneric()) return WalkResult::skip();
       return WalkResult::advance();
     }
     if (isa<ModuleOp, tfg::GraphOp>(op) || op->getNumResults() == 0)
@@ -302,8 +303,8 @@ void ShapeInference::runOnOperation() {
 
   // Update the function signature.
   getOperation()->walk([&](GraphFuncOp func) {
-    FunctionType func_type = func.function_type();
-    Operation *return_op = func.getBody()->getTerminator();
+    FunctionType func_type = func.getFunctionType();
+    Operation *return_op = func.SingleBlock::getBody()->getTerminator();
 
     bool types_updated = false;
     for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
@@ -317,7 +318,7 @@ void ShapeInference::runOnOperation() {
 
     if (!types_updated) return;
 
-    func.function_typeAttr(TypeAttr::get(
+    func.setFunctionTypeAttr(TypeAttr::get(
         FunctionType::get(&getContext(), func_type.getInputs(),
                           TFOp(return_op).getNonControlOperands().getTypes())));
   });

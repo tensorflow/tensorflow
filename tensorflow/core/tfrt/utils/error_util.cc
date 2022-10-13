@@ -42,9 +42,15 @@ tensorflow::Status ToTfStatus(const tfrt::AsyncValue* av) {
   CHECK(av != nullptr && av->IsAvailable())  // Crash OK
       << "Expected a ready async value.";
   if (av->IsError()) {
-    return tensorflow::FromAbslStatus(av->GetError().status);
+    return tensorflow::FromAbslStatus(av->GetError());
   }
   return ::tensorflow::OkStatus();
+}
+
+absl::Status AbslStatusFromTfStatus(tensorflow::Status status) {
+  if (status.ok()) return absl::OkStatus();
+  return absl::Status(static_cast<absl::StatusCode>(status.code()),
+                      status.error_message());
 }
 
 }  // namespace tfrt

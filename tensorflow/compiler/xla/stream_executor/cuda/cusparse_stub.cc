@@ -29,7 +29,7 @@ void* GetDsoHandle() {
     auto handle_or =
         stream_executor::internal::DsoLoader::GetCusparseDsoHandle();
     if (!handle_or.ok()) return nullptr;
-    return handle_or.ValueOrDie();
+    return handle_or.value();
   }();
   return handle;
 #endif

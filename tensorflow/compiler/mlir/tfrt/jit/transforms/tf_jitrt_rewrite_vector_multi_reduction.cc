@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Vector/Transforms/VectorRewritePatterns.h"
 #include "mlir/Pass/Pass.h"
@@ -50,7 +50,7 @@ struct RewriteVectorMultiReductionPass
   mlir::LogicalResult RewriteTwoAndMoreDimReductions(MLIRContext* ctx,
                                                      Operation* op) const {
     mlir::ConversionTarget target(*ctx);
-    target.addLegalDialect<mlir::arith::ArithmeticDialect,
+    target.addLegalDialect<mlir::arith::ArithDialect,
                            mlir::vector::VectorDialect>();
     target.addDynamicallyLegalOp<MultiDimReductionOp>(
         [&](MultiDimReductionOp op) {

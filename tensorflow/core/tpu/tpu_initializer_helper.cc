@@ -32,11 +32,11 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/pjrt/c/pjrt_c_api_tpu.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/tpu/libtftpu.h"
-#include "tensorflow/core/tpu/pjrt_api.h"
 #include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
@@ -283,7 +283,7 @@ Status FindAndLoadTpuLibrary() {
   }
 
   InitializeCreateGcsFileSystemFnPtr();
-  return Status::OK();
+  return OkStatus();
 }
 
 #elif defined(LIBTPU_STATIC)
@@ -299,7 +299,7 @@ Status InitializeTpuLibrary() {
                    args.second.data());
 
   RegisterTpuPlatform();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FindAndLoadTpuLibrary() {
@@ -307,7 +307,7 @@ Status FindAndLoadTpuLibrary() {
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
   TF_RETURN_IF_ERROR(InitializeTpuLibrary());
-  return Status::OK();
+  return OkStatus();
 }
 
 #else   // PLATFORM_GOOGLE

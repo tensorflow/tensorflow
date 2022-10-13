@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -55,14 +57,16 @@ using mlir::success;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::IteratorTypeAttr;
 using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
-using mlir::linalg::InitTensorOp;
 using mlir::linalg::LinalgOp;
 using mlir::linalg::LinalgTilingOptions;
+using mlir::tensor::EmptyOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::ExtractSliceOp;
+using mlir::utils::IteratorType;
 
 // Match 1D or 2D reduction.
 bool isCanonicalizedReduction(Operation *op) {
@@ -172,21 +176,21 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     Location loc = linalg_op.getLoc();
     Value input = linalg_op.getInputOperand(0)->get();
     // All inputs have the same size because of identity maps for indexing.
-    SmallVector<Value> inputs = linalg_op.inputs();
+    SmallVector<Value> inputs = linalg_op.getInputs();
     Value input_size = rewriter.create<mlir::tensor::DimOp>(loc, input, 0);
 
-    auto fill_op = linalg_op.outputs().front().getDefiningOp<FillOp>();
-    auto init_op = fill_op.output().getDefiningOp<InitTensorOp>();
+    auto fill_op = linalg_op.getOutputs().front().getDefiningOp<FillOp>();
+    auto empty_op = fill_op.output().getDefiningOp<mlir::tensor::EmptyOp>();
 
     auto neutral_value = fill_op.value();
-    auto element_type = init_op.getType().getElementType();
+    auto element_type = empty_op.getType().getElementType();
 
     Value zero = rewriter.create<ConstantIndexOp>(loc, 0);
     Value tile_size_value = rewriter.create<ConstantIndexOp>(loc, tile_size);
-    Value new_init = rewriter.create<InitTensorOp>(loc, ValueRange{},
-                                                   vector_size, element_type);
+    Value new_empty =
+        rewriter.create<mlir::tensor::EmptyOp>(loc, vector_size, element_type);
     Value new_fill =
-        rewriter.create<FillOp>(loc, fill_op.value(), new_init).result();
+        rewriter.create<FillOp>(loc, fill_op.value(), new_empty).result();
 
     llvm::Optional<Value> tilable_bound_or =
         getTilableBound(rewriter, loc, zero, input_size, tile_size_value);
@@ -197,7 +201,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto perfectly_tiled_loop = rewriter.create<LoopOp>(
         loc, makeArrayRef(zero), makeArrayRef(tilable_bound),
         makeArrayRef(tile_size_value), inputs, makeArrayRef(new_fill),
-        rewriter.getStrArrayAttr(mlir::getReductionIteratorTypeName()),
+        rewriter.getArrayAttr({IteratorTypeAttr::get(rewriter.getContext(),
+                                                     IteratorType::reduction)}),
         [&](OpBuilder &b, Location nested_loc, ValueRange ivs,
             ValueRange inputs, ValueRange outputs) {
           SmallVector<Value, 2> reshaped_tiled_inputs =
@@ -218,9 +223,10 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
               nested_loc, outputs[0].getType(), reshaped_tiled_inputs,
               makeArrayRef({outputs[0]}), indexing_maps, iter_types,
               /*bodyBuild=*/nullptr);
-          mlir::Region &region = tiled_reduction.region();
+          mlir::Region &region = tiled_reduction.getRegion();
           OpBuilder::InsertionGuard g(rewriter);
-          rewriter.cloneRegionBefore(linalg_op.region(), region, region.end());
+          rewriter.cloneRegionBefore(linalg_op.getRegion(), region,
+                                     region.end());
           b.create<mlir::gml_st::YieldOp>(nested_loc,
                                           tiled_reduction.getResult(0));
         });
@@ -238,7 +244,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
       auto final_reduction = rewriter.create<LoopOp>(
           loc, tilable_bound, input_size, tile_size_value, inputs,
           makeArrayRef(result),
-          rewriter.getStrArrayAttr(mlir::getReductionIteratorTypeName()),
+          rewriter.getArrayAttr({IteratorTypeAttr::get(
+              rewriter.getContext(), IteratorType::reduction)}),
           [&](OpBuilder &b, Location nested_loc, ValueRange ivs,
               ValueRange inputs, ValueRange outputs) {
             BlockAndValueMapping bvm;
@@ -255,8 +262,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
               sliced_inputs.push_back(
                   b.create<ExtractSliceOp>(nested_loc, input, ivs, size, one));
             }
-            bvm.map(linalg_op.inputs(), sliced_inputs);
-            bvm.map(linalg_op.outputs(), outputs);
+            bvm.map(linalg_op.getInputs(), sliced_inputs);
+            bvm.map(linalg_op.getOutputs(), outputs);
             auto new_linalg_op = b.clone(*linalg_op.getOperation(), bvm);
             setTransformationAttr(b, new_linalg_op);
             b.create<mlir::gml_st::YieldOp>(nested_loc,

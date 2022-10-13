@@ -75,7 +75,7 @@ const filter_action = async ({github, context, domain}) => {
       assignees.push('cheshire', 'gcforster', 'reedwm', 'chsigg');
     }
     if (title.toLowerCase().includes('tf')) {
-      assignees.push('rohan100jain', 'bfontain', 'penpornk');
+      assignees.push('rohan100jain', 'bfontain');
     }
   }
 

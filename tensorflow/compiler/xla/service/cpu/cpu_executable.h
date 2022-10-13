@@ -19,11 +19,15 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
+#include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
@@ -39,6 +43,37 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+class BufferDesc {
+ public:
+  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
+  void* data() const { return data_; }
+  size_t size() const { return size_; }
+
+ private:
+  void* data_;
+  size_t size_;
+};
+
+class XlaRuntimeCpuExecutable {
+ public:
+  explicit XlaRuntimeCpuExecutable(
+      std::unique_ptr<xla::runtime::JitExecutable> jit_executable,
+      const XlaFrameworkMapping& xla_framework_mapping)
+      : jit_executable_(std::move(jit_executable)),
+        default_executable_(&jit_executable_->DefaultExecutable().get()),
+        xla_framework_mapping_(xla_framework_mapping) {}
+  Status Execute(const std::vector<BufferDesc>& descriptor_table);
+  xla::runtime::Executable& default_executable() {
+    return *default_executable_;
+  }
+
+ private:
+  std::unique_ptr<xla::runtime::JitExecutable> jit_executable_;
+  xla::runtime::Executable* default_executable_;  // owned by jit_executable_.
+  XlaFrameworkMapping xla_framework_mapping_;
+};
+
 // CPU-targeting implementation of the XLA Executable interface.
 //
 // Wraps a JIT-ed object that can be executed "on device". We JIT for the host
@@ -51,7 +86,21 @@ class CpuExecutable : public Executable {
                 const std::string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  // XLA Runtime constructor.
+  CpuExecutable(
+      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable);
+
   ~CpuExecutable() override;
+
+  bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
+
+  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table) {
+    return xla_runtime_executable_->Execute(descriptor_table);
+  }
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -144,6 +193,9 @@ class CpuExecutable : public Executable {
 
   // Entry function name for the computation.
   const std::string entry_function_name_;
+
+  // If not null, XLA Runtime is enabled.
+  std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable_;
 
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;

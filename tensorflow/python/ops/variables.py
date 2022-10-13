@@ -14,6 +14,7 @@
 # ==============================================================================
 """Variable class."""
 
+import abc
 import enum
 import functools
 import itertools
@@ -179,7 +180,7 @@ def validate_synchronization_aggregation_trainable(synchronization, aggregation,
   return synchronization, aggregation, trainable
 
 
-class VariableMetaclass(type):
+class VariableMetaclass(abc.ABCMeta):
   """Metaclass to allow construction of tf.Variable to be overridden."""
 
   def _variable_v1_call(cls,
@@ -235,7 +236,9 @@ class VariableMetaclass(type):
                         constraint=None,
                         synchronization=VariableSynchronization.AUTO,
                         aggregation=VariableAggregation.NONE,
-                        shape=None):
+                        shape=None,
+                        experimental_enable_variable_lifting=None,
+                        ):
     """Call on Variable class. Useful to force the signature."""
     previous_getter = lambda **kws: default_variable_creator_v2(None, **kws)
     for _, getter in ops.get_default_graph()._variable_creator_stack:  # pylint: disable=protected-access
@@ -256,7 +259,9 @@ class VariableMetaclass(type):
         constraint=constraint,
         synchronization=synchronization,
         aggregation=aggregation,
-        shape=shape)
+        shape=shape,
+        experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        )
 
   @traceback_utils.filter_traceback
   def __call__(cls, *args, **kwargs):
@@ -380,7 +385,9 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
                constraint=None,
                synchronization=VariableSynchronization.AUTO,
                aggregation=VariableAggregation.NONE,
-               shape=None):
+               shape=None,
+               experimental_enable_variable_lifting=True,
+               ):
     """Creates a new variable with value `initial_value`.
 
     Args:
@@ -432,6 +439,15 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         `initial_value` will be used. When setting this argument to
         `tf.TensorShape(None)` (representing an unspecified shape), the variable
         can be assigned with values of different shapes.
+      experimental_enable_variable_lifting: Whether to lift the variable out if
+        it's in a `tf.function`. Default is `True`. When this argument
+        is `True`, variable creation will follow the behavior and
+        restrictions described
+        [here](https://www.tensorflow.org/guide/function#creating_tfvariables).
+        If this argument is `False`, that description doesn't apply,
+        and you can freely create and use the variable in the
+        `tf.function`, as if it's a "mutable `tf.Tensor`". You can't
+        return the variable though.
 
     Raises:
       ValueError: If both `variable_def` and initial_value are specified.

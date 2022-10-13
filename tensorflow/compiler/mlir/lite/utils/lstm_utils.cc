@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 namespace mlir {
 namespace TFL {
@@ -382,9 +383,9 @@ void ConvertLSTMCellSimpleToFusedLSTM::GenerateFusedOpOperands() {
 
 void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   // https://github.com/tensorflow/community/pull/113
-  SmallVector<int64_t, 2> output_shape{1, -1};
+  SmallVector<int64_t, 2> output_shape{1, tensorflow::kTFDynamicSize};
   auto input_types = fused_func_op_.getFunctionType().getInputs();
-  auto output_type = mlir::RankedTensorType::get(
+  auto output_type = tensorflow::GetTypeFromTFTensorShape(
       output_shape, input_.getType().cast<RankedTensorType>().getElementType());
   fused_func_op_.setType(mlir::FunctionType::get(fused_func_op_.getContext(),
                                                  input_types, output_type));
@@ -431,8 +432,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
 
   // Cast the static shaped lstm result to FuncOp's signature -
   // Ranked but unknown 2nd dimension to support stacking these.
-  SmallVector<int64_t, 2> func_output_shape = {1, -1};
-  auto func_result_type = mlir::RankedTensorType::get(
+  SmallVector<int64_t, 2> func_output_shape = {1, tensorflow::kTFDynamicSize};
+  auto func_result_type = tensorflow::GetTypeFromTFTensorShape(
       func_output_shape,
       input_.getType().cast<RankedTensorType>().getElementType());
 

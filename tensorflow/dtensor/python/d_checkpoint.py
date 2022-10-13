@@ -38,6 +38,7 @@ from tensorflow.python.trackable import data_structures
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -393,6 +394,11 @@ class DTrackableSaver(util.TrackableSaver):
     return load_status
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions="Please use tf.train.Checkpoint instead of DTensorCheckpoint. "
+    "DTensor is integrated with tf.train.Checkpoint and it can be "
+    "used out of the box to save and restore dtensors.")
 @tf_export("experimental.dtensor.DTensorCheckpoint", v1=[])
 class DTensorCheckpoint(util.Checkpoint):
   """Manages saving/restoring trackable values to disk, for DTensor."""

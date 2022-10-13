@@ -61,7 +61,9 @@ cc_library(
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
@@ -78,6 +80,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":graph_executor",
+        "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
         "//tensorflow/cc:array_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:const_op",
@@ -90,5 +93,40 @@ tf_cc_test(
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/core/tfrt/tpu:tpu_resources",
         "@com_google_googletest//:gtest_main",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:tensor",
+        "@tf_runtime//cpp_tests:common",
+    ],
+)
+
+cc_library(
+    name = "synchronous_graph_executor",
+    srcs = ["synchronous_graph_executor.cc"],
+    hdrs = ["synchronous_graph_executor.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/graph_executor",
+        "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/utils:error_util",
+        "@com_google_absl//absl/status:statusor",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+tf_cc_test(
+    name = "synchronous_graph_executor_test",
+    srcs = ["synchronous_graph_executor_test.cc"],
+    deps = [
+        ":synchronous_graph_executor",
+        "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
+        "//tensorflow/cc:array_ops",
+        "//tensorflow/core/tfrt/utils:error_util",
+        "@com_google_googletest//:gtest_main",
+        "@tf_runtime//cpp_tests:common",
     ],
 )

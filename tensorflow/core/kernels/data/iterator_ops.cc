@@ -19,53 +19,37 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/activity_watcher/activity.h"
 #include "tensorflow/core/activity_watcher/activity_utils.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
-#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
-#include "tensorflow/core/common_runtime/threadpool_device.h"
-#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/finalization_utils.h"
 #include "tensorflow/core/data/metric_utils.h"
-#include "tensorflow/core/data/root_dataset.h"
 #include "tensorflow/core/data/serialization_utils.h"
-#include "tensorflow/core/data/utils.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/resource_op_kernel.h"
-#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
-#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace data {
@@ -1059,11 +1043,10 @@ void IteratorFromStringHandleOp::Compute(OpKernelContext* ctx) {
 SerializeIteratorOp::SerializeIteratorOp(OpKernelConstruction* ctx)
     : OpKernel(ctx) {
   if (ctx->HasAttr(kExternalStatePolicy)) {
-    int64_t state_change_option;
+    int64_t external_state_policy;
     OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr(kExternalStatePolicy, &state_change_option));
-    external_state_policy_ =
-        SerializationContext::ExternalStatePolicy(state_change_option);
+                   ctx->GetAttr(kExternalStatePolicy, &external_state_policy));
+    external_state_policy_ = ExternalStatePolicy(external_state_policy);
   }
 }
 

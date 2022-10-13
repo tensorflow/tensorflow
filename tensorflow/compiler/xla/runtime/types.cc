@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "llvm/ADT/StringExtras.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
@@ -44,6 +45,16 @@ std::string AsyncTokenType::ToString() const { return "!async.token"; }
 
 std::string AsyncValueType::ToString() const {
   return StrCat("!async.value<", value_type().ToString(), ">");
+}
+
+std::string ScalarType::ToString() const {
+  return LowercasePrimitiveTypeName(type_);
+}
+
+std::string TupleType::ToString() const {
+  auto to_string = [](const auto& elem) { return elem->ToString(); };
+  return StrCat("tuple<", llvm::join(llvm::map_range(elems_, to_string), ", "),
+                ">");
 }
 
 std::string RankedTensorType::ToString() const {
@@ -85,6 +96,15 @@ absl::StatusOr<ResultAbi> AsyncTokenType::AsResult() const {
 // Async value returned as a pointer to the runtime async token.
 absl::StatusOr<ResultAbi> AsyncValueType::AsResult() const {
   return ResultAbi{sizeof(void*)};
+}
+
+absl::StatusOr<ArgumentAbi> ScalarType::AsArgument() const {
+  return ArgumentAbi{1};  // scalars passed as a single pointer
+}
+
+absl::StatusOr<ResultAbi> ScalarType::AsResult() const {
+  size_t n_bytes = primitive_util::ByteWidth(type_);
+  return ResultAbi{n_bytes};
 }
 
 // Memref passed as an unrolled strided memref type.

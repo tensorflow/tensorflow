@@ -62,7 +62,7 @@ TEST(StatusMacros, RetCheckSucceeding) {
 StatusOr<int> CreateIntSuccessfully() { return 42; }
 
 StatusOr<int> CreateIntUnsuccessfully() {
-  return tensorflow::errors::Internal("foobar");
+  return tsl::errors::Internal("foobar");
 }
 
 TEST(StatusMacros, AssignOrAssertOnOK) {
@@ -72,7 +72,7 @@ TEST(StatusMacros, AssignOrAssertOnOK) {
 
 Status ReturnStatusOK() { return OkStatus(); }
 
-Status ReturnStatusError() { return (tensorflow::errors::Internal("foobar")); }
+Status ReturnStatusError() { return (tsl::errors::Internal("foobar")); }
 
 using StatusReturningFunction = std::function<Status()>;
 

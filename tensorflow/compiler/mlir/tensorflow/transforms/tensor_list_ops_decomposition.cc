@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -45,8 +44,11 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
+#define GEN_PASS_DEF_TENSORLISTOPSDECOMPOSITIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TensorListOpsDecompositionPass
-    : public TF::TensorListOpsDecompositionPassBase<
+    : public impl::TensorListOpsDecompositionPassBase<
           TensorListOpsDecompositionPass> {
   void runOnOperation() override;
 };

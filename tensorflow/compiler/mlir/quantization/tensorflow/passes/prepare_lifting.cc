@@ -16,7 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -49,7 +49,7 @@ class PrepareLiftingPass
   }
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<TF::TensorFlowDialect, mlir::arith::ArithmeticDialect>();
+    registry.insert<TF::TensorFlowDialect, mlir::arith::ArithDialect>();
   }
 
   void runOnOperation() override;
@@ -86,18 +86,18 @@ struct RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
 
   LogicalResult matchAndRewrite(TF::IdentityOp identity,
                                 PatternRewriter &rewriter) const override {
-    // Replace the op with the input if input and result have the same type.
-    if (identity.input().getType() == identity.getType()) {
-      rewriter.replaceOp(identity, identity.input());
-      return success();
-    }
-    // Replace the op with the input if output is only used by TF ops.
-    // Currently this is more on the conservative side since we need to ensure
-    // every consumer op to be a TF op before applying this pattern. We can
-    // consider to revisit this in the future if this turns out to be too
-    // restrictive.
     for (Operation *user : identity->getUsers()) {
+      // Replace the op with the input if output is only used by TF ops.
+      // Currently this is more on the conservative side since we need to ensure
+      // every consumer op to be a TF op before applying this pattern. We can
+      // consider to revisit this in the future if this turns out to be too
+      // restrictive.
       if (user->getDialect()->getNamespace() != "tf") {
+        return failure();
+      }
+      // Identity ops of returning values might be helpful for some other
+      // compilers, so avoid removing these Identity ops.
+      if (user->hasTrait<OpTrait::IsTerminator>()) {
         return failure();
       }
     }

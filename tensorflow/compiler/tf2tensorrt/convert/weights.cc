@@ -53,7 +53,7 @@ Status TRT_ShapedWeights::SetShape(DimsAdapter dims) {
     return errors::Internal("SetShape would change number of elements");
   }
   shape_ = std::move(dims);
-  return Status::OK();
+  return OkStatus();
 }
 
 size_t TRT_ShapedWeights::size_bytes() const {
@@ -166,10 +166,10 @@ Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
     }
     case TRT_ArgumentType::WEIGHTS:
       *tf_type = weights().GetTensor().dtype();
-      return Status::OK();
+      return OkStatus();
     case TRT_ArgumentType::RESOURCE:
       *tf_type = DataType::DT_RESOURCE;
-      return Status::OK();
+      return OkStatus();
   }
 }
 

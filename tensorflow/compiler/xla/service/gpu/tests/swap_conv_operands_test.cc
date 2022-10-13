@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 // TODO(b/210165681): The tests in this file are fragile to HLO op names.
 

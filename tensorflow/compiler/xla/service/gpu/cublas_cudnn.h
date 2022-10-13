@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUBLAS_CUDNN_H_
 
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -53,6 +53,9 @@ std::string CudnnConvKindToString(CudnnConvKind kind);
 // All matrix multiplications should be rewritten as such custom calls
 // after a GemmRewriter lowering pass.
 bool IsCublasGemm(const HloInstruction& hlo);
+
+// Matrix multiplication that calls into legacy cublas.
+bool IsLegacyCublasMatmul(const HloInstruction& hlo);
 
 // Matrix multiplication that calls into cublasLt.
 bool IsCublasLtMatmul(const HloInstruction& hlo);

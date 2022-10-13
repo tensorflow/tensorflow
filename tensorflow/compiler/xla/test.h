@@ -44,6 +44,6 @@ limitations under the License.
 #include <gmock/gmock-more-matchers.h>       // IWYU pragma: export
 #endif
 
-#include "tensorflow/core/platform/test.h"  // IWYU pragma: export
+#include "tensorflow/tsl/platform/test.h"  // IWYU pragma: export
 
 #endif  // TENSORFLOW_COMPILER_XLA_TEST_H_

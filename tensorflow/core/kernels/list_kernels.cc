@@ -375,6 +375,8 @@ class TensorListResize : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const TensorList* input_list = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &input_list));
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+                errors::InvalidArgument("size must be a scalar"));
     int32_t size = c->input(1).scalar<int32>()();
     OP_REQUIRES(
         c, size >= 0,
@@ -404,6 +406,7 @@ class TensorListResize : public OpKernel {
     output_list.element_dtype = input_list->element_dtype;
     output_list.max_num_elements = input_list->max_num_elements;
     if (size > input_list->tensors().size()) {
+      output_list.tensors().reserve(size);
       output_list.tensors().insert(output_list.tensors().begin(),
                                    input_list->tensors().begin(),
                                    input_list->tensors().end());
@@ -448,6 +451,10 @@ class TensorListSetItem : public OpKernel {
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+        errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
+                                c->input(1).DebugString()));
     int32_t index = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, index < l->tensors().size(),
                 errors::InvalidArgument("Trying to modify element ", index,

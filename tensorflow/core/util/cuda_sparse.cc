@@ -442,7 +442,7 @@ TF_CALL_LAPACK_TYPES(CSRMM_INSTANCE);
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMM_bufferSize(                    \
         *gpusparse_handle_, transA, transB, alpha, matA, matB, beta, matC,   \
         dtype, alg, bufferSize));                                            \
-    return Status::OK();                                                     \
+    return OkStatus();                                                       \
   }
 
 TF_CALL_CUSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
@@ -458,7 +458,7 @@ TF_CALL_CUSPARSE_DTYPES(SPMM_BUFFERSIZE_INSTANCE);
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMM(*gpusparse_handle_, transA,      \
                                               transB, alpha, matA, matB, beta, \
                                               matC, dtype, alg, buffer));      \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_CUSPARSE_DTYPES(SPMM_INSTANCE);
@@ -544,7 +544,7 @@ static inline Status CsrmvExImpl(cudaDataType_t dtype, OpKernelContext* context,
       x, dtype, beta_host, dtype, y, dtype, dtype, pBuffer.data()));
 
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyMatDescr(descrA));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Scalar>
@@ -587,7 +587,7 @@ static inline Status SpMVImpl(cudaDataType_t dtype, OpKernelContext* context,
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecY));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecX));
   TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRMV_INSTANCE(Scalar, cudaDataType)                                   \
@@ -631,7 +631,7 @@ static inline Status CsrgeamImpl(
          AsCudaComplex(beta), descrB, nnzB, AsCudaComplex(csrSortedValB),
          csrSortedRowPtrB, csrSortedColIndB, descrC,
          AsCudaComplex(csrSortedValC), csrSortedRowPtrC, csrSortedColIndC));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEAM_INSTANCE(Scalar, sparse_prefix)                               \
@@ -711,7 +711,7 @@ TF_CALL_LAPACK_TYPES(CSRGEAM_INSTANCE);
       int* csrSortedRowPtrC, int* csrSortedColIndC, size_t* bufferSize) {     \
     DCHECK(initialized_);                                                     \
     *bufferSize = 0;                                                          \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 #else
@@ -773,7 +773,7 @@ Status GpuSparse::CsrgemmNnz(
       *gpusparse_handle_, transA, transB, m, k, n, descrA, nnzA,
       csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB,
       csrSortedColIndB, descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Scalar, typename SparseFnT>
@@ -792,7 +792,7 @@ static inline Status CsrgemmImpl(
          descrB, nnzB, AsCudaComplex(csrSortedValB), csrSortedRowPtrB,
          csrSortedColIndB, descrC, AsCudaComplex(csrSortedValC),
          csrSortedRowPtrC, csrSortedColIndC));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSRGEMM_INSTANCE(Scalar, sparse_prefix)                               \
@@ -969,7 +969,7 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                   AsCudaComplex(csrVal), csrRowPtr, csrColInd,
                                   AsCudaComplex(cscVal), cscRowInd, cscColPtr,
                                   copyValues, CUSPARSE_INDEX_BASE_ZERO));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define CSR2CSC_INSTANCE(Scalar, sparse_prefix)                              \

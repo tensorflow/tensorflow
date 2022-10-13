@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -177,8 +177,8 @@ PlatformUtil::GetStreamExecutors(
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
   VLOG(1) << "Initializing devices";
   {
-    tensorflow::thread::ThreadPool thread_pool(
-        tensorflow::Env::Default(), "device_initialization", device_count);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                        "device_initialization", device_count);
     auto create_fn = [](se::Platform* platform,
                         std::vector<se::StreamExecutor*>& stream_executors,
                         int device_ordinal, int count) {

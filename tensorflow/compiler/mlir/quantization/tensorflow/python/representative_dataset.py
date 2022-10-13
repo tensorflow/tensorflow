@@ -14,9 +14,11 @@
 # ==============================================================================
 """Defines types required for representative datasets for quantization."""
 
-from typing import Iterable, Mapping, Union
+import collections.abc
+from typing import Iterable, Mapping, Optional, Union
 
 from tensorflow.python.client import session
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.types import core
 
 # A representative sample is a map of: input_key -> input_value.
@@ -67,3 +69,28 @@ def replace_tensors_by_numpy_ndarrays(
 
     new_repr_ds.append(new_sample)
   return new_repr_ds
+
+
+def get_num_samples(repr_ds: RepresentativeDataset) -> Optional[int]:
+  """Returns the number of samples if known.
+
+  Args:
+    repr_ds: Representative dataset.
+
+  Returns:
+    Returns the total number of samples in `repr_ds` if it can be determined
+    without iterating the entier dataset. Returns None iff otherwise. When it
+    returns None it does not mean the representative dataset is infinite or it
+    is malformed; it simply means the size cannot be determined without
+    iterating the whole dataset.
+  """
+  if isinstance(repr_ds, collections.abc.Sized):
+    try:
+      return len(repr_ds)
+    except Exception as ex:  # pylint: disable=broad-except
+      # There are some cases where calling __len__() raises an exception.
+      # Handle this as if the size is unknown.
+      logging.info('Cannot determine the size of the dataset (%s).', ex)
+      return None
+  else:
+    return None

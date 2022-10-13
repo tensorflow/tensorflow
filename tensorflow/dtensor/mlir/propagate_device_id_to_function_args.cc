@@ -31,13 +31,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORPROPAGATEDEVICEIDTOFUNCTIONARGS
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Holds information on functions to rewrite. `function` is the function
 // definition or function that needs to be updated and `callsite_ops` holds a
@@ -145,7 +147,7 @@ mlir::LogicalResult PrependDeviceIdToCallsites(mlir::OpBuilder* builder,
 // Pass that rewrites the functions in graph so that 0th argument of the main
 // function (i.e. device_id) is present on all functions in the graph.
 struct DTensorPropagateDeviceIdToFunctionArgs
-    : public DTensorPropagateDeviceIdToFunctionArgsBase<
+    : public impl::DTensorPropagateDeviceIdToFunctionArgsBase<
           DTensorPropagateDeviceIdToFunctionArgs> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();

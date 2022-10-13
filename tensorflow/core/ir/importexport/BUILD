@@ -64,12 +64,12 @@ cc_library(
     ],
     hdrs = ["convert_types.h"],
     deps = [
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -86,7 +86,6 @@ cc_library(
     deps = [
         ":convert_types",
         ":mangling",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
@@ -95,6 +94,7 @@ cc_library(
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
@@ -170,7 +170,6 @@ cc_library(
     deps = [
         ":convert_attributes",
         ":convert_types",
-        "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

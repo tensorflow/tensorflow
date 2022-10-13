@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/time/clock.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 #include "tensorflow/core/profiler/profiler_analysis.pb.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
@@ -237,19 +237,8 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 
 Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir) {
   TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
-
-  ProfileResponse response;
-  ProfileRequest request = PopulateProfileRequest(
-      GetTensorBoardProfilePluginDir(logdir), GetCurrentTimeStampAsString(),
-      port::Hostname(), /*options=*/{});
-  TF_RETURN_IF_ERROR(
-      ConvertXSpaceToProfileResponse(xspace, request, &response));
-  std::stringstream ss;  // Record LOG messages.
-  TF_RETURN_IF_ERROR(SaveProfile(request.repository_root(),
-                                 request.session_id(), request.host_name(),
-                                 response, &ss));
-  LOG(INFO) << ss.str();
-  return OkStatus();
+  return SaveXSpace(GetTensorBoardProfilePluginDir(logdir),
+                    GetCurrentTimeStampAsString(), port::Hostname(), xspace);
 }
 
 }  // namespace profiler

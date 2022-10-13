@@ -23,11 +23,11 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 
 namespace xla {
 
@@ -37,6 +37,9 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(module->getContext());
   {
     mlir::PassManager pm(module->getContext());
+    pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::mhlo::createLegalizeSparseChloToLinalgPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(
             /*legalize_broadcasts=*/true, /*expand_compositions=*/true));

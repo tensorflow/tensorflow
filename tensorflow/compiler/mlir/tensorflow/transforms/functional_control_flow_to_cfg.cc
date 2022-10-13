@@ -29,15 +29,18 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_FUNCTIONALCONTROLFLOWTOCFGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct FunctionalControlFlowToCFG
-    : public FunctionalControlFlowToCFGPassBase<FunctionalControlFlowToCFG> {
+    : public impl::FunctionalControlFlowToCFGPassBase<
+          FunctionalControlFlowToCFG> {
   void runOnOperation() override;
 };
 

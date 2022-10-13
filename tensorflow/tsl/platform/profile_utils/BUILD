@@ -1,9 +1,9 @@
 # Description:
 # profile_utils targets.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 load(
@@ -13,10 +13,10 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
         "//tensorflow/core/platform:__subpackages__",
         "//tensorflow/tsl:__pkg__",
-        "//tensorflow/tsl/default:__pkg__",
-        "//tensorflow/tsl/platform:__pkg__",
+        "//tensorflow/tsl/platform/default:__pkg__",
     ],
     licenses = ["notice"],
 )

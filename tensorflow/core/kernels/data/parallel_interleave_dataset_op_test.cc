@@ -724,6 +724,9 @@ TEST_F(ParallelInterleaveDatasetOpTest, InputCycleLengthPreservedInGraphDef) {
     EXPECT_NE(model::kAutotune,
               node_iter->attr().at("value").tensor().int64_val(0));
   }
+  unsetenv("TF_JOB_NAME");
+  unsetenv("TF_TASK_ID");
+  unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
 }
 
 TEST_F(ParallelInterleaveDatasetOpTest, DatasetNodeName) {

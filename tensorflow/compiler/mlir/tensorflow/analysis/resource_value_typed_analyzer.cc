@@ -40,10 +40,12 @@ bool IsResource(Value value) { return IsResourceType(value.getType()); }
 // Returns nullptr if no function is found.
 func::FuncOp GetSessionInitializerFunc(ModuleOp module) {
   auto session_init_op = tf_saved_model::GetSessionInitializerOp(module);
-  if (session_init_op && !session_init_op.initializers().empty()) {
+  if (session_init_op && !session_init_op.getInitializers().empty()) {
     SymbolTable symbol_table(module);
     func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+        session_init_op.getInitializers()[0]
+            .cast<FlatSymbolRefAttr>()
+            .getValue());
     return init_func_op;
   }
   return nullptr;

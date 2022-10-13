@@ -36,9 +36,9 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 
   LogicalResult matchAndRewrite(ClampOp op,
                                 PatternRewriter &rewriter) const override {
-    auto operandType = op.operand().getType().dyn_cast<RankedTensorType>();
-    auto maxType = op.max().getType().dyn_cast<RankedTensorType>();
-    auto minType = op.min().getType().dyn_cast<RankedTensorType>();
+    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    auto maxType = op.getMax().getType().dyn_cast<RankedTensorType>();
+    auto minType = op.getMin().getType().dyn_cast<RankedTensorType>();
     // Unrancked types are not supported.
     if (!operandType || !maxType || !minType) return failure();
     // Does not support operand with dynamic dimensions for now.
@@ -46,7 +46,7 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 
     ArrayRef<int64_t> operandShape = operandType.getShape();
 
-    Value maxValue = op.max();
+    Value maxValue = op.getMax();
     if (maxType != operandType) {
       assert(maxType.getRank() == 0);
       maxValue = rewriter.createOrFold<BroadcastOp>(
@@ -54,7 +54,7 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
           rewriter.getI64TensorAttr(operandShape));
     }
 
-    Value minValue = op.min();
+    Value minValue = op.getMin();
     if (minType != operandType) {
       assert(minType.getRank() == 0);
       minValue = rewriter.createOrFold<BroadcastOp>(
@@ -63,7 +63,7 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
     }
 
     rewriter.replaceOpWithNewOp<ClampOp>(op, op.getType(), minValue,
-                                         op.operand(), maxValue);
+                                         op.getOperand(), maxValue);
     return success();
   }
 };
@@ -73,8 +73,8 @@ struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
 void setupMaterializeBroadcastsLegality(MLIRContext * /*context*/,
                                         ConversionTarget *conversionTarget) {
   conversionTarget->addDynamicallyLegalOp<ClampOp>([](ClampOp op) {
-    return op.max().getType() == op.operand().getType() &&
-           op.min().getType() == op.operand().getType();
+    return op.getMax().getType() == op.getOperand().getType() &&
+           op.getMin().getType() == op.getOperand().getType();
   });
 }
 

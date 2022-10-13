@@ -5728,7 +5728,8 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
     # than or equal to `rate`.
     random_tensor = uniform_sampler(shape=noise_shape, dtype=x_dtype)
     keep_mask = random_tensor >= rate
-    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    zero_tensor = constant_op.constant(0, dtype=x_dtype)
+    ret = array_ops.where_v2(keep_mask, ret, zero_tensor)
     if not is_executing_eagerly:
       ret.set_shape(x.get_shape())
     return ret

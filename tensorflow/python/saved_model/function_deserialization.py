@@ -22,7 +22,7 @@ from absl import logging
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
-from tensorflow.python.eager import function_spec as function_spec_lib
+from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry

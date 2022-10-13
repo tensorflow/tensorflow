@@ -32,90 +32,135 @@ namespace xla {
 //
 // TODO(chky): Consider replacing the usage of PyShardedBuffer with PyArray as
 // PyArray is more general.
-class PyArray {
+class PyArray : public pybind11::object {
  public:
-  static void RegisterTypes(pybind11::module& m);
+  PYBIND11_OBJECT(PyArray, pybind11::object, PyArray::IsPyArray);
 
-  // Only used in python
-  PyArray(pybind11::object aval, pybind11::object sharding,
-          absl::Span<const PyBuffer::object> py_buffers, bool committed,
-          bool skip_checks, pybind11::object fast_path_args);
+  // "__init__" methods. Only used in python
+  static void PyInit(pybind11::object self, pybind11::object aval,
+                     pybind11::object sharding,
+                     absl::Span<const PyBuffer::object> py_buffers,
+                     bool committed, bool skip_checks);
 
-  PyArray(pybind11::object aval, pybind11::object sharding,
-          absl::Span<const PyArray* const> py_arrays, bool committed,
-          bool skip_checks, pybind11::object fast_path_args);
+  static void PyInit(pybind11::object self, pybind11::object aval,
+                     pybind11::object sharding,
+                     absl::Span<const PyArray> py_arrays, bool committed,
+                     bool skip_checks);
 
   // Only used in C++
-  PyArray(pybind11::object aval, bool weak_type, PrimitiveType dtype,
+  PyArray(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
           std::vector<int64_t> shape, pybind11::object sharding,
           std::shared_ptr<PyClient> py_client,
           std::shared_ptr<Traceback> traceback,
           std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers, bool committed,
-          bool skip_checks, pybind11::object fast_path_args = pybind11::none());
+          bool skip_checks = true);
 
-  const pybind11::object& aval() const { return aval_; }
-  void set_aval(pybind11::object aval) { aval_ = std::move(aval); }
+  static Status RegisterTypes(pybind11::module& m);
 
-  const pybind11::object& sharding() const { return sharding_; }
+  struct Storage {
+    Storage(pybind11::object aval, bool weak_type, pybind11::dtype dtype,
+            std::vector<int64_t> shape, pybind11::object sharding,
+            bool committed, std::shared_ptr<PyClient> py_client,
+            std::shared_ptr<Traceback> traceback,
+            std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers)
+        : aval(std::move(aval)),
+          weak_type(weak_type),
+          dtype(std::move(dtype)),
+          shape(std::move(shape)),
+          sharding(std::move(sharding)),
+          committed(committed),
+          py_client(std::move(py_client)),
+          traceback(std::move(traceback)),
+          pjrt_buffers(std::move(pjrt_buffers)) {}
 
-  pybind11::object arrays() const;
+    pybind11::object aval;
+    bool weak_type = false;
+    pybind11::dtype dtype;
+    std::vector<int64_t> shape;
+
+    pybind11::object sharding;
+    pybind11::object npy_value = pybind11::none();
+    bool committed = false;
+
+    std::shared_ptr<PyClient> py_client;
+    std::shared_ptr<Traceback> traceback;
+    std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
+
+    // optional field, used only in python
+    std::vector<PyBuffer::object> py_buffers;
+  };
+
+  const pybind11::object& aval() const { return GetStorage().aval; }
+  void set_aval(pybind11::object aval) { GetStorage().aval = std::move(aval); }
+
+  bool weak_type() const { return GetStorage().weak_type; }
+
+  const pybind11::dtype& dtype() const { return GetStorage().dtype; }
+  absl::Span<const int64_t> shape() const { return GetStorage().shape; }
+
+  const pybind11::object& sharding() const { return GetStorage().sharding; }
+
+  bool committed() const { return GetStorage().committed; }
+
+  const pybind11::object& npy_value() const { return GetStorage().npy_value; }
+  void set_npy_value(pybind11::object v) {
+    GetStorage().npy_value = std::move(v);
+  }
+
+  const std::shared_ptr<PyClient>& py_client() const {
+    return GetStorage().py_client;
+  }
+
+  const std::shared_ptr<Traceback>& traceback() const {
+    return GetStorage().traceback;
+  }
+
+  std::vector<std::shared_ptr<PjRtBuffer>>& pjrt_buffers() {
+    return GetStorage().pjrt_buffers;
+  }
+  const std::vector<std::shared_ptr<PjRtBuffer>>& pjrt_buffers() const {
+    return GetStorage().pjrt_buffers;
+  }
+  std::vector<PyBuffer::object>& py_buffers() {
+    return GetStorage().py_buffers;
+  }
+  const std::vector<PyBuffer::object>& py_buffers() const {
+    return GetStorage().py_buffers;
+  }
+
+  pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
 
-  bool committed() const { return committed_; }
-
-  const pybind11::object& fast_path_args() const { return fast_path_args_; }
-
-  const pybind11::object& npy_value() const { return npy_value_; }
-  void set_npy_value(pybind11::object v) { npy_value_ = std::move(v); }
-
-  const std::shared_ptr<PyClient>& py_client() const { return py_client_; }
-
   PjRtBuffer* GetBuffer(int device_id) const {
-    return pjrt_buffers_.at(device_id).get();
+    return pjrt_buffers().at(device_id).get();
   }
 
   const std::shared_ptr<PjRtBuffer>& GetSharedPtrBuffer(int device_id) const {
-    return pjrt_buffers_.at(device_id);
+    return pjrt_buffers().at(device_id);
   }
 
-  int num_shards() const { return pjrt_buffers_.size(); }
+  int num_shards() const { return pjrt_buffers().size(); }
 
   static pybind11::handle type() {
-    static pybind11::handle type = pybind11::type::handle_of<PyArray>();
-    return type;
+    DCHECK(type_);
+    return pybind11::handle(type_);
   }
 
-  bool weak_type() const { return weak_type_; }
-  PrimitiveType dtype() const { return dtype_; }
-  absl::Span<const int64_t> shape() const { return shape_; }
-
-  Status BlockUntilReady() const {
-    pybind11::gil_scoped_release gil_release;
-    Status status;
-    for (const auto& pjrt_buffer : pjrt_buffers_) {
-      auto s = pjrt_buffer->GetReadyFuture().Await();
-      if (!s.ok()) status = std::move(s);
-    }
-    return status;
+  static bool IsPyArray(pybind11::handle arg) {
+    return arg.get_type().is(PyArray::type());
   }
+
+  Status BlockUntilReady() const;
 
  private:
-  void Check();
-  void Rearrange();
+  void CheckAndRearrange();
 
-  pybind11::object aval_;
-  bool weak_type_ = false;
-  PrimitiveType dtype_;
-  std::vector<int64_t> shape_;
+  Storage& GetStorage();
+  const Storage& GetStorage() const;
 
-  pybind11::object sharding_;
-  pybind11::object fast_path_args_ = pybind11::none();
-  pybind11::object npy_value_ = pybind11::none();
-  bool committed_ = false;
+  static Status SetUpType();
 
-  std::shared_ptr<PyClient> py_client_;
-  std::shared_ptr<Traceback> traceback_;
-  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers_;
+  inline static PyObject* type_ = nullptr;
 };
 
 }  // namespace xla

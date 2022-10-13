@@ -1,7 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_py_test")
 
 package(
     default_visibility = [
@@ -20,14 +17,18 @@ py_library(
         ":gce_util",
         "//tensorflow/python:lib",
         "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute/failure_handling:check_preemption_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/platform",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
 )

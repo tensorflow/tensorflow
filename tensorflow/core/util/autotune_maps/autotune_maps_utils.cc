@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"

@@ -69,6 +69,10 @@ void UpdateTpuTargetByBridgeCompatibility(
           tensorflow::TfrtTpuInfraTarget::kTpurt;
     }
   }
+  if (!tfrt::CheckSpmdGraph(graph_def).ok()) {
+    options.compile_options.tpu_target =
+        tensorflow::TfrtTpuInfraTarget::kTfFallback;
+  }
   LOG(INFO) << "TFRT uses TPU target " << options.compile_options.tpu_target;
 }
 

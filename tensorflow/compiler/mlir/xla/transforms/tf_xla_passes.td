@@ -18,7 +18,7 @@ include "mlir/Pass/PassBase.td"
 def LegalizeTFWithTF2XLA
     : Pass<"xla-legalize-tf-with-tf2xla", "mlir::func::FuncOp"> {
   let summary = "Legalize from TensorFlow to the HLO dialect using tf2xla kernels";
-  let dependentDialects = ["mhlo::MhloDialect"];
+  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
   let constructor = "::mlir::mhlo::createLegalizeTfWithTf2XlaPass()";
   let options = [
   // TODO(hinsu): Support finer grained device type assignment instead of a
@@ -37,7 +37,7 @@ def LegalizeTFWithTF2XLA
 def LegalizeTFCommunicationPass : Pass<"xla-legalize-tf-communication", "ModuleOp"> {
   let summary = "Legalize TF/XLA communication ops (TensorFlow dialect) to the HLO "
            "dialect";
-  let dependentDialects = ["mhlo::MhloDialect"];
+  let dependentDialects = ["mhlo::MhloDialect", "sparse_tensor::SparseTensorDialect"];
   let constructor = "::mlir::mhlo::CreateLegalizeTFCommunicationPass()";
   let description = [{
     A pass that legalizes TF/XLA communication ops, propagates their respective

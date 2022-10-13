@@ -199,6 +199,17 @@ cc_library(
 )
 
 cc_library(
+    name = "conversion",
+    srcs = ["conversion.cc"],
+    hdrs = ["conversion.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/task:util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "convolution_transposed",
     srcs = ["convolution_transposed.cc"],
     hdrs = ["convolution_transposed.h"],

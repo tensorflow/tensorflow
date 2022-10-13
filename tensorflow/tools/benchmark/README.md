@@ -68,3 +68,41 @@ bazel-bin/tensorflow/tools/benchmark/benchmark_model \
 
 The Inception graph used as an example here may be downloaded from
 https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip
+
+## Model downloader
+To download TF .pb graphs of several popular models, run:
+
+```sh
+bash download_models.sh
+```
+
+## Comparing performance with vanilla TF
+For TF OSS only:
+
+We provide example scripts comparing TF-oneDNN performance with vanilla TF's
+that users can modify for their own benchmarks. The scripts assume that models
+are already downloaded by `download_models.sh`. To run end-to-end model
+performance comparison between TF-oneDNN and vanilla TF, call
+
+```sh
+bash download_models.sh  # Skip this step if models are already downloaded.
+bash run_onednn_benchmarks.sh
+```
+
+The output is a summary table in a CSV file: results.csv. Example output:
+
+```
+               Model,  Batch,        Vanilla,         oneDNN,    Speedup
+          bert-large,      1,       984508.0,      1511545.0,       1.54
+          bert-large,     16,              ?,              ?,          ?
+           inception,      1,        13720.0,        12859.0,       0.94
+           inception,     16,       162221.0,       137648.0,       0.85
+        mobilenet-v1,      1,        18052.0,        19196.0,       1.06
+        mobilenet-v1,     16,       140987.0,       143874.0,       1.02
+       resnet50_v1-5,      1,        46919.0,        59567.0,       1.27
+       resnet50_v1-5,     16,       557088.0,      1128931.0,       2.03
+    ssd-mobilenet-v1,      1,        35998.0,        27543.0,       0.77
+    ssd-mobilenet-v1,     16,       365288.0,       235566.0,       0.64
+        ssd-resnet34,      1,              ?,     22706217.0,          ?
+        ssd-resnet34,     16,              ?,    229083059.0,          ?
+```

@@ -63,6 +63,10 @@ class CoordinationClient {
       const ReportErrorToServiceRequest* request,
       ReportErrorToServiceResponse* response, StatusCallback done) = 0;
 
+  virtual void GetTaskStateAsync(const GetTaskStateRequest* request,
+                                 GetTaskStateResponse* response,
+                                 StatusCallback done) = 0;
+
   virtual void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                                    InsertKeyValueResponse* response,
                                    StatusCallback done) = 0;

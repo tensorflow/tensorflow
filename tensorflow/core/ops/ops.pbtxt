@@ -9270,6 +9270,13 @@ op {
     name: "output"
     type: DT_INT32
   }
+  attr {
+    name: "use_tfrt_host_runtime"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_stateful: true
 }
 op {
@@ -12123,43 +12130,6 @@ op {
     type: DT_STRING
   }
   is_stateful: true
-}
-op {
-  name: "DTensorShardedPrefix"
-  input_arg {
-    name: "prefix"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "tensor_names"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "shape_and_slices"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "mesh"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "layouts"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "tensors"
-    type_list_attr: "dtypes"
-  }
-  output_arg {
-    name: "output"
-    type: DT_STRING
-  }
-  attr {
-    name: "dtypes"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
 }
 op {
   name: "DataFormatDimMap"
@@ -53846,6 +53816,7 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
       }

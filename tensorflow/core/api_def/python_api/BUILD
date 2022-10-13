@@ -1,12 +1,9 @@
 # Description:
 #   Provides ApiDef access and ApiDef validation for TensorFlow python.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 filegroup(
     name = "python_api_def",

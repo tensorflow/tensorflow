@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -50,7 +50,7 @@ namespace wrap {
       void* f;                                                                \
       auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary(   \
           stream_executor::internal::CachedDsoLoader::GetRocsolverDsoHandle() \
-              .ValueOrDie(),                                                  \
+              .value(),                                                  \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
                     << " in rocsolver lib; dlerror: " << s.error_message();   \
@@ -109,6 +109,6 @@ FOREACH_ROCSOLVER_API(ROCSOLVER_API_WRAPPER)
 #undef ROCSOLVER_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCSOLVER_WRAPPER_H_

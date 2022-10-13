@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     licenses = ["notice"],
@@ -53,7 +53,7 @@ py_strict_test(
         ":function_cache",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python/eager:function_context",
+        "//tensorflow/python/eager/polymorphic_function:function_context",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
     ],

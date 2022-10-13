@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -113,6 +114,9 @@ Layout& Layout::operator=(Layout&& other) = default;
 
 /* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
   Layout layout;
+  for (int dim_level_type : proto.dim_level_types()) {
+    layout.add_dim_level_type(static_cast<DimLevelType>(dim_level_type));
+  }
   layout.minor_to_major_.reserve(proto.minor_to_major_size());
   for (const int64_t dimension : proto.minor_to_major()) {
     layout.add_minor_to_major(dimension);
@@ -122,11 +126,17 @@ Layout& Layout::operator=(Layout&& other) = default;
   }
   layout.set_element_size_in_bits(proto.element_size_in_bits());
   layout.set_memory_space(proto.memory_space());
+  if (proto.has_physical_shape()) {
+    *layout.mutable_physical_shape() = Shape(proto.physical_shape());
+  }
   return layout;
 }
 
 LayoutProto Layout::ToProto() const {
   LayoutProto proto;
+  for (DimLevelType dim_level_type : dim_level_types()) {
+    proto.add_dim_level_types(dim_level_type);
+  }
   proto.mutable_minor_to_major()->Reserve(minor_to_major_size());
   for (const int64_t dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
@@ -136,6 +146,9 @@ LayoutProto Layout::ToProto() const {
   }
   proto.set_element_size_in_bits(element_size_in_bits());
   proto.set_memory_space(memory_space_);
+  if (has_physical_shape()) {
+    *proto.mutable_physical_shape() = physical_shape_->ToProto();
+  }
   return proto;
 }
 

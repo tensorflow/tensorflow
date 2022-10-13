@@ -147,7 +147,7 @@ Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
     TF_RETURN_IF_ERROR(DimsAdapter(input->getDimensions())
                            .PartialTensorShape(&input_shapes->at(i)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
@@ -170,7 +170,7 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
       return errors::InvalidArgument("Unsupported tensorflow data type ",
                                      DataTypeString(tf_type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
@@ -192,7 +192,7 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
     default:
       return errors::InvalidArgument("Invalid TRT data type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {

@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
@@ -27,10 +29,12 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
 class CoordinationServiceConfig;
 class CoordinatedTask;
-class Env;
 class ServerDef;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
@@ -69,15 +73,12 @@ class CoordinationServiceAgent {
   virtual ~CoordinationServiceAgent() {}
 
   // Initialize coordination service agent.
-  virtual Status Initialize(
-      Env* env, const ServerDef& server_def,
-      std::unique_ptr<CoordinationClientCache> client_cache,
-      StatusCallback error_fn) = 0;
-  virtual Status Initialize(Env* env, const std::string& job_name, int task_id,
+  virtual Status Initialize(tsl::Env* env, const std::string& job_name,
+                            int task_id,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
-  virtual Status Initialize(Env* env, const CoordinatedTask& task,
+  virtual Status Initialize(tsl::Env* env, const CoordinatedTask& task,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
@@ -92,7 +93,8 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
   //   - InvalidArgument: Unexpected task registration
-  //   - Aborted: Duplicate task registration
+  //   - Aborted: Duplicate task registration (agent will retry connecting until
+  //              the configured timeout)
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
@@ -118,8 +120,8 @@ class CoordinationServiceAgent {
   virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<CoordinatedTaskState> GetTaskStatus(
-      const CoordinatedTask& task) = 0;
+  virtual StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
@@ -249,7 +251,7 @@ class CoordinationServiceAgent {
                                   StatusCallback done) = 0;
 
   // Get unowned Env* that the agent was initialized with.
-  virtual StatusOr<Env*> GetEnv() = 0;
+  virtual StatusOr<tsl::Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

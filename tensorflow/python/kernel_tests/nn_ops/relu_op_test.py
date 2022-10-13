@@ -56,7 +56,10 @@ class ReluTest(test.TestCase):
     self.assertShapeEqual(np_relu, tf_relu)
 
   def testNumbersCPU(self):
-    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+    for t in [
+        np.int32, np.int64, np.float16, np.float32, np.float64,
+        dtypes.bfloat16.as_numpy_dtype
+    ]:
       # Force execution on CPU even if a GPU kernel is available for the type.
       with ops.device("/device:CPU:0"):
         self._testRelu(
@@ -222,7 +225,10 @@ class Relu6Test(test.TestCase):
     self.assertShapeEqual(np_relu6, tf_relu6)
 
   def testNumbersCPU(self):
-    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+    for t in [
+        np.int32, np.int64, np.float16, np.float32, np.float64,
+        dtypes.bfloat16.as_numpy_dtype
+    ]:
       # Force execution on CPU even if a GPU kernel is available for the type.
       with ops.device("/device:CPU:0"):
         self._testRelu6(
@@ -413,7 +419,9 @@ class EluTest(test.TestCase):
     self.assertShapeEqual(np_elu, tf_elu)
 
   def testNumbersCPU(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       # Force execution on CPU even if a GPU kernel is available for the type.
       with ops.device("/device:CPU:0"):
         self._testElu(
@@ -521,7 +529,9 @@ class SeluTest(test.TestCase):
     self.assertShapeEqual(np_selu, tf_selu)
 
   def testNumbers(self):
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       self._testSelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
       # Force executed on CPU in case GPU kernels are available.
@@ -601,7 +611,10 @@ class CreluTest(test.TestCase):
     self.assertShapeEqual(np_crelu, tf_crelu)
 
   def testNumbersCPU(self):
-    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+    for t in [
+        np.int32, np.int64, np.float16, np.float32, np.float64,
+        dtypes.bfloat16.as_numpy_dtype
+    ]:
       # Force execution on CPU even if a GPU kernel is available for the type.
       with ops.device("/device:CPU:0"):
         self._testCrelu(

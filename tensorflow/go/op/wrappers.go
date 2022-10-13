@@ -6557,12 +6557,12 @@ func Concat(scope *Scope, concat_dim tf.Output, values []tf.Output) (output tf.O
 //
 // For example:
 //
-// ```
-// # 'x' is [2, 2, 7]
-// # 'y' is [2, 3, 7]
-// # 'z' is [2, 5, 7]
-// concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
-// ```
+// >>> x = [2, 2, 7]
+// >>> y = [2, 3, 7]
+// >>> z = [2, 9, 7]
+// >>> offsets = concat_offset(1, [x, y, z])
+// >>> [list(off.numpy()) for off in offsets]
+// [[0, 0, 0], [0, 2, 0], [0, 5, 0]]
 //
 // This is typically used by gradient computations for a concat operation.
 //
@@ -6656,15 +6656,32 @@ func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset t
 	return op.Output(0)
 }
 
+// ConfigureAndInitializeGlobalTPUAttr is an optional argument to ConfigureAndInitializeGlobalTPU.
+type ConfigureAndInitializeGlobalTPUAttr func(optionalAttr)
+
+// ConfigureAndInitializeGlobalTPUUseTfrtHostRuntime sets the optional use_tfrt_host_runtime attribute to value.
+// If not specified, defaults to true
+func ConfigureAndInitializeGlobalTPUUseTfrtHostRuntime(value bool) ConfigureAndInitializeGlobalTPUAttr {
+	return func(m optionalAttr) {
+		m["use_tfrt_host_runtime"] = value
+	}
+}
+
 // An op that sets up the centralized structures for a distributed TPU system.
 //
 // Returns A vector containing the global TPU id of each TPU on the host.
-func ConfigureAndInitializeGlobalTPU(scope *Scope) (output tf.Output) {
+func ConfigureAndInitializeGlobalTPU(scope *Scope, optional ...ConfigureAndInitializeGlobalTPUAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ConfigureAndInitializeGlobalTPU",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -40991,9 +41008,11 @@ func RiscMax(scope *Scope, x tf.Output, y tf.Output) (max tf.Output) {
 // (or any other distribution). The actual increment added to the
 // counter is an unspecified implementation choice.
 //
+// In the case that the input algorithm is RNG_ALG_AUTO_SELECT, the counter in the state needs to be of size int64[2], the current maximal counter size among algorithms. In this case, this op will manage the counter as if it is an 128-bit integer with layout [lower_64bits, higher_64bits]. If an algorithm needs less than 128 bits for the counter, it should use the left portion of the int64[2]. In this way, the int64[2] is compatible with all current RNG algorithms (Philox, ThreeFry and xla::RandomAlgorithm::RNG_DEFAULT). Downstream RNG ops can thus use this counter with any RNG algorithm.
+//
 // Arguments:
 //
-//	resource: The handle of the resource variable that stores the state of the RNG.
+//	resource: The handle of the resource variable that stores the state of the RNG. The state consists of the counter followed by the key.
 //	alg: The RNG algorithm.
 //	delta: The amount of advancement.
 //
@@ -41714,7 +41733,7 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //
 // ```python
 //
-//	indices = tf.constant([[0], [2]])
+//	indices = tf.constant([[1], [3]])
 //	updates = tf.constant([[[5, 5, 5, 5], [6, 6, 6, 6],
 //	                        [7, 7, 7, 7], [8, 8, 8, 8]],
 //	                       [[5, 5, 5, 5], [6, 6, 6, 6],
@@ -41727,10 +41746,10 @@ func ScalarSummary(scope *Scope, tags tf.Output, values tf.Output) (summary tf.O
 //
 // The resulting tensor would look like this:
 //
-//	[[[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-//	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+//	[[[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
 //	 [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]],
-//	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]
+//	 [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+//	 [[5, 5, 5, 5], [6, 6, 6, 6], [7, 7, 7, 7], [8, 8, 8, 8]]]
 //
 // Note that on CPU, if an out of bound index is found, an error is returned.
 // On GPU, if an out of bound index is found, the index is ignored.
@@ -50921,7 +50940,9 @@ func TensorArrayConcatV3ElementShapeExcept0(value tf.Shape) TensorArrayConcatV3A
 //
 // and concatenates them into a Tensor of shape:
 //
-//	```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```
+//	```
+//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)
+//	```
 //
 // All elements must have the same shape (excepting the first dimension).
 //
@@ -56298,6 +56319,55 @@ func XlaCustomCall(scope *Scope, args []tf.Output, target_name string, backend_c
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Emits an HLO `CustomCall` operation with multiple outputs.
+//
+// As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+//
+// See `CustomCall` specification at
+//
+//	https://tensorflow.org/xla/operation_semantics#customcall,
+//
+// and `mhlo.custom_call` specification at
+//
+//	https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+//
+// Arguments:
+//
+//	operands: A sequence of tensors with possibly different types.
+//	call_target_name: Name of the user function. The function signature must conform
+//
+// to version 3 of the API, see `API_VERSION_STATUS_RETURNING_UNIFIED`. All
+// operands and results assumed to be in the default layout.
+//
+//	backend_config: A string that encodes a metadata for the backend.
+//	has_side_effect: Indicates whether the custom call has side effects.
+//	result_dtypes: Types of all results.
+//	result_shapes: Shapes of all results.
+func XlaCustomCallV2(scope *Scope, operands []tf.Output, call_target_name string, backend_config string, has_side_effect bool, result_dtypes []tf.DataType, result_shapes []tf.Shape) (results []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"call_target_name": call_target_name, "backend_config": backend_config, "has_side_effect": has_side_effect, "result_dtypes": result_dtypes, "result_shapes": result_shapes}
+	opspec := tf.OpSpec{
+		Type: "XlaCustomCallV2",
+		Input: []tf.Input{
+			tf.OutputList(operands),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if results, idx, err = makeOutputList(op, idx, "results"); err != nil {
+		scope.UpdateErr("XlaCustomCallV2", err)
+		return
+	}
+	return results
 }
 
 // Takes the packed uint32 input and unpacks the input to uint8 to do

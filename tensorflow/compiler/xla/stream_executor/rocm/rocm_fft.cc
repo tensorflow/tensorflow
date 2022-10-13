@@ -62,7 +62,7 @@ namespace wrap {
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void *GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetHipfftDsoHandle();           \
-      return s.ValueOrDie();                                              \
+      return s.value();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void *f;                                                            \
@@ -189,7 +189,7 @@ port::Status ROCMFftPlan::Initialize(
             return port::Status{port::error::INTERNAL,
                                 "Failed to create rocFFT 1d plan."};
           }
-          return port::Status::OK();
+          return tsl::OkStatus();
         case 2:
           // hipfftPlan2d
           ret = wrap::hipfftPlan2d(parent, &plan_, elem_count_[0],
@@ -199,7 +199,7 @@ port::Status ROCMFftPlan::Initialize(
             return port::Status{port::error::INTERNAL,
                                 "Failed to create rocFFT 2d plan."};
           }
-          return port::Status::OK();
+          return tsl::OkStatus();
         case 3:
           // hipfftPlan3d
           ret =
@@ -210,7 +210,7 @@ port::Status ROCMFftPlan::Initialize(
             return port::Status{port::error::INTERNAL,
                                 "Failed to create rocFFT 3d plan."};
           }
-          return port::Status::OK();
+          return tsl::OkStatus();
         default:
           LOG(ERROR) << "Invalid rank value for hipfftPlan. "
                         "Requested 1, 2, or 3, given: "
@@ -313,7 +313,7 @@ port::Status ROCMFftPlan::Initialize(
       return UpdateScratchAllocator(stream, scratch_allocator);
     }
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
@@ -332,7 +332,7 @@ port::Status ROCMFftPlan::UpdateScratchAllocator(
   scratch_allocator_ = scratch_allocator;
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
-    if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (scratch_ = allocated.value()) == nullptr) {
       LOG(ERROR) << "failed to allocate work area.";
       return allocated.status();
     }
@@ -344,7 +344,7 @@ port::Status ROCMFftPlan::UpdateScratchAllocator(
     return port::Status(port::error::INTERNAL,
                         "Failed to set work area for rocFFT plan.");
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 ROCMFftPlan::~ROCMFftPlan() { wrap::hipfftDestroy(parent_, plan_); }
@@ -536,9 +536,9 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
     if (allocator) {
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
-        if (stream->ThenMemcpy(&allocated.ValueOrDie(), input, input.size())
+        if (stream->ThenMemcpy(&allocated.value(), input, input.size())
                 .ok()) {
-          input_maybe_copy = DeviceMemory<InputT>(allocated.ValueOrDie());
+          input_maybe_copy = DeviceMemory<InputT>(allocated.value());
         } else {
           LOG(ERROR) << "failed to copy input buffer for rocFFT.";
         }

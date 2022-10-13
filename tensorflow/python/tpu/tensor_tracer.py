@@ -1184,6 +1184,8 @@ class TensorTracer:
     if self._is_user_included_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_USER_INCLUDED))
+      if tensor_tracer_flags.TT_CHECK_FILTER.value:
+        logging.info('USER_INCLUDED op %s', op.name)
       return False
 
     if not self._inside_op_range(op_id):
@@ -1197,6 +1199,8 @@ class TensorTracer:
     if self._is_user_excluded_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_USER_EXCLUDED))
+      if tensor_tracer_flags.TT_CHECK_FILTER.value:
+        logging.info('USER_EXCLUDED op %s', op.name)
       return True
     return False
 
@@ -1231,10 +1235,14 @@ class TensorTracer:
     if self._is_user_included_op(out_tensor.op):
       report_handler.instrument_tensor(
           out_tensor, TensorTracer.reason(op_id, _REASON_USER_INCLUDED))
+      if tensor_tracer_flags.TT_CHECK_FILTER.value:
+        logging.info('USER_INCLUDED tensor %s', out_tensor.name)
       return False
     if self._is_user_excluded_op(out_tensor.op):
       report_handler.instrument_tensor(
           out_tensor, TensorTracer.reason(op_id, _REASON_USER_EXCLUDED))
+      if tensor_tracer_flags.TT_CHECK_FILTER.value:
+        logging.info('USER_EXCLUDED tensor %s', out_tensor.name)
       return True
     if not out_tensor.get_shape().is_fully_defined():
       # If trace mode is nan-inf, norm or max, then the tensor will be reduced
@@ -1799,6 +1807,10 @@ class TensorTracer:
         local_tpu_cache_tensor,
         shape=[self._tt_config.num_replicas] +
         local_tpu_cache_tensor.shape.as_list())
+
+    if tensor_tracer_flags.TT_SINGLE_CORE_SUMMARIES.value:
+      return x
+
     return tpu_ops.all_to_all(
         x, concat_dimension=0, split_dimension=0,
         split_count=self._tt_config.num_replicas,

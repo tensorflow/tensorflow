@@ -8,8 +8,7 @@ load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_binary")
 load("@tf_runtime//:build_defs.bzl", "tfrt_cc_library", "tfrt_cc_test")
 
 # Note: keep the following lines separate due to the way copybara works
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "get_compatible_with_portable")
 
 # TF to TFRT kernels conversion.
 package(
@@ -116,15 +115,15 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
-        "//tensorflow/compiler/xla/mlir_hlo:legalize_to_linalg",
-        "//tensorflow/compiler/xla/mlir_hlo:lower_index_cast",
-        "//tensorflow/compiler/xla/mlir_hlo:shape_simplification",
-        "//tensorflow/compiler/xla/mlir_hlo:symbolic_shape_optimization",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
         "//tensorflow/core:ops",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticTransforms",
+        "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",
@@ -701,10 +700,6 @@ tf_cc_binary(
 tf_cc_binary(
     name = "lhlo-tfrt-opt",
     srcs = ["lhlo-tfrt-opt.cc"],
-    local_defines = select({
-        "//tensorflow/compiler/xla/service/gpu:is_xlir_enabled": ["XLA_ENABLE_XLIR=1"],
-        "//conditions:default": [],
-    }),
     tags = [
         "gpu",
         "no_oss",
@@ -715,8 +710,6 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_gpu_binary",
-        # copybara:uncomment "//tensorflow/compiler/mlir/tfrt/transforms/lmhlo_to_gpu:lmhlo_to_jitrt",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "@llvm-project//mlir:AllPassesAndDialects",

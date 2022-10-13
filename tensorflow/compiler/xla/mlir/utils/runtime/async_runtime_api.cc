@@ -213,53 +213,46 @@ void mlirAsyncRuntimeDropRef(RefCountedObjPtr ptr, int64_t count) {
 
 // Create a new `async.token` in not-ready state.
 AsyncToken *mlirAsyncRuntimeCreateToken() {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
-  return runtime.CreateToken();
+  return AsyncRuntime::CreateToken();
 }
 
 // Creates a new `async.value` in not-ready state.
 AsyncValue *mlirAsyncRuntimeCreateValue(int64_t size) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&size, sizeof(int64_t));
-  return runtime.CreateValue(size, /*alignment=*/alignof(std::max_align_t));
+  return AsyncRuntime::CreateValue(size,
+                                   /*alignment=*/alignof(std::max_align_t));
 }
 
 // Create a new `async.group` in empty state.
 AsyncGroup *mlirAsyncRuntimeCreateGroup(int64_t size) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&size, sizeof(int64_t));
-  return runtime.CreateGroup(size);
+  return AsyncRuntime::CreateGroup(size);
 }
 
 int64_t mlirAsyncRuntimeAddTokenToGroup(AsyncToken *token, AsyncGroup *group) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
-  return runtime.AddTokenToGroup(group, token);
+  return AsyncRuntime::AddTokenToGroup(group, token);
 }
 
 bool mlirAsyncRuntimeIsGroupError(AsyncGroup *group) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
-  return runtime.IsError(group);
+  return AsyncRuntime::IsError(group);
 }
 
 void mlirAsyncRuntimeEmplaceToken(AsyncToken *token) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
-  runtime.SetAvailable(token);
+  AsyncRuntime::SetAvailable(token);
 }
 
 void mlirAsyncRuntimeSetTokenError(AsyncToken *token) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
-  runtime.SetError(token);
+  AsyncRuntime::SetError(token);
 }
 
 bool mlirAsyncRuntimeIsTokenError(AsyncToken *token) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
-  return runtime.IsError(token);
+  return AsyncRuntime::IsError(token);
 }
 
 void mlirAsyncRuntimeAwaitToken(AsyncToken *token) {
@@ -269,21 +262,18 @@ void mlirAsyncRuntimeAwaitToken(AsyncToken *token) {
 }
 
 void mlirAsyncRuntimeAwaitAllInGroup(AsyncGroup *group) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
-  runtime.AwaitGroup(group);
+  AsyncRuntime::AwaitGroup(group);
 }
 
 ValueStorage mlirAsyncRuntimeGetValueStorage(AsyncValue *value) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
-  return runtime.GetStorage(value);
+  return AsyncRuntime::GetStorage(value);
 }
 
 void mlirAsyncRuntimeEmplaceValue(AsyncValue *value) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
-  runtime.SetAvailable(value);
+  AsyncRuntime::SetAvailable(value);
 }
 
 void mlirAsyncRuntimeSetValueError(AsyncValue *value) {
@@ -293,15 +283,13 @@ void mlirAsyncRuntimeSetValueError(AsyncValue *value) {
 }
 
 bool mlirAsyncRuntimeIsValueError(AsyncValue *value) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
-  return runtime.IsError(value);
+  return AsyncRuntime::IsError(value);
 }
 
 void mlirAsyncRuntimeAwaitValue(AsyncValue *value) {
-  AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
-  runtime.AwaitValue(value);
+  AsyncRuntime::AwaitValue(value);
 }
 
 void mlirAsyncRuntimeExecute(CoroHandle handle, CoroResume resume) {
@@ -314,9 +302,10 @@ void mlirAsyncRuntimeExecute(CoroHandle handle, CoroResume resume) {
 
 void mlirAsyncRuntimeAwaitTokenAndExecute(AsyncToken *token, CoroHandle handle,
                                           CoroResume resume) {
+  // TODO(ezhulenev): Add fast path for available tokens.
   AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&token, sizeof(void *));
-  runtime.AwaitToken(token, [handle, resume, runtime]() {
+  AsyncRuntime::AwaitToken(token, [handle, resume, runtime]() {
     AsyncRuntime::Set(runtime);
     (*resume)(handle);
   });
@@ -324,6 +313,7 @@ void mlirAsyncRuntimeAwaitTokenAndExecute(AsyncToken *token, CoroHandle handle,
 
 void mlirAsyncRuntimeAwaitValueAndExecute(AsyncValue *value, CoroHandle handle,
                                           CoroResume resume) {
+  // TODO(ezhulenev): Add fast path for available values.
   AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&value, sizeof(void *));
   runtime.AwaitValue(value, [handle, resume, runtime]() {
@@ -336,6 +326,7 @@ void mlirAsyncRuntimeAwaitValueAndExecute(AsyncValue *value, CoroHandle handle,
 void mlirAsyncRuntimeAwaitAllInGroupAndExecute(AsyncGroup *group,
                                                CoroHandle handle,
                                                CoroResume resume) {
+  // TODO(ezhulenev): Add fast path for available groups.
   AsyncRuntime &runtime = AsyncRuntime::GetCurrentRuntime();
   ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&group, sizeof(void *));
   runtime.AwaitGroup(group, [handle, resume, runtime]() {

@@ -28,14 +28,11 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace {
 constexpr int kBarrierTimedOut = -1000;
@@ -43,34 +40,22 @@ constexpr int kBarrierTimedOut = -1000;
 std::unique_ptr<tensorflow::CoordinationServiceInterface>
 EnableCoordinationService(
     const xla::DistributedRuntimeServiceImpl::Options& options) {
-  const std::string& job_name = "jax_worker";
-  // TODO(b/205307544): Remove TensorFlow server def references once it is no
-  // longer needed.
-  tensorflow::ServerDef server_def;
-  server_def.set_protocol("grpc");
-  server_def.set_job_name(job_name);
-  server_def.set_task_index(0);
-  auto job_def = server_def.mutable_cluster()->add_job();
-  job_def->set_name(job_name);
-  for (int32_t i = 0; i < options.num_nodes; ++i) {
-    job_def->mutable_tasks()->insert({i, "UNKNOWN_SERVER_ADDRESS"});
-  }
-
-  // Convert options to coordination service config.
-  auto coordination_config = server_def.mutable_default_session_config()
-                                 ->mutable_experimental()
-                                 ->mutable_coordination_config();
-  coordination_config->set_service_type("standalone");
-  coordination_config->set_service_leader(
-      absl::StrCat("/job:", job_name, "/task:0"));
-  coordination_config->set_cluster_register_timeout_in_ms(
+  const std::string job_name = "jax_worker";
+  tensorflow::CoordinationServiceConfig config;
+  config.set_service_type("standalone");
+  config.set_service_leader(absl::StrCat("/job:", job_name, "/task:0"));
+  config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.enumerate_devices_timeout));
-  coordination_config->set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
+  config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
-  coordination_config->set_shutdown_barrier_timeout_in_ms(
+  config.set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(options.shutdown_timeout));
+  tensorflow::CoordinatedJob* job =
+      config.mutable_coordinated_job_list()->Add();
+  job->set_name(job_name);
+  job->set_num_tasks(options.num_nodes);
   return tensorflow::CoordinationServiceInterface::EnableCoordinationService(
-      "standalone", options.env, server_def, /*cache=*/nullptr);
+      options.env, config, /*cache=*/nullptr);
 }
 }  // namespace
 
@@ -78,7 +63,7 @@ namespace xla {
 
 DistributedRuntimeServiceImpl::DistributedRuntimeServiceImpl(
     const Options& options)
-    : options_(options), session_id_(tensorflow::random::New64()) {
+    : options_(options), session_id_(tsl::random::New64()) {
   nodes_.resize(options.num_nodes);
   local_topologies_.resize(options.num_nodes);
 }
@@ -87,8 +72,7 @@ DistributedRuntimeServiceImpl::~DistributedRuntimeServiceImpl() {
   {
     absl::MutexLock lock(&mu_);
     state_ = State::kClosed;
-    service_status_ =
-        tensorflow::errors::FailedPrecondition("Service shutting down.");
+    service_status_ = tsl::errors::FailedPrecondition("Service shutting down.");
     if (!stop_heartbeat_thread_.HasBeenNotified()) {
       stop_heartbeat_thread_.Notify();
     }
@@ -142,7 +126,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
   if (state_ != State::kInitializing) {
     // This most likely indicates that a client task was restarted but the
     // old master is still up. Clients should retry on failure.
-    return xla::ToGrpcStatus(tensorflow::errors::Aborted(
+    return xla::ToGrpcStatus(tsl::errors::Aborted(
         "Connect() called when system is not initializing."));
   }
   int node_id = request->node_id();
@@ -167,7 +151,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
           connect_timeout)) {
     nodes_[node_id].present = false;
     --num_nodes_present_;
-    return xla::ToGrpcStatus(tensorflow::errors::DeadlineExceeded(
+    return xla::ToGrpcStatus(tsl::errors::DeadlineExceeded(
         "Timed out after ", absl::FormatDuration(connect_timeout),
         " waiting for all nodes to call Connect()"));
   }
@@ -185,13 +169,13 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
     // In this scenario we take whichever client showed up most recently and
     // evict the client with an out-of-date client ID.
     return xla::ToGrpcStatus(
-        tensorflow::errors::Aborted("Duplicate node ID ", node_id));
+        tsl::errors::Aborted("Duplicate node ID ", node_id));
   }
 
   if (node_id == 0) {
     state_ = State::kRunning;
     heartbeat_thread_.reset(options_.env->StartThread(
-        tensorflow::ThreadOptions(), "pjrt_service_heartbeat",
+        tsl::ThreadOptions(), "pjrt_service_heartbeat",
         [this]() { HeartbeatLoop(); }));
   } else {
     auto running = [&]() {
@@ -235,7 +219,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
   if (!mu_.AwaitWithTimeout(absl::Condition(&all_nodes_shutting_down),
                             options_.shutdown_timeout)) {
     state_ = State::kClosed;
-    return xla::ToGrpcStatus(tensorflow::errors::DeadlineExceeded(
+    return xla::ToGrpcStatus(tsl::errors::DeadlineExceeded(
         "Timed out after ", absl::FormatDuration(options_.shutdown_timeout),
         " waiting for all nodes to call Shutdown()"));
   }
@@ -279,7 +263,7 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
   };
   if (!mu_.AwaitWithTimeout(absl::Condition(&all_topologies_present),
                             options_.enumerate_devices_timeout)) {
-    return xla::ToGrpcStatus(tensorflow::errors::DeadlineExceeded(
+    return xla::ToGrpcStatus(tsl::errors::DeadlineExceeded(
         "Timed out after ",
         absl::FormatDuration(options_.enumerate_devices_timeout),
         " waiting for all nodes to call EnumerateDevices()"));
@@ -350,7 +334,7 @@ void DistributedRuntimeServiceImpl::HeartbeatLoop() {
           now) {
         LOG(INFO) << "Missed heartbeats from node " << i << ". Shutting down.";
         state_ = State::kClosed;
-        service_status_ = tensorflow::errors::Aborted(
+        service_status_ = tsl::errors::Aborted(
             "Shutting down due to missed heartbeat from task ", i);
         return;
       }
@@ -452,7 +436,7 @@ void DistributedRuntimeServiceImpl::HeartbeatLoop() {
   // service here.
   if (!mu_.AwaitWithTimeout(absl::Condition(&all_nodes_at_barrier), timeout)) {
     barrier_id_to_num_nodes_[barrier_id] = kBarrierTimedOut;
-    return xla::ToGrpcStatus(tensorflow::errors::DeadlineExceeded(
+    return xla::ToGrpcStatus(tsl::errors::DeadlineExceeded(
         "Timed out after ", timeout,
         " waiting for all nodes to be at WaitAtBarrier()"));
   }
@@ -468,7 +452,7 @@ CoordinationServiceImpl::CoordinationServiceImpl(
     ::grpc::ServerBuilder* builder)
     : env_(options.env) {
   coord_service_ = EnableCoordinationService(options);
-  coord_compute_pool_ = std::make_unique<tensorflow::thread::ThreadPool>(
+  coord_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       options.env, "CoordinationServiceRpcHandler",
       /*num_threads=*/4);
   coord_rpc_service_ =
@@ -486,7 +470,7 @@ CoordinationServiceImpl::~CoordinationServiceImpl() {
 
 void CoordinationServiceImpl::StartRpcThread() {
   coord_rpc_thread_.reset(env_->StartThread(
-      tensorflow::ThreadOptions(), "CoordinationServiceHandleRPCsLoop",
+      tsl::ThreadOptions(), "CoordinationServiceHandleRPCsLoop",
       [service = coord_rpc_service_.get()] { service->HandleRPCsLoop(); }));
 }
 

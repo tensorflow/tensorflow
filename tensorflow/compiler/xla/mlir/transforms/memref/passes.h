@@ -24,6 +24,9 @@ limitations under the License.
 namespace xla {
 namespace runtime {
 
+#define GEN_PASS_DECL_ALIGNEDALLOCATIONSPASS
+#include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h.inc"
+
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 CreateAlignedAllocationsPass(int64_t alignment = 64);
 

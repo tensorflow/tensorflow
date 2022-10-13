@@ -3,7 +3,7 @@
 # to validate that we don't make backwards-incompatible changes in particular
 # for v1.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
     licenses = ["notice"],

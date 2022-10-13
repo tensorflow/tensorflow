@@ -31,8 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
@@ -104,7 +103,7 @@ Status HloDCE::RecursivelyRemoveDeadComputation(
     for (HloComputation* subcomp : instruction->called_computations()) {
       auto iter = live_call_counts.find(subcomp);
       if (iter == live_call_counts.end()) {
-        return tensorflow::errors::Internal(
+        return tsl::errors::Internal(
             "called computation not found in live_call_counts table during "
             "HloDCE");
       }

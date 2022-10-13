@@ -1,7 +1,7 @@
 # Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -62,7 +62,7 @@ cc_library(
         # tf_lib depending on the build platform.
         "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
     ]),
 )
 
@@ -149,6 +149,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/util/tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle:byteswaptensor",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -267,6 +268,7 @@ filegroup(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
+        "testdata/OptimizerSlotVariableModule/**",
     ]),
 )
 

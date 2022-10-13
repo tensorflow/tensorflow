@@ -23,7 +23,14 @@ limitations under the License.
 #else
 #define RT_OPS
 
-include "tensorflow/compiler/xla/mlir/ir/runtime/rt_base.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
+include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
+
+include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.td"
+include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Op definitions.
@@ -34,12 +41,51 @@ class RT_Op<string mnemonic, list<Trait> traits = []> :
 }
 
 //===----------------------------------------------------------------------===//
+// ExportOp
+//===----------------------------------------------------------------------===//
+
+def RT_ExportOp : RT_Op<"export", [
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+    HasParent<"mlir::ModuleOp">]> {
+  let summary = "exports a function from the module";
+
+  let description = [{
+    Specifies an exported function that can be called externally by the XLA
+    runtime and becomes visible as an XLA executable function.
+
+    Optional ordinal attribute specifies exported function ordinal in the
+    executable. If ordinal is not defined, it will be assigned automatically by
+    the ordinal assignment pass.
+
+    Each ordinal must be unique and ordinals are contiguous starting from zero.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$function_ref,
+    OptionalAttr<RT_Ordinal>:$ordinal
+  );
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref)>,
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref, "unsigned":$ordinal)>,
+  ];
+
+  let extraClassDeclaration = [{
+    llvm::Optional<unsigned> ordinal();
+    mlir::func::FuncOp exported(mlir::SymbolTable& sym_table);
+  }];
+
+  let assemblyFormat = "$function_ref (`ordinal` $ordinal^)? attr-dict";
+}
+
+//===----------------------------------------------------------------------===//
 // SetOutputOp
 //===----------------------------------------------------------------------===//
 
 // TODO(ezhulenev): Rename to SetResult for consistent use of argument/result.
 
-def SetOutputOp : RT_Op<"set_output"> {
+def RT_SetOutputOp : RT_Op<"set_output"> {
   let summary = "set the result to a given value";
 
   let description = [{
@@ -95,7 +141,7 @@ def SetOutputOp : RT_Op<"set_output"> {
 // SetErrorOp
 //===----------------------------------------------------------------------===//
 
-def SetErrorOp : RT_Op<"set_error"> {
+def RT_SetErrorOp : RT_Op<"set_error"> {
   let summary = "set all executable results to the error state";
 
   let description = [{
@@ -134,7 +180,7 @@ def SetErrorOp : RT_Op<"set_error"> {
 // IsOkOp
 //===----------------------------------------------------------------------===//
 
-def IsOkOp : RT_Op<"is_ok"> {
+def RT_IsOkOp : RT_Op<"is_ok"> {
   let summary = "returns true if status is ok";
   let description = "Checks if the runtime status is ok.";
 
@@ -148,7 +194,7 @@ def IsOkOp : RT_Op<"is_ok"> {
 // CustomCallOp
 //===----------------------------------------------------------------------===//
 
-def CustomCallOp : RT_Op<"custom_call"> {
+def RT_CustomCallOp : RT_Op<"custom_call"> {
   let summary = "calls a custom function registered with the runtime";
 
   let description = [{
@@ -178,9 +224,9 @@ def CustomCallOp : RT_Op<"custom_call"> {
     an assumption that all OneDnn related custom calls will be registered with
     a `one_dnn` prefix.
 
-    Indirect custom calls are resolved at runtime using the custom calls registry,
-    which incurs additional overheads because the custom call handler has to
-    be looked up by name (expensive string map lookup).
+    Dynamic custom calls are resolved at runtime using the custom calls
+    registry, which incurs additional overheads because the custom call handler
+    has to be looked up by name (expensive string map lookup).
 
     Direct custom calls are linked to the custom call handler when compiling the
     XLA executable, and the user must pass a runtime symbol map (see executable
@@ -188,15 +234,15 @@ def CustomCallOp : RT_Op<"custom_call"> {
     implementing the custom call API:
 
       ```
-      bool OneDnnSomeOpImpl(xla::runtime::ExecutionContext* ctx,
-                            void** args, void** attrs);
+      bool CustomCallImpl(xla::runtime::ExecutionContext* ctx,
+                          void** args, void** attrs, void** rets);
       ```
   }];
 
   let arguments = (ins
     ExecutionContextType:$ctx,
     StrAttr:$callee,
-    UnitAttr:$direct,
+    UnitAttr:$dynamic,
     Variadic<AnyType>:$operands
   );
 
@@ -206,9 +252,113 @@ def CustomCallOp : RT_Op<"custom_call"> {
   );
 
   let assemblyFormat = [{
-    (`direct` $direct^)? $ctx `[` $callee `]`  `(` $operands `)`
+    (`dynamic` $dynamic^)? $ctx `[` $callee `]`  `(` $operands `)`
     attr-dict `:` functional-type($operands, $results)
   }];
+}
+
+//===----------------------------------------------------------------------===//
+// TraceOp
+//===----------------------------------------------------------------------===//
+
+def RT_TraceOp : RT_Op<"trace",
+    [AutomaticAllocationScope, OpAsmOpInterface,
+     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+     SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Trace operation";
+
+  let description = [{
+    Traces execution of the attached region using provided annotation.
+
+    Example: trace gemm with a corresponding HLO operation annotation
+
+    ```mlir
+    %0 = rt.trace %ctx, #rt.hlo<op=gemm, module=foo> -> !tensor<?x?xf32> {
+      %1 = call @xla.gemm(...) : (...) -> tensor<?x?xf32>
+      yield %1 : tensor<?x?xf32>
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    ExecutionContextType:$ctx,
+    RT_TraceAnnotationAttrInterface:$annotation
+  );
+
+  let results = (outs Variadic<AnyType>:$results);
+
+  let regions = (region SizedRegion<1>:$body);
+
+  let assemblyFormat = [{
+    qualified($annotation) `,` $ctx (`->` type($results)^)? $body attr-dict
+  }];
+
+  let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // OpAsmOpInterface: Allow the dialect prefix to be omitted.
+    static llvm::StringRef getDefaultDialect() { return "rt"; }
+  }];
+
+  let skipDefaultBuilders = 1;
+
+  let builders = [
+    OpBuilder<(ins
+      "mlir::TypeRange":$results,
+      "mlir::Value":$exec_ctx,
+      "TraceAnnotationAttrInterface":$annotation,
+      CArg<"llvm::function_ref<void(mlir::OpBuilder&, mlir::Location)>",
+           "nullptr">:$bodyBuilder)>,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+def RT_YieldOp : RT_Op<"yield",
+    [HasParent<"TraceOp">, Pure, Terminator,
+     DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
+  let summary = "terminator for rt.trace operation";
+
+  let description = [{
+    The `rt.yield` is a special terminator operation for the block inside
+    `rt.trace` operation that returns values defined inside the body block to
+    the users of `rt.trace` operation results.
+  }];
+
+  let arguments = (ins Variadic<AnyType>:$operands);
+
+  let assemblyFormat = "($operands^ `:` type($operands))? attr-dict";
+
+  // Default builder needed for ensureTerminator
+  let builders = [OpBuilder<(ins), "build($_builder, $_state, {});">];
+}
+
+//===----------------------------------------------------------------------===//
+// UnsignedCast
+//===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): This is not a reasonable long term solution for the problem.
+// We should either get rid of unsigned types before we lower to gpu dialect, or
+// at least put this operation to some other dialect that facilitates lowering
+// to LLVM, and do not keep it in `rt`.
+
+def RT_UnsignedCastOp : RT_Op<"unsigned_cast"> {
+  let summary = [{
+    Converts any integer value to an unsigned integer value.
+  }];
+
+  let description = [{
+    This is a work around the fact that `arith` and `LLVM` dialects do not
+    support unsigned integer constants, and we need to generate a valid IR for
+    `gpu.memset` operation with unsigned memref argument.
+
+    This operation is erased by the `rt-to-llvm` pass.
+  }];
+
+  let arguments = (ins SignlessIntegerLike:$value );
+  let results = (outs AnyType:$result );
 }
 
 #endif // RT_OPS

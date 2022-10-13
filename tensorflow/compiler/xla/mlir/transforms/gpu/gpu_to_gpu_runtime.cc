@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -27,12 +27,12 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/gpu/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
 
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTGPUTOGPURUNTIMEPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -42,12 +42,14 @@ using mlir::gpu::LaunchFuncOp;
 using mlir::gpu::MemcpyOp;
 using mlir::gpu::MemsetOp;
 
+using xla::runtime::CustomCallDeclarations;
+
 class ConvertGpuToGpuRuntimePass
-    : public ConvertGpuToGpuRuntimePassBase<ConvertGpuToGpuRuntimePass> {
+    : public impl::ConvertGpuToGpuRuntimePassBase<ConvertGpuToGpuRuntimePass> {
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect>();
+    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect>();
   }
 };
 
@@ -68,7 +70,7 @@ class GpuModuleOpLowering : public OpRewritePattern<GPUModuleOp> {
 
 class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
  public:
-  MemcpyOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  MemcpyOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
   // We use a heuristic to identify the direction of the memcpy operation, if
@@ -81,8 +83,8 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
 
   // Identify the direction of the memcpy operation.
   static StringRef Target(MemcpyOp op) {
-    if (IsHostMemRef(op.dst())) return "xla.gpu.memcpy.d2h";
-    if (IsHostMemRef(op.src())) return "xla.gpu.memcpy.h2d";
+    if (IsHostMemRef(op.getDst())) return "xla.gpu.memcpy.d2h";
+    if (IsHostMemRef(op.getSrc())) return "xla.gpu.memcpy.h2d";
     return "xla.gpu.memcpy.d2d";
   }
 
@@ -100,7 +102,7 @@ class MemcpyOpLowering : public OpRewritePattern<MemcpyOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -110,7 +112,7 @@ class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.memset";
 
  public:
-  MemsetOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  MemsetOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(MemsetOp op,
@@ -127,7 +129,7 @@ class MemsetOpLowering : public OpRewritePattern<MemsetOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -137,7 +139,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.func.launch";
 
  public:
-  LaunchFuncOpLowering(MLIRContext* ctx, CustomCalls& custom_calls)
+  LaunchFuncOpLowering(MLIRContext* ctx, CustomCallDeclarations& custom_calls)
       : OpRewritePattern(ctx), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(LaunchFuncOp op,
@@ -151,11 +153,12 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
 
     // Prepare arguments for the custom call.
     llvm::SmallVector<Value> args = {
-        cast(op.gridSizeX()),  cast(op.gridSizeY()),  cast(op.gridSizeZ()),
-        cast(op.blockSizeX()), cast(op.blockSizeY()), cast(op.blockSizeZ())};
+        cast(op.getGridSizeX()),  cast(op.getGridSizeY()),
+        cast(op.getGridSizeZ()),  cast(op.getBlockSizeX()),
+        cast(op.getBlockSizeY()), cast(op.getBlockSizeZ())};
 
     // Add kernel arguments.
-    llvm::copy(op.operands(), std::back_inserter(args));
+    llvm::copy(op.getKernelOperands(), std::back_inserter(args));
 
     // Get or create a custom call function declaration.
     func::FuncOp callee = custom_calls_.GetOrCreate(
@@ -172,7 +175,7 @@ class LaunchFuncOpLowering : public OpRewritePattern<LaunchFuncOp> {
   }
 
  private:
-  CustomCalls& custom_calls_;
+  CustomCallDeclarations& custom_calls_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -183,7 +186,7 @@ void ConvertGpuToGpuRuntimePass::runOnOperation() {
 
   // Keep track of the custom calls created from the lowered operations.
   SymbolTable sym_table(module);
-  CustomCalls custom_calls(std::move(sym_table));
+  CustomCallDeclarations custom_calls(std::move(sym_table));
 
   // Convert gpu operations to XLA gpu runtime custom calls.
   RewritePatternSet patterns(ctx);

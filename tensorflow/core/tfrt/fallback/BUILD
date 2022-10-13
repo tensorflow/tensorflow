@@ -12,7 +12,7 @@ load(
     "if_static",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
     default_visibility = [":friends"],
