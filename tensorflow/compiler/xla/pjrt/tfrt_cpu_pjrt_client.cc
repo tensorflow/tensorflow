@@ -250,42 +250,6 @@ StatusOr<std::optional<std::string>> TfrtCpuClient::ExecutableFingerprint(
   return std::optional<std::string>();
 }
 
-static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
-    const XlaComputation& computation,
-    const absl::Span<const Shape* const> argument_layouts,
-    const ExecutableBuildOptions& build_options,
-    const ExecutionOptions& execution_options) {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation.GetProgramShape());
-  // Unoptimized HloModuleConfig.
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModuleConfig> hlo_module_config,
-      CreateModuleConfig(program_shape, argument_layouts, &execution_options,
-                         execution_options.num_replicas(),
-                         /*num_threads=*/std::nullopt,
-                         /*aot_options=*/nullptr));
-
-  // Unoptimized HloModule.
-  const xla::HloModuleProto& hlo_module_proto = computation.proto();
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> hlo_module,
-      xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
-  VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
-  static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
-  DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
-
-  // Run Hlo Passes
-  cpu::CpuCompiler compiler;
-  xla::Compiler::CompileOptions dummy;
-  TF_ASSIGN_OR_RETURN(hlo_module,
-                      compiler.RunHloPasses(std::move(hlo_module),
-                                            /*stream_exec=*/nullptr, dummy));
-
-  // Run backend.
-  return compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
-                             dummy);
-}
-
 // Find the root instruction of the entry computation.
 static const InstructionValueSet& GetRootValueSet(
     const BufferAssignment& assignment, const HloModule& module) {
@@ -334,6 +298,153 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
     buffer_indices.push_back(buffer_index);
   }
   return {std::move(buffer_indices)};
+}
+
+StatusOr<std::string> TfrtCpuClient::SerializeExecutable(
+    const PjRtLoadedExecutable& executable) const {
+  return Unimplemented("SerializeExecutable not implemented on %s",
+                       platform_name());
+  const TfrtCpuExecutable* tfrt_cpu_executable =
+      tensorflow::down_cast<const TfrtCpuExecutable*>(&executable);
+
+  std::shared_ptr<Executable> cpu_executable =
+      tfrt_cpu_executable->cpu_executable();
+
+  cpu::CpuCompiler compiler;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+                      compiler.Export(cpu_executable.get()));
+
+  TF_ASSIGN_OR_RETURN(std::string serialized, aot_result->SerializeAsString());
+
+  if (serialized.empty()) {
+    return Internal(
+        "TfrtCpuClient::SerializeExecutable proto serialization failed");
+  }
+  return serialized;
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+TfrtCpuClient::DeserializeExecutable(absl::string_view serialized,
+                                     CompileOptions options) {
+  // Load a CpuExecutable
+  cpu::CpuCompiler compiler;
+  std::string str(serialized);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<AotCompilationResult> aot_result,
+                      compiler.LoadAotCompilationResult(str));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      aot_result->LoadExecutable(&compiler, /*stream_exec=*/nullptr));
+
+  // Set up other arguments for TfrtCpuExecutable
+  // TODO(b/232263665): Remove duplicated code in DeserializeExecutable and
+  // Compile.
+  int num_replicas;
+  int num_partitions;
+  std::shared_ptr<DeviceAssignment> device_assignment;
+  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [this](int num_replicas, int num_partitions) {
+        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
+
+  auto cpu_executable_ptr =
+      tensorflow::down_cast<cpu::CpuExecutable*>(executable.get());
+
+  // `buffer_table[result_slice.index()]` points to result buffer:
+  // If output is a tuple, it points to the buffer index table.
+  // If output is a non-tuple, it points to the buffer itself.
+  TF_ASSIGN_OR_RETURN(
+      const BufferAllocation::Slice result_slice,
+      cpu_executable_ptr->buffer_assignment().GetUniqueTopLevelOutputSlice());
+
+  // `result_buffer_indices` has the buffer allocation indices that make up the
+  // output buffer (could be tuple).
+  TF_ASSIGN_OR_RETURN(
+      auto result_buffer_indices,
+      FindResultBufferAllocationIndex(cpu_executable_ptr->buffer_assignment(),
+                                      executable->module()));
+
+  std::vector<PjRtLoadedExecutable::LogicalDeviceIds>
+      addressable_device_logical_ids;
+  std::vector<PjRtDevice*> addressable_devices;
+  ExecutableBuildOptions& build_options = options.executable_build_options;
+  if (device_assignment != nullptr) {
+    addressable_device_logical_ids.reserve(num_replicas * num_partitions);
+    addressable_devices.reserve(num_replicas * num_partitions);
+    for (int replica = 0; replica < num_replicas; ++replica) {
+      for (int partition = 0; partition < num_partitions; ++partition) {
+        int device_id = (*device_assignment)(replica, partition);
+        TF_ASSIGN_OR_RETURN(PjRtDevice * device, LookupDevice(device_id));
+        if (device->process_index() != process_index()) {
+          VLOG(3) << "Non-local device: " << device_id;
+          continue;
+        }
+        PjRtLoadedExecutable::LogicalDeviceIds logica_device_ids;
+        logica_device_ids.replica = replica;
+        logica_device_ids.partition = partition;
+        addressable_device_logical_ids.push_back(std::move(logica_device_ids));
+        addressable_devices.push_back(device);
+      }
+    }
+    if (addressable_devices.empty()) {
+      return InvalidArgument(
+          "Device assignment (%s) does not have any local devices.",
+          device_assignment->ToString());
+    }
+
+    if (build_options.device_ordinal() < 0) {
+      build_options.set_device_ordinal(
+          addressable_devices.front()->local_hardware_id());
+    }
+  }
+
+  auto tfrt_cpu_executable = std::make_unique<TfrtCpuExecutable>(
+      num_replicas, num_partitions, std::move(device_assignment),
+      options.parameter_is_tupled_arguments, std::move(executable),
+      result_slice.index(), std::move(result_buffer_indices),
+      std::move(addressable_device_logical_ids), std::move(addressable_devices),
+      this);
+  TF_RETURN_IF_ERROR(tfrt_cpu_executable->SetUpDonation(
+      options.parameter_is_tupled_arguments));
+
+  return std::unique_ptr<PjRtLoadedExecutable>(std::move(tfrt_cpu_executable));
+}
+
+static StatusOr<std::unique_ptr<xla::Executable>> JitCompile(
+    const XlaComputation& computation,
+    const absl::Span<const Shape* const> argument_layouts,
+    const ExecutableBuildOptions& build_options,
+    const ExecutionOptions& execution_options) {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation.GetProgramShape());
+  // Unoptimized HloModuleConfig.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> hlo_module_config,
+      CreateModuleConfig(program_shape, argument_layouts, &execution_options,
+                         execution_options.num_replicas(),
+                         /*num_threads=*/std::nullopt,
+                         /*aot_options=*/nullptr));
+
+  // Unoptimized HloModule.
+  const xla::HloModuleProto& hlo_module_proto = computation.proto();
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(hlo_module_proto, *hlo_module_config));
+  VLOG(3) << "Unoptimized HLO module: " << hlo_module->ToString();
+  static constexpr char kBeforeOptimizationsDumpName[] = "before_optimizations";
+  DumpHloModuleIfEnabled(*hlo_module, kBeforeOptimizationsDumpName);
+
+  // Run Hlo Passes
+  cpu::CpuCompiler compiler;
+  xla::Compiler::CompileOptions dummy;
+  TF_ASSIGN_OR_RETURN(hlo_module,
+                      compiler.RunHloPasses(std::move(hlo_module),
+                                            /*stream_exec=*/nullptr, dummy));
+
+  // Run backend.
+  return compiler.RunBackend(std::move(hlo_module), /*stream_exec=*/nullptr,
+                             dummy);
 }
 
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>> TfrtCpuClient::Compile(
