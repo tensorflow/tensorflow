@@ -64,6 +64,9 @@ createHloCanonicalizeReductionPass();
 // Rewrites scatter into transposes, reshapes and a simpler scatter.
 std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeScatterPass();
 
+// Rewrites gather into transposes, reshapes and a simpler gather.
+std::unique_ptr<OperationPass<func::FuncOp>> createHloCanonicalizeGatherPass();
+
 /// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 /// buffers if necessary.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass();

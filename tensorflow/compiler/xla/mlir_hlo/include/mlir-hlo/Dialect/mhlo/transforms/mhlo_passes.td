@@ -37,6 +37,12 @@ def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"
   let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
 }
 
+def HloCanonicalizeGatherPass : Pass<"hlo-canonicalize-gather", "func::FuncOp"> {
+  let summary = "Rewrites gather into transposes, reshapes and a simple gather.";
+  let constructor = "createHloCanonicalizeGatherPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::FuncOp"> {
   let summary = "Canonicalize reduction ops to be suitable for codegen.";
   let constructor = "createHloCanonicalizeReductionPass()";

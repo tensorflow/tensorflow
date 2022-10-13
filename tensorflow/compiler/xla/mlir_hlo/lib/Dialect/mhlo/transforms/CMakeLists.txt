@@ -31,7 +31,7 @@ add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 
 
 add_mlir_library(MhloScatterUtils
-  mhlo_scatter_utils.cc
+  mhlo_scatter_gather_utils.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
@@ -60,6 +60,7 @@ add_mlir_library(MhloPasses
   materialize_broadcasts.cc
   materialize_broadcasts_pass.cc
   merge_assuming_ops.cc
+  mhlo_canonicalize_gather.cc
   mhlo_canonicalize_reduction.cc
   mhlo_canonicalize_scatter.cc
   mhlo_flatten_tuple.cc

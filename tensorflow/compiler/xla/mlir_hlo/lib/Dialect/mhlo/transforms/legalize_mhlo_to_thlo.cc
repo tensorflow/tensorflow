@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_utils.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"

@@ -594,6 +594,7 @@ cc_library(
         "lib/Dialect/mhlo/transforms/materialize_broadcasts.cc",
         "lib/Dialect/mhlo/transforms/materialize_broadcasts_pass.cc",
         "lib/Dialect/mhlo/transforms/merge_assuming_ops.cc",
+        "lib/Dialect/mhlo/transforms/mhlo_canonicalize_gather.cc",
         "lib/Dialect/mhlo/transforms/mhlo_canonicalize_reduction.cc",
         "lib/Dialect/mhlo/transforms/mhlo_canonicalize_scatter.cc",
         "lib/Dialect/mhlo/transforms/mhlo_flatten_tuple.cc",
@@ -629,7 +630,7 @@ cc_library(
         ":map_hlo_to_lhlo_op",
         ":map_mhlo_to_scalar_op",
         ":mhlo_pass_inc_gen",
-        ":mhlo_scatter_utils",
+        ":mhlo_scatter_gather_utils",
         ":mlir_hlo",
         ":stablehlo_legalize_to_hlo",
         ":thlo",
@@ -861,12 +862,13 @@ cc_library(
 )
 
 cc_library(
-    name = "mhlo_scatter_utils",
-    srcs = ["lib/Dialect/mhlo/transforms/mhlo_scatter_utils.cc"],
-    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_utils.h"],
+    name = "mhlo_scatter_gather_utils",
+    srcs = ["lib/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.h"],
     deps = [
         ":mlir_hlo",
-        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
