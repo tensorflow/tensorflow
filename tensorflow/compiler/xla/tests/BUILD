@@ -1686,6 +1686,7 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
+    shard_count = 25,
     tags = [
         "nomac",  # b/194731834
         "nozapfhahn",
