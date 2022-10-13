@@ -191,6 +191,9 @@ class CpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
+  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const override;
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();

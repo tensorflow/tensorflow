@@ -68,6 +68,24 @@ class XlaRuntimeCpuExecutable {
     return *default_executable_;
   }
 
+  StatusOr<std::string> GetObjFile() const {
+    std::unique_ptr<llvm::MemoryBuffer> obj_file =
+        jit_executable_->DefaultExecutable()->obj_file();
+
+    if (!obj_file)
+      return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
+
+    std::string data(obj_file->getBuffer().data(),
+                     obj_file->getBuffer().size());
+    return data;
+  }
+
+  StatusOr<std::string> GetMlirModule() const {
+    return jit_executable_->mlir_module();
+  }
+
+  XlaFrameworkMapping xla_framework_mapping() { return xla_framework_mapping_; }
+
  private:
   std::unique_ptr<xla::runtime::JitExecutable> jit_executable_;
   xla::runtime::Executable* default_executable_;  // owned by jit_executable_.
@@ -136,6 +154,21 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
+
+  StatusOr<std::string> GetObjFile() const {
+    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    return xla_runtime_executable_->GetObjFile();
+  }
+
+  StatusOr<std::string> GetMlirModule() const {
+    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    return xla_runtime_executable_->GetMlirModule();
+  }
+
+  StatusOr<XlaFrameworkMapping> GetXlaFrameworkMapping() const {
+    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    return xla_runtime_executable_->xla_framework_mapping();
+  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the

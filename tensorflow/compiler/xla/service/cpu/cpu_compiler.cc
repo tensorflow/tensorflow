@@ -1770,6 +1770,25 @@ HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
   return CpuExecutable::ShapeSizeBytes;
 }
 
+StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
+    Executable* executable) const {
+  auto* cpu_executable = tensorflow::down_cast<CpuExecutable*>(executable);
+  if (!cpu_executable)
+    return Internal("Could not downcast Executable to CpuExecutable");
+
+  HloModuleProto module_proto = cpu_executable->module().ToProto();
+  TF_ASSIGN_OR_RETURN(std::string obj_file, cpu_executable->GetObjFile());
+  TF_ASSIGN_OR_RETURN(std::string mlir_module, cpu_executable->GetMlirModule());
+  TF_ASSIGN_OR_RETURN(XlaFrameworkMapping xla_framework_mapping,
+                      cpu_executable->GetXlaFrameworkMapping());
+
+  std::unique_ptr<AotCompilationResult> result =
+      std::make_unique<CpuXlaRuntimeAotCompilationResult>(
+          module_proto, obj_file, mlir_module,
+          cpu_executable->buffer_assignment(), xla_framework_mapping);
+  return result;
+}
+
 }  // namespace cpu
 }  // namespace xla
 
