@@ -10,7 +10,13 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(srcs = ["gpu_delegate_jni.cc"])
+filegroup(
+    name = "gpu_delegate_jni_srcs",
+    srcs = [
+        "gpu_delegate_jni.cc",
+        "gpu_delegate_native_jni.cc",
+    ],
+)
 
 cc_library_with_tflite(
     name = "compatibility_list_jni",
