@@ -276,7 +276,7 @@ def cc_proto_library(
         name = header_only_name,
         deps = [
             "@com_google_protobuf//:protobuf_headers",
-        ] + header_only_deps + if_static([impl_name]),
+        ] + header_only_deps + if_tsl_link_protobuf([impl_name]),
         hdrs = gen_hdrs,
         **kwargs
     )
@@ -806,6 +806,25 @@ def tf_protobuf_deps():
 # Link protobuf, unless the tsl_link_protobuf build flag is explicitly set to false.
 def tsl_protobuf_deps():
     return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
+
+# When tsl_link_protobuf is false, we need to add the protobuf library
+# back into our binaries explicitly.
+def tsl_cc_test(
+        name,
+        deps = [],
+        **kwargs):
+    native.cc_test(
+        name = name,
+        deps = deps + if_tsl_link_protobuf(
+            [],
+            [
+                clean_dep("@com_google_protobuf//:protobuf"),
+                "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl",
+                "//tensorflow/tsl/protobuf:histogram_proto_cc_impl",
+            ],
+        ),
+        **kwargs
+    )
 
 def tf_portable_proto_lib():
     return ["//tensorflow/core:protos_all_cc_impl"]
