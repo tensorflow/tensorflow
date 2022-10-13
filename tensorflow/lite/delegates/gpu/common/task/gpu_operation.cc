@@ -440,6 +440,12 @@ absl::Status GPUOperation::AddOperation(const GpuInfo& gpu_info,
                                         GPUOperation* operation) {
   const auto prev_type = definition_.dst_tensors[0].GetDataType();
   definition_.dst_tensors[0] = operation->definition_.dst_tensors[0];
+  if (!elementwise_) {
+    TensorDescriptor* dst_tensor_desc;
+    RETURN_IF_ERROR(
+        GetTensorDescriptor(dst_tensors_names_[0], &dst_tensor_desc));
+    operation->definition_.dst_tensors[0].CopyWithoutData(dst_tensor_desc);
+  }
   linkable_count_ += (operation->linkable_count_ + 1);
   std::string code = operation->elementwise_code_;
   std::string unique_postfix = absl::StrCat("_link", linkable_count_);
@@ -565,14 +571,6 @@ absl::Status GPUOperation::AssembleCode(const GpuInfo& gpu_info) {
     TensorDescriptor* dst_tensor_desc;
     RETURN_IF_ERROR(
         GetTensorDescriptor(dst_tensors_names_[0], &dst_tensor_desc));
-    if (definition_.dst_tensors[0].GetDataType() !=
-        dst_tensor_desc->GetDataType()) {
-      auto descriptor =
-          std::make_unique<TensorDescriptor>(definition_.dst_tensors[0]);
-      dst_tensor_desc = descriptor.get();
-      args_.AddObjectRef(dst_tensors_names_[0], AccessType::WRITE,
-                         std::move(descriptor));
-    }
     linkables[dst_tensors_names_[0]] = {elementwise_code_, dst_tensor_desc};
   }
   RETURN_IF_ERROR(ResolveLinking(gpu_info, linkables, &code_));
