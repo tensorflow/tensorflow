@@ -1,6 +1,6 @@
-// RUN: tf-mlir-translate -split-input-file -hlo-text-to-mlir-hlo  -hlo-import-all-computations %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo  -hlo-import-all-computations %s -o - | FileCheck %s
 
-HloModule entry, entry_computation_layout={(f32[2,3,4]{0,1,2},f32[2,3,4]{1,2,0})->f32[2,3,4]{2,0,1}}
+HloModule entry, entry_computation_layout={(f32[2,3,4]{0,1,2},f32[2,3,4]{1,2,0})->f32[2,3,4]{2,1,0}}
 
 ENTRY entry {
   p0 = f32[2,3,4]{2,1,0} parameter(0)
@@ -14,25 +14,4 @@ ENTRY entry {
 // CHECK: %[[T1:.*]] = "mhlo.transpose"(%[[R1]]) {{.*}} -> tensor<2x3x4xf32>
 // CHECK: %[[R2:.*]] = mhlo.reshape %[[ARG1]] {{.*}} -> tensor<3x2x4xf32>
 // CHECK: %[[T2:.*]] = "mhlo.transpose"(%[[R2]]) {{.*}} -> tensor<2x3x4xf32>
-// CHECK: %[[ADD:.*]] = mhlo.add %[[T1]], %[[T2]]
-// CHECK: %[[T3:.*]] = "mhlo.transpose"(%[[ADD]]) {{.*}} -> tensor<2x4x3xf32>
-// CHECK: %[[R3:.*]] = mhlo.reshape %[[T3]] {{.*}} -> tensor<2x3x4xf32>
-// CHECK: return %[[R3]]
-
-// -----
-
-HloModule entry, entry_computation_layout={()->(f32[2,3,4]{0,2,1}, f32[2,3]{1,0})}
-
-ENTRY entry {
-  %v0 = f32[2,3,4]{2,1,0} constant(0)
-  %v1 = f32[2,3]{1,0} constant(0)
-  ROOT tuple = tuple(f32[2,3,4] %v0, f32[2,3] %v1)
-}
-
-// CHECK: func.func @main(
-// CHECK-DAG: %[[V0:.*]] = mhlo.constant {{.*}} : tensor<2x3x4xf32>
-// CHECK-DAG: %[[V1:.*]] = mhlo.constant {{.*}} : tensor<2x3xf32>
-// CHECK: %[[T:.*]] = "mhlo.transpose"(%[[V0]]) {{.*}} -> tensor<3x4x2xf32>
-// CHECK: %[[R:.*]] = mhlo.reshape %[[T]] {{.*}} -> tensor<2x3x4xf32>
-// CHECK: %[[RES:.*]] = "mhlo.tuple"(%[[R]], %[[V1]])
-// CHECK: return %[[RES]]
+// CHECK: mhlo.add %[[T1]], %[[T2]]
