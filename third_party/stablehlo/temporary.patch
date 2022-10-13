@@ -1,3 +1,276 @@
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -119,7 +119,7 @@
+ }
+ 
+ def CHLO_BroadcastAddOp : CHLO_BroadcastBinaryElementwiseOp<"broadcast_add",
+-    [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, SameOperandsAndResultElementType]> {
+   string summary = "Addition operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -132,7 +132,7 @@
+ 
+ def CHLO_BroadcastAtan2Op : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_atan2",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Atan2 operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -145,7 +145,7 @@
+ 
+ def CHLO_BroadcastDivOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_divide",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Division operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -158,7 +158,7 @@
+ 
+ def CHLO_BroadcastMaxOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_maximum",
+-    [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, SameOperandsAndResultElementType]> {
+   string summary = "Maximum operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -171,7 +171,7 @@
+ 
+ def CHLO_BroadcastMinOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_minimum",
+-    [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, SameOperandsAndResultElementType]> {
+   string summary = "Minimum operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -184,7 +184,7 @@
+ 
+ def CHLO_BroadcastMulOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_multiply",
+-    [Commutative, NoSideEffect, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, SameOperandsAndResultElementType]> {
+   string summary = "Multiplication operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -197,7 +197,7 @@
+ 
+ def CHLO_BroadcastNextAfterOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_next_after",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "std::nextafter operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -209,7 +209,7 @@
+ }
+ 
+ def CHLO_BroadcastPolygammaOp : CHLO_BroadcastBinaryElementwiseOp<
+-    "broadcast_polygamma", [NoSideEffect, SameOperandsAndResultElementType]> {
++    "broadcast_polygamma", [Pure, SameOperandsAndResultElementType]> {
+   let summary = "Polygamma function (with optional broadcasting)";
+ 
+   let description = [{
+@@ -219,7 +219,7 @@
+ 
+ def CHLO_BroadcastPowOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_power",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Power operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -232,7 +232,7 @@
+ 
+ def CHLO_BroadcastRemOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_remainder",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Remainder operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -245,7 +245,7 @@
+ 
+ def CHLO_BroadcastShiftLeftOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_shift_left",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Shift left operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -258,7 +258,7 @@
+ 
+ def CHLO_BroadcastShiftRightArithmeticOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_shift_right_arithmetic",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Shift right arithmetic operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -271,7 +271,7 @@
+ 
+ def CHLO_BroadcastShiftRightLogicalOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_shift_right_logical",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Shift right logical operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -284,7 +284,7 @@
+ 
+ def CHLO_BroadcastSubOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_subtract",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   string summary = "Subtraction operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -297,7 +297,7 @@
+ 
+ def CHLO_BroadcastZetaOp : CHLO_BroadcastBinaryElementwiseOp<
+     "broadcast_zeta",
+-    [NoSideEffect, SameOperandsAndResultElementType]> {
++    [Pure, SameOperandsAndResultElementType]> {
+   let summary = "Hurwitz zeta function";
+ 
+   let description = [{
+@@ -325,7 +325,7 @@
+ 
+ class CHLO_BroadcastBinaryLogicalElementwiseOp<string mnemonic> :
+     CHLO_BroadcastBinaryElementwiseOp<
+-      mnemonic, [Commutative, NoSideEffect]> {
++      mnemonic, [Commutative, Pure]> {
+   let arguments = (ins
+     HLO_PredOrIntTensor:$lhs,
+     HLO_PredOrIntTensor:$rhs,
+@@ -378,7 +378,7 @@
+ // not part of the HLO compiler instructions as modelled by the StableHLO dialect.
+ //===----------------------------------------------------------------------===//
+ 
+-def CHLO_NextAfterOp : CHLO_Op<"next_after", [NoSideEffect,
++def CHLO_NextAfterOp : CHLO_Op<"next_after", [Pure,
+     HLO_CompatibleOperandsAndResultType]> {
+   let summary = "std::nextafter operator";
+   let description = [{
+@@ -396,7 +396,7 @@
+   }];
+ }
+ 
+-def CHLO_PolygammaOp : CHLO_Op<"polygamma", [NoSideEffect,
++def CHLO_PolygammaOp : CHLO_Op<"polygamma", [Pure,
+     HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Polygamma function";
+   let description = [{
+@@ -411,7 +411,7 @@
+   }];
+ }
+ 
+-def CHLO_ZetaOp : CHLO_Op<"zeta", [NoSideEffect,
++def CHLO_ZetaOp : CHLO_Op<"zeta", [Pure,
+     HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Hurwitz zeta function";
+   let description = [{
+@@ -435,7 +435,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ def CHLO_BroadcastComplexOp : CHLO_BroadcastBinaryElementwiseOp<
+-    "broadcast_complex", [NoSideEffect]> {
++    "broadcast_complex", [Pure]> {
+   string summary = "Complex operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -459,7 +459,7 @@
+ 
+ class CHLO_UnaryElementwiseOp<string mnemonic, list<Trait> traits,
+     Type ArgTensorType, Type ResultTensorType> : CHLO_Op<mnemonic,
+-    traits # [NoSideEffect, Elementwise, SameOperandsAndResultShape,
++    traits # [Pure, Elementwise, SameOperandsAndResultShape,
+     InferShapedTypeOpInterface]> {
+   let arguments = (ins ArgTensorType:$operand);
+   let results = (outs ResultTensorType:$result);
+@@ -624,7 +624,7 @@
+ }
+ 
+ def CHLO_ConstantOp : CHLO_Op<"constant",
+-    [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
++    [ConstantLike, Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "Constant operator";
+   let description = [{
+     Represents a constant value.
+@@ -637,7 +637,7 @@
+   let hasFolder = 1;
+ }
+ 
+-def CHLO_ConstantLikeOp : CHLO_Op<"constant_like", [NoSideEffect,
++def CHLO_ConstantLikeOp : CHLO_Op<"constant_like", [Pure,
+     CHLO_Broadcasting, HLO_BroadcastingElementwise,
+     SameOperandsAndResultShape, InferTensorTypeWithReify]> {
+   let summary = "Constant like operator";
+@@ -731,7 +731,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ def CHLO_BroadcastCompareOp : CHLO_BroadcastBinaryElementwiseOp<
+-    "broadcast_compare", [NoSideEffect]> {
++    "broadcast_compare", [Pure]> {
+   string summary = "Compare operator (with optional broadcasting)";
+ 
+   string description = [{
+@@ -767,7 +767,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ def CHLO_BroadcastSelectOp : CHLO_Op<"broadcast_select",
+-    [NoSideEffect, CHLO_Broadcasting, HLO_BroadcastingElementwise,
++    [Pure, CHLO_Broadcasting, HLO_BroadcastingElementwise,
+      InferTensorTypeWithReify]> {
+   string summary = "Select operator (with optional numpy-style broadcasting)";
+ 
+@@ -803,7 +803,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ def CHLO_TopKOp : CHLO_Op<"top_k",
+-    [NoSideEffect, InferTensorType]> {
++    [Pure, InferTensorType]> {
+   string summary = "Finds values and indices of the `k` largest elements for the last dimension";
+ 
+   string description = [{
+@@ -840,7 +840,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ def CHLO_MinimumBroadcastShapesOp :
+-    CHLO_Op<"minimum_broadcast_shapes", [NoSideEffect]> {
++    CHLO_Op<"minimum_broadcast_shapes", [Pure]> {
+   string summary = "Minimizes the rank of two or more shapes to be broadcasted";
+ 
+   string description = [{
+@@ -885,7 +885,7 @@
+     : CHLO_Op<"rank_specialization_cluster", [
+     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
+     SingleBlockImplicitTerminator<"RankSpecializationClusterYieldOp">,
+-    RecursiveSideEffects]> {
++    RecursiveMemoryEffects]> {
+ 
+   let summary = "Cluster of operations that will be rank-specialized together.";
+ 
+@@ -919,7 +919,7 @@
+ }
+ 
+ def CHLO_RankSpecializationClusterYieldOp
+-    : CHLO_Op<"rank_specialization_cluster_yield", [NoSideEffect,
++    : CHLO_Op<"rank_specialization_cluster_yield", [Pure,
+     ReturnLike, Terminator, HasParent<"RankSpecializationClusterOp">]> {
+ 
+   let summary = "Yield operation for `rank_specialization_cluster`";
+@@ -934,7 +934,7 @@
+   let arguments = (ins Variadic<HLO_Tensor>:$results);
+ }
+ 
+-def CHLO_DynamicReshapeOp: CHLO_Op<"dynamic_reshape", [NoSideEffect,
++def CHLO_DynamicReshapeOp: CHLO_Op<"dynamic_reshape", [Pure,
+     DeclareOpInterfaceMethods<InferShapedTypeOpInterface>]> {
+   let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
+   let description = [{
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
@@ -23,6 +296,918 @@ diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/
    if (failed(windowOrErr)) return failure();
  
    // P5.
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -69,7 +69,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ def StableHLO_ConstantOp : StableHLO_Op<"constant",
+-    [ConstantLike, NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
++    [ConstantLike, Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "Constant operator";
+   let description = [{
+     Produces a `result` tensor from a constant `value`.
+@@ -99,7 +99,7 @@
+   }];
+ }
+ 
+-def StableHLO_IotaOp : StableHLO_Op<"iota", [NoSideEffect]> {
++def StableHLO_IotaOp : StableHLO_Op<"iota", [Pure]> {
+   let summary = "Iota operator";
+   let description = [{
+     Fills a `result` tensor with values in increasing order starting from zero
+@@ -122,7 +122,7 @@
+   let assemblyFormat = "`dim` `=` $iota_dimension attr-dict `:` type($output)";
+ }
+ 
+-def StableHLO_DynamicIotaOp: StableHLO_ShapedInterfaceOp<"dynamic_iota", [NoSideEffect]> {
++def StableHLO_DynamicIotaOp: StableHLO_ShapedInterfaceOp<"dynamic_iota", [Pure]> {
+   let summary = "Create linear increasing values from 0 to length -1.";
+   let description = [{
+     Produces an HLO Tensor of the specified shape, with an incremental set of
+@@ -146,7 +146,7 @@
+   }];
+ }
+ 
+-def StableHLO_CreateTokenOp : StableHLO_Op<"create_token", [NoSideEffect]> {
++def StableHLO_CreateTokenOp : StableHLO_Op<"create_token", [Pure]> {
+   let summary = "Create Token operator";
+ 
+   let description = [{
+@@ -196,7 +196,7 @@
+ 
+ // Abs supports complex to real, so element type is not guaranteed to match.
+ def StableHLO_AbsOp: StableHLO_UnaryElementwiseOp<"abs",
+-    [NoSideEffect,
++    [Pure,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>],
+      TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>> {
+   let summary = "Absolute value operator";
+@@ -215,7 +215,7 @@
+ }
+ 
+ def StableHLO_CbrtOp: StableHLO_UnaryElementwiseOp<"cbrt",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+   let summary = "Cubic root operator";
+   let description = [{
+     Returns element-wise cubic root of the operand.
+@@ -232,7 +232,7 @@
+ }
+ 
+ def StableHLO_CeilOp: StableHLO_UnaryElementwiseOp<"ceil",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+   let summary = "Ceil operator";
+   let description = [{
+     Performs element-wise ceil of `operand` tensor and produces a `result` tensor.
+@@ -248,7 +248,7 @@
+ }
+ 
+ def StableHLO_ConvertOp : StableHLO_UnaryElementwiseOp<"convert",
+-    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor> {
++    [Pure, SameOperandsAndResultShape], HLO_Tensor> {
+   let summary = "Convert operator";
+   let description = [{
+     Performs element-wise conversion of values from one type to another, e.g.
+@@ -267,7 +267,7 @@
+ }
+ 
+ def StableHLO_ClzOp: StableHLO_UnaryElementwiseOp<"count_leading_zeros",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_IntTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_IntTensor> {
+   let summary = "Count-leading-zeros (Clz) operator";
+   let description = [{
+     Returns the number of leading zeros in each operand element-wise.
+@@ -284,7 +284,7 @@
+ }
+ 
+ def StableHLO_CosineOp: StableHLO_UnaryElementwiseOp<"cosine",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Cos operator";
+   let description = [{
+     Performs element-wise cosine operation on `operand` tensor and produces a
+@@ -302,7 +302,7 @@
+ }
+ 
+ def StableHLO_ExpOp: StableHLO_UnaryElementwiseOp<"exponential",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Exponential operator";
+   let description = [{
+     Performs element-wise exponential operation on `operand` tensor and produces
+@@ -319,7 +319,7 @@
+ }
+ 
+ def StableHLO_Expm1Op: StableHLO_UnaryElementwiseOp<"exponential_minus_one",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Exponential minus one operator";
+   let description = [{
+     Returns `e^(operand) - 1` element-wise.
+@@ -336,7 +336,7 @@
+ }
+ 
+ def StableHLO_FloorOp: StableHLO_UnaryElementwiseOp<"floor",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+   let summary = "Floor operator";
+   let description = [{
+     Performs element-wise floor of `operand` tensor and produces a `result`
+@@ -353,7 +353,7 @@
+ }
+ 
+ def StableHLO_ImagOp: StableHLO_UnaryElementwiseOp<"imag",
+-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
++    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+     HLO_FpOrComplexTensor, HLO_FpTensor> {
+   let summary = "Imag operator";
+   let description = [{
+@@ -367,7 +367,7 @@
+   }];
+ }
+ 
+-def StableHLO_IsFiniteOp: StableHLO_UnaryElementwiseOp<"is_finite", [NoSideEffect,
++def StableHLO_IsFiniteOp: StableHLO_UnaryElementwiseOp<"is_finite", [Pure,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>], HLO_Tensor> {
+   let summary = "IsFinite operator";
+   let description = [{
+@@ -394,7 +394,7 @@
+ }
+ 
+ def StableHLO_LogOp: StableHLO_UnaryElementwiseOp<"log",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Logarithm operator";
+   let description = [{
+     Performs element-wise logarithm operation on `operand` tensor and produces a
+@@ -411,7 +411,7 @@
+ }
+ 
+ def StableHLO_Log1pOp: StableHLO_UnaryElementwiseOp<"log_plus_one",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Log1p operator";
+   let description = [{
+     Returns `log(operand+1)` element-wise.
+@@ -428,7 +428,7 @@
+ }
+ 
+ def StableHLO_LogisticOp: StableHLO_UnaryElementwiseOp<"logistic",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Logistic operator";
+   let description = [{
+     Performs element-wise logistic (sigmoid) function on `operand` tensor and
+@@ -445,7 +445,7 @@
+ }
+ 
+ def StableHLO_NotOp: StableHLO_UnaryElementwiseOp<"not",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_PredOrIntTensor> {
+   let summary = "Not operator";
+   let description = [{
+     Performs element-wise bitwise NOT of tensor `operand` of type integer and
+@@ -462,7 +462,7 @@
+ }
+ 
+ def StableHLO_NegOp: StableHLO_UnaryElementwiseOp<"negate",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_IntFpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_IntFpOrComplexTensor> {
+   let summary = "Negation operator";
+   let description = [{
+     Performs element-wise negation of `operand` tensor and produces a `result`
+@@ -479,7 +479,7 @@
+ }
+ 
+ def StableHLO_PopulationCountOp: StableHLO_UnaryElementwiseOp<"popcnt",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_IntTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_IntTensor> {
+   let summary = "PopulationCount operator";
+   let description = [{
+     Returns the number of bits set in each operand element-wise.
+@@ -496,7 +496,7 @@
+ }
+ 
+ def StableHLO_RealOp: StableHLO_UnaryElementwiseOp<"real",
+-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>],
++    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>],
+     HLO_FpOrComplexTensor, HLO_FpTensor> {
+   let summary = "Real operator";
+   let description = [{
+@@ -511,7 +511,7 @@
+ }
+ 
+ def StableHLO_RoundOp: StableHLO_UnaryElementwiseOp<"round_nearest_afz",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+   let summary = "Round operator, ties away from zero";
+   let description = [{
+     Returns `Round(operand)` element-wise, rounding to nearest integer with
+@@ -529,7 +529,7 @@
+ }
+ 
+ def StableHLO_RoundNearestEvenOp: StableHLO_UnaryElementwiseOp<"round_nearest_even",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpTensor> {
+   let summary = "Round operator, ties to even";
+   let description = [{
+     Returns `Round(operand)` element-wise, rounding to nearest integer with
+@@ -547,7 +547,7 @@
+ }
+ 
+ def StableHLO_RsqrtOp: StableHLO_UnaryElementwiseOp<"rsqrt",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Reciprocal Square-root operator";
+   let description = [{
+     Performs element-wise reciprocal square root operation on `operand` tensor
+@@ -565,7 +565,7 @@
+ }
+ 
+ def StableHLO_SignOp: StableHLO_UnaryElementwiseOp<"sign",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType],
++    [Pure, HLO_CompatibleOperandsAndResultType],
+     TensorOf<[HLO_SInt, HLO_Float, HLO_Complex]>> {
+   let summary = "Sign operator";
+   let description = [{
+@@ -591,7 +591,7 @@
+ }
+ 
+ def StableHLO_SineOp: StableHLO_UnaryElementwiseOp<"sine",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Sin operator";
+   let description = [{
+     Performs element-wise sine operation on `operand` tensor and produces a
+@@ -609,7 +609,7 @@
+ }
+ 
+ def StableHLO_SqrtOp: StableHLO_UnaryElementwiseOp<"sqrt",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
++    [Pure, HLO_CompatibleOperandsAndResultType], HLO_FpOrComplexTensor> {
+   let summary = "Square-root operator";
+   let description = [{
+     Performs element-wise square root operation on `operand` tensor and produces
+@@ -627,7 +627,7 @@
+ }
+ 
+ def StableHLO_TanhOp: StableHLO_UnaryElementwiseOp<"tanh",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType],
++    [Pure, HLO_CompatibleOperandsAndResultType],
+     HLO_FpOrComplexTensor> {
+   let summary = "Tanh operator";
+   let description = [{
+@@ -680,7 +680,7 @@
+ }
+ 
+ def StableHLO_AddOp : StableHLO_BinaryElementwiseOp<"add",
+-      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Addition operator";
+   let description = [{
+     Performs element-wise addition of two tensors `lhs` and `rhs` and produces a
+@@ -697,7 +697,7 @@
+ }
+ 
+ def StableHLO_Atan2Op : StableHLO_BinaryElementwiseOp<"atan2",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Atan2 operator";
+   let description = [{
+     Returns `atan2(lhs/rhs)` element-wise.
+@@ -713,7 +713,7 @@
+   }];
+ }
+ 
+-def StableHLO_ComplexOp: StableHLO_BinaryElementwiseOp<"complex", [NoSideEffect,
++def StableHLO_ComplexOp: StableHLO_BinaryElementwiseOp<"complex", [Pure,
+     SameOperandsElementType, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "Complex operator";
+   let description = [{
+@@ -736,7 +736,7 @@
+ }
+ 
+ def StableHLO_DivOp : StableHLO_BinaryElementwiseOp<"divide",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Division operator";
+   let description = [{
+     Performs element-wise division of dividend `lhs` and divisor `rhs` tensors
+@@ -753,7 +753,7 @@
+ }
+ 
+ def StableHLO_MaxOp : StableHLO_BinaryElementwiseOp<"maximum",
+-      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Maximum operator";
+   let description = [{
+     Performs element-wise max operation on tensors `lhs` and `rhs` and produces
+@@ -770,7 +770,7 @@
+ }
+ 
+ def StableHLO_MinOp : StableHLO_BinaryElementwiseOp<"minimum",
+-      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Minimum operator";
+   let description = [{
+     Performs element-wise min operation on tensors `lhs` and `rhs` and produces a
+@@ -787,7 +787,7 @@
+ }
+ 
+ def StableHLO_MulOp : StableHLO_BinaryElementwiseOp<"multiply",
+-      [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Multiplication operator";
+   let description = [{
+     Returns `lhs * rhs` element-wise.
+@@ -804,7 +804,7 @@
+ }
+ 
+ def StableHLO_PowOp : StableHLO_BinaryElementwiseOp<"power",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Power operator";
+   let description = [{
+     Returns `lhs ^ rhs` element-wise.
+@@ -821,7 +821,7 @@
+ }
+ 
+ def StableHLO_RemOp : StableHLO_BinaryElementwiseOp<"remainder",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Remainder operator";
+   let description = [{
+     Performs element-wise remainder of dividend `lhs` and divisor `rhs` tensors
+@@ -838,7 +838,7 @@
+ }
+ 
+ def StableHLO_ShiftLeftOp : StableHLO_BinaryElementwiseOp<"shift_left",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Shift Left operator";
+   let description = [{
+     Returns `lhs << rhs` element-wise.
+@@ -855,7 +855,7 @@
+ }
+ 
+ def StableHLO_ShiftRightArithmeticOp : StableHLO_BinaryElementwiseOp<"shift_right_arithmetic",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Shift right arithmetic operator";
+   let description = [{
+     Returns arithmetic `lhs >> rhs` element-wise.
+@@ -872,7 +872,7 @@
+ }
+ 
+ def StableHLO_ShiftRightLogicalOp : StableHLO_BinaryElementwiseOp<"shift_right_logical",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Shift right logical operator";
+   let description = [{
+     Returns logical `lhs >> rhs` element-wise.
+@@ -889,7 +889,7 @@
+ }
+ 
+ def StableHLO_SubtractOp : StableHLO_BinaryElementwiseOp<"subtract",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Subtraction operator";
+   let description = [{
+     Performs element-wise subtraction of two tensors `lhs` and `rhs` and
+@@ -912,7 +912,7 @@
+ // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
+ class StableHLO_BinaryBiwiseOrLogicalElementwiseOp<string mnemonic> :
+         StableHLO_BinaryElementwiseOp<mnemonic,
+-          [Commutative, NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++          [Commutative, Pure, HLO_CompatibleOperandsAndResultType]> {
+   let arguments = (ins
+     HLO_PredOrIntTensor:$lhs,
+     HLO_PredOrIntTensor:$rhs
+@@ -1075,7 +1075,7 @@
+ // StableHLO parallelism related op definitions.
+ //===----------------------------------------------------------------------===//
+ 
+-def StableHLO_ReplicaIdOp : StableHLO_Op<"replica_id", [NoSideEffect,
++def StableHLO_ReplicaIdOp : StableHLO_Op<"replica_id", [Pure,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "ReplicaId operator";
+   let description = [{
+@@ -1103,7 +1103,7 @@
+ // StableHLO control flow op definitions.
+ //===----------------------------------------------------------------------===//
+ 
+-def StableHLO_AfterAllOp : StableHLO_Op<"after_all", [NoSideEffect]> {
++def StableHLO_AfterAllOp : StableHLO_Op<"after_all", [Pure]> {
+ 
+   let summary = "AfterAll operator";
+ 
+@@ -1135,7 +1135,7 @@
+ // although both eventually map to kConditional HLO. IfOp maps to predicated
+ // conditional use of kConditional HLO.
+ def StableHLO_IfOp: StableHLO_Op<"if", [
+-    RecursiveSideEffects,
++    RecursiveMemoryEffects,
+     SingleBlockImplicitTerminator<"ReturnOp">,
+     InferTensorType]> {
+   let summary = "If operator";
+@@ -1177,7 +1177,7 @@
+ // although both eventually map to kConditional HLO. CaseOp maps to indexed
+ // conditional use of kConditional HLO.
+ def StableHLO_CaseOp: StableHLO_Op<"case", [
+-      RecursiveSideEffects,
++      RecursiveMemoryEffects,
+       SingleBlockImplicitTerminator<"ReturnOp">,
+       InferTensorType
+     ]> {
+@@ -1215,7 +1215,7 @@
+ 
+ 
+ def StableHLO_WhileOp: StableHLO_Op<"while", [
+-      RecursiveSideEffects,
++      RecursiveMemoryEffects,
+       SingleBlockImplicitTerminator<"ReturnOp">,
+       InferTensorType,
+       OpAsmOpInterface
+@@ -1321,7 +1321,7 @@
+ }
+ 
+ def StableHLO_AllToAllOp : StableHLO_Op<"all_to_all",
+-    [NoSideEffect, SameOperandsElementType, SameOperandsShape,
++    [Pure, SameOperandsElementType, SameOperandsShape,
+      InferTensorType]> {
+ 
+   let arguments = (ins
+@@ -1335,7 +1335,7 @@
+ }
+ 
+ def StableHLO_ReduceOp: StableHLO_ShapedInterfaceOp<"reduce", [
+-      RecursiveSideEffects,
++      RecursiveMemoryEffects,
+       SameVariadicOperandSize,
+       InferTensorTypeWithReify,
+       SingleBlockImplicitTerminator<"ReturnOp">
+@@ -1369,7 +1369,7 @@
+ //===----------------------------------------------------------------------===//
+ // StableHLO tuple op definitions.
+ //===----------------------------------------------------------------------===//
+-def StableHLO_GetTupleElementOp: StableHLO_Op<"get_tuple_element", [NoSideEffect,
++def StableHLO_GetTupleElementOp: StableHLO_Op<"get_tuple_element", [Pure,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "GetTupleElement operator";
+   let description = [{
+@@ -1397,7 +1397,7 @@
+   }];
+ }
+ 
+-def StableHLO_TupleOp : StableHLO_Op<"tuple", [NoSideEffect,
++def StableHLO_TupleOp : StableHLO_Op<"tuple", [Pure,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "XLA's tuple op";
+   let description = [{
+@@ -1422,7 +1422,7 @@
+   }];
+ }
+ 
+-def StableHLO_CompareOp: StableHLO_Op<"compare", [NoSideEffect, SameOperandsElementType,
++def StableHLO_CompareOp: StableHLO_Op<"compare", [Pure, SameOperandsElementType,
+     SameOperandsAndResultShape, Elementwise, InferTensorTypeWithReify]> {
+   let summary = "Comparison operator";
+   let description = [{
+@@ -1468,7 +1468,7 @@
+ 
+ def StableHLO_SliceOp: StableHLO_Op<
+       "slice",
+-      [NoSideEffect, SameOperandsAndResultElementType,
++      [Pure, SameOperandsAndResultElementType,
+        AllTypesMatch<["start_indices", "limit_indices", "strides"]>,
+        DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let arguments = (ins
+@@ -1482,7 +1482,7 @@
+ }
+ 
+ def StableHLO_DynamicSliceOp: StableHLO_Op<"dynamic_slice",
+-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
++      [Pure, AllElementTypesMatch<["operand", "result"]>,
+        InferTensorType]> {
+   let summary = "Dynamic Slice operator";
+   let description = [{
+@@ -1501,7 +1501,7 @@
+ }
+ 
+ def StableHLO_DynamicUpdateSliceOp: StableHLO_Op<"dynamic_update_slice",
+-      [NoSideEffect, AllElementTypesMatch<["operand", "update", "result"]>,
++      [Pure, AllElementTypesMatch<["operand", "update", "result"]>,
+        AllShapesMatch<["operand", "result"]>]> {
+   let summary = "Dynamic Update Slice operator";
+   let description = [{
+@@ -1533,7 +1533,7 @@
+ // StableHLO Other op definitions.
+ //===----------------------------------------------------------------------===//
+ 
+-def StableHLO_BatchNormGradOp : StableHLO_Op<"batch_norm_grad", [NoSideEffect,
++def StableHLO_BatchNormGradOp : StableHLO_Op<"batch_norm_grad", [Pure,
+     AllShapesMatch<["scale", "mean", "variance", "grad_scale",
+         "grad_offset"]>,
+     AllShapesMatch<["operand", "grad_output"]>,
+@@ -1566,7 +1566,7 @@
+ }
+ 
+ def StableHLO_BatchNormInferenceOp : StableHLO_Op<"batch_norm_inference",
+-    [NoSideEffect, AllTypesMatch<["operand", "result"]>,
++    [Pure, AllTypesMatch<["operand", "result"]>,
+     AllShapesMatch<["scale", "offset", "mean", "variance"]>,
+     InferTensorType]> {
+   let summary = "Batch Normalization for Inference";
+@@ -1592,7 +1592,7 @@
+ }
+ 
+ def StableHLO_BatchNormTrainingOp : StableHLO_Op<"batch_norm_training",
+-    [NoSideEffect, AllTypesMatch<["operand", "output"]>,
++    [Pure, AllTypesMatch<["operand", "output"]>,
+     AllElementTypesMatch<["operand", "batch_mean", "batch_var"]>,
+     AllShapesMatch<["scale", "offset", "batch_mean", "batch_var"]>,
+     InferTensorType]> {
+@@ -1620,7 +1620,7 @@
+ }
+ 
+ def StableHLO_BitcastConvertOp : StableHLO_ShapedInterfaceOp<"bitcast_convert",
+-    [NoSideEffect]> {
++    [Pure]> {
+   let summary = "BitcastConvert operator";
+   let description = [{
+     Similar to a 'tf.bitcast' in TensorFlow, performs an element-wise bitcast
+@@ -1646,7 +1646,7 @@
+ }
+ 
+ def StableHLO_BroadcastOp : StableHLO_ShapedInterfaceOp<"broadcast",
+-    [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
++    [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+   let summary = "Broadcast a tensor to a higher rank by prepending dimensions";
+   let description = [{
+     Broadcasts the operand tensor to a higher rank by prepending
+@@ -1670,7 +1670,7 @@
+ }
+ 
+ def StableHLO_BroadcastInDimOp : StableHLO_Op<"broadcast_in_dim",
+-      [NoSideEffect, SameOperandsAndResultElementType]> {
++      [Pure, SameOperandsAndResultElementType]> {
+   let summary = "Broadcast a tensor into the given shape by adding dimensions.";
+   let description = [{
+     Broadcasts the `operand` tensor to a higher rank. This is not the limited
+@@ -1699,7 +1699,7 @@
+ }
+ 
+ def StableHLO_DynamicBroadcastInDimOp : StableHLO_ShapedInterfaceOp<
+-    "dynamic_broadcast_in_dim", [NoSideEffect]> {
++    "dynamic_broadcast_in_dim", [Pure]> {
+   let summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
+   let description = [{
+     This is a generalization of the BroadcastInDimOp which accepts its output
+@@ -1741,7 +1741,7 @@
+ // directly.
+ 
+ def StableHLO_CholeskyOp : StableHLO_Op<"cholesky",
+-      [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
++      [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+   let summary = "Cholesky operator";
+   let description = [{
+     Computes the Cholesky decomposition of a batch of symmetric (Hermitian)
+@@ -1782,7 +1782,7 @@
+   }];
+ }
+ 
+-def StableHLO_ClampOp : StableHLO_ShapedInterfaceOp<"clamp", [NoSideEffect,
++def StableHLO_ClampOp : StableHLO_ShapedInterfaceOp<"clamp", [Pure,
+   SameOperandsAndResultElementType, HLO_BroadcastingElementwise,
+   InferTensorType]> {
+   let summary = "Clamp operator";
+@@ -1819,7 +1819,7 @@
+ }
+ 
+ def StableHLO_ConcatenateOp : StableHLO_ShapedInterfaceOp<"concatenate",
+-    [NoSideEffect, SameOperandsAndResultElementType,
++    [Pure, SameOperandsAndResultElementType,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "XLA's concatenate op";
+   let description = [{
+@@ -1857,7 +1857,7 @@
+ }
+ 
+ def StableHLO_CollectivePermuteOp: StableHLO_Op<"collective_permute",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++    [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "CollectivePermute operator";
+   let description = [{
+     CollectivePermute is a collective operation that sends and receives data
+@@ -1880,7 +1880,7 @@
+   let hasVerifier = 1;
+ }
+ 
+-def StableHLO_ConvolutionOp : StableHLO_Op<"convolution", [NoSideEffect]> {
++def StableHLO_ConvolutionOp : StableHLO_Op<"convolution", [Pure]> {
+   let summary = "Convolution operator";
+   let description = [{
+     Computes a convolution of the kind used in neural networks.
+@@ -1915,7 +1915,7 @@
+ }
+ 
+ def StableHLO_CrossReplicaSumOp : StableHLO_Op<"cross-replica-sum",
+-    [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++    [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Sums input across replicated instances.";
+   let description = [{
+      For each of the replica groups, operands of the group devices are summed
+@@ -2007,7 +2007,7 @@
+ }
+ 
+ def StableHLO_DotOp: StableHLO_Op<"dot",
+-    [NoSideEffect, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
++    [Pure, DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "Dot operator";
+   let description = [{
+     Performs dot products between vectors, vector/matrix and matrix/matrix
+@@ -2044,7 +2044,7 @@
+ }
+ 
+ def StableHLO_DotGeneralOp: StableHLO_ShapedInterfaceOp<"dot_general",
+-    [NoSideEffect, InferTensorTypeWithReify]> {
++    [Pure, InferTensorTypeWithReify]> {
+   let summary = "General Dot operator";
+   let description = [{
+     Performs general dot products between vectors, vector/matrix and
+@@ -2079,7 +2079,7 @@
+   }];
+ }
+ 
+-def StableHLO_EinsumOp: StableHLO_Op<"einsum", [NoSideEffect]>, BASE_EinsumOp {
++def StableHLO_EinsumOp: StableHLO_Op<"einsum", [Pure]>, BASE_EinsumOp {
+   let arguments = (ins
+     HLO_Tensor:$lhs,
+     HLO_Tensor:$rhs,
+@@ -2092,7 +2092,7 @@
+   // side HLO ops.
+ }
+ 
+-def StableHLO_UnaryEinsumOp: StableHLO_Op<"unary_einsum", [NoSideEffect]>, BASE_EinsumOp {
++def StableHLO_UnaryEinsumOp: StableHLO_Op<"unary_einsum", [Pure]>, BASE_EinsumOp {
+   let arguments = (ins
+     HLO_Tensor:$operand,
+     StrAttr:$einsum_config
+@@ -2101,7 +2101,7 @@
+   let results = (outs HLO_Tensor);
+ }
+ 
+-def StableHLO_FftOp: StableHLO_Op<"fft", [InferTensorType, NoSideEffect]> {
++def StableHLO_FftOp: StableHLO_Op<"fft", [InferTensorType, Pure]> {
+   let summary = "Fast fourier transform operator";
+   let description = [{
+     Returns the fast-fourier-transform of the input array.
+@@ -2118,7 +2118,7 @@
+   let results = (outs HLO_Tensor);
+ }
+ 
+-def StableHLO_GatherOp: StableHLO_Op<"gather", [InferTensorTypeWithReify, NoSideEffect]> {
++def StableHLO_GatherOp: StableHLO_Op<"gather", [InferTensorTypeWithReify, Pure]> {
+   let summary = "Gather operator";
+   let description = [{
+     Stitches together several slices of `operand` from offsets specified in
+@@ -2138,7 +2138,7 @@
+   let results = (outs HLO_Tensor);
+ }
+ 
+-def StableHLO_GetDimensionSizeOp: StableHLO_Op<"get_dimension_size", [NoSideEffect]> {
++def StableHLO_GetDimensionSizeOp: StableHLO_Op<"get_dimension_size", [Pure]> {
+   let summary = "GetDimensionSize operator";
+   let description = [{
+     Returns the size of the given dimension of the operand.
+@@ -2169,7 +2169,7 @@
+ }
+ 
+ def StableHLO_MapOp: StableHLO_ShapedInterfaceOp<"map",
+-      [RecursiveSideEffects, SameOperandsAndResultShape,
++      [RecursiveMemoryEffects, SameOperandsAndResultShape,
+        SingleBlockImplicitTerminator<"ReturnOp">, InferTensorTypeWithReify]> {
+   let summary = "Map operator";
+   let description = [{
+@@ -2193,7 +2193,7 @@
+ }
+ 
+ def StableHLO_ReshapeOp: StableHLO_Op<"reshape",
+-      [NoSideEffect, SameOperandsAndResultElementType]> {
++      [Pure, SameOperandsAndResultElementType]> {
+   let summary = "Reshape operator";
+   let description = [{
+     Performs reshape of `operand` tensor to a `result` tensor.
+@@ -2215,7 +2215,7 @@
+   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+ }
+ 
+-def StableHLO_DynamicReshapeOp: StableHLO_ShapedInterfaceOp<"dynamic_reshape", [NoSideEffect]> {
++def StableHLO_DynamicReshapeOp: StableHLO_ShapedInterfaceOp<"dynamic_reshape", [Pure]> {
+   let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
+   let description = [{
+     Reshapes `operand` to `output_shape`.
+@@ -2241,7 +2241,7 @@
+   let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+ }
+ 
+-def StableHLO_ScatterOp: StableHLO_Op<"scatter", [SameVariadicOperandSize, RecursiveSideEffects]> {
++def StableHLO_ScatterOp: StableHLO_Op<"scatter", [SameVariadicOperandSize, RecursiveMemoryEffects]> {
+   let summary = "Scatter operator";
+   let description = [{
+     Generates a result which is the value of the input array `operand`,
+@@ -2266,7 +2266,7 @@
+   let hasVerifier = 1;
+ }
+ 
+-def StableHLO_SelectOp: StableHLO_Op<"select", [NoSideEffect, HLO_BroadcastingElementwise,
++def StableHLO_SelectOp: StableHLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
+     InferTensorTypeWithReify]> {
+   let summary = "Select operator";
+   let description = [{
+@@ -2301,7 +2301,7 @@
+ }
+ 
+ def StableHLO_SelectAndScatterOp: StableHLO_Op<"select_and_scatter",
+-      [RecursiveSideEffects]> {
++      [RecursiveMemoryEffects]> {
+   let summary = "SelectAndScatter operator";
+   let description = [{
+     Runs a windowed selection `select` function over `operand` with shape
+@@ -2329,7 +2329,7 @@
+   let hasVerifier = 1;
+ }
+ 
+-def StableHLO_SetDimensionSizeOp: StableHLO_Op<"set_dimension_size", [NoSideEffect,
++def StableHLO_SetDimensionSizeOp: StableHLO_Op<"set_dimension_size", [Pure,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "SetDimensionSize operator";
+   let description = [{
+@@ -2361,7 +2361,7 @@
+ }
+ 
+ def StableHLO_SortOp : StableHLO_Op<"sort", 
+-      [RecursiveSideEffects, SameOperandsAndResultShape, InferTensorType]> {
++      [RecursiveMemoryEffects, SameOperandsAndResultShape, InferTensorType]> {
+   let summary = "Sort operator";
+   let description = [{
+     Sorts the given `operands` at the given `dimension` with the given
+@@ -2385,7 +2385,7 @@
+ }
+ 
+ def StableHLO_ReverseOp: StableHLO_Op<"reverse",
+-      [NoSideEffect, HLO_CompatibleOperandsAndResultType]> {
++      [Pure, HLO_CompatibleOperandsAndResultType]> {
+   let summary = "Reverse operator";
+   let description = [{
+     Reverses the order of elements in the `operand` along the specified
+@@ -2406,7 +2406,7 @@
+ }
+ 
+ def StableHLO_PadOp: StableHLO_ShapedInterfaceOp<"pad",
+-      [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
++      [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+   let summary = "Pad operator";
+   let description = [{
+     Pads edges and between the elements of `operand` with the `padding_value`
+@@ -2461,7 +2461,7 @@
+ }
+ 
+ def StableHLO_TransposeOp: StableHLO_ShapedInterfaceOp<"transpose",
+-      [NoSideEffect, SameOperandsAndResultElementType,
++      [Pure, SameOperandsAndResultElementType,
+       DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+   let summary = "Transpose operator";
+   let description = [{
+@@ -2484,7 +2484,7 @@
+ }
+ 
+ def StableHLO_TriangularSolveOp: StableHLO_Op<"triangular_solve",
+-    [NoSideEffect, SameOperandsAndResultElementType, InferTensorType]> {
++    [Pure, SameOperandsAndResultElementType, InferTensorType]> {
+   let summary = "TriangularSolve operator";
+   let description = [{
+     Solves systems of linear equations with lower or upper triangular
+@@ -2517,7 +2517,7 @@
+ }
+ 
+ def StableHLO_ReduceWindowOp: StableHLO_Op<"reduce_window", [
+-      RecursiveSideEffects,
++      RecursiveMemoryEffects,
+       SameVariadicOperandSize,
+       SingleBlockImplicitTerminator<"ReturnOp">,
+       InferTensorType,
+@@ -2575,7 +2575,7 @@
+   }];
+ }
+ 
+-def StableHLO_ReturnOp : StableHLO_Op<"return", [NoSideEffect, Terminator]> {
++def StableHLO_ReturnOp : StableHLO_Op<"return", [Pure, Terminator]> {
+   let summary = [{
+     The `hlo.return` operation terminates a region and returns values.
+ 
+@@ -2596,7 +2596,7 @@
+   let assemblyFormat = "$results attr-dict (`:` type($results)^)?";
+ }
+ 
+-def StableHLO_TorchIndexSelectOp : StableHLO_Op<"torch_index_select", [NoSideEffect]> {
++def StableHLO_TorchIndexSelectOp : StableHLO_Op<"torch_index_select", [Pure]> {
+   let arguments = (ins
+     HLO_Tensor:$operand,
+     HLO_Tensor:$index,
+@@ -2611,7 +2611,7 @@
+ }
+ 
+ def StableHLO_OptimizationBarrierOp : StableHLO_Op<"optimization_barrier",
+-      [NoSideEffect, HLO_PairwiseSameOperandAndResultType]> {
++      [Pure, HLO_PairwiseSameOperandAndResultType]> {
+   let summary = [{
+     The `stablehlo.optimization_barrier` op blocks optimizations.
+ 
+@@ -2700,7 +2700,7 @@
+   }];
+ }
+ 
+-def StableHLO_RngBitGeneratorOp : StableHLO_Op<"rng_bit_generator", [NoSideEffect]> {
++def StableHLO_RngBitGeneratorOp : StableHLO_Op<"rng_bit_generator", [Pure]> {
+   let summary = "Uniform random number generator operator";
+   let description = [{
+     Returns an output with a given shape filled with uniform random bits using
+@@ -2739,7 +2739,7 @@
+ 
+ // TODO(b/230662142): Implement unknown scales/zero_point cases.
+ def StableHLO_UniformQuantizeOp : StableHLO_UnaryElementwiseOp<"uniform_quantize",
+-      [NoSideEffect], TensorOf<[F32, BF16, HLO_QuantizedInt]>,
++      [Pure], TensorOf<[F32, BF16, HLO_QuantizedInt]>,
+       HLO_QuantizedIntTensor> {
+   let summary = "Uniform quantize operator";
+   let description = [{
+@@ -2756,7 +2756,7 @@
+ }
+ 
+ def StableHLO_UniformDequantizeOp : StableHLO_UnaryElementwiseOp<"uniform_dequantize",
+-      [InferTensorType, NoSideEffect], HLO_QuantizedIntTensor, TensorOf<[F32, BF16]>> {
++      [InferTensorType, Pure], HLO_QuantizedIntTensor, TensorOf<[F32, BF16]>> {
+   let summary = "Uniform dequantize operator";
+   let description = [{
+     Converts quantized array of integers to floating-points according to the
+@@ -2805,7 +2805,7 @@
+ 
+ def StableHLO_RealDynamicSliceOp: StableHLO_ShapedInterfaceOp<
+       "real_dynamic_slice",
+-      [NoSideEffect, AllElementTypesMatch<["operand", "result"]>,
++      [Pure, AllElementTypesMatch<["operand", "result"]>,
+        AllTypesMatch<["start_indices", "limit_indices", "strides"]>]> {
+   let summary = "Real Dynamic Slice operator";
+   let description = [{
+@@ -2834,7 +2834,7 @@
+ }
+ 
+ def StableHLO_DynamicPadOp: StableHLO_ShapedInterfaceOp<"dynamic_pad",
+-      [NoSideEffect, AllElementTypesMatch<["operand", "padding_value", "result"]>,
++      [Pure, AllElementTypesMatch<["operand", "padding_value", "result"]>,
+       AllTypesMatch<["edge_padding_low", "edge_padding_high", "interior_padding"]>]> {
+   let summary = "Dynamic Pad operator";
+   let description = [{
+@@ -2870,7 +2870,7 @@
+ }
+ 
+ def StableHLO_DynamicGatherOp: StableHLO_Op<"dynamic_gather",
+-                                [InferTensorTypeWithReify, NoSideEffect]> {
++                                [InferTensorTypeWithReify, Pure]> {
+   string summary = "Dynamic Gather operator";
+   string description = [{
+     The dynamic shape version of GatherOp. Stitches together several slices of
+@@ -2887,7 +2887,7 @@
+   let results = (outs HLO_Tensor);
+ }
+ 
+-def StableHLO_DynamicConvOp : StableHLO_Op<"dynamic_conv", [NoSideEffect]> {
++def StableHLO_DynamicConvOp : StableHLO_Op<"dynamic_conv", [Pure]> {
+   let summary = "Dynamic Convolution operator";
+   let description = [{
+     The dynamic shape version of ConvOp. Computes a convolution with dynamic padding.
+@@ -2903,7 +2903,7 @@
+ }
+ 
+ def StableHLO_ComputeReshapeShapeOp :
+-    StableHLO_Op<"compute_reshape_shape", [NoSideEffect]> {
++    StableHLO_Op<"compute_reshape_shape", [Pure]> {
+   string summary = "Compute input for reshape with any dynamic dim resolved";
+ 
+   string description = [{
+@@ -2934,7 +2934,7 @@
+ }
+ 
+ def StableHLO_CstrReshapableOp :
+-    StableHLO_Op<"cstr_reshapable", [NoSideEffect]> {
++    StableHLO_Op<"cstr_reshapable", [Pure]> {
+   string summary = "Compute input for reshape with any dynamic dim resolved";
+ 
+   string description = [{
 diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
 --- stablehlo/stablehlo/dialect/TypeInference.cpp
 +++ stablehlo/stablehlo/dialect/TypeInference.cpp

@@ -20,7 +20,7 @@ include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
 
 // Uniform quantization operators
-def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [NoSideEffect]> {
+def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Dequantize the given uniform quantized tensor.";
 
@@ -42,7 +42,7 @@ def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [NoSideEffect]> {
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [NoSideEffect]> {
+def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Convert the given tensor to uniform quantized tensor.";
 
@@ -69,7 +69,7 @@ def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [NoSideEffect]> {
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [NoSideEffect]> {
+def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Quantized add operator.";
 
@@ -101,7 +101,7 @@ def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [NoSideEffect]> {
+def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Quantized clipping operator.";
 
@@ -125,7 +125,7 @@ def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [NoS
 }
 
 // TODO(b/230804708): Add hybrid convolution.
-def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [NoSideEffect]> {
+def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Quantized conv2d operator.";
 
@@ -167,7 +167,7 @@ def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [NoS
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [NoSideEffect]> {
+def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Quantized dot operator.";
 
@@ -202,7 +202,7 @@ def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [NoSideEffect]> {
 }
 
 // TODO(b/230804708): Add hybrid dot general.
-def TF_UniformQuantizedDotGeneralOp : TF_Op<"UniformQuantizedDotGeneral", [NoSideEffect]> {
+def TF_UniformQuantizedDotGeneralOp : TF_Op<"UniformQuantizedDotGeneral", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Quantized dot general operator.";
 

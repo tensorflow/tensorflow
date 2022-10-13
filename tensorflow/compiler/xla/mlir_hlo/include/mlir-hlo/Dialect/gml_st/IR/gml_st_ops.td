@@ -29,7 +29,7 @@ def RankedTensorOrVectorOrScalar : AnyTypeOf<[
   AnyRankedTensor, AnyVector, AnyFloat, AnyInteger, AnyComplex
 ]>;
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
   let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
   let results = (outs RankedTensorOrVectorOrScalar:$result);
 
@@ -41,7 +41,7 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [NoSideEffect]> {
   }];
 }
 
-def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
+def GMLST_OffsetOp : GMLST_Op<"offset", [Pure]> {
   let summary = [{Returns the offset of a tile in a given dimension}];
   let description = [{
     Returns the composed offset of a tile in a given dimension relative to the
@@ -56,7 +56,7 @@ def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
+def GMLST_SizeOp : GMLST_Op<"size", [Pure]> {
   let summary = [{Returns the size of a tile in a given dimension}];
   let description = [{
     Returns the composed size of a tile in a given dimension relative to the
@@ -71,7 +71,7 @@ def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def GMLST_StrideOp : GMLST_Op<"stride", [NoSideEffect]> {
+def GMLST_StrideOp : GMLST_Op<"stride", [Pure]> {
   let summary = [{Returns the stride of a tile in a given dimension}];
   let description = [{
     Returns the composed stride of a tile in a given dimension relative to the
@@ -90,7 +90,7 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     : GMLST_Op<mnemonic, !listconcat(traits, [
       AttrSizedOperandSegments,
       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-      RecursiveSideEffects,
+      RecursiveMemoryEffects,
       SingleBlockImplicitTerminator<"gml_st::SetYieldOp">
     ])> {
   let results = (outs Variadic<RankedTensorOrVector>:$results);
@@ -275,7 +275,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
   }];
 }
 
-def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
+def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
       Terminator, SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"YieldOp">
   ]> {

@@ -241,7 +241,10 @@ gentbl_cc_library(
             "ir/tf_executor.cc.inc",
         ),
         (
-            ["-gen-dialect-doc"],
+            [
+                "-gen-dialect-doc",
+                "-dialect=tf_executor",
+            ],
             "g3doc/tf_executor.md",
         ),
     ],

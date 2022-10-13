@@ -317,7 +317,7 @@ def RT_TraceOp : RT_Op<"trace",
 //===----------------------------------------------------------------------===//
 
 def RT_YieldOp : RT_Op<"yield",
-    [HasParent<"TraceOp">, NoSideEffect, Terminator,
+    [HasParent<"TraceOp">, Pure, Terminator,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let summary = "terminator for rt.trace operation";
 

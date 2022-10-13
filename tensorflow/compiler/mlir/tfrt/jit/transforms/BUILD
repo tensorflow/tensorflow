@@ -89,6 +89,7 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:LinalgUtils",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:MemRefTransforms",

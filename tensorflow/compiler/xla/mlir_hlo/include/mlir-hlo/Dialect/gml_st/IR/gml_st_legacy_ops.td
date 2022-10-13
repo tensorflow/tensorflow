@@ -25,7 +25,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 def GMLST_LoopOp : GMLST_Op<"loop", [
      AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-     RecursiveSideEffects,
+     RecursiveMemoryEffects,
      SingleBlockImplicitTerminator<"gml_st::YieldOp">
     ]> {
   let summary = "Loop-like operation";
@@ -314,7 +314,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   let hasFolder = 1;
 }
 
-def GMLST_YieldOp : GMLST_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
     HasParent<"::mlir::gml_st::LoopOp, ::mlir::gml_st::SetYieldOp">]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation";

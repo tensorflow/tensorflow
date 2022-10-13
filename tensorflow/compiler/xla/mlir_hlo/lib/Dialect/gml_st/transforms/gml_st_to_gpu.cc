@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -99,10 +100,8 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
     target.addIllegalDialect<GmlStDialect>();
     target.addIllegalOp<vector::MultiDimReductionOp>();
     target.addDynamicallyLegalOp<linalg::GenericOp>([](linalg::GenericOp op) {
-      return llvm::none_of(op.iterator_types().getAsValueRange<StringAttr>(),
-                           [](StringRef type) {
-                             return type == getReductionIteratorTypeName();
-                           });
+      return llvm::none_of(op.getIteratorTypesArray(),
+                           linalg::isReductionIterator);
     });
     // We're producing new ops (clones of original ops in gml_st.parallel
     // loops), so we have to mark them explicitly legal, otherwise the

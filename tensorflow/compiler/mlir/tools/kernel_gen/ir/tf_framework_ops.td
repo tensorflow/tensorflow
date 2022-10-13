@@ -183,7 +183,7 @@ def TFFramework_IsValidMemRefOp : TFFramework_Op<"is_valid_memref", []> {
 // NullContextOp
 //===----------------------------------------------------------------------===//
 def TFFramework_NullContextOp : TFFramework_Op<"null_context",
-    [NoSideEffect]> {
+    [Pure]> {
   let summary = "Creates a fake TF context that will be lowered to nullptr";
   let description = [{Needed for testing}];
   let results = (outs TFFramework_OpKernelContextType:$result);
@@ -253,7 +253,7 @@ def TFFramework_JITCompileOp : TFFramework_Op<"jit_compile", [SingleBlock]> {
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITCompileYieldOp : TFFramework_Op<"jit_compile_yield", [
-    NoSideEffect, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
+    Pure, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
   let summary = "Yields the results in a `tf_framework.jit_compile` op's body";
   let description = [{
     See `tf_framework.jit_compile`.

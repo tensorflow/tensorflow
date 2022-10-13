@@ -996,11 +996,9 @@ LogicalResult TransposeOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
-ArrayAttr TransposeOp::iterator_types() {
+SmallVector<StringRef> TransposeOp::getIteratorTypesArray() {
   int64_t rank = getInit().getType().getRank();
-  return Builder(getContext())
-      .getStrArrayAttr(
-          SmallVector<StringRef>(rank, getParallelIteratorTypeName()));
+  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
 }
 
 ArrayAttr TransposeOp::getIndexingMaps() {
@@ -1162,13 +1160,13 @@ LogicalResult ReductionOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
-ArrayAttr ReductionOp::iterator_types() {
+SmallVector<StringRef> ReductionOp::getIteratorTypesArray() {
   int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
   SmallVector<StringRef> iteratorTypes(inputRank,
                                        getParallelIteratorTypeName());
   for (int64_t reductionDim : getDimensions())
     iteratorTypes[reductionDim] = getReductionIteratorTypeName();
-  return Builder(getContext()).getStrArrayAttr(iteratorTypes);
+  return iteratorTypes;
 }
 
 ArrayAttr ReductionOp::getIndexingMaps() {
@@ -1269,11 +1267,9 @@ LogicalResult MapOp::verify() {
   return verifyDestinationStyleOp(getOperation());
 }
 
-ArrayAttr MapOp::iterator_types() {
+SmallVector<StringRef> MapOp::getIteratorTypesArray() {
   int64_t rank = getInit().getType().getRank();
-  return Builder(getContext())
-      .getStrArrayAttr(
-          SmallVector<StringRef>(rank, getParallelIteratorTypeName()));
+  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
 }
 
 ArrayAttr MapOp::getIndexingMaps() {

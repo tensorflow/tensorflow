@@ -49,7 +49,7 @@ def IsSetTypePred : Or<[GMLST_TileType.predicate]>;
 
 def AnySet : Type<IsSetTypePred, "subset type">;
 
-def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
+def GMLST_SpaceOp : GMLST_Op<"space", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins Variadic<Index>:$dynamic_sizes,
                        I64ArrayAttr:$static_sizes);
@@ -72,7 +72,7 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 
 
 def GMLST_TileOp : GMLST_Op<"tile", [
-    NoSideEffect,
+    Pure,
     AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,

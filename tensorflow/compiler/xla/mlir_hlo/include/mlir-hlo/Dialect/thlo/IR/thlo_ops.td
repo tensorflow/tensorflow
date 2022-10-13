@@ -42,7 +42,7 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
-    DestinationStyleOpInterface, NoSideEffect] # traits> {
+    DestinationStyleOpInterface, Pure] # traits> {
   let hasCustomAssemblyFormat = 1;
   code extraBaseClassDeclaration = [{
     unsigned getNumInputs() {
@@ -52,7 +52,7 @@ class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
   }];
 }
 
-def THLO_YieldOp : THLO_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+def THLO_YieldOp : THLO_Op<"yield", [Pure, ReturnLike, Terminator,
     ParentOneOf<["MapOp", "ReductionOp", "ScatterOp", "SortOp",
                  "TransposeOp"]>]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
@@ -175,7 +175,7 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
 }
 
 def THLO_TransposeOp : THLO_DstStyleOp<"transpose", [
-    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>,
+    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["getIteratorTypesArray"]>,
     SingleBlockImplicitTerminator<"YieldOp">,
 ]> {
   let summary = "Destination-style twin for `mhlo.transpose`";
@@ -230,7 +230,7 @@ def THLO_TransposeOp : THLO_DstStyleOp<"transpose", [
 }
 
 def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
-      DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>,
+      DeclareOpInterfaceMethods<LinalgStructuredInterface, ["getIteratorTypesArray"]>,
       SameVariadicOperandSize, SingleBlockImplicitTerminator<"YieldOp">
     ]> {
   let summary = "Destination-style twin for `mhlo.reduce`";
@@ -279,7 +279,7 @@ def THLO_ReductionOp : THLO_DstStyleOp<"reduction", [
 
 def THLO_MapOp : THLO_DstStyleOp<"map", [
     SingleBlockImplicitTerminator<"YieldOp">,
-    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["iterator_types"]>
+    DeclareOpInterfaceMethods<LinalgStructuredInterface, ["getIteratorTypesArray"]>
 ]> {
   let summary = "Destination-style twin for elementwise operations";
   let description = [{
@@ -323,7 +323,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
   }];
 }
 
-def THLO_SortOp : THLO_DstStyleOp<"sort", [RecursiveSideEffects,
+def THLO_SortOp : THLO_DstStyleOp<"sort", [RecursiveMemoryEffects,
         DeclareOpInterfaceMethods<TilingInterface>, SameVariadicOperandSize,
         SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for the `mhlo.sort`";
