@@ -5069,8 +5069,11 @@ func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
 // CHECK-DAG: %[[C6:.*]] = arith.constant 1090519040 : i32
 // CHECK-DAG: %[[C7:.*]] = arith.constant 1040187392 : i32
 // CHECK-DAG: %[[C8:.*]] = arith.constant -2147483648 : i32
+// CHECK-DAG: %[[C9:.*]] = arith.constant 2147483647 : i32
 // CHECK: linalg.generic
-// CHECK: %[[X_AS_INT:.*]] = arith.bitcast %{{.*}} : f32 to i32
+// CHECK: %[[X_AS_INT:.*]] = arith.bitcast %[[IN:.*]] : f32 to i32
+// CHECK: %[[ABS_X:.*]] = arith.andi %[[X_AS_INT]], %[[C9]]
+// CHECK: %[[IS_NAN:.*]] = arith.cmpi ugt, %[[ABS_X]], %[[C5]]
 // CHECK: %[[MASKED:.*]] = arith.andi %[[X_AS_INT]], %[[C2]] : i32
 // CHECK: %[[V0:.*]] = arith.shrui %[[MASKED]], %[[C_21]] : i32
 // CHECK: %[[V1:.*]] = arith.addi %[[V0]], %[[C3]] : i32
@@ -5083,7 +5086,9 @@ func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
 // CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C5]] : i32
 // CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
 // CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
-// CHECK: arith.bitcast %[[V10]] : i32 to f32
+// CHECK: %[[CONVERTED:.*]] = arith.bitcast %[[V10]] : i32 to f32
+// CHECK: %[[RESULT:.*]] = arith.select %[[IS_NAN]], %[[IN]], %[[CONVERTED]]
+// CHECK: linalg.yield %[[RESULT]]
 func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
                             -> tensor<1x2x3x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg0) {exponent_bits=3:i32, mantissa_bits=3:i32} : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>
