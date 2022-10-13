@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/tensor_bundle/byte_swap_array.h"
+#include "tensorflow/tsl/util/tensor_bundle/byte_swap_array.h"
 
-namespace tensorflow {
+#include "tensorflow/tsl/platform/errors.h"
+
+namespace tsl {
 
 Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
   if (bytes_per_elem == 1) {
@@ -45,4 +47,4 @@ Status ByteSwapArray(char* array, size_t bytes_per_elem, int array_len) {
   }
 }
 
-}  // namespace tensorflow
+}  // namespace tsl
