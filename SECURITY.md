@@ -214,8 +214,9 @@ Once an issue is reported, TensorFlow uses the following disclosure process:
 * Patch releases are published for all fixed released versions, a
   notification is sent to discuss@tensorflow.org, and the advisory is published.
 
-Note that we mostly do patch releases for security reasons and each version of
-TensorFlow is supported for only 1 year after the release.
+We will make an attempt do patch releases for high impact security reasons up to
+1 year after the release.
+
 
 Past security advisories are listed below. We credit reporters for identifying
 security issues, although we keep your name confidential if you request it.
