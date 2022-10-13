@@ -3611,18 +3611,6 @@ func.func @strided_slice_nonconstant_begin_end_invalid_elem_count(%input: tensor
 
 // -----
 
-// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_new_axis_mask
-func.func @strided_slice_nonconstant_begin_end_and_new_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
-  // New axis mask: When `begin` and `end` inputs are unknown at compile time,
-  // we can't support a new_axis mask.
-  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: tf.StridedSlice
-  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 15 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
-  func.return %result : tensor<1x97xi32>
-}
-
-// -----
-
 // CHECK-LABEL: strided_slice_nonconstant_begin_end_and_ellipsis_mask
 func.func @strided_slice_nonconstant_begin_end_and_ellipsis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
   // This ellipsis mask is not supported because it does not refer to the last
@@ -3657,20 +3645,6 @@ func.func @strided_slice_nonconstant_begin_end_and_valid_shrink_axis_mask(%input
   %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 7 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
   func.return %result : tensor<1x97xi32>
 }
-
-// -----
-
-// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_invalid_shrink_axis_mask
-func.func @strided_slice_nonconstant_begin_end_and_invalid_shrink_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
-  // This shrink_axis mask is unsupported because it does not refer to a major
-  // dimension.
-  // [0, 1, 0] = 2
-  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: tf.StridedSlice
-  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 2 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
-  func.return %result : tensor<1x97xi32>
-}
-
 
 //===----------------------------------------------------------------------===//
 // Reduction op legalizations.

@@ -3670,17 +3670,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     ArrayRef<int64_t> input_shape = input_ty.getShape();
     int last_dim = std::max(static_cast<int>(input_shape.size()) - 1, 0);
 
-    // When begin/end values are dynamic, we can only support shrinking a major
-    // axis. For instance, if there are 4 dims, we can support a
-    // shrink_axis_mask of 0001 (1), 0011 (3), 0111 (7), or 1111 (15), but no
-    // other.
-    bool shrink_axis_mask_ok = llvm::isMask_64(op.shrink_axis_mask());
-    if (!shrink_axis_mask_ok)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that shrink_axis_mask, if set, refer to a major axis "
-          "dimension (when begin/end values are dynamic)");
-
     // When begin/end values are dynamic, the ellipsis mask, if set, must refer
     // to the last dimension.
     int ellipsis_mask = op.ellipsis_mask();
@@ -3689,13 +3678,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
           op,
           "requires that ellipsis_mask, if set, refer to the last dimension of "
           "input (when begin/end values are dynamic)");
-
-    uint64_t new_axis_mask = op.new_axis_mask();
-    if (new_axis_mask)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that new_axis_mask is either set to 0 or not set when "
-          "begin/end values are dynamic");
 
     // In this case where the begin and end values are dynamic, we only support
     // cases where the number of output elements has to be equal to the number
