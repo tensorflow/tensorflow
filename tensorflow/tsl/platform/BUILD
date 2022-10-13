@@ -1568,6 +1568,9 @@ tsl_cc_test(
     srcs = [
         "port_test.cc",
     ],
+    tags = [
+        "notap",  #TODO(b/245510532) : disabled due to flakiness.
+    ],
     deps = [
         ":env",
         ":env_impl",
