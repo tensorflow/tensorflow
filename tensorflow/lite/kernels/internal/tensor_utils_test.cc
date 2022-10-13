@@ -2103,6 +2103,27 @@ TEST(uKernels, MeanStddevNormalizationLargeVector) {
   EXPECT_THAT(output, testing::Pointwise(testing::FloatEq(), expected_output));
 }
 
+TEST(uKernels, UnpackInt4Basic) {
+  // INT4 ranges from [-8,7], so 0x8 or b'1000 is mapped to -8 in two's
+  // complement. 0xB or b'1011 is mapped to -5. 0xE or b'1110 is mapped to -2.
+  const int8_t input[2] = {0x38, static_cast<int8_t>(0xBE)};
+  const int8_t expected_output[4] = {-8, 3, -2, -5};
+  int8_t actual_output[4];
+  UnpackDenseInt4IntoInt8(input, 4, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
+TEST(uKernels, UnpackInt4OddLength) {
+  // `num_elements` is odd, so the last element 0x4 should be ignored
+  const int8_t input[2] = {0x21, 0x43};
+  const int8_t expected_output[3] = {1, 2, 3};
+  int8_t actual_output[3];
+  UnpackDenseInt4IntoInt8(input, 3, actual_output);
+  EXPECT_THAT(actual_output,
+              testing::Pointwise(testing::Eq(), expected_output));
+}
+
 }  // namespace tensor_utils
 }  // namespace tflite
 
