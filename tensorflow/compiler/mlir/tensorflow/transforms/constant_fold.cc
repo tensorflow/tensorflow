@@ -150,6 +150,9 @@ LogicalResult ConstantFoldFallbackHook(
     // This is conceptually equal to what we do in python/eager/context.py but
     // with all GPU/TPU devices ignored and CPU only set to 1.
     (*config_proto.mutable_device_count())["CPU"] = 1;
+#if TENSORFLOW_USE_ROCM
+    (*config_proto.mutable_device_count())["GPU"] = 0;
+#endif
     config_proto.add_device_filters("/device:CPU:*");
     std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
         TF_NewBuffer(), TF_DeleteBuffer);
