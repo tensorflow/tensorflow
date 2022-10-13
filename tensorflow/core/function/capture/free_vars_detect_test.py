@@ -692,5 +692,20 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertEqual(lines[2], "...")
 
 
+class FreevarDetectorTest(parameterized.TestCase):
+
+  def test_func_second_call_return_none(self):
+    x = 1
+
+    def f():
+      return x
+
+    detector = free_vars_detect.FreevarDetector()
+    logging_txt = detector.logging_free_vars(f)
+    self.assertIsNotNone(logging_txt)
+    logging_txt = detector.logging_free_vars(f)
+    self.assertIsNone(logging_txt)
+
+
 if __name__ == "__main__":
   unittest.main()
