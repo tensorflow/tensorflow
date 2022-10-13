@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding.h"
 
 #include <algorithm>
 #include <climits>
@@ -33,9 +33,9 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding_cost_graph.h"
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_cost_graph.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"

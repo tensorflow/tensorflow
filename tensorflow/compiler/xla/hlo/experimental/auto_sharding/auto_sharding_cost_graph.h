@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
-#define TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
 
 #include <algorithm>
 #include <numeric>
@@ -22,8 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding_strategy.h"
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 
 namespace xla {
 namespace spmd {
@@ -355,4 +355,4 @@ void GenerateReduceScatter(const HloInstructionSequence& sequence,
 
 }  // namespace spmd
 }  // namespace xla
-#endif  // TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_COST_GRAPH_H_

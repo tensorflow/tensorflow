@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
-#define TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
 
 #include <algorithm>
 #include <cmath>
@@ -31,7 +31,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
 #include "tensorflow/compiler/xla/service/hlo_live_range.h"
 
 namespace xla {
@@ -753,4 +753,4 @@ void CheckAliasSetCompatibility(const AliasSet& alias_set,
                                 const HloInstructionSequence& sequence);
 }  // namespace spmd
 }  // namespace xla
-#endif  // TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_STRATEGY_H_

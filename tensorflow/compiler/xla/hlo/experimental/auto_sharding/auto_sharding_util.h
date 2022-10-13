@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
-#define TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
 
 #include <algorithm>
 #include <cstdint>
@@ -537,4 +537,4 @@ std::vector<std::vector<int64_t>> DecomposeMeshShapes(
 }  // namespace spmd
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_EXPERIMENTAL_AUTO_SHARDING_AUTO_SHARDING_UTIL_H_
