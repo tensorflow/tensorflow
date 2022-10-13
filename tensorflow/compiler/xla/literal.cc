@@ -467,6 +467,9 @@ Status MutableLiteralBase::CopyElementFrom(
   if (!LayoutUtil::HasLayout(shape)) {
     return InvalidArgument("LiteralProto has no layout");
   }
+  if (LayoutUtil::IsSparseArray(shape)) {
+    return Unimplemented("Sparse literals are not supported");
+  }
 
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
