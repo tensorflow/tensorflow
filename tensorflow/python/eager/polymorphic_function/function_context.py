@@ -14,6 +14,7 @@
 # ==============================================================================
 """Context information for a tf.function."""
 
+import collections
 from typing import Any, NamedTuple, Tuple
 
 from tensorflow.core.function import trace_type
@@ -133,8 +134,6 @@ def make_cache_key(
       args, signature_context)
   captures_dict_tracetype = trace_type.from_value(
       captures, signature_context)
-  captures_signature = function_cache.CaptureSnapshot(
-      captures_dict_tracetype.mapping)
 
   # TODO(fmuham): Use the actual FunctionType
   dummy_function_type = function_type.FunctionType([
@@ -142,9 +141,8 @@ def make_cache_key(
                               function_type.Parameter.POSITIONAL_ONLY,
                               False,
                               args_signature)
-  ])
+  ], collections.OrderedDict(captures_dict_tracetype.mapping))
 
   return function_cache.FunctionCacheKey(
       dummy_function_type,
-      captures_signature,
       make_function_context()), signature_context.deletion_observer

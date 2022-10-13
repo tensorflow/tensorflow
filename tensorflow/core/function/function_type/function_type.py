@@ -16,7 +16,7 @@
 
 import collections
 import inspect
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, OrderedDict
 
 from tensorflow.core.function import trace_type
 from tensorflow.python.types import trace
@@ -94,6 +94,17 @@ class Parameter(inspect.Parameter):
     else:
       return None
 
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, Parameter):
+      return NotImplemented
+
+    return ((self.name, self.kind, self.optional,
+             self.type_constraint) == (other.name, other.kind, other.optional,
+                                       other.type_constraint))
+
+  def __hash__(self):
+    return hash((self.name, self.kind, self.optional, self.type_constraint))
+
   def __repr__(self):
     return ("Parameter(name=" + self.name + ", kind" + str(self.kind) +
             ", optional=" + repr(self.optional) + ", type_constraint=" +
@@ -107,9 +118,20 @@ class Parameter(inspect.Parameter):
 class FunctionType(inspect.Signature):
   """Represents the parameters of a polymorphic function."""
 
+  def __init__(self,
+               parameters: Sequence[inspect.Parameter],
+               captures: Optional[OrderedDict[str, trace.TraceType]] = None,
+               **kwargs):
+    super().__init__(parameters, **kwargs)
+    self._captures = captures if captures else collections.OrderedDict()
+
   @property
   def parameters(self) -> Mapping[str, Any]:
     return super().parameters
+
+  @property
+  def captures(self) -> OrderedDict[str, trace.TraceType]:
+    return self._captures
 
   # TODO(fmuham): Use this method instead of fullargspec and tf_inspect.
   @classmethod
@@ -156,7 +178,13 @@ class FunctionType(inspect.Signature):
       if not self_param.is_subtype_of(other_param):
         return False
 
-    return True
+    # Self must have all capture names of other.
+    if not all(name in self.captures for name in other.captures):
+      return False
+
+    # Functions are contravariant upon the capture types.
+    return all(self.captures[name].is_subtype_of(capture_type)
+               for name, capture_type in other.captures.items())
 
   def most_specific_common_subtype(
       self, others: Sequence["FunctionType"]) -> Optional["FunctionType"]:
@@ -171,10 +199,25 @@ class FunctionType(inspect.Signature):
         return None
       subtyped_parameters.append(subtyped_parameter)
 
-    if all(subtyped_parameters):
-      return FunctionType(subtyped_parameters)
-    else:
+    if not all(subtyped_parameters):
       return None
+
+    # Common subtype must use captures common to all.
+    capture_names = set(self.captures.keys())
+    for other in others:
+      capture_names = capture_names.intersection(other.captures.keys())
+
+    subtyped_captures = collections.OrderedDict()
+    for name in capture_names:
+      # Functions are contravariant upon the capture types.
+      common_type = self.captures[name].most_specific_common_supertype(
+          [other.captures[name] for other in others])
+      if common_type is None:
+        return None
+      else:
+        subtyped_captures[name] = common_type
+
+    return FunctionType(subtyped_parameters, subtyped_captures)
 
   def placeholder_arguments(self) -> inspect.BoundArguments:
     """Returns BoundArguments of values that can be used for tracing."""
@@ -192,9 +235,22 @@ class FunctionType(inspect.Signature):
 
     return inspect.BoundArguments(self, arguments)
 
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, FunctionType):
+      return NotImplemented
+
+    return (self.parameters, self.captures) == (other.parameters,
+                                                other.captures)
+
+  def __hash__(self) -> int:
+    return hash(
+        (tuple(self.parameters.items()), tuple(self.captures.items())))
+
   def __repr__(self):
-    return ("FunctionType(" +
-            ", ".join([repr(p) for p in self.parameters.values()]) + ")")
+    return (
+        f"FunctionType(parameters={list(self.parameters.values())!r}, "
+        f"captures={self.captures})"
+    )
 
 
 # TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.

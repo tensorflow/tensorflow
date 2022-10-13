@@ -355,7 +355,7 @@ class TracingCompiler:
             generalized_func_key = self._function_cache.generalize(
                 lookup_func_key)
             # Only get placeholders for arguments, not captures
-            args, kwargs = generalized_func_key._placeholder_value()["args"]  # pylint: disable=protected-access
+            args, kwargs = generalized_func_key._placeholder_value()  # pylint: disable=protected-access
 
           concrete_function = self._create_concrete_function(args, kwargs)
 

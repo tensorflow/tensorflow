@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for function_type."""
 
+import collections
 import pickle
 
 from absl.testing import parameterized
@@ -618,6 +619,65 @@ class TypeHierarchyTest(test.TestCase):
 
     self.assertEqual(foo.placeholder_arguments().args, (1, 2))
     self.assertEqual(foo.placeholder_arguments().kwargs, {"z": 3})
+
+
+class CapturesTest(test.TestCase):
+
+  def setUp(self):
+    super(CapturesTest, self).setUp()
+
+    def gen_type_fn(mapping):
+      return function_type.FunctionType([], collections.OrderedDict(mapping))
+
+    self.type_a1_b1 = gen_type_fn({
+        "a": trace_type.from_value(1),
+        "b": trace_type.from_value(1)
+    })
+    self.type_a1_b1_c1 = gen_type_fn({
+        "a": trace_type.from_value(1),
+        "b": trace_type.from_value(1),
+        "c": trace_type.from_value(1)
+    })
+    self.type_a2_b2_c2 = gen_type_fn({
+        "a": trace_type.from_value(2),
+        "b": trace_type.from_value(2),
+        "c": trace_type.from_value(2)
+    })
+    self.type_a1_b1_c2 = gen_type_fn({
+        "a": trace_type.from_value(1),
+        "b": trace_type.from_value(1),
+        "c": trace_type.from_value(2)
+    })
+    self.type_d1 = gen_type_fn({"d": trace_type.from_value(1)})
+
+  def testCapturesSubtype(self):
+    self.assertFalse(self.type_a1_b1.is_supertype_of(self.type_a1_b1_c1))
+    self.assertTrue(self.type_a1_b1_c1.is_supertype_of(self.type_a1_b1))
+    self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a2_b2_c2))
+    self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a2_b2_c2))
+    self.assertFalse(self.type_d1.is_supertype_of(self.type_a1_b1))
+
+  def testCapturesSupertype(self):
+    supertype_1 = self.type_a1_b1_c1.most_specific_common_subtype(
+        [self.type_a1_b1_c1])
+    self.assertLen(supertype_1.captures, 3)
+
+    supertype_2 = self.type_a1_b1.most_specific_common_subtype(
+        [self.type_a1_b1_c1, self.type_a2_b2_c2])
+    self.assertIsNone(supertype_2)
+
+    supertype_3 = self.type_a1_b1.most_specific_common_subtype(
+        [self.type_a1_b1_c2])
+    self.assertLen(supertype_3.captures, 2)
+
+    supertype_4 = self.type_a1_b1_c1.most_specific_common_subtype(
+        [self.type_a1_b1_c2])
+    self.assertIsNone(supertype_4)
+
+    supertype_5 = self.type_a1_b1_c1.most_specific_common_subtype(
+        [self.type_d1])
+    self.assertEmpty(supertype_5.captures)
+
 
 if __name__ == "__main__":
   test.main()
