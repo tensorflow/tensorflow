@@ -8405,5 +8405,26 @@ ENTRY %entry {
       op::Sharding("{devices=[1,4,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
 }
 
+TEST_F(ShardingPropagationTest, EmptyTupleWithinTuple) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[2] parameter(0), sharding={replicated}
+  %et = () tuple()
+  %tuple = (f32[2], (), (), f32[2]) tuple(%param0, %et, %et, %param0)
+  ROOT %copy = (f32[2], (), (), f32[2]) copy(%tuple)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla

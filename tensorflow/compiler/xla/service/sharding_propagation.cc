@@ -1922,42 +1922,32 @@ bool ShardingPropagation::InferShardingFromOperands(
         return false;
       }
       const Shape& shape = instruction->shape();
-      if (!instruction->has_sharding()) {
-        // Propagate sharding from operands to the tuple output. If an operand
-        // does not have a sharding, set the corresponding output sharding as
-        // replicated so that it could be refined further.
-        std::vector<HloSharding> sub_shardings;
-
-        auto add_sub_sharding = [&sub_shardings](const HloSharding& sharding) {
-          if (!sharding.IsTuple()) {
-            sub_shardings.push_back(sharding);
-            return;
-          }
-          const auto& elements = sharding.tuple_elements();
-          sub_shardings.insert(sub_shardings.end(), elements.begin(),
-                               elements.end());
-        };
-
-        for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-          const HloInstruction* operand = instruction->operand(i);
-          if (!operand->has_sharding()) {
-            HloSharding replicate = HloSharding::Replicate();
-            if (operand->shape().IsTuple()) {
-              replicate = HloSharding::SingleTuple(operand->shape(), replicate);
-            }
-            add_sub_sharding(replicate);
-          } else {
-            add_sub_sharding(operand->sharding());
-          }
-        }
-        instruction->set_sharding(HloSharding::Tuple(shape, sub_shardings));
-        return true;
-      }
       // Go through each operand and if the operand has a sharding that is
       // better than the current sharding for that tuple element then update
-      // it.
-      std::vector<HloSharding> sub_shardings =
-          instruction->sharding().tuple_elements();
+      // it. If the current sharding does not exist, assume its replicated.
+      std::vector<HloSharding> sub_shardings;
+      if (instruction->has_sharding()) {
+        sub_shardings = instruction->sharding().tuple_elements();
+      } else {
+        // If instruction does not have a sharding, assume its replicated to
+        // allow refinement.
+        sub_shardings.assign(HloSharding::RequiredLeaves(shape),
+                             HloSharding::Replicate());
+      }
+      // This is required to allow manual sharding on operands to be propagated
+      // to the tuple. hlo_sharding_util::IsShardingMoreSpecific() returns false
+      // if any of the shardings involved is manual, so using it directly will
+      // prevent manual sharding on an operand to be propagated to the tuple
+      // when it has no existing sharding.
+      auto is_more_specific = [instruction](const HloSharding& operand_sharding,
+                                            const HloSharding& existing) {
+        // If the instruction originally had no sharding, always prefer operand
+        // sharding.
+        return !instruction->has_sharding() ||
+               hlo_sharding_util::IsShardingMoreSpecific(operand_sharding,
+                                                         existing);
+      };
+
       int64_t sub_sharding_index = 0;
       for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
         const HloInstruction* operand = instruction->operand(i);
@@ -1965,16 +1955,15 @@ bool ShardingPropagation::InferShardingFromOperands(
           if (operand->shape().IsTuple()) {
             for (int64_t i = 0, e = ShapeUtil::GetLeafCount(operand->shape());
                  i < e; ++i) {
-              if (hlo_sharding_util::IsShardingMoreSpecific(
-                      operand->sharding().tuple_elements()[i],
-                      sub_shardings[sub_sharding_index + i])) {
+              if (is_more_specific(operand->sharding().tuple_elements()[i],
+                                   sub_shardings[sub_sharding_index + i])) {
                 sub_shardings[sub_sharding_index + i] =
                     operand->sharding().tuple_elements()[i];
               }
             }
           } else {
-            if (hlo_sharding_util::IsShardingMoreSpecific(
-                    operand->sharding(), sub_shardings[sub_sharding_index])) {
+            if (is_more_specific(operand->sharding(),
+                                 sub_shardings[sub_sharding_index])) {
               sub_shardings[sub_sharding_index] = operand->sharding();
             }
           }
@@ -1983,7 +1972,8 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
 
       HloSharding new_sharding = HloSharding::Tuple(shape, sub_shardings);
-      if (new_sharding != instruction->sharding()) {
+      if (!instruction->has_sharding() ||
+          new_sharding != instruction->sharding()) {
         instruction->set_sharding(std::move(new_sharding));
         return true;
       }
