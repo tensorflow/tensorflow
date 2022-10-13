@@ -395,8 +395,18 @@ cc_library(
         ":tpu_executable_interface",
         ":tpu_executor",
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/tpu:tpu_executor_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
         "@com_google_absl//absl/cleanup",
+    ],
+)
+
+cc_library(
+    name = "tpu_executor_api",
+    srcs = ["tpu_executor_api.cc"],
+    hdrs = ["tpu_executor_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/core/tpu:libtftpu_header",
     ],
 )
 

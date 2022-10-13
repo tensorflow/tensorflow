@@ -209,18 +209,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
-        ":tpu_executor_api",
         ":tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "tpu_executor_api",
-    srcs = ["tpu_executor_api.cc"],
-    hdrs = ["tpu_executor_api.h"],
-    deps = [
-        ":libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
