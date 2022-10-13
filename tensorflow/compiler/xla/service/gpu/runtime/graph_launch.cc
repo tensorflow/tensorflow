@@ -18,24 +18,30 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
+#endif  // #if GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
 
-using xla::runtime::Arguments;
-using xla::runtime::AsyncTaskRunner;
 using xla::runtime::CustomCall;
 using xla::runtime::Executable;
+
+#if GOOGLE_CUDA
+using xla::runtime::Arguments;
+using xla::runtime::AsyncTaskRunner;
 using xla::runtime::MemrefDesc;
 using xla::runtime::ScalarArg;
 using xla::runtime::StridedMemrefView;
+#endif  // #if GOOGLE_CUDA
 
 //===----------------------------------------------------------------------===//
 // Define the cuda graph launch custom call.
@@ -46,6 +52,7 @@ static absl::Status LaunchGraph(
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     GpuExecutableKernelsCache* kernels_cache, runtime::Executable* executable,
     CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+#if GOOGLE_CUDA
   // Get a reference to exported function that captures the cuda graph.
   runtime::FunctionRef function_ref = executable->function_ref(capture.ordinal);
 
@@ -128,6 +135,9 @@ static absl::Status LaunchGraph(
   if (err != cudaSuccess) return absl::InternalError("Graph destroy failed");
 
   return absl::OkStatus();
+#else
+  return absl::InternalError("Cuda graphs are not supported");
+#endif  // #if GOOGLE_CUDA
 }
 
 //===----------------------------------------------------------------------===//
