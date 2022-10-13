@@ -17,6 +17,7 @@
 from typing import Any, NamedTuple, Tuple
 
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.function_type import function_type
 from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
@@ -135,7 +136,15 @@ def make_cache_key(
   captures_signature = function_cache.CaptureSnapshot(
       captures_dict_tracetype.mapping)
 
+  # TODO(fmuham): Use the actual FunctionType
+  dummy_function_type = function_type.FunctionType([
+      function_type.Parameter("args_kwargs",
+                              function_type.Parameter.POSITIONAL_ONLY,
+                              False,
+                              args_signature)
+  ])
+
   return function_cache.FunctionCacheKey(
-      args_signature,
+      dummy_function_type,
       captures_signature,
       make_function_context()), signature_context.deletion_observer

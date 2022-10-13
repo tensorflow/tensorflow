@@ -15,9 +15,10 @@
 """Cache to manage concrete functions and their signatures."""
 
 import collections
-from typing import Optional, Hashable, Sequence, Any, NamedTuple, Dict
+from typing import Any, Dict, Hashable, NamedTuple, Optional, Sequence
 
 from tensorflow.core.function import trace_type
+from tensorflow.core.function.function_type import function_type as function_type_lib
 from tensorflow.core.function.polymorphism import type_dispatch
 from tensorflow.python.types import trace
 
@@ -30,6 +31,7 @@ class FunctionContext(NamedTuple):
   context: Any
 
 
+# TODO(fmuham): Move into FunctionType.
 class CaptureSnapshot(trace.TraceType):
   """Store tf.function captures to accommodate its specific tracing logic.
 
@@ -86,8 +88,7 @@ class CaptureSnapshot(trace.TraceType):
                for key, item in query.mapping.items())
 
   def most_specific_common_supertype(
-      self,
-      types: Sequence[trace.TraceType]) -> Optional["CaptureSnapshot"]:
+      self, types: Sequence[trace.TraceType]) -> Optional["CaptureSnapshot"]:
     """See base class."""
     common_keys = set(self.mapping.keys())
     for other in types:
@@ -118,22 +119,21 @@ class CaptureSnapshot(trace.TraceType):
     return hash(frozenset(self.mapping.keys()))
 
 
-# TODO(panzf): Rename `FunctionCacheKey` to `FunctionType`
+# TODO(fmuham): Remove inheritance from TraceType.
 class FunctionCacheKey(trace.TraceType):
   """The unique key associated with a concrete function.
 
   Attributes:
-    args_signature: A TraceType corresponding to the function arguments.
+    function_type: A FunctionType corresponding to the function arguments.
     captures_signature: A CaptureSnapshot corresponding to the function
       captures.
-    call_context: The FunctionContext for when the args_signature was
-      generated.
+    call_context: The FunctionContext for when the function was called.
   """
 
-  def __init__(self, args_signature: trace.TraceType,
+  def __init__(self, function_type: function_type_lib.FunctionType,
                captures_signature: CaptureSnapshot,
                call_context: FunctionContext):
-    self.args_signature = args_signature
+    self.function_type = function_type
     self.captures_signature = captures_signature
     self.call_context = call_context
 
@@ -144,8 +144,8 @@ class FunctionCacheKey(trace.TraceType):
     if self.call_context != other.call_context:
       return False
 
-    return (self.args_signature.is_subtype_of(other.args_signature)
-            and self.captures_signature.is_subtype_of(other.captures_signature))
+    return (self.function_type.is_supertype_of(other.function_type) and
+            self.captures_signature.is_subtype_of(other.captures_signature))
 
   def most_specific_common_supertype(
       self, others: Sequence[trace.TraceType]) -> Optional["FunctionCacheKey"]:
@@ -154,27 +154,28 @@ class FunctionCacheKey(trace.TraceType):
         self.call_context == other.call_context for other in others):
       return None
 
-    # `args` and `captures` are independent when finding common supertypes.
-    args_common = self.args_signature.most_specific_common_supertype(
-        [other.args_signature for other in others])
+    function_type_common = self.function_type.most_specific_common_subtype(
+        [other.function_type for other in others])
 
-    if args_common is None:
+    if function_type_common is None:
       return None
 
     captures_common = self.captures_signature.most_specific_common_supertype(
         [other.captures_signature for other in others])
 
-    return FunctionCacheKey(args_common, captures_common, self.call_context)
+    return FunctionCacheKey(function_type_common, captures_common,
+                            self.call_context)
 
   def _placeholder_value(self) -> Any:
     """Value used for tracing a function signature with this TraceType."""
-    return {"args": self.args_signature._placeholder_value(),  # pylint: disable=protected-access
-            "captures": self.captures_signature._placeholder_value()}  # pylint: disable=protected-access
+    return {
+        "args": self.function_type.placeholder_arguments().args[0],
+        "captures": self.captures_signature._placeholder_value()  # pylint: disable=protected-access
+    }
 
   def __hash__(self) -> int:
-    return hash((self.call_context,
-                 self.args_signature,
-                 self.captures_signature))
+    return hash(
+        (self.call_context, self.function_type, self.captures_signature))
 
   def __eq__(self, other) -> bool:
     if not isinstance(other, trace.TraceType):
@@ -184,23 +185,20 @@ class FunctionCacheKey(trace.TraceType):
       return False
 
     return (self.call_context == other.call_context and
-            self.args_signature == other.args_signature and
+            self.function_type == other.function_type and
             self.captures_signature == other.captures_signature)
 
   def __repr__(self) -> str:
-    return (
-        f"{type(self).__name__}(args_signature={repr(self.args_signature)},"
-        f"(captures_signature={repr(self.captures_signature)},"
-        f" call_context={repr(self.call_context)})")
+    return (f"{type(self).__name__}(function_type={repr(self.function_type)},"
+            f"(captures_signature={repr(self.captures_signature)},"
+            f" call_context={repr(self.call_context)})")
 
 
 # TODO(fmuham): Rename to FunctionLibrary.
 class FunctionCache:
   """A container for managing concrete functions."""
 
-  __slots__ = [
-      "_primary", "_dispatch_table", "_garbage_collectors"
-  ]
+  __slots__ = ["_primary", "_dispatch_table", "_garbage_collectors"]
 
   def __init__(self):
     # The primary cache, mapping FunctionCacheKey to a concrete function.
@@ -236,8 +234,7 @@ class FunctionCache:
     return True
 
   def add(self, key: FunctionCacheKey,
-          deletion_observer: trace_type.WeakrefDeletionObserver,
-          concrete):
+          deletion_observer: trace_type.WeakrefDeletionObserver, concrete: ...):
     """Adds a new concrete function alongside its key.
 
     Args:
