@@ -2489,3 +2489,18 @@ func.func @sign(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // CHECK: %[[RES0:.*]] = "tfl.sign"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
 // CHECK:  return %[[RES0]] : tensor<8xf32>
 }
+
+// =============================================================================
+// Training OPs
+// =============================================================================
+
+func.func @sigmoidGrad(%arg0: tensor<?x32xf32>, %arg1: tensor<?x32xf32>) -> tensor<?x32xf32> {
+  %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<?x32xf32>, tensor<?x32xf32>) -> tensor<?x32xf32>
+  func.return %0 : tensor<?x32xf32>
+// CHECK-LABEL: sigmoidGrad
+// CHECK-NEXT: [[ONE:%.+]] = arith.constant dense<1.000000e+00> : tensor<f32>
+// CHECK-NEXT: [[SUB:%.+]] = tfl.sub([[ONE]], %arg0) {fused_activation_function = "NONE"} : (tensor<f32>, tensor<?x32xf32>) -> tensor<?x32xf32>
+// CHECK-NEXT: [[MUL0:%.+]] = tfl.mul %arg0, [[SUB]] {fused_activation_function = "NONE"} : tensor<?x32xf32>
+// CHECK-NEXT: [[MUL1:%.+]] =  tfl.mul %arg1, [[MUL0]] {fused_activation_function = "NONE"} : tensor<?x32xf32>
+// CHECK: return [[MUL1]]
+}
