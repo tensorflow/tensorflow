@@ -40,9 +40,10 @@ std::vector<char> UnpackDenseInt4IntoInt8(
   std::vector<char> unpacked_buffer;
   unpacked_buffer.reserve(num_elements);
 
-  for (int8_t value : src_buffer) {
-    unpacked_buffer.push_back((value << 4) >> 4);
-    unpacked_buffer.push_back(value >> 4);
+  for (uint8_t value : src_buffer) {
+    // Cast to signed before right-shifting to ensure correct sign extension
+    unpacked_buffer.push_back(static_cast<int8_t>(value << 4) >> 4);
+    unpacked_buffer.push_back(static_cast<int8_t>(value) >> 4);
   }
 
   // The last element might be a padded zero, so check and pop if needed
