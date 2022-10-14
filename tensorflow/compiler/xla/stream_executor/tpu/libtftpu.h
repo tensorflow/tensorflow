@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <stdbool.h>
 
-#ifndef TENSORFLOW_CORE_TPU_LIBTFTPU_H_
-#define TENSORFLOW_CORE_TPU_LIBTFTPU_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
 
 // Unfortunately we have to add an Fn suffix because we cannot have the same
 // name for both a function and a element within a struct in the global
@@ -52,4 +52,4 @@ struct TfTpu_BaseFn {
   TFTPU_ADD_FN_IN_STRUCT(TfTpu_Initialize);
 };
 
-#endif  // TENSORFLOW_CORE_TPU_LIBTFTPU_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
