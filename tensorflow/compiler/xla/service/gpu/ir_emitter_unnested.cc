@@ -2126,7 +2126,10 @@ Status IrEmitterUnnested::EmitWhile(mlir::Operation* op) {
       << "While condition computation must return bool";
 
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  // XLA runtime always lowers lmhlo.while to scf.while, not 'for'.
+  //
+  // If Xla runtime is enabled we always lower to `lmhlo.while` operation and
+  // rely on `lmhlo-to-gpu-runtime` to lower while loops with known trip counts
+  // to `scf.for` loops.
   if (while_op.getTripCount() &&
       !IsXlaRuntimeExecutableEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(while_op, GetThunkInfo(op),
