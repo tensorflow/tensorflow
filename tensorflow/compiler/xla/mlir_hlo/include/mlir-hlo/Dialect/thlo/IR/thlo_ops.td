@@ -167,7 +167,9 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
     mlir::ValueRange getOutputs() { return getOperands().take_back(1); }
 
     // Returns index vector dimension size, which is always statically-known.
-    int64_t getIndexVectorDim() { return getIndices().getType().getDimSize(1); }
+    int64_t getIndexVectorDimSize() {
+      return getIndices().getType().getDimSize(1);
+    }
 
     // Returns the number of indices, i.e. number of scalar/tensor updates.
     int64_t getIndicesCount() { return getIndices().getType().getDimSize(0); }
