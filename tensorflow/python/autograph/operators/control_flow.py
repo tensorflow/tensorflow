@@ -405,7 +405,7 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
       arith_mean += a
   ```
 
-  The state is represented by variables named geo_mean and arith_mean. The
+  The state is represented by the variables named geo_mean and arith_mean. The
   `extra_test`, `body`, `get_state` and `set_state` functions must bind to the
   original `geo_mean` and `arith_mean` symbols, using `nonlocal`.
 
