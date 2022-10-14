@@ -248,7 +248,11 @@ absl::Status ReserveGraphTensors(const CreateGpuModelInfo& create_info,
           tensor_desc.UpdateToSupportedStorageType(gpu_info, shape));
       if (gpu_info.IsApiMetal() &&
           storage_type == TensorStorageType::TEXTURE_2D) {
-        tensor_desc.SetUseBufferForWriteOnlyTexture2d(true);
+        const bool a7_gen_gpu =
+            gpu_info.IsApple() && gpu_info.apple_info.IsA7GenerationGpu();
+        if (!a7_gen_gpu) {
+          tensor_desc.SetUseBufferForWriteOnlyTexture2d(true);
+        }
       }
     }
     tensor_desc.SetBHWCShape(shape);
