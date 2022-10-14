@@ -3510,7 +3510,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     for (auto dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
-      if (dim_val == ShapedType::kDynamicSize) {
+      if (dim_val == -1) {
         // We cannot have more than one dynamic dimension.
         assert(!dynamic_dim_index && "invalid split sizes");
         dynamic_dim_index = dim.index();
