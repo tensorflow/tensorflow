@@ -29,11 +29,11 @@ limitations under the License.
 namespace mlir::cpu {
 namespace {
 
-#define GEN_PASS_DEF_TILETHLOFORCPUPASS
+#define GEN_PASS_DEF_TRANSFORMSCATTERFORCPUPASS
 #include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h.inc"
 
-struct TileThloForCpuPass
-    : public impl::TileThloForCpuPassBase<TileThloForCpuPass> {
+struct TransformScatterForCpuPass
+    : public impl::TransformScatterForCpuPassBase<TransformScatterForCpuPass> {
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
                     tensor::TensorDialect>();
@@ -48,8 +48,6 @@ struct TileThloForCpuPass
     opts.distribute = false;  // Tile to `for` loops.
 
     // Tile everything to points.
-    // TODO(kramerb): This can be made a lot smarter for ops other than scatter.
-    // TODO(kramerb): Tile scatter when we have scatter with slices.
     opts.tileSizeComputationFn = [](OpBuilder &b, Operation *op) {
       OpBuilder::InsertionGuard guard(b);
       b.setInsertionPointToStart(
@@ -61,10 +59,9 @@ struct TileThloForCpuPass
     };
 
     auto filterFn = [&](Operation *op) {
-      if (op->getDialect()->getNamespace() !=
-          thlo::THLODialect::getDialectNamespace())
-        return failure();
-      return success();
+      if (isa<mlir::thlo::ScatterOp>(op))
+        return success();
+      return failure();
     };
 
     RewritePatternSet patterns(ctx);
@@ -82,8 +79,8 @@ struct TileThloForCpuPass
 namespace xla::cpu {
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTileThloForCpuPass() {
-  return std::make_unique<mlir::cpu::TileThloForCpuPass>();
+createTransformScatterForCpuPass() {
+  return std::make_unique<mlir::cpu::TransformScatterForCpuPass>();
 }
 
 }  // namespace xla::cpu

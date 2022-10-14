@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -xla-cpu-tile-thlo | FileCheck %s
+// RUN: xla-cpu-opt %s -xla-cpu-transform-scatter | FileCheck %s
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
 
