@@ -915,20 +915,17 @@ class CustomCallHandler : public CustomCall {
     // arguments, attributes or results.
     internal::DecodingOffsets offsets;
 
-    // Check if all operands and results were decoded.
-    bool all_decoded = true;
-    auto check_all_decoded = [&](auto result) {
-      all_decoded &= succeeded(result);
-      return std::move(result);
-    };
-
     // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
-        check_all_decoded(internal::Decode<Ts, checks>::call(
-            offsets, args, rets, attrs_, attrs_idx_, attrs, values_,
-            user_data))...};
+        internal::Decode<Ts, checks>::call(offsets, args, rets, attrs_,
+                                           attrs_idx_, attrs, values_,
+                                           user_data)...};
+
+    // Check if all operands and results were decoded.
+    bool all_decoded = (succeeded(std::get<Is>(fn_args)) && ...);
+
     if (LLVM_UNLIKELY(!all_decoded))
       return diagnostic->EmitError(
           InvalidArgument("Failed to decode all custom call operands"));
