@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_TPU_API_DLSYM_SET_FN_H_
-#define TENSORFLOW_CORE_TPU_TPU_API_DLSYM_SET_FN_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
 
 #define TFTPU_SET_FN(Struct, FnName)                                         \
   Struct->FnName##Fn =                                                       \
@@ -24,4 +24,4 @@ limitations under the License.
     return errors::Unimplemented(#FnName " not available in this library."); \
   }
 
-#endif  // TENSORFLOW_CORE_TPU_TPU_API_DLSYM_SET_FN_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_

@@ -120,6 +120,12 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_api_dlsym_set_fn",
+    hdrs = ["tpu_api_dlsym_set_fn.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tpu_executor",
     srcs = [
         "tpu_platform_registration.cc",

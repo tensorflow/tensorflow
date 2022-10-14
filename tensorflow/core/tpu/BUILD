@@ -178,13 +178,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api",
-        ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
@@ -221,12 +221,6 @@ cc_library(
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_api_dlsym_set_fn",
-    hdrs = ["tpu_api_dlsym_set_fn.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -397,12 +391,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api",
-        ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
