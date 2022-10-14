@@ -504,8 +504,9 @@ cc_library(
     name = "tfrt_cpu_pjrt_client",
     srcs = ["tfrt_cpu_pjrt_client.cc"],
     hdrs = ["tfrt_cpu_pjrt_client.h"],
-    compatible_with = [],
-    visibility = ["//tensorflow/compiler/xla:friends"],
+    visibility = [
+        "//tensorflow/compiler/xla:friends",
+    ],
     deps = [
         ":mlir_to_hlo",
         ":pjrt_client",

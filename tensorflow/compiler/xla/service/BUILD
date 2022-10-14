@@ -5760,6 +5760,22 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_runner_pjrt",
+    srcs = ["hlo_runner_pjrt.cc"],
+    hdrs = ["hlo_runner_pjrt.h"],
+    deps = [
+        ":hlo",
+        ":hlo_runner_interface",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
+        "//tensorflow/compiler/xla/pjrt:pjrt_future",
+        "//tensorflow/tsl/platform:errors",
+    ],
+)
+
+cc_library(
     name = "hlo_profile_printer",
     srcs = ["hlo_profile_printer.cc"],
     hdrs = ["hlo_profile_printer.h"],
