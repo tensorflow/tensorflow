@@ -775,7 +775,7 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   // of tensorflow::DataType.
   auto type = value.getType().cast<TensorType>();
   tflite::TensorType tflite_element_type =
-      GetTFLiteType(type.getElementType()).ValueOrDie();
+      GetTFLiteType(type.getElementType()).value();
   if (tflite_element_type == tflite::TensorType_INT4) {
     std::vector<uint8_t> data;
     for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
