@@ -15,19 +15,17 @@
 """Parses results from run_onednn_benchmarks.sh.
 
 Example results:
+Showing runtimes in microseconds. `?` means not available.
                Model,  Batch,        Vanilla,         oneDNN,    Speedup
-          bert-large,      1,       984508.0,      1511545.0,       1.54
-          bert-large,     16,              ?,              ?,          ?
-           inception,      1,        13720.0,        12859.0,       0.94
-           inception,     16,       162221.0,       137648.0,       0.85
-        mobilenet-v1,      1,        18052.0,        19196.0,       1.06
-        mobilenet-v1,     16,       140987.0,       143874.0,       1.02
-       resnet50_v1-5,      1,        46919.0,        59567.0,       1.27
-       resnet50_v1-5,     16,       557088.0,      1128931.0,       2.03
-    ssd-mobilenet-v1,      1,        35998.0,        27543.0,       0.77
-    ssd-mobilenet-v1,     16,       365288.0,       235566.0,       0.64
-        ssd-resnet34,      1,              ?,     22706217.0,          ?
-        ssd-resnet34,     16,              ?,    229083059.0,          ?
+          bert-large,      1,              x,              y,        x/y
+          bert-large,     16,            ...,            ...,        ...
+           inception,      1,            ...,            ...,        ...
+           inception,     16,            ...,            ...,        ...
+                                        ⋮
+        ssd-resnet34,      1,              ?,            ...,          ?
+        ssd-resnet34,     16,              ?,            ...,          ?
+
+Vanilla TF can't run ssd-resnet34 on CPU because it doesn't support NCHW format.
 """
 
 import enum
@@ -92,6 +90,7 @@ def main():
   with open(filename, "r") as f:
     lines = f.readlines()
   parse_results(lines)
+  print("Showing runtimes in microseconds. `?` means not available.")
   print("%20s, %6s, %14s, %14s, %10s" %
         ("Model", "Batch", "Vanilla", "oneDNN", "Speedup"))
   for model in sorted(models):
@@ -100,7 +99,7 @@ def main():
       eigen = db[key] if key in db else "?"
       key = (model, batch, 1)
       onednn = db[key] if key in db else "?"
-      speedup = "%10.2f" % (onednn / eigen) if "?" not in (eigen,
+      speedup = "%10.2f" % (eigen / onednn) if "?" not in (eigen,
                                                            onednn) else "?"
       print("%20s, %6d, %14s, %14s, %10s" %
             (model, batch, str(eigen), str(onednn), speedup))
