@@ -4,8 +4,8 @@ load(
     "cc_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 
 package(
@@ -55,7 +55,7 @@ filegroup(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "histogram_test",
     srcs = [
         "histogram_test.cc",

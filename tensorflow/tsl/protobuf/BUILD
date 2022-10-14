@@ -1,5 +1,5 @@
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "if_google",
 )
 load(
