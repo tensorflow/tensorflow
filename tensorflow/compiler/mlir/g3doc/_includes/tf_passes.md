@@ -834,6 +834,12 @@ Would be transformed to:
 -fold-transpose-in-ops : Whether to fold transposes in ops which can support folding.
 -direction             : Move transposes to the beginning or the end of the block where they are defined.
 ```
+### `-tf-name-anonymous-iterators`: Converts anonymous iterators to named iterators
+This converts AnonymousIterator ops to Iterator, thus giving them a name.
+For example, this will convert
+  %0 = "tf.AnonymousIteratorV3"() {...}
+to
+  %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
 ### `-tf-optimize`: Optimize TensorFlow module
 ### `-tf-order-by-dialect`: Reorders ops so ops of the same dialect are next to each other.
 Performs a reordering of ops so that
