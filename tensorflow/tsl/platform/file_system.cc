@@ -77,6 +77,7 @@ string FileSystem::TranslateName(const string& name) const {
 Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   // Check if path exists.
   // TODO(sami):Forward token to other methods once migration is complete.
+  LOG(INFO) << "FileSystem::IsDirectory => " + name;
   TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
@@ -149,11 +150,14 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     Status s = GetChildren(dir, &children);
 
     // DEBUG
-    // VLOG(5) << "FileSystem::DeleteRecursively GetChildren => " << dir << "\n";
-    // for (const string& child : children) {
-    //   VLOG5 << child << ", ";
-    // }
-    // VLOG(5) << "\n";
+    {
+    std::string dbgstr;
+    dbgstr = "FileSystem::DeleteRecursively GetChildren for dir => " + dir + " =>\n";
+    for (const string& child : children) {
+      dbgstr += child + ", ";
+    }
+    LOG(INFO) << dbgstr;
+    }
 
     ret.Update(s);
     if (!s.ok()) {
@@ -163,11 +167,14 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     for (const string& child : children) {
       const string child_path = this->JoinPath(dir, child);
       // If the child is a directory add it to the queue, otherwise delete it.
+      LOG(INFO) << "Checking IsDirectory => " + child_path;
       if (IsDirectory(child_path).ok()) {
         dir_q.push_back(child_path);
+        LOG(INFO) << "YES IsDirectory TRUE";
       } else {
         // Delete file might fail because of permissions issues or might be
         // unimplemented.
+        LOG(INFO) << "FileSystem::DeleteRecursively will DeleteFile => " + child_path;
         Status del_status = DeleteFile(child_path);
         ret.Update(del_status);
         if (!del_status.ok()) {
@@ -181,15 +188,19 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   std::reverse(dir_list.begin(), dir_list.end());
 
   // DEBUG
-  // VLOG(5) << "FileSystem::DeleteRecursively => " << dirname << "\n";
-  // for (const string& dir : dir_list) {
-  //   VLOG(5) << dir << ", ";
-  // }
-  // VLOG(5) << "\n";
+  {
+  std::string dbgstr;
+  dbgstr = "FileSystem::DeleteRecursively will delete folders in dir_list => ";
+  for (const string& dir : dir_list) {
+    dbgstr += dir + ", ";
+  }
+  LOG(INFO) << dbgstr;
+  }
 
   for (const string& dir : dir_list) {
     // Delete dir might fail because of permissions issues or might be
     // unimplemented.
+    LOG(INFO) << "FileSystem::DeleteRecursively will DeleteDir => " + dir;
     Status s = DeleteDir(dir);
     ret.Update(s);
     if (!s.ok()) {
