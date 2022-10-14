@@ -21,7 +21,9 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:TensorDialect",
         "@stablehlo//:register",
     ],
 )
