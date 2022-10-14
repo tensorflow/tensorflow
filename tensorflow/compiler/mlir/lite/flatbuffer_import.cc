@@ -81,6 +81,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -1166,6 +1167,70 @@ void SetSignature(
           context, {mlir::StringAttr::get(context, signature->signature_key)}));
 }
 
+// There are control nodes at each end of each control edge. For each of them,
+// we store the source vertices of the incoming edges (if any) and the control
+// node's output token. To improve testability, we use an ordered set for the
+// source vertices.
+struct ControlNodeDesc {
+  std::set<int> incoming;
+  llvm::Optional<mlir::Value> outgoing;
+};
+
+using ControlNodes = llvm::DenseMap<int, ControlNodeDesc>;
+
+// Helper function: After op has been emitted as the MLIR representation of
+// a subgraph's operators[op_index], check *control_nodes whether it needs to be
+// wrapped in a ControlNode because it's at either end of a control edge from
+// the metadata. If it is, wrap it in a ControlNode, store the resulting
+// ControlType token in *control_nodes, and return the non-ControlType (i.e.,
+// tensor) results.  If it isn't, just return the original operator's results.
+mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
+                                         OpBuilder op_builder, int op_index,
+                                         Location op_loc,
+                                         ControlNodes* control_nodes) {
+  const ControlNodes::iterator maybe_control_node =
+      control_nodes->find(op_index);
+  if (maybe_control_node == control_nodes->end()) {
+    return op->getResults();
+  }
+  mlir::Region region;
+  region.push_back(new mlir::Block);
+  auto saved_pos = op_builder.saveInsertionPoint();
+  op_builder.setInsertionPointToEnd(&region.front());
+  mlir::Operation* cloned_op = op_builder.clone(*op);
+  // Add the yield operation.
+  op_builder.create<mlir::TFL::YieldOp>(op_loc, cloned_op->getResults());
+  // Now emit into the function body again.
+  op_builder.restoreInsertionPoint(saved_pos);
+
+  // The ControlNodeOp depends on all control tokens emitted by the nodes at the
+  // other end of the incoming edges. Since we're proceding in a valid
+  // topological order, all lookups of these tokens in
+  // (*control_nodes)[incoming] should be valid. However, we might (in theory)
+  // have pruned an operator above, so we only emit values that have been
+  // populated.
+  llvm::SmallVector<Value, 2> control_tokens;
+  for (const int incoming : maybe_control_node->second.incoming) {
+    if (const auto& outgoing = (*control_nodes)[incoming].outgoing; outgoing) {
+      control_tokens.push_back(*outgoing);
+    }
+  }
+
+  // Create the ControlNodeOp.
+  auto ctrl_op = op_builder.create<mlir::TFL::ControlNodeOp>(
+      op_loc, cloned_op->getResultTypes(),
+      mlir::TFL::ControlType::get(op->getContext()), control_tokens);
+  ctrl_op.body().takeBody(region);
+
+  // Store the control_token output for use by downstream nodes.
+  maybe_control_node->second.outgoing = ctrl_op.getControl();
+
+  // Remove the original op.
+  op->replaceAllUsesWith(ctrl_op.getOutputs());
+  op->erase();
+  return ctrl_op.getOutputs();
+}
+
 // Build a FuncOp from a tflite SubGraph
 // The buffers are directly taken
 // from the deserialized flatbuffer as we do not have the type information to
@@ -1184,12 +1249,19 @@ StatusOr<FuncOp> ConvertSubgraph(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally,
-    const tflite::SignatureDefT* signature) {
+    const tflite::SignatureDefT* signature,
+    const tflite::ControlEdges& control_edges) {
+  // Populate from metadata.
+  ControlNodes control_nodes;
+  for (const auto [from, to] : control_edges) {
+    control_nodes.try_emplace(from);
+    control_nodes[to].incoming.insert(from);
+  }
+
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
   auto func_loc = mlir::NameLoc::get(builder.getStringAttr(name), base_loc);
-
   std::vector<int> func_inputs = subgraph.inputs;
   if (is_entry_point && !ordered_input_arrays.empty()) {
     if (!experimental_prune_unreachable_nodes_unconditionally) {
@@ -1302,7 +1374,9 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   // Construct MLIR operators from TFLite operators
-  for (auto& op : subgraph.operators) {
+  for (auto& it : llvm::enumerate(subgraph.operators)) {
+    auto& op = it.value();
+
     if (experimental_prune_unreachable_nodes_unconditionally &&
         !pruned_subgraph_ops.contains(op)) {
       continue;
@@ -1362,7 +1436,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     // tensor does not have min/max values, the original op result is used
     // directly; 2. the result tensor has some min/max values, a stats op is
     // created, then the result of the stats op is used.
-    for (const auto& pair : llvm::enumerate(mlir_op->getResults())) {
+    for (const auto& pair : llvm::enumerate(MaybeWrapInControlNode(
+             mlir_op, op_builder, it.index(), op_loc, &control_nodes))) {
       int output_tensor_index = op->outputs[pair.index()];
       auto& tensor = *subgraph.tensors[output_tensor_index];
       if (auto stats_op =
@@ -1469,6 +1544,22 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
 
   auto builder = Builder(context);
 
+  tflite::ModelControlDependencies model_control_dependencies(
+      model->subgraphs.size());
+  for (const auto& metadata : model->metadata) {
+    if (metadata->name == tflite::kModelControlDependenciesMetadataKey) {
+      const std::vector<uint8_t>& data = model->buffers[metadata->buffer]->data;
+      if (!ParseModelControlDependencies(
+              reinterpret_cast<const char*>(data.data()), data.size(),
+              &model_control_dependencies)) {
+        return emitError(base_loc,
+                         "Invalid model_control_dependencies metadata"),
+               nullptr;
+      }
+      break;
+    }
+  }
+
   std::vector<std::string> func_names;
   for (auto& subgraph : model->subgraphs) {
     func_names.push_back(subgraph->name);
@@ -1515,7 +1606,8 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         experimental_prune_unreachable_nodes_unconditionally,
         subgraph_to_signature_map.contains(subgraph_index)
             ? subgraph_to_signature_map.at(subgraph_index)
-            : nullptr);
+            : nullptr,
+        model_control_dependencies[subgraph_index]);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name << ": "
