@@ -96,21 +96,21 @@ static absl::Status LaunchFunc(
   }
 
   VLOG(3) << "Launching " << kernel->name();
-  absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
-  buffer_args.reserve(args_size_including_temp_buffer);
+  absl::InlinedVector<se::DeviceMemoryBase, 8> buffer_args(
+      args_size_including_temp_buffer);
 
   // Add MemRef arguments as buffer arguments.
   for (unsigned i = 0; i < args.size(); ++i) {
     // Simple row major memref passed as shapeless buffer.
     if (auto memref = args.get<FlatMemrefView>(i); succeeded(memref)) {
-      buffer_args.emplace_back(GetDeviceAddress(*memref));
+      buffer_args[i] = GetDeviceAddress(*memref);
       continue;
     }
 
     // Memref layout must be encoded in the compiled device kernel, so we don't
     // have to pass strides or minor to major dimensions order to the kernel.
     if (auto strided = args.get<StridedMemrefView>(i); succeeded(strided)) {
-      buffer_args.emplace_back(GetDeviceAddress(*strided));
+      buffer_args[i] = GetDeviceAddress(*strided);
       continue;
     }
 
@@ -119,7 +119,7 @@ static absl::Status LaunchFunc(
   }
 
   // Always add temporary buffer as the last kernel argument.
-  buffer_args.push_back(*temp_buffer);
+  buffer_args.back() = *temp_buffer;
 
   // Execute device kernel on a main stream.
   auto executed =
