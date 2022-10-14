@@ -301,6 +301,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLocalizeVarHandlesPass();
 // Removes all TF attributes
 std::unique_ptr<OperationPass<func::FuncOp>> CreateStripTfAttributesPass();
 
+// Converts AnonymousIteratorOps to (named) IteratorOps.
+std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
+
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.
 void CreateTFXLABridgePipeline(OpPassManager& pm);
