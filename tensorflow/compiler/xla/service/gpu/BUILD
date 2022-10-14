@@ -80,7 +80,6 @@ cc_library(
 
 cc_library(
     name = "gpu_constants",
-    srcs = ["gpu_constants.cc"],
     hdrs = ["gpu_constants.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
