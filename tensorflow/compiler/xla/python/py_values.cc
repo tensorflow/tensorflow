@@ -196,13 +196,16 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
   }
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
-  py::gil_scoped_release gil_release;
-  TF_ASSIGN_OR_RETURN(
-      auto buffer,
-      to_device->client()->BufferFromHostBuffer(
-          data, squashed_type, dims, byte_strides, host_buffer_semantics,
-          std::move(on_done_with_host_buffer), to_device));
-  return DevicePutResult(std::move(buffer), /*weak_type=*/false);
+  StatusOr<std::unique_ptr<PjRtBuffer>> buffer;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(
+        buffer,
+        to_device->client()->BufferFromHostBuffer(
+            data, squashed_type, dims, byte_strides, host_buffer_semantics,
+            std::move(on_done_with_host_buffer), to_device));
+  }
+  return DevicePutResult(std::move(buffer.value()), /*weak_type=*/false);
 }
 
 StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
