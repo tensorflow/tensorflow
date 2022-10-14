@@ -683,8 +683,9 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   if (RemoveDirectoryW (ws1.c_str()) == 0) {
   // if (RemoveDirectoryW (ws1.c_str()) == 0) {
   // if (_DeleteDirectory (ws1.c_str()) == 0) {
-    LOG(ERROR) << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "errno=" << errno << "\n";
-    result = IOError("Failed to remove a directory: " + name, errno);
+    DWORD lastError = ::GetLastError();
+    LOG(ERROR) << "RemoveDirectoryW FAILED !!! " << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "lastError=" << lastError << "\n";
+    result = IOError("Failed to remove a directory: " + name, lastError);
   }
   return result;
 }
