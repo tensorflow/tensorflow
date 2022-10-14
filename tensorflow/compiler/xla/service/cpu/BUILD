@@ -187,6 +187,7 @@ cc_library(
         ":cpu_shape_verifier",
         ":dot_op_emitter",
         ":executable_proto_cc",
+        ":mlir_layout_resolution",
         ":hlo_xla_runtime_pipeline",
         "@com_google_absl//absl/base:dynamic_annotations",
         ":ir_emission_utils",
@@ -1489,6 +1490,20 @@ cc_library(
         "@llvm-project//mlir:ToLLVMIRTranslation",
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorToLLVM",
+    ],
+)
+
+cc_library(
+    name = "mlir_layout_resolution",
+    srcs = ["mlir_layout_resolution.cc"],
+    hdrs = ["mlir_layout_resolution.h"],
+    deps = [
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/tsl/platform:errors",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

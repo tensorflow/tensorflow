@@ -132,6 +132,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/cpu/mlir_layout_resolution.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
@@ -636,8 +637,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
-  // The MLIR pipeline always uses default layouts.
-  if (!is_mlir_compile) {
+  // The MLIR pipeline always uses default layouts, so if the caller specifies
+  // non-default layouts in the entry_computation layout, we have to convert
+  // to these layouts using transposes and reshapes. The MlirLayoutResolution
+  // pass does this.
+  if (is_mlir_compile) {
+    pipeline.AddPass<MlirLayoutResolution>();
+  } else {
     pipeline.AddPass<CpuLayoutAssignment>(
         module->mutable_entry_computation_layout(), target_machine_features,
         &layout_constraints);
