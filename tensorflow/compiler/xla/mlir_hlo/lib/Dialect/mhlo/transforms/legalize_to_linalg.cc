@@ -2605,7 +2605,9 @@ struct ReduceWindowOpOnTensorsGenericConversion
     MLIRContext* ctx = op->getContext();
     Location loc = op.getLoc();
     llvm::SmallVector<Value> initValues = adaptor.getInitValues();
-    llvm::SmallVector<Type> resultTypes = llvm::to_vector(op.getResultTypes());
+    llvm::SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op.getResultTypes(), resultTypes)))
+      return failure();
     auto numOperands = initValues.size();
 
     llvm::SmallVector<int64_t> windowDimensions =

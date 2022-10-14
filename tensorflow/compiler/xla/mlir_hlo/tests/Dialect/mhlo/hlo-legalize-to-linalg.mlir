@@ -3766,6 +3766,23 @@ func.func @reduce_window_sum_max_nhwc(%arg0: tensor<1x17x17x64xf32>,
 
 // -----
 
+func.func @reduce_window_unsigned(%arg0: tensor<1x1xui32>) -> tensor<1x1xui32> {
+  %0 = mhlo.constant dense<0> : tensor<ui32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<ui32>, %arg2: tensor<ui32>):
+    mhlo.return %arg1 : tensor<ui32>
+  }) {
+    window_dimensions = dense<[1, 1]> : tensor<2xi64>,
+    window_strides = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x1xui32>, tensor<ui32>) -> tensor<1x1xui32>
+  return %1 : tensor<1x1xui32>
+}
+
+// Just check that this lowers successfully.
+// CHECK-LABEL: func @reduce_window_unsigned
+
+// -----
+
 func.func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
                                       %arg1: tensor<f32>) -> tensor<?x?x?x?xf32>{
   %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
