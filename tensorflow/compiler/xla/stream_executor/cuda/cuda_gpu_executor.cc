@@ -1072,6 +1072,13 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     builder.set_device_memory_size(device_memory_size);
   }
 
+  {
+    int64_t l2_cache_size =
+        GpuDriver::GetDeviceAttribute(CU_DEVICE_ATTRIBUTE_L2_CACHE_SIZE, device)
+            .value();
+    builder.set_l2_cache_size(l2_cache_size);
+  }
+
   port::StatusOr<int> mem_clock_khz = GpuDriver::GetDeviceAttribute(
       CU_DEVICE_ATTRIBUTE_MEMORY_CLOCK_RATE, device_ordinal);
   port::StatusOr<int> mem_bus_width_bits = GpuDriver::GetDeviceAttribute(

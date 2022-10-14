@@ -674,6 +674,19 @@ cc_library(
     alwayslink = True,
 )
 
+tf_cc_test(
+    name = "cuda_gpu_executor_test",
+    srcs = ["cuda_gpu_executor_test.cc"],
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":cuda_gpu_executor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
 cc_library(
     name = "cudnn_version",
     srcs = ["cudnn_version.cc"],
