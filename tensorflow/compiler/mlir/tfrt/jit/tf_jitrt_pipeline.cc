@@ -75,18 +75,9 @@ void AddLinalgTransformations(OpPassManager& pm,
 
   pm.addNestedPass<FuncOp>(CreateDetensorizeLinalgPass());
 
-  // Unfortunately, at the moment there is no way to provide default values for
-  // ListOption. That's why we have to provide them here. When
-  // https://github.com/llvm/llvm-project/issues/52667 feature request is
-  // accepted and implemented, this line will have to be removed.
-  mlir::SmallVector<int64_t, 2> reduction_2d_tile_sizes = {4, 4};
-  if (options.reduction_2d_tile_sizes.hasValue()) {
-    reduction_2d_tile_sizes.assign(options.reduction_2d_tile_sizes.begin(),
-                                   options.reduction_2d_tile_sizes.end());
-  }
   pm.addNestedPass<FuncOp>(CreateTileReductionPass(
       options.vector_size, options.reduction_1d_tile_size,
-      reduction_2d_tile_sizes));
+      options.reduction_2d_tile_sizes));
 
   pm.addNestedPass<FuncOp>(CreateTileMatmulPass(options.matmul_tile_sizes));
 

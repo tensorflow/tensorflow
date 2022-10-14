@@ -50,7 +50,8 @@ struct TfJitRtPipelineOptions
 
   ListOption<int64_t> reduction_2d_tile_sizes{
       *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore};
+      llvm::cl::desc("Tile sizes for a 2D reduction."),
+      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
 
   ListOption<int64_t> matmul_tile_sizes{
       *this, "matmul-tile-sizes",
