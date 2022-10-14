@@ -403,6 +403,7 @@ cc_library(
         ":tensorflow_passes",
         ":tf_saved_model_passes",
         "//tensorflow/compiler/mlir/xla:legalize_tf",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
