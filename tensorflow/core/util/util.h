@@ -59,6 +59,9 @@ std::string SliceDebugString(const TensorShape& shape, const int64_t flat);
 // Check if MKL is enabled in runtime
 bool IsMKLEnabled();
 
+// Check if ZenDNN is disabled in runtime
+bool IsZenDNNDisabled();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_UTIL_H_

@@ -590,6 +590,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "build_with_zendnn",
+    define_values = {
+        "build_with_zendnn": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 # Experimental features
 config_setting(
     name = "stackdriver_support",

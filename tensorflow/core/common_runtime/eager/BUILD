@@ -12,7 +12,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
 )
-
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_zendnn",
+)
 package(
     default_visibility = [
         "//tensorflow:internal",
@@ -533,7 +536,7 @@ cc_library(
             "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
             "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
         ],
-    }) + if_mkl([":mkl_eager_op_rewrite"]),
+    }) + if_zendnn([":zen_eager_op_rewrite"]) + if_mkl([":mkl_eager_op_rewrite"]),
 )
 
 tf_cc_test(
@@ -565,6 +568,20 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
     ],
+)
+
+cc_library(
+    name = "zen_eager_op_rewrite",
+    srcs = ["zen_eager_op_rewrite.cc"],
+    copts = tf_copts(),
+    deps = [
+        ":eager_op_rewrite_registry",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+    alwayslink = 1,
 )
 
 tf_mkl_kernel_library(

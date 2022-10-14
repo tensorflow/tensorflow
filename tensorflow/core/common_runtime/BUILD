@@ -1244,6 +1244,24 @@ cc_library(
 )
 
 cc_library(
+    name = "zen_layout_pass",
+    srcs = ["zen_layout_pass.cc"],
+    copts = tf_copts() + ["-fopenmp"],
+    deps = [
+        ":function",
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base",
+        ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "mkl_tfconversion_pass",
     srcs = ["mkl_tfconversion_pass.cc"],
     hdrs = [
@@ -1835,6 +1853,7 @@ tf_cuda_library(
         ":memory_types",
         ":mkl_cpu_allocator",
         ":mkl_layout_pass",
+        ":zen_layout_pass",
         ":mkl_tfconversion_pass",
         ":optimization_registry",
         ":parallel_concat_optimizer",
