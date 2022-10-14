@@ -705,8 +705,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       return new_operation;
     }
     case HloOpcode::kCollectivePermute: {
+      auto collective_permute = Cast<HloChannelInstruction>(instruction);
       attributes.push_back(ConvertSourceTargetPairs(
-          instruction->source_target_pairs(), builder_));
+          collective_permute->source_target_pairs(), builder_));
+      if (collective_permute->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(collective_permute->channel_id().value()));
       return func_builder
           ->create<mlir::mhlo::CollectivePermuteOp>(loc, result_type, operands,
                                                     attributes)
