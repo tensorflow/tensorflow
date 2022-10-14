@@ -50,7 +50,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
@@ -58,12 +57,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
@@ -2768,7 +2769,7 @@ void AddDynamicParameterBindingEntry(xla::DynamicParameterBindingProto* binding,
 }
 
 // Runs the PrepareForExport pass on the ModuleOp.
-Status PrepareForExport(mlir::ModuleOp module) {
+xla::Status PrepareForExport(mlir::ModuleOp module) {
   // Prepare for export to XLA HLO.
   mlir::PassManager pm(module.getContext());
   pm.addNestedPass<mlir::func::FuncOp>(mhlo::createPrepareForExportPass());
@@ -2779,9 +2780,9 @@ Status PrepareForExport(mlir::ModuleOp module) {
 
 }  // namespace
 
-Status ConvertRegionToComputation(mlir::Region* region,
-                                  xla::XlaComputation* func,
-                                  MlirToHloConversionOptions options) {
+xla::Status ConvertRegionToComputation(mlir::Region* region,
+                                       xla::XlaComputation* func,
+                                       MlirToHloConversionOptions options) {
   mlir::ModuleOp module;
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, true, true, options);
@@ -2790,15 +2791,16 @@ Status ConvertRegionToComputation(mlir::Region* region,
   return ::tsl::OkStatus();
 }
 
-Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool return_tuple,
-                           MlirToHloConversionOptions options) {
+xla::Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
+                                bool use_tuple_args, bool return_tuple,
+                                MlirToHloConversionOptions options) {
   TF_RETURN_IF_ERROR(PrepareForExport(module));
-  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   xla::XlaBuilder module_builder("main");
   ConvertToHloModule converter(module, module_builder, use_tuple_args,
                                return_tuple, options);
-  if (failed(converter.Run())) return diag_handler.ConsumeStatus();
+  if (failed(converter.Run()))
+    return ::tsl::FromAbslStatus(diag_handler.ConsumeStatus());
   auto hlo_module = converter.ConsumeMainProto();
   StringRef module_name = module.getName() ? *module.getName() : "main";
   hlo_module.set_name(module_name.str());
@@ -2806,10 +2808,10 @@ Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
   return ::tsl::OkStatus();
 }
 
-Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
-                           llvm::ArrayRef<xla::XlaOp> xla_params,
-                           std::vector<xla::XlaOp>& returns,
-                           MlirToHloConversionOptions options) {
+xla::Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                                llvm::ArrayRef<xla::XlaOp> xla_params,
+                                std::vector<xla::XlaOp>& returns,
+                                MlirToHloConversionOptions options) {
   auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
   TF_RETURN_IF_ERROR(PrepareForExport(module));
   ConvertToHloModule converter(module, builder,
@@ -2828,7 +2830,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
     lowering[arg] = xla_params[num];
   }
 
-  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  mlir::BaseScopedDiagnosticHandler diag_handler(module.getContext());
   for (auto& inst : block) {
     if (isa<mhlo::ReturnOp, mlir::func::ReturnOp>(inst)) {
       returns.resize(inst.getNumOperands());
@@ -2836,7 +2838,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
         unsigned index = ret.getOperandNumber();
         xla::XlaOp operand;
         if (failed(GetXlaOp(ret.get(), lowering, &operand, &inst)))
-          return diag_handler.ConsumeStatus();
+          return ::tsl::FromAbslStatus(diag_handler.ConsumeStatus());
         returns[index] = operand;
       }
     } else {
@@ -2844,7 +2846,7 @@ Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
       if (failed(converter.Lower(&inst, /*is_entry_function=*/true,
                                  /*ret_shardings=*/{}, &builder, &lowering,
                                  &return_value)))
-        return diag_handler.ConsumeStatus();
+        return ::tsl::FromAbslStatus(diag_handler.ConsumeStatus());
     }
   }
 

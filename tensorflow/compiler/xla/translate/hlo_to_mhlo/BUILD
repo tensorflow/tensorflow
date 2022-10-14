@@ -63,9 +63,9 @@ cc_library(
     srcs = ["hlo_to_mlir_hlo.cc"],
     hdrs = ["hlo_to_mlir_hlo.h"],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_module_importer",
     ],
 )
