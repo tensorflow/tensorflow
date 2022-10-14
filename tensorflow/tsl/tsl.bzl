@@ -57,8 +57,8 @@ def if_google(google_value, oss_value = []):
 
 def if_tsl_link_protobuf(if_true, if_false = []):
     return select({
-        clean_dep("//tensorflow/tsl:tsl_link_protobuf"): if_true,
-        "//conditions:default": if_false,
+        "//conditions:default": if_true,
+        clean_dep("//tensorflow/tsl:tsl_protobuf_header_only"): if_false,
     })
 
 def if_libtpu(if_true, if_false = []):

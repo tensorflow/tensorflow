@@ -807,7 +807,7 @@ def tf_protobuf_deps():
 def tsl_protobuf_deps():
     return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
 
-# When tsl_link_protobuf is false, we need to add the protobuf library
+# When tsl_protobuf_header_only is true, we need to add the protobuf library
 # back into our binaries explicitly.
 def tsl_cc_test(
         name,
