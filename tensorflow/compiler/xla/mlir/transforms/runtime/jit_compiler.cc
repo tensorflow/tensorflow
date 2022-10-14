@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
 
@@ -77,7 +78,7 @@ static void InitializeLlvmCompiler() {
   (void)initialized;
 }
 
-static void SetupPassDebugging(MLIRContext* context, PassManager& pm) {
+static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   // Print IR after all passes.
   if (DebugJitCompiler()) {
     context->disableMultithreading();
@@ -93,7 +94,7 @@ static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
 
-  PassManager pm(module.getContext());
+  mlir::PassManager pm(module.getContext());
   SetupPassDebugging(module.getContext(), pm);
 
   // Instrument the pass manager to capture timing information.
@@ -104,8 +105,8 @@ static LogicalResult RunPipeline(
     timing = tm.getRootScope();
     pm.enableTiming(timing);
   }
-
-  create_pipeline(pm);
+  PassManager passes(&pm);
+  create_pipeline(passes);
 
   return pm.run(module);
 }
@@ -128,13 +129,13 @@ static LogicalResult RunSpecializationPipeline(
 // in the compiled module.
 static std::unique_ptr<MLIRContext> CreateMlirContext(
     const JitCompiler::Options& opts) {
-  DialectRegistry registry;
+  DialectRegistry dialects;
 
   // Call user-provided callback to register all required dialects.
-  if (opts.register_dialects) opts.register_dialects(registry);
+  if (opts.register_dialects) opts.register_dialects(dialects);
 
   auto threading = MLIRContext::Threading::DISABLED;
-  auto ctx = std::make_unique<MLIRContext>(registry, threading);
+  auto ctx = std::make_unique<MLIRContext>(*dialects, threading);
   ctx->loadAllAvailableDialects();
   return ctx;
 }
@@ -181,7 +182,7 @@ JitCompiler::Instantiate(JitCompiler::Options opts,
 
   // Assign unique ordinals to all exported functions, including functions that
   // were already exported with `rt.export` operations in the input IR.
-  PassManager pm(module.getContext());
+  mlir::PassManager pm(module.getContext());
   pm.addPass(CreateOrdinalAssignmentPass());
   if (failed(pm.run(module)))
     return compiler->Error("failed to run ordinal assignment pass");

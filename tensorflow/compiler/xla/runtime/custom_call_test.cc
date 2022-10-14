@@ -71,20 +71,22 @@ static absl::StatusOr<JitExecutable> Compile(
       ToSymbolsBinding(test_opts.direct_custom_calls, test_opts.types);
   opts.compiler.type_converter = test_opts.type_converter;
 
-  opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
-    registry.insert<TestlibDialect>();
-    RegisterDefaultXlaGpuRuntimeDialects(registry);
-  };
+  opts.compiler.register_dialects =
+      [&](xla::runtime::DialectRegistry& dialects) {
+        RegisterTestlibDialect(dialects);
+        RegisterDefaultXlaGpuRuntimeDialects(dialects);
+      };
 
-  opts.compiler.create_compilation_pipeline = [&](mlir::PassManager& pm) {
-    CompilationPipelineOptions copts;
-    copts.populate_type_id_names = test_opts.types;
-    copts.populate_arg_encodings = test_opts.populate_arg_encodings;
-    copts.populate_ret_encodings = test_opts.populate_ret_encodings;
-    copts.populate_attr_encodings = test_opts.populate_attr_encodings;
-    copts.populate_type_conversions = test_opts.populate_type_conversions;
-    CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
-  };
+  opts.compiler.create_compilation_pipeline =
+      [&](xla::runtime::PassManager& passes) {
+        CompilationPipelineOptions copts;
+        copts.populate_type_id_names = test_opts.types;
+        copts.populate_arg_encodings = test_opts.populate_arg_encodings;
+        copts.populate_ret_encodings = test_opts.populate_ret_encodings;
+        copts.populate_attr_encodings = test_opts.populate_attr_encodings;
+        copts.populate_type_conversions = test_opts.populate_type_conversions;
+        CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+      };
 
   return JitExecutable::Instantiate(module, opts, exported);
 }

@@ -101,11 +101,12 @@ class GpuExecutable::XlaRuntimeGpuExecutable {
     // Options for constructing XLA runtime JitExecutable.
     runtime::JitExecutable::Options opts;
     opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
-    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
-      // For the encoding of attributes to custom calls.
-      registry.insert<mlir::lmhlo_gpu::LmhloGpuDialect>();
-    };
+    opts.compiler.register_dialects =
+        [](xla::runtime::DialectRegistry& dialects) {
+          runtime::RegisterDefaultXlaGpuRuntimeDialects(dialects);
+          // For the encoding of attributes to custom calls.
+          runtime::RegisterLmhloGpuDialect(dialects);
+        };
 
     // Register XLA Gpu runtime custom calls with the linker.
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
@@ -116,9 +117,10 @@ class GpuExecutable::XlaRuntimeGpuExecutable {
     // lowered to canonical dialects), we can assemble a pipeline that will
     // compile starting from the LMHLO dialect. However this intermediate step
     // helps with debugging, by materializing IR with XLA runtime custom calls.
-    opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
-    };
+    opts.compiler.create_compilation_pipeline =
+        [copts](xla::runtime::PassManager& passes) {
+          runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+        };
 
     // TODO(b/241296710): LLVM optimizations interact badly with the memory
     // loads and stores pattern generated in very large XLA programs, and can
@@ -1081,10 +1083,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
   // and output info details. Also recover buffer sizes from the entrypoint
   // function signature.
   mlir::MLIRContext context;
-
-  mlir::DialectRegistry registry;
-  runtime::RegisterDefaultXlaGpuRuntimeDialects(registry);
-  context.appendDialectRegistry(registry);
+  runtime::AppendXlaGpuDialectRegistry(context);
 
   auto module = mlir::parseSourceString<mlir::ModuleOp>(mlir_module, &context);
   if (!module) return InternalError("Failed to parse AOT compiled module");

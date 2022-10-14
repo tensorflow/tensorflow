@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/specialization.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
@@ -53,7 +54,7 @@ class JitCompiler {
 
   struct Options {
     // Register dialects that are allowed in the serialized module.
-    std::function<void(mlir::DialectRegistry&)> register_dialects;
+    std::function<void(DialectRegistry&)> register_dialects;
 
     // Create a pass pipeline that is called whenever the compiled module
     // gets specialized. This pipeline can use refined shape information and
@@ -62,7 +63,7 @@ class JitCompiler {
     // Original input module might have an undefined calling convention (e.g.
     // XLA runtime does not support unranked tensors), and specialization can be
     // required as a precondition for compilation.
-    std::function<void(mlir::PassManager&)> create_specialization_pipeline;
+    std::function<void(PassManager&)> create_specialization_pipeline;
 
     // Create a pass pipeline that lowers compiled module from high level
     // dialects to the LLVM dialect. XLA runtime will use the LLVM ORC compiler
@@ -73,7 +74,7 @@ class JitCompiler {
     // (convert them to an ABI compatible with the calling convention advertised
     // to XLA through the `calling_convention` type conversion), and for
     // that it usually must include `xla-rt-export-functions` pass.
-    std::function<void(mlir::PassManager&)> create_compilation_pipeline;
+    std::function<void(PassManager&)> create_compilation_pipeline;
 
     // LLVM optimization level when JIT compiling a module.
     llvm::CodeGenOpt::Level jit_code_opt_level =

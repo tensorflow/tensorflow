@@ -13,21 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_TESTS_TESTLIB_PIPELINE_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_TESTS_TESTLIB_PIPELINE_H_
-
-#include "tensorflow/compiler/xla/runtime/compiler.h"
+#ifndef TENSORFLOW_COMPILER_XLA_RUNTIME_COMPILER_H_
+#define TENSORFLOW_COMPILER_XLA_RUNTIME_COMPILER_H_
 
 namespace xla {
 namespace runtime {
 
-// Registers dialects supported by the Xla runtime tests.
-void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects);
+class DialectRegistry;  // NOLINT
 
-// Populates passes for compiling Xla runtime tests.
-void CreateXlaRuntimeTestlibPipeline(PassManager& passes);
+class PassManager;
 
 }  // namespace runtime
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_RUNTIME_TESTS_TESTLIB_PIPELINE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_RUNTIME_COMPILER_H_

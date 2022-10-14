@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
@@ -270,10 +271,10 @@ void CreateDefaultTfJitRtPipeline(OpPassManager& pm) {
   CreateTfJitRtPipeline(pm, options);
 }
 
-void CreateJitRtSpecializationPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(std::make_unique<AddTensorflowProducerVersion>());
-  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  pm.addPass(mlir::createCanonicalizerPass());
+void CreateJitRtSpecializationPipeline(xla::runtime::PassManager& passes) {
+  passes->addPass(std::make_unique<AddTensorflowProducerVersion>());
+  passes->addPass(mlir::TF::CreateTFShapeInferencePass());
+  passes->addPass(mlir::createCanonicalizerPass());
 }
 
 static mlir::PassPipelineRegistration<TfJitRtPipelineOptions> tf_jitrt_pipeline(

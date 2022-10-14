@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "llvm/ADT/Hashing.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
 
 namespace tensorflow {
 
@@ -85,7 +86,7 @@ void CreateDefaultTfJitRtPipeline(mlir::OpPassManager& pm);
 // Creates a pipeline that runs on compiled module specialization. It runs the
 // Tensorflow shape inference and canonicalization, so that specialized function
 // always has ranked inputs and results to infer JitRt ABI requirements.
-void CreateJitRtSpecializationPipeline(mlir::OpPassManager& pm);
+void CreateJitRtSpecializationPipeline(xla::runtime::PassManager& passes);
 
 }  // namespace tensorflow
 

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
@@ -9,6 +9,30 @@ package(
         "@tf_runtime//:friends",
     ],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = if_google(
+        [
+            "//learning/brain/experimental/tfrt/autofusion/...",
+            "//platforms/xla/service/cpu/...",
+            "//tensorflow/compiler/mlir/tensorflow/...",
+            "//tensorflow/compiler/mlir/tfrt/...",
+            "//tensorflow/compiler/xla/mlir/transforms/google/...",
+            "//tensorflow/compiler/xla/mlir/transforms/runtime/tests/...",
+            "//tensorflow/compiler/xla/service/cpu/...",
+            "@tf_runtime//...",
+        ],
+        [
+            "//platforms/xla/service/cpu/...",
+            "//tensorflow/compiler/mlir/tensorflow/...",
+            "//tensorflow/compiler/mlir/tfrt/...",
+            "//tensorflow/compiler/xla/mlir/transforms/google/...",
+            "//tensorflow/compiler/xla/mlir/transforms/runtime/tests/...",
+            "//tensorflow/compiler/xla/service/cpu/...",
+        ],
+    ),
 )
 
 gentbl_cc_library(
@@ -99,10 +123,12 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":compilation_pipeline_options",
+        ":compiler",
         ":custom_call_encoding",
         ":passes",
         "//tensorflow/compiler/xla/mlir/transforms/math:passes",
         "//tensorflow/compiler/xla/mlir/transforms/memref:passes",
+        "//tensorflow/compiler/xla/runtime:compiler_headers",
         "@llvm-project//mlir:AMXToLLVMIRTranslation",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:AffineToStandard",
@@ -146,7 +172,11 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":compilation_pipeline_options",
+        ":compiler",
         ":passes",
+        "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
+        "//tensorflow/compiler/xla/runtime:compiler_headers",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncToLLVM",
         "@llvm-project//mlir:IR",
@@ -199,11 +229,13 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":calling_convention",
+        ":compiler",
         ":passes",
         ":specialization",
         ":type_converter",
         "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/runtime:arguments",
+        "//tensorflow/compiler/xla/runtime:compiler_headers",
         "//tensorflow/compiler/xla/runtime:constraints",
         "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:executable",
@@ -275,5 +307,16 @@ tf_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "compiler",
+    hdrs = ["compiler.h"],
+    compatible_with = get_compatible_with_cloud(),
+    visibility = [":friends"],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
