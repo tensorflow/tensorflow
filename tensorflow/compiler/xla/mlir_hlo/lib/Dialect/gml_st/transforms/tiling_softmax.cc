@@ -202,7 +202,8 @@ Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Location loc,
 
 LogicalResult tilePartialSoftmax(
     TilingInterface op, PatternRewriter &rewriter,
-    llvm::function_ref<FailureOr<Operation *>(Operation *)> tileOperationFn) {
+    llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
+        tileOperationFn) {
   Location loc = op.getLoc();
 
   // Match cwise root op.
@@ -214,8 +215,8 @@ LogicalResult tilePartialSoftmax(
   //   i)  by a reduction and subsequent bcast in one dimension, or
   //   ii) by using the source value as is.
   Value commonSource;
+  Optional<int64_t> commonReductionDim;
   SmallVector<Optional<SimpleBcastReduction>> simpleBcastReductions;
-  bool foundBcastReduction = false;
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op.getOperation());
   for (Value operand : genericOp.getInputs()) {
     // Case i.
@@ -227,8 +228,12 @@ LogicalResult tilePartialSoftmax(
         return failure();
       }
       commonSource = bcastReduction.operand;
+      if (commonReductionDim && *commonReductionDim != reductionDim) {
+        return failure();
+      }
+      commonReductionDim = reductionDim;
       simpleBcastReductions.push_back(bcastReduction);
-      foundBcastReduction = true;
+      // foundBcastReduction = true;
       continue;
     }
 
@@ -238,10 +243,10 @@ LogicalResult tilePartialSoftmax(
     simpleBcastReductions.push_back(llvm::None);
   }
 
-  if (!commonSource || !foundBcastReduction) return failure();
+  if (!commonReductionDim || !commonSource) return failure();
 
   // Tile or fuse cwise root op.
-  FailureOr<Operation *> tiledOp = tileOperationFn(op);
+  FailureOr<Operation *> tiledOp = tileOperationFn(op, *commonReductionDim);
   if (failed(tiledOp)) return failure();
   setTransformationAttr(rewriter, *tiledOp);
 
@@ -276,10 +281,12 @@ struct TilePartialSoftmaxPattern
     : public OpInterfaceRewritePattern<TilingInterface> {
   using OpInterfaceRewritePattern<TilingInterface>::OpInterfaceRewritePattern;
 
-  TilePartialSoftmaxPattern(MLIRContext *ctx, TilingOptions &tilingOptions,
+  TilePartialSoftmaxPattern(MLIRContext *ctx, bool distribute,
+                            SmallVector<int64_t> tileSizes,
                             PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(ctx, benefit),
-        tilingOptions(tilingOptions) {}
+        distribute(distribute),
+        tileSizes(std::move(tileSizes)) {}
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
@@ -292,10 +299,32 @@ struct TilePartialSoftmaxPattern
     if (hasFusableOccurrences) return failure();
 
     return tilePartialSoftmax(
-        op, rewriter, [&](Operation *op) -> FailureOr<Operation *> {
+        op, rewriter,
+        [&](Operation *op,
+            int64_t commonReductionDim) -> FailureOr<Operation *> {
+          // Populate tiling options.
+          TilingOptions tilingOptions;
+          tilingOptions.tileSizeComputationFn =
+              [&](OpBuilder &b, Operation *op) -> SmallVector<Value> {
+            Location loc = op->getLoc();
+            SmallVector<Value> tileSizeValues;
+            for (int64_t i = 0; i < tileSizes.size(); i++) {
+              // Skip tiling the reduction dimension. By convention, this is a
+              // tile size of 0.
+              int64_t tileSizeInDim =
+                  i == commonReductionDim ? 0 : tileSizes[i];
+              tileSizeValues.push_back(
+                  b.create<arith::ConstantIndexOp>(loc, tileSizeInDim));
+            }
+            return tileSizeValues;
+          };
+          tilingOptions.distribute = distribute;
+
+          // Tile.
           FailureOr<TilingResult> tilingResult =
               tile(tilingOptions, rewriter, op);
           if (failed(tilingResult)) return failure();
+
           rewriter.replaceOp(op, tilingResult->loop->getResults());
           setTransformationAttr(rewriter, tilingResult->tiledOp);
           return tilingResult->tiledOp;
@@ -303,7 +332,8 @@ struct TilePartialSoftmaxPattern
   }
 
  private:
-  TilingOptions tilingOptions;
+  bool distribute;
+  SmallVector<int64_t> tileSizes;
 };
 
 struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
@@ -319,9 +349,16 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
     if (!llvm::isa<TilingInterface>(def)) return failure();
 
     return tilePartialSoftmax(
-        def, rewriter, [&](Operation *cwiseOp) -> FailureOr<Operation *> {
+        def, rewriter,
+        [&](Operation *cwiseOp,
+            int64_t /*commonReductionDim*/) -> FailureOr<Operation *> {
           auto iface = llvm::dyn_cast_or_null<TilingInterface>(cwiseOp);
           if (!iface) return failure();
+
+          // By construction, we assume that the tile spans the operand in the
+          // common reduction dimension (`commonReductionDim`).
+          // TODO(frgossen): Assert this assumption when we have moved to
+          // unnested tiles.
 
           // Extract tile offsets and sizes.
           SmallVector<OpFoldResult> offsets;
@@ -390,33 +427,12 @@ struct TilingSoftmaxPass
     func::FuncOp f = getOperation();
     MLIRContext *ctx = &getContext();
 
-    // Build tiling options.
-    // TODO(frgossen): This currently relies on knowing the reduction dimension
-    // ahead of tiling.
-    SmallVector<int64_t> tileSizesVec(tileSizes.begin(), tileSizes.end());
-    TilingOptions tilingOptions;
-    tilingOptions.tileSizeComputationFn = [&](OpBuilder &b, Operation *op) {
-      auto loc = op->getLoc();
-      SmallVector<Value> vals;
-      for (int64_t i = 0; i < tileSizesVec.size(); i++) {
-        // TODO(frgossen): Fall back to size 0 for the reduction dimension,
-        // which we do not want to tile here.
-        if (tileSizesVec[i] < 0) {
-          vals.push_back(
-              b.create<tensor::DimOp>(loc, op->getOperands().front(), i));
-        } else {
-          vals.push_back(
-              b.create<arith::ConstantIndexOp>(op->getLoc(), tileSizesVec[i]));
-        }
-      }
-      return vals;
-    };
-    tilingOptions.distribute = distribute;
-
     // Populate tiling and fusion patterns for partial softmax and unary cwise
     // ops.
     RewritePatternSet patterns(ctx);
-    patterns.insert<TilePartialSoftmaxPattern>(ctx, tilingOptions);
+    SmallVector<int64_t> tileSizes(this->tileSizes.begin(),
+                                   this->tileSizes.end());
+    patterns.insert<TilePartialSoftmaxPattern>(ctx, distribute, tileSizes);
     patterns.insert<FuseUnaryCwisePattern, FusePartialSoftmaxPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
