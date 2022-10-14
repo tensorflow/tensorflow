@@ -11,6 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+include_directories(BEFORE
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_subdirectory(IR)
-add_subdirectory(transforms)
+add_mlir_library(ThloBufferizableOpInterface
+  bufferizable_op_interface_impl.cc
+
+  LINK_LIBS PUBLIC
+  THLODialect
+  MLIRBufferizationDialect
+)

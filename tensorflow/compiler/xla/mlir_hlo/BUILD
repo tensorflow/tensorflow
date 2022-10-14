@@ -634,6 +634,7 @@ cc_library(
         ":mlir_hlo",
         ":stablehlo_legalize_to_hlo",
         ":thlo",
+        ":thlo_bufferizable_op_interface",
         ":type_conversion",
         ":unfuse_batch_norm",
         "@llvm-project//llvm:Support",
@@ -1063,6 +1064,7 @@ cc_library(
         ":mlir_hlo",
         ":shape_component_analysis",
         ":thlo",
+        ":thlo_bufferizable_op_interface",
         ":transforms_passes_inc_gen",
         ":type_conversion",
         ":userange_analysis",
@@ -1772,6 +1774,17 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
+cc_library(
+    name = "thlo_bufferizable_op_interface",
+    srcs = ["lib/Dialect/thlo/transforms/bufferizable_op_interface_impl.cc"],
+    hdrs = ["include/mlir-hlo/Dialect/thlo/transforms/bufferizable_op_interface_impl.h"],
+    includes = ["include"],
+    deps = [
+        ":thlo",
+        "@llvm-project//mlir:BufferizationDialect",
     ],
 )
 
