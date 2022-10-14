@@ -990,6 +990,121 @@ ENTRY int8gemm {
   }
 }
 
+TEST_P(ParameterizedGemmRewriteTest, UpcastingBf16ToF64) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  Arg_0.1 = bf16[4,3]{1,0} parameter(0)
+  Arg_1.2 = bf16[3,6]{1,0} parameter(1)
+  ROOT dot.3 = f64[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // This is a type combination which is not supported by cublasLt, expect
+  // GemmRewriter to choose legacy cublas.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("__cublas$gemm")));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, UpcastingC64ToC128) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  Arg_0.1 = c64[4,3]{1,0} parameter(0)
+  Arg_1.2 = c64[3,6]{1,0} parameter(1)
+  ROOT dot.3 = c128[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // This is a type combination which is not supported by cublasLt, expect
+  // GemmRewriter to choose legacy cublas.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("__cublas$gemm")));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF32) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  Arg_0.1 = f16[4,3]{1,0} parameter(0)
+  Arg_1.2 = f16[3,6]{1,0} parameter(1)
+  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // This is a type combination which is not supported by cublasLt, expect
+  // GemmRewriter to choose legacy cublas.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("__cublas$gemm")));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, UpcastingF16ToF64) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  Arg_0.1 = f16[4,3]{1,0} parameter(0)
+  Arg_1.2 = f16[3,6]{1,0} parameter(1)
+  ROOT dot.3 = f64[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // This is a type combination which is not supported by cublasLt, expect
+  // GemmRewriter to choose legacy cublas.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("__cublas$gemm")));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, UpcastingF32ToF64) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  Arg_0.1 = f32[4,3]{1,0} parameter(0)
+  Arg_1.2 = f32[3,6]{1,0} parameter(1)
+  ROOT dot.3 = f64[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // This is a type combination which is not supported by cublasLt, expect
+  // GemmRewriter to choose legacy cublas.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall("__cublas$gemm")));
+}
+
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
                          ParameterizedGemmRewriteTest, ::testing::Bool());
 
