@@ -659,6 +659,7 @@ cc_library(
         "hlo_sharding_util.h",
     ],
     deps = [
+        ":call_graph",
         ":hlo",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
@@ -694,6 +695,7 @@ cc_library(
         "sharding_propagation.h",
     ],
     deps = [
+        ":call_graph",
         ":custom_call_sharding_helper",
         ":dot_as_convolution_util",
         ":hlo",
@@ -709,7 +711,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
