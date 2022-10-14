@@ -19,8 +19,8 @@ import timeit
 from typing import Optional
 
 from tensorflow.core.function import trace_type
-from tensorflow.core.function.function_type import function_type
 from tensorflow.core.function.polymorphism import function_cache
+from tensorflow.core.function.polymorphism import function_type
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test

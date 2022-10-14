@@ -18,8 +18,8 @@ import collections
 from typing import Any, NamedTuple, Tuple
 
 from tensorflow.core.function import trace_type
-from tensorflow.core.function.function_type import function_type
 from tensorflow.core.function.polymorphism import function_cache
+from tensorflow.core.function.polymorphism import function_type
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import func_graph as func_graph_module

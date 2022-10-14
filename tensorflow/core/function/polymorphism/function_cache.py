@@ -18,7 +18,7 @@ import collections
 from typing import Any, NamedTuple, Optional, Sequence
 
 from tensorflow.core.function import trace_type
-from tensorflow.core.function.function_type import function_type as function_type_lib
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.function.polymorphism import type_dispatch
 from tensorflow.python.types import trace
 

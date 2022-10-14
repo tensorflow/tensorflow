@@ -20,7 +20,7 @@ import pickle
 from absl.testing import parameterized
 
 from tensorflow.core.function import trace_type
-from tensorflow.core.function.function_type import function_type
+from tensorflow.core.function.polymorphism import function_type
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
 

@@ -335,7 +335,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":composite_tensor_utils",
-        "//tensorflow/core/function/function_type",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/framework:composite_tensor",
@@ -355,7 +355,7 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":function_spec",
-        "//tensorflow/core/function/function_type",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:client_testlib",
     ],
