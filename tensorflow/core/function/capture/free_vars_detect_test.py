@@ -124,6 +124,12 @@ class FreeVarDetectionTest(parameterized.TestCase):
     free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
 
+  @parameterized.named_parameters(
+      ("lambda_1", lambda _x: 3,), ("lambda_2", lambda _x: 3,))
+  def test_multiple_lambda_w_same_line_num_and_args(self, fn):
+    func_map = free_vars_detect._detect_function_free_vars(fn)
+    self.assertEmpty(func_map)
+
   def test_lambda_wo_free_var(self):
     f = lambda x: x + x
     func_map = free_vars_detect._detect_function_free_vars(f)

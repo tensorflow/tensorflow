@@ -124,6 +124,10 @@ def _search_callable_free_vars(fn):
   except ValueError:
     # When source code unavailable, return empty result
     return []
+  except NotImplementedError:
+    # Autograph cannot handle multiple lambda functions with same line number
+    # and args name.
+    return []
 
   scope = anno.getanno(node, anno.Static.SCOPE)
   free_vars_all = list(scope.free_vars)
