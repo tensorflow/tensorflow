@@ -489,6 +489,11 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
+    deps = [
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/base",
+    ],
     alwayslink = 1,
 )
 
