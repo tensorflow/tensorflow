@@ -1768,10 +1768,17 @@ def HLO_CollectivePermuteOp: HLO_Op<"collective_permute",
 
   let arguments = (ins
     HLO_Tensor:$operand,
-    I64ElementsAttr:$source_target_pairs
+    I64ElementsAttr:$source_target_pairs,
+    OptionalAttr<ChannelHandle>:$channel_handle
   );
   let results = (outs HLO_Tensor);
   let hasVerifier = 1;
+  // channel_handle is only used for the SPMD partitioner, so we add a
+  // simplified builder method for convenience.
+  let builders = [
+    OpBuilder<(ins
+      "::mlir::Type":$result_type, "::mlir::Value":$operand,
+      "::mlir::DenseIntElementsAttr":$source_target_pairs)>];
 }
 
 def HLO_ConvolutionOp : HLO_Op<"convolution", [Pure]> {

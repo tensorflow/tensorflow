@@ -145,6 +145,10 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
       // Hasn't been proposed to StableHLO yet.
       if (!hloOp.getOutputOperandAliases().empty()) return failure();
     }
+    if constexpr (std::is_same<HloOpTy, mhlo::CollectivePermuteOp>::value) {
+      // StableHLO does not support channel handles on CollectivePermute.
+      if (hloOp.getChannelHandle()) return failure();
+    }
 
     // Convert MHLO types to StableHLO equivalents.
     // If a type is not defined in MHLO, then it is unchanged,

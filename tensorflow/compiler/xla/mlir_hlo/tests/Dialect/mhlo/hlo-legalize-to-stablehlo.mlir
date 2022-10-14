@@ -1788,6 +1788,17 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
+func.func @op_collective_permute_channel(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.collective_permute' that was explicitly marked illegal}}
+  %0 = "mhlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<16x8xf32>) -> tensor<16x8xf32>
+  func.return %0 : tensor<16x8xf32>
+}
+
+// -----
+
 func.func @attr_precision_config_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
   %0 = "mhlo.dot"(%arg0, %arg1) {
