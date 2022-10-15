@@ -1175,7 +1175,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(
