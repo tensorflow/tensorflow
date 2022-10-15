@@ -15,47 +15,64 @@ Before sending your pull requests, make sure you do the following:
 
 ## How to become a contributor and submit your own code
 
-![Screen Shot 2022-08-30 at 7 27 04 PM](https://user-images.githubusercontent.com/42785357/187579207-9924eb32-da31-47bb-99f9-d8bf1aa238ad.png)
+```mermaid
+flowchart LR
+A(New PR) ---> B{Valid}
+B --> |Yes| C(Review)
+B --> |No| D(Send back/Reject)
+C --> E{Need change}
+E --> |No| F(Approved)
+E --> |Yes| G(Change requested)
+G --> C
+F --> H{Kokoro tests}
+H --> |Fail| G
+H --> |Pass| I(Copy to G3)
+I --> J{Run tests}
+J --> |Fail| G
+J -----> |Pass| K(Merged)
 
-### Typical Pull Request Workflow -
+click A "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#1-new-pr" _blank
+click B "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#2-valid" _blank
+click C "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#3-review" _blank
+click F "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#4-approved" _blank
+click I "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#5-copy-to-g3" _blank
+```
 
-**1. New PR** - As a contributor, you submit a New PR on GitHub. - We inspect
-every incoming PR and add certain labels to the PR such as `size:`, `comp:` etc.
-At this stage we check if the PR is valid and meets certain quality
-requirements. - For example - We check if the CLA is signed, PR has sufficient
-description, if applicable unit tests are added, if it is a reasonable
-contribution meaning it is not a single liner cosmetic PR.
+## Typical Pull Request Workflow
 
-**2. Valid?** - If the PR passes all the quality checks then we go ahead and
-assign a reviewer. - If the PR didn't meet the validation criteria, we request
-for additional changes to be made to PR to pass quality checks and send it back
-or on a rare occassion we may reject it.
+### 1. New PR
+- As a contributor, you submit a New PR on GitHub. 
+- We inspect every incoming PR and add certain labels to the PR such as `size:`, `comp:` etc. At this stage we check if the PR is valid and meets certain quality requirements. 
+- For example: We check if the CLA is signed, PR has sufficient description, if applicable unit tests are added and if it is a reasonable contribution, i.e., it is not a single liner cosmetic PR.
 
-**3. Review** - For Valid PR, reviewer (person familiar with the
-code/functionality) checks if the PR looks good or needs additional changes. -
-If all looks good, reviewer would approve the PR. - If a change is needed, the
-contributor is requested to make suggested change. - You make the change and
-submit for the review again. - This cycle repeats itself till the PR gets
-approved. - Note: As a friendly reminder we may reach out to you if the PR is
-awaiting your response for more than 2 weeks.
+### 2. Valid?
+- If the PR passes all the quality checks then we go ahead and assign a reviewer.
+- If the PR does not meet the validation criteria, we request for additional changes to be made to the PR to pass quality checks and send it back or on a rare occassion, we may reject it.
 
-**4. Approved** - Once the PR is approved, it gets `kokoro:force-run` label
-applied and it initiates CI/CD tests. - We can't move forward if theses tests
-fail. - In such situations, we may request you to make further changes to your
-PR for the tests to pass. - Once the tests pass, we now bring all the code in
-the internal code base, using a job called "copybara".
+### 3. Review
+- For a valid PR, the reviewer (person familiar with the code/functionality) checks if the PR looks good or needs additional changes. 
+- If all looks good, the reviewer will approve the PR.
+- If a change is needed, you (the contributor) are requested to make the suggested change.
+- You make the change and submit for the review again. This cycle repeats itself till the PR gets approved.
 
-**5. Copy to G3** - Once the PR is in Google codebase, we make sure it
-integrates well with its dependencies and the rest of the system. - Rarely, but
-If the tests fail at this stage, we cannot merge the code. - If needed, we may
-come to you to make some changes. - At times, it may not be you, it may be us
-who may have hit a snag. - Please be patient while we work to fix this. - Once
-the internal tests pass, we go ahead and merge the code internally as well as
-externally on GitHub.
+> Note: As a friendly reminder we may reach out to you if the PR is awaiting your response for more than 2 weeks.
 
-### Contributor License Agreements
+### 4. Approved
+- Once the PR is approved, it gets the `kokoro:force-run` label applied and it initiates CI/CD tests.
+- We can't move forward if these tests fail.
+- If the tests fail, we may request you to make further changes to your PR for the tests to pass.
+- Once the tests pass, we now bring all the code in the internal code base, using a job called "copybara".
 
-We'd love to accept your patches! Before we can take them, we have to jump a couple of legal hurdles.
+### 5. Copy to G3
+- Once the PR is in Google codebase, we make sure it integrates well with its dependencies and the rest of the system.
+- Rarely, the tests might fail at this stage. If they do fail, we cannot merge the code.
+- If needed, we may ask you to make some changes.
+- At times, it may not be you, it may be us who may have hit a snag. Please be patient while we work to fix this.
+- Once the internal tests pass, we go ahead and merge the code internally as well as externally on GitHub.
+
+## Contributor License Agreements
+
+We love to accept your patches! But before we can take them, we have to jump a couple of legal hurdles.
 
 Please fill out either the individual or corporate Contributor License Agreement (CLA).
 
@@ -64,34 +81,15 @@ Please fill out either the individual or corporate Contributor License Agreement
 
 Follow either of the two links above to access the appropriate CLA and instructions for how to sign and return it. Once we receive it, we'll be able to accept your pull requests.
 
-***NOTE***: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
+> NOTE: Only original source code from you and other people that have signed the CLA can be accepted into the main repository.
 
 ### Contributing code
 
-If you have improvements to TensorFlow, send us your pull requests! For those
-just getting started, Github has a
-[how to](https://help.github.com/articles/using-pull-requests/).
+If you have improvements to TensorFlow, send us your pull requests! For those just getting started, Github has a [how to](https://help.github.com/articles/using-pull-requests/).
 
-TensorFlow team members will be assigned to review your pull requests. Once the
-pull requests are approved and pass continuous integration checks, a TensorFlow
-team member will apply `ready to pull` label to your change. This means we are
-working on getting your pull request submitted to our internal repository. After
-the change has been submitted internally, your pull request will be merged
-automatically on GitHub.
+TensorFlow team members will be assigned to review your pull requests. Once the pull requests are approved and pass continuous integration checks, a TensorFlow team member will apply `ready to pull` label to your change. This means we are working on getting your pull request submitted to our internal repository. After the change has been submitted internally, your pull request will be merged automatically on GitHub.
 
-If you want to contribute, start working through the TensorFlow codebase,
-navigate to the
-[Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start
-looking through interesting issues. If you are not sure of where to start, then
-start by trying one of the smaller/easier issues here i.e.
-[issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue)
-and then take a look at the
-[issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
-These are issues that we believe are particularly well suited for outside
-contributions, often because we probably won't get to them right now. If you
-decide to start on an issue, leave a comment so that other people know that
-you're working on it. If you want to help out, but not alone, use the issue
-comment thread to coordinate.
+If you want to contribute, start working through the TensorFlow codebase, navigate to the Github ["issues"](https://github.com/tensorflow/tensorflow/issues) tab and start looking through interesting issues. If you are not sure of where to start, then start by trying one of the smaller/easier issues here i.e. issues with the ["good first issue"](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue) label and then take a look at the issues with the ["contributions welcome"](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome) label. These are issues that we believe are particularly well suited for outside contributions, often because we probably won't get to them right now. If you decide to start working on an issue, leave a comment so that other people know that you're working on it. If you want to help out, but not alone, use the issue comment thread to coordinate.
 
 ### Contribution guidelines and standards
 
@@ -126,12 +124,12 @@ TensorFlow coding style.
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
 *   As every PR requires several CPU/GPU hours of CI testing, we discourage
-    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+    submitting PRs to fix one typo, one warning, etc. We recommend fixing the
     same issue at the file level at least (e.g.: fix all typos in a file, fix
-    all compiler warning in a file, etc.)
-*   Tests should follow the
-    [testing best practices](https://www.tensorflow.org/community/contribute/tests)
+    all compiler warnings in a file, etc.)
+*   Tests should follow the [TensorFlow testing best practices](https://www.tensorflow.org/community/contribute/tests)
     guide.
+    
 
 #### License
 
@@ -141,8 +139,7 @@ Include a license at the top of new files.
 * [Python license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/nn.py#L1)
 * [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
 * [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
-* [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_sanity.sh#L2)
-* [HTML license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/tf-backend.html#L2)
+* [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/code_link_check.sh#L2)
 * [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
 
 Bazel BUILD files also need to include a license section, e.g.,
@@ -180,14 +177,13 @@ pip install pylint
 pylint --rcfile=tensorflow/tools/ci_build/pylintrc myfile.py
 ```
 
-Note `pylint --rcfile=tensorflow/tools/ci_build/pylintrc` should run from the
-top level tensorflow directory.
+> Note `pylint --rcfile=tensorflow/tools/ci_build/pylintrc` should run from the top level tensorflow directory.
 
 #### Coding style for other languages
 
 * [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
 * [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
-* [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
+* [Google Shell Style Guide](https://google.github.io/styleguide/shellguide.html)
 * [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
 
 #### Running sanity check
@@ -316,9 +312,7 @@ There are two ways to test the code in the docstring locally:
 
 #### Debug builds
 
-When [building Tensorflow](https://www.tensorflow.org/install/source), passing
-`--config=dbg` to Bazel will build with debugging information and without
-optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
+When [building Tensorflow](https://www.tensorflow.org/install/source) from source, if `--config=dbg` is passed to Bazel, it will build *with* debugging information and *without* optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
 example, you can build the pip package with debugging information by running:
 
 ```bash
@@ -337,4 +331,4 @@ op, which are in files starting with `identity_op`, you can run
 bazel build --config=dbg --per_file_copt=+tensorflow/core/kernels/identity_op.*@-g //tensorflow/tools/pip_package:build_pip_package
 ```
 
-Note that the `--config=dbg` option is not officially supported.
+> Note: the `--config=dbg` option is not officially supported.
