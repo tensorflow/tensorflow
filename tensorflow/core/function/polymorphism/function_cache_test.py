@@ -21,6 +21,7 @@ from typing import Optional
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_cache
 from tensorflow.core.function.polymorphism import function_type
+from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.types import trace
@@ -113,146 +114,191 @@ def make_single_param_type(type_constraint):
   ])
 
 
-def make_type_and_deleter(value):
-  typing_context = trace_type.InternalTracingContext()
-  value_type = trace_type.from_value(value, typing_context)
-  f_type = make_single_param_type(value_type)
-  return f_type, typing_context.deletion_observer
-
-
-def make_none_context():
-  return function_cache.FunctionContext(None)
-
-
 class FunctionCacheTest(test.TestCase):
 
   def testConcreteFunctionDictRetainsInsertedKeys(self):
     cache = function_cache.FunctionCache()
 
-    f_type_1, deletion_observer_1 = make_type_and_deleter(1)
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_1))
+    key_1, deletion_observer_1 = function_context.make_cache_key(1, {})
+    self.assertIsNone(cache.lookup(key_1, False))
 
-    f_type_2, deletion_observer_2 = make_type_and_deleter(2)
-    f_type_3, _ = make_type_and_deleter(3)
+    key_2, deletion_observer_2 = function_context.make_cache_key(2, {})
+    key_3, _ = function_context.make_cache_key(3, {})
 
-    cache.add(make_none_context(), f_type_1, deletion_observer_1, "test_1")
-    cache.add(make_none_context(), f_type_2, deletion_observer_2, "test_2")
+    cache.add(key_1, deletion_observer_1, "test_1")
+    cache.add(key_2, deletion_observer_2, "test_2")
 
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_1), "test_1")
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_2), "test_2")
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_3))
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+    self.assertIsNone(cache.lookup(key_3, False))
 
   def testClearRemovesAllConcreteFunctions(self):
     cache = function_cache.FunctionCache()
 
-    f_type_1, deletion_observer_1 = make_type_and_deleter(1)
-    f_type_2, deletion_observer_2 = make_type_and_deleter(2)
-    f_type_3, _ = make_type_and_deleter(3)
+    key_1, deletion_observer_1 = function_context.make_cache_key(1, {})
+    key_2, deletion_observer_2 = function_context.make_cache_key(2, {})
+    key_3, _ = function_context.make_cache_key(3, {})
 
-    cache.add(make_none_context(), f_type_1, deletion_observer_1, "test_1")
-    cache.add(make_none_context(), f_type_2, deletion_observer_2, "test_2")
+    cache.add(key_1, deletion_observer_1, "test_1")
+    cache.add(key_2, deletion_observer_2, "test_2")
 
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_1), "test_1")
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_2), "test_2")
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_3))
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
+    self.assertIsNone(cache.lookup(key_3, False))
 
     cache.clear()
 
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_1))
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_2))
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_3))
+    self.assertIsNone(cache.lookup(key_1, False))
+    self.assertIsNone(cache.lookup(key_2, False))
+    self.assertIsNone(cache.lookup(key_3, False))
 
   def testDeleteRemovesConcreteFunctions(self):
     cache = function_cache.FunctionCache()
-    f_type_1, deletion_observer_1 = make_type_and_deleter(1)
-    cache.add(make_none_context(), f_type_1, deletion_observer_1, "test_1")
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_1), "test_1")
-    cache.delete(make_none_context(), f_type_1)
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_1))
+    key_1, deletion_observer_1 = function_context.make_cache_key(1)
+    cache.add(key_1, deletion_observer_1, "test_1")
+    self.assertEqual(cache.lookup(key_1, False), "test_1")
+    cache.delete(key_1)
+    self.assertIsNone(cache.lookup(key_1, False))
 
-    f_type_2 = make_single_param_type(MockSubtypeOf2(2))
-    cache.add(make_none_context(), f_type_2,
-              trace_type.WeakrefDeletionObserver(), "test_2")
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_2), "test_2")
+    key_2 = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), None)
+    cache.add(key_2, trace_type.WeakrefDeletionObserver(), "test_2")
+    self.assertEqual(cache.lookup(key_2, False), "test_2")
 
-    f_type_3 = make_single_param_type(MockSubtypeOf2(3))
-    self.assertEqual(
-        cache.lookup(make_none_context(), f_type_3), "test_2")
+    key_3 = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(3)), None)
+    self.assertEqual(cache.lookup(key_3, True), "test_2")
 
-    cache.delete(make_none_context(), f_type_2)
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_2))
-    self.assertIsNone(cache.lookup(make_none_context(), f_type_3))
+    cache.delete(key_2)
+    self.assertIsNone(cache.lookup(key_2, False))
+    self.assertIsNone(cache.lookup(key_3, True))
+
+  def testFunctionCacheKeyRespectsEquality(self):
+    ctx = function_cache.FunctionContext(0)
+    generic = MockGenericType
+    key_a = function_cache.FunctionCacheKey(
+        make_single_param_type(generic(1)), ctx)
+    key_b = function_cache.FunctionCacheKey(
+        make_single_param_type(generic(2)), ctx)
+    key_c = function_cache.FunctionCacheKey(
+        make_single_param_type(generic(1)), ctx)
+
+    self.assertNotEqual(key_a, key_b)
+    self.assertEqual(key_a, key_c)
+    self.assertEqual(hash(key_a), hash(key_c))
+
+  def testFunctionCacheKeyRespectsSubtype(self):
+    ctx = function_cache.FunctionContext(0)
+    key_a = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(1)), ctx)
+    key_b = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), ctx)
+    key_c = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(1)), ctx)
+
+    self.assertTrue(key_a.is_subtype_of(key_b))
+    self.assertFalse(key_b.is_subtype_of(key_a))
+    self.assertFalse(key_a.is_subtype_of(key_c))
+
+  def testFunctionCacheKeyRespectsSupertype(self):
+    ctx = function_cache.FunctionContext(0)
+    key_a = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSupertypes2With3(1)), ctx)
+    key_b = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSupertypes2With3(2)), ctx)
+
+    self.assertEqual(
+        key_b.most_specific_common_supertype([key_a]),
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockSupertypes2With3(3)), ctx))
+    self.assertIsNone(key_a.most_specific_common_supertype([key_b]))
 
   def testMostSpecificFunctionCacheKeyIsLookedUp(self):
     ctx = function_cache.FunctionContext(0)
     cache = function_cache.FunctionCache()
-    cache.add(ctx, make_single_param_type(MockShape(1, 2, None)),
-              trace_type.WeakrefDeletionObserver(), "a")
-    cache.add(ctx, make_single_param_type(MockShape(1, 2, 3)),
-              trace_type.WeakrefDeletionObserver(), "b")
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, 2, None)), ctx),
+        trace_type.WeakrefDeletionObserver(), "a")
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, 2, 3)), ctx),
+        trace_type.WeakrefDeletionObserver(), "b")
 
     self.assertEqual(
-        cache.lookup(ctx, make_single_param_type(MockShape(1, 2, 3))),
-        "b")
+        cache.lookup(
+            function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(1, 2, 3)), ctx), True), "b")
 
   def testFirstMostSpecificFunctionCacheKeyIsLookedUp(self):
     ctx = function_cache.FunctionContext(0)
     cache = function_cache.FunctionCache()
-    cache.add(ctx, make_single_param_type(MockShape(1, 2, None)),
-              trace_type.WeakrefDeletionObserver(), "a")
-    cache.add(ctx, make_single_param_type(MockShape(1, None, 3)),
-              trace_type.WeakrefDeletionObserver(), "b")
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, 2, None)), ctx),
+        trace_type.WeakrefDeletionObserver(), "a")
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, None, 3)), ctx),
+        trace_type.WeakrefDeletionObserver(), "b")
 
     self.assertEqual(
-        cache.lookup(ctx, make_single_param_type(MockShape(1, 2, 3))),
-        "a")
+        cache.lookup(
+            function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(1, 2, 3)), ctx), True), "a")
 
   def testMostSpecificFunctionCacheKeyIsOrderAgnostic(self):
     ctx = function_cache.FunctionContext(0)
-    keys = [(ctx, make_single_param_type(MockShape(1, 1, 1)), "a"),
-            (ctx, make_single_param_type(MockShape(1, None, 1)), "b"),
-            (ctx, make_single_param_type(MockShape(None, None, 1)), "c"),
-            (ctx, make_single_param_type(MockShape(None, None, None)), "d")]
+    keys = [(function_cache.FunctionCacheKey(
+        make_single_param_type(MockShape(1, 1, 1)), ctx), "a"),
+            (function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(1, None, 1)), ctx), "b"),
+            (function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(None, None, 1)), ctx), "c"),
+            (function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(None, None, None)), ctx), "d")]
 
     for permutation in itertools.permutations(keys):
       cache = function_cache.FunctionCache()
-      cache.add(permutation[0][0], permutation[0][1],
-                trace_type.WeakrefDeletionObserver(), permutation[0][2])
-      cache.add(permutation[1][0], permutation[1][1],
-                trace_type.WeakrefDeletionObserver(), permutation[1][2])
-      cache.add(permutation[2][0], permutation[2][1],
-                trace_type.WeakrefDeletionObserver(), permutation[2][2])
-      cache.add(permutation[3][0], permutation[3][1],
-                trace_type.WeakrefDeletionObserver(), permutation[3][2])
+      cache.add(permutation[0][0], trace_type.WeakrefDeletionObserver(),
+                permutation[0][1])
+      cache.add(permutation[1][0], trace_type.WeakrefDeletionObserver(),
+                permutation[1][1])
+      cache.add(permutation[2][0], trace_type.WeakrefDeletionObserver(),
+                permutation[2][1])
+      cache.add(permutation[3][0], trace_type.WeakrefDeletionObserver(),
+                permutation[3][1])
 
       self.assertEqual(
-          cache.lookup(ctx, make_single_param_type(MockShape(1, 1, 1))), "a")
+          cache.lookup(
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(1, 1, 1)), ctx), True), "a")
       self.assertEqual(
-          cache.lookup(ctx, make_single_param_type(MockShape(1, 2, 1))), "b")
+          cache.lookup(
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(1, 2, 1)), ctx), True), "b")
       self.assertEqual(
-          cache.lookup(ctx, make_single_param_type(MockShape(2, 2, 1))), "c")
+          cache.lookup(
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(2, 2, 1)), ctx), True), "c")
       self.assertEqual(
-          cache.lookup(ctx, make_single_param_type(MockShape(2, 2, 2))), "d")
+          cache.lookup(
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(2, 2, 2)), ctx), True), "d")
 
   def testWeakRefDeletionAlsoDeletesConcreteFunction(self):
     if not function_cache.DELETE_WITH_WEAKREF:
       self.skipTest("Weakref-Based Deletion is disabled")
 
     dummy_object = DummyClass()
-    key, deletion_observer = make_type_and_deleter(dummy_object)
+    key, deletion_observer = function_context.make_cache_key(dummy_object)
 
     cache = function_cache.FunctionCache()
-    cache.add(make_none_context(), key, deletion_observer, "testing")
-    self.assertEqual(cache.lookup(make_none_context(), key), "testing")
+    cache.add(key, deletion_observer, "testing")
+    self.assertEqual(cache.lookup(key, False), "testing")
 
     del dummy_object
-    self.assertIsNone(cache.lookup(make_none_context(), key))
+    self.assertIsNone(cache.lookup(key, False))
 
   def testMultipleObjectsWeakRefDeletion(self):
     if not function_cache.DELETE_WITH_WEAKREF:
@@ -260,33 +306,33 @@ class FunctionCacheTest(test.TestCase):
 
     dummy_object_1 = DummyClass()
     dummy_object_2 = DummyClass()
-    key, deletion_observer = make_type_and_deleter(
+    key, deletion_observer = function_context.make_cache_key(
         (dummy_object_1, dummy_object_2))
 
     cache = function_cache.FunctionCache()
-    cache.add(make_none_context(), key, deletion_observer, "testing")
-    self.assertEqual(cache.lookup(make_none_context(), key), "testing")
+    cache.add(key, deletion_observer, "testing")
+    self.assertEqual(cache.lookup(key, False), "testing")
 
     del dummy_object_1
-    self.assertIsNone(cache.lookup(make_none_context(), key))
+    self.assertIsNone(cache.lookup(key, False))
 
     del dummy_object_2
-    self.assertIsNone(cache.lookup(make_none_context(), key))
+    self.assertIsNone(cache.lookup(key, False))
 
   def testObjectDeletedDuringFunctionCallDoesntAddConcreteFunction(self):
     if not function_cache.DELETE_WITH_WEAKREF:
       self.skipTest("Weakref-Based Deletion is disabled")
 
     def second(o):
-      return make_type_and_deleter(o)
+      return function_context.make_cache_key(o)
 
     def first():
       return second(DummyClass())
 
     key, deletion_observer = first()
     cache = function_cache.FunctionCache()
-    cache.add(make_none_context(), key, deletion_observer, "testing")
-    self.assertIsNone(cache.lookup(make_none_context(), key))
+    cache.add(key, deletion_observer, "testing")
+    self.assertIsNone(cache.lookup(key, False))
 
 
 class FunctionCacheBenchmark(test.Benchmark):
@@ -304,31 +350,29 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(make_type_and_deleter(args))
+      keys.append(function_context.make_cache_key(args))
 
     for key in keys[:-1]:
-      cache.add(make_none_context(), *key, "testing")
+      cache.add(*key, "testing")
 
     iterations = 10000
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(make_none_context(), keys[-1][0]),
-        number=iterations)
+        lambda: cache.lookup(keys[-1][0], True), number=iterations)
     equality_time = timeit.timeit(
-        lambda: cache.lookup(make_none_context(), keys[-1][0]),
-        number=iterations)
+        lambda: cache.lookup(keys[-1][0], False), number=iterations)
 
     self.report_benchmark(
-        name="cache_hit_50th_f_type_miss",
+        name="cache_hit_50th_key_miss",
         iters=iterations,
         wall_time=subtyping_time + equality_time,
         metrics=[{
-            "name": "cache_hit_50th_f_type_miss_subtype_avg_ms",
+            "name": "cache_hit_50th_key_miss_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }, {
-            "name": "cache_hit_50th_f_type_miss_equality_avg_ms",
+            "name": "cache_hit_50th_key_miss_equality_avg_ms",
             "value": equality_time / iterations * 1000
         }, {
-            "name": "cache_hit_50th_f_type_miss_subtype_over_equality_ratio",
+            "name": "cache_hit_50th_key_miss_subtype_over_equality_ratio",
             "value": subtyping_time / equality_time
         }])
 
@@ -345,31 +389,29 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(make_type_and_deleter(args))
+      keys.append(function_context.make_cache_key(args))
 
     for key in keys:
-      cache.add(make_none_context(), *key, "testing")
+      cache.add(*key, "testing")
 
     iterations = 10000
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(make_none_context(), keys[-1][0]),
-        number=iterations)
+        lambda: cache.lookup(keys[-1][0], True), number=iterations)
     equality_time = timeit.timeit(
-        lambda: cache.lookup(make_none_context(), keys[-1][0]),
-        number=iterations)
+        lambda: cache.lookup(keys[-1][0], False), number=iterations)
 
     self.report_benchmark(
-        name="cache_hit_50th_f_type_equal",
+        name="cache_hit_50th_key_equal",
         iters=iterations,
         wall_time=subtyping_time + equality_time,
         metrics=[{
-            "name": "cache_hit_50th_f_type_equal_subtype_avg_ms",
+            "name": "cache_hit_50th_key_equal_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }, {
-            "name": "cache_hit_50th_f_type_equal_equality_avg_ms",
+            "name": "cache_hit_50th_key_equal_equality_avg_ms",
             "value": equality_time / iterations * 1000
         }, {
-            "name": "cache_hit_50th_f_type_subtype_over_equality_ratio",
+            "name": "cache_hit_50th_key_subtype_over_equality_ratio",
             "value": subtyping_time / equality_time
         }])
 
@@ -386,28 +428,30 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(make_type_and_deleter(args))
+      keys.append(function_context.make_cache_key(args))
 
     for key in keys:
-      cache.add(make_none_context(), *key, "testing")
-    cache.add(make_none_context(),
-              make_single_param_type(MockSubtypeOf2(2)),
-              trace_type.WeakrefDeletionObserver(), "testing")
-    cache.lookup(make_none_context(),
-                 make_single_param_type(MockSubtypeOf2(3)))
+      cache.add(*key, "testing")
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockSubtypeOf2(2)), None),
+        trace_type.WeakrefDeletionObserver(), "testing")
+    cache.lookup(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockSubtypeOf2(3)), None), True)
 
     iterations = 10000
-    lookup_key = make_single_param_type(MockSubtypeOf2(2))
+    lookup_key = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), None)
     subtyping_time = timeit.timeit(
-        lambda: cache.lookup(make_none_context(), lookup_key),
-        number=iterations)
+        lambda: cache.lookup(lookup_key, True), number=iterations)
 
     self.report_benchmark(
-        name="cache_hit_50th_f_type_known_subtype",
+        name="cache_hit_50th_key_known_subtype",
         iters=iterations,
         wall_time=subtyping_time,
         metrics=[{
-            "name": "cache_hit_50th_f_type_known_subtype_avg_ms",
+            "name": "cache_hit_50th_key_known_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }])
 
@@ -424,31 +468,33 @@ class FunctionCacheBenchmark(test.Benchmark):
       args = []
       for j in range(args_per_call):
         args.append(array_ops.zeros([i, j]))
-      keys.append(make_type_and_deleter(args))
+      keys.append(function_context.make_cache_key(args))
 
     def setup():
       cache.clear()
       for key in keys:
-        cache.add(make_none_context(), *key, "testing")
-      cache.add(make_none_context(),
-                make_single_param_type(MockSubtypeOf2(3)),
-                trace_type.WeakrefDeletionObserver(), "testing")
+        cache.add(*key, "testing")
+      cache.add(
+          function_cache.FunctionCacheKey(
+              make_single_param_type(MockSubtypeOf2(3)), None),
+          trace_type.WeakrefDeletionObserver(), "testing")
 
     iterations = 10000
-    lookup_key = make_single_param_type(MockSubtypeOf2(2))
+    lookup_key = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), None)
     subtyping_time = sum(
         timeit.repeat(
-            stmt=lambda: cache.lookup(make_none_context(), lookup_key),
+            stmt=lambda: cache.lookup(lookup_key, True),
             setup=setup,
             repeat=iterations,
             number=1))
 
     self.report_benchmark(
-        name="cache_hit_50th_f_type_unknown_subtype",
+        name="cache_hit_50th_key_unknown_subtype",
         iters=iterations,
         wall_time=subtyping_time,
         metrics=[{
-            "name": "cache_hit_50th_f_type_unknown_subtype_avg_ms",
+            "name": "cache_hit_50th_key_unknown_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }])
 

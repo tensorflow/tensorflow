@@ -17,7 +17,7 @@
 import collections
 from typing import Optional, Iterable
 
-from tensorflow.core.function.polymorphism import function_type
+from tensorflow.python.types import trace
 
 # The maximum number of dispatch lookups to cache.
 _MAX_DISPATCH_CACHE = 1024
@@ -28,9 +28,9 @@ class TypeDispatchTable:
 
   A type dispatch table is a list, L, of target types. Given a request type, R,
   the table selects a target type, T, according to the following dispatch rules:
-    1. R == T or R is supertype of T (functions are contravariant on args)
-    2. There does not exist O in L such that R is supertype of O and O is a
-       supertype of T (in other words, T is the closest to R, within list L).
+    1. R == T or R is subtype of T
+    2. There does not exist O in L such that R is subtype of O and O is a
+       subtype of T (in other words, T is the closest to R, within list L).
     3. If the above two rules are satisfied by multiple targets, the earliest
        inserted one is chosen.
   """
@@ -46,19 +46,19 @@ class TypeDispatchTable:
     # Does not contain exact matches, i.e, if cache[a] is b then a is not b.
     self._dispatch_cache = collections.OrderedDict()
 
-  def add_target(self, target: function_type.FunctionType) -> None:
+  def add_target(self, target: trace.TraceType) -> None:
     """Adds a new target type."""
     self._dispatch_table[target] = None
     for request in self._dispatch_cache:
-      if target.is_supertype_of(self._dispatch_cache[request]):
+      if target.is_subtype_of(self._dispatch_cache[request]):
         self._dispatch_cache[request] = target
 
   @property
-  def targets(self) -> Iterable[function_type.FunctionType]:
+  def targets(self) -> Iterable[trace.TraceType]:
     """Returns an iterable to all targets in the table."""
     return self._dispatch_table.keys()
 
-  def delete(self, target: function_type.FunctionType) -> None:
+  def delete(self, target: trace.TraceType) -> None:
     """Deletes a target in the table if it exists."""
     if target in self._dispatch_table:
       del self._dispatch_table[target]
@@ -72,10 +72,8 @@ class TypeDispatchTable:
     self._dispatch_table.clear()
     self._dispatch_cache.clear()
 
-  def dispatch(
-      self, request: function_type.FunctionType
-  ) -> Optional[function_type.FunctionType]:
-    """Returns the most specific supertype target if it exists in the table."""
+  def dispatch(self, request: trace.TraceType) -> Optional[trace.TraceType]:
+    """Returns the deepest subtype target if it exists in the table."""
     # For known exact matches.
     if request in self._dispatch_table:
       return request
@@ -88,15 +86,15 @@ class TypeDispatchTable:
       self._dispatch_cache[request] = result
       return result
 
-    most_specific_supertype = None
+    most_specific_subtype = None
     for other in self._dispatch_table:
-      if request.is_supertype_of(other):
-        if most_specific_supertype is None or other.is_supertype_of(
-            most_specific_supertype):
-          most_specific_supertype = other
+      if request.is_subtype_of(other):
+        if most_specific_subtype is None or other.is_subtype_of(
+            most_specific_subtype):
+          most_specific_subtype = other
 
-    self._cache_dispatch(request, most_specific_supertype)
-    return most_specific_supertype
+    self._cache_dispatch(request, most_specific_subtype)
+    return most_specific_subtype
 
   def _cache_dispatch(self, request, target):
     """Caches the dispatch lookup result for a target."""
@@ -106,26 +104,26 @@ class TypeDispatchTable:
         self._dispatch_cache.popitem(last=False)
       self._dispatch_cache[request] = target
 
-  def try_generalizing_function_type(
-      self, target: function_type.FunctionType) -> function_type.FunctionType:
+  def try_generalizing_trace_type(self,
+                                  target: trace.TraceType) -> trace.TraceType:
     """Returns a generalized subtype of the one given.
 
     This heuristic aims to reduce the number of future traces by computing a
     type that represents more general function inputs.
 
     The original "experimental_relax_shapes" heuristic identified a known type
-    which shared a common subtype with the current unknown type and then
-    traced with that common subtype. However, the notion of "common subtype"
-    was only limited to shapes. This heuristic extends that to FunctionType.
+    which shared a common supertype with the current unknown type and then
+    traced with that common supertype. However, the notion of "common supertype"
+    was only limited to shapes. This heuristic extends that to TraceType.
 
-    Returns `target` if a generalized subtype can not be found.
+    Returns `target` if a common supertype can not be found.
 
     Args:
-      target: The FunctionType to generalize
+      target: The TraceType to generalize
     """
     relaxed = target
     for other in self._dispatch_table:
-      subtype = relaxed.most_specific_common_subtype([other])
-      if subtype is not None:
-        relaxed = subtype
+      supertype = relaxed.most_specific_common_supertype([other])
+      if supertype is not None:
+        relaxed = supertype
     return relaxed
