@@ -123,7 +123,6 @@ function generate_flex_aar {
 
   # Build the aar package.
   bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++17' \
-      --config=monolithic \
       --fat_apk_cpu=${TARGET_ARCHS} \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
       //tmp:tensorflow-lite-select-tf-ops
