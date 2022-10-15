@@ -1622,3 +1622,13 @@ add {
   %arg0.1 = s32[4] parameter(0), sharding={devices=[2,1]0,1}
   ROOT %copy.1 = s32[4] copy(%arg0.1), sharding={devices=[2,1]0,1}
 }
+
+// CHECK-LABEL: func private @named_thread
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10xf32>)
+// CHECK-SAME: execution_thread = "mythread"
+ %named_thread (p0.1: f32[10]) -> f32[20] {
+   %p0.1 = f32[10]{0} parameter(0)
+  // CHECK:  "mhlo.custom_call"
+   ROOT %custom-call = f32[20]{0} custom-call(f32[10]{0} %p0.1),
+                                  custom_call_target="foo"
+ }, execution_thread="mythread"

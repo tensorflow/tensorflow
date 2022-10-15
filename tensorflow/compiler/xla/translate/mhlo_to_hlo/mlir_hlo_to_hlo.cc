@@ -2545,6 +2545,13 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::func::FuncOp f) {
                                        &computation))) {
     return failure();
   }
+  if (auto execution_thread =
+          f->getAttrOfType<mlir::StringAttr>("execution_thread")) {
+    computation.mutable_proto()
+        ->mutable_computations()
+        ->at(0)
+        .set_execution_thread(execution_thread.str());
+  }
   lowered_computation_[f] = std::move(computation);
   return success();
 }

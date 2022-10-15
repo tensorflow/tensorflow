@@ -361,6 +361,10 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
         builder_->getStringAttr(
             result->sharding().ToProto().SerializeAsString()));
   }
+  if (computation.execution_thread() != "main") {
+    function->setAttr("execution_thread",
+                      builder_->getStringAttr(computation.execution_thread()));
+  }
 
   module_.push_back(function);
 

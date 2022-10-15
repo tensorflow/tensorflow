@@ -1890,3 +1890,13 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_thread = "test_thread"} {
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
+}
+// CHECK-LITERAL: }, execution_thread="test_thread"
