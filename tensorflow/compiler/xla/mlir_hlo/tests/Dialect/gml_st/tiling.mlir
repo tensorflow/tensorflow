@@ -235,14 +235,6 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 // CHECK-FOR:       return %[[FOR_0]]
 
 
-// CHECK-PARALLEL-LABEL: @reduce_row
-// CHECK-PARALLEL-SAME:  %[[LHS:.*]]: tensor<?x?xf32>, %[[RHS:.*]]: tensor<?x?xf32>
-
-// CHECK-PARALLEL-NOT:   gml_st.parallel
-// CHECK-PARALLEL:       %[[RES:.*]] = linalg.generic
-// CHECK-PARALLEL-NOT:   gml_st.parallel
-// CHECK-PARALLEL:       return %[[RES]]
-
 // -----
 
 func.func @thlo_reduction(
