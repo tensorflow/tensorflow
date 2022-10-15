@@ -830,9 +830,6 @@ cc_library(
         ":cublas_cudnn",
         ":ir_emission_utils",
         ":matmul_utils",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -843,9 +840,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core:lib",
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(

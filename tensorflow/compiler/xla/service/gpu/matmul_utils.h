@@ -107,8 +107,6 @@ struct GemmConfig {
   int64_t compute_precision;
 };
 
-StatusOr<se::blas::ComputationType> GetBlasComputationType(PrimitiveType dtype);
-
 // Run the given GEMM instruction `gemm` subject to the configuration
 // in `gemm_config` and the passed buffers.
 //
@@ -120,8 +118,6 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::blas::ProfileResult* profile_result = nullptr);
 
 #if GOOGLE_CUDA
-
-StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype);
 
 namespace cublas_lt {
 

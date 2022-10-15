@@ -366,6 +366,22 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       op.getBeta().convertToDouble(), algorithm, compute_precision);
 }
 
+namespace {
+
+// BLAS GeMM's output is column-major. If we require row-major, use identity:
+// C^T = (A @ B)^T = B^T @ A^T.
+bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
+                           MatrixLayout& output) {
+  bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
+  if (swap_operands) {
+    std::swap(lhs, rhs);
+    lhs.Transpose();
+    rhs.Transpose();
+    output.Transpose();
+  }
+  return swap_operands;
+}
+
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
     PrimitiveType dtype) {
   switch (dtype) {
@@ -384,22 +400,6 @@ StatusOr<se::blas::ComputationType> GetBlasComputationType(
     default:
       return InternalError("unsupported type");
   }
-}
-
-namespace {
-
-// BLAS GeMM's output is column-major. If we require row-major, use identity:
-// C^T = (A @ B)^T = B^T @ A^T.
-bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
-                           MatrixLayout& output) {
-  bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
-  if (swap_operands) {
-    std::swap(lhs, rhs);
-    lhs.Transpose();
-    rhs.Transpose();
-    output.Transpose();
-  }
-  return swap_operands;
 }
 
 se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
@@ -560,6 +560,8 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
 
 #if GOOGLE_CUDA
 
+namespace {
+
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   switch (dtype) {
     case F16:
@@ -578,8 +580,6 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
       return InternalError("unsupported type");
   }
 }
-
-namespace {
 
 StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
     const MatrixLayout& layout) {
