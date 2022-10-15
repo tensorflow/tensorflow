@@ -68,13 +68,27 @@ se::KernelBase* GpuExecutableKernelsCache::Set(
 // Define the kernel launch custom call.
 //===----------------------------------------------------------------------===//
 
-static absl::Status LaunchFunc(
+namespace {
+struct KernelLaunch {
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  absl::Status operator()(
+      const ServiceExecutableRunOptions* run_options, const std::string* ptx,
+      const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
+      GpuExecutableKernelsCache* kernels_cache, int32_t grid_size_x,
+      int32_t grid_size_y, int32_t grid_size_z, int32_t block_size_x,
+      int32_t block_size_y, int32_t block_size_z,
+      CustomCall::RemainingArgs args, std::string_view name) const;
+  static KernelLaunch Handler() { return KernelLaunch(); }
+};
+}  // namespace
+
+absl::Status KernelLaunch::operator()(
     const ServiceExecutableRunOptions* run_options, const std::string* ptx,
     const std::vector<uint8_t>* cubin, se::DeviceMemoryBase* temp_buffer,
     GpuExecutableKernelsCache* kernels_cache, int32_t grid_size_x,
     int32_t grid_size_y, int32_t grid_size_z, int32_t block_size_x,
     int32_t block_size_y, int32_t block_size_z, CustomCall::RemainingArgs args,
-    std::string_view name) {
+    std::string_view name) const {
   se::Stream* stream = run_options->stream();
   se::StreamExecutor* executor = stream->parent();
 
@@ -147,7 +161,7 @@ static bool Launch(runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .Arg<int32_t>()   // block_size_x
                              .RemainingArgs()  // args
                              .Attr<std::string_view>("kernel")
-                             .To<checks>(LaunchFunc)
+                             .To<checks>(KernelLaunch::Handler())
                              .release();
 
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
