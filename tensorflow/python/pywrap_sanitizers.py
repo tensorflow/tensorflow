@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python module for sanitizer detection functions exported by pybind11."""
+"""pybind11: a Python module for sanitizer detection functions exported by python."""
 
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
 from tensorflow.python import pywrap_tensorflow
