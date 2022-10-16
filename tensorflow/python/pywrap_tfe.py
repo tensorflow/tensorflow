@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Python module for TFE ops and functions exported by pybind11.
+"""The Python module for TFE ops and functions exported by pybind11
 
-This module is created because we are splitting out eager bindings from
-pywrap_tensorflow. This is causing some issues where Graphs are not properly
-initialized when running eager code. Once the graph architecture has been
-removed from pywrap_tensorflow as well, we can remove this file.
+
+This module was created because we are splitting out eager bindings from
+pywrap_tensorflow. This is causing some issues where graphs are not properly
+initialised when running eager code. Once the graph architecture has been
+This file can be removed from pywrap_tensorflow as well.
 """
 
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
