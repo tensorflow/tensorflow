@@ -59,7 +59,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/byte_swap_array.h"
+#include "tensorflow/tsl/util/tensor_bundle/byte_swap_array.h"
 
 namespace tensorflow {
 
@@ -762,10 +762,10 @@ Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
     } else {
       Tensor ts_ = tensor::DeepCopy(other);
       buf_ = ts_.buf_;
-      TF_RETURN_IF_ERROR(ByteSwapArray(
+      TF_RETURN_IF_ERROR(tsl::ByteSwapArray(
           (char*)(buf_->root_buffer()->data()), 
           in_size, other.shape().num_elements()));
-      TF_RETURN_IF_ERROR(ByteSwapArray(
+      TF_RETURN_IF_ERROR(tsl::ByteSwapArray(
           (char*)(buf_->root_buffer()->data()), 
           out_size, shape.num_elements()));
       RefIfNonNull(buf_);
