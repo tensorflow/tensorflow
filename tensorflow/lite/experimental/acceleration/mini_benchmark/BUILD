@@ -518,11 +518,12 @@ cc_library(
 # SetBigCoresAffinity function.
 # This allow us to override the SetBigCoresAffinity definition during test.
 # We cannot simply alter the SetBigCoresAffinity behaviour to make it
-# controllabe by tests because the validation code will run in a separate
+# controllable by tests because the validation code will run in a separate
 # process.
 cc_library(
     name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
+    hdrs = ["validator_runner_entrypoint.h"],
     deps = [
         ":constants",
         ":fb_storage",
@@ -877,7 +878,10 @@ cc_test(
 cc_binary(
     name = "validator_runner_so_for_tests",
     testonly = 1,
-    srcs = ["validator_runner_entrypoint.cc"],
+    srcs = [
+        "validator_runner_entrypoint.cc",
+        "validator_runner_entrypoint.h",
+    ],
     linkshared = True,
     deps = [
         ":constants",
@@ -1069,14 +1073,14 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":fb_storage",
         ":status_codes",
         ":validator",
-        ":validator_runner",
-        ":validator_runner_entrypoint_without_affinity_deps",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        # This target is used with dlsym() in the test.
+        ":validator_runner_entrypoint_without_affinity_deps",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
 
