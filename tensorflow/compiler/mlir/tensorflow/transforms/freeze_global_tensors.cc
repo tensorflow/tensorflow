@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 
 #define DEBUG_TYPE "freeze-global-tensor"
 
@@ -42,8 +42,10 @@ namespace tf_saved_model {
 
 namespace {
 
+#define GEN_PASS_DEF_FREEZEGLOBALTENSORSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 struct FreezeGlobalTensorsPass
-    : public FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
+    : public impl::FreezeGlobalTensorsPassBase<FreezeGlobalTensorsPass> {
   explicit FreezeGlobalTensorsPass(bool allow_mutable_tensors) {
     this->allow_mutable_tensors = allow_mutable_tensors;
   }
@@ -69,7 +71,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
     // This pass assumes that all global tensors as immutable (e.g. by a
     // previous optimize global tensors pass). If not, this pass has to fail
     // since it cannot perform one of its goals.
-    if (global_tensor.is_mutable()) {
+    if (global_tensor.getIsMutable()) {
       if (allow_mutable_tensors) continue;
       global_tensor.emitError()
           << "is not immutable, try removing mutable variables in your model "
@@ -100,7 +102,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       if (!globalTensor)
         continue;  // happens if the name is e.g. in a VarHandleOp.
 
-      if (globalTensor.is_mutable()) {
+      if (globalTensor.getIsMutable()) {
         freezeable[val] = false;
         continue;
       }
@@ -157,7 +159,7 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // Replace the arg with a tf.Const op in the function body.
       builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
-                                                  global_tensor.value());
+                                                  global_tensor.getValue());
       args_to_erase.set(val.getArgNumber());
       for (auto read_op : read_variable_ops_to_erase) {
         read_op.getResult().replaceAllUsesWith(const_op.getResult());

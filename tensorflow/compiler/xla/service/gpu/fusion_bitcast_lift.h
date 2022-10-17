@@ -24,10 +24,10 @@ namespace gpu {
 
 // Lift "rank-reducing bitcast" inside fusions to outside the fusion.
 //
-// Bitcast instruction are no-op, so we can duplicate them for free.
-// "rank-reducing bitcast" is defined to be a bitcast whose output have
-// a lower rank than the input.  Inside a fusion, we lift the
-// "rank-reducing bitcast" out of the fusion as this allow using simpler,
+// Bitcast instructions are no-op, so we can duplicate them for free.
+// "rank-reducing bitcast" is defined to be a bitcast whose output has
+// a lower rank than the input. Inside a fusion, we lift the
+// "rank-reducing bitcast" out of the fusion as this allows using simpler,
 // so faster, indexing.
 class FusionBitcastLift : public HloModulePass {
  public:

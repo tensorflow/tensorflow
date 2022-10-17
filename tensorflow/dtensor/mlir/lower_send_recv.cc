@@ -21,43 +21,18 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
-#include "tensorflow/dtensor/mlir/layout_parsing.h"
-#include "tensorflow/dtensor/mlir/spmd_expander_common.h"
-#include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
-
-constexpr char kMissingMeshErrorMsg[] =
-    "Failed to extract mesh for DTensorMergeCluster pass. "
-    "All clusters must have specified mesh.";
-
-// Extracts mesh from `cluster`.
-mlir::LogicalResult ExtractMeshFromCluster(mlir::tf_device::ClusterOp cluster,
-                                           Mesh* mesh_output) {
-  auto mesh_or_status = ExtractDeviceMeshFromOp(cluster);
-  if (!mesh_or_status.ok()) return cluster.emitOpError(kMissingMeshErrorMsg);
-
-  const absl::optional<Mesh>& mesh_or_null = *mesh_or_status;
-  if (!mesh_or_null.has_value())
-    return cluster.emitOpError(kMissingMeshErrorMsg);
-
-  *mesh_output = mesh_or_null.value();
-  return mlir::success();
-}
+#define GEN_PASS_DEF_DTENSORLOWERSENDRECV
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Find all DTesorSend/Recv ops and lower into TF/XLA Send/Recv operations with
 // execution kernels.
@@ -72,48 +47,10 @@ mlir::LogicalResult LowerDTensorSendRecvsOps(mlir::ModuleOp module) {
       result = send_op.emitOpError(recv_op.status().error_message());
       return;
     }
-    auto dtensor_recv = llvm::dyn_cast<mlir::TF::DTensorRecv>(*recv_op);
-    if (!dtensor_recv) {
-      result = send_op.emitOpError(
-          "Cannot find a matching DTensorRecv op for this DTensorSend op");
-      return;
-    }
-    const Mesh recv_mesh = dtensor_recv.layout().mesh();
 
-    Mesh send_mesh;
-    if (mlir::failed(ExtractMeshFromCluster(
-            send_op->getParentOfType<mlir::tf_device::ClusterOp>(),
-            &send_mesh))) {
-      result = mlir::failure();
-      return;
-    }
-
-    if (!send_mesh.is_tpu_mesh() && !recv_mesh.is_tpu_mesh()) {
-      result = send_op->emitOpError(
-          "Multi-mesh tensor transfer between non-xla devices are not yet "
-          "supported.");
-      return;
-    }
-
-    const Layout recv_layout =
-        Layout::ReplicatedOnMesh(recv_mesh, ValueRank(dtensor_recv.output()));
-    const Layout send_input_layout =
-        Layout::ReplicatedOnMesh(send_mesh, ValueRank(send_op.input()));
-
-    StatusOr<mlir::Operation*> lowered_recv =
-        LowerDTensorRecvToXlaOp(dtensor_recv);
-    if (!lowered_recv.ok()) {
-      result = dtensor_recv->emitOpError(lowered_recv.status().error_message());
-      return;
-    }
-    dtensor_recv->replaceAllUsesWith(*lowered_recv);
-    dtensor_recv.erase();
-
-    auto lowered_send_or =
-        LowerDTensorSendToXlaOp(send_input_layout, send_op.input(), send_op,
-                                /*from_spmd_expander=*/false);
-    if (!lowered_send_or.ok()) {
-      result = send_op->emitOpError(lowered_send_or.status().error_message());
+    auto status = LowerDTensorSendAndRecv(send_op, *recv_op);
+    if (!status.ok()) {
+      result = send_op->emitOpError(status.status().error_message());
       return;
     }
   });
@@ -157,7 +94,7 @@ void PropagateDeviceIdToClusters(mlir::ModuleOp module) {
 // into a single cluster. After this pass, exactly one tf_device.Cluster op
 // exists for each device mesh.
 struct DTensorLowerSendRecv
-    : public DTensorLowerSendRecvBase<DTensorLowerSendRecv> {
+    : public impl::DTensorLowerSendRecvBase<DTensorLowerSendRecv> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder op_builder(&context);

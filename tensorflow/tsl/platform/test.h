@@ -64,7 +64,7 @@ std::string TmpDir();
 // dependencies.
 //
 // A better alternative would be making use if
-// tensorflow/core/platform/resource_loader.h:GetDataDependencyFilepath. That
+// tensorflow/tsl/platform/resource_loader.h:GetDataDependencyFilepath. That
 // function should do the right thing both within and outside of tests allowing
 // avoiding test specific APIs.
 std::string TensorFlowSrcRoot();

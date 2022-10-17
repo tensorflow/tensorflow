@@ -143,7 +143,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
   CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
-    return ::tensorflow::OkStatus();
+    return ::tsl::OkStatus();
   }
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {

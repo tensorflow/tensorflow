@@ -1042,11 +1042,11 @@ class NameBasedSaverStatus(_LoadStatus):
         if all(a[0] is not x for x in self._optionally_restored)
     ]
     if unused_attributes:
-      unused_attribute_strings = [
-          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes]
+      unused_attribute_string = "".join(
+          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes)
       raise AssertionError(
           "Some objects had attributes which were not restored: "
-          f"{unused_attribute_strings}")
+          f"{unused_attribute_string}")
     for trackable in util.list_objects(self._object_graph_view):
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
@@ -1319,6 +1319,9 @@ class TrackableSaver:
 
     Returns:
       The full path to the checkpoint.
+
+    Raises:
+      RuntimeError: if called in V1 Graph mode without a default session.
     """
     options = options or checkpoint_options.CheckpointOptions()
     feed_dict = {}
@@ -1357,6 +1360,10 @@ class TrackableSaver:
 
     if session:
       return session.run(save_path, feed_dict=feed_dict)
+    elif use_session:
+      raise RuntimeError(f"Unable to save checkpoint to \"{file_prefix}\" "
+                         "in graph mode without a default session. Please use "
+                         "`with tf.Session():` to create a session.")
     else:
       return save_path
 

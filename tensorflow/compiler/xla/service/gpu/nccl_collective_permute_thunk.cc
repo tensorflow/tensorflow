@@ -24,9 +24,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 #if XLA_ENABLE_XCCL
@@ -186,7 +186,7 @@ Status RunCollectivePermute(
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                       ToNcclDataTypeAndCountMultiplier(buffer.element_type));
   ncclDataType_t dtype = dtype_and_multiplier.first;
-  int element_count = buffer.element_count * dtype_and_multiplier.second;
+  int64_t element_count = buffer.element_count * dtype_and_multiplier.second;
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 

@@ -88,6 +88,7 @@ struct ConvertConstantOp : public RewritePattern {
     LogicalResult matchAndRewrite(Operation* op,                             \
                                   PatternRewriter& rewriter) const override; \
   }
+DECL_CONVERT_OP(Gelu);
 DECL_CONVERT_OP(Relu);
 DECL_CONVERT_OP(Relu1);
 DECL_CONVERT_OP(Relu6);
@@ -128,6 +129,7 @@ DECL_CONVERT_OP(Mean);
 DECL_CONVERT_OP(ReduceProd);
 DECL_CONVERT_OP(Sum);
 DECL_CONVERT_OP(Conv2D);
+DECL_CONVERT_OP(Conv3D);
 DECL_CONVERT_OP(TransposeConv);
 DECL_CONVERT_OP(DepthwiseConv2D);
 DECL_CONVERT_OP(FullyConnected);
@@ -177,6 +179,108 @@ DECL_CONVERT_OP(FakeQuant);
 
 #undef DECL_CONVERT_OP
 
+LogicalResult ConvertTFLGeluOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_gelu_op = cast<TFL::GeluOp>(op);
+  Location loc = op->getLoc();
+
+  Value input = tfl_gelu_op.input();
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      tfl_gelu_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!input_type || !output_type) {
+    return rewriter.notifyMatchFailure(
+        op, "input/output are not all a ranked tensor");
+  }
+
+  UniformQuantizedType in_quant_type =
+      input_type.getElementType().dyn_cast<mlir::quant::UniformQuantizedType>();
+  UniformQuantizedType out_quant_type =
+      output_type.getElementType()
+          .dyn_cast<mlir::quant::UniformQuantizedType>();
+
+  if ((in_quant_type == nullptr) != (out_quant_type == nullptr)) {
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
+  }
+
+  if (out_quant_type) {
+    // The formal definition of gelu.
+    auto gelu_func = [](double x) -> double {
+      return 0.5 * x * (1.0 + std::erf(x / std::sqrt(2)));
+    };
+
+    if (in_quant_type.getStorageTypeIntegralWidth() != 8) {
+      return rewriter.notifyMatchFailure(
+          op, "current tfl.gelu only support 8-bit quantized type");
+    }
+
+    Value table_const = getTosaConst8bitTable(
+        rewriter, op, in_quant_type.getScale(), in_quant_type.getZeroPoint(),
+        out_quant_type.getScale(), out_quant_type.getZeroPoint(), gelu_func);
+
+    CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type, input,
+                                           table_const);
+    return success();
+  }
+
+  // Following approximated implemention described in
+  //   tensorflow/lite/kernels/internal/reference/gelu.h
+  //
+  // gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+  //
+  // Lower the formula to the sequence of operators below:
+  //   op0 = pow(x, 3)
+  //   op1 = mul(op0, 0.044715)
+  //   op2 = add(x, op1)
+  //   op3 = mul(op2, sqrt(2/pi))
+  //   op4 = tanh(op3)
+  //   op5 = add(op4 ,1)
+  //   op6 = mul(x, 0.5)
+  //   op7 = mul(op6, op5)
+
+  auto fp_scalar_ty = RankedTensorType::get({}, rewriter.getF32Type());
+
+  Value cst_3 = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {3.0f}));
+  auto op0_pow_3 =
+      CreateOpAndInfer<tosa::PowOp>(rewriter, loc, output_type, input, cst_3);
+
+  Value cst_004 = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {4.471500e-02f}));
+  auto op1_mul_op0_004 = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, output_type, op0_pow_3, cst_004, 0);
+
+  auto op2_add_x_op1 = CreateOpAndInfer<tosa::AddOp>(rewriter, loc, output_type,
+                                                     input, op1_mul_op0_004);
+
+  Value cst_sqrt2pi = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {0.797884583f}));
+  auto op3_mul_op2_sqrt2pi = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, output_type, op2_add_x_op1, cst_sqrt2pi, 0);
+
+  auto op4_tanh_op3 = CreateOpAndInfer<tosa::TanhOp>(rewriter, loc, output_type,
+                                                     op3_mul_op2_sqrt2pi);
+
+  Value cst_1 = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {1.0f}));
+  auto op5_add_op4_1 = CreateOpAndInfer<tosa::AddOp>(rewriter, loc, output_type,
+                                                     op4_tanh_op3, cst_1);
+
+  Value cst_05 = rewriter.create<tosa::ConstOp>(
+      loc, fp_scalar_ty, DenseElementsAttr::get(fp_scalar_ty, {0.5f}));
+  auto op6_mul_x_05 = CreateOpAndInfer<tosa::MulOp>(rewriter, loc, output_type,
+                                                    input, cst_05, 0);
+
+  auto op7_mul_op6_op5 = CreateOpAndInfer<tosa::MulOp>(
+      rewriter, loc, output_type, op6_mul_x_05, op5_add_op4_1, 0);
+
+  rewriter.replaceOp(op, {op7_mul_op6_op5.getResult()});
+
+  return success();
+}
+
 LogicalResult ConvertTFLReluOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_relu_op = cast<TFL::ReluOp>(op);
@@ -193,9 +297,9 @@ LogicalResult ConvertTFLReluOp::matchAndRewrite(
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLReluOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   int64_t clamp_min = 0;
@@ -243,9 +347,9 @@ LogicalResult ConvertTFLRelu1Op::matchAndRewrite(
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLRelu1Op: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   int64_t clamp_min = -1;
@@ -298,9 +402,9 @@ LogicalResult ConvertTFLRelu6Op::matchAndRewrite(
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLRelu6Op: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   int64_t clamp_min = 0;
@@ -357,9 +461,9 @@ static LogicalResult prepareMatchAndRewriteComparison(
 
   if (input_x_is_qtype != input_y_is_qtype ||
       input_y_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLEqualOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   if (!output_is_qtype && !input_x_is_qtype && !input_y_is_qtype) {
@@ -377,9 +481,8 @@ static LogicalResult prepareMatchAndRewriteComparison(
 
   if (input_x_qtype.getScale() != input_y_qtype.getScale() ||
       input_x_qtype.getZeroPoint() != input_y_qtype.getZeroPoint()) {
-    return op->emitOpError(
-        "ConvertTFLEqualOp: input_x and input_y scale/zp "
-        "must be the same");
+    return rewriter.notifyMatchFailure(
+        op, "input_x and input_y scale/zp must be the same");
   }
 
   x = buildRescaleToInt32(rewriter, op, x, 1.0f, input_x_qtype.getZeroPoint());
@@ -496,9 +599,9 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
 
   if (input_lhs_is_qtype != output_is_qtype ||
       input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLAddOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   Value output;
@@ -646,7 +749,7 @@ LogicalResult ConvertTFLRoundOp::matchAndRewrite(
 
   ShapedType input_type = tfl_round_op.x().getType().dyn_cast<ShapedType>();
   if (!input_type) {
-    return op->emitOpError("Round: input not shaped tensor type");
+    return rewriter.notifyMatchFailure(op, "input not shaped tensor type");
   }
 
   if (input_type.getElementType().isa<FloatType>()) {
@@ -728,9 +831,9 @@ LogicalResult ConvertTFLMaximumOp::matchAndRewrite(
 
   if (input_lhs_is_qtype != output_is_qtype ||
       input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLMaximumOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   Value output;
@@ -780,9 +883,9 @@ LogicalResult ConvertTFLMinimumOp::matchAndRewrite(
 
   if (input_lhs_is_qtype != output_is_qtype ||
       input_rhs_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLMinimumOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   Value output;
@@ -1023,9 +1126,10 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLConv2DOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/filter/output tensor should "
+        "be all quantized or all floating-point");
   }
 
   ArrayAttr pad;
@@ -1092,6 +1196,85 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_conv3d_op = cast<TFL::Conv3DOp>(op);
+  RankedTensorType input_type =
+      tfl_conv3d_op.input().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType filter_type =
+      tfl_conv3d_op.filter().getType().dyn_cast<RankedTensorType>();
+  ShapedType output_type =
+      tfl_conv3d_op.getResult().getType().dyn_cast<ShapedType>();
+
+  if (!input_type | !filter_type || !output_type) {
+    return rewriter.notifyMatchFailure(
+        op, "input/filter/output are not all a ranked tensor");
+  }
+
+  bool input_is_qtype =
+      input_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool filter_is_qtype =
+      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool output_is_qtype =
+      output_type.getElementType().isa<mlir::quant::QuantizedType>();
+
+  if ((input_is_qtype != filter_is_qtype) ||
+      (input_is_qtype != output_is_qtype)) {
+    return rewriter.notifyMatchFailure(op,
+                                       "input/filter/output tensor should be "
+                                       "all quantized or all floating-point");
+  }
+
+  Value unquantized_bias = tfl_conv3d_op.bias();
+  if (!unquantized_bias.getType().dyn_cast<RankedTensorType>()) {
+    // The bias may actually be typed "None" which has no value. TOSA requires
+    // bias to be an array of output_channel_count values, so create a constant
+    // of the appropriate number and type of zeros.
+    auto bias_dim = filter_type.getShape().back();
+    RankedTensorType bias_type =
+        RankedTensorType::get({bias_dim}, filter_type.getElementType());
+    auto bias_attr = rewriter.getZeroAttr(bias_type);
+    unquantized_bias = CreateOpAndInfer<tosa::ConstOp>(
+        rewriter, op->getLoc(), bias_type, bias_attr.cast<ElementsAttr>());
+  }
+
+  SmallVector<int64_t, 3> strides({tfl_conv3d_op.stride_d(),
+                                   tfl_conv3d_op.stride_h(),
+                                   tfl_conv3d_op.stride_w()});
+  SmallVector<int64_t, 3> dilations({tfl_conv3d_op.dilation_d_factor(),
+                                     tfl_conv3d_op.dilation_h_factor(),
+                                     tfl_conv3d_op.dilation_w_factor()});
+  Type bias_ety =
+      unquantized_bias.getType().cast<ShapedType>().getElementType();
+  llvm::Optional<Value> a1_conv3d_op = convertConv3DCommon(
+      rewriter, op, output_type.clone(bias_ety), tfl_conv3d_op.input(),
+      tfl_conv3d_op.filter(), unquantized_bias, strides, dilations,
+      tfl_conv3d_op.padding().str(), StringRef("NDHWC"));
+
+  if (!a1_conv3d_op) return failure();
+
+  Value conv3d_output =
+      input_is_qtype
+          ? buildRescaleOpConvOutput(rewriter, op, a1_conv3d_op.getValue(),
+                                     input_type, filter_type, output_type)
+          : a1_conv3d_op.getValue();
+
+  if (auto fused_activation_fn =
+          tfl_conv3d_op.fused_activation_functionAttr()) {
+    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+        rewriter, op, conv3d_output, fused_activation_fn);
+
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.value()});
+    return success();
+  }
+
+  rewriter.replaceOp(op, {conv3d_output});
+
+  return success();
+}
+
 LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_conv_op = cast<TFL::TransposeConvOp>(op);
@@ -1115,9 +1298,10 @@ LogicalResult ConvertTFLTransposeConvOp::matchAndRewrite(
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLConv2DOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/filter/output tensor should "
+        "be all quantized or all floating-point");
   }
 
   ArrayAttr stride;
@@ -1238,9 +1422,10 @@ LogicalResult ConvertTFLDepthwiseConv2DOp::matchAndRewrite(
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLConv2DOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/filter/output tensor should "
+        "be all quantized or all floating-point");
   }
 
   // We need the filter shape to compute the transpose.
@@ -1372,9 +1557,10 @@ LogicalResult ConvertTFLBatchMatMulOp::matchAndRewrite(
       result_ty.getElementType().isa<mlir::quant::QuantizedType>();
 
   if ((lhs_is_qtype != rhs_is_qtype) || (lhs_is_qtype != result_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLBatchMatMulOp: lhs/rhs/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "lhs/rhs/output tensor should "
+        "be all quantized or all floating-point");
   }
 
   auto batch_dims = lhs_ty.getShape().drop_back(2);
@@ -1484,9 +1670,10 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
 
   if ((input_is_qtype != filter_is_qtype) ||
       (input_is_qtype != output_is_qtype)) {
-    return op->emitOpError(
-        "ConvertTFLFullyConnectedOp: input/filter/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/filter/output tensor should "
+        "be all quantized or all floating-point");
   }
 
   Value input_val = tfl_fc_op.input();
@@ -1539,9 +1726,8 @@ LogicalResult ConvertTFLFullyConnectedOp::matchAndRewrite(
         bias_arr[i] = 0;
       }
       if (!input_is_qtype) {
-        return op->emitOpError(
-            "ConvertTFLFullyConnectedOp: input must be quantized type if it's "
-            "not float type.");
+        return rewriter.notifyMatchFailure(
+            op, "input must be quantized type if it's not float type");
       }
       auto input_qtype =
           input_type.getElementType().cast<mlir::quant::QuantizedType>();
@@ -2177,7 +2363,7 @@ LogicalResult ConvertTFLSplitOp::matchAndRewrite(
   // Get the axis
   ElementsAttr axisAttrElems;
   if (!matchPattern(tfl_split_op.split_dim(), m_Constant(&axisAttrElems))) {
-    return op->emitOpError("Cannot read split_dim elems");
+    return rewriter.notifyMatchFailure(op, "cannot read split_dim elems");
   }
 
   // The axis/split_dim parameter is stored as a 0D tensor instead of
@@ -2215,7 +2401,7 @@ LogicalResult ConvertTFLSplitVOp::matchAndRewrite(
   // Get the axis
   ElementsAttr axisAttrElems;
   if (!matchPattern(tfl_splitv_op.split_dim(), m_Constant(&axisAttrElems))) {
-    return op->emitOpError("Cannot read split_dim elems");
+    return rewriter.notifyMatchFailure(op, "cannot read split_dim elems");
   }
 
   // The axis/split_dim parameter is stored as a 0D tensor instead of
@@ -2520,16 +2706,15 @@ LogicalResult ConvertTFLSinOp::matchAndRewrite(
   if (!input_ty || !output_ty) return failure();
 
   if (input_ety != output_ety) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLSinOp: input/output element type must match");
+    return rewriter.notifyMatchFailure(op,
+                                       "input/output element type must match");
   }
 
   bool input_is_fp = input_ty.getElementType().isF32();
   bool output_is_fp = output_ty.getElementType().isF32();
 
   if (!input_is_fp || !output_is_fp) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLSinOp: input/result must be fp32.");
+    return rewriter.notifyMatchFailure(op, "input/result must be fp32");
   }
 
   // To perform a sin operation we remap the sin domain to be over a single
@@ -2624,8 +2809,7 @@ LogicalResult ConvertTFLCosOp::matchAndRewrite(
   bool output_is_fp = output_ty.getElementType().isa<mlir::FloatType>();
 
   if (!input_is_fp || !output_is_fp) {
-    return rewriter.notifyMatchFailure(
-        op, "ConvertTFLCosOp: input/result must be fp.");
+    return rewriter.notifyMatchFailure(op, "input/result must be fp");
   }
 
   // Replace with the equivalent sin operation:
@@ -2656,9 +2840,9 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLLogisticOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   if (input_is_qtype) {
@@ -2683,10 +2867,8 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
                                              tfl_logistic_op.x(), table_const);
     } else {  // int16
       if (input_qtype.getZeroPoint() != 0 || output_qtype.getZeroPoint() != 0) {
-        op->emitOpError(
-            "ConvertTFLLogistic: input/output zeropoint should be 0 in 16-bit "
-            "mode");
-        return failure();
+        return rewriter.notifyMatchFailure(
+            op, "input/output zeropoint should be 0 in 16-bit mode");
       }
       double input_min = -32768 * input_qtype.getScale();
       double input_max = 32767 * input_qtype.getScale();
@@ -2728,9 +2910,9 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
       output_type.getElementType().isa<mlir::quant::UniformQuantizedType>();
 
   if (input_is_qtype != output_is_qtype) {
-    return op->emitOpError(
-        "ConvertTFLTanhOp: input/output tensor should "
-        "be all quantized or all floating-point.");
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
   }
 
   if (input_is_qtype) {
@@ -2756,10 +2938,8 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
                                              tfl_tanh_op.input(), table_const);
     } else {  // int16
       if (input_qtype.getZeroPoint() != 0 || output_qtype.getZeroPoint() != 0) {
-        op->emitOpError(
-            "ConvertTFLLogistic: input/output zeropoint should be 0 in 16-bit "
-            "mode");
-        return failure();
+        return rewriter.notifyMatchFailure(
+            op, "input/output zeropoint should be 0 in 16-bit mode");
       }
       double input_min = -32768 * input_qtype.getScale();
       double input_max = 32767 * input_qtype.getScale();
@@ -3391,6 +3571,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLLogicalOr);
   DEF_PATTERN_INSERT(TFLPow);
 
+  DEF_PATTERN_INSERT(TFLGelu);
   DEF_PATTERN_INSERT(TFLRelu);
   DEF_PATTERN_INSERT(TFLRelu1);
   DEF_PATTERN_INSERT(TFLRelu6);
@@ -3431,6 +3612,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLReduceProd);
   DEF_PATTERN_INSERT(TFLSum);
   DEF_PATTERN_INSERT(TFLConv2D);
+  DEF_PATTERN_INSERT(TFLConv3D);
   DEF_PATTERN_INSERT(TFLTransposeConv);
   DEF_PATTERN_INSERT(TFLDepthwiseConv2D);
   DEF_PATTERN_INSERT(TFLFullyConnected);

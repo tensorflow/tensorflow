@@ -45,7 +45,7 @@ namespace xla {
 namespace {
 
 // A computation with array type that only contains parameters and tuples is
-// considered emtpy.
+// considered empty.
 bool ComputationIsEmptyWithArrayRoot(const HloComputation* computation) {
   bool empty_operations = absl::c_all_of(
       computation->MakeInstructionPostOrder(), [](const HloInstruction* inst) {

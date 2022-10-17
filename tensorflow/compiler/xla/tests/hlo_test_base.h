@@ -37,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -251,7 +251,7 @@ class HloTestBase : public ManifestCheckingTest {
   [[nodiscard]] ::testing::AssertionResult Run(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       ExecutionProfile* profile = nullptr,
-      const tensorflow::protobuf::Message* backend_config = nullptr);
+      const tsl::protobuf::Message* backend_config = nullptr);
 
   // Same as below, except requires passing fake arguments.
   ::testing::AssertionResult RunAndCompareTwoModules(
@@ -276,14 +276,14 @@ class HloTestBase : public ManifestCheckingTest {
   [[nodiscard]] ::testing::AssertionResult RunReplicated(
       const absl::string_view hlo_string, bool run_hlo_passes = true,
       int64_t num_replicas = 1,
-      const tensorflow::protobuf::Message* backend_config = nullptr);
+      const tsl::protobuf::Message* backend_config = nullptr);
 
   // If assert_determinism is true, the assertion will fail unless all runs
   // produce exactly the same output.
   [[nodiscard]] ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
       std::vector<ExecutionProfile>* profiles,
-      const tensorflow::protobuf::Message* backend_config = nullptr,
+      const tsl::protobuf::Message* backend_config = nullptr,
       bool assert_determinism = false);
   [[nodiscard]] ::testing::AssertionResult RunAndCompareFromFile(
       const std::string& filename, const std::optional<ErrorSpec>& error,
@@ -360,12 +360,17 @@ class HloTestBase : public ManifestCheckingTest {
       HloModule*, std::unique_ptr<HloComputation> computation);
   void UpdateEntryComputationLayout(HloModule* module);
 
+  StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
+
  protected:
   // Helper functions to get test and reference platforms.
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
 
  private:
+  std::unique_ptr<HloRunnerInterface> runner_;
+  se::Platform* test_platform_;
+
   // Given the test module, makes a reference module that is ready to run on the
   // reference platform. This assumes that the given module is ready to run on
   // the test platform.

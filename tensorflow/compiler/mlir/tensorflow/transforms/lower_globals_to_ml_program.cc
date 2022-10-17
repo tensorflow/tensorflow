@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -134,7 +133,7 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
     auto exportedNames = tf_saved_model::GetExportedNames(globalTensor);
     std::string name;
     if (exportedNames.empty()) {
-      name = "global_ml_" + globalTensor.sym_name().str();
+      name = "global_ml_" + globalTensor.getSymName().str();
     } else if (exportedNames.size() == 1) {
       name = exportedNames[0].str();
     } else {
@@ -143,8 +142,8 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
     }
     opToName[globalTensor] = name;
     auto variableOp = globalBuilder.create<ml_program::GlobalOp>(
-        globalTensor.getLoc(), name, globalTensor.type(),
-        globalTensor.is_mutable(), globalTensor.value(),
+        globalTensor.getLoc(), name, globalTensor.getType(),
+        globalTensor.getIsMutable(), globalTensor.getValue(),
         /*visibility=*/globalBuilder.getStringAttr("private"));
     variableOp.setPrivate();
   }
@@ -201,8 +200,10 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
   return success();
 }
 
+#define GEN_PASS_DEF_LOWERGLOBALSTOMLPROGRAMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 class LowerGlobalsToMlProgram
-    : public LowerGlobalsToMlProgramPassBase<LowerGlobalsToMlProgram> {
+    : public impl::LowerGlobalsToMlProgramPassBase<LowerGlobalsToMlProgram> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::tf_saved_model::TensorFlowSavedModelDialect,

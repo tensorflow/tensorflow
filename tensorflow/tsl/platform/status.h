@@ -24,15 +24,16 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/stack_frame.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 
@@ -96,6 +97,11 @@ class Status {
 #endif  // SWIG
 
   // Prefer using OkStatus().
+#ifndef SWIG
+  ABSL_DEPRECATED(
+      "Use `OkStatus()` (preferred) or `Status()` (which is backward "
+      "compatible with TF v2.9 and lower) instead.")
+#endif
   static Status OK() { return Status(); }
 
   /// Returns true iff the status indicates success.

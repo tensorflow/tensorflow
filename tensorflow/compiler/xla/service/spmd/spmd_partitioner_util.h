@@ -42,7 +42,7 @@ using IsCompOrCompBuilder =
                               std::is_same<HloComputation::Builder, T>::value ||
                               std::is_same<SpmdBuilder, T>::value>;
 
-struct GatherParallelDimSharding {
+struct GatherScatterParallelDimSharding {
   HloSharding indices_sharding;
   HloSharding operand_sharding;
 };
@@ -465,12 +465,12 @@ HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
                                          absl::Span<const int64_t> target_dims,
                                          absl::Span<const int64_t> source_dims);
 
-// Returns if the sharding across operand and indices of a gather is across
-// parallel dimensions and matches what SPMD partitioner supports.
-std::optional<GatherParallelDimSharding>
-GatherOperandsShardedAcrossParallelDims(
+// Returns if the sharding across operand and indices of a gather/scatter is
+// across parallel dimensions and matches what SPMD partitioner supports.
+std::optional<GatherScatterParallelDimSharding>
+GatherScatterOperandsShardedAcrossParallelDims(
     const HloInstruction& operand, const HloInstruction& indices,
-    const hlo_sharding_util::GatherParallelDims& parallel_dims);
+    const hlo_sharding_util::GatherScatterParallelDims& parallel_dims);
 
 // Pattern rewrite preprocessing utilities.
 

@@ -299,15 +299,9 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
           context, context->allocate_output(0, output_shape, &output), done);
 
       bool use_deterministic_kernels =
-#if defined(PLATFORM_WINDOWS)
-          // See comment in segment_reduction_ops_gpu_0.cu.cc regarding Windows
-          // CI build error.
-          false;
-#else
           UseDeterministicSegmentReductions() ||
           (!SegmentReductionFunctor::atomic_reduction_is_associative &&
            OpDeterminismRequired());
-#endif
 
       // The determinism check is here, rather than inside the functor (as it is
       // for the unsorted segment reduction ops) because the done callback
@@ -490,9 +484,9 @@ class UnsortedSegmentReductionOp : public OpKernel {
                 errors::InvalidArgument("Input num_segments == ", output_rows,
                                         " must not be negative."));
     TensorShape output_shape;
-    output_shape.AddDim(output_rows);
+    OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(output_rows));
     for (int i = segment_ids.dims(); i < data.dims(); i++) {
-      output_shape.AddDim(data.dim_size(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(data.dim_size(i)));
     }
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));

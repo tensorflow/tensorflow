@@ -438,6 +438,7 @@ def tflite_custom_cc_library(
         srcs = [],
         deps = [],
         visibility = ["//visibility:private"],
+        experimental = False,
         **kwargs):
     """Generates a tflite cc library, stripping off unused operators.
 
@@ -452,6 +453,7 @@ def tflite_custom_cc_library(
         srcs: List of files implementing custom operators if any.
         deps: Additional dependencies to build all the custom operators.
         visibility: Visibility setting for the generated target. Default to private.
+        experimental: Whether to include experimental APIs or not.
         **kwargs: Additional arguments for native.cc_library.
     """
     real_srcs = []
@@ -471,6 +473,10 @@ def tflite_custom_cc_library(
         # Support all operators if `models` not specified.
         real_deps.append("//tensorflow/lite:create_op_resolver_with_builtin_ops")
 
+    if experimental:
+        framework = "//tensorflow/lite:framework_experimental"
+    else:
+        framework = "//tensorflow/lite:framework_stable"
     native.cc_library(
         name = name,
         srcs = real_srcs,
@@ -483,7 +489,7 @@ def tflite_custom_cc_library(
             "//conditions:default": ["-lm", "-ldl"],
         }),
         deps = depset([
-            "//tensorflow/lite:framework",
+            framework,
             "//tensorflow/lite/kernels:builtin_ops",
         ] + real_deps),
         visibility = visibility,
@@ -498,7 +504,8 @@ def tflite_custom_android_library(
         custom_package = "org.tensorflow.lite",
         visibility = ["//visibility:private"],
         include_xnnpack_delegate = True,
-        include_nnapi_delegate = True):
+        include_nnapi_delegate = True,
+        experimental = False):
     """Generates a tflite Android library, stripping off unused operators.
 
     Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
@@ -517,6 +524,7 @@ def tflite_custom_android_library(
         visibility: Visibility setting for the generated target. Default to private.
         include_xnnpack_delegate: Whether to include the XNNPACK delegate or not.
         include_nnapi_delegate: Whether to include the NNAPI delegate or not.
+        experimental: Whether to include experimental APIs or not.
     """
     tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
 
@@ -526,13 +534,18 @@ def tflite_custom_android_library(
     if include_xnnpack_delegate:
         delegate_deps.append("//tensorflow/lite/delegates/xnnpack:xnnpack_delegate")
 
+    if experimental:
+        native_framework_only = "//tensorflow/lite/java/src/main/native:native_experimental_framework_only"
+    else:
+        native_framework_only = "//tensorflow/lite/java/src/main/native:native_stable_framework_only"
+
     # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
     tflite_jni_binary(
         name = "libtensorflowlite_jni.so",
         linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
         # Do not sort: "native_framework_only" must come before custom tflite library.
         deps = [
-            "//tensorflow/lite/java/src/main/native:native_framework_only",
+            native_framework_only,
             ":%s_cc" % name,
         ] + delegate_deps,
     )
@@ -543,10 +556,15 @@ def tflite_custom_android_library(
         visibility = visibility,
     )
 
+    if experimental:
+        java_srcs = "//tensorflow/lite/java:java_srcs"
+    else:
+        java_srcs = "//tensorflow/lite/java:java_stable_srcs"
+
     android_library(
         name = name,
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
-        srcs = ["//tensorflow/lite/java:java_srcs"],
+        srcs = [java_srcs],
         deps = [
             ":%s_jni" % name,
             "@org_checkerframework_qual",
@@ -563,8 +581,9 @@ def tflite_custom_android_library(
 def tflite_custom_c_library(
         name,
         models = [],
+        experimental = False,
         **kwargs):
-    """Generates a tflite cc library, stripping off unused operators.
+    """Generates a tflite C library, stripping off unused operators.
 
     This library includes the C API and the op kernels used in the given models.
 
@@ -573,6 +592,7 @@ def tflite_custom_c_library(
         models: List of models. This TFLite build will only include
             operators used in these models. If the list is empty, all builtin
             operators are included.
+        experimental: Whether to include experimental APIs or not.
        **kwargs: custom c_api cc_library kwargs.
     """
     op_resolver_deps = "//tensorflow/lite:create_op_resolver_with_builtin_ops"
@@ -582,6 +602,11 @@ def tflite_custom_c_library(
             model = models,
             testonly = kwargs.get("testonly", default = False),
         )
+
+        if experimental:
+            framework = "//tensorflow/lite:framework_experimental"
+        else:
+            framework = "//tensorflow/lite:framework_stable"
 
         native.cc_library(
             name = "%s_create_op_resolver" % name,
@@ -593,7 +618,7 @@ def tflite_custom_c_library(
             deps = [
                 "//tensorflow/lite:create_op_resolver_with_selected_ops",
                 "//tensorflow/lite:op_resolver",
-                "//tensorflow/lite:framework",
+                framework,
                 "//tensorflow/lite/kernels:builtin_ops",
             ],
             # Using alwayslink here is needed, I believe, to avoid warnings about
@@ -606,29 +631,34 @@ def tflite_custom_c_library(
         )
         op_resolver_deps = "%s_create_op_resolver" % name
 
-    native.cc_library(
-        name = name,
-        srcs = ["//tensorflow/lite/c:c_api_srcs"],
+    if experimental:
         hdrs = [
             "//tensorflow/lite/c:c_api.h",
-            "//tensorflow/lite/c:c_api_internal.h",
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
-        ],
+        ]
+        experimental_deps = [
+            "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
+        ]
+    else:
+        hdrs = [
+            "//tensorflow/lite/c:c_api.h",
+        ]
+        experimental_deps = []
+    native.cc_library(
+        name = name,
+        hdrs = hdrs,
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
             "//tensorflow/lite/c:common",
+            "//tensorflow/lite/core/c:private_c_api",
             "//tensorflow/lite/c:c_api_types",
-            "//tensorflow/lite/kernels:kernel_util",
+            "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core:private_headers",
             "//tensorflow/lite:builtin_ops",
-            "//tensorflow/lite:framework",
-            "//tensorflow/lite:version",
-            "//tensorflow/lite/core/api",
-            "//tensorflow/lite/delegates:interpreter_utils",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-            "//tensorflow/lite/kernels/internal:compatibility",
-        ],
+        ] + experimental_deps,
         **kwargs
     )
 
@@ -733,5 +763,64 @@ def tflite_self_contained_libs_test_suite(name):
 
     native.test_suite(
         name = name,
+        tests = build_tests,
+    )
+
+def _label(target):
+    """Return a Label <https://bazel.build/rules/lib/Label#Label> given a string.
+
+    Args:
+      target: (string) a relative or absolute build target.
+    """
+    if target[0:2] == "//":
+        return Label(target)
+    if target[0] == ":":
+        return Label("//" + native.package_name() + target)
+    return Label("//" + native.package_name() + ":" + target)
+
+def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
+    """Defines a C++ library with C-compatible header files.
+
+    This generates a cc_library rule, but also generates
+    build tests that verify that each of the 'hdrs'
+    can be successfully built in a C (not C++!) compilation unit
+    that directly includes only that header file.
+
+    Args:
+      name: (string) as per cc_library.
+      hdrs: (list of string) as per cc_library.
+      **kwargs: Additional kwargs to pass to cc_library.
+    """
+    native.cc_library(name = name, hdrs = hdrs, **kwargs)
+
+    build_tests = []
+    for hdr in hdrs:
+        label = _label(hdr)
+        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        native.genrule(
+            name = "%s_gen" % basename,
+            outs = ["%s.c" % basename],
+            cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
+            visibility = ["//visibility:private"],
+            testonly = True,
+        )
+        native.cc_library(
+            name = "%s_lib" % basename,
+            srcs = ["%s.c" % basename],
+            deps = [":" + name],
+            copts = kwargs.get("copts", []),
+            visibility = ["//visibility:private"],
+            testonly = True,
+            tags = ["allow_undefined_symbols"],
+        )
+        build_test(
+            name = "%s_build_test" % basename,
+            visibility = ["//visibility:private"],
+            targets = ["%s_lib" % basename],
+        )
+        build_tests.append("%s_build_test" % basename)
+
+    native.test_suite(
+        name = name + "_self_contained_c_build_tests",
         tests = build_tests,
     )

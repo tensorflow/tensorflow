@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -507,6 +507,27 @@ ENTRY main {
 // CHECK: [[abs_7:%[^ ]+]] = f32[13,7,11]{2,1,0} abs([[pad_6]])
 // CHECK: ROOT [[bitcast_6_8:%[^ ]+]] = f32[11,13,7,1]{0,2,1,3} bitcast([[abs_7]])
 )");
+}
+
+TEST_F(LayoutNormalizationTest, ReduceWindow) {
+  const char* hlo = R"(
+HloModule R2Window
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+ENTRY R2Window {
+  operand = f32[256,384]{0,1} parameter(0)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[256,384]{0,1} reduce-window(operand, constant), window={size=2x3 pad=0_1x1_1}, to_apply=mul
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %reduce-window.1 = f32[384,256]{1,0} reduce-window(%bitcast.5, %bitcast.8), window={size=3x2 pad=1_1x0_1}, to_apply=%mul
+  )");
 }
 
 }  // namespace

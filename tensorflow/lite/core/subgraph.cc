@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -276,11 +277,11 @@ Subgraph::~Subgraph() {
 
   for (size_t i = 0; i < context_.tensors_size; i++) {
     TfLiteTensor* tensor = &context_.tensors[i];
-    if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
-        tensor->delegate->FreeBufferHandle != nullptr) {
-      tensor->delegate->FreeBufferHandle(&context_, tensor->delegate,
-                                         &tensor->buffer_handle);
+    if (tensor->buffer_handle != kTfLiteNullBufferHandle) {
+      TfLiteDelegateFreeBufferHandleInternal(&context_, tensor->delegate,
+                                             &tensor->buffer_handle);
     }
+
     TfLiteTensorFree(tensor);
   }
 }
@@ -400,6 +401,14 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
 
 }  // namespace
 
+TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
+                                      std::vector<NodeSubset>* node_subsets) {
+  const InterpreterInfo info(this);
+  return PartitionGraphIntoIndependentNodeSubsets(
+      &info, nodes_to_replace, node_subsets,
+      /*greedily=*/!DisableDelegateClustering(), control_edges_);
+}
+
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
@@ -413,10 +422,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
   // Analyze the graph to find all independent node_subsets that are either
   // fully not-this-delegate or this-delegate computation.
-  InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
-                                           &node_subsets);
+  if (PartitionGraph(nodes_to_replace, &node_subsets) == kTfLiteError) {
+    return kTfLiteError;
+  }
 
   // On Android the log message below is used for diagnosing delegation success
   // also in production builds. Use VERBOSE here so that the logging is turned
@@ -429,6 +438,13 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       node_subsets.size());
 
   execution_plan_.clear();
+
+  // The subgraph is taking ownership of the external registration, in case the
+  // user has supplied an opaque delegate.
+  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
+        registration.registration_external));
+  }
 
   for (auto& node_subset : node_subsets) {
     // Subsets claimed by the delegate should have a "macro" op created, the
@@ -564,10 +580,10 @@ TfLiteStatus Subgraph::PreviewDelegatePartitioning(
   }
 
   // Partition the execution plan into node subsets.
-  InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
-                                           &node_subsets);
+  if (PartitionGraph(nodes_to_replace, &node_subsets) == kTfLiteError) {
+    return kTfLiteError;
+  }
 
   // Create one TfLiteDelegateParams per node-subset which would be delegated.
   for (auto& node_subset : node_subsets) {
@@ -614,8 +630,10 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
 }
 
 TfLiteStatus Subgraph::SetMetadata(
-    const std::map<std::string, std::string>* metadata) {
+    const std::map<std::string, std::string>* metadata,
+    const ControlEdges* control_edges) {
   metadata_ = metadata;
+  control_edges_ = control_edges;
   return kTfLiteOk;
 }
 
@@ -623,6 +641,20 @@ void Subgraph::SetCancellationFunction(void* data,
                                        bool (*check_cancelled_func)(void*)) {
   cancellation_data_ = data;
   check_cancelled_func_ = check_cancelled_func;
+}
+
+TfLiteStatus Subgraph::EnsureTensorDataIsReadable(int tensor_index) {
+  TfLiteTensor* t = &tensors_[tensor_index];
+  TF_LITE_ENSURE(&context_, t != nullptr);
+  TfLiteStatus status = kTfLiteOk;
+  if (t->data_is_stale) {
+    TF_LITE_ENSURE(&context_, t->delegate != nullptr);
+    TF_LITE_ENSURE(&context_, t->buffer_handle != kTfLiteNullBufferHandle);
+    status = TfLiteDelegateCopyFromBufferHandleInternal(&context_, t->delegate,
+                                                        t->buffer_handle, t);
+    t->data_is_stale = false;
+  }
+  return status;
 }
 
 bool Subgraph::IsCancelled() {
@@ -995,6 +1027,7 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
                        size_t length) {
   if (op_reg.registration_external && op_reg.registration_external->init) {
     return op_reg.registration_external->init(
+        op_reg.registration_external->init_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer, length);
   }
   if (op_reg.init == nullptr) return nullptr;
@@ -1004,7 +1037,10 @@ void* Subgraph::OpInit(const TfLiteRegistration& op_reg, const char* buffer,
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.registration_external && op_reg.registration_external->prepare) {
+    // The 'data' field required by the 'prepare' function pointer must be
+    // retrieved from the 'registration_external' object itself.
     return op_reg.registration_external->prepare(
+        op_reg.registration_external->prepare_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_),
         reinterpret_cast<TfLiteOpaqueNode*>(node));
   }
@@ -1038,6 +1074,7 @@ TfLiteStatus Subgraph::OpInvoke(const TfLiteRegistration& op_reg,
                                 TfLiteNode* node) {
   if (op_reg.registration_external && op_reg.registration_external->invoke) {
     return op_reg.registration_external->invoke(
+        op_reg.registration_external->invoke_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_),
         reinterpret_cast<TfLiteOpaqueNode*>(node));
   }
@@ -1051,6 +1088,7 @@ void Subgraph::OpFree(const TfLiteRegistration& op_reg, void* buffer) {
   if (op_reg.registration_external && op_reg.registration_external->free &&
       buffer) {
     return op_reg.registration_external->free(
+        op_reg.registration_external->free_data,
         reinterpret_cast<TfLiteOpaqueContext*>(&context_), buffer);
   }
   if (op_reg.free == nullptr) return;
@@ -1133,7 +1171,7 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
   bool prepare_original_plan = false;
   if (!pre_delegation_execution_plan_.empty()) {
     for (int i = 0; i < delegates_applied_.size(); ++i) {
-      if ((delegates_applied_[i]->flags &
+      if ((TfLiteDelegateGetFlagsInternal(delegates_applied_[i]) &
            kTfLiteDelegateFlagsRequirePropagatedShapes)) {
         prepare_original_plan = true;
         break;
@@ -1584,7 +1622,7 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       }
 
       // Realloc space for heap-allocated tensors.
-      TfLiteTensorRealloc(bytesRequired, tensor);
+      TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
       tensor->bytes = bytesRequired;
     }
     if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
@@ -1817,7 +1855,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
   const bool delegate_supports_dynamic_shapes =
-      delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors;
+      TfLiteDelegateGetFlagsInternal(delegate) &
+      kTfLiteDelegateFlagsAllowDynamicTensors;
   const auto pre_delegation_state = state_;
 
   if (state_ == kStateInvokableAndImmutable) {
@@ -1854,7 +1893,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 
   // Setup additional context interface.
   SwitchToDelegateContext();
-  TfLiteStatus status = delegate->Prepare(&context_, delegate);
+  TfLiteStatus status = TfLiteDelegatePrepareInternal(&context_, delegate);
   // Remove additional context info.
   SwitchToKernelContext();
   TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));

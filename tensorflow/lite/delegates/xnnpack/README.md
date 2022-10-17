@@ -375,15 +375,21 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
-#### `SPLIT`
+#### `SLICE`
 
-* Inputs and outputs must be in 32-bit floating-point format.
-* Only split into two, three, or four outputs is supported.
+* The first input and the output must be in 32-bit floating-point format.
+* The second and third inputs (the inputs with the slices' begin and size
+  specification) must be static (use `kTfLiteMmapRo` allocation type).
 
 #### `SOFTMAX`
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only `beta = 1.0` is supported.
+
+#### `SPLIT`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Only split into two, three, or four outputs is supported.
 
 #### `SQRT`
 
@@ -594,11 +600,15 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
-#### `SPLIT`
+#### `SLICE`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `SOFTMAX`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
+
+#### `SPLIT`
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 
@@ -758,6 +768,12 @@ Below is the list of currently supported quantized operators:
 * The first input and the output must be 4D tensors in 8-bit quantized format.
 * The second input (the input with the new shape specification) must be
   static (use `kTfLiteMmapRo` allocation type).
+
+#### `SLICE`
+
+* The first input and the output must be in 8-bit quantized format.
+* The second and third inputs (the inputs with the slices' begin and size
+  specification) must be static (use `kTfLiteMmapRo` allocation type).
 
 #### `SPLIT`
 

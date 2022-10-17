@@ -43,12 +43,16 @@ namespace gpu {
 // stored in the backend config.
 class GemmRewriter : public HloModulePass {
  public:
+  explicit GemmRewriter(se::CudaComputeCapability cuda_compute_capability);
   absl::string_view name() const override { return "cublas-gemm-rewriter"; }
 
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  se::CudaComputeCapability cuda_compute_capability_;
 };
 
 }  // namespace gpu

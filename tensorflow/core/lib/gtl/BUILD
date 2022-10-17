@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
@@ -23,6 +23,8 @@ package(
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        # TODO(aminim): remove when array_slice migrates to TSL
+        "//tensorflow/tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -41,6 +43,7 @@ cc_library(
 cc_library(
     name = "cleanup",
     hdrs = ["cleanup.h"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform:macros"],
 )
 
@@ -77,6 +80,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:flatmap",
     ],
 )
 
@@ -274,16 +278,9 @@ filegroup(
     name = "legacy_lib_gtl_tests",
     srcs = [
         "cleanup_test.cc",
-        "compactptrset_test.cc",
         "edit_distance_test.cc",
-        "flatmap_test.cc",
-        "flatset_test.cc",
-        "int_type_test.cc",
-        "iterator_range_test.cc",
         "manual_constructor_test.cc",
-        "map_util_test.cc",
         "top_n_test.cc",
-        "//tensorflow/tsl/lib/gtl:legacy_lib_gtl_tests",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

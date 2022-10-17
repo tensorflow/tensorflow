@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -101,7 +102,8 @@ bool PyBuffer::IsPyBuffer(py::handle handle) {
 
 /*static*/ StatusOr<PyBuffer*> PyBuffer::AsPyBuffer(pybind11::handle handle) {
   if (!IsPyBuffer(handle)) {
-    return InvalidArgument("Expected a DeviceArray");
+    return InvalidArgument("Expected a DeviceArray, got object of type %s",
+                           py::cast<std::string>(py::str(handle.get_type())));
   }
   return AsPyBufferUnchecked(handle);
 }
@@ -382,7 +384,9 @@ Status PyShardedBuffer::BlockHostUntilReady() {
   py::gil_scoped_release gil_release;
   Status status = OkStatus();
   for (const auto& buffer : buffers_) {
-    auto s = buffer->GetReadyFuture().Await();
+    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
+    // clients rely on it.
+    auto s = buffer->BlockHostUntilReady();
     if (!s.ok()) status = std::move(s);
   }
   return status;
@@ -723,9 +727,9 @@ Status PyBuffer::RegisterTypes(py::module& m) {
   type.attr("__module__") = m.attr("__name__");
 
   py::class_<PyShardedBuffer>(m, "ShardedBuffer")
+      .def(py::init(&PyShardedBuffer::CreateFromPyBuffers))
       .def("get_device_buffers", &PyShardedBuffer::GetPyBuffers)
       .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
-      .def("__getitem__", &PyShardedBuffer::GetPyBuffer)
       .def("__len__", &PyShardedBuffer::num_devices)
       .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
       .def_static("create_sharded_buffer",
@@ -733,6 +737,8 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       .def_property_readonly("dtype", [](const PyShardedBuffer& self) {
         return PrimitiveTypeToDtype(self.dtype()).value();
       });
+
+  py::implicitly_convertible<std::vector<PyBuffer::object>, PyShardedBuffer>();
 
   return OkStatus();
 }

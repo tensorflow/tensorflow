@@ -21,6 +21,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/specialization.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
 #include "tensorflow/compiler/xla/runtime/constraints.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/symbolic_shape.h"
@@ -52,7 +54,7 @@ class JitCompiler {
 
   struct Options {
     // Register dialects that are allowed in the serialized module.
-    std::function<void(mlir::DialectRegistry&)> register_dialects;
+    std::function<void(DialectRegistry&)> register_dialects;
 
     // Create a pass pipeline that is called whenever the compiled module
     // gets specialized. This pipeline can use refined shape information and
@@ -61,19 +63,18 @@ class JitCompiler {
     // Original input module might have an undefined calling convention (e.g.
     // XLA runtime does not support unranked tensors), and specialization can be
     // required as a precondition for compilation.
-    std::function<void(mlir::PassManager&)> create_specialization_pipeline;
+    std::function<void(PassManager&)> create_specialization_pipeline;
 
     // Create a pass pipeline that lowers compiled module from high level
     // dialects to the LLVM dialect. XLA runtime will use the LLVM ORC compiler
     // API to compile the LLVM module at run time
     // (https://llvm.org/docs/ORCv2.html).
     //
-    // This compilation pipeline must create the entrypoint function with an ABI
-    // compatible with the calling convention advertised to the XLA through
-    // the `calling_convention` type conversion, and for that it usually must
-    // include `xla-rt-convert-to-entrypoint ` pass to convert regular functions
-    // to "XLA entrypoints".
-    std::function<void(mlir::PassManager&)> create_compilation_pipeline;
+    // This compilation pipeline must export functions invocable by the runtime
+    // (convert them to an ABI compatible with the calling convention advertised
+    // to XLA through the `calling_convention` type conversion), and for
+    // that it usually must include `xla-rt-export-functions` pass.
+    std::function<void(PassManager&)> create_compilation_pipeline;
 
     // LLVM optimization level when JIT compiling a module.
     llvm::CodeGenOpt::Level jit_code_opt_level =
@@ -87,14 +88,14 @@ class JitCompiler {
     // See `CallingConvention` documentation for details.
     CallingConvention calling_convention = DefaultCallingConvention();
 
-    // Type converter converts MLIR types to the corresponding run time types.
+    // Type converter converts MLIR types to the corresponding run-time types.
     // Executable uses its own type hierarchy, parallel to MLIR's, so that it
     // doesn't depend on any parts of the MLIR after compilation produces an
     // executable artifact, because keeping MLIR context alive can be expensive
     // in terms of memory usage.
     //
-    // As a side effect, it allows loading AOT compiled executables from the obj
-    // files without any dependencies on MLIR.
+    // As a side effect, it allows loading AOT compiled executables from the
+    // object files without any dependencies on MLIR.
     //
     // Default type converter knows how to convert canonical MLIR types
     // (memrefs, tensors, etc...). All user-defined types used at the compiled
@@ -102,14 +103,15 @@ class JitCompiler {
     // conversion.
     //
     // When we compile the input IR, we first apply the `calling_convention` to
-    // get the MLIR function type for the entrypoint, and then we convert it to
-    // the corresponding run time function type.
+    // get the MLIR function type for the exported function(s), and then we
+    // convert it to the corresponding run-time function type.
     TypeConverter type_converter;
   };
 
   // Instantiates compiler from the serialized mlir source.
   static absl::StatusOr<std::unique_ptr<JitCompiler>> Instantiate(
-      Options opts, std::string_view mlir_module, std::string_view entrypoint);
+      Options opts, std::string_view mlir_module,
+      absl::Span<const std::string_view> exported);
 
   // Makes an executable from an instance of the JitCompiler. This is the end of
   // life for the `JitCompiler`, it effectively converts the MLIR module
@@ -121,19 +123,20 @@ class JitCompiler {
       std::string_view memory_region_name,
       std::optional<size_t> specialization = std::nullopt);
 
-  // Specialize compiled module to the arguments:
+  // Specialize the exported function given by 'ordinal' to the arguments:
   //
   // - update all unknown dimensions according to the resolved symbolic shapes
   // - attach symbolic shape attribute to the operands
   // - sink small constants into the function body
   //
-  // After entrypoint signature is updated, and all constant arguments
-  // materialized in the function body, runs the user-provided specialization
-  // pipeline to optimize the module based on the new information in the IR.
+  // After the exported function's signature is updated, and all constant
+  // arguments are materialized in the function body, runs the user-provided
+  // specialization pipeline to optimize the module based on the new
+  // information in the IR.
   //
-  // Returns error if arguments are not compatible with compiled module
-  // entrypoint signature.
-  absl::Status Specialize(ArgumentsRef arguments,
+  // Returns an error if arguments are not compatible with the exported
+  // function's signature.
+  absl::Status Specialize(unsigned ordinal, ArgumentsRef arguments,
                           llvm::ArrayRef<SymbolicShape> symbolic_shapes,
                           llvm::ArrayRef<ArgumentConstraint> constraints,
                           const SpecializationListener* listener = nullptr);
@@ -149,14 +152,17 @@ class JitCompiler {
     return *module_;
   }
 
-  mlir::func::FuncOp entrypoint() const {
-    assert(entrypoint_ && "failed to resolve entrypoint function");
-    return entrypoint_;
+  size_t num_exported() const { return exported_.size(); }
+
+  absl::Span<const mlir::func::FuncOp> exported() const { return exported_; }
+
+  mlir::func::FuncOp exported(unsigned ordinal) const {
+    assert(exported_[ordinal] && "failed to resolve exported function");
+    return exported_[ordinal];
   }
 
  private:
-  JitCompiler(Options opts, std::string_view mlir_module,
-              std::string_view entrypoint);
+  JitCompiler(Options opts, std::string_view mlir_module);
 
   absl::Status Error(std::string_view error) {
     // TODO(ezhulenev): Pass diagnstic as a status payload.
@@ -173,7 +179,7 @@ class JitCompiler {
   mlir::SourceMgrDiagnosticHandler handler_;
 
   mlir::OwningOpRef<mlir::ModuleOp> module_;  // can be null if failed to parse
-  mlir::func::FuncOp entrypoint_;             // can be null if failed to parse
+  std::vector<mlir::func::FuncOp> exported_;  // can be empty if failed to parse
 
   bool specialized_;
 };

@@ -22,7 +22,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
-#include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
@@ -38,9 +37,17 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
+using tensorflow::BinSummary;
+using tensorflow::DeviceIdUtil;
+using tensorflow::DeviceMemAllocator;
+using tensorflow::GPUBFCAllocator;
+using tensorflow::GPUMachineManager;
+using tensorflow::GPUOptions;
+using tensorflow::TypedAllocator;
 
 void CheckStats(Allocator* a, int64_t num_allocs, int64_t bytes_in_use,
                 int64_t peak_bytes_in_use, int64_t largest_alloc_size) {
@@ -66,12 +73,12 @@ std::unique_ptr<SubAllocator> CreateVirtualMemorySubAllocator(
   PlatformDeviceId gpu_id(0);
   auto executor =
       DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(), gpu_id)
-          .ValueOrDie();
+          .value();
   auto* gpu_context = reinterpret_cast<stream_executor::gpu::GpuContext*>(
       executor->implementation()->GpuContextHack());
-  return GpuVirtualMemAllocator::Create({}, {}, *gpu_context, gpu_id,
-                                        virtual_address_space_size, {})
-      .ValueOrDie();
+  return tensorflow::GpuVirtualMemAllocator::Create(
+             {}, {}, *gpu_context, gpu_id, virtual_address_space_size, {})
+      .value();
 }
 #endif
 
@@ -754,6 +761,6 @@ TEST_F(GPUBFCAllocatorPrivateMethodsTest_SubAllocatorSpecific,
 }
 #endif
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

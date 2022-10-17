@@ -118,6 +118,11 @@ std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
   result += "#define bool2 uchar2\n";
   result += "#define bool3 uchar3\n";
   result += "#define bool4 uchar4\n";
+
+  const auto cl_specific_defines = GetClSpecificDefines();
+  for (const auto& define : cl_specific_defines) {
+    result += "#define " + define.first + " " + define.second + "\n";
+  }
   return result;
 }
 }  // namespace
@@ -159,8 +164,7 @@ absl::Status ClOperation::SetDstTensor(int index, Tensor* tensor) {
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->code_ =
-      GetCommonOpenCLDefines(operation_->GetDefinition().precision) +
-      operation_->code_;
+      GetCommonOpenCLDefines(operation_->GetPrecision()) + operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       creation_context.context, &operation_->args_, &operation_->code_));

@@ -32,12 +32,12 @@ import org.tensorflow.lite.annotations.UsedByReflection;
 public class GpuDelegate implements Delegate {
 
   private static final long INVALID_DELEGATE_HANDLE = 0;
-  private static final String TFLITE_GPU_LIB = "tensorflowlite_gpu_jni";
 
   private long delegateHandle;
 
   @UsedByReflection("GpuDelegateFactory")
   public GpuDelegate(GpuDelegateFactory.Options options) {
+    GpuDelegateNative.init();
     delegateHandle =
         createDelegate(
             options.isPrecisionLossAllowed(),
@@ -76,10 +76,6 @@ public class GpuDelegate implements Delegate {
       deleteDelegate(delegateHandle);
       delegateHandle = INVALID_DELEGATE_HANDLE;
     }
-  }
-
-  static {
-    System.loadLibrary(TFLITE_GPU_LIB);
   }
 
   private static native long createDelegate(

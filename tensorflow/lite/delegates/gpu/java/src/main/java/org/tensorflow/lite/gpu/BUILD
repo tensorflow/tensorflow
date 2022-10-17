@@ -15,6 +15,7 @@ filegroup(
     srcs = [
         "CompatibilityList.java",
         "GpuDelegate.java",
+        "GpuDelegateNative.java",
     ],
     visibility = ["//visibility:public"],
 )

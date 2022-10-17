@@ -31,23 +31,24 @@ limitations under the License.
 #include <pthread_np.h>
 #endif
 
+#include <map>
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/load_library.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/ram_file_system.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/default/posix_file_system.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/load_library.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/ram_file_system.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
-mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+mutex name_mutex(tsl::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
@@ -189,18 +190,17 @@ class PosixEnv : public Env {
 
   Status LoadDynamicLibrary(const char* library_filename,
                             void** handle) override {
-    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
+    return internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
-    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
-                                                      symbol);
+    return internal::GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
 
   string FormatLibraryFileName(const string& name,
                                const string& version) override {
-    return tensorflow::internal::FormatLibraryFileName(name, version);
+    return internal::FormatLibraryFileName(name, version);
   }
 
   string GetRunfilesDir() override {
@@ -251,7 +251,6 @@ REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
 REGISTER_FILE_SYSTEM("ram", RamFileSystem);
 
-
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;
   return default_env;
@@ -278,9 +277,10 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     "/tmp",
   };
 
+  std::vector<std::string> paths;  // Only in case of errors.
   for (const char* d : candidates) {
     if (!d || d[0] == '\0') continue;  // Empty env var
-
+    paths.emplace_back(d);
     // Make sure we don't surprise anyone who's expecting a '/'
     string dstr = d;
     if (dstr[dstr.size() - 1] != '/') {
@@ -295,6 +295,12 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
       return;
     }
   }
+  LOG(WARNING) << "We are not able to find a directory for temporary files.\n"
+               << "Verify the directory access and available space under: "
+               << absl::StrJoin(paths, ",") << ". "
+               << "You can also provide a directory for temporary files with"
+               << " the environment variable TMP or TMPDIR. "
+               << "Example under bash: `export TMP=/my_new_temp_directory;`";
 }
 
 int setenv(const char* name, const char* value, int overwrite) {
@@ -303,4 +309,4 @@ int setenv(const char* name, const char* value, int overwrite) {
 
 int unsetenv(const char* name) { return ::unsetenv(name); }
 
-}  // namespace tensorflow
+}  // namespace tsl

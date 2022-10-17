@@ -1,7 +1,7 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -63,7 +63,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:setround",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -103,8 +104,8 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",
         "//tensorflow/compiler/xla/stream_executor:timer",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -119,8 +120,10 @@ tf_cc_test(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
     ],
 )

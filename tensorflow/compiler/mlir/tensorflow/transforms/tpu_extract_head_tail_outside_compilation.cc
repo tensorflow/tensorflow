@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -109,7 +108,7 @@ tf_device::LaunchOp CreateLaunchForBlock(OpBuilder* builder, Operation* op,
   before ? builder->setInsertionPoint(op) : builder->setInsertionPointAfter(op);
   auto launch = builder->create<tf_device::LaunchOp>(
       op->getLoc(), builder->getStringAttr(host_device), launch_result_types);
-  launch.body().push_back(launch_block);
+  launch.getBody().push_back(launch_block);
 
   builder->setInsertionPointToEnd(&launch.GetBody());
   builder->create<tf_device::ReturnOp>(op->getLoc(), launch_results);
@@ -135,7 +134,7 @@ llvm::SmallVector<Operation*, 4> FindOutsideCompiledOpsAtHead(
     tf_device::ClusterOp cluster) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
       cluster->getParentOfType<func::FuncOp>());
-  Region* cluster_region = &cluster.body();
+  Region* cluster_region = &cluster.getBody();
   llvm::SmallSetVector<Operation*, 4> head_outside_compiled_ops;
 
   auto cluster_ops = cluster.GetBody().without_terminator();
@@ -198,7 +197,7 @@ void CreateHeadComputation(OpBuilder* builder, tf_device::ClusterOp cluster,
   for (auto result : llvm::zip(launch.GetBody().getTerminator()->getOperands(),
                                launch.getResults()))
     replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
-                               cluster.body());
+                               cluster.getBody());
 }
 
 // Extracts and move outside compiled ops that have no dependencies in the
@@ -233,7 +232,7 @@ void FindOutsideCompiledOpsAtTailAndClusterResults(
     llvm::SmallVectorImpl<Value>* cluster_results) {
   const auto& analysis = side_effect_analysis.GetAnalysisForFunc(
       cluster->getParentOfType<func::FuncOp>());
-  Region* cluster_region = &cluster.body();
+  Region* cluster_region = &cluster.getBody();
   llvm::SmallSetVector<Operation*, 4> tail_outside_compiled_ops_set;
   Operation* terminator = cluster.GetBody().getTerminator();
   llvm::SmallSetVector<Value, 4> cluster_results_set;
@@ -336,7 +335,7 @@ tf_device::ClusterOp UpdateClusterResults(
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
-  new_cluster.body().takeBody(cluster.body());
+  new_cluster.getBody().takeBody(cluster.getBody());
 
   auto operand_not_in_cluster = [&](OpOperand& operand) {
     return !new_cluster.getOperation()->isProperAncestor(operand.getOwner());
@@ -410,7 +409,7 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   auto new_cluster = builder->create<tf_device::ClusterOp>(
       cluster.getLoc(), new_cluster_result_types,
       /*operands=*/llvm::ArrayRef<Value>{}, cluster->getAttrs());
-  new_cluster.body().takeBody(cluster.body());
+  new_cluster.getBody().takeBody(cluster.getBody());
   new_cluster.GetBody().getTerminator()->setOperands(new_cluster_results);
 
   for (auto result :
@@ -420,41 +419,11 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   cluster.erase();
 }
 
-// Checks if `type` is allowed for data on TPUs. String and resources cannot be
-// assigned to TPUs. There are other TF types that are not allowed on TPUs, but
-// these will be removed by successive passes in TF/XLA bridge phase 2.
-bool TypeValidForTPU(Type type) {
-  Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
-}
-
-// Check that cluster results are valid. An result is invalid when it does not
-// have a valid XLA type.
-LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
-  for (OpResult result : cluster.getResults()) {
-    if (!TypeValidForTPU(result.getType())) {
-      cluster.emitError()
-          << "The TPUExtractHeadTailOutsideCompilation pass produced a TPU "
-             "cluster with a result with a non-XLA type: "
-          << result.getType();
-      return failure();
-    }
-  }
-  return success();
-}
-
-// Check the validity of the module, post-pass.
-LogicalResult CheckPostconditions(ModuleOp module) {
-  auto walk_result = module.walk([&](tf_device::ClusterOp cluster) {
-    if (failed(CheckClusterResults(cluster))) return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  if (walk_result.wasInterrupted()) return failure();
-  return success();
-}
+#define GEN_PASS_DEF_TPUEXTRACTHEADTAILOUTSIDECOMPILATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 struct TPUExtractHeadTailOutsideCompilationPass
-    : public TF::TPUExtractHeadTailOutsideCompilationPassBase<
+    : public impl::TPUExtractHeadTailOutsideCompilationPassBase<
           TPUExtractHeadTailOutsideCompilationPass> {
   void runOnOperation() override;
 };
@@ -484,8 +453,6 @@ void TPUExtractHeadTailOutsideCompilationPass::runOnOperation() {
       return signalPassFailure();
     if (cluster_updated) RemoveClusterAliasedOutputs(&builder, cluster);
   }
-
-  if (failed(CheckPostconditions(module))) return signalPassFailure();
 }
 
 }  // anonymous namespace

@@ -1,5 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [

@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/python_utils.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace jax {
 
@@ -302,7 +302,7 @@ py::handle ShardedDeviceArray::AsHandle() {
       [](ShardedDeviceArray::object self) { return self.sda()->is_deleted(); },
       py::is_method(type));
 
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace jax

@@ -723,6 +723,20 @@ std::unique_ptr<RunMetadata> EagerContext::ExportRunMetadata() {
   return result;
 }
 
+ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
+    ImmediateExecutionTensorHandle* handle) {
+  return handle;
+}
+
+Status EagerContext::RegisterFunction(AbstractFunction* f) {
+  FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
+  if (!fdef) {
+    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
+  }
+  return AddFunctionDef(*fdef);
+}
+
 bool EagerContext::UsesTFRT() { return false; }
 
 bool EagerContext::RunEagerOpAsFunction() const {
@@ -1135,6 +1149,12 @@ Status EagerContext::FindCompositeDeviceFromName(
     }
   }
   return errors::NotFound("Unknown composite device: ", device_name);
+}
+
+bool EagerContext::IsCustomDevice(const string& device_name) {
+  CustomDevice* device = nullptr;
+  return custom_device_op_handler_.FindCustomDeviceFromName(device_name,
+                                                            &device);
 }
 
 Status EagerContext::RegisterCustomDevice(

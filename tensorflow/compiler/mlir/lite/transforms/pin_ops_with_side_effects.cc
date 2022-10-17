@@ -33,7 +33,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PINOPSWITHSIDEEFFECTSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 bool IsResourceTensor(Value value) {
@@ -85,7 +85,7 @@ bool OpHasSideEffects(Operation *op) {
 //     be assumed to be read and modified within control operations)
 // (2) Extend the variable dependency analysis across function boundaries.
 class PinOpsWithSideEffectsPass
-    : public PinOpsWithSideEffectsPassBase<PinOpsWithSideEffectsPass> {
+    : public impl::PinOpsWithSideEffectsPassBase<PinOpsWithSideEffectsPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PinOpsWithSideEffectsPass)
 

@@ -336,6 +336,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
             }
           }
         });
+    dist_mgr->SetPreemptionNotifier(std::move(preemption_notifier));
     ctx->SetDistributedManager(std::move(dist_mgr));
   }
 #endif  // !IS_MOBILE_PLATFORM

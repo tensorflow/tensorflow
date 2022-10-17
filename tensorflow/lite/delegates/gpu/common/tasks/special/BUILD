@@ -17,6 +17,23 @@ cc_library(
 )
 
 cc_library(
+    name = "dw7x7_conv2to6_concat_conv8to8",
+    srcs = ["dw7x7_conv2to6_concat_conv8to8.cc"],
+    hdrs = ["dw7x7_conv2to6_concat_conv8to8.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:flops_util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
+        "//tensorflow/lite/delegates/gpu/common/task:qcom_thin_filter_desc",
+    ],
+)
+
+cc_library(
     name = "fc_fc_add",
     srcs = ["fc_fc_add.cc"],
     hdrs = ["fc_fc_add.h"],
@@ -46,6 +63,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu",
         "@com_google_absl//absl/strings",

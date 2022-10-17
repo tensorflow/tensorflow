@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/core/tpu/libtftpu.h"
 
 typedef struct TpuSerializedProto TpuSerializedProto;
 

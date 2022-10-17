@@ -1,6 +1,6 @@
 # Description: StreamExecutor Interface for TPUs
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -21,6 +21,15 @@ package(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "c_api_decl",
     hdrs = [
         "c_api_decl.h",
@@ -29,7 +38,7 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
     ],
 )
 
@@ -41,7 +50,7 @@ cc_library(
         ":c_api_decl",
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/c:tf_status",
-        "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
     ],
 )
 
@@ -70,6 +79,13 @@ cc_library(
 )
 
 cc_library(
+    name = "libtftpu_header",
+    hdrs = ["libtftpu.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
+)
+
+cc_library(
     name = "noncopyable_buffer",
     hdrs = ["noncopyable_buffer.h"],
     visibility = ["//visibility:public"],
@@ -88,8 +104,8 @@ cc_library(
     hdrs = ["status_helper.h"],
     deps = [
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/tsl/platform:status",
     ],
 )
 
@@ -101,6 +117,12 @@ cc_library(
         ":c_api_decl",
         "//tensorflow/tsl/platform:logging",
     ],
+)
+
+cc_library(
+    name = "tpu_api_dlsym_set_fn",
+    hdrs = ["tpu_api_dlsym_set_fn.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -322,7 +344,7 @@ cc_library(
         ":c_api_decl",
         ":tpu_topology_external",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
     ],
@@ -386,8 +408,18 @@ cc_library(
         ":tpu_executable_interface",
         ":tpu_executor",
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/tpu:tpu_executor_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
         "@com_google_absl//absl/cleanup",
+    ],
+)
+
+cc_library(
+    name = "tpu_executor_api",
+    srcs = ["tpu_executor_api.cc"],
+    hdrs = ["tpu_executor_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 

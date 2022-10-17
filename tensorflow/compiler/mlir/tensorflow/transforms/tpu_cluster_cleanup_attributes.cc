@@ -19,7 +19,6 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_cluster_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
@@ -32,8 +31,11 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kClassAttr[] = "_class";
 
+#define GEN_PASS_DEF_TPUCLEANUPCLUSTERATTRIBUTESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TPUCleanupClusterAttributesPass
-    : public TF::TPUCleanupClusterAttributesPassBase<
+    : public impl::TPUCleanupClusterAttributesPassBase<
           TPUCleanupClusterAttributesPass> {
  public:
   void runOnOperation() override {

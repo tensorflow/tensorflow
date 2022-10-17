@@ -57,6 +57,26 @@ class Algorithm(enum.Enum):
   AUTO_SELECT = 3
 
 
+def unsupported_alg_error_msg(alg):
+  """Produces the unsupported-algorithm error message."""
+  if isinstance(alg, int):
+    philox = Algorithm.PHILOX.value
+    threefry = Algorithm.THREEFRY.value
+    auto_select = Algorithm.AUTO_SELECT.value
+  elif isinstance(alg, str):
+    philox = "philox"
+    threefry = "threefry"
+    auto_select = "auto_select"
+  else:
+    philox = Algorithm.PHILOX
+    threefry = Algorithm.THREEFRY
+    auto_select = Algorithm.AUTO_SELECT
+  return (f"Argument `alg` got unsupported value {alg}. Supported values are "
+          f"{philox} for the Philox algorithm, "
+          f"{threefry} for the ThreeFry algorithm, and "
+          f"{auto_select} for auto-selection.")
+
+
 def convert_alg_to_int(alg):
   """Converts algorithm to an integer.
 
@@ -74,17 +94,16 @@ def convert_alg_to_int(alg):
   if isinstance(alg, ops.Tensor):
     return alg
   if isinstance(alg, str):
-    if alg == "philox":
+    # canonicalized alg
+    canon_alg = alg.strip().lower().replace("-", "").replace("_", "")
+    if canon_alg == "philox":
       return Algorithm.PHILOX.value
-    elif alg in ("threefry", "three-fry", "three_fry"):
+    elif canon_alg == "threefry":
       return Algorithm.THREEFRY.value
-    elif alg in ("autoselect", "auto-select", "auto_select"):
+    elif canon_alg == "autoselect":
       return Algorithm.AUTO_SELECT.value
     else:
-      raise ValueError(
-          f"Argument `alg` got unsupported string value {alg}. Supported "
-          f"string values are 'philox' for the Philox algorithm, 'threefry' "
-          f"for the ThreeFry algorithm, and 'auto_select' for auto-selection.")
+      raise ValueError(unsupported_alg_error_msg(alg))
   else:
     raise TypeError(
         f"Can't convert argument `alg` (of value {alg} and type {type(alg)}) "
@@ -126,11 +145,7 @@ def _get_key_counter(seed, alg):
         uint32s_to_uint64(math_ops.cast(seed, dtypes.uint32)), [1])
     counter = array_ops.zeros([1], dtypes.uint64)
   else:
-    raise ValueError(
-        f"Argument `alg` got unsupported value {alg}. Supported values are "
-        f"{Algorithm.PHILOX.value} for the Philox algorithm, "
-        f"{Algorithm.THREEFRY.value} for the ThreeFry algorithm, and "
-        f"{Algorithm.AUTO_SELECT.value} for auto-selection.")
+    raise ValueError(unsupported_alg_error_msg(alg))
   return key, counter
 
 

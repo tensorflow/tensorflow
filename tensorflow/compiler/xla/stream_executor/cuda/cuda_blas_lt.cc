@@ -125,7 +125,7 @@ port::Status BlasLt::Init() {
   SE_CUBLAS_RETURN_IF_ERROR(cublasLtCreate(&blas_lt));
   absl::MutexLock lock(&mu_);
   blas_lt_.reset(blas_lt);
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 /*static*/ blas::DataType BlasLt::GetScaleType(
@@ -169,8 +169,7 @@ port::Status BlasLt::Init() {
 
 cudaDataType_t BlasLt::MatrixLayout::type() const {
   return static_cast<cudaDataType_t>(
-      GetAttr<uint32_t>(handle_.get(), CUBLASLT_MATRIX_LAYOUT_TYPE)
-          .ValueOrDie());
+      GetAttr<uint32_t>(handle_.get(), CUBLASLT_MATRIX_LAYOUT_TYPE).value());
 }
 
 /*static*/ port::StatusOr<BlasLt::MatmulDesc> BlasLt::MatmulDesc::Create(
@@ -196,19 +195,18 @@ cudaDataType_t BlasLt::MatrixLayout::type() const {
 cublasComputeType_t BlasLt::MatmulDesc::compute_type() const {
   return static_cast<cublasComputeType_t>(
       GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_COMPUTE_TYPE)
-          .ValueOrDie());
+          .value());
 }
 
 cudaDataType_t BlasLt::MatmulDesc::scale_type() const {
   return static_cast<cudaDataType_t>(
-      GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_SCALE_TYPE)
-          .ValueOrDie());
+      GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_SCALE_TYPE).value());
 }
 
 cublasLtPointerMode_t BlasLt::MatmulDesc::pointer_mode() const {
   return static_cast<cublasLtPointerMode_t>(
       GetAttr<int32_t>(handle_.get(), CUBLASLT_MATMUL_DESC_POINTER_MODE)
-          .ValueOrDie());
+          .value());
 }
 
 /*static*/ port::StatusOr<BlasLt::MatmulPreference>
@@ -302,7 +300,7 @@ port::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
     profile_result->set_is_valid(true);
     profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 BlasLt* GetBlasLt(Stream* stream) {

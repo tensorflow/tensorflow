@@ -53,7 +53,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/aot',
     'tensorflow/compiler/xla/service/mlir_gpu',
     'tensorflow/compiler/xla/service/gpu/tests',
-    'tensorflow/compiler/xla/mlir/tools/runtime',
+    'tensorflow/compiler/xla/mlir/tools',
     'tensorflow/compiler/mlir/lite/stablehlo',
 ]
 config.mlir_tf_tools_dirs = [

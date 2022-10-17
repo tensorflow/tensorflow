@@ -389,6 +389,7 @@ xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl
 xla::status_macros::MakeErrorStream::Impl::GetStatus
 xla::status_macros::MakeErrorStream::CheckNotDone
+xla::status_macros::MakeErrorStream::add_ret_check_failure
 
 [//tensorflow/compiler/xla/service:hlo] # tfcompile
 xla::DfsHloVisitorBase::SetVisited
@@ -436,13 +437,9 @@ tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 tensorflow::ResetJitCompilerFlags
 
-[//tensorflow/core/platform:tensor_float_32_utils] # tensor_float_32
-enable_tensor_float_32_execution
-tensor_float_32_execution_enabled
-
 [//tensorflow/tsl/platform:tensor_float_32_utils] # tensor_float_32
-enable_tensor_float_32_execution
-tensor_float_32_execution_enabled
+tsl::enable_tensor_float_32_execution
+tsl::tensor_float_32_execution_enabled
 
 [//tensorflow/core/util:determinism] # determinism
 tensorflow::OpDeterminismRequired
@@ -533,3 +530,6 @@ tensorflow::dtensor::FetchLayout
 tensorflow::dtensor::SparsePack
 tensorflow::dtensor::IsSparseDTensor
 tensorflow::dtensor::GetFunctionCacheHitAndMissCount
+
+[//tensorflow/dtensor/cc:tensor_layout] # DTensor
+tensorflow::dtensor::Mesh

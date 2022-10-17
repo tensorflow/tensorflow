@@ -27,11 +27,11 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_ALIGNEDALLOCATIONSPASS
 #include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h.inc"
 
 struct AlignedAllocationsPass
-    : public AlignedAllocationsPassBase<AlignedAllocationsPass> {
+    : public impl::AlignedAllocationsPassBase<AlignedAllocationsPass> {
   explicit AlignedAllocationsPass(int64_t alignment) { alignment_ = alignment; }
   void runOnOperation() override;
 };
@@ -46,8 +46,8 @@ void AlignedAllocationsPass::runOnOperation() {
   getOperation().walk([&](memref::AllocOp alloc) {
     // Add alignment attribute only if the alignment attribute is missing or the
     // current alignment is smaller.
-    if (!alloc.alignment().has_value() || *alloc.alignment() < alignment_)
-      alloc.alignmentAttr(alignment_attr);
+    if (!alloc.getAlignment().has_value() || *alloc.getAlignment() < alignment_)
+      alloc.setAlignmentAttr(alignment_attr);
   });
 }
 

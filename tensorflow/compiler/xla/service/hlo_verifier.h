@@ -146,6 +146,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleIota(HloInstruction* hlo) override;
   Status HandleConvert(HloInstruction* convert) override;
   Status HandleBitcastConvert(HloInstruction* convert) override;
+  Status HandleStochasticConvert(HloInstruction* convert) override;
   Status HandleCopy(HloInstruction* copy) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;

@@ -36,10 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -111,7 +108,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   void SimulateUnhealthyTaskTwo() {
     CoordinatedTask task2;
     task2.set_job_name(kJobName);
-    task2.set_task_id(2);
+    task2.set_task_id(1);
     TF_CHECK_OK(
         coord_service_->ReportTaskError(task2, errors::Internal("test_error")));
   }
@@ -138,20 +135,13 @@ class PreemptionSyncManagerTest : public ::testing::Test {
         [service = coord_rpc_service_.get()]() { service->HandleRPCsLoop(); }));
   }
   std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService() {
-    ServerDef server_def;
-    server_def.set_protocol("grpc");
-    server_def.set_job_name(kJobName);
-    server_def.set_task_index(0);
-    auto job_def = server_def.mutable_cluster()->add_job();
-    job_def->set_name(kJobName);
-    job_def->mutable_tasks()->insert({1, "TEST_ADDRESS_1"});
-    job_def->mutable_tasks()->insert({2, "TEST_ADDRESS_2"});
-    auto coordination_config = server_def.mutable_default_session_config()
-                                   ->mutable_experimental()
-                                   ->mutable_coordination_config();
-    coordination_config->set_service_type("standalone");
+    CoordinationServiceConfig config;
+    config.set_service_type("standalone");
+    CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
+    job->set_name(kJobName);
+    job->set_num_tasks(2);
     return CoordinationServiceInterface::EnableCoordinationService(
-        "standalone", Env::Default(), server_def, /*cache=*/nullptr);
+        Env::Default(), config, /*cache=*/nullptr);
   }
   void InitializeAndConnectCoordinationAgents() {
     std::unique_ptr<CoordinationClient> coord_client =
@@ -166,10 +156,10 @@ class PreemptionSyncManagerTest : public ::testing::Test {
     CoordinationServiceConfig coord_config;
     coord_config.set_service_leader("test_leader");
     TF_CHECK_OK(coord_agent_->Initialize(Env::Default(), kJobName,
-                                         /*task_id=*/1, coord_config,
+                                         /*task_id=*/0, coord_config,
                                          std::move(coord_client), error_fn));
     TF_CHECK_OK(coord_agent2_->Initialize(Env::Default(), kJobName,
-                                          /*task_id=*/2, coord_config,
+                                          /*task_id=*/1, coord_config,
                                           std::move(coord_client2), error_fn));
     TF_CHECK_OK(coord_agent_->Connect());
     TF_CHECK_OK(coord_agent2_->Connect());

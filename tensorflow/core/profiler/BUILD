@@ -1,5 +1,5 @@
 # copybara:uncomment(oss-unused) load("//net/grpc/go/build_defs:go_grpc_library.bzl", "go_grpc_library")
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
@@ -97,7 +97,7 @@ cc_library(
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder_impl",
         "//tensorflow/core/profiler/lib:profiler_factory_impl",
         "//tensorflow/core/profiler/lib:profiler_session_impl",
-        "//tensorflow/core/profiler/utils:time_utils_impl",
+        "//tensorflow/tsl/profiler/utils:time_utils_impl",
     ],
     alwayslink = True,
 )
@@ -136,6 +136,7 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_no_runtime",
+        "//tensorflow/tsl/profiler/lib:mobile_srcs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -144,6 +145,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "//tensorflow/core/profiler/lib:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/profiler/lib:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

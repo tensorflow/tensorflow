@@ -30,7 +30,10 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
@@ -104,6 +107,15 @@ class CustomCallArgEncodingSet {
     return *this;
   }
 
+  template <typename... Ts, typename Arg, typename... Args,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  CustomCallArgEncodingSet &Add(Arg arg, Args... args) {
+    (encodings_.emplace_back(std::make_unique<Ts>(std::forward<Arg>(arg),
+                                                  std::forward<Args...>(args))),
+     ...);
+    return *this;
+  }
+
  private:
   std::vector<std::unique_ptr<CustomCallArgEncoding>> encodings_;
 };
@@ -127,8 +139,12 @@ class CustomCallRetEncoding {
 
   virtual mlir::FailureOr<Encoded> Encode(Globals &g,
                                           mlir::ImplicitLocOpBuilder &b,
-                                          mlir::Type value,
+                                          mlir::Type type,
                                           mlir::Type converted) const = 0;
+
+  virtual mlir::FailureOr<mlir::Value> Decode(
+      mlir::ImplicitLocOpBuilder &b, mlir::Type type, mlir::Type converted,
+      mlir::LLVM::AllocaOp alloca) const = 0;
 };
 
 // A set of registered custom call results encodings.
@@ -139,11 +155,26 @@ class CustomCallRetEncodingSet {
   // Finds matching result encoding and tries to encode the values. Returns
   // failure if didn't match values to any of the result encodings.
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
-                                  mlir::Type value, mlir::Type converted) const;
+                                  mlir::Type type, mlir::Type converted) const;
+
+  // Convert the encoded value in alloca back to a value with the converted
+  // type. Return failure if the convertion failed.
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b,
+                                      mlir::Type type, mlir::Type converted,
+                                      mlir::LLVM::AllocaOp alloca) const;
 
   template <typename... Ts, typename = std::enable_if_t<sizeof...(Ts) != 0>>
   CustomCallRetEncodingSet &Add() {
     (encodings_.emplace_back(std::make_unique<Ts>()), ...);
+    return *this;
+  }
+
+  template <typename... Ts, typename Arg, typename... Args,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  CustomCallRetEncodingSet &Add(Arg arg, Args... args) {
+    (encodings_.emplace_back(std::make_unique<Ts>(std::forward<Arg>(arg),
+                                                  std::forward<Args...>(args))),
+     ...);
     return *this;
   }
 
@@ -169,10 +200,12 @@ struct CustomCallAttrEncoding {
 
   virtual ~CustomCallAttrEncoding() = default;
 
-  virtual mlir::LogicalResult Match(std::string_view name,
+  virtual mlir::LogicalResult Match(mlir::SymbolTable &sym_table,
+                                    std::string_view name,
                                     mlir::Attribute attr) const = 0;
 
-  virtual mlir::FailureOr<Encoded> Encode(Globals &g,
+  virtual mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &sym_table,
+                                          Globals &g,
                                           mlir::ImplicitLocOpBuilder &b,
                                           std::string_view name,
                                           mlir::Attribute attr) const = 0;
@@ -185,7 +218,8 @@ class CustomCallAttrEncodingSet {
 
   // Finds matching attribute encoding and tries to encode the attribute.
   // Returns failure if didn't match attribute to any of the encodings.
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &sym_table, Globals &g,
+                                  mlir::ImplicitLocOpBuilder &b,
                                   std::string_view name,
                                   mlir::Attribute attr) const;
 
@@ -284,10 +318,6 @@ class Globals {
   static mlir::Value AddrOf(mlir::ImplicitLocOpBuilder &b,
                             mlir::LLVM::GlobalOp global);
 
-  // Return the address of the global value casted to `!llvm.ptr<i8>`.
-  static mlir::Value OpaqueAddrOf(mlir::ImplicitLocOpBuilder &b,
-                                  mlir::LLVM::GlobalOp global);
-
   mlir::ModuleOp module() { return module_; }
 
  private:
@@ -328,48 +358,69 @@ class Globals {
 //      name, to be able to efficiently decode named attributes.
 //
 mlir::FailureOr<mlir::Value> EncodeAttributes(
-    Globals &g, mlir::ImplicitLocOpBuilder &b,
+    mlir::SymbolTable &sym_table, Globals &g, mlir::ImplicitLocOpBuilder &b,
     const CustomCallAttrEncodingSet &encoding, std::string_view symbol_base,
     llvm::ArrayRef<mlir::NamedAttribute> attrs);
 
 struct StringAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
                                   std::string_view,
                                   mlir::Attribute) const final;
 };
 
 struct ScalarAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &g,
+                                  mlir::ImplicitLocOpBuilder &,
                                   std::string_view,
                                   mlir::Attribute) const final;
 };
 
 struct DenseElementsAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
                                   std::string_view,
                                   mlir::Attribute) const final;
 };
 
 struct ArrayAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
                                   std::string_view,
                                   mlir::Attribute) const final;
 };
 
 struct DenseArrayAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
                                   std::string_view,
                                   mlir::Attribute) const final;
 };
 
 struct EmptyArrayAttrEncoding : public CustomCallAttrEncoding {
-  mlir::LogicalResult Match(std::string_view, mlir::Attribute) const final;
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
+                                  std::string_view,
+                                  mlir::Attribute) const final;
+};
+
+struct SymbolRefAttrEncoding : public CustomCallAttrEncoding {
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
+                            mlir::Attribute) const final;
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &,
+                                  mlir::ImplicitLocOpBuilder &,
                                   std::string_view,
                                   mlir::Attribute) const final;
 };
@@ -395,12 +446,13 @@ struct EnumAttrEncoding : public CustomCallAttrEncoding {
 
   explicit EnumAttrEncoding(Converter convert) : convert(std::move(convert)) {}
 
-  mlir::LogicalResult Match(std::string_view,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
                             mlir::Attribute attr) const final {
     return mlir::success(attr.isa<AttrType>());
   }
 
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &, Globals &g,
+                                  mlir::ImplicitLocOpBuilder &b,
                                   std::string_view name,
                                   mlir::Attribute attr) const final {
     // Convert enum underlying integral value to an attribute.
@@ -437,9 +489,9 @@ struct AggregateAttrDef {
   template <typename T, typename Attr = mlir::Attribute>
   using Encode = Attr (mlir::Builder::*)(T);
 
-  template <typename T, typename Attr = mlir::Attribute>
+  template <typename T, typename U, typename Attr = mlir::Attribute>
   AggregateAttrDef &Add(std::string name, Extract<T> extract,
-                        Encode<T, Attr> encode) {
+                        Encode<U, Attr> encode) {
     bindings.emplace_back([=](AttrType attr, mlir::Builder &b) {
       auto encoded = std::invoke(encode, b, std::invoke(extract, attr));
       return mlir::NamedAttribute(b.getStringAttr(name), encoded);
@@ -453,6 +505,10 @@ struct AggregateAttrDef {
 
   AggregateAttrDef &Add(std::string name, Extract<int64_t> extract) {
     return Add(name, extract, &mlir::Builder::getI64IntegerAttr);
+  }
+
+  AggregateAttrDef &Add(std::string name, Extract<llvm::StringRef> extract) {
+    return Add(name, extract, &mlir::Builder::getStringAttr);
   }
 
   AggregateAttrDef &Add(std::string name,
@@ -477,12 +533,13 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
                         AttrDef attrdef)
       : encoding(encoding), attrdef(std::move(attrdef)) {}
 
-  mlir::LogicalResult Match(std::string_view,
+  mlir::LogicalResult Match(mlir::SymbolTable &, std::string_view,
                             mlir::Attribute attr) const final {
     return mlir::success(attr.isa<AttrType>());
   }
 
-  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+  mlir::FailureOr<Encoded> Encode(mlir::SymbolTable &sym_table, Globals &g,
+                                  mlir::ImplicitLocOpBuilder &b,
                                   std::string_view name,
                                   mlir::Attribute attr) const final {
     // Extract aggregate attributes from the user-defined attributes.
@@ -493,7 +550,8 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
     // Encode extracted attributes as an aggregate.
     auto type_id = mlir::TypeID::get<Tagged<RuntimeType>>();
     auto sym = "__rt_aggregate_" + AttrType::getMnemonic();
-    auto aggregate = EncodeAttributes(g, b, encoding, sym.str(), attrs);
+    auto aggregate =
+        EncodeAttributes(sym_table, g, b, encoding, sym.str(), attrs);
     if (mlir::failed(aggregate)) return mlir::failure();
 
     Encoded encoded;
@@ -511,7 +569,7 @@ struct AggregateAttrEncoding : public CustomCallAttrEncoding {
 // Custom call arguments encoding.
 //===----------------------------------------------------------------------===//
 
-// Encodes scalar operands.
+// Encodes scalar arguments.
 class ScalarArgEncoding : public CustomCallArgEncoding {
  public:
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
@@ -519,25 +577,34 @@ class ScalarArgEncoding : public CustomCallArgEncoding {
                                   mlir::Value, mlir::Value) const final;
 };
 
-// Encodes MemRef operands according to the (Strided)MemrefView ABI.
+// Encodes custom call arguments passed as an opaque LLVM pointer (!llvm.ptr)
+// using a custom type id. Default constructed encoding encodes `!rt.opaque`
+// arguments using a `void*` type id.
+class OpaqueArgEncoding : public CustomCallArgEncoding {
+ public:
+  OpaqueArgEncoding();  // encodes `!rt.opaque` with `void*` type id
+  OpaqueArgEncoding(std::function<bool(mlir::Value)> match, TypeID type_id);
+
+  mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Value, mlir::Value) const final;
+
+  template <typename T>
+  static auto Match() {
+    return [](mlir::Value value) { return value.getType().isa<T>(); };
+  }
+
+ private:
+  std::function<bool(mlir::Value)> match_;
+  TypeID type_id_;
+};
+
+// Encodes MemRef arguments according to the (Strided)MemrefView ABI.
 class MemrefArgEncoding : public CustomCallArgEncoding {
  public:
   mlir::LogicalResult Match(mlir::Value, mlir::Value) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Value, mlir::Value) const final;
-
- private:
-  // Encodes memref as LLVM struct value:
-  //
-  //   { i8: dtype, i8: rank, ptr<i8>: data,
-  //     array<2*rank x i64>: sizes_and_strides }
-  //
-  // This is a type erased version of the MLIR memref descriptor without base
-  // pointer. We pack sizes and strides as a single array member, so that on
-  // the runtime side we can read it back using C flexible array member.
-  mlir::Value EncodeMemRef(mlir::ImplicitLocOpBuilder &b,
-                           mlir::MemRefType memref_ty,
-                           mlir::Value descriptor) const;
 };
 
 //===----------------------------------------------------------------------===//
@@ -550,11 +617,52 @@ class ScalarRetEncoding : public CustomCallRetEncoding {
   mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
   mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
+};
+
+// Encodes custom call results returned as an opaque LLVM pointer (!llvm.ptr)
+// using a custom type id. Default constructed encoding encodes `!rt.opaque`
+// results using a `void*` type id.
+class OpaqueRetEncoding : public CustomCallRetEncoding {
+ public:
+  OpaqueRetEncoding();  // encodes `!rt.opaque` with `void*` type id
+  OpaqueRetEncoding(std::function<bool(mlir::Type)> match, TypeID type_id);
+
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
+
+  template <typename T>
+  static auto Match() {
+    return [](mlir::Type type) { return type.isa<T>(); };
+  }
+
+ private:
+  std::function<bool(mlir::Type)> match_;
+  TypeID type_id_;
+};
+
+// Encodes MemRef results according to the MemrefView ABI.
+class MemrefRetEncoding : public CustomCallRetEncoding {
+ public:
+  mlir::LogicalResult Match(mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<Encoded> Encode(Globals &g, mlir::ImplicitLocOpBuilder &b,
+                                  mlir::Type, mlir::Type) const final;
+  mlir::FailureOr<mlir::Value> Decode(mlir::ImplicitLocOpBuilder &b, mlir::Type,
+                                      mlir::Type,
+                                      mlir::LLVM::AllocaOp) const final;
 };
 
 //===----------------------------------------------------------------------===//
 // Default encodings for arguments, attributes and results.
 //===----------------------------------------------------------------------===//
+
+// TODO(ezhulenev): Use `Populate...` functions for adding default encodings.
 
 CustomCallArgEncodingSet DefaultArgEncodings();
 CustomCallAttrEncodingSet DefaultAttrEncodings();

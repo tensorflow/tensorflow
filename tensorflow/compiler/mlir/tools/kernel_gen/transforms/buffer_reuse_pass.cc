@@ -218,8 +218,8 @@ class BufferReuseAnalysis {
       // have the same size we also know that when one side has an identity map
       // and the other side only drops dimensions, these dimensions have to be
       // of size 1.
-      AffineMap old_indexing_map = generic_op.getTiedIndexingMap(*old_it);
-      AffineMap new_indexing_map = generic_op.getTiedIndexingMap(*new_it);
+      AffineMap old_indexing_map = generic_op.getMatchingIndexingMap(*old_it);
+      AffineMap new_indexing_map = generic_op.getMatchingIndexingMap(*new_it);
       return (old_indexing_map == new_indexing_map &&
               old_indexing_map.isProjectedPermutation()) ||
              (old_indexing_map.isIdentity() &&

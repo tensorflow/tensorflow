@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/type_converter.h"
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -26,7 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
 
 namespace xla {
 namespace runtime {
@@ -42,6 +43,10 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   if (auto ctx = type.dyn_cast<ExecutionContextType>())
     return std::make_unique<ExecutionContextOperandType>();
 
+  // OpaqueType -> OpaqueOperandType (both in xla::runtime).
+  if (auto ctx = type.dyn_cast<OpaqueType>())
+    return std::make_unique<OpaqueOperandType>();
+
   // mlir::async::TokenType -> xla::runtime::AsyncTokenType
   if (type.isa<mlir::async::TokenType>())
     return std::make_unique<AsyncTokenType>();
@@ -51,6 +56,12 @@ static std::unique_ptr<Type> ConvertCanonicalType(
     if (auto value_type = convert.Convert(value.getValueType());
         value_type.ok())
       return std::make_unique<AsyncValueType>(std::move(*value_type));
+  }
+
+  // mlir::{IndexType, IntegerType, FloatType} -> xla::runtime::ScalarType
+  if (type.isa<mlir::IndexType, mlir::IntegerType, mlir::FloatType>()) {
+    if (auto dtype = TypeConverter::ConvertElementType(type); dtype.ok())
+      return std::make_unique<ScalarType>(*dtype);
   }
 
   // mlir::RankedTensorType -> xla::runtime::RankedTensorType
@@ -81,12 +92,25 @@ static std::unique_ptr<Type> ConvertCanonicalType(
       return std::make_unique<UnrankedMemrefType>(*dtype);
   }
 
+  // mlir::TupleType -> xla::runtime::TupleType
+  if (auto tuple = type.dyn_cast<mlir::TupleType>()) {
+    llvm::SmallVector<std::unique_ptr<Type>> conv_elems;
+    llvm::transform(tuple, std::back_inserter(conv_elems),
+                    [&convert](mlir::Type type) {
+                      return ConvertCanonicalType(type, convert);
+                    });
+    return std::make_unique<TupleType>(std::move(conv_elems));
+  }
+
   // For non-canonical types the user must provide type conversion function.
   return {};
 }
 
 /*static*/ StatusOr<PrimitiveType> TypeConverter::ConvertElementType(
     mlir::Type type) {
+  if (type.isIndex()) return PrimitiveType::S64;
+  if (type.isBF16()) return PrimitiveType::BF16;
+  if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
   if (type.isF64()) return PrimitiveType::F64;
   if (type.isUnsignedInteger(8)) return PrimitiveType::U8;
@@ -109,10 +133,12 @@ static std::unique_ptr<Type> ConvertCanonicalType(
 }
 
 StatusOr<std::unique_ptr<Type>> TypeConverter::Convert(mlir::Type type) const {
-  if (auto converted = ConvertCanonicalType(type, *this)) return converted;
+  if (std::unique_ptr<Type> converted = ConvertCanonicalType(type, *this))
+    return std::move(converted);
 
   for (const ConversionFn& conversion : conversions_)
-    if (auto converted = conversion(type)) return converted;
+    if (std::unique_ptr<Type> converted = conversion(type))
+      return std::move(converted);
 
   return InvalidArgumentError(StrFormat(
       "can't convert type: %s to the run time type", debugString(type)));

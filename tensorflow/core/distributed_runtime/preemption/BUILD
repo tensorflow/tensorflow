@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_gen_op_libs", "tf_gen_op_wrapper_cc", "tf_gen_op_wrapper_py", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 
 package(
     default_visibility = [
@@ -68,7 +68,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/protobuf:coordination_config_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 

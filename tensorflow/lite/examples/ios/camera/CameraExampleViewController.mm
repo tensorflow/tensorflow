@@ -281,6 +281,7 @@ void ProcessInputWithQuantizedModel(
   assert(pixelBuffer != NULL);
 
   OSType sourcePixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
+  (void)sourcePixelFormat;  // Fix -wunused-variable warning
   assert(sourcePixelFormat == kCVPixelFormatType_32ARGB ||
          sourcePixelFormat == kCVPixelFormatType_32BGRA);
 

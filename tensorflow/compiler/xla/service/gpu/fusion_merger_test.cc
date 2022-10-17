@@ -283,6 +283,8 @@ TEST_F(FusionMergerTest, WillMergeIntoUnfusedConsumer) {
 }
 
 TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
+  // TODO(b/247762001): the case here does not represent the problem -
+  // profiling shows that it works faster if merged (even on larger dimensions).
   auto module = ParseAndReturnVerifiedModule(R"(
     HloModule m
 
@@ -313,6 +315,42 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
     })")
                     .value();
   EXPECT_FALSE(FusionMerger().Run(module.get()).value());
+}
+
+TEST_F(FusionMergerTest, WillMergeReduceNotTooUnfriendlyLayouts) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule m
+
+    f1_computation {
+      f1_p0 = f32[16,16,256]{0,1,2} parameter(0)
+      slice1 = f32[5,16,256]{0,1,2} slice(f1_p0), slice={[0:5], [0:16], [0:256]}
+      // Here the copy changes the layout only of a part of the data.
+      f1_copy = f32[5,16,256]{2,1,0} copy(slice1)
+      slice2 = f32[11,16,256]{0,1,2} slice(f1_p0), slice={[0:11], [0:16], [0:256]}
+      bitcast = f32[11,16,256]{2,1,0} bitcast(slice2)
+      ROOT f1_root = f32[16,16,256]{2,1,0} concatenate(f1_copy, bitcast), dimensions={0}
+    }
+
+    add_computation {
+      add_lhs = f32[] parameter(0)
+      add_rhs = f32[] parameter(1)
+      ROOT add_root = f32[] add(add_lhs, add_rhs)
+    }
+
+    f2_computation {
+      f2_p0 = f32[16,16,256]{2,1,0} parameter(0)
+      f2_zero = f32[] constant(0)
+      ROOT f2_root = f32[] reduce(f2_p0, f2_zero), dimensions={0,1,2},
+             to_apply=add_computation
+    }
+
+    ENTRY entry {
+      p0 = f32[16,16,256]{0,1,2} parameter(0)
+      f1 = f32[16,16,256]{2,1,0} fusion(p0), kind=kLoop, calls=f1_computation
+      ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
+    })")
+                    .value();
+  EXPECT_TRUE(FusionMerger().Run(module.get()).value());
 }
 
 // Check that we limit the number of operands to fusions we create.

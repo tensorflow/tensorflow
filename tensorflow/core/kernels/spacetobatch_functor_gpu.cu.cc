@@ -110,7 +110,7 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       typename TTypes<BatchT, NUM_BLOCK_DIMS + 2>::Tensor batch_tensor) {
     // Kernel execution fails if number of elements is zero.
     if (batch_tensor.size() == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     S2BParameters<NUM_BLOCK_DIMS> args;
     args.space_tensor_batch = space_tensor.dimension(0);

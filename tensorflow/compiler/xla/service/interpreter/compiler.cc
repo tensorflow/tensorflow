@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
@@ -138,12 +137,11 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
     return std::vector<std::unique_ptr<Executable>>();
   }
   if (module_group->size() > 1) {
-    return tensorflow::errors::Unimplemented(
+    return tsl::errors::Unimplemented(
         "Compilation of multiple HLO modules is not supported on Interpreter.");
   }
   if (stream_exec.size() != 1 || stream_exec[0].size() != 1) {
-    return tensorflow::errors::Unimplemented(
-        "Unexpected number of StreamExecutor's.");
+    return tsl::errors::Unimplemented("Unexpected number of StreamExecutor's.");
   }
   auto hlo_modules = module_group->ConsumeModules();
   TF_ASSIGN_OR_RETURN(auto module, RunHloPasses(std::move(hlo_modules[0]),
@@ -159,7 +157,7 @@ StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 InterpreterCompiler::CompileAheadOfTime(
     std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& aot_options) {
-  return tensorflow::errors::InvalidArgument(
+  return tsl::errors::InvalidArgument(
       "AOT compilation not supported on Interpreter");
 }
 

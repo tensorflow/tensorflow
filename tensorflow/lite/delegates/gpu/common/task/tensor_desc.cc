@@ -444,11 +444,11 @@ absl::Status TensorDescriptor::PerformSelector(
   } else if (selector == "ReadPerChannel") {
     return PerformReadPerChannelSelector(gpu_info, args, template_args, result);
   } else if (selector == "Write") {
-    return PerformWriteSelector(gpu_info, args, template_args, result);
+    return PerformWriteSelector(gpu_info, args, result);
   } else if (selector == "WriteLinear") {
-    return PerformWriteLinearSelector(gpu_info, args, template_args, result);
+    return PerformWriteLinearSelector(gpu_info, args, result);
   } else if (selector == "Write2D") {
-    return PerformWrite2DSelector(gpu_info, args, template_args, result);
+    return PerformWrite2DSelector(gpu_info, args, result);
   } else if (selector == "GetAddress") {
     return PerformGetAddressSelector(args, result);
   } else if (selector == "GetHandle") {
@@ -693,7 +693,7 @@ absl::Status TensorDescriptor::GetLinkingContextFromWriteSelector(
 
 absl::Status TensorDescriptor::PerformWriteSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
-    const std::vector<std::string>& template_args, std::string* result) const {
+    std::string* result) const {
   std::string xc;
   std::string yc;
   std::string zc;
@@ -703,16 +703,13 @@ absl::Status TensorDescriptor::PerformWriteSelector(
   if (args.size() < 2 || !parsed) {
     return absl::NotFoundError("Unrecognized Write selector");
   }
-  DataType write_type = data_type_;
-  RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
-  *result = Write(gpu_info, write_type, args[0],
-                  GetPhysicalCoords(xc, yc, zc, sc, bc));
+  *result = Write(gpu_info, args[0], GetPhysicalCoords(xc, yc, zc, sc, bc));
   return absl::OkStatus();
 }
 
 absl::Status TensorDescriptor::PerformWriteLinearSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
-    const std::vector<std::string>& template_args, std::string* result) const {
+    std::string* result) const {
   if (storage_type_ != TensorStorageType::BUFFER &&
       storage_type_ != TensorStorageType::IMAGE_BUFFER) {
     return absl::InvalidArgumentError(
@@ -722,15 +719,13 @@ absl::Status TensorDescriptor::PerformWriteLinearSelector(
   if (args.size() != 2) {
     return absl::NotFoundError("Unrecognized WriteLinear selector");
   }
-  DataType write_type = data_type_;
-  RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
-  *result = Write(gpu_info, write_type, args[0], {args[1]});
+  *result = Write(gpu_info, args[0], {args[1]});
   return absl::OkStatus();
 }
 
 absl::Status TensorDescriptor::PerformWrite2DSelector(
     const GpuInfo& gpu_info, const std::vector<std::string>& args,
-    const std::vector<std::string>& template_args, std::string* result) const {
+    std::string* result) const {
   if (storage_type_ != TensorStorageType::TEXTURE_2D) {
     return absl::InvalidArgumentError(
         "Write2D selector can be used only with 2d "
@@ -739,9 +734,7 @@ absl::Status TensorDescriptor::PerformWrite2DSelector(
   if (args.size() != 3) {
     return absl::NotFoundError("Unrecognized Write2D selector");
   }
-  DataType write_type = data_type_;
-  RETURN_IF_ERROR(MaybeGetDataTypeFromTemplateArgs(template_args, &write_type));
-  *result = Write(gpu_info, write_type, args[0], {args[1], args[2]});
+  *result = Write(gpu_info, args[0], {args[1], args[2]});
   return absl::OkStatus();
 }
 
@@ -854,7 +847,7 @@ std::string TensorDescriptor::Read(
 }
 
 std::string TensorDescriptor::Write(
-    const GpuInfo& gpu_info, DataType write_type, const std::string& var_name,
+    const GpuInfo& gpu_info, const std::string& var_name,
     const std::vector<std::string>& coords) const {
   bool is_texture_write = storage_type_ == TensorStorageType::IMAGE_BUFFER ||
                           storage_type_ == TensorStorageType::TEXTURE_2D ||
@@ -884,9 +877,9 @@ std::string TensorDescriptor::Write(
       write_required_type = ToMetalTextureType(write_required_type);
     }
   }
-  if (write_type != write_required_type) {
+  if (data_type_ != write_required_type) {
     const std::string conversion =
-        GetTypeConversion(gpu_info, write_type, write_required_type, 4);
+        GetTypeConversion(gpu_info, data_type_, write_required_type, 4);
     write_expr = absl::Substitute(conversion, write_expr);
   }
   switch (storage_type_) {

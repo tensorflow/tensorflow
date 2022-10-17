@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -71,12 +73,11 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInWhile) {
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
   Literal comp_result;
-  std::unique_ptr<tensorflow::Thread> thread(
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "execute_thread", [&] {
-            comp_result =
-                local_client_->ExecuteAndTransfer(computation, {}).value();
-          }));
+  std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "execute_thread", [&] {
+        comp_result =
+            local_client_->ExecuteAndTransfer(computation, {}).value();
+      }));
 
   VLOG(1) << "Transferring trip count to computation";
   // Transfer number of iterations to Infeed.
@@ -146,12 +147,11 @@ XLA_TEST_F(OutfeedInNestedComputationTest, OutfeedInConditional) {
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, b.Build());
 
   Literal comp_result;
-  std::unique_ptr<tensorflow::Thread> thread(
-      tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "execute_thread", [&] {
-            comp_result =
-                local_client_->ExecuteAndTransfer(computation, {}).value();
-          }));
+  std::unique_ptr<tsl::Thread> thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "execute_thread", [&] {
+        comp_result =
+            local_client_->ExecuteAndTransfer(computation, {}).value();
+      }));
 
   TF_ASSERT_OK(
       local_client_->TransferToInfeed(LiteralUtil::CreateR0<bool>(true)));

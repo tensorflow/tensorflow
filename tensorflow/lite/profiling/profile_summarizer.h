@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/profiling/profile_buffer.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 

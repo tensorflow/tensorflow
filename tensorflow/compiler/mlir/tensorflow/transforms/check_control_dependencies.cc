@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verify_suitable_for_graph_export.h"
 
 // This pass is used for checking control dependencies. It is under "transforms"
@@ -41,8 +40,11 @@ namespace tf_executor {
 
 namespace {
 
+#define GEN_PASS_DEF_EXECUTORCHECKCONTROLDEPENDENCIESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TFExecutorCheckControlDependencies
-    : public TF::ExecutorCheckControlDependenciesPassBase<
+    : public impl::ExecutorCheckControlDependenciesPassBase<
           TFExecutorCheckControlDependencies> {
  public:
   void runOnOperation() override;
@@ -128,7 +130,7 @@ bool FindPathBfs(IslandOp source_op, IslandOp target_op,
 
     if (curr_op == target_op) break;
 
-    for (Operation* user : curr_op.control().getUsers()) {
+    for (Operation* user : curr_op.getControl().getUsers()) {
       auto user_island = dyn_cast<IslandOp>(user);
       if (!user_island) continue;
       // We have labeled `user_island` before so it also must have been added to
@@ -203,7 +205,7 @@ void CheckControlDependenciesForFunc(
 
   // Traverse islands in topological order.
   func.walk([&](IslandOp source_island) {
-    for (Operation* user : source_island.control().getUsers()) {
+    for (Operation* user : source_island.getControl().getUsers()) {
       auto target_island = dyn_cast<IslandOp>(user);
       if (!target_island) continue;
 

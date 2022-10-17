@@ -19,23 +19,36 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"  // IWYU pragma: keep
 
 namespace xla {
 namespace runtime {
+
+#define GEN_PASS_DECL_ORDINALASSIGNMENT
+#define GEN_PASS_DECL_EXPORTFUNCTIONS
+#define GEN_PASS_DECL_CONVERTCUSTOMCALLS
+#define GEN_PASS_DECL_CONVERTASSERTS
+#define GEN_PASS_DECL_CONVERTRUNTIMETOLLVMPASS
+
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h.inc"
 
 //===-----------------------------------------------------------------------===/
 // Transformations targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
 
-static constexpr char const* kEntrypointAttrName = "rt.entrypoint";
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateOrdinalAssignmentPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateConvertToEntrypoint();
+CreateExportRuntimeFunctionsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateConvertCustomCallsPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateConvertAssertsPass();
 
 //===-----------------------------------------------------------------------===/
 // Conversions targeting `rt` dialect.
@@ -72,10 +85,10 @@ struct ConvertRuntimeToLLvmOpts {
   std::function<void(CustomCallArgEncodingSet&)> populate_arg_encodings;
 
   // Add user-defined attributes type encoding to the custom call lowering.
-  std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
+  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
 
   // Add user-defined attributes type encoding to the custom call lowering.
-  std::function<void(CustomCallRetEncodingSet&)> populate_ret_encodings;
+  std::function<void(CustomCallAttrEncodingSet&)> populate_attr_encodings;
 };
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

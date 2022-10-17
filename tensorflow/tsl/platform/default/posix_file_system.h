@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/path.h"
 
-namespace tensorflow {
+namespace tsl {
 
 class PosixFileSystem : public FileSystem {
  public:
@@ -79,6 +79,6 @@ class LocalPosixFileSystem : public PosixFileSystem {
   }
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_

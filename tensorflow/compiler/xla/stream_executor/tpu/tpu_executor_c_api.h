@@ -19,9 +19,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 
 extern "C" {
 
@@ -292,7 +291,9 @@ void TpuHostLocation_Cores(SE_TpuTopology_Host* tpu_host_location,
                            SE_TpuTopology_Core** cores);
 
 // Async collective offloading.
+// Safe to call multiple times.
 void TpuAsyncCollectiveOffloadHelper_Init();
+// Must be called after TpuAsyncCollectiveOffloadHelper_Init.
 void TpuAsyncCollectiveOffloadHelper_Shutdown();
 
 // C API for XLA::Compiler interface

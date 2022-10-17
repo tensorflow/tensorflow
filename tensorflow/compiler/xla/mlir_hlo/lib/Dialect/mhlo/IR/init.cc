@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
 #include "stablehlo/dialect/ChloOps.h"
 
 void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
   registry.insert<mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::sparse_tensor::SparseTensorDialect>();
   // Backward compatibility with the old way of registering CHLO dialect
   registry.insert<mlir::chlo::ChloDialect>();
 }

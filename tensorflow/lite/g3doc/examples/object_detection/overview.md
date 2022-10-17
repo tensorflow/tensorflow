@@ -347,7 +347,7 @@ The scripts linked above perform this step.
 Both the
 [TF1](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
 &
-[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
+[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md)
 exporting scripts have parameters that can enable a larger number of output
 objects or slower, more-accurate post processing. Please use `--help` with the
 scripts to see an exhaustive list of supported arguments.
@@ -395,4 +395,4 @@ training your own models with the TensorFlow Object Detection API:
 Once trained, they can be converted to a TFLite-friendly format with the
 instructions here:
 [TF1](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md),
-[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
+[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md)

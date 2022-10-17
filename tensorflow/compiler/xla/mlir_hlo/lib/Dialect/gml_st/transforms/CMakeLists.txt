@@ -31,25 +31,13 @@ add_mlir_library(GmlStTilingInterface
   MLIRGmlStTilingInterfaceIncGen
 )
 
-add_mlir_library(GmlStFusionInterface
-  fusion_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRArithmeticDialect
-  MLIRIR
-  MLIRSupport
-
-  DEPENDS
-  MLIRGmlStFusionInterfaceIncGen
-)
-
 add_mlir_library(GmlStTilingInterfaceImpl
   tiling_interface_impl.cc
 
   LINK_LIBS PUBLIC
   GmlStDialect
   GmlStTilingInterface
-  MLIRArithmeticDialect
+  MLIRArithDialect
   MLIRAffineDialect
   MLIRLinalgDialect
   MLIRLinalgTransforms
@@ -58,17 +46,7 @@ add_mlir_library(GmlStTilingInterfaceImpl
   MLIRTensorUtils
   MLIRIR
   MLIRSupport
-)
-
-add_mlir_library(GmlStFusionInterfaceImpl
-  fusion_interface_impl.cc
-
-  LINK_LIBS PUBLIC
-  GmlStDialect
-  GmlStFusionInterface
-  MLIRArithmeticDialect
-  MLIRIR
-  MLIRSupport
+  THLODialect
 )
 
 add_mlir_library(GmlStComposeSetInterface
@@ -97,8 +75,12 @@ add_mlir_library(GmlStPasses
   compose_set_ops.cc
   fusion.cc
   gml_st_to_scf.cc
+  gml_st_to_gpu.cc
   tiling.cc
-  uncollapse_materialize_ops.cc
+  tiling_cwise.cc
+  tiling_reduction.cc
+  tiling_softmax.cc
+  collapse_materialize_ops.cc
   vectorization.cc
 
   DEPENDS
@@ -109,13 +91,14 @@ add_mlir_library(GmlStPasses
 
   LINK_LIBS PUBLIC
   GmlStComposeSetInterface
-  GmlStFusionInterface
-  GmlStFusionInterfaceImpl
   GmlStTilingInterface
   GmlStTilingInterfaceImpl
   MhloDialect
   MLIRDialectUtils
+  MLIRAffineDialect
+  MLIRArithDialect
   MLIRFuncDialect
+  MLIRGPUOps
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms

@@ -46,7 +46,7 @@ using gpusolverHandle_t = rocblas_handle;
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -67,7 +67,7 @@ class GpuSolverContext {
   bool SupportsPotrfBatched() const { return true; }
 
   // Computes the Cholesky factorization A = L * L^T for a single matrix.
-  // Returns Status::OK() if the kernel was launched successfully. See:
+  // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   Status Potrf(se::blas::UpperLower uplo, int n, se::DeviceMemory<float> a,
                int lda, se::DeviceMemory<int> lapack_info,

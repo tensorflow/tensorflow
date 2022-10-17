@@ -565,6 +565,10 @@ std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
 std::string then_else_dtypes_error_msg(nvinfer1::DataType type_then,
                                        nvinfer1::DataType type_else,
                                        const NodeDef& node_def);
+std::string input_shapes_error_msg(const nvinfer1::Dims& shape1,
+                                   const nvinfer1::Dims& shape2,
+                                   const NodeDef& node,
+                                   bool then_vs_else = false);
 std::string batch_size_error(const string& name, const string& comment);
 
 inline bool find_name(const string& name, const std::vector<string> names) {

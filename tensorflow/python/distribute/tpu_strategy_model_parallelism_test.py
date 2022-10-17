@@ -16,6 +16,8 @@
 
 import os
 
+from absl.testing import parameterized
+
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import distribution_strategy_context
@@ -73,7 +75,8 @@ def get_tpu_strategy(enable_spmd=False):
 
 class TPUStrategyModelParallelismTest(
     strategy_test_lib.DistributionTestBase,
-    strategy_test_lib.TwoDeviceDistributionTestBase):
+    strategy_test_lib.TwoDeviceDistributionTestBase,
+    parameterized.TestCase):
 
   def test_logical_device_assignment(self):
     strategy, num_replicas = get_tpu_strategy()
@@ -385,7 +388,11 @@ class TPUStrategyModelParallelismTest(
 
     config.set_soft_device_placement(original_device_placement)
 
-  def test_spmd_with_outside_comp(self):
+  # Tests SPMD with outside compilation. One test case is for replicated
+  # sharding of the input tensor and one case is for split sharding of the input
+  # tensor.
+  @parameterized.parameters([False, True])
+  def test_spmd_with_outside_comp(self, split):
     strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
 
     def host_inc(x):
@@ -393,16 +400,18 @@ class TPUStrategyModelParallelismTest(
 
     @def_function.function
     def fn(x):
+      if split:
+        x = strategy.experimental_split_to_logical_devices(x, [1, 2])
       y = x + 1
       z = tpu.outside_compilation(host_inc, y)
       a = z + 1
       return a
 
-    arg = constant_op.constant(0, shape=(), dtype=dtypes.int64)
+    arg = constant_op.constant(0, shape=(2, 2), dtype=dtypes.int64)
     result = strategy.run(fn, args=(arg,))
-    self.assertEqual(3 * num_replicas,
-                     self.evaluate(strategy.reduce("SUM", result, axis=None)))
-
+    self.assertAllEqual(
+        (arg + 3) * num_replicas,
+        self.evaluate(strategy.reduce("SUM", result, axis=None)))
 
 if __name__ == "__main__":
   test.main()

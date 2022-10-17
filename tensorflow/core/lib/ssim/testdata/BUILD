@@ -1,5 +1,5 @@
 # The ssim testdata package.
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
     default_visibility = [

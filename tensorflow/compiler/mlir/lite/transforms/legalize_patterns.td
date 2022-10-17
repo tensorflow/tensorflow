@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
-include "mlir/Dialect/Arithmetic/IR/ArithmeticOps.td"
+include "mlir/Dialect/Arith/IR/ArithOps.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
@@ -610,3 +610,14 @@ def LegalizeMaxPool3D : Pat<
               /*filter_width=*/ExtractI32At<3>:$ksize,
               /*filter_height=*/ExtractI32At<2>:$ksize,
               /*fused_activation_function=*/TFL_AF_None)>;
+
+// =============================================================================
+// Training OPs
+// =============================================================================
+
+// `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`
+def LegalizeSigmoidGrad : Pat<(TF_SigmoidGradOp $y, $dy),
+  (TFL_MulOp $dy, (TFL_MulOp $y, (TFL_SubOp
+        (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+        $y, TFL_AF_None),
+  TFL_AF_None), TFL_AF_None)>;

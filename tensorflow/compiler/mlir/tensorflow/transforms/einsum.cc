@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -47,7 +47,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -357,13 +356,13 @@ llvm::Optional<EinsumDimensionNumbers> GetEinsumDimensionNumbers(
 
   // Try to flatten the "..." if possible.
   int lhs_named_label, rhs_named_label;
-  auto avaiable_labels =
+  auto available_labels =
       GetAvailableLabels(lhs, rhs, &lhs_named_label, &rhs_named_label);
-  if (!avaiable_labels.has_value()) return llvm::None;
+  if (!available_labels.has_value()) return llvm::None;
 
   auto flattended_labels =
       FlattenEllipsis(lhs, lhs_named_label, rhs, rhs_named_label, out, lhs_ty,
-                      rhs_ty, avaiable_labels.getValue());
+                      rhs_ty, available_labels.getValue());
 
   lhs = std::get<0>(flattended_labels);
   rhs = std::get<1>(flattended_labels);
@@ -680,9 +679,12 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
   return success();
 }
 
+#define GEN_PASS_DEF_TRANSFORMEINSUMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Transform Einsum to other TF Ops for the supported variants.
 struct TransformEinsumPass
-    : public TransformEinsumPassBase<TransformEinsumPass> {
+    : public impl::TransformEinsumPassBase<TransformEinsumPass> {
   void runOnOperation() override;
 };
 

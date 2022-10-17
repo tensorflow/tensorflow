@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -114,7 +115,6 @@ using ::tfrt::jitrt::StaticRemainingResultsConverter;
 using ::xla::runtime::ArgumentConstraint;
 using ::xla::runtime::ArgumentsRef;
 using ::xla::runtime::AsyncValuesCache;
-using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
@@ -164,6 +164,21 @@ class CompilationThreadPool : public SharedContext {
 
  private:
   std::unique_ptr<ThreadPool> thread_pool_;
+};
+
+// -------------------------------------------------------------------------- //
+// Runs async tasks by scheduling them into the Eigen thread pool.
+// -------------------------------------------------------------------------- //
+
+class EigenThreadPoolAsyncTaskRunner : public xla::runtime::AsyncTaskRunner {
+ public:
+  explicit EigenThreadPoolAsyncTaskRunner(
+      Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_(thread_pool) {}
+  void Schedule(Task task) override { thread_pool_->Schedule(std::move(task)); }
+
+ private:
+  Eigen::ThreadPoolInterface* thread_pool_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -446,37 +461,42 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                               : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      mlir::RegisterAllTensorFlowDialects(registry);
-      RegisterDefaultJitRtDialects(registry);
-    };
+    opts.compiler.register_dialects =
+        [](xla::runtime::DialectRegistry& dialects) {
+          mlir::RegisterAllTensorFlowDialects(*dialects);
+          RegisterDefaultJitRtDialects(dialects);
+        };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
+    opts.compiler.create_compilation_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          // TODO(yijiagu) : Add crash reproducer for xla::runtime::PassManager
+          /* if (GetJitRtFlags().enable_crash_reproducer)
+               SetCrashReproducer(pm, kCrashReproducerStdErr); */
 
-      TfJitRtPipelineOptions opts;
-      if (tf_jitrt_opts) {
-        opts.vectorize = tf_jitrt_opts->vectorize;
-        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-      } else {
-        opts.vectorize = GetJitRtFlags().vectorize;
-      }
+          TfJitRtPipelineOptions opts;
+          if (tf_jitrt_opts) {
+            opts.vectorize = tf_jitrt_opts->vectorize;
+            opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+          } else {
+            opts.vectorize = GetJitRtFlags().vectorize;
+          }
 
-      // Lower from Tensorflow to Linalg on buffers.
-      CreateTfJitRtPipeline(pm, opts);
+          // Lower from Tensorflow to Linalg on buffers.
+          CreateTfJitRtPipeline(*passes, opts);
 
-      // Use default JitRt compilation pipeline to lower to LLVM.
-      CreateDefaultJitRtCompilationPipeline(pm, copts);
-    };
+          // Use default JitRt compilation pipeline to lower to LLVM.
+          CreateDefaultJitRtCompilationPipeline(passes, copts);
+        };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
-      CreateJitRtSpecializationPipeline(pm);
-    };
+    opts.compiler.create_specialization_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          // TODO(yijiagu) : Add crash reproducer for xla::runtime::PassManager
+          /*           if (GetJitRtFlags().enable_crash_reproducer)
+                      SetCrashReproducer(pm, kCrashReproducerStdErr); */
+          CreateJitRtSpecializationPipeline(passes);
+        };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
@@ -660,7 +680,7 @@ struct DebugListener : public SpecializationListener {
 template <typename Error>
 static void ReturnErrors(RemainingResults results, Error error,
                          const ExecutionContext& exec_ctx) {
-  EmitError(exec_ctx, StrCat(error));
+  EmitError(exec_ctx, error);
   ReturnErrors(results, std::move(error));
 }
 
@@ -746,7 +766,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
   // ... or maybe return errors.
   if (LLVM_UNLIKELY(executable->IsError()))
-    return ReturnErrors(results, executable->GetError(), exec_ctx);
+    return ReturnErrors(
+        results, MakeStringError(executable->GetError().message()), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -771,7 +792,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
     RemainingResults results(results_storage);
 
     if (executable.IsError()) {
-      ReturnErrors(results, executable.GetError(), exec_ctx);
+      ReturnErrors(results, MakeStringError(executable.GetError().message()),
+                   exec_ctx);
     } else {
       ExecuteImpl(*executable, memrefs, operands, results, exec_ctx);
     }
@@ -820,7 +842,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 
   // ... or maybe return errors.
   if (LLVM_UNLIKELY(jit_executable->IsError()))
-    return ReturnErrors(results, jit_executable->GetError(), exec_ctx);
+    return ReturnErrors(results,
+                        MakeStringError(jit_executable->GetError().message()),
+                        exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -844,7 +868,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
     RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
-      ReturnErrors(results, jit_executable.GetError(), exec_ctx);
+      ReturnErrors(results,
+                   MakeStringError(jit_executable.GetError().message()),
+                   exec_ctx);
     } else {
       ExecuteImpl(*jit_executable, operands, results, exec_ctx, debug);
     }

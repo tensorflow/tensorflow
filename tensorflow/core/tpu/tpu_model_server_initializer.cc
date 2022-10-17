@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <dlfcn.h>
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 
 namespace tensorflow {

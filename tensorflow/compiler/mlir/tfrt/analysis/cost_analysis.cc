@@ -204,7 +204,7 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
 Status CostAnalysis::ReadMeasuredCosts() {
   const char* env_var = getenv("TF_TFRT_MEASURED_COST_PATH");
   // No need to read because the cost measurement is disabled.
-  if (env_var == nullptr) return Status::OK();
+  if (env_var == nullptr) return OkStatus();
 
   tensorflow::Env* env = Env::Default();
   const std::string measured_cost_path(env_var);

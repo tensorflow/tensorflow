@@ -196,7 +196,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, StringPiece prefix);
+  BundleReader(Env* const env, StringPiece prefix,
+               bool enable_multi_threading_for_testing = false);
   ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
@@ -333,6 +334,8 @@ class BundleReader {
   bool need_to_swap_bytes_;
 
   friend class TensorBundleAlignmentTest;  // For testing data alignment.
+
+  bool enable_multi_threading_for_testing_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
 };

@@ -32,14 +32,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORHANDLECROSSCLUSTERDEPENDENCIES
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshErrorMsg[] =
     "Failed to extract mesh for DTensorHandleCrossClusterDependencies pass. "
@@ -137,7 +139,7 @@ mlir::LogicalResult GetInputProducingValue(mlir::OpOperand& operand,
 //    to computation to be constants.
 mlir::LogicalResult CloneConstantsAcrossMesh(
     mlir::tf_device::ClusterOp cluster) {
-  auto& body_region = cluster.body();
+  auto& body_region = cluster.getBody();
   Mesh mesh;
   if (mlir::failed(ExtractMeshFromCluster(cluster, &mesh)))
     return mlir::failure();
@@ -270,7 +272,7 @@ mlir::LogicalResult ReplaceCopyToMeshWithVirtualSendRecv(
   if (mlir::failed(ExtractMeshFromCluster(cluster, &current_mesh)))
     return mlir::failure();
 
-  mlir::Region& cluster_region = cluster.body();
+  mlir::Region& cluster_region = cluster.getBody();
   mlir::LogicalResult result = mlir::success();
 
   mlir::visitUsedValuesDefinedAbove(
@@ -315,7 +317,7 @@ mlir::LogicalResult ReplaceCopyToMeshWithVirtualSendRecv(
 }
 
 struct DTensorHandleCrossClusterDependencies
-    : public DTensorHandleCrossClusterDependenciesBase<
+    : public impl::DTensorHandleCrossClusterDependenciesBase<
           DTensorHandleCrossClusterDependencies> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();

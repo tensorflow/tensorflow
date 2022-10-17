@@ -59,18 +59,18 @@ struct ConvertConstantLikeOp : public OpConversionPattern<ConstantLikeOp> {
 
     // Lower to MHLO constant if statically shaped.
     if (resultTy.hasStaticShape()) {
-      auto complexAttr = op.value().dyn_cast<complex::NumberAttr>();
+      auto complexAttr = op.getValue().dyn_cast<complex::NumberAttr>();
       auto attr = complexAttr
                       ? DenseElementsAttr::get(resultTy, complexAttr.getValue())
-                      : DenseElementsAttr::get(resultTy, op.value());
+                      : DenseElementsAttr::get(resultTy, op.getValue());
       rewriter.replaceOpWithNewOp<mhlo::ConstantOp>(op, attr);
       return success();
     }
 
     // Lower to broadcasted constant.
     auto loc = op.getLoc();
-    Value constant = rewriter.create<mhlo::ConstantOp>(loc, op.value());
-    Value shape = rewriter.create<shape::ShapeOfOp>(loc, adaptor.operand());
+    Value constant = rewriter.create<mhlo::ConstantOp>(loc, op.getValue());
+    Value shape = rewriter.create<shape::ShapeOfOp>(loc, adaptor.getOperand());
     rewriter.replaceOpWithNewOp<mhlo::DynamicBroadcastInDimOp>(
         op, resultTy, constant, shape, rewriter.getI64TensorAttr({}));
     return success();
@@ -234,7 +234,7 @@ struct ConvertBesselI1eOp : public OpConversionPattern<BesselI1eOp> {
       BesselI1eOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value x = adaptor.operand();
+    Value x = adaptor.getOperand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
     // For now, we support only f64, f32, f16 and bf16.
@@ -587,7 +587,7 @@ struct ConvertErfOp : public OpConversionPattern<ErfOp> {
       ErfOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value x = adaptor.operand();
+    Value x = adaptor.getOperand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
     // For now, we support only f64, f32, f16 and bf16.
@@ -613,7 +613,7 @@ struct ConvertErfcOp : public OpConversionPattern<ErfcOp> {
       ErfcOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    Value x = adaptor.operand();
+    Value x = adaptor.getOperand();
     Type ty = x.getType().cast<ShapedType>().getElementType();
 
     // For now, we support only f64, f32, f16 and bf16.
@@ -804,7 +804,7 @@ Value materializeLgamma(ConversionPatternRewriter &rewriter, Location loc,
 Value materializeCoshApproximation(ConversionPatternRewriter &rewriter,
                                    Location loc, ValueRange operands) {
   CoshOp::Adaptor transformed(operands);
-  Value x = transformed.operand();
+  Value x = transformed.getOperand();
 
   Value logOneHalf =
       rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
@@ -1085,8 +1085,8 @@ Value materializeZeta(ConversionPatternRewriter &rewriter, Location loc,
 Value materializePolygamma(ConversionPatternRewriter &rewriter, Location loc,
                            ValueRange args) {
   PolygammaOp::Adaptor transformed(args);
-  Value n = transformed.n();
-  Value x = transformed.x();
+  Value n = transformed.getN();
+  Value x = transformed.getX();
 
   // Handle integer n > 0.
   Value one = getConstantLike(rewriter, loc, 1.0, x);
@@ -1153,8 +1153,8 @@ struct ConvertDigammaOp : public OpConversionPattern<DigammaOp> {
 Value materializeNextAfter(ConversionPatternRewriter &rewriter, Location loc,
                            ValueRange operands) {
   NextAfterOp::Adaptor transformed(operands);
-  Value x = transformed.x();
-  Value y = transformed.y();
+  Value x = transformed.getX();
+  Value y = transformed.getY();
   auto resultTy = x.getType().cast<ShapedType>();
   auto bitwidth = resultTy.getElementType().getIntOrFloatBitWidth();
   ImplicitLocOpBuilder b(loc, rewriter);
@@ -1273,7 +1273,7 @@ struct ConvertPolygammaOp : public OpConversionPattern<PolygammaOp> {
 Value materializeSinhApproximationForLargeX(ConversionPatternRewriter &rewriter,
                                             Location loc, ValueRange operands) {
   SinhOp::Adaptor transformed(operands);
-  Value x = transformed.operand();
+  Value x = transformed.getOperand();
 
   Value logOneHalf =
       rewriter.create<mhlo::LogOp>(loc, getConstantLike(rewriter, loc, 0.5, x));
@@ -1293,7 +1293,7 @@ Value materializeSinhApproximation(ConversionPatternRewriter &rewriter,
       materializeSinhApproximationForLargeX(rewriter, loc, operands);
 
   SinhOp::Adaptor transformed(operands);
-  Value x = transformed.operand();
+  Value x = transformed.getOperand();
 
   // For smaller x, we get unwanted cancellations of e^x - e^-x, resulting in
   // 0.
@@ -1323,7 +1323,7 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
   LogicalResult matchAndRewrite(
       SinhOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
-    Value x = adaptor.operand();
+    Value x = adaptor.getOperand();
     if (x.getType().cast<ShapedType>().getElementType().isa<ComplexType>()) {
       rewriter.replaceOp(op, materializeSinhApproximationForLargeX(
                                  rewriter, op.getLoc(), adaptor.getOperands()));
@@ -1341,8 +1341,8 @@ Value materializeTan(ConversionPatternRewriter &rewriter, Location loc,
                      ValueRange operands) {
   TanOp::Adaptor transformed(operands);
   return rewriter.create<mhlo::DivOp>(
-      loc, rewriter.create<mhlo::SineOp>(loc, transformed.operand()),
-      rewriter.create<mhlo::CosineOp>(loc, transformed.operand()));
+      loc, rewriter.create<mhlo::SineOp>(loc, transformed.getOperand()),
+      rewriter.create<mhlo::CosineOp>(loc, transformed.getOperand()));
 }
 
 struct ConvertTanOp : public OpConversionPattern<TanOp> {
@@ -1393,7 +1393,7 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
       ConversionPatternRewriter &rewriter) const override {
     // The last dimension of the operand's shape should be known so we can have
     // clamped end_indices for slices. This is verified by the op.
-    auto operandType = op.operand().getType().cast<RankedTensorType>();
+    auto operandType = op.getOperand().getType().cast<RankedTensorType>();
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
@@ -1409,10 +1409,11 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
     // other for the indices. Use TOTALORDER comparison type instead of the
     // default comparison if the element type is of type float.
     Type elementType = operandType.getElementType();
-    auto sortOp = createSortOp(&rewriter, op.getLoc(), {op.operand(), iotaOp},
-                               {elementType, i32Type}, lastDimIndex,
-                               /*isStable=*/true,
-                               /*direction=*/mhlo::ComparisonDirection::GT);
+    auto sortOp =
+        createSortOp(&rewriter, op.getLoc(), {op.getOperand(), iotaOp},
+                     {elementType, i32Type}, lastDimIndex,
+                     /*isStable=*/true,
+                     /*direction=*/mhlo::ComparisonDirection::GT);
 
     // Get the sorted input and index tuple element.
     auto tupleFirstElement = sortOp.getResult(0);
@@ -1420,7 +1421,7 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
 
     SmallVector<int64_t, 4> beginIndices(operandRank, 0);
     auto endIndices = llvm::to_vector<4>(operandType.getShape());
-    endIndices.back() = std::min(static_cast<int64_t>(op.k()), lastDimSize);
+    endIndices.back() = std::min(static_cast<int64_t>(op.getK()), lastDimSize);
     SmallVector<int64_t, 4> strides(operandRank, 1);
 
     // Get the slice for the top K elements.
@@ -1461,9 +1462,9 @@ struct ConvertSelectOp : public OpConversionPattern<BroadcastSelectOp> {
       BroadcastSelectOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only support ranked operands.
-    Value pred = adaptor.pred();
-    Value onTrue = adaptor.on_true();
-    Value onFalse = adaptor.on_false();
+    Value pred = adaptor.getPred();
+    Value onTrue = adaptor.getOnTrue();
+    Value onFalse = adaptor.getOnFalse();
     auto predType = pred.getType().dyn_cast<RankedTensorType>();
     auto onTrueType = onTrue.getType().dyn_cast<RankedTensorType>();
     auto onFalseType = onFalse.getType().dyn_cast<RankedTensorType>();
@@ -1547,9 +1548,9 @@ struct ConvertTrivialNonBroadcastBinaryOp
       ConversionPatternRewriter &rewriter) const override {
     // Only rewrite for statically determinable non-broadcasting cases.
     auto lhsType =
-        adaptor.lhs().getType().template dyn_cast<RankedTensorType>();
+        adaptor.getLhs().getType().template dyn_cast<RankedTensorType>();
     auto rhsType =
-        adaptor.rhs().getType().template dyn_cast<RankedTensorType>();
+        adaptor.getRhs().getType().template dyn_cast<RankedTensorType>();
     if (!lhsType || !rhsType) return failure();
 
     // Requires rank broadcast.
@@ -1594,8 +1595,8 @@ struct ConvertRankedDynamicBroadcastBinaryOp
       ChloOpTy op, typename ChloOpTy::Adaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only support ranked operands.
-    Value lhs = adaptor.lhs();
-    Value rhs = adaptor.rhs();
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
     auto lhsType = lhs.getType().dyn_cast<RankedTensorType>();
     auto rhsType = rhs.getType().dyn_cast<RankedTensorType>();
     auto resultType =
@@ -1603,7 +1604,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     if (!lhsType || !rhsType || !resultType) return failure();
 
     // Check for "numpy"-style rank broadcast.
-    auto broadcastDimensions = op.broadcast_dimensions();
+    auto broadcastDimensions = op.getBroadcastDimensions();
     if (broadcastDimensions &&
         !hlo::isLegalNumpyRankedBroadcast(lhs, rhs, *broadcastDimensions)) {
       // Note: It is unclear whether the general specification of explicit
@@ -1673,8 +1674,8 @@ class ConvertDynamicReshapeOp
   LogicalResult matchAndRewrite(chlo::DynamicReshapeOp op,
                                 PatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
-    auto tensor = op.operand();
-    auto shape = op.output_shape();
+    auto tensor = op.getOperand();
+    auto shape = op.getOutputShape();
 
     auto shapeTy = shape.getType().cast<ShapedType>();
     auto resultTy = op.getType().cast<ShapedType>();

@@ -631,7 +631,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
     if (!input_mkl_shape.IsMklTensor()) {
       // Return input as is since it is already a TF tensor
       *output_tf_tensor = input_mkl_tensor;
-      return Status::OK();
+      return OkStatus();
     }
 
     // Allocate output tensor.
@@ -667,7 +667,7 @@ inline Status ConvertMklToTF(OpKernelContext* context,
             "ConvertMklToTF(): Failed to forward input tensor to output");
       }
     }
-    return Status::OK();
+    return OkStatus();
   } catch (dnnl::error& e) {
     string error_msg = "Status: " + std::to_string(e.status) +
                        ", message: " + string(e.message) + ", in file " +
@@ -1260,7 +1260,7 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
                       "Failed to create blocked memory descriptor.",
                       "Status: ", e.status, ", message: ", e.message));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 inline void CreateAndExecuteReorder(const ReorderPd& reorder_desc,

@@ -969,7 +969,9 @@ def ctc_loss_v3(labels,
       ctc_loss_op_cudnn = _generate_defun_backend(api_name, _GPU_DEVICE_NAME,
                                                   _ctc_loss_op_cudnn)
       res = ctc_loss_op_standard(**params)
-      function_eager.register(ctc_loss_op_cudnn, **params)
+      concrete_func = ctc_loss_op_cudnn.get_concrete_function(**params)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
     return res
 
   if blank_index is None:

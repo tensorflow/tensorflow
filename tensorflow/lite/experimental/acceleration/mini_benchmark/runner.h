@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
 namespace acceleration {
@@ -45,7 +47,7 @@ namespace acceleration {
 // implementation notes in runner.cc
 //
 // Warning: this class will just run the provided code in-process when compiled
-// for non-Android.
+// for non-Android, and timeout is not enforced.
 class ProcessRunner {
  public:
   // Construct ProcessRunner. 'temporary_path' should be a suitable subdirectory
@@ -55,7 +57,14 @@ class ProcessRunner {
   // between 0 and 127 are well-defined.
   ProcessRunner(const std::string& temporary_path,
                 const std::string& function_name,
-                int (*function_pointer)(int argc, char** argv));
+                int (*function_pointer)(int argc, char** argv),
+                int timeout_millisec = 0,
+                ErrorReporter* error_reporter = tflite::DefaultErrorReporter())
+      : temporary_path_(temporary_path),
+        function_name_(function_name),
+        function_pointer_(reinterpret_cast<void*>(function_pointer)),
+        timeout_millisec_(timeout_millisec),
+        error_reporter_(error_reporter) {}
 
   // Initialize runner.
   MinibenchmarkStatus Init();
@@ -92,7 +101,7 @@ class ProcessRunner {
   // To be considered successful, the function must return
   // kMinibenchmarkSuccess. This is because some GPU drivers call exit(0) as a
   // bailout and we don't want to confuse that with a successful run.
-  MinibenchmarkStatus Run(flatbuffers::FlatBufferBuilder* model,
+  MinibenchmarkStatus Run(const flatbuffers::FlatBufferBuilder* model,
                           const std::vector<std::string>& args,
                           std::string* output, int* exitcode, int* signal);
 
@@ -101,14 +110,25 @@ class ProcessRunner {
 
  private:
 #ifndef __ANDROID__
-  int RunInprocess(flatbuffers::FlatBufferBuilder* model,
+  int RunInprocess(const flatbuffers::FlatBufferBuilder* model,
                    const std::vector<std::string>& args);
 #endif  // !__ANDROID__
+
+#ifndef _WIN32
+  // This function first reads the subprocess id from fstream, and then block
+  // until timeout_millisec_ has passed, OR fstream is closed. If timeout is
+  // reached first, we will kill the subprocess. Returns whether kill() is
+  // triggered.
+  bool KillProcessWhenTimedOut(FILE* fstream);
+#endif  // !_WIN32
+
   std::string temporary_path_;
   std::string function_name_;
   void* function_pointer_;
   std::string runner_path_;
   std::string soname_;
+  int timeout_millisec_;
+  ErrorReporter* error_reporter_;
 };
 
 }  // namespace acceleration

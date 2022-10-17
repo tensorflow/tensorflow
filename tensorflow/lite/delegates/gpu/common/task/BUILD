@@ -13,13 +13,11 @@ cc_library(
         ":buffer_desc",
         ":gpu_object_desc",
         ":serialization_base_cc_fbs",
-        ":tensor_desc",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -94,6 +92,16 @@ cc_library(
     hdrs = ["profiling_info.h"],
     deps = [
         "@com_google_absl//absl/time",
+    ],
+)
+
+cc_library(
+    name = "qcom_thin_filter_desc",
+    srcs = ["qcom_thin_filter_desc.cc"],
+    hdrs = ["qcom_thin_filter_desc.h"],
+    deps = [
+        ":gpu_object_desc",
+        "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
 

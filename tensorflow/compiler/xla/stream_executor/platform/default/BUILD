@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl:tsl.bzl", "tf_copts")
 
 licenses(["notice"])
 
@@ -17,7 +17,7 @@ cc_library(
     name = "dso_loader",
     srcs = ["dso_loader.cc"] + select({
         # include dynamic loading checker only for open source build
-        "//tensorflow:oss": ["dlopen_checker.cc"],
+        "//tensorflow/tsl:oss": ["dlopen_checker.cc"],
         "//conditions:default": ["dlopen_checker_stub.cc"],
     }),
     hdrs = ["dso_loader.h"],

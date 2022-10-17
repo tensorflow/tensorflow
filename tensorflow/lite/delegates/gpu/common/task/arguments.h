@@ -26,13 +26,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
-class CLArguments;
-}
 
 class ArgumentsBinder {
  public:
@@ -124,25 +120,7 @@ class Arguments : public ArgumentsBinder {
   }
 
   absl::Status Compile(const GpuInfo& gpu_info,
-                       const std::map<std::string, std::string>& linkables,
                        std::string* code);
-
-  absl::Status ResolveConstExprPass(const GpuInfo& gpu_info,
-                                    std::string* code) const;
-
-  absl::Status ResolveConstExpr(const GpuInfo& gpu_info,
-                                const std::string& object_name,
-                                const std::string& const_expr,
-                                std::string* result) const;
-
-  absl::Status ResolveSelectorsPass(
-      const GpuInfo& gpu_info,
-      std::string* code) const;
-
-  absl::Status ResolveLinkingPass(
-      const GpuInfo& gpu_info,
-      const std::map<std::string, std::string>& linkables,
-      std::string* code) const;
 
   void ResolveObjectNames(const std::string& object_name,
                           const std::vector<std::string>& member_names,
@@ -158,8 +136,6 @@ class Arguments : public ArgumentsBinder {
 
   absl::Status ResolveKernelGlobalSpaceBuffers(const GpuInfo& gpu_info,
                                                std::string* code);
-
-  friend class cl::CLArguments;
 
   static constexpr char kArgsPrefix[] = "args.";
 

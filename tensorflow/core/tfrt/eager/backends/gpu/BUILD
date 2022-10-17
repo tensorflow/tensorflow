@@ -23,6 +23,7 @@ tf_cuda_library(
     ],
     compatible_with = [],
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
     ],  # Only build this library with --config=cuda.

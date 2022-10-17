@@ -16,12 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 
 #include <cstdint>
+#include <iterator>
 
-#include "absl/hash/hash.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/btree_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/tsl/lib/strings/proto_serialization.h"
 
 namespace stream_executor {
 namespace dnn {
@@ -68,7 +70,7 @@ AlgorithmDesc::AlgorithmDesc(
 }
 
 uint64_t AlgorithmDesc::hash() const {
-  return tensorflow::DeterministicProtoHash64(proto_);
+  return tsl::DeterministicProtoHash64(proto_);
 }
 
 bool AlgorithmDesc::operator==(const AlgorithmDesc& other) const {
@@ -84,12 +86,14 @@ std::string AlgorithmDesc::ToString() const {
   if (is_cudnn_frontend()) {
     // Format similarly to cudnn_frontend::ExecutionPlan::getTag(), e.g.
     // "eng2{k1=2,k3=4}".
+    absl::btree_map<int64_t, int64_t> tuning_knobs_sorted;
+    absl::c_copy(proto_.tuning_knobs(),
+                 std::inserter(tuning_knobs_sorted, tuning_knobs_sorted.end()));
     return absl::StrFormat(
         "eng%d{%s}", proto_.algo_id(),
         absl::StrJoin(
-            proto_.tuning_knobs(), ",",
-            [](std::string* out,
-               const google::protobuf::Map<int64_t, int64_t>::value_type& pair) {
+            tuning_knobs_sorted, ",",
+            [](std::string* out, const std::pair<int64_t, int64_t>& pair) {
               absl::StrAppendFormat(out, "k%d=%d", pair.first, pair.second);
             }));
   }

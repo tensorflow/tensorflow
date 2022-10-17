@@ -1,16 +1,6 @@
 # python/lib/core package
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_py_test", "tf_python_pybind_extension")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -88,6 +78,7 @@ cc_library(
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
+        ":py_util",
         "//tensorflow/c:c_api_no_xla",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "llvm/ADT/StringExtras.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace xla {
@@ -46,6 +47,16 @@ std::string AsyncValueType::ToString() const {
   return StrCat("!async.value<", value_type().ToString(), ">");
 }
 
+std::string ScalarType::ToString() const {
+  return LowercasePrimitiveTypeName(type_);
+}
+
+std::string TupleType::ToString() const {
+  auto to_string = [](const auto& elem) { return elem->ToString(); };
+  return StrCat("tuple<", llvm::join(llvm::map_range(elems_, to_string), ", "),
+                ">");
+}
+
 std::string RankedTensorType::ToString() const {
   return StrCat("tensor<", FormatSizes(sizes()),
                 LowercasePrimitiveTypeName(element_type()), ">");
@@ -68,6 +79,8 @@ std::string ExecutionContextOperandType::ToString() const {
   return "!rt.execution_context";
 }
 
+std::string OpaqueOperandType::ToString() const { return "!rt.opaque"; }
+
 //===----------------------------------------------------------------------===//
 // ABI definition for canonical types.
 //===----------------------------------------------------------------------===//
@@ -83,6 +96,15 @@ absl::StatusOr<ResultAbi> AsyncTokenType::AsResult() const {
 // Async value returned as a pointer to the runtime async token.
 absl::StatusOr<ResultAbi> AsyncValueType::AsResult() const {
   return ResultAbi{sizeof(void*)};
+}
+
+absl::StatusOr<ArgumentAbi> ScalarType::AsArgument() const {
+  return ArgumentAbi{1};  // scalars passed as a single pointer
+}
+
+absl::StatusOr<ResultAbi> ScalarType::AsResult() const {
+  size_t n_bytes = primitive_util::ByteWidth(type_);
+  return ResultAbi{n_bytes};
 }
 
 // Memref passed as an unrolled strided memref type.
@@ -105,6 +127,11 @@ absl::StatusOr<ResultAbi> MemrefType::AsResult() const {
 
 // Execution context passed as a single opaque pointer.
 absl::StatusOr<ArgumentAbi> ExecutionContextOperandType::AsArgument() const {
+  return ArgumentAbi{1};
+}
+
+// Opaque operands passed as a single opaque pointer.
+absl::StatusOr<ArgumentAbi> OpaqueOperandType::AsArgument() const {
   return ArgumentAbi{1};
 }
 

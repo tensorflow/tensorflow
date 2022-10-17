@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 

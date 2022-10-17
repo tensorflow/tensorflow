@@ -24,10 +24,12 @@ add_mlir_library(MLIRBufferTransforms
   generic_host_to_llvm.cc
   propagate_static_shapes_to_kernel.cc
   lower_index_cast_pass.cc
+  scalarization.cc
   symbolic_shape_optimization.cc
   shape_simplification.cc
   tile_loops_pass.cc
   collapse_parallel_loops_to_1d_pass.cc
+  unroll_loops.cc
 
   DEPENDS
   LMHLOTransformsPassIncGen
@@ -45,6 +47,8 @@ add_mlir_library(MLIRBufferTransforms
   MLIRPass
   MLIRShapeDialect
   MLIRTransforms
+  THLODialect
+  ThloBufferizableOpInterface
 )
 
 add_mlir_library(MLIRHLOGPUTransforms
@@ -62,7 +66,7 @@ add_mlir_library(MLIRHLOGPUTransforms
 
   LINK_LIBS PUBLIC
   GmlStPasses
-  MLIRArithmeticTransforms
+  MLIRArithTransforms
   MLIRGPUOps
   MLIRHLOAnalysis
   MLIRIR
@@ -80,6 +84,7 @@ add_mlir_library(MLIRHLOGmlStPipeline
 
   LINK_LIBS PUBLIC
   GmlStPasses
+  MLIRBufferTransforms
   MLIRLinalgTransforms
   MLIRPass
 )

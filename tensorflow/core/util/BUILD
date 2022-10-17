@@ -18,15 +18,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -80,13 +72,12 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
+        "activation_mode.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
         "bcast.h",
-        "command_line_flags.cc",
         "command_line_flags.h",
-        "determinism.cc",
         "determinism.h",
         "device_name_utils.cc",
         "device_name_utils.h",
@@ -94,7 +85,6 @@ filegroup(
         "dump_graph.h",
         "einsum_op_util.cc",
         "einsum_op_util.h",
-        "env_var.cc",
         "env_var.h",
         "equal_graph_def.cc",
         "equal_graph_def.h",
@@ -134,12 +124,13 @@ filegroup(
         "tensor_slice_util.h",
         "tensor_slice_writer.cc",
         "tensor_slice_writer.h",
-        "use_cudnn.cc",
         "use_cudnn.h",
         "util.cc",
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
+        "//tensorflow/tsl/util:mobile_srcs_only_runtime",
     ],
 )
 
@@ -196,6 +187,7 @@ filegroup(
         "util.h",
         "work_sharder.h",
         "xla_config_registry.h",
+        "//tensorflow/tsl/util:framework_internal_private_hdrs",
     ],
 )
 
@@ -217,7 +209,6 @@ filegroup(
         "activation_mode.cc",
         "batch_util.cc",
         "bcast.cc",
-        "command_line_flags.cc",
         "debug_events_writer.cc",
         "device_name_utils.cc",
         "dump_graph.cc",
@@ -235,10 +226,10 @@ filegroup(
         "tensor_slice_reader_cache.cc",
         "tensor_slice_set.cc",
         "tensor_slice_writer.cc",
-        "use_cudnn.cc",
         "util.cc",
         "work_sharder.cc",
         "xla_config_registry.cc",
+        "//tensorflow/tsl/util:framework_internal_impl_srcs",
     ],
 )
 
@@ -247,6 +238,7 @@ filegroup(
     srcs = [
         "env_var.h",
         "use_cudnn.h",
+        "//tensorflow/tsl/util:lib_internal_public_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -292,6 +284,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
+        "//tensorflow/tsl/util:test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -320,6 +313,7 @@ filegroup(
     testonly = 1,
     srcs = [
         "reporter.h",
+        "//tensorflow/tsl/util:android_test_hdrs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -328,8 +322,8 @@ filegroup(
     name = "android_test_srcs",
     testonly = 1,
     srcs = [
-        "reporter.cc",
         ":android_test_hdrs",
+        "//tensorflow/tsl/util:android_test_srcs",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -370,6 +364,7 @@ filegroup(
         "use_cudnn.h",
         "util.h",
         "work_sharder.h",
+        "//tensorflow/tsl/util:framework_srcs",
     ],
 )
 
@@ -467,11 +462,9 @@ tf_cc_test(
 
 cc_library(
     name = "reporter",
-    srcs = ["reporter.cc"],
     hdrs = ["reporter.h"],
     visibility = [
         "//tensorflow/core:__subpackages__",
-        "//tensorflow/tsl:__subpackages__",
     ],
     deps = [
         ":test_log_proto_impl_cc",
@@ -482,6 +475,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/util:reporter",
     ],
 )
 
@@ -494,6 +488,11 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
@@ -559,6 +558,9 @@ cc_library(
 cc_library(
     name = "ptr_util",
     hdrs = ["ptr_util.h"],
+    deps = [
+        "//tensorflow/tsl/util:ptr_util",
+    ],
 )
 
 cc_library(
@@ -601,7 +603,6 @@ cc_library(
 
 cc_library(
     name = "env_var",
-    srcs = ["env_var.cc"],
     hdrs = ["env_var.h"],
     deps = [
         "//tensorflow/core/platform:errors",
@@ -612,6 +613,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/util:env_var",
     ],
 )
 
@@ -630,20 +632,23 @@ cc_library(
 # "determinism_for_kernels" rule below instead.
 cc_library(
     name = "determinism",
-    srcs = ["determinism.cc"],
     hdrs = ["determinism.h"],
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/util:env_var",
+        "//tensorflow/tsl/util:determinism",
     ],
     alwayslink = 1,
 )
 
 filegroup(
     name = "determinism_hdr",
-    srcs = ["determinism.h"],
+    srcs = [
+        "determinism.h",
+        "//tensorflow/tsl/util:determinism_hdr",
+    ],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -681,17 +686,6 @@ check_deps(
     deps = [
         "//tensorflow:tensorflow_cc",
     ],
-)
-
-cc_library(
-    name = "determinism_test_util",
-    hdrs = [":determinism_test_util.h"],
-    data = [
-        # Adding this data dependency ensures determinism_check_deps is run
-        # whenever determinism tests are run.
-        ":determinism_check_deps",
-    ],
-    deps = [":determinism"],
 )
 
 tf_kernel_library(
@@ -942,7 +936,10 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     # Not to be used outside of tensorflow/core.
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/tsl/util:__pkg__",
+    ],
 )
 
 tf_proto_library(
@@ -1000,6 +997,7 @@ tf_proto_library(
         ":event_proto",
         ":saved_tensor_slice_proto",
         ":memmapped_file_system_proto",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto",
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",

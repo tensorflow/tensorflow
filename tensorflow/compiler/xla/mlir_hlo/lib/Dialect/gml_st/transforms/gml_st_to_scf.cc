@@ -46,8 +46,8 @@ struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
     SmallVector<Value, 3> seqLBs, seqUBs, seqSteps, seqIVs;
     SmallVector<Value, 3> parLBs, parUBs, parSteps, parIVs;
     for (const auto &en :
-         llvm::enumerate(llvm::zip(loop.lowerBound(), loop.upperBound(),
-                                   loop.step(), loop.getInductionVars()))) {
+         llvm::enumerate(llvm::zip(loop.getLowerBound(), loop.getUpperBound(),
+                                   loop.getStep(), loop.getInductionVars()))) {
       Value lb, ub, step, iv;
       std::tie(lb, ub, step, iv) = en.value();
       if (loop.isParallelDimension(en.index())) {
@@ -68,8 +68,8 @@ struct LoopToSCFPattern : public OpRewritePattern<LoopOp> {
                                                ValueRange ivs) {
       BlockAndValueMapping bvm;
       bvm.map(parIVs, ivs);
-      bvm.map(loop.getRegionInputArgs(), loop.inputs());
-      bvm.map(loop.getRegionOutputArgs(), loop.outputs());
+      bvm.map(loop.getRegionInputArgs(), loop.getInputs());
+      bvm.map(loop.getRegionOutputArgs(), loop.getOutputs());
 
       // If not all dimensions of the gml_st.loop are parallel, an scf.for loop
       // nest is generated.
@@ -112,8 +112,9 @@ struct ParallelOpToSCFPattern : public OpRewritePattern<ParallelOp> {
         builder.clone(op, bvm);
     };
 
-    rewriter.create<scf::ParallelOp>(loop.getLoc(), loop.lowerBound(),
-                                     loop.upperBound(), loop.step(), cloneBody);
+    rewriter.create<scf::ParallelOp>(loop.getLoc(), loop.getLowerBound(),
+                                     loop.getUpperBound(), loop.getStep(),
+                                     cloneBody);
 
     rewriter.eraseOp(loop);
     return success();
@@ -132,15 +133,16 @@ struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
     auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
       BlockAndValueMapping bvm;
       bvm.map(loop.getInductionVars(), ivs);
-      bvm.map(loop.getBody()->getArguments().take_back(loop.outputs().size()),
-              loop.outputs());
+      bvm.map(
+          loop.getBody()->getArguments().take_back(loop.getOutputs().size()),
+          loop.getOutputs());
 
       for (auto &op : loop.getBody()->without_terminator())
         builder.clone(op, bvm);
     };
 
-    scf::buildLoopNest(rewriter, loop.getLoc(), loop.lowerBound(),
-                       loop.upperBound(), loop.step(), cloneBody);
+    scf::buildLoopNest(rewriter, loop.getLoc(), loop.getLowerBound(),
+                       loop.getUpperBound(), loop.getStep(), cloneBody);
     rewriter.eraseOp(loop);
     return success();
   }

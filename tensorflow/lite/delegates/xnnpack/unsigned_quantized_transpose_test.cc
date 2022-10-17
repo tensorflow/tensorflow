@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/xnnpack/transpose_tester.h"

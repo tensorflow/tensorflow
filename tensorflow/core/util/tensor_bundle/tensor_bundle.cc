@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -44,9 +45,10 @@ limitations under the License.
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 #include "tensorflow/core/util/tensor_slice_util.h"
 
 #ifdef PLATFORM_WINDOWS
@@ -67,6 +69,13 @@ static const int kBufferSize = 1024 * 1024;
 // can make the assumption that the header is always the first entry in the
 // bundle.
 const char* const kHeaderEntryKey = "";
+
+// The size threshold for multi-threaded tensor loading.
+const int64_t kLargeTensorThreshold = static_cast<int64_t>(1) << 32;
+// Maximum number of threads to load the tensor from the file.
+const int kMaxFileReadThreads = 8;
+// Minimum size of a file section handled by each thread.
+const int64_t kMinSectionSize = static_cast<int64_t>(1) << 31;
 
 namespace {
 
@@ -754,14 +763,17 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 
 // Interface for reading a tensor bundle.
 
-BundleReader::BundleReader(Env* env, StringPiece prefix)
+BundleReader::BundleReader(
+    Env* env, StringPiece prefix,
+    bool enable_multi_threading_for_testing /* = false */)
     : env_(env),
       prefix_(prefix),
       metadata_(nullptr),
       table_(nullptr),
       index_cache_(nullptr),
       iter_(nullptr),
-      need_to_swap_bytes_(false) {
+      need_to_swap_bytes_(false),
+      enable_multi_threading_for_testing_(enable_multi_threading_for_testing) {
   const string filename = MetaFilename(prefix_);
   uint64 file_size;
   status_ = env_->GetFileSize(filename, &file_size);
@@ -902,10 +914,55 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     size_t unused_bytes_read;
     if (entry.size() > kBufferSize) {
       StringPiece sp;
-      TF_RETURN_IF_ERROR(buffered_file->file()->Read(
-          entry.offset(), entry.size(), &sp, backing_buffer));
-      if (sp.data() != backing_buffer) {
-        memmove(backing_buffer, sp.data(), entry.size());
+      if (!enable_multi_threading_for_testing_ &&
+          entry.size() < kLargeTensorThreshold) {
+        TF_RETURN_IF_ERROR(buffered_file->file()->Read(
+            entry.offset(), entry.size(), &sp, backing_buffer));
+        if (sp.data() != backing_buffer) {
+          memmove(backing_buffer, sp.data(), entry.size());
+        }
+      } else {
+        int64_t section_size = kMinSectionSize;
+        int64_t thread_pool_size =
+            (entry.size() + kMinSectionSize - 1) / kMinSectionSize;
+        if (thread_pool_size > kMaxFileReadThreads ||
+            enable_multi_threading_for_testing_) {
+          thread_pool_size = kMaxFileReadThreads;
+          section_size =
+              (entry.size() + kMaxFileReadThreads - 1) / kMaxFileReadThreads;
+        }
+
+        std::vector<Status> statuses(thread_pool_size);
+        auto reader_pool = std::make_unique<thread::ThreadPool>(
+            Env::Default(), "restore_large_tensor", thread_pool_size);
+
+        for (int i = 0; i < thread_pool_size; ++i) {
+          reader_pool->Schedule([&, i]() {
+            int64_t offset = i * section_size;
+            int64_t size = i == thread_pool_size - 1 ? entry.size() - offset
+                                                     : section_size;
+            std::unique_ptr<RandomAccessFile> section_reader = nullptr;
+            StringPiece sp;
+            if (auto file_status = env_->NewRandomAccessFile(
+                    DataFilename(prefix_, entry.shard_id(), num_shards_),
+                    &section_reader);
+                !file_status.ok()) {
+              statuses[i] = file_status;
+              return;
+            }
+
+            auto backing_buffer_current_pos = backing_buffer + offset;
+            auto status = section_reader->Read(entry.offset() + offset, size,
+                                               &sp, backing_buffer_current_pos);
+            if (sp.data() != backing_buffer_current_pos) {
+              memmove(backing_buffer_current_pos, sp.data(), size);
+            }
+            statuses[i] = std::move(status);
+          });
+        }
+        for (const auto& status : statuses) {
+          TF_RETURN_IF_ERROR(status);
+        }
       }
     } else {
       TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,

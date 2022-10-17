@@ -20,6 +20,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
 
 #include <map>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -310,6 +312,8 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape, int64_t device) const;
 
+  // Gets the total number of tiles including subgroups and partial replication.
+  int64_t TotalNumTiles() const;
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64_t NumTiles() const;
@@ -352,6 +356,9 @@ class HloSharding {
     rank -= subgroup_types_.size();
     return rank;
   }
+
+  // Returns the number of tuple_elements_ entries to fit the shape.
+  static int64_t RequiredLeaves(const Shape& shape);
 
  private:
   explicit HloSharding(bool manual, bool replicated,
@@ -416,9 +423,6 @@ class HloSharding {
 
   // Internal helper to validate a non-tuple (leaf) sharding.
   Status ValidateNonTuple(const Shape& shape, int64_t num_devices) const;
-
-  // Returns the number of tuple_elements_ entries to fit the shape.
-  static int64_t RequiredLeaves(const Shape& shape);
 
   bool replicated_;
   bool maximal_;

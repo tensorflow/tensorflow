@@ -313,6 +313,10 @@ bool IsHostMemoryArg(const EagerOperation& op, const NodeDef* node_def,
   const auto& host_memory_args = kernel_def->host_memory_arg();
   const OpDef& op_def = OpRegistry::Global()->LookUp(op.Name())->op_def;
   const int arg_id = OpPortIdToArgId(*node_def, op_def.input_arg(), port_id);
+  // Fail if argument ID not found.
+  if (arg_id < 0) {
+    return false;
+  }
   return std::find(host_memory_args.begin(), host_memory_args.end(),
                    op_def.input_arg(arg_id).name()) != host_memory_args.end();
 }
@@ -389,8 +393,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
                    const char* attr_name, bool* value) {
   Status status = op->Attrs().Get(attr_name, value);
   if (status.ok()) {
-    VLOG(2) << "Caller explicitly specifies "
-            << (attr_name ? "=true " : "=false, ") << op->DebugString();
+    VLOG(2) << "Caller explicitly specifies " << attr_name
+            << (value ? "=true " : "=false, ") << op->DebugString();
     return OkStatus();
   }
 
@@ -402,8 +406,8 @@ Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
 
   status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
   if (status.ok()) {
-    VLOG(2) << "Function definition explicitly specifies "
-            << (attr_name ? "=true" : "=false");
+    VLOG(2) << "Function definition explicitly specifies " << attr_name
+            << (value ? "=true" : "=false");
     return OkStatus();
   }
   return status;

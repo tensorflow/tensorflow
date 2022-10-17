@@ -171,10 +171,9 @@ class IntType;
 // Defines the IntType using value_type and typedefs it to int_type_name.
 // The struct int_type_name ## _tag_ trickery is needed to ensure that a new
 // type is created per int_type_name.
-#define TF_LIB_GTL_DEFINE_INT_TYPE(int_type_name, value_type)          \
-  struct int_type_name##_tag_ {};                                      \
-  typedef ::tensorflow::gtl::IntType<int_type_name##_tag_, value_type> \
-      int_type_name;
+#define TSL_LIB_GTL_DEFINE_INT_TYPE(int_type_name, value_type) \
+  struct int_type_name##_tag_ {};                              \
+  typedef ::tsl::gtl::IntType<int_type_name##_tag_, value_type> int_type_name;
 
 // Holds an integer value (of type ValueType) and behaves as a ValueType by
 // exposing assignment, unary, comparison, and arithmetic operators.

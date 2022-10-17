@@ -26,12 +26,14 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
 
 namespace {
+
+#define GEN_PASS_DEF_TPUPARALLELEXECUTESINKRESOURCEWRITEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // A pass that moves `tf.AssignVariableOp` into a `tf_device.parallel_execute`
 // region if the `tf.AssignVariableOp` is the only consumer of a
@@ -39,7 +41,7 @@ namespace {
 // TPUMergeVariablesWithExecute to merge resource writes without special
 // handling for `tf_device.parallel_execute`.
 struct TPUParallelExecuteSinkResourceWrite
-    : public TF::TPUParallelExecuteSinkResourceWritePassBase<
+    : public impl::TPUParallelExecuteSinkResourceWritePassBase<
           TPUParallelExecuteSinkResourceWrite> {
   void runOnOperation() override;
 };

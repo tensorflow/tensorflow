@@ -23,10 +23,11 @@ limitations under the License.
 
 namespace tsl {
 class Status;
-}
-namespace tensorflow {
-using tsl::Status;
 class Env;
+}  // namespace tsl
+namespace tensorflow {
+using tsl::Env;
+using tsl::Status;
 
 // Gets a `DescriptorPool` object from the `descriptor_source`. This may be:
 //

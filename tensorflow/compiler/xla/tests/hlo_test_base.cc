@@ -28,16 +28,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/pjrt_client_registry.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -90,7 +92,8 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       reference_runner_(reference_platform),
       verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
-          allow_mixed_precision_in_hlo_verifier) {
+          allow_mixed_precision_in_hlo_verifier),
+      test_platform_(test_platform) {
   hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
@@ -240,9 +243,26 @@ Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
       .value();
 }
 
+StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunner() {
+  if (runner_ != nullptr) {
+    return std::move(runner_);
+  }
+  StatusOr<std::unique_ptr<HloRunnerInterface>> status_or_runner =
+      GetHloRunnerForTest(test_platform_);
+
+  // Test for successful creation of PjRt based Hlo Runner.
+  EXPECT_TRUE(status_or_runner.ok());
+
+  return std::move(status_or_runner.value());
+}
+
 Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
-  return test_runner_.Execute(std::move(module), arguments).value();
+  auto hlo_runner = GetHloRunner();
+
+  return hlo_runner.value()
+      ->Execute(std::move(module), arguments, true, nullptr)
+      .value();
 }
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
@@ -517,7 +537,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::Run(
     string_view hlo_string, bool run_hlo_passes, ExecutionProfile* profile,
-    const tensorflow::protobuf::Message* backend_config) {
+    const tsl::protobuf::Message* backend_config) {
   auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
@@ -565,7 +585,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 
 ::testing::AssertionResult HloTestBase::RunReplicated(
     string_view hlo_string, bool run_hlo_passes, int64_t num_replicas,
-    const tensorflow::protobuf::Message* backend_config) {
+    const tsl::protobuf::Message* backend_config) {
   auto module_or_status =
       ParseAndReturnVerifiedModule(hlo_string, num_replicas);
   if (!module_or_status.ok()) {
@@ -607,8 +627,7 @@ HloTestBase::RunAndCompareTwoModulesInternal(
 ::testing::AssertionResult HloTestBase::RunMultipleTimes(
     string_view hlo_string, bool run_hlo_passes,
     std::vector<ExecutionProfile>* profiles,
-    const tensorflow::protobuf::Message* backend_config,
-    bool assert_determinism) {
+    const tsl::protobuf::Message* backend_config, bool assert_determinism) {
   int n = profiles->size();
   std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
   std::vector<std::vector<Literal>> fake_arguments(n);

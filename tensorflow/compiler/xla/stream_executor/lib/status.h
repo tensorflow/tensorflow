@@ -20,16 +20,15 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"  // IWYU pragma: export
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 namespace port {
 
-using Status = tensorflow::Status;  // TENSORFLOW_STATUS_OK
+using Status = tsl::Status;  // TENSORFLOW_STATUS_OK
 
 #define SE_CHECK_OK(val) TF_CHECK_OK(val)
-#define SE_ASSERT_OK(val) \
-  ASSERT_EQ(::stream_executor::port::Status::OK(), (val))
+#define SE_ASSERT_OK(val) ASSERT_EQ(::stream_executor::port::Status(), (val))
 
 // Define some canonical error helpers.
 inline Status UnimplementedError(absl::string_view message) {

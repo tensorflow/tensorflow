@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -136,25 +136,25 @@ class RewriteTFRCallOp : public OpRewritePattern<CallOp> {
   Value CastToNonDerivedType(PatternRewriter& rewriter, Location loc,
                              CastOp cast_op, Type input_tfr_type) const {
     auto tensor_type = input_tfr_type.dyn_cast<TFRTensorType>();
-    if (!tensor_type) return cast_op.arg();
+    if (!tensor_type) return cast_op.getArg();
 
     auto attr_names = tensor_type.getAttrKeys();
-    if (attr_names.empty() || attr_names.size() > 1) return cast_op.arg();
+    if (attr_names.empty() || attr_names.size() > 1) return cast_op.getArg();
     StringRef tfr_type_attr = attr_names[0].getValue();
-    if (!fixed_elt_type_attrs_.contains(tfr_type_attr)) return cast_op.arg();
+    if (!fixed_elt_type_attrs_.contains(tfr_type_attr)) return cast_op.getArg();
 
     Type result_elt_type = GetFixedElementType(tfr_type_attr, rewriter);
     if (!result_elt_type) {
-      return cast_op.arg();
+      return cast_op.getArg();
     }
 
     Type original_input_type =
         cast_op.getInputElementType().cast<TypeAttr>().getValue();
     if (result_elt_type != original_input_type) {
       UnrankedTensorType result_type = UnrankedTensorType::get(result_elt_type);
-      return rewriter.create<TF::CastOp>(loc, result_type, cast_op.arg());
+      return rewriter.create<TF::CastOp>(loc, result_type, cast_op.getArg());
     }
-    return cast_op.arg();
+    return cast_op.getArg();
   }
 
   // For variadic operands, we have to enforce them to use the same types.
@@ -277,7 +277,7 @@ LogicalResult RewriteTFRCallOp::CollectInputsAndAttributes(
       for (auto list_input : list_op.getOperands()) {
         auto cast_op = dyn_cast_or_null<CastOp>(list_input.getDefiningOp());
         if (!cast_op) return failure();
-        list_inputs.push_back(cast_op.arg());
+        list_inputs.push_back(cast_op.getArg());
         list_input_types.push_back(cast_op.getInputElementType());
       }
       CastValuesToSameType(rewriter, call_op.getLoc(), list_input_types,
@@ -379,7 +379,7 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
   // Create the new op
   Location loc = call_op.getLoc();
   rewriter.setInsertionPointAfter(call_op);
-  std::string tf_op_name = GetTFOpName(call_op.callee());
+  std::string tf_op_name = GetTFOpName(call_op.getCallee());
   OperationState new_state(loc, tf_op_name, inputs, output_types, attr_list);
   Operation* new_op = rewriter.create(new_state);
   if (materialize_derived_attrs_) {
@@ -400,17 +400,17 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
     if (res_type.dyn_cast<TFRTensorType>()) {
       Value new_res = new_op->getResult(res.index());
       auto casted = rewriter.create<CastOp>(loc, res_type, new_res);
-      new_results.push_back(casted.out());
+      new_results.push_back(casted.getOut());
     } else if (auto list_type = res.value().dyn_cast<TFRTensorListType>()) {
       SmallVector<Value, 4> tensor_list;
       for (int i = res.index(); i < new_op->getNumResults(); i++) {
         Value new_res = new_op->getResult(i);
         auto casted =
             rewriter.create<CastOp>(loc, unconstrainted_type, new_res);
-        tensor_list.push_back(casted.out());
+        tensor_list.push_back(casted.getOut());
       }
       auto list_op = rewriter.create<BuildListOp>(loc, res_type, tensor_list);
-      new_results.push_back(list_op.out());
+      new_results.push_back(list_op.getOut());
     }
   }
 
@@ -426,7 +426,7 @@ LogicalResult RewriteTFRCallOp::matchAndRewrite(
   // Get the func op and verify that it is external. The type of this external
   // func op is used as the signature of the corresponding TF ops. All the
   // external func ops have the trailing underscore.
-  std::string external_callee_name = call_op.callee().str().append("_");
+  std::string external_callee_name = call_op.getCallee().str().append("_");
   TFRFuncOp func = symbol_table_.lookup<TFRFuncOp>(external_callee_name);
   if (!func || !func.isExternal()) return failure();
   // Get the inputs and attributes. The attributes include these from the
@@ -471,7 +471,7 @@ class RaiseToTFOpsPass
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TFRDialect, TF::TensorFlowDialect, scf::SCFDialect,
-                    arith::ArithmeticDialect, func::FuncDialect>();
+                    arith::ArithDialect, func::FuncDialect>();
   }
 
   explicit RaiseToTFOpsPass(llvm::Optional<ModuleOp> tfr_module,

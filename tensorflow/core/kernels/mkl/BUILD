@@ -114,11 +114,17 @@ tf_cc_test_mkl(
     linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_conv_op",
+        ":mkl_kernel_util",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:quantization_utils",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels:bias_op",
+        "//tensorflow/core/kernels:conv_ops",
+        "//tensorflow/core/kernels:depthwise_conv_op",
+        "//tensorflow/core/kernels:relu_op",
     ] + MKL_TEST_DEPS,
 )
 
@@ -505,4 +511,13 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
     ] + MKL_TEST_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_kernel_util",
+    srcs = ["mkl_kernel_util.h"],
+    deps = MKL_DEPS + [
+        ":mkl_quantize_op",
+        "//tensorflow/core:direct_session",
+    ],
 )

@@ -245,7 +245,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
   // Only INT32 begin/end/strides are supported
-  // TODO(b/175642009): add support for INT64
+  // TODO(b/253465311): add support for INT64
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);

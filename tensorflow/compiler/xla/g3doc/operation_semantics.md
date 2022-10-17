@@ -1669,8 +1669,8 @@ the formal description) and "Offset Mapping" (`remapped_offset_dims` in the
 formal description) into [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively,
 adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
-[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
-the semantics for `tf.gather_nd`.
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`O`<sub>`0`</sub>]
+which gives us the semantics for `tf.gather_nd`.
 
 `slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
 index `X` in the gather indices array picks an entire row and the result is the
@@ -2613,7 +2613,7 @@ In summary, the scatter operation can be defined as follows.
     `output`[`J`][`O`] = `operands`[`J`][`O`]
 -   For every index `U` in the `updates`[`J`] array and the corresponding index
     `O` in the `operand`[`J`] array, if `O` is a valid index for `output`: \
-    `(output`[`0`][`O`], ..., output`[`N-1`][`O`])
+    `(output`[`0`][`O`], ..., `output`[`N-1`][`O`])
     =`update_computation`(`output`[`0`][`O`], ...,
     ,`output`[`N-1`][`O`],`updates`[`0`][`U`], ...,`updates`[`N-1`][`U`])
 

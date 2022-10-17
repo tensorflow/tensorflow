@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -47,9 +47,9 @@ namespace wrap {
     static FuncPtrT loaded = []() -> FuncPtrT {                               \
       static const char* kName = #API_NAME;                                   \
       void* f;                                                                \
-      auto s = Env::Default()->GetSymbolFromLibrary(                          \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                     \
           stream_executor::internal::CachedDsoLoader::GetRoctracerDsoHandle() \
-              .ValueOrDie(),                                                  \
+              .value(),                                                  \
           kName, &f);                                                         \
       CHECK(s.ok()) << "could not find " << kName                             \
                     << " in roctracer DSO; dlerror: " << s.error_message();   \
@@ -83,6 +83,6 @@ FOREACH_ROCTRACER_API(ROCTRACER_API_WRAPPER)
 #undef ROCTRACER_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_ROCTRACER_WRAPPER_H_

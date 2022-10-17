@@ -92,15 +92,8 @@ bool IsPhysicallyTransposing(const HloInstruction& instr) {
 }
 
 bool IsReduceInputFusion(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    if (HasAnyUnnestedReductionRoot(instr.called_computations()[0])) {
-      CHECK(instr.IsInputFusion())
-          << " Fusion rooted at reduction-to-vector op must be of kind kInput: "
-          << instr.ToString();
-      return true;
-    }
-  }
-  return false;
+  return instr.opcode() == HloOpcode::kFusion &&
+         HasAnyUnnestedReductionRoot(instr.called_computations()[0]);
 }
 
 bool IsInputFusibleReduction(const HloInstruction& instr) {
@@ -109,17 +102,12 @@ bool IsInputFusibleReduction(const HloInstruction& instr) {
 }
 
 bool IsTransposeInputFusion(const HloInstruction& instr) {
-  if (instr.opcode() == HloOpcode::kFusion) {
-    HloComputation* fusion = instr.called_computations()[0];
-    return absl::c_any_of(
-        GetFusionRoots(fusion),
-        [&](const HloInstruction* instr) { return IsTiledTranspose(*instr); });
-  }
-  return false;
+  return instr.opcode() == HloOpcode::kFusion &&
+         HasAnyTiledTransposeRoot(instr.called_computations()[0]);
 }
 
 bool IsInputFusibleTranspose(const HloInstruction& instr) {
-  return IsTiledTranspose(instr) || IsTransposeInputFusion(instr);
+  return FindAnyTiledTranspose(instr) || IsTransposeInputFusion(instr);
 }
 
 const HloInstruction* GetRealHeroForMultiOutputFusion(
@@ -135,7 +123,7 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   // operand of the fusion root, because it has the most constraints.
   for (const auto* inst : fused_expression_root->operands()) {
     if (IsReductionFromOrToContiguousDimensions(*inst) ||
-        IsTiledTranspose(*inst)) {
+        FindAnyTiledTranspose(*inst)) {
       return inst;
     }
   }
@@ -150,7 +138,7 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
     if (IsReductionFromOrToContiguousDimensions(*element_instr) ||
-        IsTiledTranspose(*element_instr)) {
+        FindAnyTiledTranspose(*element_instr)) {
       return element_instr->operand(0)->shape();
     }
     return element_instr->shape();
@@ -166,13 +154,17 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
       !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
     return false;
-  } else if (IsTiledTranspose(*instr_1) && IsTiledTranspose(*instr_2) &&
-             (instr_1->shape() != instr_2->shape() ||
-              instr_1->operand(0)->shape() != instr_2->operand(0)->shape())) {
+  } else if (FindAnyTiledTranspose(*instr_1) &&
+             FindAnyTiledTranspose(*instr_2) &&
+             (!ShapeUtil::EqualIgnoringElementType(instr_1->shape(),
+                                                   instr_2->shape()) ||
+              !ShapeUtil::EqualIgnoringElementType(
+                  instr_1->operand(0)->shape(),
+                  instr_2->operand(0)->shape()))) {
     return false;
-  } else if ((IsTiledTranspose(*instr_1) &&
+  } else if ((FindAnyTiledTranspose(*instr_1) &&
               IsReductionFromOrToContiguousDimensions(*instr_2)) ||
-             (IsTiledTranspose(*instr_2) &&
+             (FindAnyTiledTranspose(*instr_2) &&
               IsReductionFromOrToContiguousDimensions(*instr_1))) {
     return false;
   }
@@ -208,7 +200,8 @@ bool IsLoopFusible(const HloInstruction& instr) {
   return instr.IsFusible() &&
          ((instr.IsElementwise() && instr.operand_count() > 0 &&
            instr.opcode() != HloOpcode::kCopy) ||
-          (instr.opcode() == HloOpcode::kCopy && !IsTiledTranspose(instr)) ||
+          (instr.opcode() == HloOpcode::kCopy &&
+           !FindAnyTiledTranspose(instr)) ||
           instr.opcode() == HloOpcode::kBitcast ||
           instr.opcode() == HloOpcode::kBroadcast ||
           instr.opcode() == HloOpcode::kConcatenate ||
@@ -250,18 +243,12 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
     return "the fusion would create a heavy computation";
   }
 
-  // Do not fuse into fusions if the resulting kernel would suffer from
-  // uncoalesced reads due to a transposed memory access pattern.
-  if (IsInputFusibleReduction(consumer) && IsPhysicallyTransposing(producer)) {
-    return "fusing the producer would break read coalescing";
-  }
-
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
   // Don't fuse other constants: Unfused constants in GPU land can be
   // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
-  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // but fused constants are handled by shared CPU/GPU code and always emitted
   // in the IR/PTX.  The external constant representation makes for faster
   // compiles and significantly smaller assembly code.
   if (producer.opcode() == HloOpcode::kConstant &&
@@ -342,7 +329,7 @@ static int64_t SharedMemoryUsageNoCache(const HloInstruction& instr) {
       // from potential x-tiling).
       return 2 * 32 * 33 * primitive_size * num_variadic;
     }
-  } else if (IsTiledTranspose(instr)) {
+  } else if (FindAnyTiledTranspose(instr)) {
     // Tile size for transposition.
     int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());

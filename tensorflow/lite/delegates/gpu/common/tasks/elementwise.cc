@@ -40,6 +40,9 @@ std::string GetOneInputCode(const GpuInfo& gpu_info,
     case OperationType::ABS:
       result = "$0 = fabs($1);";
       break;
+    case OperationType::CEIL:
+      result = "$0 = ceil($1);";
+      break;
     case OperationType::COS:
       if (use_native_opencl_functions) {
         result = "$0 = convert_half4(native_cos(convert_float4($1)));";
@@ -329,13 +332,21 @@ ElementwiseDescriptor CreateElementwiseDesc(const GpuInfo& gpu_info,
 
 }  // namespace
 
+ElementwiseDescriptor CreateElementwiseOneInput(const GpuInfo& gpu_info,
+                                                CalculationsPrecision precision,
+                                                const OperationType& op_type) {
+  ElementwiseDescriptor op_desc;
+  op_desc.code =
+      GetOneInputCode(gpu_info, op_type, precision, "in_value", "out_value");
+  return op_desc;
+}
+
 GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
                                        const OperationDef& definition,
                                        const OperationType& op_type) {
-  ElementwiseDescriptor op_desc;
-  op_desc.code = GetOneInputCode(gpu_info, op_type, definition.precision,
-                                 "in_value", "out_value");
-  return CreateGpuOperation(definition, std::move(op_desc));
+  return CreateGpuOperation(
+      definition,
+      CreateElementwiseOneInput(gpu_info, definition.precision, op_type));
 }
 
 GPUOperation CreateElementwise(const GpuInfo& gpu_info,

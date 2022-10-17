@@ -49,15 +49,36 @@ using xla::primitive_util::LowercasePrimitiveTypeName;
 //===----------------------------------------------------------------------===//
 
 Status OpaqueArg::Verify(const Type& type) const {
-  if (isa<AsyncTokenType>(type)) return absl::OkStatus();
+  if (isa<OpaqueOperandType>(type)) return absl::OkStatus();
   return InvalidArgumentError(
       StrCat("unsupported opaque argument type: ", type.ToString()));
 }
 
-void OpaqueArg::Pack(absl::Span<void*> args) const { args[0] = ptr_; }
+void OpaqueArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&ptr_));
+}
 
 std::string OpaqueArg::ToString() const {
   return StrFormat("OpaqueArg: ptr=%p", ptr_);
+}
+
+//===----------------------------------------------------------------------===//
+// ScalarArg.
+//===----------------------------------------------------------------------===//
+
+Status ScalarArg::Verify(const Type& type) const {
+  auto* scalar = dyn_cast<ScalarType>(&type);
+  if (scalar && scalar->type() == type_) return absl::OkStatus();
+  return InvalidArgumentError(
+      StrCat("unsupported scalar argument type: ", type.ToString()));
+}
+
+void ScalarArg::Pack(absl::Span<void*> args) const {
+  args[0] = const_cast<void*>(reinterpret_cast<const void*>(&value_));
+}
+
+std::string ScalarArg::ToString() const {
+  return primitive_util::LowercasePrimitiveTypeName(type_);
 }
 
 //===----------------------------------------------------------------------===//
@@ -232,44 +253,6 @@ Status VerifyMemrefArgument(unsigned index, const Type& type,
   if (auto st = VerifyMemrefArgument(type, arg); !st.ok())
     return InvalidArgumentError(StrCat("argument #", index, " ", st.message()));
   return absl::OkStatus();
-}
-
-// -------------------------------------------------------------------------- //
-// BufferDesc.
-// -------------------------------------------------------------------------- //
-
-static Status VerifyBufferDesc(PrimitiveType element_type,
-                               std::optional<absl::Span<const int64_t>> sizes,
-                               const BufferDesc& buffer) {
-  size_t n_elem = !sizes.has_value() || sizes->empty() ? 1 : (*sizes)[0];
-  size_t expected_buffer_size =
-      primitive_util::ByteWidth(element_type) * n_elem;
-  if (LLVM_UNLIKELY(expected_buffer_size != buffer.size())) {
-    return InvalidArgumentError(StrCat(
-        "buffer size is not equal to that expected from the element type: got ",
-        buffer.size(), " vs expected ", expected_buffer_size, "."));
-  }
-  return absl::OkStatus();
-}
-
-Status BufferDesc::Verify(const Type& type) const {
-  // BufferDesc doesn't have its own type signature; it works with MemrefType.
-  if (auto* memref = dyn_cast<MemrefType>(&type))
-    return VerifyBufferDesc(memref->element_type(), memref->sizes(), *this);
-  return InvalidArgumentError(
-      StrCat("unsupported memref type: ", type.ToString()));
-}
-
-void BufferDesc::Pack(absl::Span<void*> args) const {
-  auto cast = [](const void* ptr) { return const_cast<void*>(ptr); };
-
-  args[0] = cast(&data_);
-  args[1] = cast(&data_);
-  args[2] = cast(&size_);
-}
-
-std::string BufferDesc::ToString() const {
-  return StrFormat("BufferDesc: data: %p size: %i", data(), size());
 }
 
 }  // namespace runtime

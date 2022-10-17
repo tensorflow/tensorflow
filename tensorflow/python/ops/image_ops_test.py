@@ -2335,6 +2335,29 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
         self.evaluate(v)
 
 
+class ImageProjectiveTransformV2(test_util.TensorFlowTestCase):
+
+  def testShapeTooLarge(self):
+    interpolation = "BILINEAR"
+    fill_mode = "REFLECT"
+    images = constant_op.constant(
+        0.184634328, shape=[2, 5, 8, 3], dtype=dtypes.float32)
+    transforms = constant_op.constant(
+        0.378575385, shape=[2, 8], dtype=dtypes.float32)
+    output_shape = constant_op.constant([1879048192, 1879048192],
+                                        shape=[2],
+                                        dtype=dtypes.int32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"Encountered overflow when multiplying"):
+      self.evaluate(
+          gen_image_ops.ImageProjectiveTransformV2(
+              images=images,
+              transforms=transforms,
+              output_shape=output_shape,
+              interpolation=interpolation,
+              fill_mode=fill_mode))
+
+
 class InternalPadToBoundingBoxTest(test_util.TensorFlowTestCase,
                                    parameterized.TestCase):
 
@@ -4150,6 +4173,25 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     y_shape = [1, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)
+
+
+class ResizeNearestNeighborGrad(test_util.TensorFlowTestCase):
+
+  def testSizeTooLarge(self):
+    align_corners = True
+    half_pixel_centers = False
+    grads = constant_op.constant(1, shape=[1, 8, 16, 3], dtype=dtypes.float16)
+    size = constant_op.constant([1879048192, 1879048192],
+                                shape=[2],
+                                dtype=dtypes.int32)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r"Encountered overflow when multiplying"):
+      self.evaluate(
+          gen_image_ops.ResizeNearestNeighborGrad(
+              grads=grads,
+              size=size,
+              align_corners=align_corners,
+              half_pixel_centers=half_pixel_centers))
 
 
 class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):

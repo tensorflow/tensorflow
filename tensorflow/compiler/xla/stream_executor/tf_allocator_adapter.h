@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/tsl/framework/allocator.h"
 
 namespace stream_executor {
 
@@ -38,10 +38,10 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
  public:
   // stream: a Stream on which the allocator can only be used. If non-null, the
   // allocator can not be used on any other stream.
-  TfAllocatorAdapter(tensorflow::Allocator *wrapped, Stream *stream);
+  TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream);
 
   // Constructor for the cases where `stream` can not be provided.
-  TfAllocatorAdapter(tensorflow::Allocator *wrapped, Platform *platform);
+  TfAllocatorAdapter(tsl::Allocator *wrapped, Platform *platform);
 
   ~TfAllocatorAdapter() override;
 
@@ -63,7 +63,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
   port::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
  private:
-  tensorflow::Allocator *wrapped_;
+  tsl::Allocator *wrapped_;
   Stream *stream_;
 };
 
@@ -73,7 +73,7 @@ class TfAllocatorAdapter : public DeviceMemoryAllocator {
 class MultiDeviceAdapter : public DeviceMemoryAllocator {
  public:
   using AllocatorWithStream =
-      std::pair<std::unique_ptr<tensorflow::Allocator>, Stream *>;
+      std::pair<std::unique_ptr<tsl::Allocator>, Stream *>;
   MultiDeviceAdapter(const Platform *platform,
                      std::vector<AllocatorWithStream> tf_allocators)
       : DeviceMemoryAllocator(platform) {
@@ -121,7 +121,7 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
   std::vector<std::unique_ptr<TfAllocatorAdapter>> per_device_allocators_;
   // The wrapped TF allocators backing per_device_allocators_
   // (TfAllocatorAdapter does not take ownership of its underlying Allocator).
-  std::vector<std::unique_ptr<tensorflow::Allocator>> tf_allocators_;
+  std::vector<std::unique_ptr<tsl::Allocator>> tf_allocators_;
 };
 
 }  // namespace stream_executor

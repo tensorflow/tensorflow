@@ -275,6 +275,8 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   XLA_SCOPED_LOGGING_TIMER("InitializeHostForDistributedTpuOp");
 
   auto* rmgr = GetTPUConfigResourceMgr();
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+              errors::InvalidArgument("argument at 0 place must be a scalar"));
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
 
   // Reset the TPU embedding engine interface if we are not the master.
@@ -444,6 +446,10 @@ void SetGlobalTPUArrayOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "SetGlobalTPUArrayOp";
   XLA_SCOPED_LOGGING_TIMER("SetGlobalTPUArrayOp");
 
+  OP_REQUIRES(
+      ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+      errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                              ctx->input(0).DebugString()));
   auto tpu_topology = ctx->input(0).scalar<tstring>()();
   TF_Status* status = TF_NewStatus();
 

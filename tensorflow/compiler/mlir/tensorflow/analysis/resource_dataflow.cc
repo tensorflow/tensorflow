@@ -61,6 +61,8 @@ ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
     }
   } else if (auto vh = dyn_cast<TF::VarHandleOp>(value.getDefiningOp())) {
     return ResourceConstructingOps(vh);
+  } else if (auto it = dyn_cast<TF::IteratorOp>(value.getDefiningOp())) {
+    return ResourceConstructingOps(it);
   }
   return ResourceConstructingOps();
 }
@@ -83,7 +85,18 @@ void ResourceDataflowAnalysis::visitOperation(Operation *op,
                                               ArrayRef<const StateT *> operands,
                                               ArrayRef<StateT *> results) {
   LLVM_DEBUG(llvm::dbgs() << "ResAn: Visiting operation: " << *op << "\n");
-  setAllToEntryStates(results);
+  if (auto cast = dyn_cast<TF::CastOp>(op)) {
+    join(results[0], *operands[0]);
+  } else if (auto while_op = dyn_cast<TF::WhileRegionOp>(op)) {
+    for (auto &region : while_op->getRegions()) {
+      for (auto [arg, value] :
+           llvm::zip(region.getArguments(), while_op->getOperands())) {
+        join(getLatticeElement(arg), *getLatticeElement(value));
+      }
+    }
+  } else {
+    setAllToEntryStates(results);
+  }
 }
 
 }  // namespace TF

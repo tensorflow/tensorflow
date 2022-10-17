@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -95,6 +96,7 @@ struct CompiledMemoryStats {
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
 
+  std::string serialized_hlo_proto = "";
   std::string DebugString() const;
 };
 

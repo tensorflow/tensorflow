@@ -34,14 +34,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
-using ::tensorflow::testing::IsOkAndHolds;
+using ::tsl::testing::IsOkAndHolds;
 
 using TransposeFoldingTest = HloTestBase;
 

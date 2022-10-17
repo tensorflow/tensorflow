@@ -17,11 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_ARGUMENTS_H_
 
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <type_traits>
 
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 
 namespace xla {
@@ -148,7 +150,7 @@ class ArgumentsRef {
  public:
   ArgumentsRef() : data_(nullptr), size_(0), stride_(0) {}
 
-  template <typename... Ts>
+  template <typename... Ts, std::enable_if_t<sizeof...(Ts) != 0>* = nullptr>
   ArgumentsRef(const Arguments<Ts...>& args)  // NOLINT
       : data_(reinterpret_cast<const Argument*>(args.storage_.data())),
         size_(args.size()),
@@ -169,6 +171,10 @@ class ArgumentsRef {
   template <typename T, size_t n, std::enable_if_t<is_argument<T>>* = nullptr>
   ArgumentsRef(const std::array<T, n>& arr)  // NOLINT
       : ArgumentsRef(llvm::ArrayRef<T>(arr)) {}
+
+  template <typename T, std::enable_if_t<is_argument<T>>* = nullptr>
+  ArgumentsRef(std::initializer_list<T> list)  // NOLINT
+      : ArgumentsRef(llvm::ArrayRef<T>(list)) {}
 
   const Argument& operator[](size_t index) const {
     assert(index < size_ && "index out of bounds");
@@ -196,7 +202,7 @@ class ArgumentsRef {
 // MLIR passes to lower types and operations to the LLVM dialect.
 
 //===----------------------------------------------------------------------===//
-// OpaqueArg for passing `!llvm.ptr` (opaque pointer) arguments.
+// OpaqueArg for passing `!rt.opaque` arguments (lowered to `!llvm.ptr`).
 //===----------------------------------------------------------------------===//
 
 class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
@@ -213,6 +219,42 @@ class OpaqueArg final : public llvm::RTTIExtends<OpaqueArg, Argument> {
 
  private:
   void* ptr_;
+};
+
+//===----------------------------------------------------------------------===//
+// ScalarArg for passing integer or float scalar arguments.
+//===----------------------------------------------------------------------===//
+
+class ScalarArg final : public llvm::RTTIExtends<ScalarArg, Argument> {
+  template <typename T, typename... Ts>
+  static inline constexpr bool kIsOneOf = (std::is_same_v<T, Ts> || ...);
+
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  template <typename T,
+            std::enable_if_t<kIsOneOf<T, float, int32_t, int64_t>>* = nullptr>
+  explicit ScalarArg(T value)
+      : type_(primitive_util::NativeToPrimitiveType<T>()), value_(value) {}
+
+  absl::Status Verify(const Type& type) const final;
+  void Pack(absl::Span<void*> args) const final;
+  std::string ToString() const final;
+
+ private:
+  // We store value in a union instead of an `std::variant` so that we can pack
+  // a pointer to this union as an executable argument.
+  union Value {
+    explicit Value(int32_t i32) : i32(i32) {}
+    explicit Value(int64_t i64) : i64(i64) {}
+    explicit Value(float f32) : f32(f32) {}
+    int32_t i32;
+    int64_t i64;
+    float f32;
+  };
+
+  PrimitiveType type_;
+  Value value_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -306,28 +348,6 @@ MemrefDesc::MemrefDesc(unsigned rank, PrimitiveType dtype, void* data,
 // error message in case of an error.
 absl::Status VerifyMemrefArgument(unsigned index, const Type& type,
                                   const MemrefDesc& arg);
-
-//===----------------------------------------------------------------------===//
-// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
-//===----------------------------------------------------------------------===//
-
-class BufferDesc final : public llvm::RTTIExtends<BufferDesc, Argument> {
- public:
-  static constexpr char ID = 0;  // NOLINT
-
-  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
-
-  void* data() const { return data_; }
-  size_t size() const { return size_; }
-
-  absl::Status Verify(const Type& type) const final;
-  void Pack(absl::Span<void*> args) const final;
-  std::string ToString() const final;
-
- private:
-  void* data_;
-  size_t size_;
-};
 
 }  // namespace runtime
 }  // namespace xla

@@ -38,7 +38,7 @@ port::Status TryDlopenCUDALibraries() {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cannot dlopen all CUDA libraries."));
   } else {
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 }
 
@@ -52,7 +52,7 @@ port::Status TryDlopenROCmLibraries() {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cannot dlopen all ROCm libraries."));
   } else {
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 }
 
@@ -63,7 +63,7 @@ port::Status MaybeTryDlopenGPULibraries() {
   return TryDlopenROCmLibraries();
 #else
   LOG(INFO) << "Not built with GPU enabled. Skip GPU library dlopen check.";
-  return port::Status::OK();
+  return tsl::OkStatus();
 #endif
 }
 
@@ -74,7 +74,7 @@ port::Status TryDlopenTensorRTLibraries() {
     return port::Status(port::error::INTERNAL,
                         absl::StrCat("Cannot dlopen all TensorRT libraries."));
   } else {
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 }
 

@@ -33,6 +33,10 @@ class GpuHloCostAnalysis : public HloCostAnalysis {
 
  protected:
   std::unique_ptr<HloCostAnalysis> CreateNestedCostAnalysis() override;
+  // Utility function to handle all element-wise operations.
+  Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
+  bool input_reuse_is_inefficient() const override { return true; }
+  size_t immediate_constant_max_elements() const override { return 8; }
 };
 
 }  // namespace gpu

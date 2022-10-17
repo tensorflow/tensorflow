@@ -322,7 +322,7 @@ class LogicalDeviceConfiguration(
   def __new__(cls,
               memory_limit=None,
               experimental_priority=None,
-              experimental_device_ordinal=0):
+              experimental_device_ordinal=None):
     return super().__new__(cls, memory_limit, experimental_priority,
                            experimental_device_ordinal)
 
@@ -754,9 +754,9 @@ class Context:
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
-        config.coordinated_jobs.extend(coordinated_jobs)
+        config.coordinated_job_list.extend(coordinated_jobs)
       else:
-        raise ValueError("`coordinated_jobs` must be a list of job names or "
+        raise ValueError("`coordinated_jobs` must be list[CoordinatedJob] or "
                          "None, but got: %s" % (coordinated_jobs,))
     self._coordination_service_config = config
 
@@ -1205,7 +1205,8 @@ class Context:
         device_limits = []
         priority = []
         for virt_dev in vdevs:
-          device_ordinals.append(virt_dev.experimental_device_ordinal)
+          if virt_dev.experimental_device_ordinal is not None:
+            device_ordinals.append(virt_dev.experimental_device_ordinal)
           device_limits.append(virt_dev.memory_limit)
           if virt_dev.experimental_priority is not None:
             priority.append(virt_dev.experimental_priority)
@@ -1213,6 +1214,11 @@ class Context:
         # devices.
         if priority and len(device_limits) != len(priority):
           raise ValueError("priority must be specified for all virtual devices")
+        # If device_ordinals is specified, it must be specified for all virtual
+        # devices.
+        if device_ordinals and len(device_limits) != len(device_ordinals):
+          raise ValueError(
+              "device_ordinals must be specified for all virtual devices")
 
         virtual_devices.append(
             config_pb2.GPUOptions.Experimental.VirtualDevices(
@@ -1309,6 +1315,11 @@ class Context:
     function_def.ParseFromString(proto_data)
 
     return function_def
+
+  def is_custom_device(self, device_name):
+    """Calls TFE_IsCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_Py_IsCustomDevice(self._handle, device_name)
 
   def register_custom_device(self, device_capsule, device_name,
                              device_info_capsule):
@@ -1658,7 +1669,7 @@ class Context:
         if vdev.experimental_priority is not None:
           raise ValueError("Setting experimental_priority on CPU virtual "
                            " devices is currently not supported")
-        if vdev.experimental_device_ordinal != 0:
+        if vdev.experimental_device_ordinal is not None:
           raise ValueError("Setting experimental_device_ordinal on CPU virtual "
                            " devices is currently not supported")
     elif dev.device_type == "GPU":
@@ -2698,6 +2709,23 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def is_custom_device(device_name):
+  """Calls TFE_IsCustomDevice.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Args:
+    device_name: A string indicating the name to check whether it is a
+      registered custom device.
+
+  Returns:
+    A boolean.
+  """
+  return context().is_custom_device(device_name)
 
 
 def register_custom_device(device_capsule, device_name, device_info_capsule):

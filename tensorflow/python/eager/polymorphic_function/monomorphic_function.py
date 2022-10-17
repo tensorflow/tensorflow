@@ -20,6 +20,7 @@ import pprint
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -27,9 +28,9 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import function_spec
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
+from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -65,9 +66,10 @@ np_arrays = lazy_loader.LazyLoader(
     "np_arrays", globals(),
     "tensorflow.python.ops.numpy_ops.np_arrays")
 
-function_saved_model_utils = lazy_loader.LazyLoader(
-    "function_saved_model_utils", globals(),
-    "tensorflow.python.eager.function_saved_model_utils")
+saved_model_utils = lazy_loader.LazyLoader(
+    "saved_model_utils", globals(),
+    "tensorflow.python.eager.polymorphic_function.saved_model_utils"
+)
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
@@ -146,55 +148,8 @@ class _InterpolateFunctionError(object):
     return False
 
 
+# TODO(b/232961485): Remove after quarantined `add_function_callback` removed.
 _function_callbacks = set()
-
-
-# TODO(b/232961485): Remove this API in favour of the graph transformation API.
-def add_function_callback(function_callback):
-  """Add a callback function for Function creation.
-
-  The callback function has the signature:
-
-    `def function_callback(function, name, graph, inputs, outputs):`
-
-  where:
-  - `function`: _EagerDefinedFunction being created before finalizing the graph.
-      Do not modify the function directly but instead modify the graph.
-  - `name`: name of the function.
-  - `graph`: Graph of the function.
-  - `inputs`: `tuple` of tensors used as inputs to the function.
-  - `outputs`: `tuple` of tensors used as outputs from the function.
-
-  The callback is at the top of the `_EagerDefinedFunction` construction, giving
-  callback an opportunity to make the last edits to the graph. Do not make
-  changes to `graph, inputs`, and `outputs` manually, but, instead, set the
-  `graph` as the default then define ops.
-
-  Repeated registration of the same callback function is idempotent.
-  After a callback is added, it can be removed with the
-  `remove_function_callback()` method.
-
-  Args:
-    function_callback: The callback to add.
-  """
-  _function_callbacks.add(function_callback)
-
-
-def remove_function_callback(function_callback):
-  """Remove an already-added function callback.
-
-  See the doc string of `add_function_callback()` for more information.
-
-  Args:
-    function_callback: The callback to remove.
-  """
-  _function_callbacks.remove(function_callback)
-
-
-def clear_function_callbacks():
-  """Clear all function callbacks, if any have been regisered."""
-  _function_callbacks.clear()
-
 
 _FORWARD_PREFIX = "__forward_"
 _BACKWARD_PREFIX = "__backward_"
@@ -1438,7 +1393,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     arg_specs, kwarg_specs = self.structured_input_signature
     vararg_indices = range(len(spec.arg_names), len(arg_specs))
     fullargspec = tf_inspect.FullArgSpec(
-        args=list(args) + ["<arg{}>".format(i + 1) for i in vararg_indices],
+        args=list(args) + ["arg{}".format(i + 1) for i in vararg_indices],
         varargs=None,
         varkw=None,
         defaults=[function_spec.BOUND_VALUE] * len(arg_specs),
@@ -1642,28 +1597,39 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
   def _structured_signature_check_arg_types(self, args, kwargs):
     """Raises a TypeError if any args have the wrong type."""
+    signature_context = trace_type.InternalTracingContext()
     # Check argument types
     arg_specs, kwarg_specs = self.structured_input_signature
     for i, (arg, spec) in enumerate(zip(args, arg_specs)):
       name = self._function_spec.arg_names[i]
-      self._structured_signature_check_arg_type(arg, spec, name)
+      self._structured_signature_check_arg_type(arg, spec, name,
+                                                signature_context)
     for (name, arg) in kwargs.items():
-      self._structured_signature_check_arg_type(arg, kwarg_specs[name], name)
+      self._structured_signature_check_arg_type(arg, kwarg_specs[name], name,
+                                                signature_context)
 
-  def _structured_signature_check_arg_type(self, arg, spec, name):
+  def _structured_signature_check_arg_type(self, arg, spec, name,
+                                           signature_context):
     """Raise TypeError if `arg`'s type doesn't match `spec`."""
     if arg is function_spec.BOUND_VALUE:
       return
 
+    # TODO(xjun): Expand this to all CompositeTensors after removing
+    # TraceType.Reference usage from IteratorSpec.
+    if isinstance(arg, resource_variable_ops.BaseResourceVariable):
+      arg_spec = trace_type.from_value(arg, signature_context)
+    else:
+      arg_spec = arg
+
     # Check the overall nested structure of the argument.
     try:
-      nest.assert_same_structure(arg, spec, expand_composites=True)
+      nest.assert_same_structure(arg_spec, spec, expand_composites=True)
     except (ValueError, TypeError):
       try:
-        nest.assert_same_structure(arg, spec, expand_composites=False)
-        expected, got = spec, arg
+        nest.assert_same_structure(arg_spec, spec, expand_composites=False)
+        expected, got = spec, arg_spec
       except (ValueError, TypeError):
-        expected, got = _structure_summary(spec), _structure_summary(arg)
+        expected, got = _structure_summary(spec), _structure_summary(arg_spec)
       raise TypeError(f"{self._structured_signature_summary()}: argument "
                       f"{name} had incorrect type\n"
                       f"  expected: {expected}\n"
@@ -1705,7 +1671,8 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       args: a list of Tensors or Variables. Arguments from the Python function
         should be filtered before calling this method: objects aside from
         Tensors, CompositeTensors, and Variables are ignored. Any
-        CompositeTensors should be expanded before calling this method.
+        CompositeTensors other than ResourceVariables should be expanded before
+        calling this method.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
       cancellation_manager: (Optional.) A `CancellationManager` that can be
@@ -2311,7 +2278,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
           (f"Unable to save function {self.name} for the following reason(s):\n"
            + "\n".join(self.graph.saving_errors)))
     self.add_to_graph()
-    object_map[self] = function_saved_model_utils.ExportedConcreteFunction(
+    object_map[self] = saved_model_utils.ExportedConcreteFunction(
         self, tensor_map)
     return []
 

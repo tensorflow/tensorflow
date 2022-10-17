@@ -133,7 +133,7 @@ func.func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %c0 = arith.constant 0 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
-  // CHECK:      Value info for %1 = tensor.from_elements %0, %0 : tensor<2xindex>
+  // CHECK:      Value info for %{{.*}} = tensor.from_elements %{{.*}}, %{{.*}} : tensor<2xindex>
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   // CHECK-NEXT:   s0 with
@@ -148,7 +148,7 @@ func.func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %shape = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %c1 = arith.constant 1 : index
   %d0 = tensor.extract %shape[%c1] : tensor<2xindex>
-  // CHECK:      Value info for %2 = tensor.from_elements %1, %1 : tensor<2xindex>
+  // CHECK:      Value info for %{{.*}} = tensor.from_elements %{{.*}}, %{{.*}} : tensor<2xindex>
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   // CHECK-NEXT:   s0 with
@@ -224,11 +224,11 @@ func.func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %5 = shape.shape_of %4 : tensor<?xf32> -> tensor<1xindex>
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
-  // CHECK:      Value info for %6 = tensor.extract
+  // CHECK:      Value info for %{{.*}} = tensor.extract
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %6 = tensor.extract %5[%c0] : tensor<1xindex>
-  // CHECK:      Value info for %7 = tensor.from_elements
+  // CHECK:      Value info for %{{.*}} = tensor.from_elements
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   // CHECK-NEXT:   1
@@ -238,13 +238,13 @@ func.func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %10 = shape.shape_of %8 : tensor<?x1xf32> -> tensor<2xindex>
   %11 = shape.cstr_broadcastable %9, %10 : tensor<2xindex>, tensor<2xindex>
   %12 = shape.assuming %11 -> (tensor<?x?xf32>) {
-    // CHECK:      Value info for %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>:
+    // CHECK:      Value info for %{{.*}} = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>:
     // CHECK-NEXT:   s0 with
     // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
     // CHECK-NEXT:   s0 with
     // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
     %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
-    // CHECK:      Value info for %27 = shape.shape_of
+    // CHECK:      Value info for %{{.*}} = shape.shape_of
     // CHECK-NEXT:   s0 with
     // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
     // CHECK-NEXT:   1

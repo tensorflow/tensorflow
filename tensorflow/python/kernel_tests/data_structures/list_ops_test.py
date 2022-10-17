@@ -549,6 +549,17 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_scatter(c0, [-1, -2], element_shape=[])
       self.evaluate(l)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testScatterWithNonScalarFails(self):
+    c = constant_op.constant(value=[2])
+    num_elements = np.array([[], [], []], dtype=np.float32)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"Shape must be rank 0 but is rank \d+|"
+                                r"\w+ must be a scalar"):
+      self.evaluate(
+          gen_list_ops.TensorListScatterV2(
+              tensor=c, indices=c, element_shape=c, num_elements=num_elements))
+
   def testScatterIntoExistingList(self):
     l = list_ops.tensor_list_reserve(
         element_dtype=dtypes.float32, element_shape=[], num_elements=3)
@@ -1503,6 +1514,15 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       t = list_ops.tensor_list_concat(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testConcatWithInvalidElementShape(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=0)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"element_shape must not be empty"):
+      self.evaluate(gen_list_ops.tensor_list_concat(
+          input_handle=l, element_dtype=dtypes.float32, element_shape=[]))
+
   def testEmptyTensorListInvalidShape(self):
     with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
                                 r"Shape must be at most rank 1 but is rank 2"):
@@ -1657,6 +1677,15 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       l = list_ops.tensor_list_from_tensor([1., 2., 3.], element_shape=[])
       l = list_ops.tensor_list_resize(l, -1)
       self.evaluate(l)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testResizeWithNonScalarFails(self):
+    l = list_ops.tensor_list_from_tensor([3, 4, 5], element_shape=[])
+    size = np.zeros([0, 2, 3, 3])
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r"Shape must be rank 0 but is rank \d+|"
+                                r"\w+ must be a scalar"):
+      self.evaluate(gen_list_ops.TensorListResize(input_handle=l, size=size))
 
   @test_util.run_deprecated_v1
   @test_util.enable_control_flow_v2

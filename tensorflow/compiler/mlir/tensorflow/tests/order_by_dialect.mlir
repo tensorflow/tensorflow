@@ -104,3 +104,56 @@ func.func @tf_and_mhlo(%arg0: tensor<32x28x28x1xf32>, %arg1: tensor<!tf_type.res
 // CHECK: mhlo.add
 // CHECK: mhlo.maximum
 // CHECK: return{{.*}}tensor<32x10xf32>
+
+// -----
+
+// CHECK-LABEL: @mhlo_while
+func.func private @mhlo_while() {
+  // CHECK-NEXT: mhlo.constant
+  // CHECK-NEXT: mhlo.constant
+  // CHECK-NEXT: mhlo.constant
+  %0 = mhlo.constant dense<-1> : tensor<i32>
+  %1 = mhlo.constant dense<0> : tensor<i32>
+  %2 = mhlo.constant dense<20> : tensor<i32>
+  // CHECK-NEXT: mhlo.while
+  %3, %4, %5 = mhlo.while(%iterArg = %1, %iterArg_0 = %0, %iterArg_1 = %1) : tensor<i32>, tensor<i32>, tensor<i32>
+   cond {
+    %17 = mhlo.compare  LT, %iterArg_1, %2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    mhlo.return %17 : tensor<i1>
+  } do {
+    mhlo.return %0, %0, %0 : tensor<i32>, tensor<i32>, tensor<i32>
+  }
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @nested_regions
+func.func @nested_regions(%arg0: f32) {
+  %0 = "x.a"(%arg0) : (f32) -> f32
+  %1 = "y.a"(%arg0) : (f32) -> f32
+  %2 = "x.b"(%arg0) : (f32) -> f32
+  "nested1"() ({
+    %3 = "y.a"(%arg0) : (f32) -> f32
+    %4 = "x.b"(%1) : (f32) -> f32
+    %5 = "y.b"(%2) : (f32) -> f32
+    "nested2"() ({
+      %6 = "x.b"(%3) : (f32) -> f32
+      %7 = "y.c"(%4) : (f32) -> f32
+      %8 = "x.d"(%arg0) : (f32) -> f32
+      %9 = "y.e"(%6) : (f32) -> f32
+    }) : () -> ()
+  }) : () -> ()
+}
+// CHECK: x.a
+// CHECK-NEXT: x.b
+// CHECK-NEXT: y.a
+// CHECK-NEXT: nested1
+// CHECK-NEXT: y.a
+// CHECK-NEXT: y.b
+// CHECK-NEXT: x.b
+// CHECK-NEXT: nested2
+// CHECK-NEXT: x.b
+// CHECK-NEXT: x.d
+// CHECK-NEXT: y.c
+// CHECK-NEXT: y.e

@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace stream_executor {
 
@@ -161,11 +161,11 @@ class ExecutableBuildOptions {
   }
 
   // Thread pool for parallel compilation.
-  tensorflow::thread::ThreadPool* compile_thread_pool() const {
+  tsl::thread::ThreadPool* compile_thread_pool() const {
     return compile_thread_pool_;
   }
   ExecutableBuildOptions& set_compile_thread_pool(
-      tensorflow::thread::ThreadPool* compile_thread_pool) {
+      tsl::thread::ThreadPool* compile_thread_pool) {
     compile_thread_pool_ = compile_thread_pool;
     return *this;
   }
@@ -190,7 +190,7 @@ class ExecutableBuildOptions {
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
   bool allow_spmd_sharding_propagation_to_output_ = false;
-  tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
+  tsl::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
 
 StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/tsl/platform/env_time.h"
+
 #include <sys/time.h>
 #include <time.h>
 
-#include "tensorflow/core/platform/env_time.h"
-
-namespace tensorflow {
+namespace tsl {
 
 /* static */
 uint64 EnvTime::NowNanos() {
@@ -28,4 +28,4 @@ uint64 EnvTime::NowNanos() {
           static_cast<uint64>(ts.tv_nsec));
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

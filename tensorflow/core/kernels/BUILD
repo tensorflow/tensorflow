@@ -13,6 +13,7 @@ load(
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
+    "tf_cuda_only_cc_test",
     "tf_opts_nortti_if_lite_protos",
 )
 load(
@@ -30,33 +31,7 @@ load(
     "if_mkl",
     "mkl_deps",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_nccl")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_disable_ptxas_warning_flags")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "get_compatible_with_portable", "if_nccl", "tf_cc_shared_library", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_disable_ptxas_warning_flags", "tf_kernel_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -67,9 +42,6 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
 
 # Description:
 # Op kernel implementations for TensorFlow.
@@ -866,6 +838,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "//third_party/eigen3",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/tsl/framework/fixedpoint",
     ] + select({
         "//tensorflow:android_x86": [],
         "//tensorflow:arm_any": [],
@@ -885,6 +858,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
     ],
@@ -939,6 +913,7 @@ cc_library(
         "eigen_spatial_convolutions.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":eigen_contraction_kernel",
         ":eigen_convolution_helpers",
@@ -958,6 +933,7 @@ cc_library(
         "eigen_pooling.h",
         "eigen_spatial_convolutions.h",
     ],
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":eigen_convolution_helpers",
         ":eigen_spatial_convolutions-inl",
@@ -1860,6 +1836,7 @@ tf_cuda_cc_test(
     srcs = ["conv_ops_test.cc"],
     tags = [
         "no_cuda_asan",  # TODO(b/171342275): re-enable.
+        "requires-gpu-sm70",
     ],
     deps = [
         ":conv_ops",
@@ -2552,7 +2529,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:forward_type_inference",
+        "//tensorflow/core/common_runtime:type_inference",
     ],
 )
 
@@ -3457,7 +3434,7 @@ tf_cc_tests(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/util:determinism_test_util",
+        "//tensorflow/tsl/util:determinism_test_util",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -4132,6 +4109,7 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     hdrs = [
+        "autotune_conv_impl.h",
         "fill_functor.h",
         "conv_grad_ops.h",
         "conv_grad_input_ops.h",
@@ -4149,12 +4127,15 @@ tf_kernel_library(
     }) + select({
         ":xsmm_backward_convolutions": ["TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS"],
         "//conditions:default": [],
-    }),
+    }) + [
+        "EIGEN_NEON_GEBP_NR=4",
+    ],
     prefix = "conv_ops",
     deps = [
         ":conv_grad_shape_utils",
         ":conv_2d",
         ":conv_3d",
+        ":cwise_lib_hdrs",
         ":eigen_contraction_kernel",
         ":fill_functor",
         ":fused_eigen_output_kernels",
@@ -6330,6 +6311,7 @@ filegroup(
         "assign_op.h",
         "bias_op.cc",
         "bias_op.h",
+        "bias_op_gpu.h",
         "cast_op.cc",
         "cast_op.h",
         "cast_op_impl.h",
@@ -6579,6 +6561,7 @@ filegroup(
     srcs = [
         ":portable_extended_ops_headers",
         "argmax_op.cc",
+        "autotune_conv_impl.h",
         "avgpooling_op.cc",
         "batch_norm_op.cc",
         "bcast_ops.cc",
@@ -6603,6 +6586,7 @@ filegroup(
         "conv_ops_fused_half.cc",
         "conv_ops_fused_image_transform.cc",
         "conv_ops_fused_impl.h",
+        "conv_ops_fused_int8.cc",
         "conv_ops_using_gemm.cc",
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
@@ -7078,6 +7062,7 @@ cc_library(
         "//tensorflow/core/kernels:portable_extended_ops",
     ]),
     copts = tf_copts() + tf_opts_nortti_if_lite_protos(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     linkopts = if_android(["-ldl"]),
     tags = [
         "manual",
@@ -7094,6 +7079,7 @@ cc_library(
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/framework/fixedpoint",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
         "//third_party/icu/data:conversion_data",
@@ -7158,7 +7144,6 @@ tf_kernel_library(
         ":pooling_ops",
         ":quantization_utils",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:image_resizer_state",
@@ -7928,6 +7913,7 @@ tf_cc_shared_library(
         "@platforms//:__subpackages__",
         "@png//:__subpackages__",
         "@snappy//:__subpackages__",
+        "@stablehlo//:__subpackages__",
         "//:__subpackages__",
         "@upb//:__subpackages__",
         "@zlib//:__subpackages__",

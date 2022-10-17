@@ -18,10 +18,10 @@ from typing import List, Optional, Tuple
 from absl import logging
 import numpy as np
 
+from tensorflow.dtensor.python import accelerator_util
 from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import layout
-from tensorflow.dtensor.python import multi_client_util
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
@@ -49,6 +49,7 @@ def _make_device_specs(
     device_type: Optional[str] = None
 ) -> Tuple[List[tf_device.DeviceSpec], str]:
   """Makes device specs from local devices names or number of global devices."""
+
   if devices is None:
     if device_type is None:
       device_type = 'CPU'
@@ -157,6 +158,10 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
   """
   dim_names, shape = zip(*mesh_dims)
 
+  if not accelerator_util.is_initialized():
+    raise ValueError('Accelerators are uninitialized, please run '
+                     'dtensor.initialize_accelerator_system() first.')
+
   if device_type and device_type.upper() == 'TPU':
     # TODO(b/185940495): Allow multi-mesh and partial on TPU.
     # TPU meshes can only be configured through environment variables that
@@ -173,10 +178,6 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     # For CPU and GPU meshes, user-specified args take precedence over env vars.
     # This is particularly useful on single clients when users want to create
     # meshes that use fewer logical devices than what's available.
-
-    if config.num_clients() > 1 and not multi_client_util.is_initialized():
-      raise ValueError('Invalid multi-client topology, please run '
-                       'dtensor.initialize_multi_client() first.')
 
     local_spec = tf_device.DeviceSpec(
         job=config.job_name(), replica=0, task=config.client_id())
@@ -215,60 +216,6 @@ def create_distributed_mesh(mesh_dims: List[Tuple[str, int]],
     return mesh
 
   raise ValueError(f'Device type {device_type} is not CPU, GPU or TPU')
-
-
-@tf_export('experimental.dtensor.initialize_multi_client', v1=[])
-def dtensor_initialize_multi_client(
-    enable_coordination_service: Optional[bool] = False) -> None:
-  """Initializes Multi Client DTensor.
-
-  The following environment variables controls the behavior of this function.
-  If the variables are unset, DTensor will be configured to run in single-client
-  mode.
-
-  - DTENSOR_CLIENT_ID: integer, between 0 to num_clients - 1, to identify the
-      client id of the current process. The default value is 0.
-  - DTENSOR_NUM_CLIENTS: integer, the number of clients. The default value is 1.
-  - DTENSOR_JOB_NAME: string, a hostname like string for the name of the dtensor
-      job. The default is `localhost` when number of clients is 1, and `worker`
-      when the number of clients is greater than 1.
-      The job name controls the job name section of the TensorFlow DeviceSpecs,
-      e.g., `job:worker` in `/job:worker/replica:0/task:0/device:TPU:0` when
-      the job name is `worker`.
-  - DTENSOR_JOBS: string, a comma separated list. Each item in the list is
-      of format `{hostname}:{port}` and the items must be sorted in alphabet
-      order. The implication is the RPC port numbers of the clients from
-      the same host must be ordered by the client ID.
-      Examples of valid DTENSOR_JOBS values:
-      - 4 clients on localhost:
-        `localhost:10000,localhost:10001,localhost:10002,localhost:10003`
-      - 2 clients on host1, 2 clients on host2
-        `host1:10000,host1:10001,host2:10000,host2:10003`
-
-  Args:
-    enable_coordination_service: If true, enable distributed coordination
-      service to make sure that workers know the devices on each other, a
-      prerequisite for data transfer through cross-worker rendezvous.
-  """
-  assert context.executing_eagerly()
-
-  # Collective GRPC servers are only necessary in multi-client setup.
-  # Single clients can use local mode of collectives.
-  if config.num_clients() > 1:
-    multi_client_util.initialize_multi_client_cluster(
-        job_name=config.job_name(),
-        dtensor_jobs=config.jobs(),
-        client_id=config.client_id(),
-        collective_leader=config.full_job_name(task_id=0),
-        enable_coordination_service=enable_coordination_service)
-
-  # Make sure the server change is fully propagated before returning.
-  context.ensure_initialized()
-  context.async_wait()
-  context.context()._clear_caches()  # pylint: disable=protected-access
-
-  # Unlike TPU, do not enable heartbeat service.
-  # They tend to interfere with regular GPU/CPU collective Ops.
 
 
 @tf_export('experimental.dtensor.barrier', v1=[])

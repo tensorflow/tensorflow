@@ -23,18 +23,25 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
-def GMLST_MaterializeOp : GMLST_Op<"materialize", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins AnyShaped:$source, AnySet:$set);
-  let results = (outs AnyType:$result);
+def RankedTensorOrVector
+  : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
+def RankedTensorOrVectorOrScalar : AnyTypeOf<[
+  AnyRankedTensor, AnyVector, AnyFloat, AnyInteger, AnyComplex
+]>;
+
+def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
+  let arguments = (ins RankedTensorOrVector:$source, AnySet:$set);
+  let results = (outs RankedTensorOrVectorOrScalar:$result);
+
+  let builders = [OpBuilder<(ins "Value":$source, "Value":$set)>];
+
   let assemblyFormat = [{
     $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
+      `to` type($result)
   }];
-  let hasVerifier = 0;
 }
 
-def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
+def GMLST_OffsetOp : GMLST_Op<"offset", [Pure]> {
   let summary = [{Returns the offset of a tile in a given dimension}];
   let description = [{
     Returns the composed offset of a tile in a given dimension relative to the
@@ -49,7 +56,7 @@ def GMLST_OffsetOp : GMLST_Op<"offset", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
+def GMLST_SizeOp : GMLST_Op<"size", [Pure]> {
   let summary = [{Returns the size of a tile in a given dimension}];
   let description = [{
     Returns the composed size of a tile in a given dimension relative to the
@@ -64,7 +71,7 @@ def GMLST_SizeOp : GMLST_Op<"size", [NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def GMLST_StrideOp : GMLST_Op<"stride", [NoSideEffect]> {
+def GMLST_StrideOp : GMLST_Op<"stride", [Pure]> {
   let summary = [{Returns the stride of a tile in a given dimension}];
   let description = [{
     Returns the composed stride of a tile in a given dimension relative to the
@@ -83,15 +90,15 @@ class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     : GMLST_Op<mnemonic, !listconcat(traits, [
       AttrSizedOperandSegments,
       DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-      RecursiveSideEffects,
+      RecursiveMemoryEffects,
       SingleBlockImplicitTerminator<"gml_st::SetYieldOp">
     ])> {
-  let results = (outs Variadic<AnyRankedTensor>:$results);
+  let results = (outs Variadic<RankedTensorOrVector>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   code extraBaseClassDeclaration = [{
     /// Number of loops
-    unsigned getNumLoops() { return step().size(); }
+    unsigned getNumLoops() { return getStep().size(); }
 
     /// Number of operands controlling the loop: lbs, ubs, steps
     unsigned getNumControlOperands() { return 3 * getNumLoops(); }
@@ -151,10 +158,16 @@ def GMLST_ParallelOp : GMLST_LoopLikeOp<"parallel", []> {
   }];
   let arguments = (ins Variadic<Index>:$lowerBound,
                        Variadic<Index>:$upperBound,
-                       Variadic<Index>:$step);
+                       Variadic<Index>:$step,
+                       OptionalAttr<StrAttr>:$distributionType);
+  // The default builder does not generate the block with induction variables
+  // as arguments, and conflicts with the custom one. Prevent tablegen from
+  // generating it.
+  let skipDefaultBuilders = 1;
   let builders = [
     OpBuilder<(ins "TypeRange":$resultTypes, "ValueRange":$lowerBounds,
       "ValueRange":$upperBounds, "ValueRange":$steps,
+      CArg<"Optional<StringAttr>", "llvm::None">:$distributionType,
       CArg<"function_ref<void (OpBuilder &, Location, /*ivs=*/ValueRange)>",
       "nullptr">:$bodyBuilderFn)>,
   ];
@@ -215,7 +228,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
 
   let extraClassDeclaration = extraBaseClassDeclaration # [{
     /// Number of output operands
-    unsigned getNumOutputs() { return outputs().size(); }
+    unsigned getNumOutputs() { return getOutputs().size(); }
 
     /// Get the region output args.
     Block::BlockArgListType getRegionOutputArgs() {
@@ -262,7 +275,7 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
   }];
 }
 
-def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
+def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
       Terminator, SameVariadicOperandSize,
       SingleBlockImplicitTerminator<"YieldOp">
   ]> {
@@ -278,9 +291,9 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
       : tensor<4x4xf32> into tensor<16x64xf32>[!gml_st.tile<4x4>]
     ```
   }];
-  let arguments = (ins Variadic<AnyType>:$srcs,
-                       Variadic<AnyType>:$dsts,
-                       Variadic<AnyType>:$sets,
+  let arguments = (ins Variadic<RankedTensorOrVectorOrScalar>:$srcs,
+                       Variadic<RankedTensorOrVector>:$dsts,
+                       Variadic<AnySet>:$sets,
                        BoolArrayAttr:$accumulatorFlags);
   let regions = (region VariadicRegion<SizedRegion<1>>:$accumulators);
   let hasCustomAssemblyFormat = 1;
@@ -301,34 +314,11 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
   let extraClassDeclaration = [{
 
-    unsigned getNumUpdates() { return srcs().size(); }
-
-    // Methods for `srcs` arguments.
-    OpOperand* getSrcOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i);
-    }
-
-    SmallVector<OpOperand*> getSrcOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 0, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSrcOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 0;
-    }
+    unsigned getNumUpdates() { return getSrcs().size(); }
 
     // Methods for `dst` arguments.
     OpOperand* getDstOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 1);
-    }
-
-    SmallVector<OpOperand*> getDstOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 1, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
+      return &getOperation()->getOpOperand(getNumUpdates() + i);
     }
 
     FailureOr<OpResult> getTiedOpResult(OpOperand &opOperand) {
@@ -336,31 +326,46 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [NoSideEffect, ReturnLike,
 
       auto parent = getOperation()->getBlock()->getParentOp();
       if (isa<ParallelOp>(parent) || isa<ForOp>(parent)) {
-        return parent->getResult(0);
+        return parent->getResult(opOperand.getOperandNumber() -
+                                 getNumUpdates());
       }
       return failure();
     }
 
     bool isDstOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 1;
-    }
-
-    // Methods for `set` arguments.
-    OpOperand* getSetOperand(unsigned i) {
-      return &getOperation()->getOpOperand(3 * i + 2);
-    }
-
-    SmallVector<OpOperand*> getSetOperands() {
-      SmallVector<OpOperand*> operands;
-      for (unsigned i = 2, e = getNumOperands(); i < e; i += 3)
-        operands.push_back(&getOperation()->getOpOperand(i));
-      return operands;
-    }
-
-    bool isSetOperand(OpOperand& operand) {
-      return operand.getOperandNumber() % 3 == 2;
+      return operand.getOperandNumber() >= getNumUpdates() &&
+             operand.getOperandNumber() < getNumUpdates() * 2;
     }
   }];
+}
+
+// TODO(b/253560795): Figure out where this operation shoud live, and how to
+// model it properly.
+def GMLST_DistributeOp : GMLST_Op<"distribute", [Pure,
+      AllElementTypesMatch<["source", "result"]>]> {
+  let summary = "Tile combining operation";
+  let description = [{
+    `gml_st.distribute` is in a sense an inverse operation to
+    `gml_st.materialize`, and a non-terminator version of `gml_st.set_yield`.
+    It takes one tile of a vector per parallel iteration, and returns a larger
+    vector composed of these tiles.
+
+    It is only needed as an intermediate step when flattening gml_st.parallel
+    operations during SIMTfication for GPU, where one `gml_st.distribute`
+    replaces each output of `gml_st.set_yield`. It only works on vectors, since
+    tensor arguments have been bufferized into memrefs by that point in the
+    pipeline. This is also the reason why it does not need a destination
+    argument.
+  }];
+  let arguments = (ins AnyVector:$source, AnySet:$set);
+  let results = (outs AnyVector:$result);
+
+  let assemblyFormat = [{
+    $source `into` `[` $set `]` attr-dict `:` type($source)
+      `into` type($result) `[` type($set) `]`
+  }];
+
+  let hasVerifier = 0;
 }
 
 #endif // GML_ST_OPS

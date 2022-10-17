@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 
-namespace tensorflow {
+namespace stream_executor {
 namespace wrap {
 
 #ifdef PLATFORM_GOOGLE
@@ -48,12 +48,12 @@ namespace wrap {
     static void* GetDsoHandle() {                                              \
       auto s =                                                                 \
           stream_executor::internal::CachedDsoLoader::GetHipsparseDsoHandle(); \
-      return s.ValueOrDie();                                                   \
+      return s.value();                                                   \
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \
-      auto s =                                                                 \
-          Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), kName, &f);     \
+      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),       \
+                                                         kName, &f);           \
       CHECK(s.ok()) << "could not find " << kName                              \
                     << " in miopen DSO; dlerror: " << s.error_message();       \
       return reinterpret_cast<FuncPtrT>(f);                                    \
@@ -144,6 +144,6 @@ FOREACH_HIPSPARSE_API(HIPSPARSE_API_WRAPPER)
 #undef HIPSPARSE_API_WRAPPER
 
 }  // namespace wrap
-}  // namespace tensorflow
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_ROCM_HIPSPARSE_WRAPPER_H_
