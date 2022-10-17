@@ -56392,7 +56392,7 @@ func XlaCustomCallV2(scope *Scope, operands []tf.Output, call_target_name string
 //
 // is faster when input is large and rank of input is higher than 1.
 //
-// Returns Output tensors whose types is bloat16. If transpose_output is true,
+// Returns Output tensors whose types is bfloat16. If transpose_output is true,
 // output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
 // is false, output shape is [d0,..., dn * 4].
 func XlaDequantize(scope *Scope, input tf.Output, min_range float32, max_range float32, mode string, transpose_output bool) (output tf.Output) {
