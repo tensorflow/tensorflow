@@ -1000,6 +1000,15 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
+    if (ctx->stack_trace().has_value() && VLOG_IS_ON(4)) {
+      VLOG(4) << "Dataset " << dataset->type_string()
+              << " created using the following stack trace:";
+      for (const auto& stack_frame :
+           ctx->stack_trace()->ToStackFrames({}, {})) {
+        VLOG(4) << stack_frame.file_name << ":" << stack_frame.line_number
+                << " in " << stack_frame.function_name << "()";
+      }
+    }
     dataset->Initialize(metadata_);
   }
 }

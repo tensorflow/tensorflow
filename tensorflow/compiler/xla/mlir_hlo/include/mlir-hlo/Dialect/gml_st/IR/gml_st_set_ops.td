@@ -49,7 +49,7 @@ def IsSetTypePred : Or<[GMLST_TileType.predicate]>;
 
 def AnySet : Type<IsSetTypePred, "subset type">;
 
-def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
+def GMLST_SpaceOp : GMLST_Op<"space", [Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let arguments = (ins Variadic<Index>:$dynamic_sizes,
                        I64ArrayAttr:$static_sizes);
@@ -72,7 +72,7 @@ def GMLST_SpaceOp : GMLST_Op<"space", [NoSideEffect,
 
 
 def GMLST_TileOp : GMLST_Op<"tile", [
-    NoSideEffect,
+    Pure,
     AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
@@ -110,49 +110,6 @@ def GMLST_TileOp : GMLST_Op<"tile", [
     /// Return the number of leading operands before the `offsets`, `sizes` and
     /// and `strides` operands.
     static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
-  }];
-  let hasVerifier = 1;
-}
-
-def GMLST_DropDimsOp : GMLST_Op<"drop_dims", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let summary = [{
-    Drops dimensions of a subset.
-  }];
-  let description = [{
-    Selects specific dimensions of a subset and drops the remaining ones. The
-    result is a tile in a space of smaller rank, which is implicitly
-    defined by the root space.
-  }];
-  let arguments = (ins
-    AnySet:$superset,
-    DenseI64ArrayAttr:$remaining_dims);
-  let results = (outs AnySet:$result);
-  let assemblyFormat = [{
-    $superset `,` $remaining_dims attr-dict `:`
-    qualified(type($superset)) `to` qualified(type($result))
-  }];
-  let hasVerifier = 0;
-}
-
-def GMLST_TransposeDimsOp : GMLST_Op<"transpose_dims", [
-    NoSideEffect,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let summary = "Transposes the dimensions of a subset.";
-  let description = [{
-    Transposes the dimensions of a subset by applying the permutation to the
-    offsets, sizes, and strides.
-  }];
-  let arguments = (ins
-    AnySet:$superset,
-    DenseI64ArrayAttr:$permutation);
-  let results = (outs AnySet:$result);
-  let assemblyFormat = [{
-    $superset `,` $permutation attr-dict `:`
-    qualified(type($superset)) `to` qualified(type($result))
   }];
   let hasVerifier = 1;
 }

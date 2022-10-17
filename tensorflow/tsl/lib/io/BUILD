@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -402,7 +402,7 @@ filegroup(
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "buffered_inputstream_test",
     size = "small",
     srcs = ["buffered_inputstream_test.cc"],
@@ -418,7 +418,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "cache_test",
     size = "small",
     srcs = ["cache_test.cc"],
@@ -431,7 +431,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "inputbuffer_test",
     size = "small",
     srcs = ["inputbuffer_test.cc"],
@@ -451,7 +451,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "inputstream_interface_test",
     size = "small",
     srcs = ["inputstream_interface_test.cc"],
@@ -464,7 +464,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "random_inputstream_test",
     size = "small",
     srcs = ["random_inputstream_test.cc"],
@@ -478,7 +478,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "record_reader_writer_test",
     size = "small",
     srcs = ["record_reader_writer_test.cc"],
@@ -498,7 +498,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "recordio_test",
     size = "small",
     srcs = ["recordio_test.cc"],
@@ -518,7 +518,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "table_test",
     size = "small",
     srcs = ["table_test.cc"],
@@ -537,7 +537,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "zlib_buffers_test",
     size = "small",
     srcs = ["zlib_buffers_test.cc"],

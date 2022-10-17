@@ -16,9 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <random>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/xnnpack/quantized_conv_2d_tester.h"

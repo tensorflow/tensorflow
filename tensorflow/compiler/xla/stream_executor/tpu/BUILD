@@ -21,6 +21,15 @@ package(
 )
 
 cc_library(
+    name = "pjrt_api",
+    srcs = ["pjrt_api.cc"],
+    hdrs = ["pjrt_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
+    ],
+)
+
+cc_library(
     name = "c_api_decl",
     hdrs = [
         "c_api_decl.h",
@@ -29,7 +38,7 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
-        "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
     ],
 )
 
@@ -41,7 +50,7 @@ cc_library(
         ":c_api_decl",
         "//tensorflow/c:tf_attrtype",
         "//tensorflow/c:tf_status",
-        "//tensorflow/core/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
     ],
 )
 
@@ -67,6 +76,13 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:span",
     ],
+)
+
+cc_library(
+    name = "libtftpu_header",
+    hdrs = ["libtftpu.h"],
+    visibility = ["//visibility:public"],
+    deps = [],
 )
 
 cc_library(
@@ -101,6 +117,12 @@ cc_library(
         ":c_api_decl",
         "//tensorflow/tsl/platform:logging",
     ],
+)
+
+cc_library(
+    name = "tpu_api_dlsym_set_fn",
+    hdrs = ["tpu_api_dlsym_set_fn.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -386,8 +408,18 @@ cc_library(
         ":tpu_executable_interface",
         ":tpu_executor",
         ":tpu_executor_c_api_hdrs",
-        "//tensorflow/core/tpu:tpu_executor_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
         "@com_google_absl//absl/cleanup",
+    ],
+)
+
+cc_library(
+    name = "tpu_executor_api",
+    srcs = ["tpu_executor_api.cc"],
+    hdrs = ["tpu_executor_api.h"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
     ],
 )
 

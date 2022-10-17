@@ -11,22 +11,7 @@ func.func @types() {
   %1 = gml_st.space [64, 32] : !gml_st.tile<64x32>
   // CHECK: %{{.*}} = gml_st.tile %[[ARG2]] [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
   %3 = gml_st.tile %1 [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
-  // CHECK: %{{.*}} = gml_st.transpose_dims %[[ARG2]], [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
-  %4 = gml_st.transpose_dims %1, [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
-  // CHECK: %{{.*}} = gml_st.drop_dims %[[ARG2]], [1] : !gml_st.tile<64x32> to !gml_st.tile<32>
-  %5 = gml_st.drop_dims %1, [1] : !gml_st.tile<64x32> to !gml_st.tile<32>
   func.return
-}
-
-// -----
-
-// CHECK-LABEL: @collapse_tile
-// CHECK-SAME:  %[[ARG0:.*]]: !gml_st.tile<?x64x128>
-func.func @collapse_tile(%tile: !gml_st.tile<?x64x128>) -> !gml_st.tile<?x128> {
-  // CHECK: %[[VAL_0:.*]] = gml_st.drop_dims %[[ARG0]], [0, 2] : !gml_st.tile<?x64x128> to !gml_st.tile<?x128>
-  // CHECK: return %[[VAL_0]]
-  %0 = gml_st.drop_dims %tile, [0, 2] : !gml_st.tile<?x64x128> to !gml_st.tile<?x128>
-  func.return %0 : !gml_st.tile<?x128>
 }
 
 // -----
@@ -150,7 +135,9 @@ func.func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
           %i2d_ = %input_2d: tensor<16x32xf32>,
           %i1d_ = %input_1d: tensor<24xf32>)
       outs(%o_ =  %output: tensor<24xf32>)
-      iterators["reduction", "parallel", "reduction"]
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>,
+                #gml_st.iterator_type<reduction>]
       distribution["block_x", "block_y", "none"] {
     %sub_3d = tensor.extract_slice %i3d_[%i, %j, %k][2, 4, 8][1, 1, 1]
       : tensor<16x24x32xf32> to tensor<2x4x8xf32>
@@ -201,7 +188,9 @@ func.func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
           %i2d_ = %input_2d: memref<16x32xf32>,
           %i1d_ = %input_1d: memref<24xf32>)
       outs(%o_ =  %output: memref<24xf32>)
-      iterators["reduction", "parallel", "reduction"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>,
+                #gml_st.iterator_type<reduction>] {
     %sub_3d = memref.subview %i3d_[%i, %j, %k][2, 4, 8][1, 1, 1]
       : memref<16x24x32xf32> to memref<2x4x8xf32, #map_1>
     %sub_2d = memref.subview %i2d_[%i, %k][2, 8][1, 1]

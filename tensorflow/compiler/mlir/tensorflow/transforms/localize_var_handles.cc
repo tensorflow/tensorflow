@@ -53,6 +53,8 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
     resource = read.resource();
   } else if (auto write = llvm::dyn_cast<TF::AssignVariableOp>(op)) {
     resource = write.resource();
+  } else if (auto next = llvm::dyn_cast<TF::IteratorGetNextOp>(op)) {
+    resource = next.iterator();
   }
 
   if (llvm::dyn_cast_or_null<TF::VarHandleOp>(resource.getDefiningOp())) {
@@ -79,14 +81,29 @@ void MaybeCreateVarHandleForOp(Operation* op, DataFlowSolver& solver) {
   } else if (auto handle = llvm::dyn_cast<TF::VarHandleOp>(source)) {
     container = handle.container();
     shared_name = handle.shared_name();
+  } else if (auto it = llvm::dyn_cast<TF::IteratorOp>(source)) {
+    container = it.container();
+    shared_name = it.shared_name();
   } else {
     // Can't happen, as long as this file and resource_dataflow.cc are in sync.
     return;
   }
+
   OpBuilder builder(op);
-  auto vh = builder.create<TF::VarHandleOp>(op->getLoc(), resource.getType(),
-                                            container, shared_name);
-  op->setOperand(0, vh.resource());
+  Operation* resource_op = nullptr;
+  if (auto it = llvm::dyn_cast<TF::IteratorOp>(source)) {
+    // We can't use VarHandleOp for iterators since they don't have a shape.
+    // So use IteratorOp instead. (The latter is using LookupOrCreate for
+    // the resource, and we use it to just look up.
+    // See core/kernels/data/iterator_ops.cc.)
+    resource_op = builder.create<TF::IteratorOp>(
+        op->getLoc(), resource.getType(), shared_name, container,
+        it.output_types(), it.output_shapes());
+  } else {
+    resource_op = builder.create<TF::VarHandleOp>(
+        op->getLoc(), resource.getType(), container, shared_name);
+  }
+  op->setOperand(0, resource_op->getResult(0));
 }
 
 void LocalizeVarHandlesPass::runOnOperation() {
@@ -103,6 +120,8 @@ void LocalizeVarHandlesPass::runOnOperation() {
       [&](TF::ReadVariableOp op) { MaybeCreateVarHandleForOp(op, solver); });
   module.walk(
       [&](TF::AssignVariableOp op) { MaybeCreateVarHandleForOp(op, solver); });
+  module.walk(
+      [&](TF::IteratorGetNextOp op) { MaybeCreateVarHandleForOp(op, solver); });
 }
 
 }  // namespace

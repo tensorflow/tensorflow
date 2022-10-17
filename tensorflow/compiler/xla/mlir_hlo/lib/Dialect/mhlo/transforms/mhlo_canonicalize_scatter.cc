@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_utils.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -42,14 +42,6 @@ DenseIntElementsAttr getI64ElementsAttr(ArrayRef<int64_t> values,
   return DenseIntElementsAttr::get(ty, values);
 }
 
-SmallVector<int64_t> getInversePermutation(
-    llvm::ArrayRef<int64_t> permutation) {
-  SmallVector<int64_t> inversePermutation(permutation.size());
-  for (size_t i = 0, e = permutation.size(); i < e; ++i)
-    inversePermutation[permutation[i]] = i;
-  return inversePermutation;
-}
-
 bool isIdentityPermutation(ArrayRef<int64_t> permutation) {
   for (int64_t i = 0, e = permutation.size(); i < e; ++i)
     if (permutation[i] != i) return false;
@@ -68,97 +60,6 @@ SmallVector<Value> transposeTensors(OpBuilder& b, Location loc,
         b.create<TransposeOp>(loc, tensor, permutationAttr));
   }
   return transposedTensors;
-}
-
-// Expand the shape of `tensor`, inserting degenerate dimensions.
-//
-// For example tensor<10x4xf32> and dimsToInsert = {0, 1}
-// will result in tensor<1x10x1x4xf32>.
-Value insertDegenerateDimensions(OpBuilder& b, Location loc, Value tensor,
-                                 ArrayRef<int64_t> dimsToInsert) {
-  auto tensorType = tensor.getType().cast<RankedTensorType>();
-  int64_t tensorRank = tensorType.getRank();
-  int64_t numDimsToInsert = dimsToInsert.size();
-  int64_t newRank = tensorRank + numDimsToInsert;
-
-  SmallVector<int64_t> newShape;
-  SmallVector<ReassociationIndices> reassociations;
-
-  int64_t tensorDimIdx = 0;
-  int64_t dimsToInsertIdx = 0;
-
-  ReassociationIndices reassociation;
-  for (int i = 0; i < newRank; ++i) {
-    reassociation.push_back(i);
-    if (dimsToInsertIdx < numDimsToInsert &&
-        i == dimsToInsert[dimsToInsertIdx]) {
-      newShape.push_back(1);
-      ++dimsToInsertIdx;
-    } else {
-      newShape.push_back(tensorType.getDimSize(tensorDimIdx));
-      ++tensorDimIdx;
-      // Trailing 1s in the newShape need to be added to the last reassociation.
-      if (tensorDimIdx != tensorRank) {
-        reassociations.push_back(reassociation);
-        reassociation.clear();
-      }
-    }
-  }
-  if (!reassociation.empty()) {
-    reassociations.push_back(reassociation);
-  }
-  return b.create<tensor::ExpandShapeOp>(
-      loc, RankedTensorType::get(newShape, tensorType.getElementType()), tensor,
-      reassociations);
-}
-
-// Checks if the indexVectorDim is equal to the rank of `indices`. In that
-// case add the trailing 1 dimension. If indexVectorDim is not the innermost
-// dimension, insert transpose to make it so.
-TypedValue<TensorType> ensureIndexVectorDimPosition(
-    OpBuilder& b, Location loc, TypedValue<TensorType> indices,
-    int64_t indexVectorDim) {
-  auto indicesType = indices.getType();
-  auto indicesRank = indicesType.getRank();
-
-  if (indexVectorDim == indicesRank) {
-    indices = insertDegenerateDimensions(b, loc, indices, {indicesRank});
-  } else if (indexVectorDim != indicesRank - 1) {
-    SmallVector<int64_t> permutation;
-    for (int64_t i = 0; i < indicesRank; ++i)
-      if (i != indexVectorDim) permutation.push_back(i);
-    permutation.push_back(indexVectorDim);
-    indices = b.create<TransposeOp>(loc, indices,
-                                    getI64ElementsAttr(permutation, &b));
-  }
-  return indices;
-}
-
-// Insert transposes and reshapes to bring `indices` to the 2D shape, where
-// the dim0 is the product of all dimensions that are not equal to
-// `indexVectorDim` and dim1 is the index vector dim.
-//
-// Examples.
-//
-// [a, I, b] will be transposed to [a, b, I], then reshaped into [ab, I].
-// [a, b] will be reshaped to [a, b, I(1)] and then reshaped into [ab, I(1)].
-Value canonicalizeScatterIndices(OpBuilder& b, Location loc,
-                                 TypedValue<TensorType> indices,
-                                 int64_t indexVectorDim) {
-  indices = ensureIndexVectorDimPosition(b, loc, indices, indexVectorDim);
-
-  auto indicesType = indices.getType();
-  auto indicesRank = indicesType.getRank();
-
-  if (indicesRank == 2) return indices;
-
-  if (indicesRank == 1) return insertDegenerateDimensions(b, loc, indices, {0});
-
-  // Insert reshape to collapse all outer dimensions of `Indices`.
-  SmallVector<ReassociationIndices> reassociation{
-      llvm::to_vector<2>(llvm::seq<int64_t>(0, indicesRank - 1)),
-      {indicesRank - 1}};
-  return b.create<tensor::CollapseShapeOp>(loc, indices, reassociation);
 }
 
 // Transposes updates to align with the dims of operands.
@@ -217,7 +118,7 @@ SmallVector<Value> reshapeUpdatesToEnsureSingleScatterDimension(
     }));
   }
   if (numScatterDims == 0) {
-    return to_vector(llvm::map_range(updates, [&](Value update) {
+    return to_vector(llvm::map_range(updates, [&](Value update) -> Value {
       return insertDegenerateDimensions(b, loc, update, {0});
     }));
   }
@@ -235,7 +136,7 @@ SmallVector<Value> reshapeUpdatesToMatchOperandShape(
   for (int64_t i : insertedWindowDims)
     shiftedScatterDimsToOperandDims.push_back(i + 1);
 
-  return to_vector(map_range(updates, [&](Value update) {
+  return to_vector(map_range(updates, [&](Value update) -> Value {
     return insertDegenerateDimensions(b, loc, update,
                                       shiftedScatterDimsToOperandDims);
   }));
@@ -256,18 +157,6 @@ SmallVector<Value> canonicalizeUpdates(
       reshapeUpdatesToMatchOperandShape(b, loc, updates, insertedWindowDims);
   return transposeUpdatesAccordingToScatterDimsMap(b, loc, updates,
                                                    scatterDimsToOperandDims);
-}
-
-// Creates a permutation that shuffles dimensions of `operands` to match the
-// order in the index vector.
-SmallVector<int64_t> makeOperandPermutation(
-    ArrayRef<int64_t> scatterDimsToOperandDims, int operandRank) {
-  SmallVector<int64_t> permutation{scatterDimsToOperandDims};
-  for (int i = 0; i < operandRank; ++i) {
-    if (!llvm::is_contained(scatterDimsToOperandDims, i))
-      permutation.push_back(i);
-  }
-  return permutation;
 }
 
 // This pattern rewrites scatter into a transposes, reshapes and a simpler
@@ -295,12 +184,13 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
     auto operandType =
         scatterOp.operands().front().getType().cast<RankedTensorType>();
     int64_t operandRank = operandType.getRank();
-    SmallVector<int64_t> operandPermutation = makeOperandPermutation(
-        dimsAttrs.getScatterDimsToOperandDims(), operandRank);
+    auto [operandPermutation, operandPermutationInverse] =
+        makeOperandStartIndexPermutations(
+            dimsAttrs.getScatterDimsToOperandDims(), operandRank);
 
-    Value canonicalIndices =
-        canonicalizeScatterIndices(rewriter, loc, scatterOp.getScatterIndices(),
-                                   dimsAttrs.getIndexVectorDim());
+    TypedValue<TensorType> canonicalIndices =
+        canonicalizeStartIndices(rewriter, loc, scatterOp.getScatterIndices(),
+                                 dimsAttrs.getIndexVectorDim());
 
     SmallVector<Value> canonicalOperands = transposeTensors(
         rewriter, loc, scatterOp.operands(), operandPermutation);
@@ -310,8 +200,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         dimsAttrs.getScatterDimsToOperandDims(),
         dimsAttrs.getUpdateWindowDims(), dimsAttrs.getInsertedWindowDims());
 
-    int64_t scatterIndicesVectorSize =
-        canonicalIndices.getType().cast<RankedTensorType>().getDimSize(1);
+    int64_t scatterIndicesVectorSize = canonicalIndices.getType().getDimSize(1);
     auto canonicalDimsAttrs = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
         /*update_window_dims=*/
@@ -328,9 +217,8 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
     rewriter.inlineRegionBefore(scatterOp.getUpdateComputation(), region,
                                 region.end());
 
-    SmallVector<Value> transposedResults =
-        transposeTensors(rewriter, loc, newScatterOp.getResults(),
-                         getInversePermutation(operandPermutation));
+    SmallVector<Value> transposedResults = transposeTensors(
+        rewriter, loc, newScatterOp.getResults(), operandPermutationInverse);
     rewriter.replaceOp(scatterOp, transposedResults);
     return success();
   }

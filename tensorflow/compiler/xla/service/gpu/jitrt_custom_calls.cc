@@ -60,6 +60,10 @@
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
+#endif  // GOOGLE_CUDA
+
 namespace xla {
 namespace gpu {
 
@@ -2098,6 +2102,11 @@ void PopulateXlaGpuTypeIdNames(TypeIDNameRegistry& registry) {
 void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   RegisterKernelLaunchCustomCalls(registry);
   RegisterTracingCustomCalls(registry);
+
+#if GOOGLE_CUDA
+  // Graph launch kernels depend on Cuda Graph API.
+  RegisterGraphLaunchCustomCalls(registry);
+#endif  // GOOGLE_CUDA
 
   registry.Register("xla.gpu.fft", &xla::gpu::Fft);
   registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);

@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <queue>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -122,6 +124,10 @@ void DefaultOptimizationGraphRewrites(
     if (optimization_options.optional_parallel_batch_case() !=
         OptimizationOptions::kParallelBatch) {
       optimization_default->insert(kParallelBatchOpt);
+    }
+    if (optimization_options.optional_inject_prefetch_case() !=
+        OptimizationOptions::kInjectPrefetch) {
+      optimization_default->insert(kInjectPrefetchOpt);
     }
   }
   if (OpDeterminismRequired()) {
@@ -935,8 +941,6 @@ REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
-REGISTER_DATASET_EXPERIMENT("inject_prefetch", RandomJobSamplePercentage<100>,
-                            AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",

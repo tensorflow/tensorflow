@@ -58,15 +58,30 @@ class SvdOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testThrowDeterminismError(self):
-    shape = [6, 5]
+    shape = [6, 1]
     seed = [42, 24]
-    matrix1 = stateless_random_ops.stateless_random_normal(shape, seed)
+    matrix = stateless_random_ops.stateless_random_normal(shape, seed)
     with test_util.deterministic_ops():
       if test_util.is_gpu_available(cuda_only=True):
         with self.assertRaisesRegex(
-            errors_impl.UnimplementedError, "Determinism is not yet supported "
-            "for Svd."):
-          self.evaluate(linalg_ops.svd(matrix1))
+            errors_impl.UnimplementedError,
+            "Determinism is not yet supported for SVD of matrices with 1 column."
+        ):
+          self.evaluate(linalg_ops.svd(matrix))
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testDeterminism(self):
+    shape = [6, 5]
+    seed = [42, 24]
+    matrix = stateless_random_ops.stateless_random_normal(shape, seed)
+    with test_util.deterministic_ops():
+      if test_util.is_gpu_available(cuda_only=True):
+        s1, u1, v1 = self.evaluate(linalg_ops.svd(matrix))
+        for _ in range(5):
+          s2, u2, v2 = self.evaluate(linalg_ops.svd(matrix))
+          self.assertAllEqual(s1, s2)
+          self.assertAllEqual(u1, u2)
+          self.assertAllEqual(v1, v2)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def DISABLED_testBadInputs(self):
@@ -194,8 +209,8 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
       else:
         with self.session() as sess:
-          s_tf_val, u_tf_val, v_tf_val = sess.run(
-              [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
+          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf],
+                                                  feed_dict={x_tf: x_np})
     else:
       s_tf = linalg_ops.svd(
           x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
@@ -325,8 +340,7 @@ def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
       outputs_sums = [math_ops.reduce_sum(o) for o in outputs]
       tf_func_outputs = math_ops.add_n(outputs_sums)
       grad = gradients_impl.gradients(tf_func_outputs, tf_a)[0]
-      x_init = np.random.uniform(
-          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+      x_init = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
       if dtype_ in [np.complex64, np.complex128]:
         x_init += 1j * np.random.uniform(
             low=-1.0, high=1.0, size=shape_).astype(dtype_)
@@ -338,6 +352,7 @@ def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
           x_init_value=x_init,
           delta=delta)
       self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
   return Test
 
 

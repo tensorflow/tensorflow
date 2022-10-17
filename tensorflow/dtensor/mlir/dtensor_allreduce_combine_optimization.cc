@@ -553,14 +553,19 @@ struct DTensorAllReduceCombineOptimization
       llvm::DenseSet<mlir::Block*> blocks;
 
       cluster.GetBody().walk([&](mlir::TF::DTensorAllReduceOp all_reduce) {
-        auto all_reduce_ranked_type =
-            all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
-        if (all_reduce_ranked_type && all_reduce_ranked_type.hasStaticShape()) {
-          // Static known shape is required to merge all reduces. If shape is
-          // not known skip merging.
-          ordered_all_reduces.push_back(all_reduce);
+        if (!all_reduce.device_type().contains("TPU")) {
+          // Only combine all reduces for GPU and CPU
+          auto all_reduce_ranked_type =
+              all_reduce.getType().dyn_cast<mlir::RankedTensorType>();
 
-          blocks.insert(all_reduce->getBlock());
+          if (all_reduce_ranked_type &&
+              all_reduce_ranked_type.hasStaticShape()) {
+            // Static known shape is required to merge all reduces. If shape is
+            // not known skip merging.
+            ordered_all_reduces.push_back(all_reduce);
+
+            blocks.insert(all_reduce->getBlock());
+          }
         }
       });
 
@@ -576,7 +581,7 @@ struct DTensorAllReduceCombineOptimization
         all_reduce_groups = createSubgroupsByElemType(all_reduce_groups);
         all_reduce_groups = createSubgroupsByReductionAttr(all_reduce_groups);
         all_reduce_groups = createSubgroupsByGroupAssignment(all_reduce_groups);
-        // for (const auto& all_reduce_group : all_reduce_groups) {
+
         std::sort(all_reduce_groups.begin(), all_reduce_groups.end(),
                   [](std::vector<mlir::TF::DTensorAllReduceOp> lhs,
                      std::vector<mlir::TF::DTensorAllReduceOp> rhs) {
@@ -584,18 +589,15 @@ struct DTensorAllReduceCombineOptimization
                       return lhs[0]->isBeforeInBlock(rhs[0]);
                     return true;
                   });
-        for (int i = all_reduce_groups.size() - 1; i >= 0; i--) {
-          const auto& reduce_group = all_reduce_groups[i];
-
+        for (const auto& reduce_group : all_reduce_groups) {
           if (reduce_group.size() > 1) {
             VLOG(4) << "Combining following reduce ops into one: ------------";
-            for (auto reduce_op : all_reduce_groups[i]) {
+            for (auto reduce_op : reduce_group) {
               VLOG(4) << mlir::GetNameFromLoc(reduce_op.getLoc());
             }
             VLOG(4) << "-----------------------------------------------------";
           }
-          if (mlir::failed(
-                  CombineAllReduceOps(cluster, all_reduce_groups[i]))) {
+          if (mlir::failed(CombineAllReduceOps(cluster, reduce_group))) {
             return signalPassFailure();
           }
         }

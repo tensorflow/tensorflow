@@ -171,29 +171,24 @@ rules](https://bughunters.google.com/about/rules/6521337925468160/google-open-so
 
 ### Reporting vulnerabilities
 
-Please email reports about any security related issues you find to
-`security@tensorflow.org`. This mail is delivered to a small security team. For
-critical problems, you may encrypt your report (see below).
+Please fill out [this report form](https://forms.gle/mr12SgzXENhxQ7jD6) about
+any security related issues you find.
 
-Please use a descriptive subject line for your report email. After the initial
-reply to your report, the security team will endeavor to keep you informed of
-the progress being made towards a fix and announcement.
+Please use a descriptive title for your report. After the initial reply to your
+report, the security team will endeavor to keep you informed of the progress
+being made towards a fix and announcement.
 
 In addition, please include the following information along with your report:
 
 *   Your name and affiliation (if any).
 *   A description of the technical details of the vulnerabilities. It is very
     important to let us know how we can reproduce your findings.
+*   A minimal example of the vulnerabity.
 *   An explanation of who can exploit this vulnerability, and what they gain
     when doing so -- write an attack scenario. This will help us evaluate your
     report quickly, especially if the issue is complex.
 *   Whether this vulnerability is public or known to third parties. If it is,
     please provide details.
-
-If you believe that an existing (public) issue is security-related, please send
-an email to `security@tensorflow.org`. The email should include the issue ID and
-a short description of why it should be handled according to this security
-policy.
 
 For each vulnerability, we try to ingress it as soon as possible, given the size
 of the team and the number of reports. If the vulnerability is not high impact,
@@ -219,54 +214,16 @@ Once an issue is reported, TensorFlow uses the following disclosure process:
 * Patch releases are published for all fixed released versions, a
   notification is sent to discuss@tensorflow.org, and the advisory is published.
 
-Note that we mostly do patch releases for security reasons and each version of
-TensorFlow is supported for only 1 year after the release.
+We will make an attempt do patch releases for high impact security reasons up to
+1 year after the release.
+
 
 Past security advisories are listed below. We credit reporters for identifying
 security issues, although we keep your name confidential if you request it.
 
-Since September 2022, you may also use [the Google OSS VRP
-program](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules))
+Since September 2022, you may also use
+[the Google OSS VRP program](https://bughunters.google.com/about/rules/6521337925468160/google-open-source-software-vulnerability-reward-program-rules)
 to submit vulnerability reports.
-
-#### Encryption key for `security@tensorflow.org`
-
-If your disclosure is extremely sensitive, you may choose to encrypt your
-report using the key below. Please only use this for critical security
-reports.
-
-```
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-mQENBFpqdzwBCADTeAHLNEe9Vm77AxhmGP+CdjlY84O6DouOCDSq00zFYdIU/7aI
-LjYwhEmDEvLnRCYeFGdIHVtW9YrVktqYE9HXVQC7nULU6U6cvkQbwHCdrjaDaylP
-aJUXkNrrxibhx9YYdy465CfusAaZ0aM+T9DpcZg98SmsSml/HAiiY4mbg/yNVdPs
-SEp/Ui4zdIBNNs6at2gGZrd4qWhdM0MqGJlehqdeUKRICE/mdedXwsWLM8AfEA0e
-OeTVhZ+EtYCypiF4fVl/NsqJ/zhBJpCx/1FBI1Uf/lu2TE4eOS1FgmIqb2j4T+jY
-e+4C8kGB405PAC0n50YpOrOs6k7fiQDjYmbNABEBAAG0LVRlbnNvckZsb3cgU2Vj
-dXJpdHkgPHNlY3VyaXR5QHRlbnNvcmZsb3cub3JnPokBTgQTAQgAOBYhBEkvXzHm
-gOJBnwP4Wxnef3wVoM2yBQJaanc8AhsDBQsJCAcCBhUKCQgLAgQWAgMBAh4BAheA
-AAoJEBnef3wVoM2yNlkIAICqetv33MD9W6mPAXH3eon+KJoeHQHYOuwWfYkUF6CC
-o+X2dlPqBSqMG3bFuTrrcwjr9w1V8HkNuzzOJvCm1CJVKaxMzPuXhBq5+DeT67+a
-T/wK1L2R1bF0gs7Pp40W3np8iAFEh8sgqtxXvLGJLGDZ1Lnfdprg3HciqaVAiTum
-HBFwszszZZ1wAnKJs5KVteFN7GSSng3qBcj0E0ql2nPGEqCVh+6RG/TU5C8gEsEf
-3DX768M4okmFDKTzLNBm+l08kkBFt+P43rNK8dyC4PXk7yJa93SmS/dlK6DZ16Yw
-2FS1StiZSVqygTW59rM5XNwdhKVXy2mf/RtNSr84gSi5AQ0EWmp3PAEIALInfBLR
-N6fAUGPFj+K3za3PeD0fWDijlC9f4Ety/icwWPkOBdYVBn0atzI21thPRbfuUxfe
-zr76xNNrtRRlbDSAChA1J5T86EflowcQor8dNC6fS+oHFCGeUjfEAm16P6mGTo0p
-osdG2XnnTHOOEFbEUeWOwR/zT0QRaGGknoy2pc4doWcJptqJIdTl1K8xyBieik/b
-nSoClqQdZJa4XA3H9G+F4NmoZGEguC5GGb2P9NHYAJ3MLHBHywZip8g9oojIwda+
-OCLL4UPEZ89cl0EyhXM0nIAmGn3Chdjfu3ebF0SeuToGN8E1goUs3qSE77ZdzIsR
-BzZSDFrgmZH+uP0AEQEAAYkBNgQYAQgAIBYhBEkvXzHmgOJBnwP4Wxnef3wVoM2y
-BQJaanc8AhsMAAoJEBnef3wVoM2yX4wIALcYZbQhSEzCsTl56UHofze6C3QuFQIH
-J4MIKrkTfwiHlCujv7GASGU2Vtis5YEyOoMidUVLlwnebE388MmaJYRm0fhYq6lP
-A3vnOCcczy1tbo846bRdv012zdUA+wY+mOITdOoUjAhYulUR0kiA2UdLSfYzbWwy
-7Obq96Jb/cPRxk8jKUu2rqC/KDrkFDtAtjdIHh6nbbQhFuaRuWntISZgpIJxd8Bt
-Gwi0imUVd9m9wZGuTbDGi6YTNk0GPpX5OMF5hjtM/objzTihSw9UN+65Y/oSQM81
-v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
-=CDME
------END PGP PUBLIC KEY BLOCK-----
-```
 
 ### Known Vulnerabilities
 

@@ -5,7 +5,6 @@
 #   to other TF components outside of TSL.
 
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests")
 load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
@@ -13,6 +12,10 @@ load(
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
+)
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
 )
 
 package(
@@ -367,7 +370,7 @@ cc_library(
     ],
 )
 
-tf_cc_tests(
+tsl_cc_test(
     name = "cancellation_test",
     size = "small",
     srcs = ["cancellation_test.cc"],

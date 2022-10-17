@@ -208,7 +208,7 @@ def TFGraph_DictionaryArrayAttr
     : TypedArrayAttrBase<DictionaryAttr, "an array of dictionaries">;
 
 def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
-  [NoSideEffect, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
+  [Pure, HasParent<"GraphFuncOp">, ReturnLike, Terminator]> {
   let summary = "Return values from a Function.";
   let description = [{
     The `return` operation represents a return operation within a function.
@@ -231,7 +231,7 @@ def TFGraph_ReturnOp : TFG_IntrinsicOp<"return",
 
 
 def TFGraph_GetResultOp : TFG_IntrinsicOp<"get_result",
-  [NoSideEffect]> {
+  [Pure]> {
   let summary = "Extract a value out of an opaque tensor in a generic Function.";
   let description = [{
     The `get_result` operation exists in generic functions before instantiation,
@@ -490,7 +490,7 @@ class TFGraph_RegionOp<string mnemonic, list<Trait> traits = []>
           ["getDefaultDialect", "getAsmResultNames"]>, TraitList<traits>]>;
 
 def TFGraph_YieldOp : TFG_IntrinsicOp<"yield",
-    [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
+    [Pure, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
     The `yield` operation is the terminator for control-flow regions. The
@@ -744,7 +744,7 @@ def TFGraph_StatefulCaseRegionOp :
 
 // Special terminator op for while op condition regions.
 def TFGraph_ConditionOp : TFG_IntrinsicOp<"condition",
-    [NoSideEffect, ReturnLike, Terminator, AttrSizedOperandSegments,
+    [Pure, ReturnLike, Terminator, AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let description = [{
     The `condition` operation is a special terminator for the condition region

@@ -1,4 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -169,7 +172,7 @@ filegroup(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "distribution_sampler_test",
     size = "small",
     srcs = ["distribution_sampler_test.cc"],
@@ -183,7 +186,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "philox_random_test",
     size = "small",
     srcs = ["philox_random_test.cc"],
@@ -198,7 +201,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "random_distributions_test",
     srcs = ["random_distributions_test.cc"],
     tags = ["optonly"],
@@ -214,7 +217,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "simple_philox_test",
     size = "small",
     srcs = ["simple_philox_test.cc"],
@@ -227,7 +230,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "weighted_picker_test",
     size = "medium",
     srcs = ["weighted_picker_test.cc"],

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/tf_quant_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -99,13 +100,13 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     if (!matchPattern(this_op.rhs_scales(), m_Constant(&rhs_scales)))
       return failure();
 
-    // Check whether the rhs_zps operand has constant op.
-    DenseIntElementsAttr rhs_zps;
-    if (!matchPattern(this_op.rhs_zps(), m_Constant(&rhs_zps)))
+    // Check whether the rhs_zero_points operand has constant op.
+    DenseIntElementsAttr rhs_zero_points;
+    if (!matchPattern(this_op.rhs_zero_points(), m_Constant(&rhs_zero_points)))
       return failure();
 
     // Invalid quantization parameter.
-    if (rhs_scales.size() != rhs_zps.size()) return failure();
+    if (rhs_scales.size() != rhs_zero_points.size()) return failure();
 
     // Uniform Quantized type for the rhs.
     IntegerType storage_type = rewriter.getIntegerType(8);
@@ -121,7 +122,8 @@ struct ReplaceConstDotHybridPattern : public RewritePattern {
     Type rhs_elem_ty;
     rhs_elem_ty = quant::UniformQuantizedType::get(
         flags, storage_type, expressed_type, rhs_scales.getValues<float>()[0],
-        rhs_zps.getValues<int32_t>()[0], storage_type_min, storage_type_max);
+        rhs_zero_points.getValues<int32_t>()[0], storage_type_min,
+        storage_type_max);
 
     Type rhs_type = getSameShapeTensorType(
         this_op.rhs().getType().cast<TensorType>(), rhs_elem_ty);

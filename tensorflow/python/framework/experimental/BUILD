@@ -1,10 +1,6 @@
 # Experimental Unified APIs for Eager and Graph modes.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_python_pybind_extension")
 
 package(
     default_visibility = ["//tensorflow:internal"],

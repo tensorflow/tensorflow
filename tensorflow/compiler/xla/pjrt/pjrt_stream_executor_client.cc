@@ -117,8 +117,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -126,6 +124,8 @@ limitations under the License.
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme_encode.h"
 
 namespace xla {
 
@@ -334,7 +334,7 @@ void RecordUsage(PjRtStreamExecutorBuffer::ScopedHold device_buffer,
                  se::Stream* usage_stream, bool prefer_to_retain_reference,
                  std::vector<std::shared_ptr<TrackedDeviceBuffer>>*
                      buffers_to_release = nullptr) {
-  tensorflow::profiler::TraceMe traceme("RecordUsage");
+  tsl::profiler::TraceMe traceme("RecordUsage");
   bool retain_buffer_until_completion =
       // If the buffer wasn't allocated on the same device as the stream, always
       // retain a reference.
@@ -691,7 +691,7 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
     std::function<void()> on_done_with_host_buffer, PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostBuffer");
   Shape shape = ShapeUtil::MakeShape(type, dims);
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostBuffer: shape: "
@@ -912,7 +912,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::CreateUninitializedBuffer(
     const Shape& shape, PjRtDevice* device,
     std::shared_ptr<BufferSequencingEvent> definition_event) {
-  tensorflow::profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::CreateUninitializedBuffer");
   VLOG(1) << "PjRtStreamExecutorClient::CreateUninitializedBuffer: shape: "
           << shape.ToString() << " device: " << device->DebugString();
@@ -936,7 +936,7 @@ PjRtStreamExecutorClient::CreateUninitializedBuffer(
 StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
                                                 PjRtDevice* device) {
-  tensorflow::profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::BufferFromHostLiteral");
   VLOG(1) << "PjRtStreamExecutorClient::BufferFromHostLiteral: shape: "
           << literal.shape().ToString() << " device: " << device->DebugString();
@@ -1145,7 +1145,7 @@ void PjRtStreamExecutorBuffer::WaitForOutstandingDonationHold() {
 
 StatusOr<std::shared_ptr<TrackedDeviceBuffer>>
 PjRtStreamExecutorBuffer::Release(bool wait_for_operations_to_complete) {
-  tensorflow::profiler::TraceMe trace_me("PjRtStreamExecutorBuffer::Release");
+  tsl::profiler::TraceMe trace_me("PjRtStreamExecutorBuffer::Release");
   std::shared_ptr<TrackedDeviceBuffer> device_buffer;
   TrackedDeviceBuffer::StreamAndEventContainer events;
   {
@@ -1475,8 +1475,7 @@ PjRtStreamExecutorBuffer::CopyToDeviceHelper(
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
     PjRtDevice* dst_device) {
-  tensorflow::profiler::TraceMe traceme(
-      "PjRtStreamExecutorBuffer::CopyToDevice");
+  tsl::profiler::TraceMe traceme("PjRtStreamExecutorBuffer::CopyToDevice");
   VLOG(1) << "PjRtStreamExecutorBuffer::CopyToDevice";
   if (dst_device == device_) {
     return InvalidArgument(
@@ -2018,7 +2017,7 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   // launch is delayed.
   std::shared_ptr<Semaphore::ScopedReservation> compute_reservation;
   {
-    tensorflow::profiler::TraceMe traceme("ComputeSemaphoreAcquire");
+    tsl::profiler::TraceMe traceme("ComputeSemaphoreAcquire");
     compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
         device_state->compute_semaphore().ScopedAcquire(1));
   }
@@ -2080,7 +2079,7 @@ PjRtStreamExecutorExecutable::MakeOutputBuffers(
     std::vector<std::function<void()>>& compute_callbacks,
     std::vector<std::shared_ptr<TrackedDeviceBuffer>>& buffers_to_release)
     const {
-  tensorflow::profiler::TraceMe traceme("MakeOutputBuffers");
+  tsl::profiler::TraceMe traceme("MakeOutputBuffers");
   std::vector<std::unique_ptr<PjRtBuffer>> outputs;
   LocalDeviceState* device_state = &(client_->device_state(device_ordinal));
   if (options.untuple_result && result_buffer.on_device_shape().IsTuple()) {
@@ -2136,8 +2135,7 @@ PjRtStreamExecutorExecutable::ExecuteHelper(
   int device_ordinal = tensorflow::down_cast<PjRtStreamExecutorDevice*>(device)
                            ->local_device_state()
                            ->device_ordinal();
-  tensorflow::profiler::TraceMe traceme(
-      "PjRtStreamExecutorExecutable::ExecuteHelper");
+  tsl::profiler::TraceMe traceme("PjRtStreamExecutorExecutable::ExecuteHelper");
   VLOG(1) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -2471,7 +2469,7 @@ PjRtStreamExecutorClient::GetExecutableExtras(CompileOptions* options) {
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::Compile(const XlaComputation& computation,
                                   CompileOptions options) {
-  tensorflow::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
+  tsl::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
   VLOG(1) << "PjRtStreamExecutorClient::Compile";
 
   TF_ASSIGN_OR_RETURN(ExecutableExtras extras, GetExecutableExtras(&options));
@@ -2551,7 +2549,7 @@ StatusOr<std::string> PjRtStreamExecutorClient::SerializeExecutable(
 StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
 PjRtStreamExecutorClient::DeserializeExecutable(absl::string_view serialized,
                                                 CompileOptions options) {
-  tensorflow::profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       "PjRtStreamExecutorClient::DeserializeExecutable");
   VLOG(1) << "PjRtStreamExecutorClient::DeserializeExecutable";
 

@@ -10,18 +10,13 @@ package(
 
 cc_library(
     name = "host_tracer_utils",
-    srcs = ["host_tracer_utils.cc"],
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:parse_annotation",
-        "//tensorflow/core/profiler/utils:tf_op_utils",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_utils",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/profiler/backends/cpu:host_tracer_utils",
     ],
 )
 

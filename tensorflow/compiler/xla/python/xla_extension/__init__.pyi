@@ -551,6 +551,9 @@ class Traceback:
 
   @staticmethod
   def code_addr2line(code: types.CodeType, lasti: int) -> int: ...
+  @staticmethod
+  def code_addr2location(code: types.CodeType,
+                         lasti: int) -> Tuple[int, int, int, int]: ...
 
 def replace_thread_exc_traceback(traceback: Any): ...
 

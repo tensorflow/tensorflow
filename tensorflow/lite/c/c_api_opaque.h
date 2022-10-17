@@ -137,6 +137,25 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
     TfLiteOpaqueNode** node,
     TfLiteRegistrationExternal** registration_external);
 
+// WARNING: This is an experimental API and subject to change.
+// Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
+//
+// Replaces the specified `nodes_to_replace` that are associated with the
+// provided `opaque_context` with delegate kernels.  The provided
+// `registration_external` represents the delegate kernel and will be used for
+// each node subset that will be delegate to the provided `opaque_delegate`.
+//
+// The TF Lite runtime will take ownership of the `registration_external` and
+// will delete it when the associated `opaque_context` gets destroyed.
+//
+// The ownership of the `nodes_to_replace` and the `opaque_delegate` remains
+// with the caller.
+TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+    struct TfLiteOpaqueContext* opaque_context,
+    TfLiteRegistrationExternal* registration_external,
+    const TfLiteIntArray* nodes_to_replace,
+    struct TfLiteOpaqueDelegateStruct* opaque_delegate);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

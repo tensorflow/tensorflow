@@ -57,8 +57,16 @@ std::unique_ptr<FlatBufferBuilder> CopyModel(
 }  // namespace
 
 MinibenchmarkStatus ValidatorRunnerImpl::Init() {
-  if (storage_path_.empty() || data_directory_path_.empty() ||
-      benchmark_evaluator_ == nullptr) {
+  if (storage_path_.empty()) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "storage_path is empty.");
+    return kMinibenchmarkPreconditionNotMet;
+  }
+  if (data_directory_path_.empty()) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "data_directory_path is empty.");
+    return kMinibenchmarkPreconditionNotMet;
+  }
+  if (benchmark_evaluator_ == nullptr) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "benchmark_evaluator is null.");
     return kMinibenchmarkPreconditionNotMet;
   }
   MinibenchmarkStatus status = storage_.Read();
@@ -108,7 +116,8 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
 
   ProcessRunner check_runner(data_directory_path_,
                              validation_entrypoint_helper_.name().c_str(),
-                             validation_entrypoint_helper_.LoadEntrypoint());
+                             validation_entrypoint_helper_.LoadEntrypoint(),
+                             timeout_ms_, error_reporter_);
   status = check_runner.Init();
   if (status != kMinibenchmarkSuccess) {
     TF_LITE_REPORT_ERROR(error_reporter_, "Runner::Init returned %d",
@@ -126,6 +135,8 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
 
   // We purposefully detach the thread and have it own all the data. The
   // runner may potentially hang, so we can't wait for it to terminate.
+  // error_reporter is not passed in because the ownership cannot be passed to
+  // the thread.
   std::thread detached_thread([model_path = fd_or_model_path_,
                                storage_path = storage_path_,
                                data_directory_path = data_directory_path_,

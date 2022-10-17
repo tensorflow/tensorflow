@@ -18,16 +18,23 @@ limitations under the License.
 
 #include <functional>
 
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_options.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
+
+namespace mlir {
+class MLIRContext;
+}  // namespace mlir
 
 namespace xla {
 namespace runtime {
 
 // Registers dialects, interfaces and dialects translations with the registry
 // required by the default XLA-GPU runtime compilation pipeline.
-void RegisterDefaultXlaGpuRuntimeDialects(mlir::DialectRegistry& registry);
+void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects);
+
+void RegisterLmhloGpuDialect(DialectRegistry& dialects);
+
+void RegisterTestlibDialect(DialectRegistry& dialects);
 
 // Creates default XLA-GPU runtime compilation pipeline that lowers from the
 // `rt` and `memref` dialects to the LLVMIR dialect. This is a very simple
@@ -35,7 +42,9 @@ void RegisterDefaultXlaGpuRuntimeDialects(mlir::DialectRegistry& registry);
 // it is expected that all end users will construct their own compilation
 // pipelines from the available XLA and MLIR passes.
 void CreateDefaultXlaGpuRuntimeCompilationPipeline(
-    mlir::OpPassManager& pm, const CompilationPipelineOptions& opts);
+    PassManager& passes, const CompilationPipelineOptions& opts);
+
+void AppendXlaGpuDialectRegistry(mlir::MLIRContext& context);
 
 }  // namespace runtime
 }  // namespace xla

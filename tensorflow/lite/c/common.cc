@@ -289,6 +289,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "RESOURCE";
     case kTfLiteVariant:
       return "VARIANT";
+    case kTfLiteInt4:
+      return "INT4";
   }
   return "Unknown type";
 }

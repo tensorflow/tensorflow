@@ -16,8 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <iterator>
 #include <list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,14 +30,11 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/status/status.h"
-#include "absl/strings/str_split.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/dot_as_convolution_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -770,7 +770,8 @@ bool InferShardingFromUsers(
     HloInstruction* instruction,
     const ShardingPropagation::ComputationMap& computation_map,
     int64_t aggressiveness, bool is_spmd,
-    const CustomCallShardingHelper* sharding_helper) {
+    const CustomCallShardingHelper* sharding_helper,
+    const CallGraph& call_graph) {
   if (aggressiveness < 2 && instruction->opcode() == HloOpcode::kBroadcast) {
     return false;
   }
@@ -789,8 +790,8 @@ bool InferShardingFromUsers(
             HloSharding::Manual(user->sharding().metadata()));
       } else {
         std::optional<HloSharding> user_sharding =
-            ShardingPropagation::GetShardingFromUser(*instruction, *user,
-                                                     aggressiveness, is_spmd);
+            ShardingPropagation::GetShardingFromUser(
+                *instruction, *user, aggressiveness, is_spmd, call_graph);
         if (user_sharding) {
           instruction->set_sharding(*user_sharding);
         }
@@ -806,8 +807,8 @@ bool InferShardingFromUsers(
   const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
     std::optional<HloSharding> user_sharding =
-        ShardingPropagation::GetShardingFromUser(*instruction, *user,
-                                                 aggressiveness, is_spmd);
+        ShardingPropagation::GetShardingFromUser(
+            *instruction, *user, aggressiveness, is_spmd, call_graph);
     if (user_sharding && instruction->opcode() == HloOpcode::kCustomCall) {
       if (auto* partitioner =
               GetCustomCallPartitioner(instruction->custom_call_target())) {
@@ -1160,7 +1161,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
                                      const HloInstruction* user,
                                      int64_t aggressiveness, bool is_spmd,
                                      absl::Span<const int64_t> unspecified_dims,
-                                     HloInstruction* man_conversion_op) {
+                                     HloInstruction* man_conversion_op,
+                                     const CallGraph& call_graph) {
   CHECK(annotate_op->IsCustomCall("Sharding") ||
         annotate_op->opcode() == HloOpcode::kCopy);
   if (!user->has_sharding() || !user->sharding().IsTiled()) {
@@ -1169,7 +1171,7 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
   std::optional<HloSharding> user_sharding =
       ShardingPropagation::GetShardingFromUser(
           man_conversion_op == nullptr ? *annotate_op : *man_conversion_op,
-          *user, aggressiveness, is_spmd);
+          *user, aggressiveness, is_spmd, call_graph);
   if (!user_sharding.has_value() || user_sharding->IsTileMaximal()) {
     return false;
   }
@@ -1211,7 +1213,8 @@ bool InferUnspecifiedDimsFromOneUser(HloInstruction* annotate_op,
 bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
                                    absl::Span<const int64_t> unspecified_dims,
                                    int64_t aggressiveness, bool is_spmd,
-                                   HloInstruction** man_conversion_op_after) {
+                                   HloInstruction** man_conversion_op_after,
+                                   const CallGraph& call_graph) {
   HloInstruction* man_conversion_op = nullptr;
   if (annotate_op->user_count() == 1) {
     HloInstruction* user = annotate_op->users()[0];
@@ -1239,7 +1242,7 @@ bool InferUnspecifiedDimsFromUsers(HloInstruction* annotate_op,
   for (HloInstruction* user : op_for_users->users()) {
     changed |= InferUnspecifiedDimsFromOneUser(
         annotate_op, user, aggressiveness, is_spmd, unspecified_dims,
-        man_conversion_op);
+        man_conversion_op, call_graph);
   }
   return changed;
 }
@@ -1445,7 +1448,7 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
 // Return the sharding that should be propagated from user to instruction.
 std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
-    int64_t aggressiveness, bool is_spmd) {
+    int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph) {
   if (!CanPropagateThroughAtAggressiveLevel(user, aggressiveness)) {
     return std::nullopt;
   }
@@ -1694,7 +1697,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       }
       if (is_spmd) {
         return hlo_sharding_util::GatherOperandShardingFromOutput(
-            user.sharding(), user);
+            user.sharding(), user, call_graph);
       }
       return std::nullopt;
     }
@@ -1722,7 +1725,7 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               : HloSharding::Replicate();
       if (is_spmd) {
         auto from_output = hlo_sharding_util::ScatterUpdateShardingFromOutput(
-            user.sharding(), scatter_user);
+            user.sharding(), scatter_user, call_graph);
         if (from_output.has_value()) {
           // Use sharding from output as primary sharding since it prioritize
           // parallel sharding first as this is how it is in spmd_partitioner.
@@ -1767,7 +1770,7 @@ bool AggressiveConcatOperandShardingCanPassThrough(
        concat_operand->operand(0)->opcode() == HloOpcode::kGetTupleElement));
 }
 
-// DyanmicSlice or DynamicUpdateSlice handling for InferShardingFromOperands().
+// DynamicSlice or DynamicUpdateSlice handling for InferShardingFromOperands().
 bool InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
     HloInstruction* instruction, int64_t aggressiveness,
     bool may_combine_partial_sharding) {
@@ -1837,7 +1840,7 @@ bool InferDynamicSliceOrDynamicUpdateSliceShardingFromOperands(
 // changed and false otherwise.
 bool ShardingPropagation::InferShardingFromOperands(
     HloInstruction* instruction, const ComputationMap& computation_map,
-    int64_t aggressiveness) {
+    int64_t aggressiveness, const CallGraph& call_graph) {
   if (!CanPropagateThroughAtAggressiveLevel(*instruction, aggressiveness)) {
     return false;
   }
@@ -1922,43 +1925,32 @@ bool ShardingPropagation::InferShardingFromOperands(
         return false;
       }
       const Shape& shape = instruction->shape();
-      bool changed = false;
-      if (!instruction->has_sharding()) {
-        // Set the sharding for all elements in the tuple because it isn't
-        // possible to set a partial sharding.
-        changed = true;
-        for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
-          const HloInstruction* operand = instruction->operand(i);
-          if (!operand->has_sharding()) {
-            continue;
-          }
-          if (operand->sharding().IsTuple()) {
-            if (operand->sharding().tuple_elements().empty()) {
-              continue;
-            }
-            // Use ReplicateAllDataDims to preserve manual subgroups.
-            instruction->set_sharding(HloSharding::SingleTuple(
-                instruction->shape(),
-                hlo_sharding_util::ReplicateAllDataDims(
-                    operand->sharding().tuple_elements()[0])
-                    .WithoutMetadata()));
-          } else {
-            instruction->set_sharding(HloSharding::SingleTuple(
-                instruction->shape(),
-                hlo_sharding_util::ReplicateAllDataDims(operand->sharding())
-                    .WithoutMetadata()));
-          }
-          break;
-        }
-      }
-      if (!instruction->has_sharding()) {
-        return false;
-      }
       // Go through each operand and if the operand has a sharding that is
       // better than the current sharding for that tuple element then update
-      // it.
-      std::vector<HloSharding> sub_shardings =
-          instruction->sharding().tuple_elements();
+      // it. If the current sharding does not exist, assume its replicated.
+      std::vector<HloSharding> sub_shardings;
+      if (instruction->has_sharding()) {
+        sub_shardings = instruction->sharding().tuple_elements();
+      } else {
+        // If instruction does not have a sharding, assume its replicated to
+        // allow refinement.
+        sub_shardings.assign(HloSharding::RequiredLeaves(shape),
+                             HloSharding::Replicate());
+      }
+      // This is required to allow manual sharding on operands to be propagated
+      // to the tuple. hlo_sharding_util::IsShardingMoreSpecific() returns false
+      // if any of the shardings involved is manual, so using it directly will
+      // prevent manual sharding on an operand to be propagated to the tuple
+      // when it has no existing sharding.
+      auto is_more_specific = [instruction](const HloSharding& operand_sharding,
+                                            const HloSharding& existing) {
+        // If the instruction originally had no sharding, always prefer operand
+        // sharding.
+        return !instruction->has_sharding() ||
+               hlo_sharding_util::IsShardingMoreSpecific(operand_sharding,
+                                                         existing);
+      };
+
       int64_t sub_sharding_index = 0;
       for (int64_t i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
         const HloInstruction* operand = instruction->operand(i);
@@ -1966,16 +1958,15 @@ bool ShardingPropagation::InferShardingFromOperands(
           if (operand->shape().IsTuple()) {
             for (int64_t i = 0, e = ShapeUtil::GetLeafCount(operand->shape());
                  i < e; ++i) {
-              if (hlo_sharding_util::IsShardingMoreSpecific(
-                      operand->sharding().tuple_elements()[i],
-                      sub_shardings[sub_sharding_index + i])) {
+              if (is_more_specific(operand->sharding().tuple_elements()[i],
+                                   sub_shardings[sub_sharding_index + i])) {
                 sub_shardings[sub_sharding_index + i] =
                     operand->sharding().tuple_elements()[i];
               }
             }
           } else {
-            if (hlo_sharding_util::IsShardingMoreSpecific(
-                    operand->sharding(), sub_shardings[sub_sharding_index])) {
+            if (is_more_specific(operand->sharding(),
+                                 sub_shardings[sub_sharding_index])) {
               sub_shardings[sub_sharding_index] = operand->sharding();
             }
           }
@@ -1984,11 +1975,12 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
 
       HloSharding new_sharding = HloSharding::Tuple(shape, sub_shardings);
-      if (new_sharding != instruction->sharding()) {
+      if (!instruction->has_sharding() ||
+          new_sharding != instruction->sharding()) {
         instruction->set_sharding(std::move(new_sharding));
         return true;
       }
-      return changed;
+      return false;
     }
     case HloOpcode::kReduce: {
       // Reduce could have a tuple shape, where the first half of operands are
@@ -2234,7 +2226,8 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
       if (is_spmd_) {
         auto gather_parallel_dims =
-            hlo_sharding_util::GetGatherParallelBatchDims(*instruction);
+            hlo_sharding_util::GetGatherParallelBatchDims(*instruction,
+                                                          call_graph);
         if (gather_parallel_dims) {
           changed |= InferGatherParallelShardingFromOperands(
               instruction, *gather_parallel_dims, may_combine_partial_sharding);
@@ -2274,7 +2267,8 @@ bool ShardingPropagation::InferShardingFromOperands(
       }
       if (is_spmd_) {
         auto scatter_parallel_dims =
-            hlo_sharding_util::GetScatterParallelBatchDims(*instruction);
+            hlo_sharding_util::GetScatterParallelBatchDims(*instruction,
+                                                           call_graph);
         if (scatter_parallel_dims) {
           changed |= InferScatterParallelShardingFromOperands(
               instruction, *scatter_parallel_dims,
@@ -2552,6 +2546,8 @@ StatusOr<bool> ShardingPropagation::Run(
   // strictly improve the sharding of the graph and it can't be improved
   // indefinitely.
   int64_t iterations = 0;
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   auto run_to_fix_point = [&](int64_t aggressiveness) {
     absl::flat_hash_set<const HloInstruction*> already_inferred_from_operands;
     absl::flat_hash_set<const HloInstruction*> already_inferred_from_users;
@@ -2611,7 +2607,7 @@ StatusOr<bool> ShardingPropagation::Run(
           }
           already_inferred_from_operands.insert(instruction);
           if (InferShardingFromOperands(instruction, computation_map,
-                                        aggressiveness)) {
+                                        aggressiveness, *call_graph)) {
             ++inferred_from_operand_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (forward-pass): "
@@ -2648,9 +2644,9 @@ StatusOr<bool> ShardingPropagation::Run(
             auto uit = unspecified_dims.find(*it);
             HloInstruction* man_conversion_op_after;
             if (uit != unspecified_dims.end() &&
-                InferUnspecifiedDimsFromUsers(*it, uit->second, aggressiveness,
-                                              is_spmd_,
-                                              &man_conversion_op_after)) {
+                InferUnspecifiedDimsFromUsers(
+                    *it, uit->second, aggressiveness, is_spmd_,
+                    &man_conversion_op_after, *call_graph)) {
               ++inferred_from_user_counter;
               VLOG(2) << "Refined partial sharding (backward-pass): "
                       << (*it)->ToString();
@@ -2665,7 +2661,8 @@ StatusOr<bool> ShardingPropagation::Run(
           }
           already_inferred_from_users.insert(*it);
           if (InferShardingFromUsers(*it, computation_map, aggressiveness,
-                                     is_spmd_, sharding_helper_.get())) {
+                                     is_spmd_, sharding_helper_.get(),
+                                     *call_graph)) {
             ++inferred_from_user_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();

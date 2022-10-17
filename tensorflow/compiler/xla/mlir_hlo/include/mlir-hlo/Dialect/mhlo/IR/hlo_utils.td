@@ -23,6 +23,8 @@ include "mlir/IR/PatternBase.td"
 
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 
+def NullChannelHandleAttr : NativeCodeCall<"mhlo::ChannelHandleAttr()">;
+
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 
 class ConstantSplat<string value> : NativeCodeCall<

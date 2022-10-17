@@ -338,15 +338,37 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(WhileOp op,
-                                PatternRewriter& rewriter) const override {
+  // Rewrite while loop with known trip count to `scf.for` operation.
+  LogicalResult rewriteForLoop(WhileOp op, PatternRewriter& rewriter) const {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    Value lb = b.create<arith::ConstantIndexOp>(0);
+    Value ub = b.create<arith::ConstantIndexOp>(*op.getTripCount());
+    Value c1 = b.create<arith::ConstantIndexOp>(1);
+
+    // Create an `scf.for` loop in place of `lmhlo.while` loop.
+    auto loop = b.create<scf::ForOp>(lb, ub, c1, ValueRange());
+
+    // Move body region into the new loop operation.
+    BlockAndValueMapping mapping;
+    rewriter.eraseOp(op.getBody().front().getTerminator());
+    rewriter.mergeBlockBefore(&op.getBody().front(),
+                              loop.getLoopBody().front().getTerminator());
+
+    // Erase the original while loop.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+  // Rewrite while loop with unknown trip count to `scf.while` operation.
+  LogicalResult rewriteWhileLoop(WhileOp op, PatternRewriter& rewriter) const {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
     auto loop = b.create<scf::WhileOp>(TypeRange(), ValueRange());
 
     // Predicate buffer placed on the device.
-    assert(op.getNumOperands() == 1 && "expected single cond operand");
     Value pred = op.getOperand(0);
 
     // Inline condition and body regions into the new loop operation.
@@ -391,6 +413,13 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     rewriter.eraseOp(op);
 
     return success();
+  }
+
+  LogicalResult matchAndRewrite(WhileOp op,
+                                PatternRewriter& rewriter) const override {
+    assert(op.getNumOperands() == 1 && "expected single lmhlo.while operand");
+    return op.getTripCount().has_value() ? rewriteForLoop(op, rewriter)
+                                         : rewriteWhileLoop(op, rewriter);
   }
 };
 

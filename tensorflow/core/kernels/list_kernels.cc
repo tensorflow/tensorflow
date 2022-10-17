@@ -451,6 +451,10 @@ class TensorListSetItem : public OpKernel {
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
+    OP_REQUIRES(
+        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+        errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
+                                c->input(1).DebugString()));
     int32_t index = c->input(1).scalar<int32>()();
     OP_REQUIRES(c, index < l->tensors().size(),
                 errors::InvalidArgument("Trying to modify element ", index,

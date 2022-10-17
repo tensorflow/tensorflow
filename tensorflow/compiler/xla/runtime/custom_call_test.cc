@@ -62,36 +62,39 @@ struct TestOpts {
   DiagnosticEngine diagnostic_engine;
 };
 
-static absl::StatusOr<JitExecutable> Compile(std::string_view module,
-                                             const TestOpts& test_opts) {
+static absl::StatusOr<JitExecutable> Compile(
+    std::string_view module, const TestOpts& test_opts,
+    absl::Span<const std::string_view> exported = {"test"}) {
   JitExecutable::Options opts;
   opts.specialization = JitExecutable::Specialization::kDisabled;
   opts.compiler.symbols_binding =
       ToSymbolsBinding(test_opts.direct_custom_calls, test_opts.types);
   opts.compiler.type_converter = test_opts.type_converter;
 
-  opts.compiler.register_dialects = [&](mlir::DialectRegistry& registry) {
-    registry.insert<TestlibDialect>();
-    RegisterDefaultXlaGpuRuntimeDialects(registry);
-  };
+  opts.compiler.register_dialects =
+      [&](xla::runtime::DialectRegistry& dialects) {
+        RegisterTestlibDialect(dialects);
+        RegisterDefaultXlaGpuRuntimeDialects(dialects);
+      };
 
-  opts.compiler.create_compilation_pipeline = [&](mlir::PassManager& pm) {
-    CompilationPipelineOptions copts;
-    copts.populate_type_id_names = test_opts.types;
-    copts.populate_arg_encodings = test_opts.populate_arg_encodings;
-    copts.populate_ret_encodings = test_opts.populate_ret_encodings;
-    copts.populate_attr_encodings = test_opts.populate_attr_encodings;
-    copts.populate_type_conversions = test_opts.populate_type_conversions;
-    CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
-  };
+  opts.compiler.create_compilation_pipeline =
+      [&](xla::runtime::PassManager& passes) {
+        CompilationPipelineOptions copts;
+        copts.populate_type_id_names = test_opts.types;
+        copts.populate_arg_encodings = test_opts.populate_arg_encodings;
+        copts.populate_ret_encodings = test_opts.populate_ret_encodings;
+        copts.populate_attr_encodings = test_opts.populate_attr_encodings;
+        copts.populate_type_conversions = test_opts.populate_type_conversions;
+        CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+      };
 
-  return JitExecutable::Instantiate(module, "test", opts);
+  return JitExecutable::Instantiate(module, opts, exported);
 }
 
-static absl::Status CompileAndExecute(std::string_view module,
-                                      ArgumentsRef args,
-                                      const TestOpts& test_opts) {
-  StatusOr<JitExecutable> jit_executable = Compile(module, test_opts);
+static absl::Status CompileAndExecute(
+    std::string_view module, ArgumentsRef args, const TestOpts& test_opts,
+    absl::Span<const std::string_view> exported = {"test"}) {
+  StatusOr<JitExecutable> jit_executable = Compile(module, test_opts, exported);
   if (!jit_executable.ok()) return jit_executable.status();
 
   AsyncValuePtr<Executable> executable = jit_executable->DefaultExecutable();
@@ -108,9 +111,14 @@ static absl::Status CompileAndExecute(std::string_view module,
   if (test_opts.dynamic_custom_calls)
     test_opts.dynamic_custom_calls(dynamic_custom_calls);
 
+  // Always add a pointer to `self` to user data.
+  CustomCall::UserData user_data;
+  user_data.insert(&executable.get());
+
   Executable::ExecuteOpts execute_opts;
   execute_opts.custom_call_registry = &dynamic_custom_calls;
   execute_opts.diagnostic_engine = &test_opts.diagnostic_engine;
+  execute_opts.custom_call_data = &user_data;
   execute_opts.async_task_runner =
       reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
 
@@ -638,19 +646,15 @@ TEST(CustomCallTest, CustomArgsAndRets) {
 
 TEST(CustomCallTest, MemRefRets) {
   absl::string_view module = R"(
-    func.func private @custom_call_result() -> (memref<2x2xf32>,
-                                                memref<?x?xf32>)
+    func.func private @custom_call_result() -> memref<2x2xf32>
       attributes { rt.dynamic, rt.custom_call = "test.custom_call_result" }
 
-    func.func private @custom_call(%arg0: memref<2x2xf32>,
-                                   %arg1: memref<?x?xf32>)
+    func.func private @custom_call(%arg0: memref<2x2xf32>)
       attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
 
     func.func @test() {
-      %0, %1 = call @custom_call_result()
-        : () -> (memref<2x2xf32>, memref<?x?xf32>)
-      call @custom_call(%0, %1) : (memref<2x2xf32>,  memref<?x?xf32>)
-                                -> ()
+      %0 = call @custom_call_result() : () -> (memref<2x2xf32>)
+      call @custom_call(%0) : (memref<2x2xf32>) -> ()
       return
     }
   )";
@@ -658,55 +662,38 @@ TEST(CustomCallTest, MemRefRets) {
   // Allocate storage for arguments.
   std::vector<float> input = {1.0, 2.0, 3.0, 4.0};
 
-  float f32_param = 0.0;
-  float f32_param_1 = 0.0;
-  float f32_param_2 = 0.0;
-  float f32_param_3 = 0.0;
-  int64_t dim1 = 0.0;
-  int64_t dim2 = 0.0;
+  // Observe returned memref by capturing memref argument shape and data.
+  std::vector<int64_t> arg_shape;
+  std::vector<float> arg_data;
 
-  auto f_result = [&](Result<MemrefView> ret0, Result<MemrefView> ret1) {
-    auto dims = ret0.GetDims();
-    std::vector<int64_t> vec_dims = {dims.begin(), dims.end()};
-    MemrefView mv = {ret0.GetDType(), input.data(), vec_dims};
-    MemrefView dmv = {ret1.GetDType(), input.data(), vec_dims};
-    ret0.Set(mv);
-    ret1.Set(dmv);
+  auto f_result = [&](Result<MemrefView> ret0) {
+    std::vector<int64_t> dims = {ret0.GetDims().begin(), ret0.GetDims().end()};
+    ret0.Set({ret0.GetDType(), input.data(), dims});
     return success();
   };
 
-  auto f = [&](MemrefView arg0, MemrefView arg1) {
-    (f32_param = static_cast<float*>(arg0.data)[0],
-     f32_param_1 = static_cast<float*>(arg0.data)[1],
-     f32_param_2 = static_cast<float*>(arg1.data)[2],
-     f32_param_3 = static_cast<float*>(arg1.data)[3]);
-    dim1 = arg1.sizes[0];
-    dim2 = arg1.sizes[1];
-
+  auto f = [&](MemrefView arg0) {
+    llvm::ArrayRef<float> data = {reinterpret_cast<float*>(arg0.data), 4};
+    arg_shape = {arg0.sizes.begin(), arg0.sizes.end()};
+    arg_data = {data.begin(), data.end()};
     return success();
   };
 
   TestOpts opts;
   opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
     registry.Register(CustomCall::Bind("test.custom_call_result")
-                          .Ret<MemrefView>()
-                          .Ret<MemrefView>()
+                          .Ret<MemrefView>()  // ret0
                           .To(f_result));
 
     registry.Register(CustomCall::Bind("test.custom_call")
-                          .Arg<MemrefView>()
-                          .Arg<MemrefView>()
+                          .Arg<MemrefView>()  // arg0
                           .To(f));
   };
 
   ASSERT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
 
-  EXPECT_EQ(f32_param, 1.0);
-  EXPECT_EQ(f32_param_1, 2.0);
-  EXPECT_EQ(f32_param_2, 3.0);
-  EXPECT_EQ(f32_param_3, 4.0);
-  EXPECT_EQ(dim1, 2);
-  EXPECT_EQ(dim2, 2);
+  EXPECT_EQ(arg_shape, std::vector<int64_t>({2, 2}));
+  EXPECT_EQ(arg_data, input);
 }
 
 TEST(CustomCallTest, ArgSizeCheck) {
@@ -927,6 +914,69 @@ TEST(CustomCallTest, StructAttr) {
   EXPECT_EQ(rank, 2);
   EXPECT_EQ(a, std::vector<int64_t>(2, 1));
   EXPECT_EQ(b, std::vector<int64_t>(2, 2));
+}
+
+TEST(CustomCallTest, FunctionOrdinalAttr) {
+  using FunctionOrdinal = CustomCall::FunctionOrdinal;
+
+  absl::string_view module = R"(
+    func.func private @init()
+      attributes { rt.dynamic, rt.custom_call = "test.init" }
+
+    func.func private @custom_call()
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    // We use a nested call to `@init` custom call as a simple way of proving
+    // that `@call_init` was called from `@custom_call` handler.
+    func.func @call_init() {
+      call @init() : () -> ()
+      return
+    }
+
+    func.func @test() {
+      call @custom_call() { func = @call_init }: () -> ()
+      return
+    }
+  )";
+
+  bool called_init = false;
+
+  // Custom call handler for `@init` custom call.
+  auto init = [&]() {
+    called_init = true;
+    return success();
+  };
+
+  // Dynamic custom call registry for resolving nested custom calls.
+  DynamicCustomCallRegistry registry;
+  registry.Register(CustomCall::Bind("test.init").To(init));
+
+  // Execute options for nested custom calls.
+  Executable::ExecuteOpts execute_opts;
+  execute_opts.custom_call_registry = &registry;
+  execute_opts.async_task_runner =
+      reinterpret_cast<AsyncTaskRunner*>(0XDEADBEEF);
+
+  // Custom call handler for `@custom_call` custom call.
+  auto handler = [&](Executable* executable, FunctionOrdinal exported) {
+    FunctionRef fn = executable->function_ref(exported.ordinal);
+    return success(fn({}, NoResultConverter{}, execute_opts).ok());
+  };
+
+  auto custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.init").To(init));
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .UserData<Executable*>()
+                          .Attr<FunctionOrdinal>("func")
+                          .To(handler));
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = custom_calls;
+
+  std::vector<std::string_view> exported = {"test", "call_init"};
+  EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts, exported).ok());
+  EXPECT_TRUE(called_init);
 }
 
 //===----------------------------------------------------------------------===//

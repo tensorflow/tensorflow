@@ -37,6 +37,12 @@ def HloCanonicalizeScatterPass : Pass<"hlo-canonicalize-scatter", "func::FuncOp"
   let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
 }
 
+def HloCanonicalizeGatherPass : Pass<"hlo-canonicalize-gather", "func::FuncOp"> {
+  let summary = "Rewrites gather into transposes, reshapes and a simple gather.";
+  let constructor = "createHloCanonicalizeGatherPass()";
+  let dependentDialects = ["mhlo::MhloDialect", "tensor::TensorDialect"];
+}
+
 def HloCanonicalizeReductionPass : Pass<"hlo-canonicalize-reduction", "func::FuncOp"> {
   let summary = "Canonicalize reduction ops to be suitable for codegen.";
   let constructor = "createHloCanonicalizeReductionPass()";
@@ -307,4 +313,18 @@ def StablehloLegalizeToHloPass : Pass<"stablehlo-legalize-to-hlo", "ModuleOp"> {
   let summary = "Legalize StableHLO to HLO.";
   let constructor = "createStablehloLegalizeToHloPass()";
   let dependentDialects = ["mhlo::MhloDialect"];
+}
+
+def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> {
+  let summary = "Prepare for XLA export";
+
+  let description = [{
+    This pass transforms functions in preparation for exporting to XLA. This
+
+    * converts splat constants to constants and broadcasts to reduce size of
+      and speedup the creation of the generated proto during export.
+
+    Note: The result of this pass need not be a module in canonical form and
+    canonicalization may undo transformations.
+  }];
 }

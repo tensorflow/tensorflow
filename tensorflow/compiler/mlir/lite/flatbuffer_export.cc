@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -64,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -71,6 +73,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -167,6 +170,13 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     switch (itype.getWidth()) {
       case 1:
         return tflite::TensorType_BOOL;
+      case 4:
+        if (itype.isUnsigned()) {
+          return Status(error::INVALID_ARGUMENT,
+                        "Unsupported 4bit unsigned int type");
+        } else {
+          return tflite::TensorType_INT4;
+        }
       case 8:
         return itype.isUnsigned() ? tflite::TensorType_UINT8
                                   : tflite::TensorType_INT8;
@@ -538,7 +548,7 @@ class Translator {
   // Returns TFLite buffer populated with constant value if the operation is
   // TFLite constant operation. Otherwise, returns an empty buffer. Emits error
   // and returns llvm::None on failure.
-  Optional<BufferOffset<tflite::Buffer>> BuildBuffer(Operation* inst);
+  Optional<BufferOffset<tflite::Buffer>> BuildBuffer(Value value);
 
   // Build TFLite tensor from the given type. This function is for tfl.lstm
   // intermediates, which should have UniformQuantizedType.
@@ -738,7 +748,8 @@ std::string Translator::UniqueName(mlir::Value val) {
 }
 
 Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
-    Operation* inst) {
+    mlir::Value value) {
+  auto inst = value.getDefiningOp();
   ElementsAttr attr;
   if (auto cst = dyn_cast<mlir::arith::ConstantOp>(inst)) {
     // arith::ConstantOp have ElementAttr at this point due to validation of the
@@ -756,6 +767,24 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = cst.compressed_data();
   } else {
     return empty_buffer_;
+  }
+
+  // TF doesn't currently support 4-bit types (DT_INT4), so we'll run into
+  // trouble calling ConvertToTensor(). For now, extract the tensor data from
+  // ElementsAttr directly in this and read type from tflite::TensorType instead
+  // of tensorflow::DataType.
+  auto type = value.getType().cast<TensorType>();
+  tflite::TensorType tflite_element_type =
+      GetTFLiteType(type.getElementType()).value();
+  if (tflite_element_type == tflite::TensorType_INT4) {
+    std::vector<uint8_t> data;
+    for (mlir::APInt v : attr.getValues<mlir::APInt>()) {
+      data.emplace_back(static_cast<uint8_t>(*(v.getRawData())));
+    }
+    auto packed_buffer = tflite::PackInt4ValuesDensely(data);
+    auto buffer_data =
+        builder_.CreateVector(packed_buffer.data(), packed_buffer.size());
+    return tflite::CreateBuffer(builder_, buffer_data);
   }
 
   tensorflow::Tensor tensor;
@@ -914,9 +943,13 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
     shape.reserve(shape_ref.size());
     for (auto& dim : shape_ref) {
-      shape.push_back(dim == -1 ? 1 : dim);
+      // translate dynamic shapes from mlir to tfl values
+      shape.push_back(
+          dim == mlir::ShapedType::kDynamicSize ? 1 : static_cast<int>(dim));
+      shape_signature.push_back(static_cast<int>(
+          dim == mlir::ShapedType::kDynamicSize ? tensorflow::kTFDynamicSize
+                                                : dim));
     }
-    shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
 
   BufferOffset<tflite::SparsityParameters> s_params = 0;
@@ -1488,7 +1521,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
     if (auto* inst = value.getDefiningOp()) {
-      auto buffer_or = BuildBuffer(inst);
+      auto buffer_or = BuildBuffer(value);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);
     } else {

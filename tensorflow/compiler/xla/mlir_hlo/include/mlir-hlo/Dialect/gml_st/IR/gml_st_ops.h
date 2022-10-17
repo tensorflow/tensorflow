@@ -19,6 +19,7 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
 
 #include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
@@ -34,6 +35,10 @@ limitations under the License.
 // Generated custom type declarations.
 #define GET_TYPEDEF_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.h.inc"
+
+// Generated attribute classes.
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_attrs.h.inc"
 
 // Generated operation classes.
 #define GET_OP_CLASSES

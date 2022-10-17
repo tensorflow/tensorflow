@@ -331,10 +331,25 @@ cc_library(
     includes = ["."],
     deps = [
         ":reference_element",
+        ":reference_types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "reference_types",
+    srcs = [
+        "stablehlo/reference/Types.cpp",
+    ],
+    hdrs = [
+        "stablehlo/reference/Types.h",
+    ],
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -510,6 +525,24 @@ td_library(
 )
 
 cc_library(
+    name = "stablehlo_type_inference",
+    srcs = [
+        "stablehlo/dialect/TypeInference.cpp",
+    ],
+    hdrs = [
+        "stablehlo/dialect/TypeInference.h",
+    ],
+    includes = ["."],
+    deps = [
+        ":base",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "stablehlo_ops",
     srcs = [
         "stablehlo/dialect/StablehloBytecode.cpp",
@@ -525,6 +558,7 @@ cc_library(
         ":stablehlo_attrs_inc_gen",
         ":stablehlo_enums_inc_gen",
         ":stablehlo_ops_inc_gen",
+        ":stablehlo_type_inference",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeReader",
@@ -538,6 +572,35 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_binary(
+    name = "stablehlo-interpreter",
+    srcs = [
+        "stablehlo/tools/StablehloInterpreterMain.cpp",
+    ],
+    deps = [
+        ":reference_interpreter",
+        ":stablehlo_ops",
+        ":test_utils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)
+
+cc_binary(
+    name = "stablehlo-opt",
+    srcs = [
+        "stablehlo/tools/StablehloOptMain.cpp",
+    ],
+    deps = [
+        ":register",
+        ":test_utils",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
     ],
 )
 

@@ -89,7 +89,8 @@ func.func @loop_reduction(%A: memref<192x192xf32>,
   gml_st.loop (%i, %j) = (%c0, %c0) to (%c192, %c192) step (%c24, %c16)
       ins (%A_ = %A: memref<192x192xf32>, %B_ = %B:  memref<192x192xf32>)
       outs (%C_ = %C: memref<f32>)
-      iterators["reduction", "reduction"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<reduction>] {
     linalg.fill ins(%cst : f32) outs(%A_ : memref<192x192xf32>)
     gml_st.yield
   }
@@ -147,7 +148,8 @@ func.func @loop_row_reduction(%A: memref<10x8xf32>,
   gml_st.loop (%i, %j) = (%c0, %c0) to (%c10, %c8) step (%c2, %c4)
       ins (%A_ = %A: memref<10x8xf32>)
       outs (%B_ = %B: memref<8xf32>)
-      iterators["reduction", "parallel"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>] {
     %A_sub = memref.subview %A_[%i, %j][2, 4][1, 1]
       : memref<10x8xf32> to memref<2x4xf32, #strided_2d>
     %B_sub = memref.subview %B_[%j][4][1]
@@ -199,7 +201,8 @@ func.func @loop_col_reduction(%A: memref<10x8xf32>,
   gml_st.loop (%i, %j) = (%c0, %c0) to (%c10, %c8) step (%c2, %c4)
       ins (%A_ = %A: memref<10x8xf32>)
       outs (%B_ = %B: memref<10xf32>)
-      iterators["parallel", "reduction"] {
+      iterators[#gml_st.iterator_type<parallel>,
+                #gml_st.iterator_type<reduction>] {
     %A_sub = memref.subview %A_[%i, %j][2, 4][1, 1]
       : memref<10x8xf32> to memref<2x4xf32, #strided_2d>
     %B_sub = memref.subview %B_[%i][2][1]

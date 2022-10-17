@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/serialization_utils.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -422,8 +424,7 @@ Status AsGraphDefForRewrite(OpKernelContext* ctx, const DatasetBase* input,
                             GraphDef* result, string* dataset_node) {
   SerializationContext::Params params(ctx);
   params.input_list = input_list;
-  params.external_state_policy =
-      SerializationContext::ExternalStatePolicy::kIgnore;
+  params.external_state_policy = ExternalStatePolicy::POLICY_IGNORE;
   params.is_graph_rewrite = true;
   SerializationContext serialization_ctx(params);
   TF_RETURN_IF_ERROR(AsGraphDef(input, std::move(serialization_ctx), result));
@@ -441,11 +442,11 @@ Status AsGraphDef(const DatasetBase* dataset,
                   SerializationContext&& serialization_ctx,
                   GraphDef* graph_def) {
   if (serialization_ctx.external_state_policy() ==
-      SerializationContext::ExternalStatePolicy::kFail) {
+      ExternalStatePolicy::POLICY_FAIL) {
     TF_RETURN_IF_ERROR(dataset->CheckExternalState());
   }
   if (serialization_ctx.external_state_policy() ==
-      SerializationContext::ExternalStatePolicy::kWarn) {
+      ExternalStatePolicy::POLICY_WARN) {
     std::vector<string> stateful_op_names;
     TF_RETURN_IF_ERROR(FindStatefulOps(*graph_def, &stateful_op_names));
     if (!stateful_op_names.empty()) {

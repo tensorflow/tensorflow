@@ -212,9 +212,6 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     self._strides = _compute_mesh_strides(
         [self._dim_dict[dim] for dim in self._dim_names])
 
-  def __contains__(self, dim_name: str) -> bool:
-    return self.contains_dim(dim_name)
-
   def __eq__(self, other):
     if not isinstance(other, type(self)) and not isinstance(self, type(other)):
       raise ValueError('comparing with type : {0} but expecting : {1}'.format(
@@ -271,23 +268,11 @@ class Mesh(_pywrap_dtensor_device.Mesh):
 
     return mesh_proto
 
-  def contains_dim(self, dim_name: str) -> bool:
-    """Returns True if a Mesh contains the given dimension name."""
-    return dim_name in self._dim_dict
-
   def coords(self, device_idx: int) -> ops.Tensor:
     """Converts the device index into a tensor of mesh coordinates."""
     strides = ops.convert_to_tensor(self.strides)
     shape = ops.convert_to_tensor(self.shape())
     return (device_idx // strides) % shape
-
-  def device_type(self) -> str:
-    """Returns the device_type of a Mesh."""
-    return self._device_type
-
-  @property
-  def dim_names(self) -> List[str]:
-    return self._dim_names
 
   def dim_size(self, dim_name: str) -> int:
     """Returns the size of a dimension."""
@@ -422,10 +407,6 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     """Returns the minimum global device ID."""
     # global_device_ids sequentially increases.
     return self._global_device_ids.flatten()[0]
-
-  @property
-  def name(self) -> str:
-    return self._name
 
   def num_local_devices(self) -> int:
     """Returns the number of local devices."""

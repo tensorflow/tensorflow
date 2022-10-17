@@ -1,4 +1,3 @@
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 load("//tensorflow/distribute/experimental/rpc/kernels/oss:defs.bzl", "grpc_credentials_dependency")

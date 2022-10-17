@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -908,6 +909,14 @@ class Interpreter {
 
   // InterpreterOptions object which is being used.
   std::unique_ptr<InterpreterOptions> options_;
+
+  // Stores control edges that are encoded in the metadata of the model. Updated
+  // in SetMetadata; model_control_dependencies_.empty() means that there were
+  // no control dependencies encoded in the metadata, or that we were unable to
+  // parse them. We assume that, if we were able to parse them, they are
+  // consistent with the model and no further consistency check (e.g., bounds
+  // checks when dereferencing by subgraph and operator index) will take place.
+  ModelControlDependencies model_control_dependencies_;
 };
 
 }  // namespace tflite

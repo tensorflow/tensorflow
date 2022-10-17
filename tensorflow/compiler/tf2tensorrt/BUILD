@@ -13,18 +13,7 @@ load(
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_wrapper_py",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_libs")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_cuda_cc_test", "tf_custom_op_py_library", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",

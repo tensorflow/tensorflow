@@ -18,9 +18,8 @@ limitations under the License.
 
 #include <functional>
 
-#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
-#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_options.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
 
 namespace xla {
 namespace runtime {
@@ -42,7 +41,7 @@ struct CpuPipelineOptions {
 
 // Registers dialects, interfaces and dialects translations with the registry
 // required by the default XLA-CPU runtime compilation pipeline.
-void RegisterDefaultXlaCpuRuntimeDialects(mlir::DialectRegistry& registry);
+void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects);
 
 // Creates default XLA-CPU runtime compilation pipeline that lowers from the
 // `rt` and `memref` dialects to the LLVMIR dialect. This is a very simple
@@ -50,7 +49,7 @@ void RegisterDefaultXlaCpuRuntimeDialects(mlir::DialectRegistry& registry);
 // it is expected that all end users will construct their own compilation
 // pipelines from the available XLA and MLIR passes.
 void CreateDefaultXlaCpuRuntimeCompilationPipeline(
-    mlir::OpPassManager& pm, const CpuPipelineOptions& opts);
+    PassManager& passes, const CpuPipelineOptions& opts);
 
 }  // namespace runtime
 }  // namespace xla

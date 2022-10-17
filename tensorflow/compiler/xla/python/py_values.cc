@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace py = pybind11;
 
@@ -196,13 +196,16 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, PjRtDevice* to_device,
   }
   // Must release the GIL before BufferFromHostBuffer because backends may
   // decide to block/sleep for device buffer allocation.
-  py::gil_scoped_release gil_release;
-  TF_ASSIGN_OR_RETURN(
-      auto buffer,
-      to_device->client()->BufferFromHostBuffer(
-          data, squashed_type, dims, byte_strides, host_buffer_semantics,
-          std::move(on_done_with_host_buffer), to_device));
-  return DevicePutResult(std::move(buffer), /*weak_type=*/false);
+  StatusOr<std::unique_ptr<PjRtBuffer>> buffer;
+  {
+    py::gil_scoped_release gil_release;
+    TF_ASSIGN_OR_RETURN(
+        buffer,
+        to_device->client()->BufferFromHostBuffer(
+            data, squashed_type, dims, byte_strides, host_buffer_semantics,
+            std::move(on_done_with_host_buffer), to_device));
+  }
+  return DevicePutResult(std::move(buffer.value()), /*weak_type=*/false);
 }
 
 StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
@@ -275,7 +278,7 @@ StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
 
 StatusOr<DevicePutResult> DevicePut(py::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options) {
-  tensorflow::profiler::TraceMe traceme("DevicePut");
+  tsl::profiler::TraceMe traceme("DevicePut");
   static const absl::flat_hash_map<PyObject*, DevicePutFunc>* const handlers =
       [] {
         auto p = new absl::flat_hash_map<PyObject*, DevicePutFunc>();

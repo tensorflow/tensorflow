@@ -350,6 +350,9 @@ def _log_sample_num_for_calibration(
 
     sample_num += 1
 
+  logging.info('Running representative samples complete: %d / %s', sample_num,
+               total_num_samples)
+
 
 def _run_function_for_calibration_graph_mode(
     sess: session.Session, signature_def: meta_graph_pb2.SignatureDef,
@@ -557,6 +560,8 @@ def _run_graph_for_calibration(
         'Failed to run graph for post-training quantization calibration.'
     ) from ex
 
+  logging.info('Calibration step complete.')
+
 
 def _create_empty_output_dir(output_directory: str) -> None:
   """Creates the `output_directory`.
@@ -595,6 +600,7 @@ def _run_static_range_qat(
   Returns:
     The static-range quantized graph.
   """
+  logging.info('Running static-range quantization for QAT model.')
   graph_def_serialized = (
       quantize_model_wrapper.quantize_qat_model(saved_model_path,
                                                 ','.join(signature_def_keys),
@@ -694,6 +700,7 @@ def _run_static_range_ptq(
     init_op_name is the name of the initializer op, which is fetched once to
     initialize resources (e.g. hash tables) when a SavedModel is loaded.
   """
+  logging.info('Running post-training quantization pre-calibration step.')
   graph_def_serialized, init_node_name = (
       quantize_model_wrapper.quantize_ptq_model_pre_calibration(
           saved_model_path, ','.join(signature_def_keys), ','.join(tags),
@@ -753,6 +760,7 @@ def _run_static_range_ptq(
   signature_def_map = _get_signatures_from_saved_model(calibrated_model_dir,
                                                        signature_def_keys, tags)
 
+  logging.info('Running post-training quantization post-calibration step.')
   graph_def_serialized, init_node_name = (
       quantize_model_wrapper.quantize_ptq_model_post_calibration(
           calibrated_model_dir, ','.join(signature_def_keys), ','.join(tags),
@@ -843,6 +851,12 @@ def _static_range_quantize(
     RuntimeError: When a MetaGraphDef could not be found associated with `tags`
       in the SavedModel.
   """
+  logging.info('Running static range quantization on model: %s',
+               saved_model_path)
+  logging.info('Using SignatureDef keys: %s', signature_keys)
+  logging.info('Using tags: %s', tags)
+  logging.info('QuantizationOptions: \n%s', quantization_options)
+
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
   signature_def_map = _get_signatures_from_saved_model(saved_model_path,
                                                        signature_keys, tags)
@@ -907,6 +921,12 @@ def _dynamic_range_quantize(
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
         'supported for dynamic range quantization.')
+
+  logging.info('Running post-training dynamic-range quantization on model: %s',
+               saved_model_path)
+  logging.info('Using SignatureDef keys: %s', signature_keys)
+  logging.info('Using tags: %s', tags)
+  logging.info('QuantizationOptions: \n%s', quantization_options)
 
   # Check default quantization option values for post-training dynamic range
   # quantization case.

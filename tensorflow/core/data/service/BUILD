@@ -6,15 +6,7 @@ load(
     "tf_proto_library",
     "tf_protos_profiler_service",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "get_compatible_with_cloud", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -1005,6 +997,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",

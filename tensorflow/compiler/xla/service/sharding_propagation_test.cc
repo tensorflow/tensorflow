@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
 
+#include <ostream>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_op_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -952,7 +955,8 @@ ENTRY %tuple {
     EXPECT_THAT(tuple->sharding().tuple_elements()[0],
                 ShardingMetadata({CreateMetadata("b")}));
     EXPECT_THAT(tuple->sharding().tuple_elements()[1], ShardingMetadata({}));
-    EXPECT_THAT(tuple1->sharding().tuple_elements()[0], ShardingMetadata({}));
+    EXPECT_THAT(tuple1->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("a")}));
     EXPECT_THAT(tuple1->sharding().tuple_elements()[1],
                 ShardingMetadata({CreateMetadata("b")}));
     EXPECT_THAT(tuple1->sharding().tuple_elements()[2], ShardingMetadata({}));
@@ -962,6 +966,46 @@ ENTRY %tuple {
       for (const HloSharding& sub_sharding : tuple_sharding.tuple_elements()) {
         EXPECT_THAT(sub_sharding, ShardingMetadata({}));
       }
+    }
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, TupleForwardPass_SplatBug) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %tuple {
+  %param0 = f32[5,7,11,13]{3,2,1,0} parameter(0),
+    sharding={replicated metadata={op_name="a"}}
+  %param1 = f32[5,7,11,13]{3,2,1,0} parameter(1),
+    sharding={devices=[1,2,2,1,2]0,1,2,3,4,5,6,7  last_tile_dims={manual} metadata={op_name="b"}}
+  %param2 = f32[5,7,11,13]{3,2,1,0} parameter(2)
+  %tuple = (f32[5,7,11,13]{3,2,1,0}, f32[5,7,11,13]{3,2,1,0}) tuple(
+    %param1, %param2)
+  ROOT %copy = (f32[5,7,11,13]{3,2,1,0}, f32[5,7,11,13]{3,2,1,0}) copy(%tuple)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* tuple = FindInstruction(module.get(), "tuple");
+  ASSERT_NE(tuple, nullptr);
+  // Check that the sharding on param1 is not replicated on tuple element[1].
+  EXPECT_THAT(tuple, op::Sharding("{{devices=[1,2,2,1,2]0,1,2,3,4,5,6,7 "
+                                  "last_tile_dims={manual}}, {replicated}}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(tuple->sharding().tuple_elements()[0],
+                ShardingMetadata({CreateMetadata("b")}));
+    EXPECT_THAT(tuple->sharding().tuple_elements()[1], ShardingMetadata({}));
+  } else {
+    for (const HloSharding& sub_sharding : tuple->sharding().tuple_elements()) {
+      EXPECT_THAT(sub_sharding, ShardingMetadata({}));
     }
   }
 }
@@ -8359,6 +8403,27 @@ ENTRY %entry {
   EXPECT_THAT(
       FindInstruction(module.get(), "c"),
       op::Sharding("{devices=[1,4,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, EmptyTupleWithinTuple) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  %param0 = f32[2] parameter(0), sharding={replicated}
+  %et = () tuple()
+  %tuple = (f32[2], (), (), f32[2]) tuple(%param0, %et, %et, %param0)
+  ROOT %copy = (f32[2], (), (), f32[2]) copy(%tuple)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, /*propagate_metadata=*/true)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

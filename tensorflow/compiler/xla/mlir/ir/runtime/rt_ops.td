@@ -71,6 +71,11 @@ def RT_ExportOp : RT_Op<"export", [
     OpBuilder<(ins "mlir::func::FuncOp":$function_ref, "unsigned":$ordinal)>,
   ];
 
+  let extraClassDeclaration = [{
+    llvm::Optional<unsigned> ordinal();
+    mlir::func::FuncOp exported(mlir::SymbolTable& sym_table);
+  }];
+
   let assemblyFormat = "$function_ref (`ordinal` $ordinal^)? attr-dict";
 }
 
@@ -312,7 +317,7 @@ def RT_TraceOp : RT_Op<"trace",
 //===----------------------------------------------------------------------===//
 
 def RT_YieldOp : RT_Op<"yield",
-    [HasParent<"TraceOp">, NoSideEffect, Terminator,
+    [HasParent<"TraceOp">, Pure, Terminator,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let summary = "terminator for rt.trace operation";
 

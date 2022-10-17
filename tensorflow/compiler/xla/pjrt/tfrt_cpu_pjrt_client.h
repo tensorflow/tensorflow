@@ -45,7 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
@@ -162,16 +162,10 @@ class TfrtCpuClient final : public PjRtClient {
       const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::string> SerializeExecutable(
-      const PjRtLoadedExecutable& executable) const override {
-    return Unimplemented("SerializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      const PjRtLoadedExecutable& executable) const override;
 
   StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return Unimplemented("DeserializeExecutable not implemented on %s",
-                         platform_name());
-  }
+      absl::string_view serialized, CompileOptions options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
@@ -554,6 +548,8 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
   bool IsReturnedFutureSupported() const override { return true; }
 
   StatusOr<std::optional<std::string>> Fingerprint() const;
+
+  std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
  private:
   friend class TfrtCpuClient;

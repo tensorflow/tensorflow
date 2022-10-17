@@ -2053,7 +2053,8 @@ SpmdPartitioningVisitor::SpmdPartitioningVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdLogger* logger,
-    SpmdPartitionerOptions options, SpmdPartitioner* partitioner)
+    SpmdPartitionerOptions options, SpmdPartitioner* partitioner,
+    const CallGraph& call_graph)
     : changed_(false),
       module_(computation->parent()),
       num_partitions_(num_partitions),
@@ -2064,7 +2065,8 @@ SpmdPartitioningVisitor::SpmdPartitioningVisitor(
       partition_id_(collective_ops_creator_.create_partition_id(&b_)),
       logger_(logger),
       options_(std::move(options)),
-      partitioner_(partitioner) {}
+      partitioner_(partitioner),
+      call_graph_(call_graph) {}
 
 PartitionedHlo::PartitioningState
 SpmdPartitioningVisitor::MakePartitioningState() {
@@ -3642,11 +3644,13 @@ Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
                                                 cond_root_sharding.IsManual()
                                                     ? cond_root_sharding
                                                     : HloSharding::Replicate(),
-                                                next_channel_id_, logger_)
+                                                next_channel_id_, logger_,
+                                                call_graph_)
                          .status());
   TF_RETURN_IF_ERROR(partitioner_
                          ->PartitionComputation(hlo->while_body(), sharding,
-                                                next_channel_id_, logger_)
+                                                next_channel_id_, logger_,
+                                                call_graph_)
                          .status());
   SetPartitionedHlo(hlo, [&] {
     return b_.AddInstruction(HloInstruction::CreateWhile(
@@ -3675,7 +3679,8 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
     HloComputation* computation = hlo->branch_computation(i);
     TF_RETURN_IF_ERROR(partitioner_
                            ->PartitionComputation(computation, hlo->sharding(),
-                                                  next_channel_id_, logger_)
+                                                  next_channel_id_, logger_,
+                                                  call_graph_)
                            .status());
   }
   SetPartitionedHlo(hlo, [&] {
@@ -4482,10 +4487,10 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
 
 StatusOr<bool> SpmdPartitioner::PartitionComputation(
     HloComputation* computation, const HloSharding& root_sharding,
-    int64_t* next_channel_id, SpmdLogger* logger) {
-  auto visitor =
-      CreateVisitor(computation, num_partitions_, num_replicas_,
-                    collective_ops_creator_, next_channel_id, logger, options_);
+    int64_t* next_channel_id, SpmdLogger* logger, const CallGraph& call_graph) {
+  auto visitor = CreateVisitor(computation, num_partitions_, num_replicas_,
+                               collective_ops_creator_, next_channel_id, logger,
+                               options_, call_graph);
   return visitor->DoPartition(computation, root_sharding, options_);
 }
 
@@ -4493,10 +4498,10 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdLogger* logger,
-    SpmdPartitionerOptions options) {
+    SpmdPartitionerOptions options, const CallGraph& call_graph) {
   return std::make_unique<SpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
-      next_channel_id, logger, std::move(options), this);
+      next_channel_id, logger, std::move(options), this, call_graph);
 }
 
 StatusOr<bool> SpmdPartitioner::Run(
@@ -4532,10 +4537,13 @@ StatusOr<bool> SpmdPartitioner::Run(
   // Copy the root sharding since the partitioner visitor may temporarily change
   // the sharding to work around manual sharding.
   HloSharding root_sharding = entry_root->sharding();
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  CHECK(call_graph->IsFlattened());
   TF_ASSIGN_OR_RETURN(
       bool partition_changed,
       PartitionComputation(module->entry_computation(), root_sharding,
-                           &next_channel_id, &logger));
+                           &next_channel_id, &logger, *call_graph));
   changed |= partition_changed;
 
   // For the entry computation, make sure that the root instruction and the
