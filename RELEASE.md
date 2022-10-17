@@ -2,8 +2,9 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
-  removed.
+* `StatusOr::ConsumeValueOrDie` and `StatusOr::ValueOrDie`, both deprecated in
+  TF 2.10 has been removed.
+
 
 ## Breaking Changes
 *   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and
