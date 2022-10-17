@@ -99,9 +99,13 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     return rewriter.notifyMatchFailure(op, "dilations should be all 1");
   }
 
-  if (!TFTypeIsFloat32Tensor(op.input()) || !TFDataFormatIsNHWC(op)) {
+  if (!TFL::TFTypeIsFloat32Tensor(op.input()) &&
+      !TFL::TFTypeIsBFloat16OrHalfTensor(op.input())) {
     return rewriter.notifyMatchFailure(
-        op, "op's input is not float or the data format isn't NHWC");
+        op, "op's input is not float or half or bfloat16");
+  }
+  if (!TFL::TFDataFormatIsNHWC(op)) {
+    return rewriter.notifyMatchFailure(op, "op's data format isn't NHWC");
   }
 
   // Allow dynamic width and height dimensions only.

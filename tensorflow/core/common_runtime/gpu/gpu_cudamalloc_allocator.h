@@ -18,11 +18,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -30,7 +30,7 @@ namespace tensorflow {
 // free memory.
 class GPUcudaMallocAllocator : public Allocator {
  public:
-  explicit GPUcudaMallocAllocator(PlatformDeviceId platform_device_id);
+  explicit GPUcudaMallocAllocator(tsl::PlatformDeviceId platform_device_id);
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;

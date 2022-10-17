@@ -68,7 +68,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/protobuf:coordination_config_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 

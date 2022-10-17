@@ -524,11 +524,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
     // instead once GPU emitter supports lowering LLVM.
     case HloOpcode::kRoundNearestEven:
       return llvm_ir::EmitCallToIntrinsic(
-#if TENSORFLOW_USE_ROCM
-          llvm::Intrinsic::rint,
-#else
           llvm::Intrinsic::nearbyint,
-#endif
           {operand_value}, {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
       auto type = operand_value->getType();

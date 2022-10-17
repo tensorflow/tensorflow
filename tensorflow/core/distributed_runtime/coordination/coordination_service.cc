@@ -43,11 +43,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -76,28 +73,6 @@ CoordinatedTask GetTaskFromName(absl::string_view task_name) {
   return task;
 }
 
-bool is_multi_client_leader(const ServerDef& server_def) {
-  const auto& config = server_def.default_session_config();
-  const std::string& leader =
-      config.experimental().coordination_config().service_leader();
-  const std::string& collective_leader =
-      config.experimental().collective_group_leader();
-  DeviceNameUtils::ParsedName leader_pn;
-  if (!leader.empty()) {
-    DeviceNameUtils::ParseFullName(leader, &leader_pn);
-  } else if (!collective_leader.empty()) {
-    LOG(INFO) << "No coordination leader is set, using the collective leader "
-              << collective_leader;
-    DeviceNameUtils::ParseFullName(collective_leader, &leader_pn);
-  } else {
-    LOG(INFO) << "No coordination leader is set, using the default /job:"
-              << server_def.job_name() << "/replica:0/task:0";
-    return server_def.task_index() == 0;
-  }
-  return server_def.job_name() == leader_pn.job &&
-         server_def.task_index() == leader_pn.task;
-}
-
 // Convenience structs to allow using CoordinatedTask as container keys.
 struct CoordinatedTaskHash {
   uint64_t operator()(const CoordinatedTask& task) const {
@@ -115,8 +90,8 @@ struct CoordinatedTaskEqual {
 class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
  public:
   CoordinationServiceStandaloneImpl(
-      std::unique_ptr<CoordinationClientCache> client_cache, Env* env,
-      const ServerDef& server_def);
+      Env* env, const CoordinationServiceConfig& config,
+      std::unique_ptr<CoordinationClientCache> client_cache);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
   Status RegisterTask(const CoordinatedTask& task,
@@ -349,38 +324,22 @@ void CoordinationServiceStandaloneImpl::TaskState::ExitBarrier(
   ongoing_barriers_for_task_.erase(barrier_id);
 }
 CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
-    std::unique_ptr<CoordinationClientCache> client_cache, Env* env,
-    const ServerDef& server_def)
+    Env* env, const CoordinationServiceConfig& config,
+    std::unique_ptr<CoordinationClientCache> client_cache)
     : client_cache_(std::move(client_cache)),
       env_(*env),
-      heartbeat_timeout_ms_([&server_def]() -> uint64_t {
-        const auto& configs = server_def.default_session_config()
-                                  .experimental()
-                                  .coordination_config();
-        return configs.heartbeat_timeout_in_ms() > 0
-                   ? configs.heartbeat_timeout_in_ms()
+      heartbeat_timeout_ms_([&config]() -> uint64_t {
+        return config.heartbeat_timeout_in_ms() > 0
+                   ? config.heartbeat_timeout_in_ms()
                    : kDefaultHeartbeatTimeoutMs;
       }()),
       shutdown_barrier_timeout_(
-          absl::Milliseconds(server_def.default_session_config()
-                                 .experimental()
-                                 .coordination_config()
-                                 .shutdown_barrier_timeout_in_ms())) {
-  const auto& configs =
-      server_def.default_session_config().experimental().coordination_config();
-  const std::unordered_set<std::string> coordinated_jobs(
-      configs.coordinated_jobs().cbegin(), configs.coordinated_jobs().cend());
+          absl::Milliseconds(config.shutdown_barrier_timeout_in_ms())) {
   recoverable_jobs_ = absl::flat_hash_set<std::string>(
-      configs.recoverable_jobs().cbegin(), configs.recoverable_jobs().cend());
-  const auto& cluster_def = server_def.cluster();
-  for (const auto& job : cluster_def.job()) {
-    // If `coordinated_jobs` is specified, skip jobs that are not included there
-    if (!coordinated_jobs.empty() &&
-        coordinated_jobs.find(job.name()) == coordinated_jobs.end()) {
-      continue;
-    }
-    for (const auto& task : job.tasks()) {
-      const std::string& task_name = GetTaskName(job.name(), task.first);
+      config.recoverable_jobs().cbegin(), config.recoverable_jobs().cend());
+  for (const auto& job : config.coordinated_job_list()) {
+    for (int i = 0; i < job.num_tasks(); ++i) {
+      const std::string task_name = GetTaskName(job.name(), i);
       cluster_state_.emplace(task_name, std::make_unique<TaskState>());
     }
   }
@@ -1209,14 +1168,10 @@ void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
 }  // namespace
 
 std::unique_ptr<CoordinationServiceInterface> EnableCoordinationService(
-    Env* env, const ServerDef& server_def,
+    Env* env, const CoordinationServiceConfig& config,
     std::unique_ptr<CoordinationClientCache> cache) {
-  std::unique_ptr<CoordinationServiceInterface> coord_service;
-  if (is_multi_client_leader(server_def)) {
-    coord_service = std::make_unique<CoordinationServiceStandaloneImpl>(
-        std::move(cache), env, server_def);
-  }
-  return coord_service;
+  return std::make_unique<CoordinationServiceStandaloneImpl>(env, config,
+                                                             std::move(cache));
 }
 
 bool CoordinationServiceStandaloneImpl::isRecoverableJob(

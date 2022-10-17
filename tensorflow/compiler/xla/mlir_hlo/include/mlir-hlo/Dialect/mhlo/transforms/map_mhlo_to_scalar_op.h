@@ -478,6 +478,16 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
   APInt expBitsMask(nbits, 1);
   expBitsMask = ((expBitsMask << srcExponentBits) - 1) << srcMantissaBits;
 
+  auto createConstant = [&](const APInt& v) {
+    return b.create<arith::ConstantIntOp>(v.getZExtValue(), intType)
+        .getResult();
+  };
+
+  Value xAbsBits =
+      b.create<arith::AndIOp>(xAsInt, createConstant(~signBitMask));
+  Value xIsNan = b.create<arith::CmpIOp>(arith::CmpIPredicate::ugt, xAbsBits,
+                                         createConstant(expBitsMask));
+
   int destMantissaBits = adaptor.getMantissaBits();
   if (destMantissaBits < static_cast<int>(srcMantissaBits)) {
     // Last remaining mantissa bit.
@@ -491,10 +501,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
 
     Value mantissaDiff = b.create<arith::ConstantIntOp>(
         srcMantissaBits - destMantissaBits, intType);
-    Value highestMantissaMaskVal = b.create<arith::ConstantIntOp>(
-        lastMantissaBitMask.getZExtValue(), intType);
-    Value baseRoundingBiasVal = b.create<arith::ConstantIntOp>(
-        baseRoundingBias.getZExtValue(), intType);
+    Value highestMantissaMaskVal = createConstant(lastMantissaBitMask);
+    Value baseRoundingBiasVal = createConstant(baseRoundingBias);
     Value xLastMantissaBit = b.create<arith::ShRUIOp>(
         b.create<arith::AndIOp>(xAsInt, highestMantissaMaskVal), mantissaDiff);
     Value xRoundingBias =
@@ -506,11 +514,7 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
     // exponent will be incremented by one.
     APInt truncationMask = ~(lastMantissaBitMask - 1);
     Value xRounded = b.create<arith::AddIOp>(xAsInt, xRoundingBias);
-    xRounded = b.create<arith::AndIOp>(
-        xRounded,
-        b.create<arith::ConstantIntOp>(truncationMask.getZExtValue(), intType)
-            .getResult());
-    xAsInt = xRounded;
+    xAsInt = b.create<arith::AndIOp>(xRounded, createConstant(truncationMask));
   }
 
   int destExponentBits = adaptor.getExponentBits();
@@ -537,30 +541,20 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
     APInt reducedMinExponent = exponentBias - reducedExponentBias;
 
     // Do we overflow or underflow?
-    Value xExponent = b.create<arith::AndIOp>(
-        xAsInt,
-        b.create<arith::ConstantIntOp>(expBitsMask.getZExtValue(), intType)
-            .getResult());
+    Value xExponent =
+        b.create<arith::AndIOp>(xAsInt, createConstant(expBitsMask));
     Value xOverflows = b.create<arith::CmpIOp>(
         arith::CmpIPredicate::ugt, xExponent,
-        b.create<arith::ConstantIntOp>(
-             (reducedMaxExponent << srcMantissaBits).getZExtValue(), intType)
-            .getResult());
+        createConstant(reducedMaxExponent << srcMantissaBits));
     Value xUnderflows = b.create<arith::CmpIOp>(
         arith::CmpIPredicate::ule, xExponent,
-        b.create<arith::ConstantIntOp>(
-             (reducedMinExponent << srcMantissaBits).getZExtValue(), intType)
-            .getResult());
+        createConstant(reducedMinExponent << srcMantissaBits));
 
     // Compute appropriately-signed values of zero and infinity.
-    Value xSignedZero = b.create<arith::AndIOp>(
-        xAsInt,
-        b.create<arith::ConstantIntOp>(signBitMask.getZExtValue(), intType)
-            .getResult());
-    Value xSignedInf = b.create<arith::OrIOp>(
-        xSignedZero,
-        b.create<arith::ConstantIntOp>(expBitsMask.getZExtValue(), intType)
-            .getResult());
+    Value xSignedZero =
+        b.create<arith::AndIOp>(xAsInt, createConstant(signBitMask));
+    Value xSignedInf =
+        b.create<arith::OrIOp>(xSignedZero, createConstant(expBitsMask));
 
     // Force to zero or infinity if overflow or underflow.  (Note that this
     // truncates all denormal values to zero, rather than rounding them.)
@@ -568,7 +562,8 @@ inline Value mapMhloOpToStdScalarOp<mhlo::ReducePrecisionOp>(
     xAsInt = b.create<arith::SelectOp>(xUnderflows, xSignedZero, xAsInt);
   }
 
-  return b.create<arith::BitcastOp>(floatType, xAsInt);
+  Value result = b.create<arith::BitcastOp>(floatType, xAsInt);
+  return b.create<arith::SelectOp>(xIsNan, adaptor.getOperand(), result);
 }
 
 template <>
@@ -744,6 +739,23 @@ inline Value mapConvertOpToStdScalarOp(Location loc, ArrayRef<Type> targetTypes,
                                      sourceElementType, sourceReal, b);
   }
   return nullptr;
+}
+
+/// Lower bitcast operations where the input and resulting type are the same
+/// bitwidth, thus implying that the operation is fully defined by parallel
+/// loops and scalar operations without any shape dimension changes.
+template <>
+inline Value mapMhloOpToStdScalarOp<mhlo::BitcastConvertOp>(
+    Location loc, ArrayRef<Type> resultTypes, ArrayRef<Type> argTypes,
+    mhlo::BitcastConvertOp::Adaptor adaptor, OpBuilder* b) {
+  Type argType = getElementTypeOrSelf(argTypes.front());
+  Type resultType = getElementTypeOrSelf(resultTypes.front());
+
+  if (resultType.getIntOrFloatBitWidth() != argType.getIntOrFloatBitWidth())
+    return nullptr;
+
+  return b->create<mlir::arith::BitcastOp>(loc, resultTypes,
+                                           adaptor.getOperands());
 }
 
 template <>

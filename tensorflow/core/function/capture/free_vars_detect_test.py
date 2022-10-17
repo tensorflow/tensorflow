@@ -124,6 +124,12 @@ class FreeVarDetectionTest(parameterized.TestCase):
     free_vars = get_var_name(func_map["f"])
     self.assertSequenceEqual(free_vars, ["x"])
 
+  @parameterized.named_parameters(
+      ("lambda_1", lambda _x: 3,), ("lambda_2", lambda _x: 3,))
+  def test_multiple_lambda_w_same_line_num_and_args(self, fn):
+    func_map = free_vars_detect._detect_function_free_vars(fn)
+    self.assertEmpty(func_map)
+
   def test_lambda_wo_free_var(self):
     f = lambda x: x + x
     func_map = free_vars_detect._detect_function_free_vars(f)
@@ -690,6 +696,21 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertEqual(lines[0], "Inside function f(): g, h")
     self.assertEqual(lines[1], "Inside function g(): x")
     self.assertEqual(lines[2], "...")
+
+
+class FreevarDetectorTest(parameterized.TestCase):
+
+  def test_func_second_call_return_none(self):
+    x = 1
+
+    def f():
+      return x
+
+    detector = free_vars_detect.FreevarDetector()
+    logging_txt = detector.logging_free_vars(f)
+    self.assertIsNotNone(logging_txt)
+    logging_txt = detector.logging_free_vars(f)
+    self.assertIsNone(logging_txt)
 
 
 if __name__ == "__main__":

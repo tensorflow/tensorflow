@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
@@ -62,15 +63,16 @@ JitExecutable& CreateJitExecutable(
   copts.num_worker_threads = host.GetNumWorkerThreads();
 
   JitExecutable::Options opts;
-  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    tfrt::jitrt::RegisterDefaultJitRtDialects(registry);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        tfrt::jitrt::RegisterDefaultJitRtDialects(dialects);
+      };
   opts.compiler.create_compilation_pipeline =
-      [&, copts, lower_from_tensorflow](mlir::PassManager& pm) {
+      [&, copts, lower_from_tensorflow](xla::runtime::PassManager& passes) {
         if (lower_from_tensorflow)
-          tensorflow::CreateTfJitRtPipeline(pm, tf_jitrt_opts);
-        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(pm, copts);
+          tensorflow::CreateTfJitRtPipeline(*passes, tf_jitrt_opts);
+        tfrt::jitrt::CreateDefaultJitRtCompilationPipeline(passes, copts);
       };
   opts.compiler.create_specialization_pipeline =
       CreateJitRtSpecializationPipeline;

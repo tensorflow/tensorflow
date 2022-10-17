@@ -2,7 +2,7 @@ load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "tf_copts",
 )
 load(

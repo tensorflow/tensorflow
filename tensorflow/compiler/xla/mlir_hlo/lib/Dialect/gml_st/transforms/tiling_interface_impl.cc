@@ -41,11 +41,9 @@ struct ExternalLinalgOpTilingInterface
   /// Return the loop iterator type.
   SmallVector<utils::IteratorType> getLoopIteratorTypes(Operation *op) const {
     auto linalgOp = cast<linalg::LinalgOp>(op);
-    return llvm::to_vector(
-        llvm::map_range(linalgOp.iterator_types(), [](Attribute strAttr) {
-          return utils::symbolizeIteratorType(
-                     strAttr.cast<StringAttr>().getValue())
-              .value();
+    return llvm::to_vector(llvm::map_range(
+        linalgOp.getIteratorTypesArray(), [](StringRef iteratorType) {
+          return utils::symbolizeIteratorType(iteratorType).value();
         }));
   }
 

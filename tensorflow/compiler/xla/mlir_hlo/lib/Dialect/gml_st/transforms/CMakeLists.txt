@@ -79,6 +79,7 @@ add_mlir_library(GmlStPasses
   tiling.cc
   tiling_cwise.cc
   tiling_reduction.cc
+  tiling_softmax.cc
   collapse_materialize_ops.cc
   vectorization.cc
 

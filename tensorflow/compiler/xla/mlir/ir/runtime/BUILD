@@ -4,7 +4,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 package(
     default_visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:friends",
         "@tf_runtime//:friends",
     ],
     licenses = ["notice"],

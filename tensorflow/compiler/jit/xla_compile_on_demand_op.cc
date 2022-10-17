@@ -32,18 +32,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns argument indices corresponding to the resource variable inputs of
-// kernel context `ctx`.
-static std::vector<int> GetResourceVariableIndices(OpKernelContext* ctx) {
-  std::vector<int> out;
-  for (int64_t i = 0; i < ctx->num_inputs(); i++) {
-    if (ctx->input(i).dtype() == DT_RESOURCE) {
-      out.push_back(i);
-    }
-  }
-  return out;
-}
-
 Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  XlaCompilationCache* cache,
                                  const XlaCompiler::CompilationResult* result,
@@ -111,15 +99,8 @@ Status XlaCompileOnDemandOp::Compile(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
     XlaCompilationCache** cache, ResourceVarsSnapshot* variable_args,
     xla::LocalExecutable** executable) {
-
-  std::vector<int> constant_input_indices;
-  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
-      &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
-  if (!absl::c_all_of(constant_input_indices, [&](int idx) {
-        return ctx->input_memory_type(idx) == HOST_MEMORY;
-      })) {
-    return errors::Internal("Unexpected device placement for a constant input");
-  }
+  TF_ASSIGN_OR_RETURN(std::vector<int> constant_input_indices,
+                      GetConstantInputIndicesFromContext(ctx));
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
 
   // We store information about the JIT-compiled XLA computation
@@ -146,7 +127,8 @@ Status XlaCompileOnDemandOp::Compile(
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;
 
-  std::vector<int> variables_indices = GetResourceVariableIndices(ctx);
+  std::vector<int> variables_indices =
+      GetResourceVariableIndicesFromContext(ctx);
   StatusOr<std::vector<XlaCompiler::Argument>> args;
   {
     std::vector<VariableInfo> variable_infos;

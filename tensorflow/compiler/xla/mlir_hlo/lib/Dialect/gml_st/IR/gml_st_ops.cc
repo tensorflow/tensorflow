@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 
 namespace mlir {
@@ -94,6 +95,10 @@ ParseResult parseAssignmentListWithTypes(
 #define GET_TYPEDEF_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
 
+// Generated attribute classes.
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_attrs.cc.inc"
+
 namespace mlir {
 namespace gml_st {
 
@@ -109,6 +114,10 @@ void GmlStDialect::initialize() {
   addTypes<
 #define GET_TYPEDEF_LIST
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.cc.inc"
+      >();
+  addAttributes<
+#define GET_ATTRDEF_LIST
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_attrs.cc.inc"
       >();
 }
 
@@ -295,8 +304,8 @@ void LoopOp::print(OpAsmPrinter &p) {
   }
 
   if (llvm::any_of(getIteratorTypes(), [](Attribute attr) {
-        return attr.cast<StringAttr>().getValue() !=
-               LoopOp::getParallelIteratorTypeName();
+        return attr.cast<IteratorTypeAttr>().getValue() !=
+               utils::IteratorType::parallel;
       }))
     p << " iterators" << getIteratorTypes();
 
@@ -375,39 +384,26 @@ ParseResult LoopOp::parse(OpAsmParser &parser, OperationState &result) {
       if (outputType.isa<RankedTensorType>()) result.addTypes(outputType);
   }
 
-  // Parse attributes.
-  SmallVector<Attribute, 4> iterTypes, distributionTypes;
-  auto parseAttr = [&](StringRef keyword, SmallVector<Attribute, 4> *attrs) {
-    if (succeeded(parser.parseOptionalKeyword(keyword))) {
-      StringAttr attr;
-
-      if (parser.parseLSquare() || parser.parseAttribute(attr))
-        return failure();
-      attrs->push_back(attr);
-      for (int i = 1, e = ivs.size(); i < e; ++i) {
-        if (parser.parseComma() || parser.parseAttribute(attr))
-          return failure();
-        attrs->push_back(attr);
-      }
-      if (parser.parseRSquare()) return failure();
-    }
-    return success();
-  };
-  if (failed(parseAttr("iterators", &iterTypes)) ||
-      failed(parseAttr("distribution", &distributionTypes)))
-    return failure();
-
-  // Set all loop iterator types to "parallel" if they are not printed in IR.
-  if (iterTypes.empty()) {
+  Attribute iterTypes;
+  if (succeeded(parser.parseOptionalKeyword("iterators"))) {
+    if (parser.parseAttribute(iterTypes)) return failure();
+  } else {
+    // Set all loop iterator types to "parallel" if they are not printed in IR.
     auto parallelIter =
-        builder.getStringAttr(LoopOp::getParallelIteratorTypeName());
-    iterTypes = SmallVector<Attribute, 4>(ivs.size(), parallelIter);
+        builder.getAttr<IteratorTypeAttr>(utils::IteratorType::parallel);
+    iterTypes = builder.getArrayAttr(
+        SmallVector<Attribute, 4>(ivs.size(), parallelIter));
   }
-  result.addAttribute(LoopOp::getIteratorTypesAttrStrName(),
-                      builder.getArrayAttr(iterTypes));
-  if (!distributionTypes.empty())
+
+  result.addAttribute(LoopOp::getIteratorTypesAttrStrName(), iterTypes);
+
+  if (succeeded(parser.parseOptionalKeyword("distribution"))) {
+    Attribute distributionTypes;
+    if (failed(parser.parseAttribute(distributionTypes))) return failure();
     result.addAttribute(LoopOp::getDistributionTypesAttrStrName(),
-                        builder.getArrayAttr(distributionTypes));
+                        distributionTypes);
+  }
+
   result.addAttribute(
       LoopOp::getOperandSegmentSizeAttr(),
       builder.getDenseI32ArrayAttr({static_cast<int32_t>(lower.size()),
@@ -1574,167 +1570,6 @@ Value TileOp::compose(OpBuilder &builder) {
   // Build the composed tile op.
   return builder.create<TileOp>(loc, supersetOp.getSuperset(), composedOffsets,
                                 getMixedSizes(), composedStrides);
-}
-
-//===----------------------------------------------------------------------===//
-// DropDimsOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult DropDimsOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  DropDimsOp::Adaptor adaptor(operands, attributes, regions);
-  Type argTy = adaptor.getSuperset().getType();
-
-  // If the argument is of tile type, we can skip the dropped dimensions to
-  // derive the result type.
-  if (auto tileTy = argTy.dyn_cast<TileType>()) {
-    auto argShape = tileTy.getShape();
-    SmallVector<int64_t> resultShape = llvm::to_vector(
-        llvm::map_range(adaptor.getRemainingDims(),
-                        [&](const auto &d) { return argShape[d]; }));
-    auto resultTy = TileType::get(ctx, resultShape);
-    inferredReturnTypes.push_back(resultTy);
-    return success();
-  }
-
-  return failure();
-}
-
-namespace {
-
-SmallVector<OpFoldResult> selectMixedValues(
-    const SmallVectorImpl<OpFoldResult> &mixedValues,
-    ArrayRef<int64_t> selection) {
-  return llvm::to_vector(
-      llvm::map_range(selection, [&](int64_t i) { return mixedValues[i]; }));
-}
-
-// Composition set by selecting a subset of its dimensions. Both the dimensions
-// to select, and the order in which they should be selected, are specified by
-// `selection`.
-Value selectDimsFromSet(OpBuilder &builder, Location loc, Type type, Value set,
-                        ArrayRef<int64_t> selection) {
-  // Case: space
-  Operation *setDef = set.getDefiningOp();
-  if (auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(setDef)) {
-    auto spaceSizes =
-        getMixedSizes(spaceOp.getStaticSizes(), spaceOp.getDynamicSizes());
-    auto newSpaceSizes = selectMixedValues(spaceSizes, selection);
-    auto newSpaceSizesDecomposed = decomposeMixedSizes(builder, newSpaceSizes);
-    return builder.create<SpaceOp>(loc, newSpaceSizesDecomposed.second,
-                                   newSpaceSizesDecomposed.first);
-  }
-
-  // Case: tile(space)
-  if (TileOp tileOp = llvm::dyn_cast_or_null<TileOp>(setDef)) {
-    auto newSpace =
-        selectDimsFromSet(builder, loc, type, tileOp.getSuperset(), selection);
-
-    auto tileOffsets = getMixedStridesOrOffsets(tileOp.getStaticOffsets(),
-                                                tileOp.getOffsets());
-    auto newTileOffsets = selectMixedValues(tileOffsets, selection);
-    auto newTileOffsetsDecomposed =
-        decomposeMixedStridesOrOffsets(builder, newTileOffsets);
-
-    auto tileSizes = getMixedSizes(tileOp.getStaticSizes(), tileOp.getSizes());
-    auto newTileSizes = selectMixedValues(tileSizes, selection);
-    auto newTileSizesDecomposed = decomposeMixedSizes(builder, newTileSizes);
-
-    auto tileStrides = getMixedStridesOrOffsets(tileOp.getStaticStrides(),
-                                                tileOp.getStrides());
-    auto newTileStrides = selectMixedValues(tileStrides, selection);
-    auto newTileStridesDecomposed =
-        decomposeMixedStridesOrOffsets(builder, newTileStrides);
-
-    return builder.create<TileOp>(
-        loc, newSpace, newTileOffsetsDecomposed.second,
-        newTileSizesDecomposed.second, newTileStridesDecomposed.second,
-        newTileOffsetsDecomposed.first, newTileSizesDecomposed.first,
-        newTileStridesDecomposed.first);
-  }
-
-  return {};
-}
-
-}  // namespace
-
-Value DropDimsOp::compose(OpBuilder &builder) {
-  // We can compose with a TileOp operand which has a SpaceOp operand, or
-  // compose with a SpaceOp operand.
-  return selectDimsFromSet(builder, getLoc(), getType(), getSuperset(),
-                           getRemainingDims());
-}
-
-//===----------------------------------------------------------------------===//
-// TransposeDimsOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult TransposeDimsOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  TransposeDimsOp::Adaptor adaptor(operands, attributes, regions);
-  const Type argTy = adaptor.getSuperset().getType();
-
-  // If the argument is of tile type, we can transpose the type's dimensions.
-  if (auto tileTy = argTy.dyn_cast<TileType>()) {
-    auto argShape = tileTy.getShape();
-    const SmallVector<int64_t> resultShape = llvm::to_vector(llvm::map_range(
-        adaptor.getPermutation(), [&](const auto &d) { return argShape[d]; }));
-    auto resultTy = TileType::get(ctx, resultShape);
-    inferredReturnTypes.push_back(resultTy);
-    return success();
-  }
-
-  return failure();
-}
-
-Value TransposeDimsOp::compose(OpBuilder &builder) {
-  // We can compose with a TileOp operand which has a SpaceOp operand, or
-  // compose with a SpaceOp operand. transpose_tile(tile(space, offsets, sizes,
-  // strides)) is replaced by tile(transpose(space), transpose(offsets),
-  // transpose(sizes), transpose(strides)). transpose_tile(space) is replaced by
-  // transpose(space).
-
-  return selectDimsFromSet(builder, getLoc(), getType(), getSuperset(),
-                           getPermutation());
-}
-
-LogicalResult TransposeDimsOp::verify() {
-  // Verify that `permutation` is in fact a permutation.
-  size_t rank = getPermutation().size();
-  SmallVector<int64_t> position(rank, -1);
-  for (const auto &it : llvm::enumerate(getPermutation())) {
-    int64_t dim = it.value();
-    if (dim < 0 || dim >= static_cast<int64_t>(rank)) {
-      return emitOpError("permutation[")
-             << it.index() << "] = " << dim << " is outside of range [0, "
-             << rank - 1 << "]";
-    }
-    if (position[dim] >= 0) {
-      return emitOpError(
-                 "expected permutation attribute to contain no duplicate "
-                 "values, but got ")
-             << dim << " at positions " << position[dim] << " and "
-             << it.index();
-    }
-    position[dim] = it.index();
-  }
-
-  // Verify tile-specific relationship between types and permutation. The
-  // constraints between argument and result type are verified through the
-  // implementation of `inferReturnTypes`.
-  if (auto tileTy = getType().dyn_cast<TileType>()) {
-    size_t tileRank = tileTy.getShape().size();
-    if (tileRank != rank) {
-      return emitOpError("expected result rank ")
-             << tileRank << " to match the permutation size of " << rank << ".";
-    }
-  }
-
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

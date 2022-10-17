@@ -108,20 +108,19 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
   // Collect Functions exported from the jit executable.
   std::vector<JitExecutable::Function> functions;
 
-  for (auto& indexed : llvm::enumerate(exported)) {
-    unsigned ordinal = indexed.index();
+  for (unsigned ordinal = 0; ordinal < (*compiler)->num_exported(); ordinal++) {
+    auto fn = (*compiler)->exported(ordinal);
 
     // Get resolved operands constraints for the exported function.
-    auto constraints = GetArgumentsConstraints((*compiler)->exported(ordinal));
+    auto constraints = GetArgumentsConstraints(fn);
     if (!constraints.ok()) return constraints.status();
 
     // Get the exported function signature, it will be later required to
     // compute the specialized function signature from the operands at runtime.
-    auto signature = opts.compiler.type_converter.Convert(
-        (*compiler)->exported(ordinal).getFunctionType());
+    auto signature = opts.compiler.type_converter.Convert(fn.getFunctionType());
     if (!signature.ok()) return signature.status();
 
-    JitExecutable::Function function{indexed.value(), std::move(*signature),
+    JitExecutable::Function function{fn.getName(), std::move(*signature),
                                      *constraints};
 
     functions.push_back(std::move(function));

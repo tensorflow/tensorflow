@@ -22,6 +22,39 @@ include "mlir/Pass/PassBase.td"
 // Transformations targeting `rt` dialect.
 //===-----------------------------------------------------------------------===/
 
+def OrdinalAssignment : Pass<"xla-rt-ordinal-assignment", "mlir::ModuleOp"> {
+  let summary = "Assigns ordinals to all exported functions";
+
+  let description = [{
+    Assigns unique ordinals to all exported functions. After assignment it's
+    guaranteed that all `rt.export` operations have been assigned a valid
+    ordinal.
+
+    Example:
+
+      ```mlir
+      rt.export @compute.0
+      rt.export @compute.1
+
+      func @compute.0(...) -> memref<?xf32> { ... }
+      func @compute.1(...) -> memref<?xf32> { ... }
+      ```
+
+    converted to:
+
+      ```mlir
+      rt.export @compute.0 ordinal 0
+      rt.export @compute.1 ordinal 1
+
+      func @compute.0(...) -> memref<?xf32> { ... }
+      func @compute.1(...) -> memref<?xf32> { ... }
+      ```
+  }];
+
+  let constructor = "xla::runtime::CreateOrdinalAssignmentPass()";
+  let dependentDialects = ["xla::runtime::RuntimeDialect"];
+}
+
 def ExportFunctions : Pass<"xla-rt-export-functions", "mlir::ModuleOp"> {
   let summary = "Exports function(s) to Xla runtime";
 

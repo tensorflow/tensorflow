@@ -62,6 +62,7 @@ raw_ostream& operator<<(raw_ostream& os, const FlatMemrefView& view) {
 void PopulateCustomCallTypeIdNames(TypeIDNameRegistry& r) {
   r.Register<Tagged<void*>>("__type_id_opaque");
   r.Register<Tagged<std::string_view>>("__type_id_string");
+  r.Register<Tagged<CustomCall::FunctionOrdinal>>("__type_id_function_ordinal");
 
   r.Register<Tagged<bool>>("__type_id_bool");
   r.Register<Tagged<int8_t>>("__type_id_int8");

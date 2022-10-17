@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -43,6 +44,7 @@ namespace delegates {
 
 using test_utils::SimpleDelegate;
 using test_utils::TestDelegate;
+using test_utils::TestDelegateWithControlEdges;
 using test_utils::TestFP16Delegation;
 using test_utils::TestTwoDelegates;
 
@@ -1352,6 +1354,68 @@ TEST_F(TestReleaseDynamicTensorWithDelegate, ShapePropagation_FlagNotSet) {
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   ASSERT_EQ(interpreter_->tensor(1)->data.raw, nullptr);
+}
+
+// Tests for control edges passed in metadata
+// ==========================================
+
+TEST_F(TestDelegateWithControlEdges, NoControlEdges) {
+  // Put {0,2} on a super-node, if possible
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);     // [ {0, 2}, 1, 3]
+  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);  // new super-node
+  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);  // undelegated
+  EXPECT_EQ(interpreter_->execution_plan().data()[2], 3);  // undelegated
+}
+
+TEST_F(TestDelegateWithControlEdges, OverrideControlEdges) {
+  // Execute node 1 before node 2.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{1, 2}}})}});
+  // Put {0,2} on a super-node, if possible
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+
+  // 1 has to be executed before 2, so original execution order is
+  // preserved. Nodes 0 and 2 both get rewritten into new delegate nodes
+  // 4 and 5.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 4);  // [ 0, 1, 2, 3]
+  EXPECT_EQ(interpreter_->execution_plan().data()[0], 4);
+  EXPECT_EQ(interpreter_->execution_plan().data()[1], 1);
+  EXPECT_EQ(interpreter_->execution_plan().data()[2], 5);
+  EXPECT_EQ(interpreter_->execution_plan().data()[3], 3);
+}
+
+// Test that empty control edge metadata for subgraph 0 don't change anything.
+TEST_F(TestDelegateWithControlEdges, EmptyControlEdges) {
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
+// Test that control edges that are compatible with execution order
+// [0, 2, 1, 3] don't change anything (case 1).
+TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges1) {
+  // Execute node 0 before node 2 and node 1 before node 3.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{0, 2}, {1, 3}}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
+}
+
+// Test that control edges that are compatible with execution order
+// [0, 2, 1, 3] don't change anything (case 2).
+TEST_F(TestDelegateWithControlEdges, CompatibleControlEdges2) {
+  // Execute node 0 before node 1 and node 1 before node 3.
+  SetMetadata({{kModelControlDependenciesMetadataKey,
+                SerializeModelControlDependencies({{{0, 1}, {1, 3}}})}});
+  delegate_ = std::make_unique<SimpleDelegate>(std::vector<int>({0, 2}));
+  interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate());
+  EXPECT_EQ(interpreter_->execution_plan().size(), 3);  // [ {0, 2}, 1, 3]
 }
 
 // Tests for FP16 graphs

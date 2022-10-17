@@ -418,6 +418,12 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_UINT32:
       bytes_required *= sizeof(uint32_t);
       break;
+    case TensorType_INT4:
+      // TODO(b/246647008): Multiplying this value by the number of elements
+      // does not yield the size of a tensor when 4-bit values are packed
+      // 2 to a byte.
+      bytes_required *= sizeof(int8_t);
+      break;
     case TensorType_UINT8:
       bytes_required *= sizeof(uint8_t);
       break;

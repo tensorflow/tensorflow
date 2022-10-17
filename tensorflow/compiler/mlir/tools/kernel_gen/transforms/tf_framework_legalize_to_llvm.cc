@@ -323,7 +323,7 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
       JITExecuteOp op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const override {
     // The TF context must be known for a successful lowering.
-    if (adaptor.getCtx() == nullptr || op.operands().empty()) {
+    if (adaptor.getCtx() == nullptr || op.getInputs().empty()) {
       return failure();
     }
 
@@ -343,14 +343,14 @@ class JITExecuteOpConverter : public ConvertToLLVMCallOpPattern<JITExecuteOp> {
 
     // Pass the buffer arguments as a stack-allocated array.
     Type arg_ptr_ty =
-        LLVM::LLVMPointerType::get(adaptor.operands().front().getType());
+        LLVM::LLVMPointerType::get(adaptor.getInputs().front().getType());
     Value num_args = rewriter.create<LLVM::ConstantOp>(
         loc, i64_ty,
         rewriter.getI64IntegerAttr(
-            static_cast<int64_t>(adaptor.operands().size())));
+            static_cast<int64_t>(adaptor.getInputs().size())));
     Value args_ptr = rewriter.create<LLVM::AllocaOp>(loc, arg_ptr_ty, num_args,
                                                      /*alignment=*/0);
-    for (const auto &it : llvm::enumerate(adaptor.operands())) {
+    for (const auto &it : llvm::enumerate(adaptor.getInputs())) {
       Value index = rewriter.create<LLVM::ConstantOp>(
           loc, i64_ty, rewriter.getI64IntegerAttr(it.index()));
       Value element_ptr =

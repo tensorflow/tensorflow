@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -2973,6 +2972,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                       Value input_value, StringRef mode,
                                       bool align_corners,
                                       bool half_pixel_centers) {
+  const bool is_bilinear = mode == "BILINEAR";
+  const bool is_nearest = mode == "NEAREST_NEIGHBOR";
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -3021,39 +3022,6 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   size_t output_height = output_shape[1];
   size_t output_width = output_shape[2];
 
-  // By defining the scaling factor as a ratio of integers so that exact output
-  // dimensions can be derived from input dimensions without rounding.
-  //
-  // a.For power of two upscale [OH, OW] = (1 << k) * [IH, IW],
-  //   sampling range approximately (-0.5, -0.5) to (IH - 0.5, IW - 0.5), set:
-  //
-  //   scale_y_n = 2 << k, scale_y_d = 2,
-  //   offset_y = -(1 << k) + 1, border_y = (1 << k) - 1
-  //
-  //   scale_x_n = 2 << k, scale_x_d = 2,
-  //   offset_x = -(1 << k) + 1, border_x = (1 << k) - 1
-  //
-  // b.For power of two upscale [OH - 1 ,OW - 1] = (1 << k) * [IH - 1, IW - 1],
-  //   sampling between (0,0) and (IH - 1,IW - 1), set:
-  //
-  //   scale_y_n = (1 << k), scale_y_d = 1, offset_y = 0, border_y = 0
-  //
-  //   scale_x_n = (1 << k), scale_x_d = 1, offset_x = 0, border_x = 0
-  //
-  // c.For approximate uniform input
-  //   sampling between (0, 0) and (IH - 1, IW - 1) set:
-  //
-  //   scale_y_n/scale_y_d = (OH - 1)/(IH - 1) as integer ratios
-  //   offset_y = 0, border_y = 0
-  //
-  //   scale_x_n/scale_x_d = (OW - 1)/(IW - 1) as integer ratios
-  //   offset_x = 0, border_x = 0
-
-  int scale_y_n, scale_y_d, scale_x_n, scale_x_d;
-  int offset_y = 0, offset_x = 0;
-  int border_y = 0, border_x = 0;
-  bool uniform_sampling = true;
-
   // The ratio below is a non-zero positive value if this is a power-of-two
   // upscaling.
   int height_ratio = 0;
@@ -3072,69 +3040,51 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     }
   }
 
-  int height_minus_one_ratio = 0;
-  if ((output_height - 1) % (input_height - 1) == 0) {
-    int quotient = (output_height - 1) / (input_height - 1);
-    if (llvm::isPowerOf2_64(quotient)) {
-      height_minus_one_ratio = quotient;
-    }
-  }
-
-  int width_minus_one_ratio = 0;
-  if ((output_width - 1) % (input_width - 1) == 0) {
-    int quotient = (output_width - 1) / (input_width - 1);
-    if (llvm::isPowerOf2_64(quotient)) {
-      width_minus_one_ratio = quotient;
-    }
-  }
-
-  // True if [OH, OW] = (1 << k) * [IH, IW],
-  if ((height_ratio != 0) && (height_ratio == width_ratio)) {
-    // Find the shift value 'k' that satisfy '1 << k = OH / IH'.
-    int k = llvm::Log2_64(height_ratio);
-    scale_y_n = 2 << k;
-    scale_y_d = 2;
-    offset_y = -(1 << k) + 1;
-    border_y = (1 << k) - 1;
-    scale_x_n = scale_y_n;
-    scale_x_d = scale_y_d;
-    offset_x = offset_y;
-    border_x = border_y;
-    uniform_sampling = false;
-  } else if ((height_minus_one_ratio != 0) &&
-             (height_minus_one_ratio == width_minus_one_ratio)) {
-    // True if [OH - 1, OW - 1] = (1 << k) * [IH  - 1, IW - 1],
-    int k = llvm::Log2_64(height_minus_one_ratio);
-    scale_y_n = 1 << k;
-    scale_y_d = 1;
-    scale_x_n = scale_y_n;
-    scale_x_d = 1;
-    uniform_sampling = false;
-  }
-
   // Align corners sets the scaling ratio to (OH - 1)/(IH - 1)
   // rather than OH / IH. Similarly for width.
-  if (align_corners || uniform_sampling) {
-    int gcd_y = std::gcd(input_height - 1, output_height - 1);
-    int gcd_x = std::gcd(input_width - 1, output_width - 1);
-    scale_y_n = (output_height - 1) / gcd_y;
-    scale_y_d = (input_height - 1) / gcd_y;
-    scale_x_n = (output_width - 1) / gcd_x;
-    scale_x_d = (input_width - 1) / gcd_x;
-    offset_y = 0;
-    offset_x = 0;
-    border_y = 0;
-    border_x = 0;
-  }
+  auto normalize = [&](int input, int output, int& n, int& d, int& offset,
+                       int& border) {
+    // Dimension is length 1, we are just sampling from one value.
+    if (input == 1) {
+      n = 0;
+      d = 1;
+      offset = 0;
+      border = output - 1;
+      return;
+    }
 
-  if (!align_corners && !half_pixel_centers) {
-    // Adds a sampling offset.
-    offset_x += 1;
-    offset_y += 1;
-    // Adjust the borders to match an expected output shape.
-    border_x += 1;
-    border_y += 1;
-  }
+    // Apply if aligned and capable to be aligned.
+    bool apply_aligned = align_corners && (output > 1);
+    n = apply_aligned ? (output - 1) : output;
+    d = apply_aligned ? (input - 1) : input;
+
+    // Simplify the scalers, make sure they are even values.
+    int gcd = std::gcd(n, d);
+    n = 2 * n / gcd;
+    d = 2 * d / gcd;
+
+    // If half pixel centers we need to sample half a pixel inward.
+    offset = half_pixel_centers ? d / 2 : 0;
+
+    // If nearest neighbours we need to guarantee we round up.
+    if (is_nearest && align_corners) {
+      offset += n / 2;
+    }
+
+    if (is_bilinear && half_pixel_centers) {
+      offset -= n / 2;
+    }
+
+    // We can compute this directly based on previous values.
+    border = d * (output - 1) - n * (input - 1) + offset;
+  };
+
+  int scale_y_n, scale_y_d, offset_y, border_y;
+  int scale_x_n, scale_x_d, offset_x, border_x;
+  normalize(input_height, output_height, scale_y_n, scale_y_d, offset_y,
+            border_y);
+  normalize(input_width, output_width, scale_x_n, scale_x_d, offset_x,
+            border_x);
 
   ArrayAttr scale =
       rewriter.getI64ArrayAttr({scale_y_n, scale_y_d, scale_x_n, scale_x_d});
@@ -3161,7 +3111,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     }
 
     // If quantized bilinear mode, need to lower to RESIZE + RESCALE pair.
-    if (mode == "BILINEAR") {
+    if (is_bilinear) {
       RankedTensorType output_acc_type;
       auto input_element_qtype =
           input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
@@ -3231,7 +3181,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                           is_scale32);
 #endif
 
-    } else if (mode == "NEAREST_NEIGHBOR") {
+    } else if (is_nearest) {
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
           rewriter, op->getLoc(), output_type, input_value, scale, offset,
           border, resize_mode);
@@ -3489,6 +3439,107 @@ llvm::Optional<Value> convertTFConv2DCommon(
              rewriter, op->getLoc(), output_type, input,
              a1_filter_transpose_op.getResult(), bias, pad, stride, dilation)
       .getResult();
+}
+
+llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
+                                          Operation* op, ShapedType output_type,
+                                          Value input, Value filter, Value bias,
+                                          ArrayRef<int64_t> strides,
+                                          ArrayRef<int64_t> dilations,
+                                          StringRef padding_ref,
+                                          StringRef data_format_ref) {
+  if (data_format_ref.str() != "NDHWC") {
+    (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
+    return llvm::None;
+  }
+
+  tensorflow::Padding tf_pad;
+  if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+    (void)rewriter.notifyMatchFailure(
+        op, "could not get padding data from padding string term");
+    return llvm::None;
+  }
+
+  // Since NDHWC/NCDHW aren't presented in TensorFormat, here these are
+  // represented by mapping NDHWC to NHWC, and NCDHW to NCHW, with the knowledge
+  // of rank of input tensor.
+  tensorflow::TensorFormat data_format_tf;
+  if (!FormatFromString("NHWC", &data_format_tf)) return llvm::None;
+
+  if (tf_pad == tensorflow::Padding::EXPLICIT) {
+    (void)rewriter.notifyMatchFailure(op, "doesn't support explicit padding");
+    return llvm::None;
+  }
+
+  ArrayAttr strides_attr = rewriter.getI64ArrayAttr(strides);
+  ArrayAttr dilations_attr = rewriter.getI64ArrayAttr(dilations);
+  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+  RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+
+  ArrayAttr pads_attr;
+  if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
+                                   filter_type, strides_attr, dilations_attr,
+                                   rewriter, pads_attr)) {
+    (void)rewriter.notifyMatchFailure(op, "can't get padding values from type");
+    return llvm::None;
+  }
+
+  // Note that the kernel shape of tfl.conv_3d isn't [O, D, H, W, I] but
+  // [D, H, W, I, O] which is the same as in TF.
+  // Transpose filter shape from [D, H, W, I, O] to [O, D, H, W, C]
+  auto filter_shape = filter_type.getShape();
+  SmallVector<int64_t, 5> a1_transpose_dims;
+  a1_transpose_dims.push_back(filter_shape[4]);
+  a1_transpose_dims.push_back(filter_shape[0]);
+  a1_transpose_dims.push_back(filter_shape[1]);
+  a1_transpose_dims.push_back(filter_shape[2]);
+  a1_transpose_dims.push_back(filter_shape[3]);
+  llvm::Optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
+      rewriter, op, /*vec=*/{4, 0, 1, 2, 3}, /*shape=*/{5});
+
+  if (!a1_filter_transpose_perm) return llvm::None;
+
+  auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
+      RankedTensorType::get(a1_transpose_dims, filter_type.getElementType()),
+      filter, a1_filter_transpose_perm.value());
+
+  return CreateOpAndInfer<tosa::Conv3DOp>(
+             rewriter, op->getLoc(), output_type, input,
+             a1_filter_transpose_op.getResult(), bias, pads_attr, strides_attr,
+             dilations_attr)
+      .getResult();
+}
+
+llvm::Optional<Value> convertTFConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, StringRef padding_ref,
+    StringRef data_format_ref) {
+  SmallVector<int64_t, 3> strides;
+  if (!strides_attr) {
+    // Defaults to [1, 1, 1].
+    strides = {1, 1, 1};
+  } else {
+    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
+    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
+    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
+    strides = {stride_d, stride_h, stride_w};
+  }
+
+  SmallVector<int64_t, 3> dilations;
+  if (!dilations_attr) {
+    // Defaults to [1, 1, 1].
+    dilations = {1, 1, 1};
+  } else {
+    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
+    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
+    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
+    dilations = {dilation_d, dilation_h, dilation_w};
+  }
+
+  return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
+                             strides, dilations, padding_ref, data_format_ref);
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.

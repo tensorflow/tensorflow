@@ -567,7 +567,8 @@ LogicalResult BiasAddOp::verify() {
       tensorflow::GetTensorFeatureDimIndex(value_ty.getRank(), format);
   int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
   int64_t bias_len = bias_ty.getDimSize(0);
-  if (feature_dim != -1 && bias_len != -1 && feature_dim != bias_len) {
+  if (feature_dim != ShapedType::kDynamicSize &&
+      bias_len != ShapedType::kDynamicSize && feature_dim != bias_len) {
     return op.emitOpError()
            << "requires channel dimension and feature dimension to match; "
               "found "

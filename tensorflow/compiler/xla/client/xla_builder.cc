@@ -3358,7 +3358,8 @@ XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
 
 XlaOp XlaBuilder::CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     HloInstructionProto instr;
@@ -3371,6 +3372,9 @@ XlaOp XlaBuilder::CollectivePermute(
       auto* proto_pair = instr.add_source_target_pairs();
       proto_pair->set_source(pair.first);
       proto_pair->set_target(pair.second);
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kCollectivePermute,
@@ -4845,8 +4849,10 @@ XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
 
 XlaOp CollectivePermute(
     const XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs) {
-  return operand.builder()->CollectivePermute(operand, source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->CollectivePermute(operand, source_target_pairs,
+                                              channel_id);
 }
 
 XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }

@@ -493,8 +493,8 @@ StatusOr<HloInstruction*> PartitionGatherIndexParallelDimensions(
   // the index is not TileMaximal and in this case we use the index sharding
   // to drive the output sharding.
   if (std::optional<hlo_sharding_util::GatherScatterParallelDims>
-          parallel_dims =
-              hlo_sharding_util::GetGatherParallelBatchDims(*gather)) {
+          parallel_dims = hlo_sharding_util::GetGatherParallelBatchDims(
+              *gather, visitor->call_graph())) {
     if (auto gather_sharding = GatherScatterOperandsShardedAcrossParallelDims(
             *operand.hlo(), *indices.hlo(), *parallel_dims)) {
       const auto indices_parallel_dims = parallel_dims->indices_parallel_dims;
@@ -841,8 +841,8 @@ StatusOr<HloInstruction*> PartitionScatterIndexParallelDimensions(
   // the index is not TileMaximal and in this case we use the index sharding
   // to drive the output sharding.
   if (std::optional<hlo_sharding_util::GatherScatterParallelDims>
-          parallel_dims =
-              hlo_sharding_util::GetScatterParallelBatchDims(*scatter)) {
+          parallel_dims = hlo_sharding_util::GetScatterParallelBatchDims(
+              *scatter, visitor->call_graph())) {
     if (auto scatter_sharding = GatherScatterOperandsShardedAcrossParallelDims(
             *operands[0].hlo(), *indices.hlo(), *parallel_dims)) {
       const auto operand_parallel_dims = parallel_dims->operand_parallel_dims;

@@ -9,7 +9,7 @@ load(
     "cc_library",
 )
 load(
-    "//tensorflow:tensorflow.bzl",
+    "//tensorflow/tsl:tsl.bzl",
     "check_deps",
     "tf_copts",
 )

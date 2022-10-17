@@ -36,6 +36,30 @@ namespace {
 
 namespace m = ::xla::match;
 
+class BitcastDecomposerParameterizedTest
+    : public HloTestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<Shape /*src*/, Shape /*dst*/>> {
+ public:
+  BitcastDecomposerParameterizedTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+
+ protected:
+  absl::BitGen rand_;
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    Handcrafted, BitcastDecomposerParameterizedTest,
+    ::testing::Values(std::make_tuple(
+        ShapeUtil::MakeShapeWithLayout(F32, {1, 2, 4, 2, 2}, {2, 4, 3, 1, 0}),
+        ShapeUtil::MakeShapeWithLayout(F32, {1, 2, 2, 2, 4},
+                                       {4, 3, 2, 1, 0}))));
+
+// Skip most tests in sanitizer/debug builds, otherwise this times out.
+#if !defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER) && \
+    !defined(THREAD_SANITIZER) && defined(NDEBUG)
+
 std::vector<Shape> AllPermutationsOfShape(const Shape& s) {
   std::vector<int64_t> dims_perm(s.dimensions_size());
   absl::c_iota(dims_perm, 0);
@@ -66,29 +90,6 @@ std::vector<Shape> AllPermutationsOfShapes(
   return ret;
 }
 
-class BitcastDecomposerParameterizedTest
-    : public HloTestBase,
-      public ::testing::WithParamInterface<
-          std::tuple<Shape /*src*/, Shape /*dst*/>> {
- public:
-  BitcastDecomposerParameterizedTest()
-      : HloTestBase(/*verifier_layout_sensitive=*/false,
-                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
-
- protected:
-  absl::BitGen rand_;
-};
-
-INSTANTIATE_TEST_SUITE_P(
-    Handcrafted, BitcastDecomposerParameterizedTest,
-    ::testing::Values(std::make_tuple(
-        ShapeUtil::MakeShapeWithLayout(F32, {1, 2, 4, 2, 2}, {2, 4, 3, 1, 0}),
-        ShapeUtil::MakeShapeWithLayout(F32, {1, 2, 2, 2, 4},
-                                       {4, 3, 2, 1, 0}))));
-
-// Skip most tests in sanitizer/debug builds, otherwise this times out.
-#if !defined(ADDRESS_SANITIZER) && !defined(MEMORY_SANITIZER) && \
-    !defined(THREAD_SANITIZER) && defined(NDEBUG)
 INSTANTIATE_TEST_SUITE_P(
     Combinatorial, BitcastDecomposerParameterizedTest,
     ::testing::Combine(
@@ -204,6 +205,64 @@ TEST_P(BitcastDecomposerParameterizedTest, DoIt) {
     auto actual_val = ExecuteNoHloPasses(module->Clone(), {&param});
     EXPECT_TRUE(LiteralTestUtil::Equal(expected_val, actual_val));
   }
+}
+
+class BitcastDecomposerHloTest : public HloTestBase {};
+
+TEST_F(BitcastDecomposerHloTest, TransposeSimplification) {
+  const char* hlo = R"(
+  HloModule module
+
+  fused_comp {
+    p = f32[2,3,2,2]{3,2,1,0} parameter(0)
+    t = f32[2,2,3,2]{3,0,2,1} transpose(p), dimensions={2,0,1,3}
+    ROOT root = f32[3,2,2,2]{3,2,0,1} bitcast(t)
+  }
+
+  ENTRY main {
+    ROOT fusion = f32[3,2,2,2]{3,2,0,1} fusion(f32[2,3,2,2]{3,2,1,0} parameter(0)), kind=kLoop, calls=fused_comp
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(BitcastDecomposer{}, module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* root = module->entry_computation()
+                                   ->root_instruction()
+                                   ->fused_instructions_computation()
+                                   ->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Transpose(m::Parameter(0))));
+}
+
+TEST_F(BitcastDecomposerHloTest, TransposeSimplificationFull) {
+  const char* hlo = R"(
+  HloModule module
+
+  fused_comp {
+    lhs  = f32[10,2]{1,0} parameter(0)
+    lhs_casted = f32[2,10]{0,1} transpose(lhs), dimensions={1,0}
+    ROOT root = f32[10,2]{1,0} bitcast(lhs_casted)
+  }
+
+  ENTRY main {
+    ROOT fusion = f32[10,2]{1,0} fusion(f32[10,2]{1,0} parameter(0)), kind=kLoop, calls=fused_comp
+  })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloPass(BitcastDecomposer{}, module.get()));
+  EXPECT_TRUE(changed);
+
+  const HloInstruction* root = module->entry_computation()
+                                   ->root_instruction()
+                                   ->fused_instructions_computation()
+                                   ->root_instruction();
+  ASSERT_THAT(root, GmockMatch(m::Parameter(0)));
 }
 
 }  // anonymous namespace

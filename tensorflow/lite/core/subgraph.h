@@ -591,6 +591,18 @@ class Subgraph {
       TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegate* delegate);
 
+  // Helper method for PreviewDelegatePartitioning and
+  // ReplaceNodeSubsetsWithDelegateKernels. Creates node subsets whose members
+  // are either all present in or all absent from *nodes_to_replace.  The
+  // NodeSubsets and their members are in schedulable order, where
+  // schedulability considers data dependencies and, if present, *control_edges_
+  // between nodes.
+  // If control_edges_ == nullptr, PartitionGraph will preserve the original
+  // execuion order of nodes with OpMightHaveSideEffect() when finding
+  // schedulable orderings.
+  TfLiteStatus PartitionGraph(const TfLiteIntArray* nodes_to_replace,
+                              std::vector<NodeSubset>* node_subsets);
+
   // WARNING: This is an experimental interface that is subject to change.
   // Gets the internal pointer to a TensorFlow lite node by node_index.
   TfLiteStatus GetNodeAndRegistration(int node_index, TfLiteNode** node,
@@ -732,7 +744,8 @@ class Subgraph {
   // Since the lifetime of the Interpreter exceeds the Subgraph, metadata
   // remains valid for the latter's lifetime.
   // Also sets relevant fields on context_ based on known metadata.
-  TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata);
+  TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata,
+                           const ControlEdges* control_edges = nullptr);
 
   // Initializes the mapping between tensor index to the index of the
   // last operation that uses the tensor as input.
@@ -925,6 +938,13 @@ class Subgraph {
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;
+
+  // Control edges (i.e., dependencies between nodes in addition to their data
+  // dependencies); can be nullptr. Will be initialized from metadata associated
+  // with the owning interpreter; the pointee is owned by the owning
+  // interpreter. The owning interpreter will keep this consistent with
+  // metadata_ by appropriately parametrized SetMetadata method calls.
+  const ControlEdges* control_edges_ = nullptr;
 };
 
 }  // namespace tflite

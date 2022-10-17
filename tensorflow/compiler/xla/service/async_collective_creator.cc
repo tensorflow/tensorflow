@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"

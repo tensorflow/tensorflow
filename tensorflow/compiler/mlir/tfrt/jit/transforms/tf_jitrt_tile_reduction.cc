@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
@@ -55,6 +57,7 @@ using mlir::success;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::arith::ConstantIndexOp;
+using mlir::gml_st::IteratorTypeAttr;
 using mlir::gml_st::LoopOp;
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
@@ -63,6 +66,7 @@ using mlir::linalg::LinalgTilingOptions;
 using mlir::tensor::EmptyOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::tensor::ExtractSliceOp;
+using mlir::utils::IteratorType;
 
 // Match 1D or 2D reduction.
 bool isCanonicalizedReduction(Operation *op) {
@@ -197,7 +201,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
     auto perfectly_tiled_loop = rewriter.create<LoopOp>(
         loc, makeArrayRef(zero), makeArrayRef(tilable_bound),
         makeArrayRef(tile_size_value), inputs, makeArrayRef(new_fill),
-        rewriter.getStrArrayAttr(mlir::getReductionIteratorTypeName()),
+        rewriter.getArrayAttr({IteratorTypeAttr::get(rewriter.getContext(),
+                                                     IteratorType::reduction)}),
         [&](OpBuilder &b, Location nested_loc, ValueRange ivs,
             ValueRange inputs, ValueRange outputs) {
           SmallVector<Value, 2> reshaped_tiled_inputs =
@@ -239,7 +244,8 @@ struct OneDimReductionTilingPattern : public OpRewritePattern<GenericOp> {
       auto final_reduction = rewriter.create<LoopOp>(
           loc, tilable_bound, input_size, tile_size_value, inputs,
           makeArrayRef(result),
-          rewriter.getStrArrayAttr(mlir::getReductionIteratorTypeName()),
+          rewriter.getArrayAttr({IteratorTypeAttr::get(
+              rewriter.getContext(), IteratorType::reduction)}),
           [&](OpBuilder &b, Location nested_loc, ValueRange ivs,
               ValueRange inputs, ValueRange outputs) {
             BlockAndValueMapping bvm;

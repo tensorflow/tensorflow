@@ -7,9 +7,7 @@
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-    "tf_cc_tests",
+    "//tensorflow/tsl:tsl.bzl",
     "tf_copts",
 )
 load(
@@ -20,10 +18,11 @@ load(
     "tf_logging_deps",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
-    "tf_protobuf_deps",
     "tf_resource_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
+    "tsl_cc_test",
+    "tsl_protobuf_deps",
 )
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -97,7 +96,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "denormal_test",
     size = "small",
     srcs = ["denormal_test.cc"],
@@ -213,7 +212,7 @@ cc_library(
     deps = [
         ":platform",
         ":types",
-    ] + tf_protobuf_deps(),
+    ] + tsl_protobuf_deps(),
 )
 
 cc_library(
@@ -253,7 +252,6 @@ cc_library(
         ":strcat",
         ":stringprintf",
         ":types",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -854,7 +852,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_tests(
+tsl_cc_test(
     name = "stacktrace_handler_test",
     size = "small",
     srcs = [
@@ -1105,7 +1103,7 @@ cc_library(
     ] + tf_windows_aware_platform_deps("stacktrace"),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "stacktrace_test",
     size = "small",
     srcs = [
@@ -1145,7 +1143,7 @@ cc_library(
     ] + tf_fingerprint_deps(),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "fingerprint_test",
     size = "small",
     srcs = ["fingerprint_test.cc"],
@@ -1188,7 +1186,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "ctstring_test",
     size = "small",
     srcs = ["ctstring_test.cc"],
@@ -1199,7 +1197,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "hash_test",
     size = "small",
     srcs = ["hash_test.cc"],
@@ -1212,7 +1210,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "path_test",
     size = "small",
     srcs = ["path_test.cc"],
@@ -1223,7 +1221,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "random_test",
     srcs = ["random_test.cc"],
     deps = [
@@ -1234,7 +1232,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "tstring_test",
     size = "small",
     srcs = ["tstring_test.cc"],
@@ -1266,7 +1264,7 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "status_test",
     size = "small",
     srcs = ["status_test.cc"],
@@ -1281,7 +1279,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "statusor_test",
     size = "small",
     srcs = ["statusor_test.cc"],
@@ -1295,7 +1293,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "status_matchers_test",
     size = "small",
     srcs = ["status_matchers_test.cc"],
@@ -1347,7 +1345,7 @@ cc_library(
     ] + tf_platform_deps("unbounded_work_queue"),
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "unbounded_work_queue_test",
     srcs = ["unbounded_work_queue_test.cc"],
     deps = [
@@ -1404,7 +1402,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "subprocess_test",
     size = "small",
     srcs = ["subprocess_test.cc"],
@@ -1425,7 +1423,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "errors_test",
     size = "small",
     srcs = ["errors_test.cc"],
@@ -1436,7 +1434,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "intrusive_ptr_test",
     size = "small",
     srcs = [
@@ -1450,7 +1448,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "numa_test",
     size = "small",
     srcs = ["numa_test.cc"],
@@ -1467,7 +1465,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "setround_test",
     size = "small",
     srcs = ["setround_test.cc"],
@@ -1484,7 +1482,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "refcount_test",
     size = "small",
     srcs = [
@@ -1499,22 +1497,38 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests(
-    name = "low_level_library_tests",
+tsl_cc_test(
+    name = "integral_types_test",
     size = "small",
     srcs = [
         "integral_types_test.cc",
-        "logging_test.cc",
-        "mutex_test.cc",
-        "net_test.cc",
-        "port_test.cc",
-        "scanner_test.cc",
-        "str_util_test.cc",
-        "strcat_test.cc",
-        "stringpiece_test.cc",
-        "stringprintf_test.cc",
     ],
-    create_named_test_suite = True,
+    deps = [
+        ":test",
+        ":test_main",
+        ":types",
+    ],
+)
+
+tsl_cc_test(
+    name = "logging_test",
+    size = "small",
+    srcs = [
+        "logging_test.cc",
+    ],
+    deps = [
+        ":logging",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "mutex_test",
+    size = "small",
+    srcs = [
+        "mutex_test.cc",
+    ],
     deps = [
         ":env",
         ":env_impl",
@@ -1531,16 +1545,111 @@ tf_cc_tests(
         ":test",
         ":test_main",
         ":types",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/types:optional",
-        "@zlib",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
+    name = "net_test",
+    size = "small",
+    srcs = [
+        "net_test.cc",
+    ],
+    deps = [
+        ":logging",
+        ":net",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "port_test",
+    size = "small",
+    srcs = [
+        "port_test.cc",
+    ],
+    tags = [
+        "notap",  #TODO(b/245510532) : disabled due to flakiness.
+    ],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":env_time",
+        ":mutex",
+        ":platform_port",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "scanner_test",
+    size = "small",
+    srcs = [
+        "scanner_test.cc",
+    ],
+    deps = [
+        ":scanner",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "str_util_test",
+    size = "small",
+    srcs = [
+        "str_util_test.cc",
+    ],
+    deps = [
+        ":str_util",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "strcat_test",
+    size = "small",
+    srcs = [
+        "strcat_test.cc",
+    ],
+    deps = [
+        ":strcat",
+        ":stringprintf",
+        ":test",
+        ":test_main",
+        ":types",
+    ],
+)
+
+tsl_cc_test(
+    name = "stringpiece_test",
+    size = "small",
+    srcs = [
+        "stringpiece_test.cc",
+    ],
+    deps = [
+        ":stringpiece",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
+    name = "stringprintf_test",
+    size = "small",
+    srcs = [
+        "stringprintf_test.cc",
+    ],
+    deps = [
+        ":stringprintf",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tsl_cc_test(
     name = "numbers_test",
     size = "small",
     srcs = [

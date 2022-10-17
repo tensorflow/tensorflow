@@ -29,7 +29,6 @@ COMMON_PROTO_SRCS = [
     "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
-    "coordination_config.proto",
     "debug.proto",
     "device_filters.proto",
     "device_properties.proto",
@@ -63,9 +62,9 @@ COMMON_PROTO_SRCS = [
 tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
+    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["//tensorflow/compiler/xla/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
@@ -126,6 +125,13 @@ tf_proto_library(
     create_grpc_library = True,
     create_service = True,
     protodeps = tf_additional_all_protos(),
+)
+
+tf_proto_library(
+    name = "coordination_config_proto",
+    srcs = ["coordination_config.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
 )
 
 tf_proto_library(
@@ -222,6 +228,7 @@ tf_proto_library(
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
+        ":coordination_config_proto",
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
     ],

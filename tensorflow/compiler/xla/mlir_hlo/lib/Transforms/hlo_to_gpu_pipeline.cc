@@ -85,6 +85,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
       "#dlti.dl_spec<#dlti.dl_entry<index,32:i32>>";
   pm.addPass(createGpuKernelOutliningPass(kGpuDataLayoutSpec));
   pm.addNestedPass<GPUModuleOp>(createForLoopSpecializationPass());
+  pm.addNestedPass<GPUModuleOp>(hlo::createUnrollLoopsPass());
   pm.addNestedPass<GPUModuleOp>(createLowerAffinePass());
   pm.addNestedPass<GPUModuleOp>(createCanonicalizerPass());
   pm.addNestedPass<GPUModuleOp>(createConvertSCFToCFPass());

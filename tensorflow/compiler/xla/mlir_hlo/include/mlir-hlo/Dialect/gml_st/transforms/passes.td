@@ -50,6 +50,8 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
     ListOption<"tileSizes_", "tile-sizes", "int64_t", 
                "Right-aligned tile sizes. Do not tile possible remaining "
                "dimensions", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel_", "distribution-label", "std::string",
+            /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
 }
 
@@ -58,6 +60,18 @@ def TilingReductionPass : Pass<"gml-tiling-reduction", "mlir::func::FuncOp"> {
   let constructor = "::mlir::gml_st::createTilingReductionPass()";
   let dependentDialects = ["::mlir::gml_st::GmlStDialect",
                            "::mlir::arith::ArithDialect"];
+}
+
+def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
+  let summary = "Match, tile, and fuse softmax implementations";
+  let constructor = "::mlir::gml_st::createTilingSoftmaxPass()";
+  let options = [
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Right-aligned tile sizes. Do not tile possible remaining "
+               "dimensions", "llvm::cl::ZeroOrMore">,
+  ];
 }
 
 def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
@@ -104,6 +118,11 @@ def VectorizeGmlStLoopsPass :
   let options = [
     Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
            "If true, vectorizes GmlSt ops in addition to linalg ops">,
+    ListOption<"distributionLabels", "included-distribution-labels",
+               "std::string", "Distribution labels of gml_st.parallel ops "
+               "where vectorization is allowed. Empty list signifies that "
+               "vectorization is allowed within all loops.",
+               "llvm::cl::ZeroOrMore">,
   ];
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }

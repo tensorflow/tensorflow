@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
+
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -24,7 +26,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
@@ -45,134 +45,6 @@ namespace {
 
 #define GEN_PASS_DEF_TILINGPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
-
-Value createTile(OpBuilder &b, Location loc, Value superset, ValueRange ivs,
-                 ValueRange upperBounds, ValueRange steps,
-                 ArrayRef<int64_t> tileSizes) {
-  // Compute the actual size of the tile.
-  ArrayRef<int64_t> supersetShape =
-      superset.getType().cast<TileType>().getShape();
-  uint64_t rank = supersetShape.size();
-  SmallVector<int64_t> staticSizes;
-  SmallVector<Value> dynamicSizes;
-  staticSizes.reserve(rank);
-  for (auto i : llvm::seq<int64_t>(0, rank)) {
-    // If the dimension is perfectly tiled, use the statically known tile size.
-    if (tileSizes[i] == 1 || (supersetShape[i] != ShapedType::kDynamicSize &&
-                              supersetShape[i] % tileSizes[i] == 0)) {
-      staticSizes.push_back(tileSizes[i]);
-      continue;
-    }
-
-    // Otherwise, compute the tile size dynamically.
-    auto remainderInDim = b.create<arith::SubIOp>(loc, upperBounds[i], ivs[i]);
-    auto tileSizeInDim =
-        b.create<arith::MinSIOp>(loc, steps[i], remainderInDim);
-    staticSizes.push_back(ShapedType::kDynamicSize);
-    dynamicSizes.push_back(tileSizeInDim);
-  }
-
-  auto tileTy = b.getType<TileType>(staticSizes);
-  auto allDynamicOffsetsAttr = b.getI64ArrayAttr(
-      SmallVector<int64_t>(rank, ShapedType::kDynamicStrideOrOffset));
-  auto staticSizesAttr = b.getI64ArrayAttr(staticSizes);
-  auto unitStridesAttr = b.getI64ArrayAttr(SmallVector<int64_t>(rank, 1));
-  return b.create<TileOp>(loc, tileTy, superset, ivs, dynamicSizes,
-                          ValueRange{}, allDynamicOffsetsAttr, staticSizesAttr,
-                          unitStridesAttr);
-}
-
-Value createNestedPloopTilingRecursively(
-    OpBuilder &b, Location loc, Value init, Value source,
-    ArrayRef<SmallVector<int64_t>> nestedTileSizes) {
-  assert(!nestedTileSizes.empty() && "expect tile sizes");
-
-  // Create root space.
-  auto sourceTy = source.getType().cast<RankedTensorType>();
-  SmallVector<Value> sourceDynamicDims =
-      tensor::createDynamicDimValues(b, loc, source);
-  auto sourceSpaceTy = b.getType<TileType>(sourceTy.getShape());
-  Value sourceSpace = b.create<SpaceOp>(loc, sourceSpaceTy, sourceDynamicDims,
-                                        b.getI64ArrayAttr(sourceTy.getShape()));
-
-  // Create loop bounds.
-  SmallVector<Value> lowerBounds(sourceTy.getRank(),
-                                 b.create<arith::ConstantIndexOp>(loc, 0));
-  SmallVector<Value> upperBounds = tensor::createDimValues(b, loc, source);
-  SmallVector<Value> steps = llvm::to_vector(
-      llvm::map_range(nestedTileSizes.front(), [&](int64_t s) -> Value {
-        return b.create<arith::ConstantIndexOp>(loc, s);
-      }));
-
-  // Create ploop.
-  auto ploop = b.create<ParallelOp>(
-      loc, sourceTy, lowerBounds, upperBounds, steps, llvm::None,
-      [&](OpBuilder &b, Location loc, ValueRange ivs) {
-        Value subset = createTile(b, loc, sourceSpace, ivs, upperBounds, steps,
-                                  nestedTileSizes.front());
-        Value innerResult = b.create<MaterializeOp>(loc, source, subset);
-
-        // Recur if there are more tile sizes, and it's not a point yet.
-        nestedTileSizes = nestedTileSizes.drop_front();
-        if (!nestedTileSizes.empty() && subset.getType().isa<TileType>()) {
-          auto materializedInitSubset =
-              b.create<MaterializeOp>(loc, init, subset);
-          innerResult = createNestedPloopTilingRecursively(
-              b, loc, materializedInitSubset, innerResult, nestedTileSizes);
-        }
-
-        b.create<SetYieldOp>(loc, ValueRange{innerResult}, ValueRange{init},
-                             ValueRange{subset});
-      });
-  return ploop.getResults().front();
-}
-
-Value createNestedPloopTiling(OpBuilder &b, Location loc, Value source,
-                              ArrayRef<SmallVector<int64_t>> &nestedTileSizes) {
-  // Create empty tensor.
-  auto sourceTy = source.getType().cast<RankedTensorType>();
-  SmallVector<Value> sourceDynamicDims =
-      tensor::createDynamicDimValues(b, loc, source);
-  auto emptyTensor = b.create<tensor::EmptyOp>(
-      loc, sourceTy.getShape(), sourceTy.getElementType(), sourceDynamicDims);
-
-  return createNestedPloopTilingRecursively(b, loc, emptyTensor, source,
-                                            nestedTileSizes);
-}
-
-// Parse comma-separated integeres as tile sizes:
-//   <tile-sizes> ::== `[` <int> ( `,` <int> )* `]`
-llvm::Optional<SmallVector<int64_t>> parseTileSizes(
-    std::istringstream &istream) {
-  SmallVector<int64_t> tileSizes;
-
-  // Parse opening bracket `[`.
-  if (istream.peek() != '[') return llvm::None;
-  istream.get();
-
-  // Parse leading extent.
-  int64_t value;
-  istream >> value;
-  tileSizes.push_back(value);
-
-  // Parse trailing extents.
-  while (istream.peek() == ',') {
-    istream.get();
-    istream >> value;
-    tileSizes.push_back(value);
-  }
-
-  // Parse closing bracket `]`.
-  if (istream.peek() != ']') return llvm::None;
-  istream.get();
-
-  return tileSizes;
-}
-
-struct TilingResult {
-  TilingInterface tiledOp;
-  Operation *loop;
-};
 
 // Compute tile size for the tile that starts at `offset`, has size `tileSize`
 // for the tensor with the dimension size `dimSize`.
@@ -210,6 +82,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                                 ArrayRef<Range> loopRanges,
                                 ArrayRef<Value> tileSizeVals,
                                 ArrayRef<Value> dstOperands, bool distribute,
+                                StringRef distributionLabel,
                                 SmallVector<OpFoldResult> &offsets,
                                 SmallVector<OpFoldResult> &sizes) {
   assert(!loopRanges.empty() && "expected at least one loop range");
@@ -243,6 +116,11 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
           nestedBuilder, bodyLoc, steps[index], ubs[index], iv);
     }
   };
+  Optional<StringAttr> distributionLabelAttr;
+  if (!distributionLabel.empty()) {
+    distributionLabelAttr =
+        StringAttr::get(builder.getContext(), distributionLabel);
+  }
   Operation *loop =
       distribute ? builder
                        .create<gml_st::ParallelOp>(
@@ -250,7 +128,7 @@ Operation *generateTileLoopNest(OpBuilder &builder, Location loc,
                            getValueOrCreateConstantIndexOp(builder, loc, lbs),
                            getValueOrCreateConstantIndexOp(builder, loc, ubs),
                            getValueOrCreateConstantIndexOp(builder, loc, steps),
-                           llvm::None,
+                           distributionLabelAttr,
                            [&](OpBuilder &nestedBuilder, Location bodyLoc,
                                ValueRange ivs) {
                              buildBody(nestedBuilder, bodyLoc, ivs);
@@ -292,7 +170,8 @@ struct DimOfMaterializedTilePattern : public OpRewritePattern<tensor::DimOp> {
 /// Pattern to tile an op that implements the `TilingInterface` using
 /// `gml_st.for` for iterating over the tiles.
 struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
-  TilingPattern(MLIRContext *context, OpFilterFn filterFn,
+  TilingPattern(MLIRContext *context,
+                llvm::function_ref<LogicalResult(Operation *)> filterFn,
                 TilingOptions options, PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(context, benefit),
         filterFn(filterFn),
@@ -303,75 +182,16 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     if (!filterFn || failed(filterFn(op)) || hasTransformationAttr(op))
       return failure();
 
-    if (!options.tileSizeComputationFn) {
-      return rewriter.notifyMatchFailure(
-          op, "missing tile size computation function");
-    }
+    auto tilingResult = tile(options, rewriter, op);
+    if (failed(tilingResult)) return failure();
 
-    // Implement adding accumulator to the gml_st.parallel terminator.
-    if (options.distribute && llvm::count(op.getLoopIteratorTypes(),
-                                          utils::IteratorType::reduction) > 0)
-      return failure();
-
-    // 1. Get the range of the loops that are represented by the operation.
-    SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
-    size_t numLoops = iterationDomain.size();
-    if (numLoops == 0)
-      return rewriter.notifyMatchFailure(op, "missing iteration domain");
-
-    // 2. Materialize the tile sizes. Enforce the convention that "tiling by
-    // zero" skips tiling a particular dimension. This convention is
-    // significantly simpler to handle instead of adjusting affine maps to
-    // account for missing dimensions.
-    SmallVector<Value> tileSizeVector;
-    {
-      OpBuilder::InsertionGuard guard(rewriter);
-      tileSizeVector = options.tileSizeComputationFn(rewriter, op);
-    }
-    if (tileSizeVector.size() < iterationDomain.size()) {
-      auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
-      tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
-    }
-
-    // 3. Materialize an empty loop nest that iterates over the tiles.
-    auto dstOperands = op.getDestinationOperands(rewriter);
-    SmallVector<OpFoldResult> offsets, sizes;
-    TilingResult tilingResult;
-    tilingResult.loop = generateTileLoopNest(
-        rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
-        options.distribute, offsets, sizes);
-    Block *loopBody = &tilingResult.loop->getRegion(0).front();
-    Operation *terminator = loopBody->getTerminator();
-    rewriter.setInsertionPoint(terminator);
-
-    // 4. Insert the tiled implementation within the loop.
-    tilingResult.tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
-
-    // 5. Add `gml_st.set_yield` terminator.
-    SmallVector<Value> dstSubsets;
-    for (Value dst : tilingResult.tiledOp.getDestinationOperands(rewriter))
-      dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
-    rewriter.replaceOpWithNewOp<SetYieldOp>(terminator,
-                                            tilingResult.tiledOp->getResults(),
-                                            dstOperands, dstSubsets);
-
-    // 6. Replace the uses of `outputs` with the output block arguments.
-    if (!options.distribute) {
-      auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
-      for (auto [dst, regionArg] :
-           llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
-        dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
-          return operand.getOwner()->getBlock() == loopBody;
-        });
-      }
-    }
-    rewriter.replaceOp(op, tilingResult.loop->getResults());
-    setTransformationAttr(rewriter, tilingResult.tiledOp);
+    rewriter.replaceOp(op, tilingResult->loop->getResults());
+    setTransformationAttr(rewriter, tilingResult->tiledOp);
     return success();
   }
 
  private:
-  OpFilterFn filterFn;
+  llvm::function_ref<LogicalResult(Operation *)> filterFn;
   TilingOptions options;
 };
 
@@ -427,9 +247,73 @@ struct TilingPass : public impl::TilingPassBase<TilingPass> {
 
 }  // namespace
 
-void populateTilingPatterns(MLIRContext *context, OpFilterFn filterFn,
-                            const TilingOptions &opts,
-                            RewritePatternSet *patterns) {
+FailureOr<TilingResult> tile(const TilingOptions &options,
+                             PatternRewriter &rewriter, TilingInterface op) {
+  if (!options.tileSizeComputationFn) {
+    return rewriter.notifyMatchFailure(
+        op, "missing tile size computation function");
+  }
+
+  // 1. Get the range of the loops that are represented by the operation.
+  SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
+  size_t numLoops = iterationDomain.size();
+  if (numLoops == 0) return failure();
+
+  // 2. Materialize the tile sizes. Enforce the convention that "tiling by
+  // zero" skips tiling a particular dimension. This convention is
+  // significantly simpler to handle instead of adjusting affine maps to
+  // account for missing dimensions.
+  SmallVector<Value> tileSizeVector;
+  {
+    OpBuilder::InsertionGuard guard(rewriter);
+    tileSizeVector = options.tileSizeComputationFn(rewriter, op);
+  }
+
+  if (tileSizeVector.size() < iterationDomain.size()) {
+    auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
+    tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
+  }
+
+  // 3. Materialize an empty loop nest that iterates over the tiles.
+  auto dstOperands = op.getDestinationOperands(rewriter);
+  SmallVector<OpFoldResult> offsets, sizes;
+  TilingResult tilingResult;
+  tilingResult.loop = generateTileLoopNest(
+      rewriter, op.getLoc(), iterationDomain, tileSizeVector, dstOperands,
+      options.distribute, options.distributionLabel, offsets, sizes);
+  Block *loopBody = &tilingResult.loop->getRegion(0).front();
+  Operation *terminator = loopBody->getTerminator();
+  rewriter.setInsertionPoint(terminator);
+
+  // 4. Insert the tiled implementation within the loop.
+  TilingInterface tiledOp = op.getTiledImplementation(rewriter, offsets, sizes);
+  tilingResult.tiledOp = tiledOp.getOperation();
+
+  // 5. Add `gml_st.set_yield` terminator.
+  SmallVector<Value> dstSubsets;
+  for (Value dst : tiledOp.getDestinationOperands(rewriter))
+    dstSubsets.push_back(dst.getDefiningOp<MaterializeOp>().getSet());
+  rewriter.replaceOpWithNewOp<SetYieldOp>(
+      terminator, tilingResult.tiledOp->getResults(), dstOperands, dstSubsets);
+
+  // 6. Replace the uses of `outputs` with the output block arguments.
+  if (!options.distribute) {
+    auto forLoop = cast<gml_st::ForOp>(tilingResult.loop);
+    for (auto [dst, regionArg] :
+         llvm::zip(dstOperands, forLoop.getRegionOutputArgs())) {
+      dst.replaceUsesWithIf(regionArg, [&](OpOperand &operand) {
+        return operand.getOwner()->getBlock() == loopBody;
+      });
+    }
+  }
+
+  return tilingResult;
+}
+
+void populateTilingPatterns(
+    MLIRContext *context,
+    llvm::function_ref<LogicalResult(Operation *)> filterFn,
+    const TilingOptions &opts, RewritePatternSet *patterns) {
   patterns->add<TilingPattern>(context, filterFn, opts);
 }
 

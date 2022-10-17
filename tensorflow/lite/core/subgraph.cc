@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -400,6 +401,14 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
 
 }  // namespace
 
+TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
+                                      std::vector<NodeSubset>* node_subsets) {
+  const InterpreterInfo info(this);
+  return PartitionGraphIntoIndependentNodeSubsets(
+      &info, nodes_to_replace, node_subsets,
+      /*greedily=*/!DisableDelegateClustering(), control_edges_);
+}
+
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
@@ -413,11 +422,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
   // Analyze the graph to find all independent node_subsets that are either
   // fully not-this-delegate or this-delegate computation.
-  InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(
-      &info, nodes_to_replace, &node_subsets,
-      /*greedily=*/!DisableDelegateClustering());
+  if (PartitionGraph(nodes_to_replace, &node_subsets) == kTfLiteError) {
+    return kTfLiteError;
+  }
 
   // On Android the log message below is used for diagnosing delegation success
   // also in production builds. Use VERBOSE here so that the logging is turned
@@ -430,6 +438,13 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       node_subsets.size());
 
   execution_plan_.clear();
+
+  // The subgraph is taking ownership of the external registration, in case the
+  // user has supplied an opaque delegate.
+  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
+        registration.registration_external));
+  }
 
   for (auto& node_subset : node_subsets) {
     // Subsets claimed by the delegate should have a "macro" op created, the
@@ -565,11 +580,10 @@ TfLiteStatus Subgraph::PreviewDelegatePartitioning(
   }
 
   // Partition the execution plan into node subsets.
-  InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(
-      &info, nodes_to_replace, &node_subsets,
-      /*greedily=*/!DisableDelegateClustering());
+  if (PartitionGraph(nodes_to_replace, &node_subsets) == kTfLiteError) {
+    return kTfLiteError;
+  }
 
   // Create one TfLiteDelegateParams per node-subset which would be delegated.
   for (auto& node_subset : node_subsets) {
@@ -616,8 +630,10 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
 }
 
 TfLiteStatus Subgraph::SetMetadata(
-    const std::map<std::string, std::string>* metadata) {
+    const std::map<std::string, std::string>* metadata,
+    const ControlEdges* control_edges) {
   metadata_ = metadata;
+  control_edges_ = control_edges;
   return kTfLiteOk;
 }
 

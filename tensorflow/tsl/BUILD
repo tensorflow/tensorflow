@@ -46,6 +46,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This should be removed after Tensorflow moves to cc_shared_library
+config_setting(
+    name = "tsl_protobuf_header_only",
+    define_values = {"tsl_protobuf_header_only": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",

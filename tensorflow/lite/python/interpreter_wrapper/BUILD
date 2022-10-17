@@ -1,7 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pybind_extension")
 
 package(
     default_visibility = ["//visibility:public"],

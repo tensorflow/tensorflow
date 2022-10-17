@@ -109,6 +109,10 @@ Pattern =>
                        input1 : Value<_: Tosa_Tensor>)
      with op<tosa.add>(input0, input1);
 Pattern =>
+  replace op<mhlo.and>(input0 : Value<_: Tosa_Tensor>,
+                       input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.bitwise_and>(input0, input1);
+Pattern =>
   replace op<mhlo.divide>(input0 : Value<_: Tosa_Int32Tensor>,
                           input1 : Value<_: Tosa_Int32Tensor>)
      with op<tosa.div>(input0, input1);
@@ -117,6 +121,10 @@ Pattern =>
                            input1 : Value<_: Tosa_Tensor>)
      with op<tosa.maximum>(input0, input1);
 Pattern =>
+  replace op<mhlo.minimum>(input0 : Value<_: Tosa_Tensor>,
+                           input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.minimum>(input0, input1);
+Pattern =>
   replace op<mhlo.multiply>(input0 : Value<_: Tosa_Tensor>,
                             input1 : Value<_: Tosa_Tensor>)
      with op<tosa.mul>(input0, input1) {shift = attr<"0 : i32">};
@@ -124,6 +132,10 @@ Pattern =>
   replace op<mhlo.or>(input0 : Value<_: Tosa_Tensor>,
                       input1 : Value<_: Tosa_Tensor>)
      with op<tosa.bitwise_or>(input0, input1);
+Pattern =>
+  replace op<mhlo.power>(input0 : Value<_: Tosa_Tensor>,
+                         input1 : Value<_: Tosa_Tensor>)
+     with op<tosa.pow>(input0, input1);
 Pattern =>
   replace op<mhlo.shift_left>(input0 : Value<_: Tosa_Tensor>,
                               input1 : Value<_: Tosa_Tensor>)

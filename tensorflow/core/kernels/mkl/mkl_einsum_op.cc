@@ -272,15 +272,15 @@ class MklEinsum : public OpKernel {
   bool mkl_output_has_ellipsis_ = false;
 };
 
+#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_EINSUM_MKL(TYPE)                                             \
   REGISTER_KERNEL_BUILDER(Name("_MklEinsum")                                  \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
                           MklEinsum<CPUDevice, TYPE>)
-#ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
-#endif  // ENABLE_MKL
+#endif  // !DNNL_AARCH64_USE_ACL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

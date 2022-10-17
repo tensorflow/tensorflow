@@ -20,6 +20,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
 
 #include <map>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -355,6 +357,9 @@ class HloSharding {
     return rank;
   }
 
+  // Returns the number of tuple_elements_ entries to fit the shape.
+  static int64_t RequiredLeaves(const Shape& shape);
+
  private:
   explicit HloSharding(bool manual, bool replicated,
                        absl::Span<const OpMetadata> metadata)
@@ -418,9 +423,6 @@ class HloSharding {
 
   // Internal helper to validate a non-tuple (leaf) sharding.
   Status ValidateNonTuple(const Shape& shape, int64_t num_devices) const;
-
-  // Returns the number of tuple_elements_ entries to fit the shape.
-  static int64_t RequiredLeaves(const Shape& shape);
 
   bool replicated_;
   bool maximal_;

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -25,10 +26,8 @@ namespace {
 
 // Returns true if all linalg.generic operation iterators are "parallel".
 bool AllIteratorsAreParallel(mlir::linalg::GenericOp op) {
-  return llvm::all_of(op.iterator_types(), [](mlir::Attribute attr) -> bool {
-    auto str_attr = attr.dyn_cast<mlir::StringAttr>();
-    return str_attr && str_attr.getValue() == "parallel";
-  });
+  return llvm::all_of(op.getIteratorTypesArray(),
+                      mlir::linalg::isParallelIterator);
 }
 
 // Returns buffer inputs that can be safely used as buffer outputs.

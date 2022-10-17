@@ -124,6 +124,10 @@ def _search_callable_free_vars(fn):
   except ValueError:
     # When source code unavailable, return empty result
     return []
+  except NotImplementedError:
+    # Autograph cannot handle multiple lambda functions with same line number
+    # and args name.
+    return []
 
   scope = anno.getanno(node, anno.Static.SCOPE)
   free_vars_all = list(scope.free_vars)
@@ -299,3 +303,30 @@ def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
     logging_txt.append(ellipsis_line)
 
   return "\n".join(logging_txt)
+
+
+class FreevarDetector():
+  """Generate logging string for free vars detection and cache results."""
+
+  def __init__(self):
+    self.cache = dict()
+
+  def logging_free_vars(self, fn):
+    """Return logging string for free vars detection."""
+    if not (hasattr(fn, "__module__") and hasattr(fn, "__qualname__")):
+      return None
+
+    fn_key = (fn.__module__, fn.__qualname__)
+
+    # To prevent log spam, only generate logging once for each function
+    if fn_key in self.cache:
+      return None
+
+    try:
+      logging_txt = generate_free_var_logging(fn)
+    except Exception:  # pylint: disable=broad-except
+      # Only for logging purpose, do not raise errors to users
+      logging_txt = None
+    self.cache[fn_key] = logging_txt
+
+    return self.cache[fn_key]

@@ -68,6 +68,18 @@ void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
   }
 }
 
+void UnpackDenseInt4IntoInt8(const int8_t* src_buffer, int num_elements,
+                             int8_t* dst_buffer) {
+  for (int i = 0; i < num_elements; i += 2) {
+    // Shift left first so that sign is properly extended when shifted right
+    dst_buffer[i] = static_cast<int8_t>(src_buffer[i / 2] << 4) >> 4;
+    // Break early if the tensor has odd length and the higher nibble should be
+    // ignored.
+    if (i + 1 == num_elements) break;
+    dst_buffer[i + 1] = static_cast<int8_t>(src_buffer[i / 2]) >> 4;
+  }
+}
+
 }  // namespace tensor_utils
 }  // namespace tflite
 

@@ -27,11 +27,11 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {
@@ -118,7 +118,6 @@ class Sampler {
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/tsl/lib/histogram/histogram.h"
 #include "tensorflow/tsl/lib/monitoring/collection_registry.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
@@ -126,6 +125,7 @@ class Sampler {
 #include "tensorflow/tsl/platform/mutex.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {
 namespace monitoring {

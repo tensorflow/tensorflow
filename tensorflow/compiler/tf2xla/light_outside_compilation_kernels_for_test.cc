@@ -263,6 +263,10 @@ class TestTfMustBeConstantOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
 
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(1).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(1).DebugString()));
     int constant_to_add = ctx->input(1).scalar<int>()();
     size_t allocated_size = input.AllocatedBytes();
 

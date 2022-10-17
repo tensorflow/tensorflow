@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -53,8 +54,8 @@ class GpuContextCache;
 namespace xla {
 namespace gpu {
 
-// Returns whether GpuExecutable runs on TFRT/JitRt.
-bool IsJitRtExecutableEnabled(const HloModuleConfig& config);
+// Returns whether GpuExecutable runs on TFRT or Xla Runtime.
+bool IsXlaRuntimeExecutableEnabled(const HloModuleConfig& config);
 
 // GPU-targeting implementation of the XLA Executable interface.
 //
@@ -63,13 +64,13 @@ bool IsJitRtExecutableEnabled(const HloModuleConfig& config);
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
-  struct JitRtExecutable;
+  struct XlaRuntimeGpuExecutable;
 
-  // Serialized MLIR module prepared for JitRt compilation.
-  struct JitRtProgram {
-    explicit JitRtProgram(std::string entry_point, std::string module,
-                          std::vector<int64_t> buffer_sizes,
-                          DebugOptions debug_options)
+  // Serialized MLIR module prepared for XLA Runtime compilation.
+  struct XlaRuntimeProgram {
+    explicit XlaRuntimeProgram(std::string entry_point, std::string module,
+                               std::vector<int64_t> buffer_sizes,
+                               DebugOptions debug_options)
         : entry_point(std::move(entry_point)),
           module(std::move(module)),
           buffer_sizes(std::move(buffer_sizes)),
@@ -82,7 +83,7 @@ class GpuExecutable : public Executable {
   };
 
   typedef std::unique_ptr<const ThunkSequence> OwnedThunkSequence;
-  typedef std::unique_ptr<JitRtProgram> OwnedJitRtProgram;
+  typedef std::unique_ptr<XlaRuntimeProgram> OwnedXlaRuntimeProgram;
 
   struct ConstantInfo {
     std::string symbol_name;
@@ -106,9 +107,9 @@ class GpuExecutable : public Executable {
     std::string asm_text;
     std::vector<uint8_t> binary;
     GpuVersion gpu_version;
-    // The GpuExecutable will either execute Thunks or a JitRt compiled native
-    // function depending on which is supplied.
-    std::variant<OwnedThunkSequence, OwnedJitRtProgram> executable;
+    // The GpuExecutable will either execute Thunks or a XLA Runtime compiled
+    // native function depending on which is supplied.
+    std::variant<OwnedThunkSequence, OwnedXlaRuntimeProgram> executable;
     xla::EntryFunctionAttributes entry_func_attrs;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
@@ -140,7 +141,7 @@ class GpuExecutable : public Executable {
       Shape* output_shape, int buffer_param_offset = 0);
 
   // Returns an Executable that is loaded from an object file (XLA program
-  // compiled to a native function using the JitRt stack).
+  // compiled to a native function using the XLA Runtime stack).
   static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
       std::shared_ptr<HloModule> hlo_module, absl::string_view obj_file,
       absl::string_view mlir_module,
@@ -149,15 +150,15 @@ class GpuExecutable : public Executable {
       GpuVersion gpu_version, stream_executor::StreamExecutor* executor);
 
   // Constructor to use when loading a GpuExecutable from an object file (native
-  // function compiled for JitRt). Omits setting class members that aren't used
-  // in JitRt execution mode.
+  // function compiled for XLA Runtime). Omits setting class members that aren't
+  // used in XLA Runtime execution mode.
   GpuExecutable(std::shared_ptr<HloModule> hlo_module, std::string asm_text,
                 std::vector<uint8_t> binary, GpuVersion gpu_version,
                 xla::EntryFunctionAttributes entry_func_attrs,
                 absl::string_view module_name, Shape xla_output_shape,
                 std::vector<BufferAllocation> allocations,
                 absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
-                JitRtExecutable* jitrt_executable);
+                XlaRuntimeGpuExecutable* xla_runtime_executable);
 
   static StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
   ~GpuExecutable() override;
@@ -221,9 +222,9 @@ class GpuExecutable : public Executable {
   // clients, such as Tensorflow, that use a single stream of execution for
   // computations, and allow host-side deallocation from the allocator before
   // GPU execution completes.
-  Status ExecuteThunksOrJitRt(const ServiceExecutableRunOptions* run_options,
-                              const BufferAllocations& buffer_allocations,
-                              bool block_host_until_done);
+  Status ExecuteThunksOrXlaRuntime(
+      const ServiceExecutableRunOptions* run_options,
+      const BufferAllocations& buffer_allocations, bool block_host_until_done);
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
@@ -310,8 +311,8 @@ class GpuExecutable : public Executable {
   // potentially shared with other executables.
   std::vector<std::shared_ptr<se::DeviceMemoryBase>> shared_constants_;
 
-  // JitRt executable if the JitRt mode is on, owned.
-  JitRtExecutable* jitrt_executable_ = nullptr;
+  // XLA Runtime executable if XLA Runtime is enabled, owned.
+  XlaRuntimeGpuExecutable* xla_runtime_executable_ = nullptr;
 
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;

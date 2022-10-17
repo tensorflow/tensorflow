@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 
+#include <cstdlib>
+#include <string_view>
+
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 
@@ -22,6 +25,11 @@ namespace xla {
 namespace gpu {
 
 using namespace mlir;  // NOLINT
+
+static bool UseExperimentalCudaGraphs() {
+  std::string_view flag = std::getenv("XLA_GPU_RUNTIME_USE_CUDA_GRAPHS");
+  return flag == "true" || flag == "1";
+}
 
 void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
                                  ThunkSequence* thunk_sequence) {
@@ -35,6 +43,14 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
   // Lower all Gpu operations to the XLA Gpu runtime custom calls.
   pm.addPass(createConvertLmhloGpuToGpuRuntimePass());
   pm.addPass(createConvertLmhloToGpuRuntimePass());
+
+  // Enable experimental pass that wraps all launch func operations into Cuda
+  // Graph. Currently it's intended to be a proof of concept and not anywhere
+  // near production readiness.
+  if (UseExperimentalCudaGraphs()) {
+    pm.addPass(createConvertLaunchFuncToCudaGraphPass());
+  }
+
   pm.addPass(createConvertGpuToGpuRuntimePass());
 
   // Add performance tracing annotations.
