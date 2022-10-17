@@ -740,7 +740,7 @@ table UnidirectionalSequenceLSTMOptions {
   // If true then first dimension is sequence, otherwise batch.
   time_major:bool;
 
-  // Parameter for Unidirectional Sequence LSTM version 4.
+  // Parameter for Unidirectional Sequence LSTM version 3.
   asymmetric_quantize_inputs:bool;
 }
 
