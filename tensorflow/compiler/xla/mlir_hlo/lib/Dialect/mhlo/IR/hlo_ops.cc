@@ -1189,11 +1189,11 @@ LogicalResult CustomCallOp::verify() {
     auto operandIndex = alias.getOperandIndex();
     auto operandTupleIndices = alias.getOperandTupleIndices();
 
-    if (operandIndex < 0 || operandIndex >= operands().size())
+    if (operandIndex < 0 || operandIndex >= getInputs().size())
       return emitOpError()
              << "expects operandIndex in the output_operand_alias attribute "
                 "to be in range [0, "
-             << operands().size() << "); got: " << operandIndex << ".";
+             << getInputs().size() << "); got: " << operandIndex << ".";
 
     Type operandPart = getOperand(operandIndex).getType();
     for (auto i : operandTupleIndices) {
@@ -4795,10 +4795,10 @@ LogicalResult MapOp::verify() {
   // region.
   auto& computationBlock = getComputation().front();
   auto computationArgs = computationBlock.getArguments();
-  if (operands().size() != computationArgs.size())
+  if (getInputs().size() != computationArgs.size())
     return emitOpError() << "expects number of operands to match the arity "
                             "of map computation, but got: "
-                         << operands().size() << " and "
+                         << getInputs().size() << " and "
                          << computationArgs.size();
 
   // The parameters of computation should all be scalars and match the element
@@ -4810,7 +4810,7 @@ LogicalResult MapOp::verify() {
              << "computation arguments must be 0-rank tensor, but got: arg #"
              << indexedArg.index() << " of type "
              << indexedArg.value().getType();
-    auto operandElemTy = operands()[indexedArg.index()]
+    auto operandElemTy = getInputs()[indexedArg.index()]
                              .getType()
                              .cast<TensorType>()
                              .getElementType();
@@ -4857,7 +4857,7 @@ LogicalResult MapOp::verify() {
   // Checks that number of dimensions of operands matches the size of
   // `dimensions` since we currently only support mapping across all
   // dimensions: i.e., scalar map functions.
-  auto operandType = operands()[0].getType().cast<TensorType>();
+  auto operandType = getInputs()[0].getType().cast<TensorType>();
   if (operandType.hasRank()) {
     if (dimensions.size() !=
         static_cast<int64_t>(operandType.getShape().size()))
@@ -4971,7 +4971,7 @@ LogicalResult ReduceWindowOp::verify() {
                                  operandTensorTypes.end());
 
   // P2.
-  if (failed(verifyCompatibleShapes(operands().getTypes())))
+  if (failed(verifyCompatibleShapes(getInputs().getTypes())))
     return emitOpError() << "requires same shape for all inputs";
 
   // P3.
@@ -5061,7 +5061,7 @@ LogicalResult ReduceWindowOp::verify() {
 
 // Get the operation used for reduction applied to `result_index`th result. Its
 // expected to be a binary operation that consumes `result_index`th and
-// `result_index + operands().size`th arguments of the body.
+// `result_index + getInputs().size`th arguments of the body.
 Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   auto returnOp = cast<ReturnOp>(getBody().front().getTerminator());
   Operation* computeOp = returnOp.getResults()[resultIndex].getDefiningOp();
@@ -5071,7 +5071,7 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   if (!arg0 || !arg1) return nullptr;
   int64_t arg0Num = arg0.getArgNumber();
   int64_t arg1Num = arg1.getArgNumber();
-  int64_t otherArgIndex = resultIndex + operands().size();
+  int64_t otherArgIndex = resultIndex + getInputs().size();
   if (arg0Num == resultIndex && arg1Num == otherArgIndex) return computeOp;
   if (arg0Num == otherArgIndex && arg1Num == resultIndex &&
       computeOp->hasTrait<mlir::OpTrait::IsCommutative>())
@@ -5229,7 +5229,7 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (getDimensions().getNumElements() == 0) {
-    for (Value operand : this->operands()) {
+    for (Value operand : this->getInputs()) {
       results.push_back(operand);
     }
     return success();
@@ -5298,10 +5298,10 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
     return false;
 
   // Check E3.
-  if (op.operands().empty()) return false;
+  if (op.getInputs().empty()) return false;
 
   auto elemType =
-      op.operands()[0].getType().cast<TensorType>().getElementType();
+      op.getInputs()[0].getType().cast<TensorType>().getElementType();
   auto expectedInnerOpType = RankedTensorType::get(/*shape=*/{}, elemType);
   if (innerOp.getOperands()[0].getType() != expectedInnerOpType) return false;
 
@@ -5743,7 +5743,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   ReduceOp::Adaptor adaptor(operands);
-  auto inputs = adaptor.operands();
+  auto inputs = adaptor.getInputs();
 
   auto operandType = inputs[0].getType().dyn_cast<RankedTensorType>();
   // Not support unranked type a.t.m.
@@ -7473,7 +7473,7 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SortOp::verify() {
-  Operation::operand_range operands = this->operands();
+  Operation::operand_range operands = this->getInputs();
   if (operands.empty()) return emitOpError("requires at least one input");
 
   // TODO(antiagainst): verify partionally dynamic shapes
@@ -7566,7 +7566,7 @@ static LogicalResult sortDropEmptyUseArgs(SortOp op,
 
   SmallVector<Value> newOperands;
   BitVector erasedBlockArgs(op.getNumOperands() * 2);
-  for (const auto& en : llvm::enumerate(op.operands())) {
+  for (const auto& en : llvm::enumerate(op.getInputs())) {
     if (erasedArgs.contains(en.index())) {
       erasedBlockArgs.set(en.index() * 2);
       erasedBlockArgs.set(en.index() * 2 + 1);
@@ -7608,7 +7608,7 @@ static LogicalResult sortOpInferDefaultDimension(SortOp op,
 
   IntegerAttr dim = rewriter.getI64IntegerAttr(ty.getRank() - 1);
   auto newOp =
-      rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(), op.operands(),
+      rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(), op.getInputs(),
                               dim, op.getIsStableAttr());
   Region& region = newOp.getComparator();
   rewriter.inlineRegionBefore(op.getComparator(), region, region.end());
@@ -8292,12 +8292,12 @@ LogicalResult validateScatterDimensionNumbers(
 LogicalResult ScatterOp::verify() {
   // Get the first operand and update, since variadic Scatter is not yet
   // implemented
-  auto numOperands = operands().size();
+  auto numOperands = getInputs().size();
   auto scatterIndicesType =
       getScatterIndices().getType().dyn_cast<TensorType>();
 
   SmallVector<TensorType, 1> operandTypes =
-      llvm::to_vector(llvm::map_range(operands().getTypes(), [](Type type) {
+      llvm::to_vector(llvm::map_range(getInputs().getTypes(), [](Type type) {
         return type.cast<TensorType>();
       }));
   SmallVector<TensorType, 1> updatesTypes =
@@ -8305,7 +8305,7 @@ LogicalResult ScatterOp::verify() {
         return type.cast<TensorType>();
       }));
   bool allOperandTypesRanked =
-      llvm::all_of(operands().getTypes(),
+      llvm::all_of(getInputs().getTypes(),
                    [](Type type) { return type.isa<RankedTensorType>(); });
   bool scatterIndicesTypeRanked = scatterIndicesType.isa<RankedTensorType>();
 
@@ -8493,11 +8493,11 @@ LogicalResult ScatterOp::fold(
     ArrayRef<Attribute> args,
     llvm::SmallVectorImpl<OpFoldResult>& foldResults) {
   // Variadic Scatter not yet implemented
-  if (operands().size() != 1 || getUpdates().size() != 1) return failure();
+  if (getInputs().size() != 1 || getUpdates().size() != 1) return failure();
   auto index = args[1].dyn_cast_or_null<DenseIntElementsAttr>();
   if (!index) return failure();
 
-  auto baseType = operands().getTypes()[0].dyn_cast<RankedTensorType>();
+  auto baseType = getInputs().getTypes()[0].dyn_cast<RankedTensorType>();
   auto updateType = getUpdates().getTypes()[0].dyn_cast<RankedTensorType>();
   auto indexType = index.getType().cast<RankedTensorType>();
   if (!baseType || !indexType || !updateType) return failure();
@@ -8624,11 +8624,11 @@ struct ScatterFullReplace : public OpRewritePattern<ScatterOp> {
   LogicalResult matchAndRewrite(ScatterOp scatter,
                                 PatternRewriter& rewriter) const override {
     // Variadic Scatter not yet implemented
-    if (scatter.operands().size() != 1 || scatter.getUpdates().size() != 1)
+    if (scatter.getInputs().size() != 1 || scatter.getUpdates().size() != 1)
       return failure();
 
     auto baseType =
-        scatter.operands().getTypes()[0].dyn_cast<RankedTensorType>();
+        scatter.getInputs().getTypes()[0].dyn_cast<RankedTensorType>();
     auto updateType =
         scatter.getUpdates().getTypes()[0].dyn_cast<RankedTensorType>();
     auto indexType =

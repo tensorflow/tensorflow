@@ -255,7 +255,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
       mhlo::ReduceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto srcRank =
-        adaptor.operands()[0].getType().cast<RankedTensorType>().getRank();
+        adaptor.getInputs()[0].getType().cast<RankedTensorType>().getRank();
     auto reductionDims =
         llvm::to_vector(op.getDimensions().getValues<int64_t>());
     // mhlo.reduce doesn't specify the order of the reduction dimensions.
@@ -273,7 +273,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
 
     Location loc = op.getLoc();
     for (auto [operand, initValue, resultType] :
-         llvm::zip(adaptor.operands(), adaptor.getInitValues(), resultTypes)) {
+         llvm::zip(adaptor.getInputs(), adaptor.getInitValues(), resultTypes)) {
       auto initType = toRankedTensor(initValue);
       if (!initType)
         return rewriter.notifyMatchFailure(op,
@@ -297,7 +297,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
     }
 
     auto thloReduction = rewriter.create<thlo::ReductionOp>(
-        loc, resultTypes, adaptor.operands(), outputs,
+        loc, resultTypes, adaptor.getInputs(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
     Region& region = thloReduction.getCombiner();
     rewriter.inlineRegionBefore(op.getBody(), region, region.end());
@@ -376,7 +376,7 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
         loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
-        adaptor.operands().front());
+        adaptor.getInputs().front());
 
     Region& region = thloScatter.getUpdateComputation();
     rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
@@ -435,7 +435,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     auto thloMap = rewriter.create<thlo::MapOp>(
-        loc, resultTy, adaptor.operands(), emptyTensor);
+        loc, resultTy, adaptor.getInputs(), emptyTensor);
     Region& region = thloMap.getMapper();
     rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
 
@@ -532,7 +532,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
       return failure();
 
     for (auto [operand, resultType] :
-         llvm::zip(adaptor.operands(), resultTypes)) {
+         llvm::zip(adaptor.getInputs(), resultTypes)) {
       RankedTensorType operandType =
           operand.getType().dyn_cast<RankedTensorType>();
       if (!operandType)
@@ -555,7 +555,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
     bool isStable = op.getIsStable();
 
     auto thloSort = rewriter.create<thlo::SortOp>(
-        loc, resultTypes, adaptor.operands(), outputs,
+        loc, resultTypes, adaptor.getInputs(), outputs,
         rewriter.getI64IntegerAttr(dimension), rewriter.getBoolAttr(isStable));
 
     Region& region = thloSort.getComparator();
