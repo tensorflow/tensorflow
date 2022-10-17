@@ -403,6 +403,15 @@ Below is the list of currently supported floating-point operators:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 
+#### `STRIDED_SLICE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second, third, and fourth inputs (the inputs with the slices' begin, end,
+  and stride specification) must be static (use `kTfLiteMmapRo` allocation
+  type).
+* The fourth input (strides) must be all ones.
+* The ellipsis mask, new axis mask, and shrink axis mask must be 0.
+
 #### `SUB`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -624,6 +633,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `STRIDED_SLICE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `SUB`
 
