@@ -5,7 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_gpu_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",

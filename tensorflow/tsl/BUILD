@@ -46,6 +46,13 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This should be removed after Tensorflow moves to cc_shared_library
+config_setting(
+    name = "tsl_protobuf_header_only",
+    define_values = {"tsl_protobuf_header_only": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Config setting for determining if we are building for Android.
 config_setting(
     name = "android",
@@ -215,5 +222,25 @@ config_setting(
 config_setting(
     name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "fuchsia",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = if_oss(
+        # TODO(b/149248802) When we have a Fuchsia Bazel SDK update to use the values it sets.
+        {"cpu": "fuchsia"},
+        {},
+    ),
     visibility = ["//visibility:public"],
 )

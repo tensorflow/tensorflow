@@ -6,7 +6,7 @@ load(
     "tflite_custom_c_library",
     "tflite_self_contained_libs_test_suite",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -99,6 +99,31 @@ tflite_cc_library_with_c_headers_test(
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
+# Same as ":c_api_without_op_resolver", but without alwayslink=1.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_without_op_resolver_without_alwayslink",
+    srcs = ["c_api.cc"],
+    hdrs = ["c_api.h"],
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        ":c_api_internal",
+        ":c_api_types",
+        ":common",
+        ":common_internal",
+        "//tensorflow/lite:builtin_ops",
+        "//tensorflow/lite:create_op_resolver_header",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:version",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core/c:c_api",
+        "//tensorflow/lite/delegates:interpreter_utils",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:compatibility",
+    ],
+)
+
 tflite_cc_library_with_c_headers_test(
     name = "c_api_experimental",
     srcs = [
@@ -113,6 +138,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":c_api",
         ":c_api_internal",
+        ":c_api_opaque_internal",
         ":c_api_types",
         ":common",
         "//tensorflow/lite:builtin_ops",
@@ -140,14 +166,43 @@ tflite_cc_library_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_internal",
+        ":c_api_opaque_internal",
         ":c_api_types",
         ":c_api_without_op_resolver",
         ":common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+# Same as ":c_api_experimental", but without linking in the default CreateOpResolver implementation.
+tflite_cc_library_with_c_headers_test(
+    name = "c_api_experimental_without_op_resolver_without_alwayslink",
+    srcs = [
+        "c_api_experimental.cc",
+        "c_api_opaque.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_opaque.h",
+    ],
+    aspect_hints = ["//tools/build_defs/swift:auto_module"],
+    copts = tflite_copts(),
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    deps = [
+        ":c_api_internal",
+        ":c_api_opaque_internal_without_alwayslink",
+        ":c_api_types",
+        ":c_api_without_op_resolver_without_alwayslink",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
 )
 
 tflite_cc_library_with_c_headers_test(
@@ -196,7 +251,9 @@ cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_internal",
+        ":c_api_types",
         ":common",
+        "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -222,8 +279,10 @@ cc_test(
     ],
     deps = [
         ":c_api_internal",
+        ":c_api_types",
         ":common",
         ":selectively_built_c_api_test_lib",
+        "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -295,6 +354,42 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "c_api_opaque_internal",
+    srcs = ["c_api_opaque_internal.cc"],
+    hdrs = ["c_api_opaque_internal.h"],
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
+# Same as c_api_opaque_internal, but depends on the
+# '_without_alwayslink' variant of ':c_api_without_op_resolver'.
+cc_library(
+    name = "c_api_opaque_internal_without_alwayslink",
+    srcs = ["c_api_opaque_internal.cc"],
+    hdrs = ["c_api_opaque_internal.h"],
+    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    visibility = [
+        "//visibility:private",
+    ],
+    deps = [
+        ":c_api_types",
+        ":c_api_without_op_resolver_without_alwayslink",
+        ":common",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+    ],
+)
+
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
@@ -303,19 +398,6 @@ exports_files([
     "c_api_types.h",
     "common.h",
 ])
-
-# For use in selective build rule for C API.
-filegroup(
-    name = "c_api_srcs",
-    srcs = [
-        "c_api.cc",
-        "c_api_experimental.cc",
-        "c_api_internal.cc",
-        "c_api_internal.h",
-        "c_api_opaque.cc",
-        "common_internal.h",
-    ],
-)
 
 # Test the C extension API code.
 cc_test(
@@ -358,6 +440,7 @@ cc_test(
     deps = [
         ":c_api",
         ":c_api_experimental",
+        ":c_api_types",
         ":common",
     ],
 )

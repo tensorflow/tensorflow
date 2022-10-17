@@ -51,7 +51,7 @@ limitations under the License.
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
-#include "mlir/Conversion/ArithmeticToLLVM/ArithmeticToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"  // from @llvm-project
@@ -63,8 +63,8 @@ limitations under the License.
 #include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -87,8 +87,6 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/LLVMTranslationInterface.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
@@ -97,6 +95,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_cpu.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -134,8 +133,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/cpu/mlir_layout_resolution.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
+#include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -160,7 +161,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
-#include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
@@ -198,6 +198,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -213,10 +215,10 @@ namespace {
 // Hopefully this will all go away at some point in favor of a better
 // integration.
 void LoadMLIRDialects(mlir::MLIRContext& context) {
-  context.loadDialect<mlir::arith::ArithmeticDialect,
-                      mlir::linalg::LinalgDialect, mlir::scf::SCFDialect,
-                      mlir::vector::VectorDialect, mlir::func::FuncDialect,
-                      mlir::AffineDialect, mlir::tensor::TensorDialect,
+  context.loadDialect<mlir::arith::ArithDialect, mlir::linalg::LinalgDialect,
+                      mlir::scf::SCFDialect, mlir::vector::VectorDialect,
+                      mlir::func::FuncDialect, mlir::AffineDialect,
+                      mlir::tensor::TensorDialect,
                       mlir::xla_framework::XLAFrameworkDialect>();
   mlir::registerLLVMDialectTranslation(context);
 }
@@ -292,6 +294,23 @@ CpuAotCompilationOptions::~CpuAotCompilationOptions() = default;
 
 se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
   return se::host::kHostPlatformId;
+}
+
+CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
+    HloModuleProto hlo, const std::string& obj_file,
+    const std::string& mlir_module, const BufferAssignment& buffer_assignment,
+    XlaFrameworkMapping xla_framework_mapping) {
+  XlaRuntimeExecutableProto xla_runtime_executable;
+  *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
+  xla_runtime_executable.set_obj_file(obj_file);
+  xla_runtime_executable.set_mlir_module(mlir_module);
+  *xla_runtime_cpu_executable_.mutable_xla_runtime_executable() =
+      xla_runtime_executable;
+
+  *xla_runtime_cpu_executable_.mutable_xla_framework_mapping() =
+      xla_framework_mapping.ToProto();
+  *xla_runtime_cpu_executable_.mutable_buffer_assignment() =
+      buffer_assignment.ToProto();
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -619,8 +638,13 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
-  // The MLIR pipeline always uses default layouts.
-  if (!is_mlir_compile) {
+  // The MLIR pipeline always uses default layouts, so if the caller specifies
+  // non-default layouts in the entry_computation layout, we have to convert
+  // to these layouts using transposes and reshapes. The MlirLayoutResolution
+  // pass does this.
+  if (is_mlir_compile) {
+    pipeline.AddPass<MlirLayoutResolution>();
+  } else {
     pipeline.AddPass<CpuLayoutAssignment>(
         module->mutable_entry_computation_layout(), target_machine_features,
         &layout_constraints);
@@ -946,8 +970,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
-  // Tile THLO ops.
-  pm.addNestedPass<mlir::func::FuncOp>(createTileThloForCpuPass());
+  // Transform scatter ops.
+  pm.addNestedPass<mlir::func::FuncOp>(createTransformScatterForCpuPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createComposeSetOpsPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
@@ -979,7 +1003,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addNestedPass<mlir::func::FuncOp>(std::move(detensorize));
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createScalarizationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::createLinalgInitTensorToAllocTensorPass());
+      mlir::bufferization::createEmptyTensorToAllocTensorPass());
 
   // Always run canonicalizer (which does dead code removal) before
   // bufferizing anything.
@@ -1019,8 +1043,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   vec_to_scf_options.unroll = true;
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::arith::createArithmeticExpandOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::arith::createArithExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::memref::createExpandOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::createLowerAffinePass());
   pm.addPass(mlir::mhlo::CreateLegalizeXLAFrameworkToLLVMPass());
@@ -1036,7 +1059,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
 StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
     HloModule* module, mlir::MLIRContext& mlir_context,
-    BufferAssignment* assignment) {
+    BufferAssignment* assignment,
+    XlaFrameworkMapping* export_mapping = nullptr) {
   LoadMLIRDialects(mlir_context);
   mlir::OpBuilder builder(&mlir_context);
   auto mlir_module = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
@@ -1060,28 +1084,44 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> createMLIRModule(
   llvm::SmallVector<mlir::Attribute> result_inner_mapping;
   if (output_allocation->allocation()->is_tuple()) {
     for (auto i : llvm::seq<int>(0, root_instr->shape().tuple_shapes_size())) {
+      int64_t result_index =
+          assignment->GetUniqueSlice(root_instr, {i})->index();
       result_inner_mapping.push_back(mlir::IntegerAttr::get(
-          mlir::IntegerType::get(&mlir_context, 64),
-          assignment->GetUniqueSlice(root_instr, {i})->index()));
+          mlir::IntegerType::get(&mlir_context, 64), result_index));
+      if (export_mapping != nullptr) {
+        export_mapping->flattened_outputs.push_back(result_index);
+      }
     }
   }
 
-  auto result_mapping = builder.getI32IntegerAttr(
-      static_cast<int32_t>(output_allocation->index()));
+  int output_index = static_cast<int>(output_allocation->index());
+  auto result_mapping = builder.getI32IntegerAttr(output_index);
   mlir_module->walk([&](mlir::func::FuncOp f) {
     if (f.getSymName() == "main") {
       for (auto& p : llvm::enumerate(operand_mapping)) {
         f.setArgAttr(p.index(), "xla_framework.input_mapping", p.value().first);
+        if (export_mapping != nullptr) {
+          auto index_attr = p.value().first.dyn_cast<mlir::IntegerAttr>();
+          if (index_attr) {
+            export_mapping->inputs.push_back(index_attr.getInt());
+          }
+        }
         // Mark argument as (non-)writeable for bufferization. This ensures that
         // entry parameters are not overwritten.
         f.setArgAttr(p.index(), "bufferization.writable", p.value().second);
       }
       f->setAttr("xla_framework.result_mapping", result_mapping);
+      if (export_mapping != nullptr) {
+        export_mapping->result = output_index;
+      }
     }
 
     if (output_allocation->allocation()->is_tuple()) {
       f->setAttr("xla_framework.result_inner_mapping",
                  mlir::ArrayAttr::get(f.getContext(), result_inner_mapping));
+      if (export_mapping != nullptr) {
+        export_mapping->output_is_tuple = true;
+      }
     }
   });
   return {mlir_module};
@@ -1329,26 +1369,51 @@ namespace {
 
 namespace runtime = ::xla::runtime;
 
+class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
+ public:
+  FlattenTuplesAndBufferizeTypeConverter() {
+    addConversion(
+        [](mlir::Type type, mlir::SmallVectorImpl<mlir::Type>& converted)
+            -> mlir::LogicalResult {
+          mlir::bufferization::BufferizeTypeConverter bufferize;
+          auto tuple_type = type.dyn_cast<mlir::TupleType>();
+          if (!tuple_type) {
+            converted.push_back(bufferize.convertType(type));
+            return mlir::success();
+          }
+          // TODO(b/249078472): update this expansion to support nested tuples.
+          converted.append(llvm::to_vector(llvm::map_range(
+              tuple_type.getTypes(),
+              [&](mlir::Type t) { return bufferize.convertType(t); })));
+          return mlir::success();
+        });
+  }
+};
+
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
-    mlir::ModuleOp mlir_module, absl::string_view entry_point) {
+    mlir::ModuleOp mlir_module, absl::string_view entry_point,
+    const XlaFrameworkMapping& xla_framework_mapping) {
   runtime::CpuPipelineOptions copts;
 
   runtime::JitExecutable::Options opts;
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
-  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-    registry.insert<mlir::mhlo::MhloDialect>();
-    runtime::RegisterDefaultXlaCpuRuntimeDialects(registry);
-    RegisterHloXlaRuntimePipelineDialects(registry);
-  };
-  opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-    CreateDefaultHloXlaRuntimePipeline(pm);
-    pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
-    pm.addNestedPass<mlir::func::FuncOp>(
-        mlir::bufferization::createBufferDeallocationPass());
-    runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(pm, copts);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        dialects->insert<mlir::mhlo::MhloDialect>();
+        runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
+        RegisterHloXlaRuntimePipelineDialects(dialects);
+      };
+  opts.compiler.create_compilation_pipeline =
+      [copts](xla::runtime::PassManager& passes) {
+        CreateDefaultHloXlaRuntimePipeline(passes);
+        passes->addPass(
+            mlir::bufferization::createBufferResultsToOutParamsPass());
+        passes->addNestedPass<mlir::func::FuncOp>(
+            mlir::bufferization::createBufferDeallocationPass());
+        runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+      };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
-      mlir::bufferization::BufferizeTypeConverter());
+      FlattenTuplesAndBufferizeTypeConverter());
 
   std::string serialized_mlir;
   llvm::raw_string_ostream os(serialized_mlir);
@@ -1360,7 +1425,8 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
                          jit_executable.status().message());
   }
   return std::make_unique<XlaRuntimeCpuExecutable>(
-      std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)));
+      std::make_unique<runtime::JitExecutable>(std::move(*jit_executable)),
+      xla_framework_mapping);
 }
 }  // namespace
 
@@ -1402,12 +1468,15 @@ CpuCompiler::CompileXlaRuntimeCpuExecutable(
   }
 
   mlir::MLIRContext mlir_context;
+  XlaFrameworkMapping xla_framework_mapping;
   TF_ASSIGN_OR_RETURN(
       auto mlir_module,
-      createMLIRModule(hlo_module.get(), mlir_context, assignment.get()));
+      createMLIRModule(hlo_module.get(), mlir_context, assignment.get(),
+                       &xla_framework_mapping));
 
-  TF_ASSIGN_OR_RETURN(auto xla_runtime_executable,
-                      GetXlaRuntimeCpuExecutable(*mlir_module, "main"));
+  TF_ASSIGN_OR_RETURN(
+      auto xla_runtime_executable,
+      GetXlaRuntimeCpuExecutable(*mlir_module, "main", xla_framework_mapping));
 
   return std::make_unique<CpuExecutable>(
       std::move(hlo_module), std::move(hlo_profile_printer_data),
@@ -1709,6 +1778,25 @@ se::Platform::Id CpuCompiler::PlatformId() const {
 
 HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
   return CpuExecutable::ShapeSizeBytes;
+}
+
+StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
+    Executable* executable) const {
+  auto* cpu_executable = tensorflow::down_cast<CpuExecutable*>(executable);
+  if (!cpu_executable)
+    return Internal("Could not downcast Executable to CpuExecutable");
+
+  HloModuleProto module_proto = cpu_executable->module().ToProto();
+  TF_ASSIGN_OR_RETURN(std::string obj_file, cpu_executable->GetObjFile());
+  TF_ASSIGN_OR_RETURN(std::string mlir_module, cpu_executable->GetMlirModule());
+  TF_ASSIGN_OR_RETURN(XlaFrameworkMapping xla_framework_mapping,
+                      cpu_executable->GetXlaFrameworkMapping());
+
+  std::unique_ptr<AotCompilationResult> result =
+      std::make_unique<CpuXlaRuntimeAotCompilationResult>(
+          module_proto, obj_file, mlir_module,
+          cpu_executable->buffer_assignment(), xla_framework_mapping);
+  return result;
 }
 
 }  // namespace cpu

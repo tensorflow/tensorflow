@@ -74,24 +74,26 @@ struct GpuSolverHandles {
     parent_ = parent;
     ScopedActivateExecutorContext sac{parent_};
 #if TF_ROCM_VERSION >= 40500
-    CHECK(wrap::hipsolverCreate(&hipsolver_handle) == rocblas_status_success)
+    CHECK(se::wrap::hipsolverCreate(&hipsolver_handle) ==
+          rocblas_status_success)
         << "Failed to create hipsolver instance";
 #endif
-    CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
+    CHECK(se::wrap::rocblas_create_handle(&rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to create rocBlas instance.";
-    CHECK(wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
+    CHECK(se::wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
           rocblas_status_success)
         << "Failed to set rocBlas stream.";
   }
 
   ~GpuSolverHandles() {
     ScopedActivateExecutorContext sac{parent_};
-    CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
+    CHECK(se::wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy rocBlas instance.";
 #if TF_ROCM_VERSION >= 40500
-    CHECK(wrap::hipsolverDestroy(hipsolver_handle) == rocblas_status_success)
+    CHECK(se::wrap::hipsolverDestroy(hipsolver_handle) ==
+          rocblas_status_success)
         << "Failed to destroy hipsolver instance.";
 #endif
   }
@@ -257,27 +259,28 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, s) m(double, d)
 #define BLAS_SOLVER_FN(method, type_prefix) \
-  wrap::rocblas##_##type_prefix##method
+  se::wrap::rocblas##_##type_prefix##method
 
 #if TF_ROCM_VERSION >= 40500
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 #define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
   m(std::complex<float>, C) m(std::complex<double>, Z)
-#define SOLVER_FN(method, hip_prefix) wrap::hipsolver##hip_prefix##method
+#define SOLVER_FN(method, hip_prefix) se::wrap::hipsolver##hip_prefix##method
 #else
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
   m(std::complex<float>, c) m(std::complex<double>, z)
-#define SOLVER_FN(method, type_prefix) wrap::rocsolver##_##type_prefix##method
+#define SOLVER_FN(method, type_prefix) \
+  se::wrap::rocsolver##_##type_prefix##method
 #endif
 
 // Macros to construct rocsolver/hipsolver method names.
 #define ROCSOLVER_FN(method, type_prefix) \
-  wrap::rocsolver##_##type_prefix##method
+  se::wrap::rocsolver##_##type_prefix##method
 #define BUFSIZE_FN(method, hip_prefix) \
-  wrap::hipsolver##hip_prefix##method##_bufferSize
+  se::wrap::hipsolver##hip_prefix##method##_bufferSize
 
 #if TF_ROCM_VERSION >= 40500
 

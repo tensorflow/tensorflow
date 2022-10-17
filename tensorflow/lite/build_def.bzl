@@ -631,30 +631,34 @@ def tflite_custom_c_library(
         )
         op_resolver_deps = "%s_create_op_resolver" % name
 
-    native.cc_library(
-        name = name,
-        srcs = ["//tensorflow/lite/c:c_api_srcs"],
+    if experimental:
         hdrs = [
             "//tensorflow/lite/c:c_api.h",
             "//tensorflow/lite/c:c_api_experimental.h",
             "//tensorflow/lite/c:c_api_opaque.h",
-        ],
+        ]
+        experimental_deps = [
+            "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
+        ]
+    else:
+        hdrs = [
+            "//tensorflow/lite/c:c_api.h",
+        ]
+        experimental_deps = []
+    native.cc_library(
+        name = name,
+        hdrs = hdrs,
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
             "//tensorflow/lite/c:common",
             "//tensorflow/lite/core/c:private_c_api",
             "//tensorflow/lite/c:c_api_types",
+            "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core:private_headers",
-            "//tensorflow/lite/kernels:kernel_util",
             "//tensorflow/lite:builtin_ops",
-            "//tensorflow/lite:framework",
-            "//tensorflow/lite:version",
-            "//tensorflow/lite/core/api",
-            "//tensorflow/lite/delegates:interpreter_utils",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-            "//tensorflow/lite/kernels/internal:compatibility",
-        ],
+        ] + experimental_deps,
         **kwargs
     )
 

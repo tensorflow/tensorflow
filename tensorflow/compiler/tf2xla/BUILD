@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "if_google", "if_libtpu", "tf_cc_binary", "tf_cc_test", "tf_copts", "tf_cuda_cc_test", "tf_gen_op_wrapper_py", "tf_openmp_copts")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "filegroup", "get_compatible_with_portable")
 
 # copybara:uncomment_begin(google-only)
 # load("//devtools/deps/check:deps_check.bzl", "check_dependencies")
@@ -16,12 +16,6 @@ load(
     "tf_proto_library",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load("//tensorflow/compiler/xla/service/cpu:build_defs.bzl", "runtime_copts")
 
@@ -183,10 +177,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
-        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
@@ -215,6 +209,8 @@ filegroup(
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
         "//tensorflow/core/platform:xla_cpu_runtime_srcs",
+        "//tensorflow/tsl/framework:xla_cpu_runtime_hdrs",
+        "//tensorflow/tsl/framework/fixedpoint:xla_cpu_runtime_hdrs",
         "//tensorflow/tsl/platform:xla_cpu_runtime_srcs",
     ],
     visibility = ["//tensorflow/tools/pip_package:__pkg__"],
@@ -251,7 +247,11 @@ cc_library(
         ":xla_compiled_cpu_runtime_hdrs",
     ],
     copts = runtime_copts() + tf_openmp_copts(),
-    features = ["fully_static_link"],
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
+    features = [
+        "fully_static_link",
+        "-parse_headers",
+    ],
     linkstatic = 1,
     visibility = [":friends"],
     # Note, we specifically removed MKL and multithreaded dependencies so the
@@ -305,6 +305,7 @@ cc_library(
 #         "//tensorflow/core/framework:numeric_types",
 #         "//tensorflow/tsl/framework:numeric_types",
 #         "//tensorflow/tsl/framework:device_type",
+#         "//tensorflow/tsl/framework:fixedpoint_types",
 #         "//tensorflow/tsl/platform:bfloat16",
 #         "//tensorflow/tsl/platform:blocking_counter",
 #         "//tensorflow/tsl/platform:byte_order",
@@ -454,7 +455,7 @@ cc_library(
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:shape_inference",
         "//tensorflow/compiler/mlir:array_container_utils",
-        "//tensorflow/compiler/mlir/xla:layout_util",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/xla/client:value_inference",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
@@ -629,7 +630,6 @@ cc_library(
     deps = [
         ":common",
         ":host_compute_metadata_proto_cc",
-        "//tensorflow/compiler/mlir/xla:layout_util",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:types",
@@ -641,6 +641,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:layout_util",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

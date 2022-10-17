@@ -61,6 +61,8 @@ ResourceConstructingOps ResourceConstructingOps::getPessimisticValueState(
     }
   } else if (auto vh = dyn_cast<TF::VarHandleOp>(value.getDefiningOp())) {
     return ResourceConstructingOps(vh);
+  } else if (auto it = dyn_cast<TF::IteratorOp>(value.getDefiningOp())) {
+    return ResourceConstructingOps(it);
   }
   return ResourceConstructingOps();
 }

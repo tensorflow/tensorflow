@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -113,7 +113,7 @@ SmallVector<Value> ExtractValuesToPrint(Operation* op) {
     return {op->getResult(0)};
   }
   if (auto linalg = dyn_cast<linalg::LinalgOp>(op)) {
-    return linalg.getOutputBufferOperands();
+    return linalg.getOutputOperands();
   }
   if (auto loop = dyn_cast<gml_st::LoopOp>(op)) {
     return loop.getOutputs();

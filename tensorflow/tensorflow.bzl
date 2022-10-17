@@ -1,3 +1,4 @@
+#
 # Returns the options to use for a C++ library or binary build.
 # Uses the ":optmode" config_setting to pick the options.
 load(
@@ -777,7 +778,7 @@ def tf_cc_shared_object(
         )
 
 # buildozer: disable=function-docstring-args
-def tf_cc_shared_library(
+def tf_cc_shared_library_opensource(
         name,
         srcs = [],
         dynamic_deps = [],
@@ -816,7 +817,7 @@ def tf_cc_shared_library(
                 "-Wl,-soname," + soname,
             ],
         })
-        _tf_cc_shared_library(
+        _tf_cc_shared_library_opensource(
             name_os_full,
             additional_linker_inputs = additional_linker_inputs,
             copts = copts,
@@ -856,7 +857,7 @@ def tf_cc_shared_library(
             visibility = visibility,
         )
 
-def _tf_cc_shared_library(
+def _tf_cc_shared_library_opensource(
         name,
         additional_linker_inputs = None,
         copts = None,
@@ -942,6 +943,9 @@ def get_suffix_major_version(version):
 
 def extract_major_version(version):
     return str(version).split(".", 1)[0]
+
+# Export open source version of tf_cc_shared_library under base name as well.
+tf_cc_shared_library = tf_cc_shared_library_opensource
 
 # Links in the framework shared object
 # (//third_party/tensorflow:libtensorflow_framework.so) when not building
@@ -1348,7 +1352,6 @@ def tf_cc_test(
         srcs,
         deps,
         data = [],
-        linkstatic = 0,
         extra_copts = [],
         suffix = "",
         linkopts = lrt_if_needed(),
@@ -1381,16 +1384,6 @@ def tf_cc_test(
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
         exec_properties = tf_exec_properties(kwargs),
-        # Nested select() statements seem not to be supported when passed to
-        # linkstatic, and we already have a cuda select() passed in to this
-        # function.
-        linkstatic = linkstatic or select({
-            # cc_tests with ".so"s in srcs incorrectly link on Darwin unless
-            # linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
-            # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:macos"): 1,
-            "//conditions:default": 0,
-        }),
         **kwargs
     )
 
@@ -1495,7 +1488,6 @@ def tf_gpu_only_cc_test(
         tags = [],
         data = [],
         size = "medium",
-        linkstatic = 0,
         args = [],
         kernels = [],
         linkopts = []):
@@ -1841,7 +1833,7 @@ def tf_kernel_library(
         hdrs = hdrs,
         textual_hdrs = textual_hdrs,
         copts = copts,
-        cuda_deps = cuda_deps,
+        cuda_deps = cuda_deps + gpu_deps,
         linkstatic = 1,  # Needed since alwayslink is broken in bazel b/27630669
         alwayslink = alwayslink,
         deps = deps,
@@ -2137,9 +2129,20 @@ check_deps = rule(
     },
 )
 
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
-    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
-      """
+def tf_custom_op_library(
+        name,
+        srcs = [],
+        gpu_srcs = [],
+        deps = [],
+        gpu_deps = None,
+        linkopts = [],
+        copts = [],
+        **kwargs):
+    """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels."""
+
+    if not gpu_deps:
+        gpu_deps = []
+
     deps = deps + if_cuda_or_rocm([
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]) + if_cuda([
@@ -2161,7 +2164,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
             srcs = gpu_srcs,
             copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            deps = deps,
+            deps = deps + gpu_deps,
             **kwargs
         )
         deps = deps + [":" + basename + "_gpu"]
@@ -2278,7 +2281,7 @@ _append_init_to_versionscript = rule(
 # This macro should only be used for pywrap_tensorflow_internal.so.
 # It was copied and refined from the original tf_py_wrap_cc_opensource rule.
 # buildozer: disable=function-docstring-args
-def pywrap_tensorflow_macro(
+def pywrap_tensorflow_macro_opensource(
         name,
         srcs = [],
         roots = [],
@@ -2336,7 +2339,7 @@ def pywrap_tensorflow_macro(
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
-    tf_cc_shared_library(
+    tf_cc_shared_library_opensource(
         name = cc_shared_library_name,
         srcs = srcs,
         # framework_so is no longer needed as libtf.so is included via the extra_deps.
@@ -2405,6 +2408,9 @@ def pywrap_tensorflow_macro(
             "//conditions:default": [":" + cc_shared_library_name],
         }),
     )
+
+# Export open source version of pywrap_tensorflow_macro under base name as well.
+pywrap_tensorflow_macro = pywrap_tensorflow_macro_opensource
 
 # This macro is for running python tests against system installed pip package
 # on Windows.
@@ -2872,7 +2878,7 @@ def pybind_library(
     )
 
 # buildozer: disable=function-docstring-args
-def pybind_extension(
+def pybind_extension_opensource(
         name,
         srcs,
         module_name = None,
@@ -3083,6 +3089,9 @@ def pybind_extension(
         compatible_with = compatible_with,
     )
 
+# Export open source version of pybind_extension under base name as well.
+pybind_extension = pybind_extension_opensource
+
 def tf_python_pybind_static_deps(testonly = False):
     # TODO(b/146808376): Reduce the dependencies to those that are really needed.
     static_deps = [
@@ -3156,7 +3165,7 @@ def tf_python_pybind_static_deps(testonly = False):
     return if_oss(static_deps)
 
 # buildozer: enable=function-docstring-args
-def tf_python_pybind_extension(
+def tf_python_pybind_extension_opensource(
         name,
         srcs,
         module_name = None,
@@ -3171,7 +3180,7 @@ def tf_python_pybind_extension(
         testonly = False,
         visibility = None,
         win_def_file = None):
-    """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
+    """A wrapper macro for pybind_extension_opensource that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
 
@@ -3180,7 +3189,7 @@ def tf_python_pybind_extension(
     """
     extended_deps = deps + if_mkl_ml(["//third_party/mkl:intel_binary_blob"])
     extended_deps += [] if dynamic_deps else if_windows([], ["//tensorflow:libtensorflow_framework_import_lib"]) + tf_binary_pybind_deps()
-    pybind_extension(
+    pybind_extension_opensource(
         name,
         srcs,
         module_name = module_name,
@@ -3197,8 +3206,11 @@ def tf_python_pybind_extension(
         win_def_file = win_def_file,
     )
 
-def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
-    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension.
+# Export open source version of tf_python_pybind_extension under base name as well.
+tf_python_pybind_extension = tf_python_pybind_extension_opensource
+
+def tf_pybind_cc_library_wrapper_opensource(name, deps, visibility = None, **kwargs):
+    """Wrapper for cc_library and proto dependencies used by tf_python_pybind_extension_opensource.
 
     This wrapper ensures that cc libraries' and protos' headers are made
     available to pybind code, without creating ODR violations in the dynamically
@@ -3206,6 +3218,9 @@ def tf_pybind_cc_library_wrapper(name, deps, visibility = None, **kwargs):
     exported by, the core pywrap_tensorflow_internal.so
     """
     cc_header_only_library(name = name, deps = deps, visibility = visibility, **kwargs)
+
+# Export open source version of tf_pybind_cc_library_wrapper under base name as well.
+tf_pybind_cc_library_wrapper = tf_pybind_cc_library_wrapper_opensource
 
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.

@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -61,10 +60,13 @@ struct BlockArgumentInfo {
   unsigned num_users;
 };
 
+#define GEN_PASS_DEF_TPUSPACETODEPTHPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // TODO(wangtao): add a pass to check if it is profitable to space to depth
 // transform and invoke the transform if it is needed.
 struct TPUSpaceToDepthPass
-    : public TF::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
+    : public impl::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
   void runOnOperation() override;
 };
 

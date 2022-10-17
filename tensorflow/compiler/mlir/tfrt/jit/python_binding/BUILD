@@ -1,9 +1,5 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "pybind_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 licenses(["notice"])
 
@@ -43,6 +39,7 @@ pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
         "//tensorflow/compiler/mlir/tfrt/python_tests:python_test_attrs_registration",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -55,6 +52,7 @@ pybind_extension(
         "@tf_runtime//:dtype",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
+        "@tf_runtime//backends/jitrt:async_task_runner",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
         "@tf_runtime//backends/jitrt:results",
     ],

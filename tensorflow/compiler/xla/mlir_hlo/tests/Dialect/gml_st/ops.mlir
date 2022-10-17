@@ -9,37 +9,9 @@ func.func @types() {
   %0 = gml_st.space [64] : !gml_st.tile<64>
   // CHECK: %[[ARG2:.*]] = gml_st.space [64, 32] : !gml_st.tile<64x32>
   %1 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // CHECK: %{{.*}} = gml_st.point %[[ARG]] [42] : !gml_st.tile<64> to !gml_st.point
-  %2 = gml_st.point %0 [42] : !gml_st.tile<64> to !gml_st.point
   // CHECK: %{{.*}} = gml_st.tile %[[ARG2]] [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
   %3 = gml_st.tile %1 [0, 0] [42, 16] [1, 1] : !gml_st.tile<64x32> to !gml_st.tile<42x16>
-  // CHECK: %{{.*}} = gml_st.transpose_dims %[[ARG2]], [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
-  %4 = gml_st.transpose_dims %1, [1, 0] : !gml_st.tile<64x32> to !gml_st.tile<32x64>
-  // CHECK: %{{.*}} = gml_st.drop_dims %[[ARG2]], [1] : !gml_st.tile<64x32> to !gml_st.tile<32>
-  %5 = gml_st.drop_dims %1, [1] : !gml_st.tile<64x32> to !gml_st.tile<32>
   func.return
-}
-
-// -----
-
-// CHECK-LABEL: @collapse_tile
-// CHECK-SAME:  %[[ARG0:.*]]: !gml_st.tile<?x64x128>
-func.func @collapse_tile(%tile: !gml_st.tile<?x64x128>) -> !gml_st.tile<?x128> {
-  // CHECK: %[[VAL_0:.*]] = gml_st.drop_dims %[[ARG0]], [0, 2] : !gml_st.tile<?x64x128> to !gml_st.tile<?x128>
-  // CHECK: return %[[VAL_0]]
-  %0 = gml_st.drop_dims %tile, [0, 2] : !gml_st.tile<?x64x128> to !gml_st.tile<?x128>
-  func.return %0 : !gml_st.tile<?x128>
-}
-
-// -----
-
-// CHECK-LABEL: @collapse_point
-// CHECK-SAME:  %[[ARG0:.*]]: !gml_st.point
-func.func @collapse_point(%point: !gml_st.point) -> !gml_st.point {
-  // CHECK: %[[VAL_0:.*]] = gml_st.drop_dims %[[ARG0]], [0, 2] : !gml_st.point to !gml_st.point
-  // CHECK: return %[[VAL_0]]
-  %0 = gml_st.drop_dims %point, [0, 2] : !gml_st.point to !gml_st.point
-  func.return %0 : !gml_st.point
 }
 
 // -----
@@ -51,8 +23,6 @@ func.func @dynamic_types(%size : index) {
   %0 = gml_st.space [%size] : !gml_st.tile<?>
   // CHECK: %[[ARG2:.*]] = gml_st.space [%[[SIZE]], 16] : !gml_st.tile<?x16>
   %1 = gml_st.space [%size, 16] : !gml_st.tile<?x16>
-  // CHECK: %{{.*}} = gml_st.point %[[ARG]] [42] : !gml_st.tile<?> to !gml_st.point
-  %2 = gml_st.point %0 [42] : !gml_st.tile<?> to !gml_st.point
   // CHECK: %{{.*}} = gml_st.tile %[[ARG2]] [0, 0] [42, 8] [1, 1] : !gml_st.tile<?x16> to !gml_st.tile<42x8>
   %3 = gml_st.tile %1 [0, 0] [42, 8] [1, 1] : !gml_st.tile<?x16> to !gml_st.tile<42x8>
   func.return
@@ -61,42 +31,32 @@ func.func @dynamic_types(%size : index) {
 // -----
 
 // CHECK-LABEL: @materialize_static_tensor
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<64x32xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.tile<1x1>
-func.func @materialize_static_tensor(%tensor: tensor<64x32xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.tile<1x1>) {
+// CHECK-SAME: %[[TENSOR:.*]]: tensor<64x32xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>
+func.func @materialize_static_tensor(%tensor: tensor<64x32xf32>, %tile: !gml_st.tile<42x16>) {
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[TILE]]] : tensor<64x32xf32>[!gml_st.tile<42x16>]
   %0 = gml_st.materialize %tensor[%tile] : tensor<64x32xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[POINT]]] : tensor<64x32xf32>[!gml_st.tile<1x1>]
-  %1 = gml_st.materialize %tensor[%point] : tensor<64x32xf32>[!gml_st.tile<1x1>] to f32
   func.return
 }
 
 // -----
 
 // CHECK-LABEL: @materialize_dynamic_tensor
-// CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>, %[[POINT:.*]]: !gml_st.tile<1x1>
-func.func @materialize_dynamic_tensor(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42x16>, %point: !gml_st.tile<1x1>) {
+// CHECK-SAME: %[[TENSOR:.*]]: tensor<?x?xf32>, %[[TILE:.*]]: !gml_st.tile<42x16>
+func.func @materialize_dynamic_tensor(%tensor: tensor<?x?xf32>, %tile: !gml_st.tile<42x16>) {
   // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[TILE]]] : tensor<?x?xf32>[!gml_st.tile<42x16>]
   %0 = gml_st.materialize %tensor[%tile] : tensor<?x?xf32>[!gml_st.tile<42x16>] to tensor<42x16xf32>
-  // CHECK: %{{.*}} = gml_st.materialize %[[TENSOR]][%[[POINT]]] : tensor<?x?xf32>[!gml_st.tile<1x1>]
-  %1 = gml_st.materialize %tensor[%point] : tensor<?x?xf32>[!gml_st.tile<1x1>] to f32
   func.return
 }
 
 // CHECK-LABEL: @materialize_vector
 // CHECK-SAME: %[[VECTOR:.*]]: vector<64x32xf32>,
-// CHECK-SAME: %[[TILE:.*]]: !gml_st.tile<42x16>,
-// CHECK-SAME: %[[POINT:.*]]: !gml_st.tile<1x1>
+// CHECK-SAME: %[[TILE:.*]]: !gml_st.tile<42x16>
 func.func @materialize_vector(%vector: vector<64x32xf32>,
-                              %tile: !gml_st.tile<42x16>,
-                              %point: !gml_st.tile<1x1>) {
+                              %tile: !gml_st.tile<42x16>) {
   // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]][%[[TILE]]]
   // CHECK-SAME: : vector<64x32xf32>[!gml_st.tile<42x16>]
   %0 = gml_st.materialize %vector[%tile]
     : vector<64x32xf32>[!gml_st.tile<42x16>] to vector<42x16xf32>
-  // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]][%[[POINT]]]
-  // CHECK-SAME: : vector<64x32xf32>[!gml_st.tile<1x1>]
-  %1 = gml_st.materialize %vector[%point]
-    : vector<64x32xf32>[!gml_st.tile<1x1>] to f32
   func.return
 }
 
@@ -175,7 +135,9 @@ func.func @tiled_loop_reduction(%input_3d: tensor<16x24x32xf32>,
           %i2d_ = %input_2d: tensor<16x32xf32>,
           %i1d_ = %input_1d: tensor<24xf32>)
       outs(%o_ =  %output: tensor<24xf32>)
-      iterators["reduction", "parallel", "reduction"]
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>,
+                #gml_st.iterator_type<reduction>]
       distribution["block_x", "block_y", "none"] {
     %sub_3d = tensor.extract_slice %i3d_[%i, %j, %k][2, 4, 8][1, 1, 1]
       : tensor<16x24x32xf32> to tensor<2x4x8xf32>
@@ -226,7 +188,9 @@ func.func @tiled_loop_on_buffers(%input_3d: memref<16x24x32xf32>,
           %i2d_ = %input_2d: memref<16x32xf32>,
           %i1d_ = %input_1d: memref<24xf32>)
       outs(%o_ =  %output: memref<24xf32>)
-      iterators["reduction", "parallel", "reduction"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>,
+                #gml_st.iterator_type<reduction>] {
     %sub_3d = memref.subview %i3d_[%i, %j, %k][2, 4, 8][1, 1, 1]
       : memref<16x24x32xf32> to memref<2x4x8xf32, #map_1>
     %sub_2d = memref.subview %i2d_[%i, %k][2, 8][1, 1]
@@ -309,6 +273,25 @@ func.func @loop_on_points(%output: tensor<8xf32>) -> tensor<8xf32> {
   func.return %sum : tensor<8xf32>
 }
 // CHECK-LABEL: func @loop_on_points
+
+// -----
+func.func @parallel_with_distribution(%output: tensor<8xf32>) -> tensor<8xf32> {
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c8 = arith.constant 8 : index
+  %c0_f32 = arith.constant 0.0 : f32
+
+  %space = gml_st.space [8] : !gml_st.tile<8>
+  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) distribution ("x") {
+    %tile = gml_st.tile %space [%i] [1] [1]
+      : !gml_st.tile<8> to !gml_st.tile<1>
+    gml_st.set_yield %c0_f32 into %output[%tile]
+      : f32 into tensor<8xf32>[!gml_st.tile<1>]
+  } : tensor<8xf32>
+  func.return %sum : tensor<8xf32>
+}
+// CHECK-LABEL: func @parallel_with_distribution
+// CHECK: gml_st.parallel {{.*}} distribution ("x")
 
 // -----
 
@@ -586,38 +569,6 @@ func.func @reduce_tiles(%arg: tensor<8xf32>,
 
 // -----
 
-func.func @reduce_points(%arg: tensor<8xf32>,
-    %output: tensor<f32>) -> tensor<f32> {
-  %c0 = arith.constant 0 : index
-  %c1 = arith.constant 1 : index
-  %c8 = arith.constant 8 : index
-
-  %space_0d = gml_st.space [] : !gml_st.tile<>
-  %space_1d = gml_st.space [8] : !gml_st.tile<8>
-
-  %sum = gml_st.parallel (%i) = (%c0) to (%c8) step (%c1) {
-    %point = gml_st.point %space_1d [%i]
-      : !gml_st.tile<8> to !gml_st.point
-    %arg_sub = gml_st.materialize %arg[%point]
-      : tensor<8xf32>[!gml_st.point] to f32
-
-    %point_out = gml_st.point %space_0d []
-      : !gml_st.tile<> to !gml_st.point
-    gml_st.set_yield %arg_sub into %output[%point_out]
-      acc (%in, %out: f32) {
-      %sum = arith.addf %in, %out : f32
-      gml_st.yield %sum : f32
-    } : f32 into tensor<f32>[!gml_st.point]
-  } : tensor<f32>
-  func.return %sum : tensor<f32>
-}
-// CHECK-LABEL: func @reduce_points
-// CHECK:       gml_st.set_yield
-// CHECK-SAME:    acc (%{{.*}}, %{{.*}}: f32)
-// CHECK:       } : f32 into tensor<f32>[!gml_st.point]
-
-// -----
-
 #id_1d = affine_map<(d0) -> (d0)>
 #id_2d = affine_map<(d0, d1) -> (d0, d1)>
 #map_1d = affine_map<(d0, d1) -> (d1)>
@@ -639,7 +590,7 @@ func.func @column_reduction(%arg: tensor<128x16xf32>,
     %arg_sub = gml_st.materialize %arg[%arg_tile]
       : tensor<128x16xf32>[!gml_st.tile<8x8>] to tensor<8x8xf32>
 
-    %init = linalg.init_tensor [8] : tensor<8xf32>
+    %init = tensor.empty() : tensor<8xf32>
     %fill = linalg.fill ins(%cst : f32)
                         outs(%init : tensor<8xf32>) -> tensor<8xf32>
 

@@ -40,22 +40,15 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 
 auto* enabled_usage_metric =
     monitoring::Gauge<bool, 0>::New("/coordination_service/agent/enabled",
                                     "Tracks usage of coordination service.");
-auto* enabled_with_server_def_usage_metric = monitoring::Gauge<bool, 0>::New(
-    "/coordination_service/agent/enabled_with_server_def",
-    "Tracks usage of coordination service that is initialized with "
-    "tf.ServerDef.");
 namespace {
 
 constexpr absl::Duration kDefaultClusterRegisterTimeout = absl::Hours(1);
@@ -72,9 +65,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
       LOG(ERROR) << "Coordination agent shutdown failed with status: " << s;
     }
   }
-  Status Initialize(Env* env, const ServerDef& server_def,
-                    std::unique_ptr<CoordinationClientCache> client_cache,
-                    StatusCallback error_fn) override;
   Status Initialize(Env* env, const std::string& job_name, int task_id,
                     const CoordinationServiceConfig& configs,
                     std::unique_ptr<CoordinationClient> leader_client,
@@ -90,8 +80,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
       const CoordinationServiceDeviceInfo& local_devices) override;
   const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
   StatusOr<CoordinatedTask> GetOwnTask() override;
-  StatusOr<CoordinatedTaskState> GetTaskStatus(
-      const CoordinatedTask& task) override;
+  StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) override;
   Status ReportError(const Status& error) override;
   Status Shutdown() override;
   Status Reset() override;
@@ -165,34 +155,6 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
 
   TF_DISALLOW_COPY_AND_ASSIGN(CoordinationServiceAgentImpl);
 };
-
-Status CoordinationServiceAgentImpl::Initialize(
-    Env* env, const ServerDef& server_def,
-    std::unique_ptr<CoordinationClientCache> client_cache,
-    StatusCallback error_fn) {
-  enabled_with_server_def_usage_metric->GetCell()->Set(true);
-  CoordinationServiceConfig configs =
-      server_def.default_session_config().experimental().coordination_config();
-  if (configs.service_leader().empty()) {
-    const std::string& collective_leader = server_def.default_session_config()
-                                               .experimental()
-                                               .collective_group_leader();
-    if (!collective_leader.empty()) {
-      configs.set_service_leader(collective_leader);
-      LOG(INFO) << "No coordination leader is set, using the collective leader "
-                << collective_leader;
-    } else {
-      const std::string& default_leader =
-          strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:0");
-      configs.set_service_leader(default_leader);
-      LOG(INFO) << "No coordination leader is set, using the default leader "
-                << default_leader;
-    }
-  }
-  return Initialize(
-      env, server_def.job_name(), server_def.task_index(), configs,
-      client_cache->GetOwnedClient(configs.service_leader()), error_fn);
-}
 
 Status CoordinationServiceAgentImpl::Initialize(
     Env* env, const std::string& job_name, int task_id,
@@ -397,10 +359,26 @@ StatusOr<CoordinatedTask> CoordinationServiceAgentImpl::GetOwnTask() {
   return task_;
 }
 
-StatusOr<CoordinatedTaskState> CoordinationServiceAgentImpl::GetTaskStatus(
-    const CoordinatedTask& task) {
-  return MakeCoordinationError(errors::Unimplemented(
-      "CoordinationServiceAgentImpl::GetTaskStatus is not implemented."));
+StatusOr<std::vector<CoordinatedTaskStateInfo>>
+CoordinationServiceAgentImpl::GetTaskState(
+    const std::vector<CoordinatedTask>& tasks) {
+  GetTaskStateRequest request;
+  *request.mutable_source_task() = {tasks.begin(), tasks.end()};
+  GetTaskStateResponse response;
+  absl::Notification n;
+  StatusOr<std::vector<CoordinatedTaskStateInfo>> result;
+  leader_client_->GetTaskStateAsync(&request, &response, [&](const Status& s) {
+    if (s.ok()) {
+      result = std::vector<CoordinatedTaskStateInfo>(
+          std::make_move_iterator(response.task_state().begin()),
+          std::make_move_iterator(response.task_state().end()));
+    } else {
+      result = s;
+    }
+    n.Notify();
+  });
+  n.WaitForNotification();
+  return result;
 }
 
 Status CoordinationServiceAgentImpl::ReportError(const Status& error) {

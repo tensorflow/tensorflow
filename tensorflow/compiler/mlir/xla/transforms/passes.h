@@ -83,6 +83,13 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
 void PopulateLegalizeTfPatterns(MLIRContext* context,
                                 RewritePatternSet* patterns);
 
+// Populates TF to MHLO legalization for some of the quantization ops.
+//
+// TODO(hinsu): Remove this once we combine quantized and non quantized op
+// legalization in the ODML conversion pipeline.
+void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
+                                            RewritePatternSet* patterns);
+
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
 bool IsOpAllowedTf2XlaFallback(Operation* op);
 

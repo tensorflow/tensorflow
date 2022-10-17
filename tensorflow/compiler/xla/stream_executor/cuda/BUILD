@@ -3,7 +3,7 @@
 
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_cuda_cc_test")
 load("//tensorflow/tsl:tsl.bzl", "if_google", "tf_copts")
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -17,7 +17,7 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
     "tf_cuda_tests_tags",
 )
@@ -125,7 +125,7 @@ cc_library(
     ] + tf_additional_cuda_driver_deps()) + select({
         # include dynamic loading implementation only when if_cuda_is_configured and build dynamically
         "//tensorflow/tsl:is_cuda_enabled_and_oss": ["cudart_stub"],
-        "//conditions:default": ["//tensorflow/core:cuda"],
+        "//conditions:default": ["//tensorflow/tsl/platform:cuda"],
     }) + [
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -322,8 +322,6 @@ cc_library(
         "//third_party/eigen3",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
-        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
@@ -336,6 +334,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
     ]) + if_static([
         "//tensorflow/tsl/platform:tensor_float_32_utils",
     ]),
@@ -638,10 +637,10 @@ cc_library(
     srcs = if_cuda_is_configured(["cuda_asm_compiler.cc"]),
     deps = if_cuda_is_configured([
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/compiler/xla/stream_executor/gpu:asm_compiler_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
+        "//tensorflow/tsl/platform:errors",
     ]),
 )
 
@@ -673,6 +672,19 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
     ],
     alwayslink = True,
+)
+
+tf_cc_test(
+    name = "cuda_gpu_executor_test",
+    srcs = ["cuda_gpu_executor_test.cc"],
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":cuda_gpu_executor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
 )
 
 cc_library(
@@ -717,10 +729,10 @@ cc_library(
 
 cc_library(
     name = "stream_executor_cuda",
-    deps = if_google(
-        [
-            "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
-        ] + select({
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
+    ] + if_google(
+        select({
             # copybara:uncomment_begin(different config setting in OSS)
             # "//tools/cc_target_os:gce": [],
             # copybara:uncomment_end_and_comment_begin

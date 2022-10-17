@@ -3,15 +3,10 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load(
-    "//tensorflow/core/platform:build_config_root.bzl",
+    "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -147,6 +142,44 @@ cc_library(
 )
 
 cc_library(
+    name = "pjrt_client_registry",
+    srcs = ["pjrt_client_registry.cc"],
+    hdrs = ["pjrt_client_registry.h"],
+    deps = [
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_runner_interface",
+        "//tensorflow/compiler/xla/service:hlo_runner_pjrt",
+    ],
+)
+
+cc_library(
+    name = "pjrt_cpu_client_registry",
+    testonly = True,
+    srcs = [
+        "pjrt_cpu_client_registry.cc",
+    ],
+    deps = [
+        ":pjrt_client_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
+    ],
+)
+
+cc_library(
+    name = "pjrt_gpu_client_registry",
+    testonly = True,
+    srcs = [
+        "pjrt_gpu_client_registry.cc",
+    ],
+    deps = [
+        ":pjrt_client_registry",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+    ],
+)
+
+cc_library(
     name = "hlo_test_base",
     testonly = True,
     srcs = ["hlo_test_base.cc"],
@@ -155,6 +188,7 @@ cc_library(
         ":filecheck",
         ":literal_test_util",
         ":manifest_checking_test",
+        ":pjrt_client_registry",
         ":test_utils",
         ":verified_hlo_module",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -169,17 +203,16 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_module_util",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_runner_interface",
+        "//tensorflow/compiler/xla/service:hlo_runner_pjrt",
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:interpreter_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -238,7 +271,6 @@ cc_library(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
@@ -1077,6 +1109,7 @@ xla_test(
 xla_test(
     name = "scatter_test",
     srcs = ["scatter_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -1425,7 +1458,7 @@ xla_test(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/strings",
@@ -1692,8 +1725,7 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
-    # TODO(b/215243829): 3 tests fail with the GLC latency table.
-    backend_tags = {"ghostlite_iss": ["broken"]},
+    shard_count = 25,
     tags = [
         "nomac",  # b/194731834
         "nozapfhahn",
@@ -1724,22 +1756,22 @@ xla_test(
 xla_test(
     name = "copy_test",
     srcs = ["copy_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
+        ":literal_test_util",
+        ":pjrt_client_registry",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/service:hlo_runner_pjrt",
         "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -2089,6 +2121,7 @@ xla_test(
         # All reduce is not supported on the interpreter backend.
         "interpreter",
     ],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":client_library_test_base",
         ":hlo_test_base",
@@ -2467,6 +2500,7 @@ xla_test(
 xla_test(
     name = "broadcast_test",
     srcs = ["broadcast_test.cc"],
+    tags = ["test_hlo_pjrt_runner"],
     deps = [
         ":hlo_test_base",
         ":literal_test_util",

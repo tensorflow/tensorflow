@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -50,23 +50,23 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
-#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/tsl/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
 namespace mhlo {
@@ -643,42 +643,6 @@ bool CheckInnerDimStatic(ShapedType type, Builder *builder) {
 static DenseIntElementsAttr Get2DTransposePerm(BoolAttr transpose, Builder *b) {
   if (transpose.getValue()) return GetI64ElementsAttr({1, 0}, b);
   return GetI64ElementsAttr({0, 1}, b);
-}
-
-//===----------------------------------------------------------------------===//
-// MatrixBandPart op utilities.
-//===----------------------------------------------------------------------===//
-
-// Gets the size of the dimension `dim_from_end` from the end of `input`.
-// Requires that `input` is a tensor.
-static int GetDimensionSizeFromEnd(Value input, int dim_from_end) {
-  // Note: the verifier enforces that `input` is a ranked tensor.
-  auto input_type = input.getType().cast<TensorType>();
-  auto input_shape = input_type.getShape();
-  int dim = (input_shape.size() - 1) - dim_from_end;
-  return input_shape[dim];
-}
-
-// Gets a 2D tensor type with shape {dim_0, dim_1}, where `dim_0` and `dim_1`
-// have the same size as the last two dimensions of `input` (the second-to-last
-// dimension and last dimension, respectively). The element type of the
-// outputted RankedTensorType will match the element type of `input`.
-// Requires that `input` is a tensor.
-static RankedTensorType Get2DTensorType(Value input, Value num_lower) {
-  // `dim_0` refers to the second-to-last dimension; `dim_1` refers to the last.
-  int dim_0 = GetDimensionSizeFromEnd(input, 1);
-  int dim_1 = GetDimensionSizeFromEnd(input, 0);
-  auto element_type = num_lower.getType().cast<TensorType>().getElementType();
-  return tensorflow::GetTypeFromTFTensorShape({dim_0, dim_1}, element_type);
-}
-
-// Creates a HLO ConvertOp, converting `input` to have the same element type as
-// `elem_type_tensor`. Requires `elem_type_tensor` to be a tensor.
-static Value CreateConvertOp(OpBuilder *builder, Location loc, Value input,
-                             Value elem_type_tensor) {
-  auto element_type =
-      elem_type_tensor.getType().cast<TensorType>().getElementType();
-  return builder->create<mhlo::ConvertOp>(loc, input, element_type);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1347,7 +1311,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
         int64_t pad_high_int64;
         int64_t input_size = input_ty.getDimSize(dim);
         if (input_size == ShapedType::kDynamicSize) return failure();
-        tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+        tsl::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
             input_size, filter_ty.getDimSize(i), dilation, stride, padding,
             &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return failure();
@@ -3546,7 +3510,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     for (auto dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
-      if (dim_val == ShapedType::kDynamicSize) {
+      if (dim_val == -1) {
         // We cannot have more than one dynamic dimension.
         assert(!dynamic_dim_index && "invalid split sizes");
         dynamic_dim_index = dim.index();
@@ -3706,17 +3670,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     ArrayRef<int64_t> input_shape = input_ty.getShape();
     int last_dim = std::max(static_cast<int>(input_shape.size()) - 1, 0);
 
-    // When begin/end values are dynamic, we can only support shrinking a major
-    // axis. For instance, if there are 4 dims, we can support a
-    // shrink_axis_mask of 0001 (1), 0011 (3), 0111 (7), or 1111 (15), but no
-    // other.
-    bool shrink_axis_mask_ok = llvm::isMask_64(op.shrink_axis_mask());
-    if (!shrink_axis_mask_ok)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that shrink_axis_mask, if set, refer to a major axis "
-          "dimension (when begin/end values are dynamic)");
-
     // When begin/end values are dynamic, the ellipsis mask, if set, must refer
     // to the last dimension.
     int ellipsis_mask = op.ellipsis_mask();
@@ -3725,13 +3678,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
           op,
           "requires that ellipsis_mask, if set, refer to the last dimension of "
           "input (when begin/end values are dynamic)");
-
-    uint64_t new_axis_mask = op.new_axis_mask();
-    if (new_axis_mask)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that new_axis_mask is either set to 0 or not set when "
-          "begin/end values are dynamic");
 
     // In this case where the begin and end values are dynamic, we only support
     // cases where the number of output elements has to be equal to the number

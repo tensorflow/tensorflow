@@ -22,7 +22,6 @@ from tensorflow.python.keras.saving.saved_model import load_context
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
@@ -208,7 +207,3 @@ def load_model(filepath, custom_objects=None, compile=True, options=None):  # py
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '
       'available) or SavedModel.')
-
-# Inject the load_model function to keras_deps to remove the dependency
-# from TFLite to Keras.
-keras_deps.register_load_model_function(load_model)

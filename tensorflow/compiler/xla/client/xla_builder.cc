@@ -195,6 +195,57 @@ XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildAllGatherStart(
+    XlaBuilder* builder, const XlaOp operand, int64_t all_gather_dimension,
+    int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id,
+    const std::optional<Layout>& layout,
+    const std::optional<bool> use_global_device_ids) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
+                        builder->GetShapePtr(operand));
+
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_shape,
+        ShapeInference::InferAllGatherShape({operand_shape},
+                                            all_gather_dimension, shard_count));
+    if (layout) {
+      *inferred_shape.mutable_layout() = *layout;
+      instr.set_constrain_layout(true);
+    }
+    *instr.mutable_shape() = inferred_shape.ToProto();
+
+    instr.add_dimensions(all_gather_dimension);
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(use_global_device_ids.value());
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        auto all_gather,
+        builder->AddInstruction(std::move(instr), HloOpcode::kAllGatherStart,
+                                {operand}));
+    return all_gather;
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildAllGatherDone(XlaBuilder* builder,
+                                           const XlaOp operand,
+                                           const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAllGatherDone,
+                                   {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
                                      const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -2299,6 +2350,19 @@ StatusOr<XlaOp> XlaBuilder::BitcastConvertTypeInternal(const Shape& shape,
                         {operand});
 }
 
+XlaOp XlaBuilder::StochasticConvertType(XlaOp operand, XlaOp random,
+                                        PrimitiveType new_element_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(const Shape* random_shape, GetShapePtr(random));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferStochasticConvertShape(
+                            *operand_shape, *random_shape, new_element_type));
+    return AddOpWithShape(HloOpcode::kStochasticConvert, shape,
+                          {operand, random});
+  });
+}
+
 XlaOp XlaBuilder::Clamp(XlaOp min, XlaOp operand, XlaOp max) {
   return TernaryOp(HloOpcode::kClamp, min, operand, max);
 }
@@ -3294,7 +3358,8 @@ XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
 
 XlaOp XlaBuilder::CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     HloInstructionProto instr;
@@ -3307,6 +3372,9 @@ XlaOp XlaBuilder::CollectivePermute(
       auto* proto_pair = instr.add_source_target_pairs();
       proto_pair->set_source(pair.first);
       proto_pair->set_target(pair.second);
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kCollectivePermute,
@@ -4781,8 +4849,10 @@ XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
 
 XlaOp CollectivePermute(
     const XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs) {
-  return operand.builder()->CollectivePermute(operand, source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->CollectivePermute(operand, source_target_pairs,
+                                              channel_id);
 }
 
 XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }
@@ -4892,6 +4962,12 @@ XlaOp ConvertElementType(const XlaOp operand, PrimitiveType new_element_type) {
 
 XlaOp BitcastConvertType(const XlaOp operand, PrimitiveType new_element_type) {
   return operand.builder()->BitcastConvertType(operand, new_element_type);
+}
+
+XlaOp StochasticConvertType(const XlaOp operand, const XlaOp random,
+                            PrimitiveType new_element_type) {
+  return operand.builder()->StochasticConvertType(operand, random,
+                                                  new_element_type);
 }
 
 XlaOp Neg(const XlaOp operand) {

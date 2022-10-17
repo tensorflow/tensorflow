@@ -26,6 +26,13 @@ limitations under the License.
 
 namespace xla {
 
+// Defined in .cc file to avoid inlining these large routines
+Shape::Shape() = default;
+Shape::~Shape() = default;
+Shape::Shape(const Shape&) = default;
+Shape::Shape(Shape&&) = default;
+Shape& Shape::operator=(const Shape&) = default;
+
 Shape::Shape(const ShapeProto& shape_proto) {
   set_element_type(shape_proto.element_type());
   dimensions_.reserve(shape_proto.dimensions_size());
@@ -145,6 +152,17 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   }
 }
 
+int64_t Shape::dimensions(int index) const { return dimensions_.at(index); }
+
+const Shape& Shape::tuple_shapes(int index) const {
+  return tuple_shapes_.at(index);
+}
+
+Shape* Shape::add_tuple_shapes() {
+  tuple_shapes_.push_back(Shape());
+  return &tuple_shapes_.back();
+}
+
 bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
   if (lhs.IsTuple()) {
     return rhs.IsTuple() &&
@@ -223,6 +241,12 @@ std::ostream& operator<<(std::ostream& out, const Shape& shape) {
   out << shape.ToString(/*print_layout=*/true);
   return out;
 }
+
+ProgramShape::ProgramShape() = default;
+ProgramShape::~ProgramShape() = default;
+ProgramShape::ProgramShape(const ProgramShape&) = default;
+ProgramShape::ProgramShape(ProgramShape&&) = default;
+ProgramShape& ProgramShape::operator=(const ProgramShape&) = default;
 
 ProgramShape::ProgramShape(const ProgramShapeProto& program_shape_proto) {
   for (const ShapeProto& shape_proto : program_shape_proto.parameters()) {

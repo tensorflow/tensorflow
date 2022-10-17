@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
@@ -159,6 +160,23 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
                  request->error_message()},
           request->error_origin(),
           /*is_reported_error=*/true)));
+}
+
+void CoordinationServiceRpcHandler::GetTaskStateAsync(
+    const GetTaskStateRequest* request, GetTaskStateResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  auto result = service->GetTaskState(
+      {request->source_task().begin(), request->source_task().end()});
+  absl::c_move(result,
+               RepeatedFieldBackInserter(response->mutable_task_state()));
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(

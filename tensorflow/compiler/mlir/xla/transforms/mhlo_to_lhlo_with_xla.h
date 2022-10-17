@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
 
@@ -40,7 +41,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
  public:
   // Initializes internal data structures. It must be called before calling any
   // of the visitors.
-  tensorflow::Status Initialize();
+  tsl::Status Initialize();
 
   LhloDialectEmitter(const xla::BufferAssignment& assignment,
                      const xla::HloComputation& computation, ModuleOp module)
@@ -176,23 +177,23 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   static mlir::DenseIntElementsAttr GetLayoutAttribute(
       const xla::Layout& layout, Builder* builder);
 
-  tensorflow::Status DefaultAction(const xla::HloInstruction* instr) final;
+  tsl::Status DefaultAction(const xla::HloInstruction* instr) final;
 
   // Computation parameters don't need any specific handling when they are
   // visited, they are already processed when we enter a new computation.
-  tensorflow::Status HandleParameter(const xla::HloInstruction* instr) final {
-    return ::tensorflow::OkStatus();
+  tsl::Status HandleParameter(const xla::HloInstruction* instr) final {
+    return ::tsl::OkStatus();
   }
 
   // Helper function that recursively visits the tuple structure in
   // `current_shape`, and reconstruct a matching lmhlo::TupleOp.
   // Each leaf node is converted to an std.view op with corresponding offsets.
   // If no tuple presents, it simply returns a view of the buffer.
-  tensorflow::Status GetOrCreateViewImpl(const xla::HloInstruction* instr,
-                                         const xla::Shape& current_shape,
-                                         xla::ShapeIndex* current_shape_index,
-                                         SmallVectorImpl<Value>* values,
-                                         TokenLoweringMode token_mode);
+  tsl::Status GetOrCreateViewImpl(const xla::HloInstruction* instr,
+                                  const xla::Shape& current_shape,
+                                  xla::ShapeIndex* current_shape_index,
+                                  SmallVectorImpl<Value>* values,
+                                  TokenLoweringMode token_mode);
 
   // Helper function to create view/tuple of views to a buffer for a given
   // instruction result. `result_subset` can be used to for instructions that
@@ -200,7 +201,7 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
   // tuple elements. Note that if needed, this can be extended to take a list of
   // ShapeIndex values in case we need finer control on what elements of the
   // output tuple to be converted to MLIR.
-  tensorflow::Status GetOrCreateView(
+  tsl::Status GetOrCreateView(
       const xla::HloInstruction* instr, SmallVectorImpl<Value>* values,
       const xla::ShapeIndex& result_subset = {},
       TokenLoweringMode token_mode = TokenLoweringMode::kFailToLower);
@@ -272,11 +273,10 @@ class LhloDialectEmitter : public xla::ConstDfsHloVisitorWithDefault {
 // Populate the MLIR `module` with the computation from the `hlo_module` using
 // the provided buffer `assignment`. The returned `Status` indicates success
 // or failure in the conversion.
-tensorflow::Status HloToLhloModule(const xla::BufferAssignment& assignment,
-                                   const xla::HloModule& hlo_module,
-                                   ModuleOp module);
+tsl::Status HloToLhloModule(const xla::BufferAssignment& assignment,
+                            const xla::HloModule& hlo_module, ModuleOp module);
 
-tensorflow::Status OptimizeAndConvertHloToLmhlo(
+tsl::Status OptimizeAndConvertHloToLmhlo(
     std::unique_ptr<xla::HloModule> hlo_module, ModuleOp module,
     StringRef platform_name, bool optimize_xla_hlo);
 OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(

@@ -239,6 +239,10 @@ class MultiDeviceIterator:
     """
     options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
+    # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+    # optimization to prevent potentially introducing asynchrony.
+    if prefetch_buffer_size == 0:
+      options.experimental_optimization.inject_prefetch = False
     dataset = dataset.with_options(options)
     self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
@@ -479,6 +483,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
             "not be specified.")
       options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
+      # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+      # optimization to prevent potentially introducing asynchrony.
+      if prefetch_buffer_size == 0:
+        options.experimental_optimization.inject_prefetch = False
       dataset = dataset.with_options(options)
       dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec

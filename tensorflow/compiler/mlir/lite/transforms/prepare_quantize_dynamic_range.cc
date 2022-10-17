@@ -41,7 +41,7 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPAREDYNAMICRANGEQUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // A boolean attribute used to describe whether input activations need to be
@@ -54,7 +54,7 @@ using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
 // This pass runs before the quantization pass and apply preprocess if
 // applicable.
 class PrepareDynamicRangeQuantizePass
-    : public PrepareDynamicRangeQuantizePassBase<
+    : public impl::PrepareDynamicRangeQuantizePassBase<
           PrepareDynamicRangeQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareDynamicRangeQuantizePass)

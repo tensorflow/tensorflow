@@ -45,9 +45,10 @@ class Analyzer(cfg.GraphVisitor):
     return set()
 
   date = "2023-09-23"
-  instructions=("Lambda fuctions will be no more assumed to be used in the" \
-               "statement where they are used, or at least in the same block." \
-               "https://github.com/tensorflow/tensorflow/issues/56089")
+  instructions = (
+      "Lambda fuctions will be no more assumed to be used in the "
+      "statement where they are used, or at least in the same block. "
+      "https://github.com/tensorflow/tensorflow/issues/56089")
 
   @deprecation.deprecated(date, instructions, warn_once=True)
   def lamba_check(self, fn_ast_node):

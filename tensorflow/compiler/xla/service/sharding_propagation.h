@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -40,9 +41,15 @@ StatusOr<bool> ProcessShardingInstruction(
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
         unspecified_dims);
 
+int64_t ComputeNonRootUsers(const HloInstruction* instr);
+
 // Infers broadcast ops' operand sharding, based on its output sharding.
 std::optional<HloSharding> InferBroadcastOperandSharding(
     const HloInstruction& instruction, bool is_spmd = true);
+
+bool InferReduceShardingFromOperand(HloInstruction* instruction,
+                                    bool may_combine_partial_sharding,
+                                    bool is_spmd);
 
 // Propagates sharding information around the graph. HLOs that have shardings
 // are kept as-is, those that do not have shardings are given shardings based on
@@ -82,12 +89,13 @@ class ShardingPropagation : public HloModulePass {
 
   static std::optional<HloSharding> GetShardingFromUser(
       const HloInstruction& instruction, const HloInstruction& user,
-      int64_t aggressiveness, bool is_spmd);
+      int64_t aggressiveness, bool is_spmd, const CallGraph& call_graph);
 
  private:
   bool InferShardingFromOperands(HloInstruction* instruction,
                                  const ComputationMap& computation_map,
-                                 int64_t aggressiveness);
+                                 int64_t aggressiveness,
+                                 const CallGraph& call_graph);
 
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;

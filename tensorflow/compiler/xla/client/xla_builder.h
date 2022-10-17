@@ -87,6 +87,15 @@ struct XlaBuilderFriend {
                               const XlaComputation& called_computation,
                               const Shape& shape);
 
+  static XlaOp BuildAllGatherStart(
+      XlaBuilder* builder, XlaOp operand, int64_t all_gather_dimension,
+      int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Layout>& layout = std::nullopt,
+      const std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllGatherDone(XlaBuilder* builder, const XlaOp operands,
+                                  const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -809,7 +818,8 @@ class XlaBuilder {
 
   XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp ReplicaId();
 
@@ -842,6 +852,9 @@ class XlaBuilder {
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
   virtual StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
                                                      XlaOp operand);
+
+  XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                              PrimitiveType new_element_type);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   virtual StatusOr<XlaOp> TransposeInternal(
@@ -1070,7 +1083,7 @@ class XlaBuilder {
   // Use a deque so pointers into this are stable, for example the return
   // value of LookUpInstructionByHandle().
   std::deque<HloInstructionProto> instructions_;
-  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 
@@ -1418,7 +1431,8 @@ class XlaBuilder {
                              const std::optional<Layout>& layout);
   friend XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                 absl::Span<const int64_t> window_dimensions,
@@ -1463,6 +1477,8 @@ class XlaBuilder {
                                   PrimitiveType new_element_type);
   friend XlaOp BitcastConvertType(XlaOp operand,
                                   PrimitiveType new_element_type);
+  friend XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                                     PrimitiveType new_element_type);
   friend XlaOp Neg(XlaOp operand);
   friend XlaOp Transpose(XlaOp operand, absl::Span<const int64_t> permutation);
   friend XlaOp Rev(XlaOp operand, absl::Span<const int64_t> dimensions);
@@ -2295,7 +2311,6 @@ XlaOp ShiftRightArithmetic(XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64_t> broadcast_dimensions = {});
 XlaOp ShiftRightLogical(XlaOp lhs, XlaOp rhs,
                         absl::Span<const int64_t> broadcast_dimensions = {});
-
 // Reduces an array among the provided dimensions, given "computation" as a
 // reduction operator.
 XlaOp Reduce(XlaOp operand, XlaOp init_value, const XlaComputation& computation,
@@ -2416,7 +2431,8 @@ XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
 // consists of 0(s) with the same shape as the input.
 XlaOp CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an operation that returns the replica ID.
 XlaOp ReplicaId(XlaBuilder* builder);
@@ -2532,6 +2548,12 @@ XlaOp ConvertElementType(XlaOp operand, PrimitiveType new_element_type);
 // bit-widths of the source and destination element types must be
 // identical.
 XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
+
+// Enqueues a stochastic convert instruction onto the computation that changes
+// the element type of the operand array with stochastic rounding to
+// primitive_type.
+XlaOp StochasticConvertType(XlaOp operand, XlaOp random,
+                            PrimitiveType new_element_type);
 
 // Enqueues a negate instruction onto the computation.
 XlaOp Neg(XlaOp operand);

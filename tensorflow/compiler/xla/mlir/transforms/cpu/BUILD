@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
@@ -28,17 +28,17 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "tile_thlo_for_cpu.cc",
+        "transform_scatter_for_cpu.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
-        "//tensorflow/compiler/xla/mlir_hlo:gml_st_tiling",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",
         "//tensorflow/compiler/xla/mlir_hlo:tiling_interface_impl",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TensorDialect",

@@ -172,7 +172,7 @@ TEST_F(ParallelReductionTest, ManyParallelReductions) {
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ParallelReductionTest, ThreeReductionGroups) {
+TEST_F(ParallelReductionTest, CouldBeThreeReductionGroups) {
   const char* hlo_text = R"(
 HloModule ThreeReductionGroups
 
@@ -215,19 +215,63 @@ ENTRY %cluster {
 }
 )";
 
+  // Because of b/249976438 mul0 and mul2 will make first and last groups merge.
+
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
                           ParseAndReturnVerifiedModule(hlo_text));
   CompileAndVerifyIr(std::move(hlo_module),
                      R"(
 CHECK: reduce-group-0
 CHECK: reduce-group-1
-CHECK: reduce-group-2
-CHECK-NOT: reduce-group-3
+CHECK-NOT: reduce-group-2
 )",
                      /*match_optimized_ir=*/false);
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+class ParallelReductionTestBase : public HloTestBase {};
+
+TEST_F(ParallelReductionTestBase, ParallelReductionsWithAliasing) {
+  const char* hlo_text = R"(
+HloModule m, input_output_alias={{1}: (2, {}, must-alias)}
+
+a {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT r = f32[] add(x, y)
+}
+
+f {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  p2 = f32[128] parameter(2)
+  p3 = f32[128] parameter(3)
+  c0 = f32[] constant(0)
+  m0 = f32[128]{0} multiply(p0, p0)
+  reduce0 = f32[] reduce(m0, c0), dimensions={0}, to_apply=a
+  add0 = f32[128] add(p0, p1)
+  m1 = f32[128]{0} multiply(p2, p2)
+  reduce1 = f32[] reduce(m1, c0), dimensions={0}, to_apply=a
+  add1 = f32[128] add(p2, p3)
+  ROOT r = (f32[], f32[128], f32[], f32[128])
+    tuple(reduce0, add0, reduce1, add1)
+}
+
+ENTRY e {
+  p0 = f32[128] parameter(0)
+  p1 = f32[128] parameter(1)
+  p2 = f32[128] parameter(2)
+  p3 = f32[128] parameter(3)
+  ROOT r = (f32[], f32[128], f32[], f32[128]) fusion(p0, p1, p2, p3), kind=kInput, calls=f
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  EXPECT_TRUE(
+      hlo_module->input_output_alias_config().ParameterMustAlias(2, {}));
+  EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

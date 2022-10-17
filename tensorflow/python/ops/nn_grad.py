@@ -954,7 +954,7 @@ def _BatchNormGrad(grad_y,
     for offset.
   """
   x_dtype = x.dtype.base_dtype
-  if x_dtype == dtypes.float16:
+  if x_dtype == dtypes.float16 or x_dtype == dtypes.bfloat16:
     # float16 math is too imprecise, so we do the batch norm gradient
     # computations in float32.
     x = math_ops.cast(x, dtypes.float32)

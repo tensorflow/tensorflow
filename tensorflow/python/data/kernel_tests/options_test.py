@@ -128,9 +128,9 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.from_tensors(0)
     result = ds
 
-    for _ in range(999):
+    for _ in range(99):
       result = result.concatenate(ds)
-    self.assertDatasetProduces(result, [0]*1000)
+    self.assertDatasetProduces(result, [0]*100)
 
   @combinations.generate(test_base.default_test_combinations())
   def testOptionsProtoRoundTrip(self):
@@ -147,7 +147,7 @@ class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = True
     options.experimental_optimization.filter_fusion = True
     options.experimental_optimization.filter_parallelization = True
-    options.experimental_optimization.inject_prefetch = True
+    options.experimental_optimization.inject_prefetch = False
     options.experimental_optimization.map_and_batch_fusion = True
     options.experimental_optimization.map_and_filter_fusion = True
     options.experimental_optimization.map_fusion = True

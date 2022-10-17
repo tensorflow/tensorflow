@@ -159,6 +159,9 @@ int64_t GetStartTimestampNs(const XPlane& plane);
 // Returns true if there are no XEvents.
 bool IsEmpty(const XSpace& space);
 
+// Return true if grouping/step-tracking is done on the Xspace already.
+bool IsXSpaceGrouped(const XSpace& space);
+
 // Mutate the XPlane by adding predefined XFlow. e.g. GPU kernel launches =>
 // GPU kernel events.
 void AddFlowsToXplane(int32_t host_id, bool is_host_plane, bool connect_traceme,

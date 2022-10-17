@@ -24,13 +24,6 @@ package(
 )
 
 cc_library(
-    name = "libtftpu_header",
-    hdrs = ["libtftpu.h"],
-    visibility = ["//visibility:public"],
-    deps = [],
-)
-
-cc_library(
     name = "tpu_embedding_configuration_utils",
     srcs = ["tpu_embedding_configuration_utils.cc"],
     hdrs = ["tpu_embedding_configuration_utils.h"],
@@ -184,19 +177,19 @@ cc_library(
     hdrs = ["tpu_initializer_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":libtftpu_header",
         ":tpu_api",
-        ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "//tensorflow/core/tpu:pjrt_api",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
@@ -208,29 +201,10 @@ cc_library(
     hdrs = ["tpu_api.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":libtftpu_header",
-        ":tpu_executor_api",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "tpu_executor_api",
-    srcs = ["tpu_executor_api.cc"],
-    hdrs = ["tpu_executor_api.h"],
-    deps = [
-        ":libtftpu_header",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
-    name = "pjrt_api",
-    srcs = ["pjrt_api.cc"],
-    hdrs = ["pjrt_api.h"],
-    deps = [
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
     ],
 )
 
@@ -247,12 +221,6 @@ cc_library(
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_api_dlsym_set_fn",
-    hdrs = ["tpu_api_dlsym_set_fn.h"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -394,9 +362,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":libtftpu_header",
         "//tensorflow/c:tf_tstring",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
         "@com_google_absl//absl/types:optional",
     ],
@@ -422,13 +390,13 @@ cc_library(
     hdrs = ["tpu_model_server_initializer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":libtftpu_header",
         ":tpu_api",
-        ":tpu_api_dlsym_set_fn",
         ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
         ":tpu_library_init_fns",
         ":tpu_ops_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/core:lib",

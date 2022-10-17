@@ -35,11 +35,12 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_POSTQUANTIZEPASS
+#define GEN_PASS_DEF_POSTQUANTIZEREMOVEQDQPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass : public PostQuantizePassBase<PostQuantizePass> {
+class PostQuantizePass : public impl::PostQuantizePassBase<PostQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
@@ -65,7 +66,7 @@ class PostQuantizePass : public PostQuantizePassBase<PostQuantizePass> {
 
 // Cleans up unnecessary QDQ pattern for input/output ops.
 class PostQuantizeRemoveQDQPass
-    : public PostQuantizeRemoveQDQPassBase<PostQuantizeRemoveQDQPass> {
+    : public impl::PostQuantizeRemoveQDQPassBase<PostQuantizeRemoveQDQPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizeRemoveQDQPass)
 

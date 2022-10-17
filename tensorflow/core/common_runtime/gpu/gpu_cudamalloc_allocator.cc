@@ -20,14 +20,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
 GPUcudaMallocAllocator::GPUcudaMallocAllocator(
-    PlatformDeviceId platform_device_id) {
+    tsl::PlatformDeviceId platform_device_id) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
                      .value();

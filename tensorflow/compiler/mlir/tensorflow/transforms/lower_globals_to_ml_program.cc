@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 
 namespace mlir {
 namespace tf_saved_model {
@@ -201,8 +200,10 @@ static LogicalResult convertTFGlobals(ModuleOp module) {
   return success();
 }
 
+#define GEN_PASS_DEF_LOWERGLOBALSTOMLPROGRAMPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 class LowerGlobalsToMlProgram
-    : public LowerGlobalsToMlProgramPassBase<LowerGlobalsToMlProgram> {
+    : public impl::LowerGlobalsToMlProgramPassBase<LowerGlobalsToMlProgram> {
  public:
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<mlir::tf_saved_model::TensorFlowSavedModelDialect,

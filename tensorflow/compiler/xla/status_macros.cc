@@ -87,6 +87,12 @@ static Status MakeError(const char* filename, int line, tsl::error::Code code,
   return status;
 }
 
+MakeErrorStream::MakeErrorStreamWithOutput&
+MakeErrorStream::add_ret_check_failure(const char* condition) {
+  return *this << "RET_CHECK failure (" << impl_->file_ << ":" << impl_->line_
+               << ") " << condition << " ";
+}
+
 // This method is written out-of-line rather than in the header to avoid
 // generating a lot of inline code for error cases in all callers.
 void MakeErrorStream::CheckNotDone() const { impl_->CheckNotDone(); }

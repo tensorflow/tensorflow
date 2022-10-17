@@ -46,7 +46,7 @@ class TFToMhloPass
   void getDependentDialects(DialectRegistry &registry) const override {
     mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithmeticDialect>();
+    registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect>();
     registry.insert<shape::ShapeDialect>();
   }
 
@@ -80,7 +80,7 @@ void TFToMhloPass::runOnOperation() {
   ConversionTarget target(*context);
   target.addIllegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<mlir::mhlo::MhloDialect>();
-  target.addLegalDialect<arith::ArithmeticDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();

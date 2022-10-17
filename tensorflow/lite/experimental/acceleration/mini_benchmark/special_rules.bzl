@@ -22,6 +22,6 @@ def jpeg_copts():
     """Returns copts for jpeg decoding code used in the mini-benchmark."""
     return []
 
-def minibenchmark_default_visibility_allowlist():
+def minibenchmark_visibility_allowlist():
     """Returns a list of packages that can depend on mini_benchmark."""
     return []

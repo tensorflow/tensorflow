@@ -41,7 +41,7 @@ def TF_JITRT_Dialect : Dialect {
 
   let cppNamespace = "::mlir::tf_jitrt";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -84,7 +84,7 @@ def FallbackCompileOp : TF_JITRT_Op<"fallback.compile",
 }
 
 def FallbackExecuteOp : TF_JITRT_Op<"fallback.execute",
-    [NoSideEffect, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
+    [Pure, DeclareOpInterfaceMethods<TFRT_CostFunctionInterface>]> {
   let summary = "jitrt execute operation with a fallback runtime interop";
   let description = [{
     `tf_jitrt.fallback.execute` compiles a Tensorflow program defined by the

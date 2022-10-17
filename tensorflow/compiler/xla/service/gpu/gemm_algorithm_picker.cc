@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/tsl/platform/logger.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -141,7 +141,7 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
     VLOG(2) << "gemm algorithm " << profile_result.algorithm() << " took "
             << profile_result.elapsed_time_in_ms() << "ms";
 
-    *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+    *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
     if (!autotune_config.should_check_correctness()) {

@@ -815,7 +815,7 @@ ParseResult ReturnOp::parse(OpAsmParser &parser, OperationState &result) {
   }
 
   if (ParseKeywordAttributes(parser, result)) return failure();
-  result.addAttribute(ReturnOp::control_ret_attrsAttrName(result.name),
+  result.addAttribute(ReturnOp::getControlRetAttrsAttrName(result.name),
                       ArrayAttr::get(result.getContext(), control_ret_attrs));
 
   SmallVector<Type> types;
@@ -857,7 +857,7 @@ void ReturnOp::build(OpBuilder &odsBuilder, OperationState &odsState,
   odsState.addOperands(control_operands);
   // Populate `control_ret_attrs` with empty dictionaries.
   odsState.addAttribute(
-      ReturnOp::control_ret_attrsAttrName(odsState.name),
+      ReturnOp::getControlRetAttrsAttrName(odsState.name),
       odsBuilder.getArrayAttr(SmallVector<Attribute>(
           control_operands.size(), odsBuilder.getDictionaryAttr({}))));
 }
@@ -978,7 +978,7 @@ static LogicalResult VerifyTypeArray(Operation *op, ValueRange values,
 namespace detail {
 // Check if the op type has `T`.
 template <typename OpT>
-using has_T = decltype(std::declval<OpT>().T());
+using has_T = decltype(std::declval<OpT>().getT());
 template <typename OpT>
 using detect_has_T = llvm::is_detected<has_T, OpT>;
 
@@ -1187,9 +1187,9 @@ static bool TerminatedByYield(Block &block) {
 template <typename IfLikeRegionOp>
 static LogicalResult VerifyIfLikeRegionOp(IfLikeRegionOp op) {
   // Verify terminators.
-  if (!TerminatedByYield(op.then_block()))
+  if (!TerminatedByYield(op.getThenBlock()))
     return op.emitOpError("then region must be terminated by a 'tfg.yield'");
-  if (!TerminatedByYield(op.else_block()))
+  if (!TerminatedByYield(op.getElseBlock()))
     return op.emitOpError("else region must be terminated by a 'tfg.yield'");
   return VerifyPreservedAttrs(
       op, {op.getThenRegionAttrsAttr(), op.getElseRegionAttrsAttr()});
@@ -1333,11 +1333,11 @@ static LogicalResult VerifyLoopRegionArgs(Operation *op, Region &region) {
 template <typename WhileLikeRegionOp>
 static LogicalResult VerifyWhileLikeRegionOp(WhileLikeRegionOp op) {
   // Verify terminators.
-  if (!isa<ConditionOp>(op.cond_block().getTerminator())) {
+  if (!isa<ConditionOp>(op.getCondBlock().getTerminator())) {
     return op.emitOpError(
         "condition region must be terminated by a 'tfg.condition' op");
   }
-  if (!TerminatedByYield(op.body_block()))
+  if (!TerminatedByYield(op.getBodyBlock()))
     op.emitOpError("body region must be terminated by a 'tfg.yield' op");
 
   if (failed(VerifyLoopRegionArgs(op, op.getCondRegion())) ||
@@ -1382,11 +1382,11 @@ static void GetWhileLikeRegionOpSuccessorRegions(
 // ForRegionOp
 
 LogicalResult ForRegionOp::verify() {
-  if (!TerminatedByYield(body_block())) {
+  if (!TerminatedByYield(getBodyBlock())) {
     return emitOpError("body region must be terminated by a 'tfg.yield' op");
   }
 
-  Block::BlockArgListType args = body_block().getArguments();
+  Block::BlockArgListType args = getBodyBlock().getArguments();
   if (args.empty()) {
     return emitOpError(
         "expected the body block to have at least have the loop index as an "

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [":friends"],
@@ -9,6 +9,7 @@ package_group(
     name = "friends",
     packages = [
         "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/lite/...",
     ],
 )
 

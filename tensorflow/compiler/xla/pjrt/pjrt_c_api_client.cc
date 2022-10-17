@@ -31,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/tpu/pjrt_api.h"
 #include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -787,7 +787,6 @@ PjRtCApiExecutable::ExecuteSharded(
 
   args.execute_device =
       tensorflow::down_cast<PjRtCApiDevice*>(device)->c_device();
-  args.execute_device->device = device;
 
   RETURN_STATUS_IF_ERROR(pjrt_c_api()->PJRT_Executable_Execute(&args),
                          pjrt_c_api());

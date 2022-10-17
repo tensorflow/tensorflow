@@ -1,7 +1,7 @@
 # Description:
 #   XLA client libraries.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/types:span",
     ],
@@ -268,7 +269,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/core:bitmap",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

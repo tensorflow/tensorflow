@@ -14,22 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/dataset_ops.h"
 
+#include <memory>
+#include <vector>
+
 // On mobile we do not provide this functionality because not all of its
 // dependencies are available there.
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
-#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/serialization_utils.h"
 #include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/grappler/graph_topology_view.h"
-#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -53,22 +51,19 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
     : OpKernel(ctx), op_version_(ctx->def().op() == kDatasetToGraph ? 1 : 2) {
   if (op_version_ == 2) {
     if (ctx->HasAttr(kExternalStatePolicy)) {
-      int64_t state_change_option;
-      OP_REQUIRES_OK(ctx,
-                     ctx->GetAttr(kExternalStatePolicy, &state_change_option));
-      external_state_policy_ =
-          SerializationContext::ExternalStatePolicy(state_change_option);
+      int64_t external_state_policy;
+      OP_REQUIRES_OK(
+          ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy));
+      external_state_policy_ = ExternalStatePolicy(external_state_policy);
     }
   } else {
     if (ctx->HasAttr(kAllowStateful)) {
       bool allow_stateful;
       OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful));
       if (allow_stateful) {
-        external_state_policy_ =
-            SerializationContext::ExternalStatePolicy::kWarn;
+        external_state_policy_ = ExternalStatePolicy::POLICY_WARN;
       } else {
-        external_state_policy_ =
-            SerializationContext::ExternalStatePolicy::kFail;
+        external_state_policy_ = ExternalStatePolicy::POLICY_FAIL;
       }
     }
   }
@@ -84,25 +79,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   if (dataset->options().optional_external_state_policy_case() ==
       Options::kExternalStatePolicy) {
-    switch (dataset->options().external_state_policy()) {
-      case ExternalStatePolicy::POLICY_WARN:
-        external_state_policy_ =
-            SerializationContext::ExternalStatePolicy::kWarn;
-        break;
-      case ExternalStatePolicy::POLICY_IGNORE:
-        external_state_policy_ =
-            SerializationContext::ExternalStatePolicy::kIgnore;
-        break;
-      case ExternalStatePolicy::POLICY_FAIL:
-        external_state_policy_ =
-            SerializationContext::ExternalStatePolicy::kFail;
-        break;
-      default: {
-        LOG(ERROR) << "Dataset " << dataset->type_string()
-                   << " has an unknown external_state_policy enum value: "
-                   << dataset->options().external_state_policy();
-      }
-    }
+    external_state_policy_ = dataset->options().external_state_policy();
   }
   SerializationContext::Params params(ctx);
   params.external_state_policy = external_state_policy_;

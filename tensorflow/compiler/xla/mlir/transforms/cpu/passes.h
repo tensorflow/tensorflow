@@ -29,7 +29,7 @@ namespace cpu {
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTileThloForCpuPass();
+createTransformScatterForCpuPass();
 
 //===-----------------------------------------------------------------------===/
 

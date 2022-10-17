@@ -31,7 +31,7 @@ add_public_tablegen_target(MLIRChloLegalizeToHloIncGen)
 
 
 add_mlir_library(MhloScatterUtils
-  mhlo_scatter_utils.cc
+  mhlo_scatter_gather_utils.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
@@ -60,9 +60,11 @@ add_mlir_library(MhloPasses
   materialize_broadcasts.cc
   materialize_broadcasts_pass.cc
   merge_assuming_ops.cc
+  mhlo_canonicalize_gather.cc
   mhlo_canonicalize_reduction.cc
   mhlo_canonicalize_scatter.cc
   mhlo_flatten_tuple.cc
+  prepare_for_export.cc
   optimize_mhlo.cc
   optimize_mhlo_pass.cc
   rank_specialization.cc
@@ -98,7 +100,6 @@ add_mlir_library(MhloToThloConversion
   legalize_mhlo_to_thlo.cc
 
   DEPENDS
-  MLIRGmlStFusionInterfaceIncGen
   MLIRMhloPassIncGen
   THLODialect
 
@@ -129,8 +130,8 @@ add_mlir_library(MhloToLhloConversion
   LINK_LIBS PUBLIC
   MhloDialect
   LmhloDialect
-  MLIRArithmeticDialect
-  MLIRArithmeticTransforms
+  MLIRArithDialect
+  MLIRArithTransforms
   MLIRFuncTransforms
   MLIRIR
   MLIRPass

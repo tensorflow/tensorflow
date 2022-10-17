@@ -23,6 +23,41 @@ namespace jax {
 
 namespace py = pybind11;
 
+size_t ShardingHash(const pybind11::object& sharding) {
+  auto type = sharding.get_type();
+
+  if (type.is(MeshPspecSharding::type())) {
+    const auto* mesh_sharding = py::cast<jax::MeshPspecSharding*>(sharding);
+    return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
+  }
+
+  if (type.is(OpShardingSharding::type())) {
+    auto* op_sharding = py::cast<OpShardingSharding*>(sharding);
+    return op_sharding->Hash();
+  }
+
+  return py::hash(sharding);
+}
+
+bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
+  if (a.ptr() == b.ptr()) return true;
+
+  auto a_type = a.get_type();
+  auto b_type = b.get_type();
+
+  if (!a_type.is(b_type)) return false;
+
+  if (a_type.is(MeshPspecSharding::type())) {
+    auto* a_mesh_sharding = py::cast<const MeshPspecSharding*>(a);
+    auto* b_mesh_sharding = py::cast<const MeshPspecSharding*>(b);
+
+    return a_mesh_sharding->mesh().ptr() == b_mesh_sharding->mesh().ptr() &&
+           a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
+  }
+
+  return a.equal(b);
+}
+
 MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
                                      py::object parsed_pspec)
     : XLACompatibleSharding(/*num_devices=*/[&mesh]() {
@@ -32,11 +67,7 @@ MeshPspecSharding::MeshPspecSharding(py::object mesh, py::object spec,
       mesh_(std::move(mesh)),
       spec_(std::move(spec)),
       parsed_pspec_(std::move(parsed_pspec)) {
-  try {
-    py::cast(this).attr("_preprocess")();
-  } catch (py::error_already_set& err) {
-    throw py::value_error(err.what());
-  }
+  py::cast(this).attr("_preprocess")();
 }
 
 void RegisterSharding(py::module& m) {
@@ -77,6 +108,8 @@ void RegisterSharding(py::module& m) {
   py::class_<OpShardingSharding, XLACompatibleSharding>(m, "OpShardingSharding",
                                                         py::dynamic_attr())
       .def(py::init<py::list, xla::OpSharding>(), py::arg("devices"),
+           py::arg("op_sharding"))
+      .def(py::init<py::tuple, xla::OpSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
       .def_property_readonly("_devices", &OpShardingSharding::devices)
       .def_property_readonly("_op_sharding", &OpShardingSharding::op_sharding);

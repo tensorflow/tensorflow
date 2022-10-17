@@ -60,7 +60,8 @@ export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-mtune=generic --c
     --copt=-O3 --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=no_tensorflow_py_deps=true \
-    --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium --verbose_failures=true --test_keep_going"
+    --test_lang_filters=py --flaky_test_attempts=3 --test_size_filters=small,medium \
+    --test_output=errors --verbose_failures=true --test_keep_going"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_PIP_TESTS="test_pip_virtualenv_clean"
 export TF_TEST_FILTER_TAGS="-no_oss,-oss_serial,-v1only,-benchmark-test,-no_aarch64"

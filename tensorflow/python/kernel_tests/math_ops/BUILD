@@ -1,9 +1,6 @@
 # Tests of TensorFlow math kernels written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -380,7 +377,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["segment_reduction_ops_test.py"],
     shard_count = 10,
-    tags = ["no_asan"],  # TODO(b/249297398): enable the test for asan.
+    tags = ["noasan"],  # TODO(b/249297398): enable the test for asan.
     # TODO (b/173835746): the test fails with XLA.
     xla_enable_strict_auto_jit = False,
     deps = [

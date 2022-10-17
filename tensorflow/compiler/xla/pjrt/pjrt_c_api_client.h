@@ -187,11 +187,11 @@ class PjRtCApiClient : public PjRtClient {
         "PJRT C API does not support CreateUninitializedBuffer");
   }
 
-  StatusOr<std::unique_ptr<AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) override {
+  StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override {
     return Unimplemented(
-        "PJRT C API does not support CreateBuffersForAsyncTransfer");
+        "PJRT C API does not support CreateBuffersForAsyncHostToDevice");
   }
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(

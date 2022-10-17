@@ -1,5 +1,5 @@
-load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
@@ -29,6 +29,7 @@ cc_library(
     srcs = [
         "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
+        "launch_func_to_cuda_graph.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_launch.cc",
         "lmhlo_to_gpu_runtime.cc",
@@ -54,7 +55,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",

@@ -36,10 +36,11 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -58,7 +59,6 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
@@ -1579,8 +1579,8 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
     if (op->getOperands().size() != 2)
       return rewriter.notifyMatchFailure(
           op, "only match for the case where operands is of size 2");
-    auto keys = op.operands()[0];
-    auto indices = op.operands()[1];
+    auto keys = op.getInputs()[0];
+    auto indices = op.getInputs()[1];
     auto keys_ty = keys.getType().dyn_cast_or_null<ShapedType>();
     auto indices_ty = indices.getType().dyn_cast_or_null<ShapedType>();
     if (!keys_ty || !keys_ty.hasStaticShape() ||
@@ -1883,7 +1883,7 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
     if (failed(MatchBinaryReduceFunction<BinaryOp>(reduce_op.getBody())))
       return failure();
 
-    auto operand = reduce_op.operands()[0];
+    auto operand = reduce_op.getInputs()[0];
 
     // Get reduction dimension.
     DenseIntElementsAttr dimension = reduce_op.getDimensions();
@@ -1920,12 +1920,12 @@ class ConvertReduceOpToTfOp : public OpConversionPattern<mhlo::ReduceOp> {
   // This function tries to match that the "mhlo::ReduceOp" only has one
   // operand, one init_value and one result.
   LogicalResult MatchReduceOpOperand(mhlo::ReduceOp reduce_op) const {
-    if (reduce_op.operands().size() != 1 ||
+    if (reduce_op.getInputs().size() != 1 ||
         reduce_op.getInitValues().size() != 1 ||
         reduce_op.getResults().size() != 1)
       return failure();
 
-    if (!reduce_op.operands()[0].getType().isa<RankedTensorType>())
+    if (!reduce_op.getInputs()[0].getType().isa<RankedTensorType>())
       return failure();
     if (!reduce_op.getType(0).isa<RankedTensorType>()) return failure();
     return success();
@@ -2046,7 +2046,7 @@ class ConvertReduceOpToTfArgMinMax
   LogicalResult matchAndRewrite(
       mhlo::ReduceOp reduce_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (reduce_op.operands().size() != 2) return failure();
+    if (reduce_op.getInputs().size() != 2) return failure();
     if (reduce_op.getDimensions().getNumElements() != 1) return failure();
 
     // Check that the operand init is the expected value.
@@ -2064,7 +2064,7 @@ class ConvertReduceOpToTfArgMinMax
 
     // Verify that the second argument is an Iota op along the same dimension
     // as the reduction.
-    Value iota = reduce_op.operands().back();
+    Value iota = reduce_op.getInputs().back();
     if (!MatchIota(reduce_op.getDimensions(), iota)) return failure();
 
     // Match the reduction computation.
@@ -2072,7 +2072,7 @@ class ConvertReduceOpToTfArgMinMax
     if (failed(matchReduceComputation(reduce_op.getBody(), is_float)))
       return failure();
 
-    Value operand = reduce_op.operands().front();
+    Value operand = reduce_op.getInputs().front();
     int64_t axis = reduce_op.getDimensions().getValues<int64_t>()[0];
 
     auto dim_type = RankedTensorType::get({1}, rewriter.getI64Type());
@@ -2351,7 +2351,7 @@ bool IsSpatialPoolingWithoutDilation(
 
   // Check that the individual padding values are corresponding to SAME
   // padding from TensorFlow.
-  auto operand_type = rw.operands()[0].getType().dyn_cast<RankedTensorType>();
+  auto operand_type = rw.getInputs()[0].getType().dyn_cast<RankedTensorType>();
   RankedTensorType output_type =
       rw.getResult(0).getType().dyn_cast<RankedTensorType>();
   if (!operand_type || !output_type) return false;
@@ -2384,7 +2384,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   LogicalResult matchAndRewrite(
       mhlo::ReduceWindowOp rw, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    if (rw.getNumResults() != 1 || rw.operands().size() != 1 ||
+    if (rw.getNumResults() != 1 || rw.getInputs().size() != 1 ||
         rw.getInitValues().size() != 1)
       return failure();
 
@@ -2400,7 +2400,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
       return failure();
     }
 
-    auto operand_type = rw.operands()[0].getType().cast<ShapedType>();
+    auto operand_type = rw.getInputs()[0].getType().cast<ShapedType>();
 
     // For a cumulative op, require a tensor of 1s for each dimension in
     // operand.
@@ -2470,7 +2470,7 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
         rw->getLoc(),
         rewriter.getIntegerAttr(rewriter.getIntegerType(64), cumulative_axis));
 
-    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.operands()[0],
+    rewriter.replaceOpWithNewOp<TfCumOp>(rw, rw.getType(0), rw.getInputs()[0],
                                          axis, /* exclusive */ false,
                                          /* reverse */ false);
     return success();
@@ -2568,7 +2568,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       }
 
       return replaceWithAvgPool(
-          div_op, rw.operands()[0],
+          div_op, rw.getInputs()[0],
           llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
           window_strides, "VALID", rewriter);
     }
@@ -2584,7 +2584,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
       // as the init value.
       DenseFPElementsAttr rhs_operand;
       if (!isFloatZero(rw_rhs.getInitValues()[0]) ||
-          !matchPattern(rw_rhs.operands()[0], m_Constant(&rhs_operand)) ||
+          !matchPattern(rw_rhs.getInputs()[0], m_Constant(&rhs_operand)) ||
           !rhs_operand.isSplat() ||
           !rhs_operand.getSplatValue<APFloat>().isExactlyValue(1.0))
         return failure();
@@ -2598,7 +2598,7 @@ class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
         return failure();
 
       return replaceWithAvgPool(
-          div_op, rw.operands()[0],
+          div_op, rw.getInputs()[0],
           llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
           window_strides, padding_mode, rewriter);
     }
@@ -2666,7 +2666,7 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     return replaceWithMaxPool(
-        rw, rw.operands()[0],
+        rw, rw.getInputs()[0],
         llvm::to_vector<4>(rw.getWindowDimensions().getValues<int64_t>()),
         window_strides, padding_mode, rewriter);
   }
@@ -2716,7 +2716,10 @@ class ConvertMaxPoolOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
   }
 };
 
-class LegalizeHloToTf : public TF::LegalizeHloToTfPassBase<LegalizeHloToTf> {
+#define GEN_PASS_DEF_LEGALIZEHLOTOTFPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class LegalizeHloToTf : public impl::LegalizeHloToTfPassBase<LegalizeHloToTf> {
   /// Performs the legalization to the TF dialect.
   void runOnOperation() override;
 };
@@ -2730,25 +2733,110 @@ arith::ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
   return rewriter.create<arith::ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
+bool IsSign(APInt a, APInt sign) {
+  if (a.isZero()) return a == sign;
+  if (a.isNegative()) return sign == -1;
+  return sign == 1;
+}
+
 bool IsSign(APFloat a, APFloat sign) {
   if (a.isNaN() || a.isZero()) return a == sign;
   if (a.isNegative()) return sign.isExactlyValue(-1.0);
   return sign.isExactlyValue(1.0);
 }
 
-// Returns whether the splat constant is the sign of the FloatTensor
-bool FloatTensorIsSign(PatternRewriter &rewriter, ElementsAttr floatv,
-                       ElementsAttr sgn_cst) {
-  if (!sgn_cst.isa<SplatElementsAttr>()) return false;
-  auto sgn_cst_spl = sgn_cst.cast<SplatElementsAttr>().getSplatValue<APFloat>();
-  if (floatv.isa<SplatElementsAttr>()) {
-    auto floatv_spl = floatv.cast<SplatElementsAttr>().getSplatValue<APFloat>();
-    return IsSign(floatv_spl, sgn_cst_spl);
-  } else if (floatv.isa<DenseElementsAttr>()) {
-    auto floatv_dns = floatv.cast<DenseFPElementsAttr>();
-    return llvm::all_of(floatv_dns.getValues<APFloat>(), [&](APFloat value) {
-      return IsSign(value, sgn_cst_spl);
+bool IsDenseSplatIntAttr(ElementsAttr float_or_int) {
+  return float_or_int.isa<SplatElementsAttr>() &&
+         float_or_int.isa<DenseIntElementsAttr>();
+}
+
+bool IsDenseSplatFloatAttr(ElementsAttr float_or_int) {
+  return float_or_int.isa<SplatElementsAttr>() &&
+         float_or_int.isa<DenseFPElementsAttr>();
+}
+
+bool ValueIsReciprocal(ElementsAttr float_or_int, ElementsAttr rhs) {
+  if (IsDenseSplatFloatAttr(float_or_int) &&
+      IsDenseSplatFloatAttr(float_or_int)) {
+    return (float_or_int.cast<SplatElementsAttr>().getSplatValue<APFloat>() *
+            rhs.cast<SplatElementsAttr>().getSplatValue<APFloat>())
+        .isExactlyValue(1.0);
+  } else if (IsDenseSplatIntAttr(float_or_int) &&
+             IsDenseSplatIntAttr(float_or_int)) {
+    return (float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>() *
+            rhs.cast<SplatElementsAttr>().getSplatValue<APInt>()) == 1;
+  }
+  return false;
+}
+
+bool ValueEquals(ElementsAttr float_or_int, double rhs) {
+  if (IsDenseSplatFloatAttr(float_or_int)) {
+    return float_or_int.cast<SplatElementsAttr>()
+        .getSplatValue<APFloat>()
+        .isExactlyValue(rhs);
+  } else if (IsDenseSplatIntAttr(float_or_int)) {
+    return float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>() ==
+           static_cast<int>(rhs);
+  }
+  return false;
+}
+
+bool ValueGreaterThanZero(ElementsAttr float_or_int) {
+  if (IsDenseSplatIntAttr(float_or_int)) {
+    auto value = float_or_int.cast<SplatElementsAttr>().getSplatValue<APInt>();
+    return !value.isNegative() && !value.isZero();
+  } else if (IsDenseSplatFloatAttr(float_or_int)) {
+    auto value =
+        float_or_int.cast<SplatElementsAttr>().getSplatValue<APFloat>();
+    return !value.isNaN() && !value.isNegative() && !value.isZero();
+  }
+  return false;
+}
+
+// Returns whether the splat constant is the sign of the int or float Tensor.
+bool TensorIsSign(PatternRewriter &rewriter, ElementsAttr float_or_int,
+                  ElementsAttr sgn_cst) {
+  auto sgn_splat = llvm::dyn_cast<SplatElementsAttr>(sgn_cst);
+  if (!sgn_splat) return false;
+
+  auto splat = dyn_cast<SplatElementsAttr>(float_or_int);
+  if (auto float_spl = llvm::dyn_cast_if_present<FloatAttr>(splat),
+      sgn_cst_spl = llvm::dyn_cast_if_present<FloatAttr>(sgn_splat);
+      float_spl && sgn_cst_spl) {
+    return IsSign(float_spl.getValue(), sgn_cst_spl.getValue());
+  }
+  if (auto int_spl = llvm::dyn_cast_if_present<IntegerAttr>(splat),
+      sgn_cst_spl = llvm::dyn_cast_if_present<IntegerAttr>(sgn_splat);
+      int_spl && sgn_cst_spl) {
+    return IsSign(int_spl.getValue(), sgn_cst_spl.getValue());
+  }
+  if (float_or_int.isa<DenseFPElementsAttr>()) {
+    auto sgn_splat_value = sgn_splat.getSplatValue<APFloat>();
+    return llvm::all_of(float_or_int.getValues<APFloat>(), [&](APFloat value) {
+      return IsSign(value, sgn_splat_value);
     });
+  }
+  if (float_or_int.isa<DenseIntElementsAttr>()) {
+    auto sgn_splat_value = sgn_splat.getSplatValue<APInt>();
+    return llvm::all_of(float_or_int.getValues<APInt>(), [&](APInt value) {
+      return IsSign(value, sgn_splat_value);
+    });
+  }
+  return false;
+}
+
+bool SameTypeOrDefaultCompare(mhlo::ComparisonTypeAttr comparison_type_attr,
+                              ElementsAttr cst) {
+  if (!comparison_type_attr) return true;
+  auto comparison_type_attr_value = comparison_type_attr.getValue();
+  if (comparison_type_attr_value == mhlo::ComparisonType::FLOAT &&
+      IsDenseSplatFloatAttr(cst)) {
+    return true;
+  }
+  if ((comparison_type_attr_value == mhlo::ComparisonType::SIGNED ||
+       comparison_type_attr_value == mhlo::ComparisonType::UNSIGNED) &&
+      IsDenseSplatIntAttr(cst)) {
+    return true;
   }
   return false;
 }
@@ -3140,7 +3228,7 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
   LogicalResult matchAndRewrite(
       mhlo::ScatterOp scatter_op, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    OperandRange operands = scatter_op.operands();
+    OperandRange operands = scatter_op.getInputs();
     Value indices = scatter_op.getScatterIndices();
     OperandRange updates = scatter_op.getUpdates();
     if (operands.size() != 1 || updates.size() != 1) return failure();

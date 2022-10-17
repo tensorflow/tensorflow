@@ -859,7 +859,7 @@ int GpuInfo::GetComputeUnitsCount() const {
     return adreno_info.GetComputeUnitsCount();
   }
   if (IsMali()) {
-    mali_info.GetApproximateComputeUnitsCount();
+    return mali_info.GetApproximateComputeUnitsCount();
   }
   return 4;
 }

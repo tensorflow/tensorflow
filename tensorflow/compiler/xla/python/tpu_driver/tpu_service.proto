@@ -19,6 +19,7 @@ package tpu_driver;
 
 import "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
+import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
 option optimize_for = SPEED;
@@ -68,6 +69,7 @@ message TransferFromDeviceToDeviceRequest {
 message CompileRequest {
   required xla.HloProto hlo_program = 1;
   optional int64 num_replicas = 2;
+  optional xla.DebugOptions debug_options = 3;
 }
 
 message CompiledProgramMetadata {

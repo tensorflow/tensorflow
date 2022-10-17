@@ -48,11 +48,11 @@ namespace TFL {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_DEFAULTQUANTPARAMSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 class DefaultQuantParamsPass
-    : public DefaultQuantParamsPassBase<DefaultQuantParamsPass> {
+    : public impl::DefaultQuantParamsPassBase<DefaultQuantParamsPass> {
  public:
   using DefaultQuantParamsPassBase::DefaultQuantParamsPassBase;
 

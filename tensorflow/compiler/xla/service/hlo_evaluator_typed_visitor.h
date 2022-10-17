@@ -846,6 +846,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return UnsupportedTypeError(shr);
   }
 
+  Status HandleStochasticConvert(HloInstruction* stochastic_convert) override {
+    // TODO(b/232442915): Add support for stochastic convert.
+    return UnsupportedTypeError(stochastic_convert);
+  }
+
   Status HandleClamp(HloInstruction* clamp) override {
     if constexpr (!is_complex_v<ElementwiseT>) {
       auto clamp_op = [](ElementwiseT low, ElementwiseT value,

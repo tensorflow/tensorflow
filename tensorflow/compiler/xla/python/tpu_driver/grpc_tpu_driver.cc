@@ -197,7 +197,8 @@ class GrpcTpuStream {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for);
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options);
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for);
@@ -390,9 +391,11 @@ class GrpcTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     // Always compile using the first/default core's stream.
-    return streams_[0]->CompileProgram(source, num_replicas, wait_for);
+    return streams_[0]->CompileProgram(source, num_replicas, wait_for,
+                                       debug_options);
   }
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
@@ -835,12 +838,13 @@ std::shared_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
 
 std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
     const xla::HloProto& source, int32_t num_replicas,
-    absl::Span<Event* const> wait_for) {
+    absl::Span<Event* const> wait_for, const xla::DebugOptions& debug_options) {
   auto req = std::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity("GrpcTpuStream::CompileProgram");
   *req->mutable_compile()->mutable_hlo_program() = source;
   req->mutable_compile()->set_num_replicas(num_replicas);
+  *req->mutable_compile()->mutable_debug_options() = debug_options;
   EventId event_id = EventId::FromInt(req->operation_id());
 
   auto event =

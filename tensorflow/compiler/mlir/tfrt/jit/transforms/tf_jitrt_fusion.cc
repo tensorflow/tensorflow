@@ -63,7 +63,7 @@ static bool IsBroadcast(Operation *op) {
 
   // Check the input operand indexing map.
   OpOperand *operand = generic.getInputOperand(0);
-  AffineMap indexing_map = generic.getTiedIndexingMap(operand);
+  AffineMap indexing_map = generic.getMatchingIndexingMap(operand);
 
   if (!indexing_map.isProjectedPermutation() ||
       indexing_map.getNumDims() == indexing_map.getNumResults())

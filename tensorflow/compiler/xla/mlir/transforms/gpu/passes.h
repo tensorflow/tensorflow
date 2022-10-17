@@ -24,11 +24,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+#define GEN_PASS_DECL_ADDHLOTRACEANNOTATIONSPASS
 #define GEN_PASS_DECL_CONVERTGPUTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTLMHLOGPUTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPULAUNCHPASS
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
+#define GEN_PASS_DECL_CONVERTLAUNCHFUNCTOCUDAGRAPHPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 class ThunkSequence;  // forward declare
@@ -79,6 +81,13 @@ createConvertLmhloGpuToGpuRuntimePass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAddHloTraceAnnotationsPass();
+
+//===----------------------------------------------------------------------===//
+// XLA runtime <-> Cuda Graphs experimental integration.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createConvertLaunchFuncToCudaGraphPass();
 
 //===-----------------------------------------------------------------------===/
 

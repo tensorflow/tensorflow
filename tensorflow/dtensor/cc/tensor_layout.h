@@ -96,6 +96,15 @@ class Mesh {
   bool IsEmpty() const;
   Mesh() = default;
 
+  // Creates fully defined mesh.
+  static Mesh CreateMesh(
+      const std::string& mesh_name, const std::vector<std::string>& dim_names,
+      const std::vector<std::int64_t>& global_device_ids_shape,
+      const std::vector<std::int64_t>& global_device_ids_flatten,
+      const std::vector<std::string>& global_devices_str,
+      const std::vector<std::int64_t>& local_device_ids,
+      const std::vector<std::string>& local_devices_str);
+
   // Parses from MeshProto.
   static StatusOr<Mesh> ParseFromProto(const MeshProto& proto);
   // Parses from a human readable string version of the mesh, currently used
@@ -179,6 +188,7 @@ class Mesh {
   // `mesh_name`.
   int GetMeshDimIndexWithName(const std::string& mesh_name) const;
   bool IsMeshDim(const std::string& dim_name) const;
+  std::vector<std::string> MeshDimNames() const;
 
   int64 rank() const;
   int64 size() const;

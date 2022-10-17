@@ -18,15 +18,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -69,8 +61,6 @@ exports_files(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
-        "byte_swap_array.cc",
-        "byte_swap_array.h",
         "overflow.h",
         "padding.cc",
         "padding.h",
@@ -139,6 +129,7 @@ filegroup(
         "util.h",
         "work_sharder.cc",
         "work_sharder.h",
+        "//tensorflow/core/util/quantization:mobile_srcs_only_runtime",
         "//tensorflow/tsl/util:mobile_srcs_only_runtime",
     ],
 )
@@ -149,7 +140,6 @@ filegroup(
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
-        "byte_swap_array.h",
         "command_line_flags.h",
         "debug_events_writer.h",
         "device_name_utils.h",
@@ -499,19 +489,12 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "byteswaparray",
-    srcs = ["byte_swap_array.cc"],
-    hdrs = ["byte_swap_array.h"],
     deps = [
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/util:env_var",
+        "@com_google_absl//absl/base",
     ],
-    visibility = ["//visibility:public"],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1014,6 +997,7 @@ tf_proto_library(
         ":event_proto",
         ":saved_tensor_slice_proto",
         ":memmapped_file_system_proto",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_attr_proto",
     ],
     tags = [
         "alt_dep=//third_party/tensorflow/core:protos_all",

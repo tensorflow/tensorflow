@@ -5,8 +5,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -44,7 +43,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime:forward_type_inference",
+        "//tensorflow/core/common_runtime:type_inference",
         "//tensorflow/core/data:dataset_test_base",
         "//tensorflow/core/data:dataset_utils",
     ],
@@ -223,6 +222,7 @@ tf_cc_test(
     deps = [
         ":finalize_dataset_op",
         ":options_dataset_op",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -445,6 +445,7 @@ tf_cc_test(
     srcs = ["iterator_ops_test.cc"],
     deps = [
         ":iterator_ops",
+        ":prefetch_dataset_op",
         ":range_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
@@ -1014,6 +1015,7 @@ tf_kernel_library(
     hdrs = ["reduce_dataset_op.h"],
     deps = [
         ":iterator_ops",
+        ":prefetch_dataset_op",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

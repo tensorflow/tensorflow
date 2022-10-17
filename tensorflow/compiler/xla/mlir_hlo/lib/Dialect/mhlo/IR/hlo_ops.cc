@@ -51,7 +51,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_common.h"
 #include "mlir-hlo/utils/convert_op_folder.h"
 #include "mlir-hlo/utils/hlo_utils.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
@@ -693,16 +693,14 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
 }
 
 //===----------------------------------------------------------------------===//
-// AllReduceOp
+// CollectivePermuteOp
 //===----------------------------------------------------------------------===//
 
-void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllReduceOp::build(odsBuilder, odsState, resultType, operand, replicaGroups,
-                     channelHandle,
-                     /*use_global_device_ids=*/nullptr);
+void CollectivePermuteOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                                Type resultType, Value operand,
+                                DenseIntElementsAttr sourceTargetPairs) {
+  CollectivePermuteOp::build(odsBuilder, odsState, resultType, operand,
+                             sourceTargetPairs, /*channel_handle=*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -738,16 +736,6 @@ void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
                          scatterDimension, replicaGroups, channelHandle,
                          /*use_global_device_ids=*/nullptr);
-}
-
-void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                            Type resultType, Value operand,
-                            uint64_t scatterDimension,
-                            DenseIntElementsAttr replicaGroups,
-                            ChannelHandleAttr channelHandle) {
-  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
-                         scatterDimension, replicaGroups, channelHandle,
-                         /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1201,11 +1189,11 @@ LogicalResult CustomCallOp::verify() {
     auto operandIndex = alias.getOperandIndex();
     auto operandTupleIndices = alias.getOperandTupleIndices();
 
-    if (operandIndex < 0 || operandIndex >= operands().size())
+    if (operandIndex < 0 || operandIndex >= getInputs().size())
       return emitOpError()
              << "expects operandIndex in the output_operand_alias attribute "
                 "to be in range [0, "
-             << operands().size() << "); got: " << operandIndex << ".";
+             << getInputs().size() << "); got: " << operandIndex << ".";
 
     Type operandPart = getOperand(operandIndex).getType();
     for (auto i : operandTupleIndices) {
@@ -2125,12 +2113,12 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
                                             PatternRewriter& rewriter) {
   DenseIntElementsAttr sliceSizes;
-  if (!matchPattern(op.slice_sizes(), m_Constant(&sliceSizes))) {
+  if (!matchPattern(op.getSliceSizes(), m_Constant(&sliceSizes))) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-      op, op.operand(), op.start_indices(), op.dimension_numbersAttr(),
-      sliceSizes, op.indices_are_sortedAttr());
+      op, op.getOperand(), op.getStartIndices(), op.getDimensionNumbersAttr(),
+      sliceSizes, op.getIndicesAreSortedAttr());
   return success();
 }
 
@@ -3157,15 +3145,6 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
                      replicaGroups, channelHandle,
                      /*use_global_device_ids=*/nullptr);
-}
-
-void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand, uint64_t allGatherDim,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
-                     replicaGroups, channelHandle,
-                     /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -4816,10 +4795,10 @@ LogicalResult MapOp::verify() {
   // region.
   auto& computationBlock = getComputation().front();
   auto computationArgs = computationBlock.getArguments();
-  if (operands().size() != computationArgs.size())
+  if (getInputs().size() != computationArgs.size())
     return emitOpError() << "expects number of operands to match the arity "
                             "of map computation, but got: "
-                         << operands().size() << " and "
+                         << getInputs().size() << " and "
                          << computationArgs.size();
 
   // The parameters of computation should all be scalars and match the element
@@ -4831,7 +4810,7 @@ LogicalResult MapOp::verify() {
              << "computation arguments must be 0-rank tensor, but got: arg #"
              << indexedArg.index() << " of type "
              << indexedArg.value().getType();
-    auto operandElemTy = operands()[indexedArg.index()]
+    auto operandElemTy = getInputs()[indexedArg.index()]
                              .getType()
                              .cast<TensorType>()
                              .getElementType();
@@ -4878,7 +4857,7 @@ LogicalResult MapOp::verify() {
   // Checks that number of dimensions of operands matches the size of
   // `dimensions` since we currently only support mapping across all
   // dimensions: i.e., scalar map functions.
-  auto operandType = operands()[0].getType().cast<TensorType>();
+  auto operandType = getInputs()[0].getType().cast<TensorType>();
   if (operandType.hasRank()) {
     if (dimensions.size() !=
         static_cast<int64_t>(operandType.getShape().size()))
@@ -4992,7 +4971,7 @@ LogicalResult ReduceWindowOp::verify() {
                                  operandTensorTypes.end());
 
   // P2.
-  if (failed(verifyCompatibleShapes(operands().getTypes())))
+  if (failed(verifyCompatibleShapes(getInputs().getTypes())))
     return emitOpError() << "requires same shape for all inputs";
 
   // P3.
@@ -5082,7 +5061,7 @@ LogicalResult ReduceWindowOp::verify() {
 
 // Get the operation used for reduction applied to `result_index`th result. Its
 // expected to be a binary operation that consumes `result_index`th and
-// `result_index + operands().size`th arguments of the body.
+// `result_index + getInputs().size`th arguments of the body.
 Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   auto returnOp = cast<ReturnOp>(getBody().front().getTerminator());
   Operation* computeOp = returnOp.getResults()[resultIndex].getDefiningOp();
@@ -5092,7 +5071,7 @@ Operation* ReduceWindowOp::getReductionOp(int resultIndex) {
   if (!arg0 || !arg1) return nullptr;
   int64_t arg0Num = arg0.getArgNumber();
   int64_t arg1Num = arg1.getArgNumber();
-  int64_t otherArgIndex = resultIndex + operands().size();
+  int64_t otherArgIndex = resultIndex + getInputs().size();
   if (arg0Num == resultIndex && arg1Num == otherArgIndex) return computeOp;
   if (arg0Num == otherArgIndex && arg1Num == resultIndex &&
       computeOp->hasTrait<mlir::OpTrait::IsCommutative>())
@@ -5250,7 +5229,7 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
   if (getDimensions().getNumElements() == 0) {
-    for (Value operand : this->operands()) {
+    for (Value operand : this->getInputs()) {
       results.push_back(operand);
     }
     return success();
@@ -5319,10 +5298,10 @@ static bool isEligibleForCompactPrint(ReduceOp op) {
     return false;
 
   // Check E3.
-  if (op.operands().empty()) return false;
+  if (op.getInputs().empty()) return false;
 
   auto elemType =
-      op.operands()[0].getType().cast<TensorType>().getElementType();
+      op.getInputs()[0].getType().cast<TensorType>().getElementType();
   auto expectedInnerOpType = RankedTensorType::get(/*shape=*/{}, elemType);
   if (innerOp.getOperands()[0].getType() != expectedInnerOpType) return false;
 
@@ -5764,7 +5743,7 @@ LogicalResult ReduceOp::reifyReturnTypeShapes(
     OpBuilder& builder, ValueRange operands,
     SmallVectorImpl<Value>& reifiedReturnShapes) {
   ReduceOp::Adaptor adaptor(operands);
-  auto inputs = adaptor.operands();
+  auto inputs = adaptor.getInputs();
 
   auto operandType = inputs[0].getType().dyn_cast<RankedTensorType>();
   // Not support unranked type a.t.m.
@@ -6704,6 +6683,12 @@ struct PositiveValue {
   bool operator()(const ValType& v) { return !v.isNegative() && !v.isZero(); }
 };
 
+static const APFloat& addSign(const APFloat& v, Type) { return v; }
+static APSInt addSign(const APInt& v, Type t) {
+  // Add signedness information to the value, treating signless as signed.
+  return APSInt(v, t.isUnsignedInteger());
+}
+
 template <typename Op, typename ElementType, typename ValType, typename Convert,
           typename Validate = AnyValue<ValType>>
 static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
@@ -6731,7 +6716,7 @@ static Attribute UnaryFolder(Op* op, ArrayRef<Attribute> attrs) {
   values.reserve(val.getNumElements());
   for (const auto v : val.getValues<ValType>()) {
     if (!Validate()(v)) return {};
-    Optional<ValType> r = Convert()(v);
+    Optional<ValType> r = Convert()(addSign(v, type));
     if (!r) return {};
     values.push_back(r.value());
   }
@@ -6752,12 +6737,6 @@ struct RoundNearestEven {
     APFloat r = f;
     r.roundToIntegral(llvm::RoundingMode::NearestTiesToEven);
     return r;
-  }
-};
-
-struct LogicalNot {
-  Optional<APInt> operator()(const APInt& i) {
-    return APInt(i.getBitWidth(), static_cast<uint64_t>(!i));
   }
 };
 
@@ -6798,11 +6777,11 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
     return {};                                                                \
   }
 
-#define UNARY_FOLDER_INT(Op, Func)                                   \
-  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                 \
-    if (getElementTypeOrSelf(getType()).isa<IntegerType>())          \
-      return UnaryFolder<Op, IntegerType, APInt, Func>(this, attrs); \
-    return {};                                                       \
+#define UNARY_FOLDER_INT(Op, Func)                                          \
+  OpFoldResult Op::fold(ArrayRef<Attribute> attrs) {                        \
+    if (getElementTypeOrSelf(getType()).isa<IntegerType>())                 \
+      return UnaryFolder<Op, IntegerType, APInt, Func<APInt>>(this, attrs); \
+    return {};                                                              \
   }
 
 #define UNARY_FOLDER_FLOAT(Op, Func)                                 \
@@ -6838,7 +6817,7 @@ double logistic(double d) { return 1.0 / (1.0 + std::exp(-d)); }
 
 UNARY_FOLDER(NegOp, std::negate)
 UNARY_FOLDER(SignOp, Sign)
-UNARY_FOLDER_INT(NotOp, LogicalNot)
+UNARY_FOLDER_INT(NotOp, std::bit_not)
 UNARY_FOLDER_FLOAT(RoundNearestEvenOp, RoundNearestEven)
 UNARY_FOLDER_FLOAT(RoundOp, Round)
 
@@ -6902,12 +6881,6 @@ void printBinaryOp(Operation* op, OpAsmPrinter& p) {
   p.printOperands(op->getOperands());
   p.printOptionalAttrDict(op->getAttrs());
   p << " : " << resultType;
-}
-
-static const APFloat& addSign(const APFloat& v, Type) { return v; }
-static APSInt addSign(const APInt& v, Type t) {
-  // Add signedness information to the value, treating signless as signed.
-  return APSInt(v, t.isUnsignedInteger());
 }
 
 template <typename Op, typename ElementType = Type, typename ValType,
@@ -6989,7 +6962,9 @@ template <>
 struct Remainder<APFloat> {
   APFloat operator()(const APFloat& a, const APFloat& b) const {
     APFloat result(a);
-    result.remainder(b);
+    // Using .mod instead of .remainder is important for behavior around signed
+    // zeros
+    result.mod(b);
     return result;
   }
 };
@@ -6999,24 +6974,25 @@ struct Max {
   T operator()(const T& a, const T& b) const { return std::max<T>(a, b); }
 };
 
+template <>
+struct Max<APFloat> {
+  // maximum on APFloat is required for NaN propagation logic
+  APFloat operator()(const APFloat& a, const APFloat& b) const {
+    return llvm::maximum(a, b);
+  }
+};
+
 template <typename T>
 struct Min {
   T operator()(const T& a, const T& b) const { return std::min<T>(a, b); }
 };
 
-template <typename T>
-struct And {
-  T operator()(const T& a, const T& b) const { return a & b; }
-};
-
-template <typename T>
-struct Or {
-  T operator()(const T& a, const T& b) const { return a | b; }
-};
-
-template <typename T>
-struct Xor {
-  T operator()(const T& a, const T& b) const { return a ^ b; }
+template <>
+struct Min<APFloat> {
+  // minimum on APFloat is required for NaN propagation logic
+  APFloat operator()(const APFloat& a, const APFloat& b) const {
+    return llvm::minimum(a, b);
+  }
 };
 
 #define BINARY_FOLDER_INTERNAL(Op, Func)                                     \
@@ -7126,7 +7102,8 @@ OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!rhsVal || !lhsVal) return {};
-  return BinaryFolder<AndOp, IntegerType, APInt, And<APSInt>>(this, operands);
+  return BinaryFolder<AndOp, IntegerType, APInt, std::bit_and<APSInt>>(
+      this, operands);
 }
 
 OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
@@ -7156,7 +7133,8 @@ OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!rhsVal || !lhsVal) return {};
-  return BinaryFolder<OrOp, IntegerType, APInt, Or<APSInt>>(this, operands);
+  return BinaryFolder<OrOp, IntegerType, APInt, std::bit_or<APSInt>>(this,
+                                                                     operands);
 }
 
 OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
@@ -7183,7 +7161,8 @@ OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
   }
 
   if (!rhsVal || !lhsVal) return {};
-  return BinaryFolder<XorOp, IntegerType, APInt, Xor<APSInt>>(this, operands);
+  return BinaryFolder<XorOp, IntegerType, APInt, std::bit_xor<APSInt>>(
+      this, operands);
 }
 
 #undef BINARY_FOLDER_INTERNAL
@@ -7494,7 +7473,7 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SortOp::verify() {
-  Operation::operand_range operands = this->operands();
+  Operation::operand_range operands = this->getInputs();
   if (operands.empty()) return emitOpError("requires at least one input");
 
   // TODO(antiagainst): verify partionally dynamic shapes
@@ -7587,7 +7566,7 @@ static LogicalResult sortDropEmptyUseArgs(SortOp op,
 
   SmallVector<Value> newOperands;
   BitVector erasedBlockArgs(op.getNumOperands() * 2);
-  for (const auto& en : llvm::enumerate(op.operands())) {
+  for (const auto& en : llvm::enumerate(op.getInputs())) {
     if (erasedArgs.contains(en.index())) {
       erasedBlockArgs.set(en.index() * 2);
       erasedBlockArgs.set(en.index() * 2 + 1);
@@ -7629,7 +7608,7 @@ static LogicalResult sortOpInferDefaultDimension(SortOp op,
 
   IntegerAttr dim = rewriter.getI64IntegerAttr(ty.getRank() - 1);
   auto newOp =
-      rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(), op.operands(),
+      rewriter.create<SortOp>(op.getLoc(), op.getResultTypes(), op.getInputs(),
                               dim, op.getIsStableAttr());
   Region& region = newOp.getComparator();
   rewriter.inlineRegionBefore(op.getComparator(), region, region.end());
@@ -7954,38 +7933,6 @@ LogicalResult CompareOp::reifyReturnTypeShapes(
                                      &reifiedReturnShapes);
 }
 
-template <typename T>
-struct Less : std::less<T> {};
-
-template <>
-struct Less<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.slt(b); }
-};
-
-template <typename T>
-struct LessEqual : std::less_equal<T> {};
-
-template <>
-struct LessEqual<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.sle(b); }
-};
-
-template <typename T>
-struct Greater : std::greater<T> {};
-
-template <>
-struct Greater<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.sgt(b); }
-};
-
-template <typename T>
-struct GreaterEqual : std::greater_equal<T> {};
-
-template <>
-struct GreaterEqual<APInt> {
-  bool operator()(const APInt& a, const APInt& b) const { return a.sge(b); }
-};
-
 template <typename Op, typename ElementType, typename SrcType, typename Convert>
 static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
   if (!attrs[0] || !attrs[1]) return {};
@@ -8000,7 +7947,8 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
     return {};
   }
 
-  if (!operandType.getElementType().isa<ElementType>()) {
+  auto etype = operandType.getElementType();
+  if (!etype.isa<ElementType>()) {
     return {};
   }
 
@@ -8011,7 +7959,9 @@ static Attribute CompareFolder(CompareOp op, ArrayRef<Attribute> attrs) {
   values.reserve(lhs.getNumElements());
   for (const auto zip :
        llvm::zip(lhs.getValues<SrcType>(), rhs.getValues<SrcType>())) {
-    values.push_back(Convert()(std::get<0>(zip), std::get<1>(zip)));
+    values.push_back(
+        Convert()(addSign(std::get<0>(zip), lhs.getElementType()),
+                  addSign(std::get<1>(zip), rhs.getElementType())));
   }
 
   auto resultTy = op.getType().cast<ShapedType>();
@@ -8077,17 +8027,17 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
     if (auto folded = CompareFolder<Op, FloatType, APFloat, Func<APFloat>>( \
             *this, operands))                                               \
       return folded;                                                        \
-    if (auto folded = CompareFolder<Op, IntegerType, APInt, Func<APInt>>(   \
+    if (auto folded = CompareFolder<Op, IntegerType, APInt, Func<APSInt>>(  \
             *this, operands))                                               \
       return folded;                                                        \
   }
 
   COMPARE_FOLDER(CompareOp, ComparisonDirection::EQ, std::equal_to);
   COMPARE_FOLDER(CompareOp, ComparisonDirection::NE, std::not_equal_to);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::LT, Less);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::LE, LessEqual);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::GT, Greater);
-  COMPARE_FOLDER(CompareOp, ComparisonDirection::GE, GreaterEqual);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LT, std::less);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::LE, std::less_equal);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GT, std::greater);
+  COMPARE_FOLDER(CompareOp, ComparisonDirection::GE, std::greater_equal);
 #undef COMPARE_FOLDER
 
   return {};
@@ -8342,12 +8292,12 @@ LogicalResult validateScatterDimensionNumbers(
 LogicalResult ScatterOp::verify() {
   // Get the first operand and update, since variadic Scatter is not yet
   // implemented
-  auto numOperands = operands().size();
+  auto numOperands = getInputs().size();
   auto scatterIndicesType =
       getScatterIndices().getType().dyn_cast<TensorType>();
 
   SmallVector<TensorType, 1> operandTypes =
-      llvm::to_vector(llvm::map_range(operands().getTypes(), [](Type type) {
+      llvm::to_vector(llvm::map_range(getInputs().getTypes(), [](Type type) {
         return type.cast<TensorType>();
       }));
   SmallVector<TensorType, 1> updatesTypes =
@@ -8355,7 +8305,7 @@ LogicalResult ScatterOp::verify() {
         return type.cast<TensorType>();
       }));
   bool allOperandTypesRanked =
-      llvm::all_of(operands().getTypes(),
+      llvm::all_of(getInputs().getTypes(),
                    [](Type type) { return type.isa<RankedTensorType>(); });
   bool scatterIndicesTypeRanked = scatterIndicesType.isa<RankedTensorType>();
 
@@ -8543,11 +8493,11 @@ LogicalResult ScatterOp::fold(
     ArrayRef<Attribute> args,
     llvm::SmallVectorImpl<OpFoldResult>& foldResults) {
   // Variadic Scatter not yet implemented
-  if (operands().size() != 1 || getUpdates().size() != 1) return failure();
+  if (getInputs().size() != 1 || getUpdates().size() != 1) return failure();
   auto index = args[1].dyn_cast_or_null<DenseIntElementsAttr>();
   if (!index) return failure();
 
-  auto baseType = operands().getTypes()[0].dyn_cast<RankedTensorType>();
+  auto baseType = getInputs().getTypes()[0].dyn_cast<RankedTensorType>();
   auto updateType = getUpdates().getTypes()[0].dyn_cast<RankedTensorType>();
   auto indexType = index.getType().cast<RankedTensorType>();
   if (!baseType || !indexType || !updateType) return failure();
@@ -8665,6 +8615,54 @@ LogicalResult ScatterOp::fold(
 
   foldResults.push_back(DenseElementsAttr::get(baseType, results));
   return success();
+}
+
+// Replace mhlo.scatter overwriting the entire input with mhlo.map.
+struct ScatterFullReplace : public OpRewritePattern<ScatterOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ScatterOp scatter,
+                                PatternRewriter& rewriter) const override {
+    // Variadic Scatter not yet implemented
+    if (scatter.getInputs().size() != 1 || scatter.getUpdates().size() != 1)
+      return failure();
+
+    auto baseType =
+        scatter.getInputs().getTypes()[0].dyn_cast<RankedTensorType>();
+    auto updateType =
+        scatter.getUpdates().getTypes()[0].dyn_cast<RankedTensorType>();
+    auto indexType =
+        scatter.getScatterIndices().getType().dyn_cast<RankedTensorType>();
+    if (!baseType || !indexType || !updateType) return failure();
+
+    // If updates is an empty shape, scatter overwrites the entire tensor.
+    // Transform it into a map with the combiner function.
+    if (!indexType.hasStaticShape() || indexType.getNumElements() > 0)
+      return failure();
+
+    // Require the same shape for base and updates. This isn't strictly
+    // necessary, but handling other cases would require turning scatter options
+    // into the appropriate reshapes and transposes.
+    if (!baseType.hasStaticShape() || !updateType.hasStaticShape() ||
+        baseType != updateType)
+      return failure();
+
+    auto dimensions =
+        llvm::to_vector(llvm::seq<int64_t>(0, baseType.getRank()));
+    auto map = rewriter.create<mhlo::MapOp>(
+        scatter.getLoc(), scatter->getResultTypes(),
+        ValueRange{scatter.getOperands()[0], scatter.getUpdates()[0]},
+        rewriter.getI64TensorAttr(dimensions));
+    rewriter.inlineRegionBefore(scatter.getRegion(), map.getRegion(),
+                                map.getRegion().begin());
+    rewriter.replaceOp(scatter, map->getResults());
+    return success();
+  }
+};
+
+void ScatterOp::getCanonicalizationPatterns(RewritePatternSet& results,
+                                            MLIRContext* context) {
+  results.add<ScatterFullReplace>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -8961,7 +8959,7 @@ Type MhloDialect::parseType(DialectAsmParser& parser) const {
   StringRef mnemonic;
   Type parsedType;
   auto parseResult = generatedTypeParser(parser, &mnemonic, parsedType);
-  if (parseResult.hasValue()) return parsedType;
+  if (parseResult.has_value()) return parsedType;
   if (mnemonic == "token") return TokenType::get(getContext());
   parser.emitError(parser.getNameLoc()) << "unknown mhlo type: " << mnemonic;
   return nullptr;

@@ -73,10 +73,6 @@ class CoordinationServiceAgent {
   virtual ~CoordinationServiceAgent() {}
 
   // Initialize coordination service agent.
-  virtual Status Initialize(
-      tsl::Env* env, const ServerDef& server_def,
-      std::unique_ptr<CoordinationClientCache> client_cache,
-      StatusCallback error_fn) = 0;
   virtual Status Initialize(tsl::Env* env, const std::string& job_name,
                             int task_id,
                             const CoordinationServiceConfig& configs,
@@ -124,8 +120,8 @@ class CoordinationServiceAgent {
   virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<CoordinatedTaskState> GetTaskStatus(
-      const CoordinatedTask& task) = 0;
+  virtual StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to

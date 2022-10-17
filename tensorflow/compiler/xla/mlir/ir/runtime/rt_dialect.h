@@ -29,4 +29,13 @@ limitations under the License.
 #define GET_ATTRDEF_CLASSES
 #include "tensorflow/compiler/xla/mlir/ir/runtime/rt_attrs.h.inc"
 
+namespace xla {
+namespace runtime {
+
+// Attribute name for marking functions exported to runtime.
+static constexpr char const* kExportedAttrName = "rt.exported";
+
+}  // namespace runtime
+}  // namespace xla
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_IR_RUNTIME_RT_DIALECT_H_

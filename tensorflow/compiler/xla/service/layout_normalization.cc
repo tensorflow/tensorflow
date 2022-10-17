@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -85,14 +86,14 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
   //
   // So we drop all degenerate dimensions EXCEPT for the one being concatenated.
   Status HandleConcatenate(HloInstruction* hlo) override {
-    auto s = hlo->shape();
-    auto orig_concat_dim = hlo->dimensions(0);
+    const Shape& s = hlo->shape();
+    int64_t orig_concat_dim = hlo->dimensions(0);
 
     std::vector<HloInstruction*> normalized_inputs;
     for (HloInstruction* operand : hlo->mutable_operands()) {
       TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
-      auto normalized_input_s = normalized_input->shape();
-      auto operand_s = operand->shape();
+      const Shape& normalized_input_s = normalized_input->shape();
+      const Shape& operand_s = operand->shape();
 
       // Drop all degenerate dimensions, unless it is being concatenated.
       auto operand_s_filtered = ShapeUtil::FilterDimensions(
@@ -131,6 +132,55 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
         HloInstruction::CreateConcatenate(normalized_shape, normalized_inputs,
                                           normalized_concat_dim - degen_delta));
     auto bc_to_orig = MakeBitcastHlo(normalized_concat, hlo->shape());
+    TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
+    return OkStatus();
+  }
+
+  Status HandleReduceWindow(HloInstruction* hlo) override {
+    if (hlo->shape().IsTuple()) {
+      // TODO(cheshire): Handle variadic reductions.
+      return OkStatus();
+    }
+
+    HloInstruction* operand = hlo->mutable_operand(0);
+    TF_RET_CHECK(hlo->shape().layout() == operand->shape().layout());
+    TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
+                        GetNormalizedInput(operand));
+
+    HloInstruction* new_op;
+
+    // TODO(cheshire): Try to have less duplication.
+    const Shape& op_shape = operand->shape();
+    Shape op_shape_reordered =
+        ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(op_shape);
+    if (op_shape_reordered == normalized_input->shape()) {
+      new_op = normalized_input;
+    } else {
+      new_op = MakeBitcastHlo(normalized_input, op_shape_reordered);
+    }
+
+    std::vector<int64_t> layout_as_permutation =
+        ToTransposeDimensions(hlo->shape().layout());
+
+    std::vector<WindowDimension> window_dimensions;
+    for (const WindowDimension& d : hlo->window().dimensions()) {
+      window_dimensions.push_back(d);
+    }
+    window_dimensions = Permute(window_dimensions, layout_as_permutation);
+
+    Window new_window;
+    for (const WindowDimension& d : window_dimensions) {
+      *new_window.add_dimensions() = d;
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * rw,
+        MakeReduceWindowHlo(new_op, hlo->mutable_operand(1), new_window,
+                            hlo->called_computations()[0], &hlo->metadata()));
+
+    HloInstruction* bc_to_normalized =
+        MakeBitcastHlo(rw, Normalize(rw->shape()));
+    HloInstruction* bc_to_orig = MakeBitcastHlo(bc_to_normalized, hlo->shape());
     TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bc_to_orig));
     return OkStatus();
   }

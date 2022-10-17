@@ -108,6 +108,7 @@ from tensorflow.lite.testing.op_tests.local_response_norm import make_local_resp
 from tensorflow.lite.testing.op_tests.log_softmax import make_log_softmax_tests
 from tensorflow.lite.testing.op_tests.logic import make_logical_or_tests, make_logical_and_tests, make_logical_xor_tests
 from tensorflow.lite.testing.op_tests.lstm import make_lstm_tests
+from tensorflow.lite.testing.op_tests.matrix_band_part import make_matrix_band_part_tests
 from tensorflow.lite.testing.op_tests.matrix_diag import make_matrix_diag_tests
 from tensorflow.lite.testing.op_tests.matrix_set_diag import make_matrix_set_diag_tests
 from tensorflow.lite.testing.op_tests.max_pool_with_argmax import make_max_pool_with_argmax_tests
@@ -155,6 +156,7 @@ from tensorflow.lite.testing.op_tests.segment_sum import make_segment_sum_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
 from tensorflow.lite.testing.op_tests.shape_to_strided_slice import make_shape_to_strided_slice_tests
 from tensorflow.lite.testing.op_tests.sigmoid import make_sigmoid_tests
+from tensorflow.lite.testing.op_tests.sigmoid_grad import make_sigmoid_grad_tests
 from tensorflow.lite.testing.op_tests.sign import make_sign_tests
 from tensorflow.lite.testing.op_tests.slice import make_slice_tests
 from tensorflow.lite.testing.op_tests.softmax import make_softmax_tests

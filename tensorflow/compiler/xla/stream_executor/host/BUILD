@@ -63,7 +63,8 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/stream_executor:kernel",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:setround",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -120,6 +121,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/stream_executor:multi_platform_manager",
         "//tensorflow/compiler/xla/stream_executor:platform",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",

@@ -821,7 +821,8 @@ LogicalResult GetReshapeOutputType(Value tensor, Value shape,
   output_ty_shape.reserve(shape_attr.getNumElements());
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
-    if (size == tensorflow::kTFDynamicSize) {
+    if (size == tensorflow::kTFDynamicSize ||  // NOLINT
+        size == ShapedType::kDynamicSize) {    // NOLINT
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "
@@ -965,7 +966,7 @@ LogicalResult SelectOp::verify() {
   int data_rank;
   // If data is unranked or data_rank is 0, this will remain -2. Otherwise
   // refers to first dimension of then and/or else.
-  int data_first_dim = -2;
+  int64_t data_first_dim = -2;
   bool then_has_rank = then_tensor.hasRank();
   bool else_has_rank = else_tensor.hasRank();
   if (then_has_rank && else_has_rank) {
@@ -973,8 +974,7 @@ LogicalResult SelectOp::verify() {
     if (then_tensor.getRank() > 0)
       data_first_dim = then_tensor.getShape().front();
     if (else_tensor.getRank() > 0)
-      data_first_dim = std::max(
-          static_cast<int>(else_tensor.getShape().front()), data_first_dim);
+      data_first_dim = std::max(else_tensor.getShape().front(), data_first_dim);
   } else if (then_has_rank) {
     data_rank = then_tensor.getRank();
     if (then_tensor.getRank() > 0)
@@ -1001,7 +1001,8 @@ LogicalResult SelectOp::verify() {
              << "requires that t and e are nonscalar when pred is a vector";
     }
     // We know `data` tensor has a rank of at least 1.
-    if (data_first_dim != -1 && cond_shape != -1 &&
+    if (data_first_dim != ShapedType::kDynamicSize &&
+        cond_shape != ShapedType::kDynamicSize &&
         data_first_dim != cond_shape) {
       return op.emitOpError() << "requires that, when pred is a vector, the "
                                  "shape matches the first dimension of t and e";
@@ -1326,25 +1327,27 @@ LogicalResult SliceOp::verify() {
     // constants.
     for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
-      int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
+      int64_t input_size =
+          input_ty ? input_ty.getShape()[dim] : ShapedType::kDynamicSize;
       int64_t slice_size =
           constant_slice_sizes
               ? slice_sizes.getValues<APInt>()[dim].getSExtValue()
               : 0;
-      int64_t output_size = output_ty ? output_ty.getShape()[dim] : -1;
+      int64_t output_size =
+          output_ty ? output_ty.getShape()[dim] : ShapedType::kDynamicSize;
 
-      if (slice_size == -1 && input_size != -1) {
+      if (slice_size == -1 && input_size != ShapedType::kDynamicSize) {
         slice_size = input_size - begin_index;
       }
-      if (output_size != -1 && constant_slice_sizes &&
+      if (output_size != ShapedType::kDynamicSize && constant_slice_sizes &&
           output_size != slice_size) {
         return op.emitOpError()
                << "requires output size to have the same size of slice, got "
                   "slice size "
                << slice_size << " and output size " << output_size;
       }
-      if (begin_index < 0 ||
-          (input_size != -1 && begin_index + slice_size > input_size)) {
+      if (begin_index < 0 || (input_size != ShapedType::kDynamicSize &&
+                              begin_index + slice_size > input_size)) {
         return op.emitOpError()
                << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
       }
@@ -1358,7 +1361,8 @@ LogicalResult SliceOp::verify() {
       for (int64_t i = 0; i < input_ty.getRank(); ++i) {
         int64_t slice_size = slice_sizes.getValues<APInt>()[i].getSExtValue();
         int64_t input_size = input_shape[i];
-        if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
+        if (slice_size != -1 && input_size != ShapedType::kDynamicSize &&
+            slice_size > input_size) {
           return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
                                      "is unknown at compile time";
         }
@@ -1636,7 +1640,7 @@ LogicalResult SplitVOp::verify() {
     return success();
 
   int64_t total_dim_size = 0;  // Total dimension size assigned to splits
-  llvm::Optional<int> dynamic_dim_index;
+  llvm::Optional<int64_t> dynamic_dim_index;
 
   SmallVector<int64_t, 4> split_sizes;
   split_sizes.reserve(

@@ -15,21 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def DeprecatedFusionPass : Pass<"gml-deprecated-fusion", "mlir::func::FuncOp"> {
-  let summary = "Fuse producers in into `gml_st.materialize` operations";
-  let constructor = "::mlir::gml_st::createDeprecatedFusionPass()";
-}
-
-def DeprecatedTilingPass : Pass<"gml-deprecated-tiling", "mlir::func::FuncOp"> {
-  let summary = "Tile operations to produce gml_st.parallel or gml_st.for";
-  let constructor = "::mlir::gml_st::createDeprecatedTilingPass()";
-  let options = [
-    Option<"tileSizesOpt", "tile-sizes", "std::string", /*default=*/"",
-        "Tile sizes in the format `[[d0,d1,...],[d0_,d1_,...],...]`. This "
-        "allows to express nested tiling sizes.">,
-  ];
-}
-
 def TilingPass : Pass<"gml-tiling", "mlir::func::FuncOp"> {
   let summary = "Tile operations using TilingInterface to produce gml_st.for";
   let constructor = "::mlir::gml_st::createTilingPass()";
@@ -65,6 +50,27 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
     ListOption<"tileSizes_", "tile-sizes", "int64_t", 
                "Right-aligned tile sizes. Do not tile possible remaining "
                "dimensions", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel_", "distribution-label", "std::string",
+            /*default=*/"", "Distribution label for generated gml_st.parallel">,
+  ];
+}
+
+def TilingReductionPass : Pass<"gml-tiling-reduction", "mlir::func::FuncOp"> {
+  let summary = "Tile linalg.generic reductions";
+  let constructor = "::mlir::gml_st::createTilingReductionPass()";
+  let dependentDialects = ["::mlir::gml_st::GmlStDialect",
+                           "::mlir::arith::ArithDialect"];
+}
+
+def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
+  let summary = "Match, tile, and fuse softmax implementations";
+  let constructor = "::mlir::gml_st::createTilingSoftmaxPass()";
+  let options = [
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Right-aligned tile sizes. Do not tile possible remaining "
+               "dimensions", "llvm::cl::ZeroOrMore">,
   ];
 }
 
@@ -92,7 +98,7 @@ def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
 def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
   let summary = "Lower nested `gml_st.parallel` to `gpu.launch`";
   let dependentDialects = ["::mlir::AffineDialect",
-                           "::mlir::arith::ArithmeticDialect",
+                           "::mlir::arith::ArithDialect",
                            "::mlir::gpu::GPUDialect", "::mlir::scf::SCFDialect",
                            "::mlir::vector::VectorDialect"];
 }
@@ -109,5 +115,14 @@ def VectorizeGmlStLoopsPass :
       "Pass to vectorize linalg.generic ops tiled to gml_st.parallel and " #
       "gml_st.for loops.";
   let constructor = "::mlir::gml_st::createVectorizeGmlStLoopsPass()";
+  let options = [
+    Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
+           "If true, vectorizes GmlSt ops in addition to linalg ops">,
+    ListOption<"distributionLabels", "included-distribution-labels",
+               "std::string", "Distribution labels of gml_st.parallel ops "
+               "where vectorization is allowed. Empty list signifies that "
+               "vectorization is allowed within all loops.",
+               "llvm::cl::ZeroOrMore">,
+  ];
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }

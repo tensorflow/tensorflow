@@ -237,25 +237,50 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, p
 
 // -----
 
-// Tests when the initializer function is empty.
+// Tests when the main function is empty.
 // CHECK-LABEL: module attributes
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
   "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
-// Check that the initializers list is empty.
+// Check that the initializers attribute is untouched.
 // CHECK: "tf_saved_model.session_initializer"()
-// CHECK-SAME: initializers = []
+// CHECK-SAME: initializers = [@NoOp]
 
   func.func @NoOp() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
     return
   }
-// Check that the initializer function is removed.
-// CHECK-NOT: @NoOp
+// The initializer function is untouched when the main function is empty.
+// CHECK: func.func @NoOp
 
   func.func @main() attributes {tf_saved_model.exported_names = ["main"]} {
     return
   }
 // CHECK: func.func @main()
 // CHECK-NEXT: return
+}
+
+// -----
+
+// Tests when the initializer function is empty.
+// CHECK-LABEL: module attributes
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 1228 : i32}, tf_saved_model.semantics} {
+  "tf_saved_model.session_initializer"() {initializers = [@NoOp]} : () -> ()
+// Check that the initializers attribute is untouched.
+// CHECK: "tf_saved_model.session_initializer"()
+// CHECK-SAME: initializers = [@NoOp]
+
+  func.func @NoOp() attributes {tf_saved_model.exported_names = ["__tf_saved_model_session_initializer_NoOp"]} {
+    return
+  }
+// The initializer function is untouched.
+// CHECK: func.func @NoOp
+
+  func.func @main() attributes {tf_saved_model.exported_names = ["main"]} {
+    tf_executor.graph {
+      tf_executor.fetch
+    }
+    return
+  }
+// CHECK: func.func @main()
 }
 
 // -----

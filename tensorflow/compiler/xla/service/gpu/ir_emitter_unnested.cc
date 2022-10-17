@@ -44,7 +44,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -58,10 +58,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/ROCDL/ROCDLToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/location_metadata.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
@@ -119,6 +116,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -535,54 +535,16 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
   auto module = get_global->getParentOfType<mlir::ModuleOp>();
   auto global = mlir::cast<mlir::memref::GlobalOp>(
       module.lookupSymbol(get_global.getName()));
-
   auto literal = global.getInitialValue()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
-
-  const bool should_emit_initializer = literal.getType().getNumElements() <= 1;
-
   TF_ASSIGN_OR_RETURN(int element_bytes,
                       GetElementTypeBytes(literal.getType().getElementType()));
-  llvm::ArrayType* global_type = llvm::ArrayType::get(
-      b_.getInt8Ty(), literal.getType().getNumElements() * element_bytes);
-
-  GpuExecutable::ConstantInfo info;
-  llvm::Constant* initializer;
-  if (should_emit_initializer) {
-    std::vector<uint8_t> content;
-    TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
-    initializer =
-        llvm::ConstantDataArray::get<uint8_t>(module_->getContext(), content);
-  } else {
-    TF_RETURN_IF_ERROR(
-        CopyDenseElementsDataToXlaFormat(literal, &info.content));
-    initializer = llvm::ConstantAggregateZero::get(global_type);
-  }
-
-  // These globals will be looked up by name by GpuExecutable so we need to
-  // give them an external linkage.  Not all of their uses are visible in
-  // the LLVM IR so we can't give then a linkage that merely preserves their
-  // names (like available_externally), we also need to ensure that they stick
-  // around even if they're "unused".
-  //
-  // We may have to be more clever here in the future if we notice that we're
-  // keeping around too many globals because of their linkage.
-  llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-      global_type, /*isConstant=*/should_emit_initializer,
-      llvm::GlobalValue::ExternalLinkage,
-      /*Initializer=*/initializer, global.getSymName(),
-      /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/0,
-      /*isExternallyInitialized=*/false);
-  global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-  module_->getGlobalList().push_back(global_for_const);
-
-  info.symbol_name.assign(global.getSymName().begin(),
-                          global.getSymName().end());
-
-  info.allocation_index =
-      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-  ir_emitter_context_->constants().push_back(std::move(info));
+  std::vector<uint8_t> content;
+  TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
+  ir_emitter_context_->emit_constant(
+      literal.getType().getNumElements(), element_bytes, global.getSymName(),
+      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt(), content,
+      &b_);
   return OkStatus();
 }
 
@@ -1165,13 +1127,13 @@ std::pair<bool, int> RowVectorizationEnabled(mlir::lmhlo::FusionOp fusion) {
 
     if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
       const auto& broadcast_dimensions_size =
-          broadcast.broadcast_dimensions().size();
+          broadcast.getBroadcastDimensions().size();
       if (broadcast_dimensions_size == 0) {
         continue;
       }
       llvm::SmallVector<int64_t> broadcast_dimensions;
       broadcast_dimensions.reserve(broadcast_dimensions_size);
-      for (const llvm::APInt& int_value : broadcast.broadcast_dimensions()) {
+      for (const llvm::APInt& int_value : broadcast.getBroadcastDimensions()) {
         broadcast_dimensions.push_back(int_value.getSExtValue());
       }
 
@@ -1520,7 +1482,7 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
   auto launch_func = mlir::cast<mlir::gpu::LaunchFuncOp>(op);
   auto kernel_func =
       mlir::SymbolTable::lookupNearestSymbolFrom<mlir::LLVM::LLVMFuncOp>(
-          launch_func, launch_func.kernel());
+          launch_func, launch_func.getKernel());
   if (!kernel_func) {
     return InternalError("kernel '%s' not found",
                          launch_func.getKernelName().str());
@@ -1637,7 +1599,7 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
         continue;
       }
       if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastInDimOp>(op)) {
-        if (broadcast.broadcast_dimensions().empty() ||
+        if (broadcast.getBroadcastDimensions().empty() ||
             // More then 2 bit inputs cause one speed regression.
             (row_vectorized && num_big_inputs <= 3)) {
           continue;
@@ -2126,9 +2088,12 @@ Status IrEmitterUnnested::EmitWhile(mlir::Operation* op) {
       << "While condition computation must return bool";
 
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  // XLA runtime always lowers lmhlo.while to scf.while, not 'for'.
+  //
+  // If Xla runtime is enabled we always lower to `lmhlo.while` operation and
+  // rely on `lmhlo-to-gpu-runtime` to lower while loops with known trip counts
+  // to `scf.for` loops.
   if (while_op.getTripCount() &&
-      !IsJitRtExecutableEnabled(hlo_module_config_)) {
+      !IsXlaRuntimeExecutableEnabled(hlo_module_config_)) {
     TF_ASSIGN_OR_RETURN(auto thunk, BuildForThunk(while_op, GetThunkInfo(op),
                                                   *while_op.getTripCount()));
     AddThunkToThunkSequence(std::move(thunk));
@@ -3224,7 +3189,7 @@ IrEmitterUnnested::TryBuildConstantInitializerThunk(mlir::Operation* op,
     }
   } else if (auto constant = mlir::dyn_cast_or_null<mlir::mhlo::ConstantOp>(
                  init_value.getDefiningOp())) {
-    const_init = constant.value().dyn_cast<mlir::DenseElementsAttr>();
+    const_init = constant.getValue().dyn_cast<mlir::DenseElementsAttr>();
   }
 
   if (const_init) {
@@ -3290,7 +3255,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildFusedInitializerThunk(
   TF_RET_CHECK(reduce);
   TF_RET_CHECK(reduce.getNumResults() == 1);
 
-  mlir::Value init_value = reduce.init_values()[0];
+  mlir::Value init_value = reduce.getInitValues()[0];
   mlir::Value dest = fusion.getOutputBuffers()[output_index];
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Thunk> constant_init_thunk,
@@ -4188,6 +4153,8 @@ IrEmitterUnnested::EmitTilingKernel(
 }
 
 llvm::CallInst* IrEmitterUnnested::EmitSyncThreads() {
+  MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering::SequentiallyConsistent,
+                          "workgroup");
   return EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
 }
 
@@ -4637,8 +4604,7 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
     }
   }
 
-  VLOG(3) << "Each threads will produce " << num_partial_results
-          << " output(s)";
+  VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
   reduction_tiling[kDimX] *= num_partial_results;
 
   Vector3 num_threads = {1, num_threads_y, num_threads_x};
@@ -4829,8 +4795,20 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
   std::vector<HloInstruction*> roots = GetFusionRoots(fused_computation);
   HloInstructionMap<tensorflow::UnionFind<HloInstruction*>> disjoint_sets;
 
+  // TODO(b/249976438): we currently do not treat properly
+  // aliasing between inputs and outputs of the fusion, so for now put all
+  // non-reduction roots into one group to avoid read-after-write conflicts.
+  HloInstruction* FirstNonReductionRoot = nullptr;
+
   for (HloInstruction* root : roots) {
     disjoint_sets[root].Get() = root;
+    if (root->opcode() != HloOpcode::kReduce) {
+      if (!FirstNonReductionRoot) {
+        FirstNonReductionRoot = root;
+      } else {
+        disjoint_sets[FirstNonReductionRoot].Merge(&disjoint_sets[root]);
+      }
+    }
   }
 
   std::unique_ptr<HloReachabilityMap> reachability_map =
@@ -4914,7 +4892,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
        /*z=*/1},
       {/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(), /*y=*/1, /*z=*/1});
   VLOG(3) << "Launch dimensions of "
-          << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc())
+          << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc()) << ": "
           << launch_dimensions.ToString();
 
   std::vector<llvm_ir::IrArray> ir_arrays;
@@ -5426,7 +5404,7 @@ Status IrEmitterUnnested::EmitLmhloRegion(mlir::Region* region) {
 }
 
 void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
-  registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
                   mlir::lmhlo_gpu::LmhloGpuDialect, mlir::mhlo::MhloDialect>();
   mlir::registerLLVMDialectTranslation(registry);

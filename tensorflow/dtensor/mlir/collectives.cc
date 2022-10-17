@@ -174,15 +174,15 @@ StatusOr<mlir::Value> EmitDenseToSparseToDense(
 
   // Emit a SparseToDenseOp and replace the SparseTensor with the result of
   // this new op.
-  auto zero_scalar = CreateZeroScalarConst(
-      builder, input.getLoc(),
-      input.getType().cast<mlir::TensorType>().getElementType());
-  if (!zero_scalar.has_value())
-    return errors::Internal("Failure in creating a zero scalar const");
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, input.getLoc(),
+          input.getType().cast<mlir::TensorType>().getElementType()));
 
   auto dense = builder.create<mlir::TF::SparseToDenseOp>(
       input.getLoc(), input.getType(),
-      mlir::ValueRange({indices, shape, values, zero_scalar.value()}));
+      mlir::ValueRange({indices, shape, values, zero_scalar}));
 
   if (newly_created_ops != nullptr) {
     for (auto new_op : {dense.getOperation(), shape.getOperation(),
@@ -279,6 +279,20 @@ StatusOr<mlir::Value> EmitRelayout(
   if (!all_scatter.ok()) return all_scatter;
   return EmitDenseToSparseToDense(builder, all_scatter.value(),
                                   newly_created_ops);
+}
+
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value) {
+  absl::flat_hash_set<std::string> reduce_dims;
+  for (const MeshDimension& mesh_dim : mesh.dims()) {
+    reduce_dims.insert(mesh_dim.name);
+  }
+  return EmitAllReduce(
+      builder, Layout::ReplicatedOnMesh(mesh, /*rank=*/1), reduce_dims,
+      IntConst(builder, loc, std::vector<int32>{value}).getDefiningOp(),
+      kReduceOpAdd);
 }
 
 StatusOr<mlir::Operation*> EmitAllReduce(

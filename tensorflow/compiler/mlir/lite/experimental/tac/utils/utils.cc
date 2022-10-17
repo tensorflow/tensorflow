@@ -25,7 +25,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -54,8 +54,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportFlatbufferOrMlir(
 
   if (input_mlir) {
     mlir::DialectRegistry registry;
-    registry.insert<mlir::TFL::TensorFlowLiteDialect,
-                    mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
+    registry.insert<mlir::TFL::TensorFlowLiteDialect, mlir::arith::ArithDialect,
+                    mlir::func::FuncDialect>();
     context->appendDialectRegistry(registry);
     source_mgr->AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
     return mlir::OwningOpRef<mlir::ModuleOp>(

@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <numeric>
+#include <string>
+
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_format.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/lite/kernels/padding.h"
@@ -90,41 +97,43 @@ void GetSamePaddingValues(OpBuilder &builder, Location loc, Value input_size,
 Value PadForDynamicShapedInputSamePadding(
     OpBuilder &builder, Location loc, Value input, Value filter,
     int8_t input_zp_value, ArrayAttr strides, ArrayAttr dilations,
-    StringAttr conv_padding, Value &padding) {
-  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
-  const int stride_h = strides[1].cast<IntegerAttr>().getInt();
-  const int stride_w = strides[2].cast<IntegerAttr>().getInt();
-  const int dilation_h = dilations[1].cast<IntegerAttr>().getInt();
-  const int dilation_w = dilations[2].cast<IntegerAttr>().getInt();
-  const int filter_h = filter_shape.getDimSize(0);
-  const int filter_w = filter_shape.getDimSize(1);
-
-  Value input_shape_value = builder.create<TF::ShapeOp>(
-      loc, RankedTensorType::get({4}, builder.getI32Type()), input);
-  Value input_size_h = GetDimValue(builder, loc, input_shape_value, 1);
-  Value pad_h_low, pad_h_high;
-  GetSamePaddingValues(builder, loc, input_size_h, filter_h, dilation_h,
-                       stride_h, pad_h_low, pad_h_high);
-  Value input_size_w = GetDimValue(builder, loc, input_shape_value, 2);
-  Value pad_w_low, pad_w_high;
-  GetSamePaddingValues(builder, loc, input_size_w, filter_w, dilation_w,
-                       stride_w, pad_w_low, pad_w_high);
-  padding = CreateConstValue<int32_t>(builder, loc, {2, 2}, {0, 0, 0, 0});
-  Value zero = CreateScalarConstValue(builder, loc, 0);
+    StringAttr conv_padding, Value &padding, int num_dims) {
   Value zero_rank1 = CreateConstValue<int32_t>(builder, loc, {1}, {0});
+  SmallVector<Value> temp_padding_values{zero_rank1, zero_rank1};
+
   auto reshape_op = [&](Value value, const SmallVector<int64_t> &shape) {
     const int64_t rank = shape.size();
     return builder.create<TF::ReshapeOp>(
         loc, RankedTensorType::get(shape, builder.getI32Type()), value,
         CreateConstValue<int64_t>(builder, loc, {rank}, shape));
   };
+
+  ShapedType filter_shape = filter.getType().template cast<ShapedType>();
+  Value input_shape_value = builder.create<TF::ShapeOp>(
+      loc, RankedTensorType::get({num_dims}, builder.getI32Type()), input);
   auto scalar_to_rank1 = [&](Value value) { return reshape_op(value, {1}); };
+  for (int i : llvm::seq<int>(1, num_dims - 1)) {
+    Value input_size_i = GetDimValue(builder, loc, input_shape_value, i);
+    const int stride_i = strides[i].cast<IntegerAttr>().getInt();
+    const int dilation_i = dilations[i].cast<IntegerAttr>().getInt();
+    const int filter_i = filter_shape.getDimSize(i - 1);
+    Value pad_i_low, pad_i_high;
+    GetSamePaddingValues(builder, loc, input_size_i, filter_i, dilation_i,
+                         stride_i, pad_i_low, pad_i_high);
+    temp_padding_values.push_back(scalar_to_rank1(pad_i_low));
+    temp_padding_values.push_back(scalar_to_rank1(pad_i_high));
+  }
+  temp_padding_values.push_back(zero_rank1);
+  temp_padding_values.push_back(zero_rank1);
+
+  padding = CreateConstValue<int32_t>(
+      builder, loc, /*shape=*/{num_dims - 2, 2},
+      /*values=*/llvm::SmallVector<int32_t>(2 * (num_dims - 2), 0));
+  Value zero = CreateScalarConstValue(builder, loc, 0);
   Value temp_padding_rank1 = builder.create<TF::ConcatOp>(
-      loc, RankedTensorType::get({8}, builder.getI32Type()), zero,
-      ArrayRef<Value>({zero_rank1, zero_rank1, scalar_to_rank1(pad_h_low),
-                       scalar_to_rank1(pad_h_high), scalar_to_rank1(pad_w_low),
-                       scalar_to_rank1(pad_w_high), zero_rank1, zero_rank1}));
-  Value temp_padding = reshape_op(temp_padding_rank1, {4, 2});
+      loc, RankedTensorType::get({2 * num_dims}, builder.getI32Type()), zero,
+      temp_padding_values);
+  Value temp_padding = reshape_op(temp_padding_rank1, {num_dims, 2});
   return builder.create<TF::PadV2Op>(
       loc, input.getType(), input, temp_padding,
       CreateScalarConstValue<int8_t>(builder, loc, input_zp_value));
@@ -137,73 +146,78 @@ Value PadForDynamicShapedInputSamePadding(
 // padding.
 // Otherwise, calculates padding with known numbers, and only for non-zero
 // padding (input_zp != 0), adds Pad op before convolution.
-Value CalculatePaddingAndPadIfNeeded(
-    OpBuilder &builder, Location loc, Value input, Value filter,
-    int8_t input_zp_value, ArrayAttr strides, ArrayAttr dilations,
-    StringAttr conv_padding, ArrayAttr explicit_paddings, Value &padding) {
+Value CalculatePaddingAndPadIfNeeded(OpBuilder &builder, Location loc,
+                                     Value input, Value filter,
+                                     int8_t input_zp_value, ArrayAttr strides,
+                                     ArrayAttr dilations,
+                                     StringAttr conv_padding,
+                                     ArrayAttr explicit_paddings,
+                                     Value &padding, int num_dims) {
   ShapedType input_shape = input.getType().template cast<ShapedType>();
-
-  if (conv_padding.strref().equals("SAME") &&
-      (input_shape.isDynamicDim(1) || input_shape.isDynamicDim(2))) {
+  SmallVector<int64_t> spatial_dims(num_dims - 2);
+  absl::c_iota(spatial_dims, 1);
+  bool has_dynamic_spatial_dim = absl::c_any_of(
+      spatial_dims,
+      [&input_shape](int64_t dim) { return input_shape.isDynamicDim(dim); });
+  if (conv_padding.strref().equals("SAME") && has_dynamic_spatial_dim) {
     return PadForDynamicShapedInputSamePadding(
         builder, loc, input, filter, input_zp_value, strides, dilations,
-        conv_padding, padding);
+        conv_padding, padding, num_dims);
   }
 
   ShapedType filter_shape = filter.getType().template cast<ShapedType>();
-
-  int padding_h_before, padding_h_after, padding_w_before, padding_w_after;
+  SmallVector<int32_t> padding_values(2 * num_dims, 0);
   if (conv_padding.strref().equals("EXPLICIT")) {
-    if (explicit_paddings.size() != 8) {
-      emitError(loc, "explicit_paddings are expected to be 8-element arrays");
+    if (explicit_paddings.size() != 2 * num_dims) {
+      emitError(loc,
+                absl::StrFormat(
+                    "explicit_paddings are expected to be %d-element arrays",
+                    2 * num_dims));
       return {};
     }
-    padding_h_before = explicit_paddings[2].cast<IntegerAttr>().getInt();
-    padding_h_after = explicit_paddings[3].cast<IntegerAttr>().getInt();
-    padding_w_before = explicit_paddings[4].cast<IntegerAttr>().getInt();
-    padding_w_after = explicit_paddings[5].cast<IntegerAttr>().getInt();
-  } else if (conv_padding.strref().equals("VALID")) {
-    padding_h_before = 0;
-    padding_h_after = 0;
-    padding_w_before = 0;
-    padding_w_after = 0;
-  } else {
-    // conv_padding is "SAME".
-    int output_height, output_width;
-    const int stride_h = strides[1].cast<IntegerAttr>().getInt();
-    const int stride_w = strides[2].cast<IntegerAttr>().getInt();
-    const int dilation_h = dilations[1].cast<IntegerAttr>().getInt();
-    const int dilation_w = dilations[2].cast<IntegerAttr>().getInt();
-    TfLitePaddingValues padding_values = tflite::ComputePaddingHeightWidth(
-        stride_h, stride_w, dilation_h, dilation_w,
-        /*in_height=*/input_shape.getDimSize(1),
-        /*in_width=*/input_shape.getDimSize(2),
-        /*filter_height=*/filter_shape.getDimSize(0),
-        /*filter_width=*/filter_shape.getDimSize(1), kTfLitePaddingSame,
-        &output_height, &output_width);
-    padding_h_before = padding_values.height;
-    padding_h_after = padding_values.height + padding_values.height_offset;
-    padding_w_before = padding_values.width;
-    padding_w_after = padding_values.width + padding_values.width_offset;
+    for (int i : spatial_dims) {
+      padding_values[2 * i] =
+          explicit_paddings[2 * i].cast<IntegerAttr>().getInt();
+      padding_values[2 * i + 1] =
+          explicit_paddings[2 * i + 1].cast<IntegerAttr>().getInt();
+    }
+  } else if (conv_padding.strref().equals("SAME")) {
+    for (int i : spatial_dims) {
+      int input_size = input_shape.getDimSize(i);
+      int filter_size = filter_shape.getDimSize(i - 1);
+      int stride_i = strides[i].cast<IntegerAttr>().getInt();
+      int dilation_i = dilations[i].cast<IntegerAttr>().getInt();
+      int out_size = tflite::ComputeOutSize(kTfLitePaddingSame, input_size,
+                                            filter_size, stride_i, dilation_i);
+
+      int offset = 0;
+      int padding_before = tflite::ComputePaddingWithOffset(
+          stride_i, dilation_i, input_size, filter_size, out_size, &offset);
+      int padding_after = padding_before + offset;
+      padding_values[2 * i] = padding_before;
+      padding_values[2 * i + 1] = padding_after;
+    }
   }
 
-  if (input_zp_value == 0 || (padding_h_before == 0 && padding_h_after == 0 &&
-                              padding_w_before == 0 && padding_w_after == 0)) {
+  if (input_zp_value == 0 ||
+      absl::c_all_of(padding_values, [](int v) { return v == 0; })) {
     padding = CreateConstValue<int32_t>(
-        builder, loc, {2, 2},
-        {padding_h_before, padding_h_after, padding_w_before, padding_w_after});
+        builder, loc, {num_dims - 2, 2},
+        llvm::SmallVector<int32_t>(padding_values.begin() + 2,
+                                   padding_values.end() - 2));
     return input;
   }
-  padding = CreateConstValue<int32_t>(builder, loc, {2, 2}, {0, 0, 0, 0});
+  padding = CreateConstValue<int32_t>(
+      builder, loc, {num_dims - 2, 2},
+      llvm::SmallVector<int32_t>(2 * (num_dims - 2), 0));
 
   Value temp_padding =
-      CreateConstValue<int32_t>(builder, loc, {4, 2},
-                                {0, 0, padding_h_before, padding_h_after,
-                                 padding_w_before, padding_w_after, 0, 0});
+      CreateConstValue<int32_t>(builder, loc, {num_dims, 2}, padding_values);
   SmallVector<int64_t> output_shape(input_shape.getShape().begin(),
                                     input_shape.getShape().end());
-  output_shape[1] += padding_h_before + padding_h_after;
-  output_shape[2] += padding_w_before + padding_w_after;
+  for (int i : spatial_dims) {
+    output_shape[i] += padding_values[2 * i] + padding_values[2 * i + 1];
+  }
 
   return builder.create<TF::PadV2Op>(
       loc, RankedTensorType::get(output_shape, builder.getI8Type()), input,

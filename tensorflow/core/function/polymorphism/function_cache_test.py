@@ -20,6 +20,7 @@ from typing import Optional
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_cache
+from tensorflow.core.function.polymorphism import function_type
 from tensorflow.python.eager.polymorphic_function import function_context
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -81,7 +82,7 @@ class MockShape(trace.TraceType):
   def __init__(self, *shape: Optional[int]):
     self.shape = shape
 
-  def is_subtype_of(self, other: "MockShape") ->bool:
+  def is_subtype_of(self, other: "MockShape") -> bool:
     if len(self.shape) != len(other.shape):
       return False
 
@@ -106,10 +107,11 @@ class MockShape(trace.TraceType):
     return self.shape == other.shape
 
 
-class MockEmptyCaptureSnapshot(function_cache.CaptureSnapshot):
-
-  def __init__(self, _=None):
-    self.mapping = {}
+def make_single_param_type(type_constraint):
+  return function_type.FunctionType([
+      function_type.Parameter("x", function_type.Parameter.POSITIONAL_ONLY,
+                              False, type_constraint)
+  ])
 
 
 class FunctionCacheTest(test.TestCase):
@@ -158,14 +160,13 @@ class FunctionCacheTest(test.TestCase):
     cache.delete(key_1)
     self.assertIsNone(cache.lookup(key_1, False))
 
-    key_2 = function_cache.FunctionCacheKey(MockSubtypeOf2(2),
-                                            MockEmptyCaptureSnapshot(), None)
-    cache.add(key_2, trace_type.WeakrefDeletionObserver(),
-              "test_2")
+    key_2 = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), None)
+    cache.add(key_2, trace_type.WeakrefDeletionObserver(), "test_2")
     self.assertEqual(cache.lookup(key_2, False), "test_2")
 
-    key_3 = function_cache.FunctionCacheKey(MockSubtypeOf2(3),
-                                            MockEmptyCaptureSnapshot(), None)
+    key_3 = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(3)), None)
     self.assertEqual(cache.lookup(key_3, True), "test_2")
 
     cache.delete(key_2)
@@ -175,12 +176,12 @@ class FunctionCacheTest(test.TestCase):
   def testFunctionCacheKeyRespectsEquality(self):
     ctx = function_cache.FunctionContext(0)
     generic = MockGenericType
-    key_a = function_cache.FunctionCacheKey(generic(1),
-                                            MockEmptyCaptureSnapshot(), ctx)
-    key_b = function_cache.FunctionCacheKey(generic(2),
-                                            MockEmptyCaptureSnapshot(), ctx)
-    key_c = function_cache.FunctionCacheKey(generic(1),
-                                            MockEmptyCaptureSnapshot(), ctx)
+    key_a = function_cache.FunctionCacheKey(
+        make_single_param_type(generic(1)), ctx)
+    key_b = function_cache.FunctionCacheKey(
+        make_single_param_type(generic(2)), ctx)
+    key_c = function_cache.FunctionCacheKey(
+        make_single_param_type(generic(1)), ctx)
 
     self.assertNotEqual(key_a, key_b)
     self.assertEqual(key_a, key_c)
@@ -188,12 +189,12 @@ class FunctionCacheTest(test.TestCase):
 
   def testFunctionCacheKeyRespectsSubtype(self):
     ctx = function_cache.FunctionContext(0)
-    key_a = function_cache.FunctionCacheKey(MockSubtypeOf2(1),
-                                            MockEmptyCaptureSnapshot(), ctx)
-    key_b = function_cache.FunctionCacheKey(MockSubtypeOf2(2),
-                                            MockEmptyCaptureSnapshot(), ctx)
-    key_c = function_cache.FunctionCacheKey(MockSubtypeOf2(1),
-                                            MockEmptyCaptureSnapshot(), ctx)
+    key_a = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(1)), ctx)
+    key_b = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), ctx)
+    key_c = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(1)), ctx)
 
     self.assertTrue(key_a.is_subtype_of(key_b))
     self.assertFalse(key_b.is_subtype_of(key_a))
@@ -201,68 +202,61 @@ class FunctionCacheTest(test.TestCase):
 
   def testFunctionCacheKeyRespectsSupertype(self):
     ctx = function_cache.FunctionContext(0)
-    key_a = function_cache.FunctionCacheKey(MockSupertypes2With3(1),
-                                            MockEmptyCaptureSnapshot(), ctx)
-    key_b = function_cache.FunctionCacheKey(MockSupertypes2With3(2),
-                                            MockEmptyCaptureSnapshot(), ctx)
+    key_a = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSupertypes2With3(1)), ctx)
+    key_b = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSupertypes2With3(2)), ctx)
 
     self.assertEqual(
         key_b.most_specific_common_supertype([key_a]),
-        function_cache.FunctionCacheKey(MockSupertypes2With3(3),
-                                        MockEmptyCaptureSnapshot(), ctx))
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockSupertypes2With3(3)), ctx))
     self.assertIsNone(key_a.most_specific_common_supertype([key_b]))
 
   def testMostSpecificFunctionCacheKeyIsLookedUp(self):
     ctx = function_cache.FunctionContext(0)
     cache = function_cache.FunctionCache()
     cache.add(
-        function_cache.FunctionCacheKey(MockShape(1, 2, None),
-                                        MockEmptyCaptureSnapshot(), ctx),
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, 2, None)), ctx),
         trace_type.WeakrefDeletionObserver(), "a")
     cache.add(
-        function_cache.FunctionCacheKey(MockShape(1, 2, 3),
-                                        MockEmptyCaptureSnapshot(), ctx),
-        trace_type.WeakrefDeletionObserver(), "b")
-
-    self.assertEqual(
-        cache.lookup(
-            function_cache.FunctionCacheKey(MockShape(1, 2, 3),
-                                            MockEmptyCaptureSnapshot(),
-                                            ctx), True),
-        "b")
-
-  def testFirstMostSpecificFunctionCacheKeyIsLookedUp(self):
-    ctx = function_cache.FunctionContext(0)
-    cache = function_cache.FunctionCache()
-    cache.add(
-        function_cache.FunctionCacheKey(MockShape(1, 2, None),
-                                        MockEmptyCaptureSnapshot(), ctx),
-        trace_type.WeakrefDeletionObserver(), "a")
-    cache.add(
-        function_cache.FunctionCacheKey(MockShape(1, None, 3),
-                                        MockEmptyCaptureSnapshot(), ctx),
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, 2, 3)), ctx),
         trace_type.WeakrefDeletionObserver(), "b")
 
     self.assertEqual(
         cache.lookup(
             function_cache.FunctionCacheKey(
-                MockShape(1, 2, 3), MockEmptyCaptureSnapshot(), ctx), True),
-        "a")
+                make_single_param_type(MockShape(1, 2, 3)), ctx), True), "b")
+
+  def testFirstMostSpecificFunctionCacheKeyIsLookedUp(self):
+    ctx = function_cache.FunctionContext(0)
+    cache = function_cache.FunctionCache()
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, 2, None)), ctx),
+        trace_type.WeakrefDeletionObserver(), "a")
+    cache.add(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockShape(1, None, 3)), ctx),
+        trace_type.WeakrefDeletionObserver(), "b")
+
+    self.assertEqual(
+        cache.lookup(
+            function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(1, 2, 3)), ctx), True), "a")
 
   def testMostSpecificFunctionCacheKeyIsOrderAgnostic(self):
     ctx = function_cache.FunctionContext(0)
-    keys = [(function_cache.FunctionCacheKey(MockShape(1, 1, 1),
-                                             MockEmptyCaptureSnapshot(),
-                                             ctx), "a"),
-            (function_cache.FunctionCacheKey(MockShape(1, None, 1),
-                                             MockEmptyCaptureSnapshot(),
-                                             ctx), "b"),
-            (function_cache.FunctionCacheKey(MockShape(None, None, 1),
-                                             MockEmptyCaptureSnapshot(),
-                                             ctx), "c"),
-            (function_cache.FunctionCacheKey(MockShape(None, None, None),
-                                             MockEmptyCaptureSnapshot(),
-                                             ctx), "d")]
+    keys = [(function_cache.FunctionCacheKey(
+        make_single_param_type(MockShape(1, 1, 1)), ctx), "a"),
+            (function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(1, None, 1)), ctx), "b"),
+            (function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(None, None, 1)), ctx), "c"),
+            (function_cache.FunctionCacheKey(
+                make_single_param_type(MockShape(None, None, None)), ctx), "d")]
 
     for permutation in itertools.permutations(keys):
       cache = function_cache.FunctionCache()
@@ -277,28 +271,20 @@ class FunctionCacheTest(test.TestCase):
 
       self.assertEqual(
           cache.lookup(
-              function_cache.FunctionCacheKey(MockShape(1, 1, 1),
-                                              MockEmptyCaptureSnapshot(),
-                                              ctx), True),
-          "a")
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(1, 1, 1)), ctx), True), "a")
       self.assertEqual(
           cache.lookup(
-              function_cache.FunctionCacheKey(MockShape(1, 2, 1),
-                                              MockEmptyCaptureSnapshot(),
-                                              ctx), True),
-          "b")
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(1, 2, 1)), ctx), True), "b")
       self.assertEqual(
           cache.lookup(
-              function_cache.FunctionCacheKey(MockShape(2, 2, 1),
-                                              MockEmptyCaptureSnapshot(),
-                                              ctx), True),
-          "c")
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(2, 2, 1)), ctx), True), "c")
       self.assertEqual(
           cache.lookup(
-              function_cache.FunctionCacheKey(MockShape(2, 2, 2),
-                                              MockEmptyCaptureSnapshot(),
-                                              ctx), True),
-          "d")
+              function_cache.FunctionCacheKey(
+                  make_single_param_type(MockShape(2, 2, 2)), ctx), True), "d")
 
   def testWeakRefDeletionAlsoDeletesConcreteFunction(self):
     if not function_cache.DELETE_WITH_WEAKREF:
@@ -447,17 +433,16 @@ class FunctionCacheBenchmark(test.Benchmark):
     for key in keys:
       cache.add(*key, "testing")
     cache.add(
-        function_cache.FunctionCacheKey(MockSubtypeOf2(2),
-                                        MockEmptyCaptureSnapshot(), None),
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockSubtypeOf2(2)), None),
         trace_type.WeakrefDeletionObserver(), "testing")
-    cache.lookup(function_cache.FunctionCacheKey(MockSubtypeOf2(3),
-                                                 MockEmptyCaptureSnapshot(),
-                                                 None), True)
+    cache.lookup(
+        function_cache.FunctionCacheKey(
+            make_single_param_type(MockSubtypeOf2(3)), None), True)
 
     iterations = 10000
-    lookup_key = function_cache.FunctionCacheKey(MockSubtypeOf2(2),
-                                                 MockEmptyCaptureSnapshot(),
-                                                 None)
+    lookup_key = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), None)
     subtyping_time = timeit.timeit(
         lambda: cache.lookup(lookup_key, True), number=iterations)
 
@@ -490,14 +475,13 @@ class FunctionCacheBenchmark(test.Benchmark):
       for key in keys:
         cache.add(*key, "testing")
       cache.add(
-          function_cache.FunctionCacheKey(MockSubtypeOf2(3),
-                                          MockEmptyCaptureSnapshot(), None),
+          function_cache.FunctionCacheKey(
+              make_single_param_type(MockSubtypeOf2(3)), None),
           trace_type.WeakrefDeletionObserver(), "testing")
 
     iterations = 10000
-    lookup_key = function_cache.FunctionCacheKey(MockSubtypeOf2(2),
-                                                 MockEmptyCaptureSnapshot(),
-                                                 None)
+    lookup_key = function_cache.FunctionCacheKey(
+        make_single_param_type(MockSubtypeOf2(2)), None)
     subtyping_time = sum(
         timeit.repeat(
             stmt=lambda: cache.lookup(lookup_key, True),
@@ -513,59 +497,6 @@ class FunctionCacheBenchmark(test.Benchmark):
             "name": "cache_hit_50th_key_unknown_subtype_avg_ms",
             "value": subtyping_time / iterations * 1000
         }])
-
-
-class CaptureSnapshotTest(test.TestCase):
-
-  def setUp(self):
-    super(CaptureSnapshotTest, self).setUp()
-    snapshot_type = function_cache.CaptureSnapshot
-    self.snapshot_a = snapshot_type({
-        "a": MockIntGenericType(1),
-        "b": MockIntGenericType(1)
-    })
-    self.snapshot_b = snapshot_type({
-        "a": MockIntGenericType(1),
-        "b": MockIntGenericType(1),
-        "c": MockIntGenericType(1)
-    })
-    self.snapshot_c = snapshot_type({
-        "a": MockIntGenericType(2),
-        "b": MockIntGenericType(2),
-        "c": MockIntGenericType(2)
-    })
-    self.snapshot_d = snapshot_type({
-        "a": MockIntGenericType(1),
-        "b": MockIntGenericType(1),
-        "c": MockIntGenericType(2)
-    })
-    self.snapshot_e = snapshot_type({
-        "d": MockIntGenericType(1)
-    })
-
-  def testCaptureSnapshotSubtype(self):
-    self.assertFalse(self.snapshot_a.is_subtype_of(self.snapshot_b))
-    self.assertTrue(self.snapshot_b.is_subtype_of(self.snapshot_a))
-    self.assertFalse(self.snapshot_b.is_subtype_of(self.snapshot_c))
-    self.assertFalse(self.snapshot_b.is_subtype_of(self.snapshot_c))
-    self.assertFalse(self.snapshot_e.is_subtype_of(self.snapshot_a))
-
-  def testCaptureSnapshotSupertype(self):
-    supertype_1 = self.snapshot_b.most_specific_common_supertype(
-        [self.snapshot_b])
-    self.assertLen(supertype_1.mapping, 3)
-    supertype_2 = self.snapshot_a.most_specific_common_supertype(
-        [self.snapshot_b, self.snapshot_c])
-    self.assertIsNone(supertype_2)
-    supertype_3 = self.snapshot_a.most_specific_common_supertype(
-        [self.snapshot_d])
-    self.assertLen(supertype_3.mapping, 2)
-    supertype_4 = self.snapshot_b.most_specific_common_supertype(
-        [self.snapshot_d])
-    self.assertIsNone(supertype_4)
-    supertype_5 = self.snapshot_b.most_specific_common_supertype(
-        [self.snapshot_e])
-    self.assertEmpty(supertype_5.mapping)
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ constexpr uint32_t RocmTracerEvent::kInvalidDeviceId;
   do {                                                                       \
     roctracer_status_t status = expr;                                        \
     if (status != ROCTRACER_STATUS_SUCCESS) {                                \
-      const char* errstr = wrap::roctracer_error_string();                   \
+      const char* errstr = se::wrap::roctracer_error_string();               \
       LOG(ERROR) << "function " << #expr << "failed with error " << errstr;  \
       return errors::Internal(absl::StrCat("roctracer call error", errstr)); \
     }                                                                        \
@@ -180,7 +180,8 @@ void DumpActivityRecord(const roctracer_record_t* record,
   std::ostringstream oss;
   oss << "Activity callback for " << GetActivityDomainName(record->domain);
   oss << ", op name= "
-      << wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      << se::wrap::roctracer_op_string(record->domain, record->op,
+                                       record->kind);
   oss << ", correlation_id=" << record->correlation_id;
   oss << ", begin_ns=" << record->begin_ns;
   oss << ", end_ns=" << record->end_ns;
@@ -421,8 +422,8 @@ Status RocmApiCallbackImpl::operator()(uint32_t domain, uint32_t cbid,
       default:
         //
         LOG(WARNING) << "API call "
-                     << wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid,
-                                                  0)
+                     << se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API,
+                                                      cbid, 0)
                      << ", corr. id=" << data->correlation_id
                      << " dropped. No capturing function was found!";
         // AddGenericEventUponApiExit(cbid, data);
@@ -560,7 +561,7 @@ void RocmApiCallbackImpl::AddNormalMemcpyEventUponApiExit(
 
   RocmTracerEvent event;
   event.domain = RocmTracerEventDomain::HIP_API;
-  event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+  event.name = se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.source = RocmTracerEventSource::ApiCallback;
   event.thread_id = GetCachedTID();
   event.correlation_id = data->correlation_id;
@@ -656,7 +657,7 @@ void RocmApiCallbackImpl::AddMemcpyPeerEventUponApiExit(
   RocmTracerEvent event;
   event.type = RocmTracerEventType::MemcpyP2P;
   event.domain = RocmTracerEventDomain::HIP_API;
-  event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+  event.name = se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.source = RocmTracerEventSource::ApiCallback;
   event.thread_id = GetCachedTID();
   event.correlation_id = data->correlation_id;
@@ -702,7 +703,7 @@ void RocmApiCallbackImpl::AddMemsetEventUponApiExit(uint32_t cbid,
 
   RocmTracerEvent event;
   event.domain = RocmTracerEventDomain::HIP_API;
-  event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+  event.name = se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.source = RocmTracerEventSource::ApiCallback;
   event.thread_id = GetCachedTID();
   event.correlation_id = data->correlation_id;
@@ -785,7 +786,7 @@ void RocmApiCallbackImpl::AddMallocFreeEventUponApiExit(
                    ? RocmTracerEventType::MemoryFree
                    : RocmTracerEventType::MemoryAlloc;
   event.source = RocmTracerEventSource::ApiCallback;
-  event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+  event.name = se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.device_id = device_id;
   event.thread_id = GetCachedTID();
   // We do not set stream_id (probably to zero as Malloc etc. commands seems
@@ -838,7 +839,7 @@ void RocmApiCallbackImpl::AddSynchronizeEventUponApiExit(
   event.domain = RocmTracerEventDomain::HIP_API;
   event.type = RocmTracerEventType::Synchronization;
   event.source = RocmTracerEventSource::ApiCallback;
-  event.name = wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+  event.name = se::wrap::roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
   event.thread_id = GetCachedTID();
   event.correlation_id = data->correlation_id;
   event.start_time_ns = enter_time;
@@ -1029,7 +1030,7 @@ void RocmActivityCallbackImpl::AddHipKernelActivityEvent(
   event.type = RocmTracerEventType::Kernel;
   event.source = RocmTracerEventSource::Activity;
   // event.name =  /* we use the API name instead*/
-  //    wrap::roctracer_op_string(record->domain, record->op, record->kind);
+  //    se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
   // TODO(rocm-profiler): CUDA uses device id and correlation ID for finding
   // annotations.
@@ -1067,7 +1068,7 @@ void RocmActivityCallbackImpl::AddNormalHipMemcpyActivityEvent(
   // TODO(roc-profiler): record->bytes is not a valid value
   // event.memcpy_info.num_bytes = record->bytes;
   event.name =
-      wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   switch (record->op) {
     case HIP_API_ID_hipMemcpyDtoH:
     case HIP_API_ID_hipMemcpyDtoHAsync:
@@ -1125,7 +1126,7 @@ void RocmActivityCallbackImpl::AddHipMemsetActivityEvent(
   event.domain = RocmTracerEventDomain::HIP_API;
   event.source = RocmTracerEventSource::Activity;
   event.name =
-      wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
   event.annotation = collector_->annotation_map()->LookUp(event.correlation_id);
 
@@ -1179,7 +1180,7 @@ void RocmActivityCallbackImpl::AddHipMallocActivityEvent(
   event.type = RocmTracerEventType::MemoryAlloc;
   event.source = RocmTracerEventSource::Activity;
   event.name =
-      wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
   event.annotation = collector_->annotation_map()->LookUp(event.correlation_id);
   // similar to CUDA we set this to the default stream
@@ -1206,7 +1207,7 @@ void RocmActivityCallbackImpl::AddHipStreamSynchronizeActivityEvent(
   event.type = RocmTracerEventType::Synchronization;
   event.source = RocmTracerEventSource::Activity;
   event.name =
-      wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
   event.annotation = collector_->annotation_map()->LookUp(event.correlation_id);
   event.start_time_ns = record->begin_ns;
@@ -1273,7 +1274,7 @@ void RocmActivityCallbackImpl::AddNormalHipOpsMemcpyActivityEvent(
   event.domain = RocmTracerEventDomain::HCC_OPS;
   event.source = RocmTracerEventSource::Activity;
   event.name =  // name is stored for debug
-      wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
   event.annotation = collector_->annotation_map()->LookUp(event.correlation_id);
 
@@ -1307,7 +1308,7 @@ void RocmActivityCallbackImpl::AddHipOpsMemsetActivityEvent(
   event.domain = RocmTracerEventDomain::HCC_OPS;
   event.source = RocmTracerEventSource::Activity;
   event.name =  // name is stored for debug
-      wrap::roctracer_op_string(record->domain, record->op, record->kind);
+      se::wrap::roctracer_op_string(record->domain, record->op, record->kind);
   event.correlation_id = record->correlation_id;
   event.annotation = collector_->annotation_map()->LookUp(event.correlation_id);
 
@@ -1376,7 +1377,7 @@ void RocmTracer::Enable(const RocmTracerOptions& options,
   // From ROCm 3.5 onwards, the following call is required.
   // don't quite know what it does (no documentation!), only that without it
   // the call to enable api/activity tracing will run into a segfault
-  wrap::roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
+  se::wrap::roctracer_set_properties(ACTIVITY_DOMAIN_HIP_API, nullptr);
 
   EnableApiTracing().IgnoreError();
   EnableActivityTracing().IgnoreError();
@@ -1418,16 +1419,16 @@ Status RocmTracer::EnableApiTracing() {
     if (ops.size() == 0) {
       VLOG(3) << "Enabling API tracing for domain "
               << GetActivityDomainName(domain);
-      RETURN_IF_ROCTRACER_ERROR(
-          wrap::roctracer_enable_domain_callback(domain, ApiCallback, this));
+      RETURN_IF_ROCTRACER_ERROR(se::wrap::roctracer_enable_domain_callback(
+          domain, ApiCallback, this));
     } else {
       VLOG(3) << "Enabling API tracing for " << ops.size() << " ops in domain "
               << GetActivityDomainName(domain);
       for (auto& op : ops) {
         VLOG(3) << "Enabling API tracing for "
                 << GetActivityDomainOpName(domain, op);
-        RETURN_IF_ROCTRACER_ERROR(
-            wrap::roctracer_enable_op_callback(domain, op, ApiCallback, this));
+        RETURN_IF_ROCTRACER_ERROR(se::wrap::roctracer_enable_op_callback(
+            domain, op, ApiCallback, this));
       }
     }
   }
@@ -1445,7 +1446,7 @@ Status RocmTracer::DisableApiTracing() {
       VLOG(3) << "Disabling API tracing for domain "
               << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(
-          wrap::roctracer_disable_domain_callback(domain));
+          se::wrap::roctracer_disable_domain_callback(domain));
     } else {
       VLOG(3) << "Disabling API tracing for " << ops.size() << " ops in domain "
               << GetActivityDomainName(domain);
@@ -1453,7 +1454,7 @@ Status RocmTracer::DisableApiTracing() {
         VLOG(3) << "Disabling API tracing for "
                 << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(
-            wrap::roctracer_disable_op_callback(domain, op));
+            se::wrap::roctracer_disable_op_callback(domain, op));
       }
     }
   }
@@ -1492,14 +1493,14 @@ Status RocmTracer::EnableActivityTracing() {
 
   if (!options_->activity_tracing.empty()) {
     // Create the memory pool to store activity records in
-    if (wrap::roctracer_default_pool_expl(nullptr) == NULL) {
+    if (se::wrap::roctracer_default_pool_expl(nullptr) == NULL) {
       roctracer_properties_t properties{};
       properties.buffer_size = 0x1000;
       properties.buffer_callback_fun = ActivityCallback;
       properties.buffer_callback_arg = this;
       VLOG(3) << "Creating roctracer activity buffer";
       RETURN_IF_ROCTRACER_ERROR(
-          wrap::roctracer_open_pool_expl(&properties, nullptr));
+          se::wrap::roctracer_open_pool_expl(&properties, nullptr));
     }
   }
 
@@ -1510,7 +1511,7 @@ Status RocmTracer::EnableActivityTracing() {
       VLOG(3) << "Enabling Activity tracing for domain "
               << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(
-          wrap::roctracer_enable_domain_activity_expl(domain, nullptr));
+          se::wrap::roctracer_enable_domain_activity_expl(domain, nullptr));
     } else {
       VLOG(3) << "Enabling Activity tracing for " << ops.size()
               << " ops in domain " << GetActivityDomainName(domain);
@@ -1519,7 +1520,7 @@ Status RocmTracer::EnableActivityTracing() {
                 << GetActivityDomainOpName(domain, op);
         // roctracer library has not exported "roctracer_enable_op_activity"
         RETURN_IF_ROCTRACER_ERROR(
-            wrap::roctracer_enable_op_activity_expl(domain, op, nullptr));
+            se::wrap::roctracer_enable_op_activity_expl(domain, op, nullptr));
       }
     }
   }
@@ -1537,7 +1538,7 @@ Status RocmTracer::DisableActivityTracing() {
       VLOG(3) << "Disabling Activity tracing for domain "
               << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(
-          wrap::roctracer_disable_domain_activity(domain));
+          se::wrap::roctracer_disable_domain_activity(domain));
     } else {
       VLOG(3) << "Disabling Activity tracing for " << ops.size()
               << " ops in domain " << GetActivityDomainName(domain);
@@ -1545,7 +1546,7 @@ Status RocmTracer::DisableActivityTracing() {
         VLOG(3) << "Disabling Activity tracing for "
                 << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(
-            wrap::roctracer_disable_op_activity(domain, op));
+            se::wrap::roctracer_disable_op_activity(domain, op));
       }
     }
   }
@@ -1555,7 +1556,7 @@ Status RocmTracer::DisableActivityTracing() {
   // flag to FALSE. This is because the activity record callback routine is
   // gated by the same flag
   VLOG(3) << "Flushing roctracer activity buffer";
-  RETURN_IF_ROCTRACER_ERROR(wrap::roctracer_flush_activity_expl(nullptr));
+  RETURN_IF_ROCTRACER_ERROR(se::wrap::roctracer_flush_activity_expl(nullptr));
   // roctracer_flush_buf();
 
   // Explicitly wait for (almost) all pending activity records
@@ -1584,8 +1585,8 @@ Status RocmTracer::DisableActivityTracing() {
 
 /*static*/ uint64_t RocmTracer::GetTimestamp() {
   uint64_t ts;
-  if (wrap::roctracer_get_timestamp(&ts) != ROCTRACER_STATUS_SUCCESS) {
-    const char* errstr = wrap::roctracer_error_string();
+  if (se::wrap::roctracer_get_timestamp(&ts) != ROCTRACER_STATUS_SUCCESS) {
+    const char* errstr = se::wrap::roctracer_error_string();
     LOG(ERROR) << "function roctracer_get_timestamp failed with error "
                << errstr;
     // Return 0 on error.

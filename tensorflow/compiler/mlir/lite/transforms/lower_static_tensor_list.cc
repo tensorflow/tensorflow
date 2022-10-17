@@ -36,7 +36,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -81,13 +81,16 @@ limitations under the License.
 // The actual LowerStaticTensorList Pass.
 //
 namespace mlir {
-namespace {
-#define GEN_PASS_CLASSES
+
+#define GEN_PASS_DECL_LOWERSTATICTENSORLISTPASS
+#define GEN_PASS_DEF_LOWERSTATICTENSORLISTPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
+
+namespace {
 
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
-    : public LowerStaticTensorListPassBase<LowerStaticTensorListPass> {
+    : public impl::LowerStaticTensorListPassBase<LowerStaticTensorListPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LowerStaticTensorListPass)
 
   LowerStaticTensorListPass() = default;

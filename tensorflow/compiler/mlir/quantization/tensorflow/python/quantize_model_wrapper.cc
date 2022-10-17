@@ -90,10 +90,11 @@ std::pair<std::string, std::string> QuantizePtqDynamicRange(
 
 std::pair<std::string, std::string> QuantizePtqModelPreCalibration(
     const absl::string_view saved_model_path,
-    const absl::string_view exported_names_str, const absl::string_view tags) {
+    const absl::string_view exported_names_str, const absl::string_view tags,
+    const absl::string_view quant_opts_serialized) {
   const absl::StatusOr<ExportedModel> exported_model =
-      internal::QuantizePtqModelPreCalibration(saved_model_path,
-                                               exported_names_str, tags);
+      internal::QuantizePtqModelPreCalibration(
+          saved_model_path, exported_names_str, tags, quant_opts_serialized);
   if (!exported_model.ok()) {
     throw py::value_error(absl::StrFormat(
         "Failed to quantize PTQ model at the precalibration stage: %s",

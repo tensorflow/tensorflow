@@ -23,9 +23,11 @@ limitations under the License.
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
@@ -39,46 +41,49 @@ namespace xla {
 namespace gpu {
 
 // TODO(b/232263665): It should be shared between GPU and CPU.
-class XlaRuntimeAotCompilationResult : public AotCompilationResult {
+class GpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
  public:
-  static StatusOr<std::unique_ptr<XlaRuntimeAotCompilationResult>> FromString(
-      const std::string& serialized) {
+  GpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
+                                    const std::string& obj_file,
+                                    const std::string& mlir_module,
+                                    EntryFunctionAttributes entry_func_attrs,
+                                    const std::string& gpu_asm_text,
+                                    absl::Span<const uint8_t> gpu_binary) {
     XlaRuntimeExecutableProto xla_runtime_executable;
-    if (!xla_runtime_executable.ParseFromString(serialized)) {
-      return InternalError("Failed to parse serialized JitRtExecutableProto.");
-    }
-    return std::unique_ptr<XlaRuntimeAotCompilationResult>(
-        new XlaRuntimeAotCompilationResult(std::move(xla_runtime_executable)));
+    *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
+    *xla_runtime_executable.mutable_entry_func_attrs() = entry_func_attrs;
+    xla_runtime_executable.set_obj_file(obj_file);
+    xla_runtime_executable.set_mlir_module(mlir_module);
+    *xla_runtime_gpu_executable_.mutable_xla_runtime_executable() =
+        xla_runtime_executable;
+    xla_runtime_gpu_executable_.set_gpu_asm_text(gpu_asm_text);
+    xla_runtime_gpu_executable_.set_gpu_binary(gpu_binary.data(),
+                                               gpu_binary.size());
   }
 
-  XlaRuntimeAotCompilationResult(HloModuleProto hlo,
-                                 const std::string& obj_file,
-                                 const std::string& mlir_module,
-                                 EntryFunctionAttributes entry_func_attrs,
-                                 const std::string& gpu_asm_text,
-                                 absl::Span<const uint8_t> gpu_binary) {
-    *xla_runtime_executable_.mutable_hlo_module_proto() = hlo;
-    *xla_runtime_executable_.mutable_entry_func_attrs() = entry_func_attrs;
-    xla_runtime_executable_.set_obj_file(obj_file);
-    xla_runtime_executable_.set_mlir_module(mlir_module);
-    xla_runtime_executable_.set_gpu_asm_text(gpu_asm_text);
-    xla_runtime_executable_.set_gpu_binary(gpu_binary.data(),
-                                           gpu_binary.size());
-  }
+  explicit GpuXlaRuntimeAotCompilationResult(
+      XlaRuntimeGpuExecutableProto executable)
+      : xla_runtime_gpu_executable_(executable) {}
 
   StatusOr<std::string> SerializeAsString() const override {
-    return xla_runtime_executable_.SerializeAsString();
+    return xla_runtime_gpu_executable_.SerializeAsString();
+  }
+
+  static StatusOr<std::unique_ptr<GpuXlaRuntimeAotCompilationResult>>
+  FromString(const std::string& serialized) {
+    XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable;
+    if (!xla_runtime_gpu_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+    }
+    return std::make_unique<GpuXlaRuntimeAotCompilationResult>(
+        xla_runtime_gpu_executable);
   }
 
   StatusOr<std::unique_ptr<Executable>> LoadExecutable(
       Compiler* compiler, se::StreamExecutor* executor) const override;
 
  private:
-  explicit XlaRuntimeAotCompilationResult(
-      XlaRuntimeExecutableProto jitrt_executable)
-      : xla_runtime_executable_(std::move(jitrt_executable)) {}
-
-  XlaRuntimeExecutableProto xla_runtime_executable_;
+  XlaRuntimeGpuExecutableProto xla_runtime_gpu_executable_;
 };
 
 // The GPU compiler generates efficient GPU executables.
@@ -121,7 +126,7 @@ class GpuCompiler : public LLVMCompiler {
   // AotCompilationResult.
   StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
       const std::string& serialized_aot_result) override {
-    return XlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
+    return GpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
   }
 
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(

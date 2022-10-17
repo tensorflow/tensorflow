@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/tsl/framework/allocator_retry.h"
 
 #include "absl/types/optional.h"
-#include "tensorflow/core/framework/metrics.h"
+#include "tensorflow/tsl/framework/metrics.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mutex.h"
@@ -36,7 +36,7 @@ class ScopedTimeTracker {
   ~ScopedTimeTracker() {
     if (start_us_) {
       uint64 end_us = env_->NowMicros();
-      tensorflow::metrics::UpdateBfcAllocatorDelayTime(end_us - *start_us_);
+      metrics::UpdateBfcAllocatorDelayTime(end_us - *start_us_);
     }
   }
 

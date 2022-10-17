@@ -83,15 +83,12 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithEmbeddedValidation) {
   fbb.Finish(CreateTFLiteSettings(fbb));
 #endif  // __ANDROID__
 
-  std::vector<flatbuffers::FlatBufferBuilder> results =
-      runner.TriggerValidation(
-          {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  std::vector<const BenchmarkEvent*> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
   EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
   for (auto& result : results) {
-    auto benchmark_event =
-        flatbuffers::GetRoot<BenchmarkEvent>(result.GetBufferPointer());
-    EXPECT_EQ(benchmark_event->event_type(), BenchmarkEventType_END);
-    EXPECT_TRUE(benchmark_event->result()->ok());
+    EXPECT_EQ(result->event_type(), BenchmarkEventType_END);
+    EXPECT_TRUE(result->result()->ok());
   }
 }
 
@@ -120,14 +117,11 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWithFdModelCustomValidation) {
   fbb.Finish(CreateTFLiteSettings(fbb));
 #endif  // __ANDROID__
 
-  std::vector<flatbuffers::FlatBufferBuilder> results =
-      runner.TriggerValidation(
-          {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  std::vector<const BenchmarkEvent*> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
   EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
   for (auto& result : results) {
-    auto benchmark_event =
-        flatbuffers::GetRoot<BenchmarkEvent>(result.GetBufferPointer());
-    EXPECT_EQ(benchmark_event->event_type(), BenchmarkEventType_END);
+    EXPECT_EQ(result->event_type(), BenchmarkEventType_END);
   }
 }
 #ifndef __ANDROID__
@@ -144,15 +138,12 @@ TEST_F(BlockingValidatorRunnerTest, SucceedWhenRunningMultipleTimes) {
 
   int num_runs = 3;
   for (int i = 0; i < num_runs; i++) {
-    std::vector<flatbuffers::FlatBufferBuilder> results =
-        runner.TriggerValidation(
-            {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+    std::vector<const BenchmarkEvent*> results = runner.TriggerValidation(
+        {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
     EXPECT_THAT(results, testing::Not(testing::IsEmpty()));
     for (auto& result : results) {
-      auto benchmark_event =
-          flatbuffers::GetRoot<BenchmarkEvent>(result.GetBufferPointer());
-      EXPECT_EQ(benchmark_event->event_type(), BenchmarkEventType_END);
-      EXPECT_TRUE(benchmark_event->result()->ok());
+      EXPECT_EQ(result->event_type(), BenchmarkEventType_END);
+      EXPECT_TRUE(result->result()->ok());
     }
   }
 }
@@ -170,9 +161,8 @@ TEST_F(BlockingValidatorRunnerTest, ReturnEmptyWhenTimedOut) {
   FlatBufferBuilder fbb;
   fbb.Finish(CreateTFLiteSettings(fbb));
 
-  std::vector<flatbuffers::FlatBufferBuilder> results =
-      runner.TriggerValidation(
-          {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
+  std::vector<const BenchmarkEvent*> results = runner.TriggerValidation(
+      {flatbuffers::GetRoot<TFLiteSettings>(fbb.GetBufferPointer())});
   EXPECT_THAT(results, testing::IsEmpty());
 }
 

@@ -60,13 +60,14 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   %c80 = arith.constant 80 : index
   %cst = arith.constant 0.000000e+00 : f32
 
-  %init = linalg.init_tensor [80] : tensor<80xf32>
+  %init = tensor.empty() : tensor<80xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<80xf32>) -> tensor<80xf32>
 
   %sum = gml_st.loop (%i, %j) = (%c0, %c0) to (%c80, %c60) step (%c4, %c4)
           ins (%in_ = %in: tensor<80x60xf32>, %cst_ = %cst: f32)
           outs (%out_ = %out: tensor<80xf32>)
-          iterators["parallel", "reduction"] {
+          iterators[#gml_st.iterator_type<parallel>,
+                    #gml_st.iterator_type<reduction>] {
     %in_sub = tensor.extract_slice %in_[%i, %j] [4, 4] [1, 1]
         : tensor<80x60xf32> to tensor<4x4xf32>
     %out_sub = tensor.extract_slice %out_[%i] [4] [1]
@@ -121,14 +122,14 @@ func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
   %c16 = arith.constant 16 : index
   %c0 = arith.constant 0 : index
   %c8 = arith.constant 8 : index
-  %0 = linalg.init_tensor [] : tensor<f32>
+  %0 = tensor.empty() : tensor<f32>
   %1 = linalg.fill ins(%cst : f32) outs(%0 : tensor<f32>) -> tensor<f32>
-  %2 = linalg.init_tensor [8] : tensor<8xf32>
+  %2 = tensor.empty() : tensor<8xf32>
   %3 = linalg.fill ins(%cst : f32) outs(%2 : tensor<8xf32>) -> tensor<8xf32>
   %4 = gml_st.loop (%arg1) = (%c0) to (%c16) step (%c8)
       ins (%arg2 = %arg0: tensor<16xf32>)
       outs (%arg3 = %3: tensor<8xf32>)
-      iterators["reduction"] {
+      iterators[#gml_st.iterator_type<reduction>] {
     %6 = tensor.extract_slice %arg2[%arg1] [8] [1]
       : tensor<16xf32> to tensor<8xf32>
     %7 = tensor.expand_shape %6 [[0, 1]]
@@ -172,7 +173,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape(
   %min_float = arith.constant dense<-3.402820e+38> : vector<5xf32>
   %zero_float = arith.constant 0.000000e+00 : f32
   %0 = tensor.expand_shape %in [[0, 1]] : tensor<10xf32> into tensor<2x5xf32>
-  %1 = linalg.init_tensor [5] : tensor<5xf32>
+  %1 = tensor.empty() : tensor<5xf32>
   %2 = vector.transfer_read %0[%c0, %c0], %zero_float
     {in_bounds = [true, true], permutation_map = #map0}
     : tensor<2x5xf32>, vector<2x5xf32>
@@ -187,7 +188,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape(
 // CHECK-DAG: %[[MIN_FLOAT:.*]] = arith.constant dense<-3.402820e+38> : vector<5xf32>
 // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG: %[[ZERO_FLOAT:.*]] = arith.constant 0.000000e+00 : f32
-// CHECK: %[[INIT_TENSOR:.*]] = linalg.init_tensor [5] : tensor<5xf32>
+// CHECK: %[[INIT_TENSOR:.*]] = tensor.empty() : tensor<5xf32>
 // CHECK: %[[TRANSFER_READ:.*]] = vector.transfer_read %[[IN]][%[[C0]]], %[[ZERO_FLOAT]] {in_bounds = [true]} : tensor<10xf32>, vector<10xf32>
 // CHECK: %[[SHAPE_CAST:.*]] = vector.shape_cast %[[TRANSFER_READ]] : vector<10xf32> to vector<2x5xf32>
 // CHECK: %[[MULTI_REDUCTION:.*]] = vector.multi_reduction <maxf>, %[[SHAPE_CAST]], %[[MIN_FLOAT]] [0] : vector<2x5xf32> to vector<5xf32>
@@ -203,7 +204,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape_different_shape(
   %min_float = arith.constant dense<-3.402820e+38> : vector<18xf32>
   %zero_float = arith.constant 0.000000e+00 : f32
   %0 = tensor.expand_shape %in [[0, 1]] : tensor<1xf32> into tensor<1x1xf32>
-  %1 = linalg.init_tensor [18] : tensor<18xf32>
+  %1 = tensor.empty() : tensor<18xf32>
   %2 = vector.transfer_read %0[%c0, %c0], %zero_float
     {in_bounds = [true, true], permutation_map = #map0}
     : tensor<1x1xf32>, vector<1x18xf32>
@@ -220,7 +221,7 @@ func.func @test_transfer_read_of_one_dim_expand_shape_different_shape(
 
 func.func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
   %cst = arith.constant 0.000000e+00 : f32
-  %init = linalg.init_tensor [2, 1000] : tensor<2x1000xf32>
+  %init = tensor.empty() : tensor<2x1000xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<2x1000xf32>) -> tensor<2x1000xf32>
   func.return %out : tensor<2x1000xf32>
 }
@@ -231,7 +232,7 @@ func.func @do_not_vectorize_large_untiled_fill() -> tensor<2x1000xf32> {
 
 func.func @vectorize_small_untiled_fill() -> tensor<128xf32> {
   %cst = arith.constant 0.000000e+00 : f32
-  %init = linalg.init_tensor [128] : tensor<128xf32>
+  %init = tensor.empty() : tensor<128xf32>
   %out = linalg.fill ins(%cst : f32) outs(%init : tensor<128xf32>) -> tensor<128xf32>
   func.return %out : tensor<128xf32>
 }

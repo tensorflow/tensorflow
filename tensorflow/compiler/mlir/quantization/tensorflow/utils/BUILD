@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "td_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -59,6 +59,8 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/lite/kernels:padding",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

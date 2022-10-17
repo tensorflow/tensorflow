@@ -19,8 +19,8 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir-hlo/Transforms/passes.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -62,7 +62,7 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
     for (OpOperand &opOperand : genericOp->getOpOperands()) {
       Value operandValue = opOperand.get();
       Type operandType = operandValue.getType();
-      auto bbArg = genericOp.getTiedBlockArgument(&opOperand);
+      auto bbArg = genericOp.getMatchingBlockArgument(&opOperand);
       if (!operandType.isa<ShapedType>()) continue;
 
       SmallVector<Value> indices(
@@ -155,7 +155,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     Type indexType = rewriter.getIndexType();
     SmallVector<Value> scatterIndices;
     SmallVector<Value> currentIndexInIndicesTensor(2, zero);
-    for (int64_t i = 0, e = scatterOp.getIndexVectorDim(); i < e; ++i) {
+    for (int64_t i = 0, e = scatterOp.getIndexVectorDimSize(); i < e; ++i) {
       currentIndexInIndicesTensor.back() = b.create<arith::ConstantIndexOp>(i);
       Value index = b.create<ExtractOp>(indices, currentIndexInIndicesTensor);
       if (index.getType() != indexType)
@@ -171,7 +171,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
       lbs.push_back(zero);
       ubs.push_back(updatesDimValues[i]);
       steps.push_back(one);
-      loopIds.push_back(i - 1);
+      loopIds.push_back(i);
     }
 
     auto loop = b.create<gml_st::ForOp>(
@@ -182,7 +182,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
 
           SmallVector<Value> updateIndex(updatesRank, zero);
           for (const auto &en : llvm::enumerate(loopIds))
-            updateIndex[en.index() + 1] = ivs[en.value()];
+            updateIndex[en.value()] = ivs[en.index()];
 
           SmallVector<Value> initIndex =
               to_vector(makeArrayRef(updateIndex).drop_front());
@@ -222,7 +222,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                         thenBuilder.create<scf::YieldOp>(thenLoc, updatedInit);
                       },
                       [&](OpBuilder &elseBuilder, Location elseLoc) {
-                        elseBuilder.create<scf::YieldOp>(elseLoc, init);
+                        elseBuilder.create<scf::YieldOp>(elseLoc, initBlockArg);
                       })
                   .getResult(0);
 

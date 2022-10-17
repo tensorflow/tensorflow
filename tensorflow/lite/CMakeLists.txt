@@ -156,7 +156,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
 endif()
 # Additional compiler flags used when compiling TF Lite.
 set(TFLITE_TARGET_PUBLIC_OPTIONS "")
-set(TFLITE_TARGET_PRIVATE_OPTIONS "")
+set(TFLITE_TARGET_PRIVATE_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
 # Additional library dependencies based upon enabled features.
 set(TFLITE_TARGET_DEPENDENCIES "")
@@ -415,6 +415,10 @@ if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
 endif()
+populate_tflite_source_vars("experimental/remat"
+  TFLITE_EXPERIMENTAL_REMAT_SRCS
+  FILTER ".*_test\\.(cc|h)$"
+)
 if (TFLITE_ENABLE_RESOURCE)
   populate_tflite_source_vars("experimental/resource"
     TFLITE_EXPERIMENTAL_RESOURCE_SRCS
@@ -484,6 +488,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_DELEGATES_SRCS}
   ${TFLITE_DELEGATES_XNNPACK_SRCS}
   ${TFLITE_DELEGATES_EXTERNAL_SRCS}
+  ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_SRCS}

@@ -372,7 +372,7 @@ bool CallGraph::IsFlattened() const {
 }
 
 std::vector<HloInstruction*> CallGraph::GetComputationCallers(
-    HloComputation* c) const {
+    const HloComputation* c) const {
   std::vector<HloInstruction*> callers;
   for (const auto& callsite : GetNode(c).caller_callsites()) {
     callers.push_back(callsite.instruction());

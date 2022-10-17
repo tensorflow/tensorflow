@@ -94,35 +94,7 @@ class GPUOperation {
 
   absl::Status AddOperation(const GpuInfo& gpu_info, GPUOperation* operation);
 
-  //    input       input
-  //      |           |
-  //    elem0         |
-  //      |    -->  elem
-  //    elem1         |
-  //      |           |
-  //    output      output
-  absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
-                                            GPUOperation* operation);
-
-  //      input           input
-  //     /    \             |
-  //  elem0    |            |
-  //     \    /      -->  elem
-  //     elem1              |
-  //       |                |
-  //     output           output
-  absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(
-      const GpuInfo& gpu_info, GPUOperation* operation);
-
-  //      input           input
-  //     /    \             |
-  //    |    elem0          |
-  //     \    /      -->  elem
-  //     elem1              |
-  //       |                |
-  //     output           output
-  absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(
-      const GpuInfo& gpu_info, GPUOperation* operation);
+  int GetElementwiseInputsCount() const { return elementwise_inputs_; }
 
   void SetSrc(GpuSpatialTensor* ptr, int index = 0);
   void SetDst(GpuSpatialTensor* ptr, int index = 0);
@@ -153,6 +125,7 @@ class GPUOperation {
   }
 
   const OperationDef& GetDefinition() const { return definition_; }
+  CalculationsPrecision GetPrecision() const { return definition_.precision; }
 
   void AddSrcTensor(const std::string& tensor_name,
                     const TensorDescriptor& desc);
@@ -195,6 +168,20 @@ class GPUOperation {
                                          ElementwiseDescriptor&& descriptor,
                                          const BHWC& second_shape);
 
+  friend absl::Status FuseElemWithElemInternal(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      const std::vector<std::pair<std::string, std::string>>& replacements,
+      GPUOperation* result);
+  friend absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                                   GPUOperation&& elem0,
+                                                   GPUOperation&& elem1,
+                                                   GPUOperation* result);
+  friend absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      GPUOperation* result);
+  friend absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(
+      const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+      GPUOperation* result);
   friend absl::Status Fuse2InputElemWith2SimpleElem(const GpuInfo& gpu_info,
                                                     GPUOperation&& elem0,
                                                     GPUOperation&& elem1,
@@ -236,6 +223,47 @@ GPUOperation CreateGpuOperation(const OperationDef& definition,
 GPUOperation CreateGpuOperation(const OperationDef& definition,
                                 ElementwiseDescriptor&& descriptor,
                                 const BHWC& second_shape);
+
+absl::Status FuseElemWithElemInternal(
+    const GpuInfo& gpu_info, GPUOperation&& elem0, GPUOperation&& elem1,
+    const std::vector<std::pair<std::string, std::string>>& replacements,
+    GPUOperation* result);
+
+//    input       input
+//      |           |
+//    elem0         |
+//      |    -->  elem
+//    elem1         |
+//      |           |
+//    output      output
+absl::Status FuseSimpleElemWithSimpleElem(const GpuInfo& gpu_info,
+                                          GPUOperation&& elem0,
+                                          GPUOperation&& elem1,
+                                          GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//  elem0    |            |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWithSimpleElemAsFirstInput(const GpuInfo& gpu_info,
+                                                      GPUOperation&& elem0,
+                                                      GPUOperation&& elem1,
+                                                      GPUOperation* result);
+
+//      input           input
+//     /    \             |
+//    |    elem0          |
+//     \    /      -->  elem
+//     elem1              |
+//       |                |
+//     output           output
+absl::Status Fuse2InputElemWithSimpleElemAsSecondInput(const GpuInfo& gpu_info,
+                                                       GPUOperation&& elem0,
+                                                       GPUOperation&& elem1,
+                                                       GPUOperation* result);
 
 //      input           input
 //     /    \             |

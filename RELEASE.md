@@ -1,9 +1,42 @@
+# Release 2.12.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.11.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
-  removed.
+* `StatusOr::ConsumeValueOrDie` and `StatusOr::ValueOrDie`, both deprecated in
+  TF 2.10 has been removed.
+
 
 ## Breaking Changes
 *   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and
@@ -83,6 +116,11 @@
     *   Added group normalization layer `tf.keras.layers.GroupNormalization`.
     *   Added weight decay support for all Keras optimizers.
     *   Added Adafactor optimizer `tf.keras.optimizers.Adafactor`.
+    *   Added `warmstart_embedding_matrix` to `tf.keras.utils`.
+        This utility can be used to warmstart an embeddings matrix so you
+        reuse previously-learned word embeddings when working with a new set
+        of words which may include previously unseen words (the embedding
+        vectors for unseen words will be randomly initialized).
 
 *   `tf.Variable`:
 
@@ -97,6 +135,12 @@
         `experimental_enable_variable_lifting=False` only works on non-XLA
         devices (e.g. under `@tf.function(jit_compile=False)`).
 
+*   TF SavedModel:
+    *   Added `fingerprint.pb` to the SavedModel directory. The `fingerprint.pb`
+        file is a protobuf containing the "fingerprint" of the SavedModel. See
+        the [RFC](https://github.com/tensorflow/community/pull/415) for more
+        details regarding its design and properties.
+
 ## Bug Fixes and Other Changes
 
 *   `tf.image`
@@ -110,6 +154,11 @@
         "composite" tensors, such as `tf.RaggedTensor`, as inputs.
     *   Fix device placement issues related to datasets with ragged tensors of
         strings (i.e. variant encoded data with types not supported on GPU).
+    *   'experimental_follow_type_hints' for tf.function has been deprecated.
+        Please use input_signature or reduce_retracing to minimize retracing.
+
+*   `tf.SparseTensor`:
+    *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.
 
 ## Thanks to our Contributors
 

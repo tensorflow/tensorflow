@@ -565,6 +565,33 @@ ENTRY main {
   EXPECT_EQ(root->operand(0)->shape(), ShapeUtil::MakeShape(F32, {32, 216}));
 }
 
+TEST_F(DynamicPadderTest, HandleReshapeCheckPastReshape) {
+  // Two different sizes.
+  auto hlo_text = R"(
+HloModule ReshapeDynamicDimension
+ENTRY main {
+  p0 = f32[4,511,432]{2,1,0} parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = f32[432,337]{1,0:T(8,128)} parameter(2)
+  reshape.4179 = f32[2044,432]{1,0} reshape(p0)
+   dot.4180 = f32[2044,337]{1,0} dot(reshape.4179, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  transpose.4181 = f32[2044,337]{1,0} transpose(dot.4180), dimensions={0,1}
+  ROOT reshape.4183 = f32[4,511,337]{2,1,0} reshape(transpose.4181)
+})";
+  module_ = GetHloModule(hlo_text);
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  VLOG(3) << module_->ToString();
+  CHECK(module_->is_dynamic());
+  CHECK(module_->entry_computation()
+            ->root_instruction()
+            ->shape()
+            .is_dynamic_dimension(0));
+}
+
 // Test that dynamic padder has the same result as if not padded.
 class ExecutionTest : public HloTestBase {
  protected:

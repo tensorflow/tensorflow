@@ -6,3 +6,18 @@ op 	 {
   }
   is_stateful: true
 }
+op {
+  name: "ConfigureAndInitializeGlobalTPU"
+  output_arg {
+    name: "output"
+    type: DT_INT32
+  }
+  attr {
+    name: "use_tfrt_host_runtime"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}

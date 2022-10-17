@@ -38,7 +38,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let cppNamespace = "::mlir::tf_device";
 }
 
@@ -87,7 +87,7 @@ This op captures all needed live-in values.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [Pure, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.
@@ -359,7 +359,7 @@ This op is used for outlining a cluster.
   let extraClassDeclaration = [{
     // returns the function that this operation will launch.
     func::FuncOp getFuncOp() {
-      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, funcAttr());
+      return SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(*this, getFuncAttr());
     }
   }];
 }

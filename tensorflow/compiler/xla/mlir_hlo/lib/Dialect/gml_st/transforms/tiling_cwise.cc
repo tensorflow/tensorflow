@@ -21,11 +21,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -55,9 +56,11 @@ bool isRootOfCwiseExpr(Operation *op) {
 
 struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
   TilingCwisePass() = default;
-  TilingCwisePass(bool distribute, ArrayRef<int64_t> tileSizes) {
+  TilingCwisePass(bool distribute, ArrayRef<int64_t> tileSizes,
+                  StringRef distributionLabel) {
     distribute_ = distribute;
     tileSizes_ = tileSizes;
+    distributionLabel_ = distributionLabel.str();
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -89,6 +92,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
 
       return tileSizesValues;
     };
+    opts.distributionLabel = distributionLabel_;
 
     // Tile the roots of cwise expressions and fuse all cwise operands greedily.
     auto tileRootOfCwiseExprFn = [](Operation *op) {
@@ -123,8 +127,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass() {
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
-    bool distribute, ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TilingCwisePass>(distribute, tileSizes);
+    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel) {
+  return std::make_unique<TilingCwisePass>(distribute, tileSizes,
+                                           distributionLabel);
 }
 
 }  // namespace gml_st

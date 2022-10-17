@@ -79,10 +79,5 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
       buffer_slice.size());
 }
 
-bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {
-  // LLVM can sometimes do interesting optimizations using scalar constants.
-  return ShapeUtil::IsScalar(literal.shape());
-}
-
 }  // namespace gpu
 }  // namespace xla

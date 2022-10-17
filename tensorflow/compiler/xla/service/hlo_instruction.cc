@@ -1137,6 +1137,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       break;
     default:
       LOG(FATAL) << "Invalid binary instruction opcode "
@@ -1845,11 +1846,21 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
-    case HloOpcode::kAllReduce:
-      return channel_id().has_value() ||
-             Cast<HloAllReduceInstruction>(this)->constrain_layout();
+
     case HloOpcode::kAllToAll:
-      return Cast<HloAllToAllInstruction>(this)->constrain_layout();
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+      if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
+        return true;
+      }
+      [[fallthrough]];
+    case HloOpcode::kCollectivePermute:
+      // Collective instructions with channel_id are side effecting only if
+      // they are used in non-spmd context.
+      return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
+             !GetModule()->config().use_spmd_partitioning();
+
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();
@@ -2108,6 +2119,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert:
       CHECK_EQ(new_operands.size(), 2);
       clone = CreateBinary(shape, opcode_, new_operands[0], new_operands[1]);
       break;
@@ -2537,6 +2549,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
+    case HloOpcode::kStochasticConvert:
     case HloOpcode::kCbrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
@@ -2797,45 +2810,45 @@ bool HloInstruction::IsEffectiveBitcast() const {
 }
 
 HloComputation* HloInstruction::to_apply() const {
-  switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kReduceScatter:
-    case HloOpcode::kAllReduceStart:
-    case HloOpcode::kScatter:
-    case HloOpcode::kSort:
-    case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      return called_computations_[0];
-    default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    return called_computations_[0];
   }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
 }
 
 void HloInstruction::set_to_apply(HloComputation* computation) {
   // Don't allow changing the computation for fused instructions so we don't
   // have to recompute called_instructions for the entire fusion instruction.
   CHECK(!IsFused());
+  if (has_to_apply()) {
+    CHECK_EQ(called_computations_.size(), 1)
+        << "Expected a to_apply computation for " << HloOpcodeString(opcode());
+    called_computations_[0] = computation;
+    return;
+  }
+  LOG(FATAL) << "Invalid opcode for to_apply(): " << HloOpcodeString(opcode());
+}
+
+bool HloInstruction::has_to_apply() const {
   switch (opcode_) {
-    case HloOpcode::kCall:
-    case HloOpcode::kMap:
-    case HloOpcode::kReduceWindow:
-    case HloOpcode::kReduce:
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllReduceStart:
+    case HloOpcode::kCall:
+    case HloOpcode::kMap:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceScatter:
+    case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+      return true;
     case HloOpcode::kCustomCall:
-      CHECK_EQ(called_computations_.size(), 1);
-      called_computations_[0] = computation;
-      break;
+      // CustomCall can have a to_apply computation, but it is not required to
+      // have one.
+      return called_computations_.size() == 1;
     default:
-      LOG(FATAL) << "Invalid opcode for to_apply(): "
-                 << HloOpcodeString(opcode());
+      return false;
   }
 }
 
@@ -3538,6 +3551,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleConvert(this);
     case HloOpcode::kBitcastConvert:
       return visitor->HandleBitcastConvert(this);
+    case HloOpcode::kStochasticConvert:
+      return visitor->HandleStochasticConvert(this);
     case HloOpcode::kCopy:
       return visitor->HandleCopy(this);
     case HloOpcode::kMultiply:

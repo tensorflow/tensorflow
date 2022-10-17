@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
@@ -67,15 +67,15 @@ bool IsTransposeGenericOp(Operation *op) {
     return false;
 
   // Check that input is yielded.
-  if (generic_op.getTiedBlockArgument(generic_op.getInputOperand(0)) !=
+  if (generic_op.getMatchingBlockArgument(generic_op.getInputOperand(0)) !=
       yield_op.getOperand(0))
     return false;
 
   // Check parallel iterators.
-  auto iterator_types = generic_op.iterator_types();
+  auto iterator_types = generic_op.getIteratorTypesArray();
   if (std::any_of(iterator_types.begin(), iterator_types.end(),
-                  [](Attribute attr) {
-                    return !mlir::linalg::isParallelIterator(attr);
+                  [](auto iterator_type) {
+                    return !mlir::linalg::isParallelIterator(iterator_type);
                   }))
     return false;
 

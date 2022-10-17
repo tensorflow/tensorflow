@@ -184,6 +184,10 @@ HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
                                        int exponent_bits, int mantissa_bits,
                                        const OpMetadata* metadata = nullptr);
 
+StatusOr<HloInstruction*> MakeReduceWindowHlo(
+    HloInstruction* operand, HloInstruction* init_value, const Window& window,
+    HloComputation* reduce_computation, const OpMetadata* metadata = nullptr);
+
 // Creates a Reduce HLO instruction and adds it to the computation containing
 // the operand. This will create the sub-computation needed for the reduction in
 // the given module. binary_opcode should represent a binary operation.
@@ -365,6 +369,10 @@ HloInstruction* BroadcastOnes(HloComputation* computation,
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name);
+
+// Expands a general degenerate reshape operation to a sequence of degenerate
+// adding and removing reshapes that changes only a single dimension.
+HloInstruction* ExpandDegenerateReshape(HloInstruction* inst);
 
 }  // namespace xla
 

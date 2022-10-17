@@ -169,7 +169,7 @@ class StablehloToHloOpConverter : public OpConversionPattern<StablehloOpTy> {
     if constexpr (std::is_same<StablehloOpTy, stablehlo::CaseOp>::value) {
       hloOp = rewriter.replaceOpWithNewOp<mhlo::CaseOp>(
           stablehloOp, hloTypes, hloOperands, hloAttrs,
-          stablehloOp.branches().size());
+          stablehloOp.getBranches().size());
     } else {
       hloOp = rewriter.replaceOpWithNewOp<StablehloToHloOp<StablehloOpTy>>(
           stablehloOp, hloTypes, hloOperands, hloAttrs);

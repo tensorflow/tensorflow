@@ -18,6 +18,7 @@
 package(
     default_visibility = [
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+        "//tensorflow/lite/tools/benchmark:__subpackages__",
     ],
     licenses = ["notice"],
 )

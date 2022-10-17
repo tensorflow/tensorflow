@@ -41,11 +41,9 @@ struct ExternalLinalgOpTilingInterface
   /// Return the loop iterator type.
   SmallVector<utils::IteratorType> getLoopIteratorTypes(Operation *op) const {
     auto linalgOp = cast<linalg::LinalgOp>(op);
-    return llvm::to_vector(
-        llvm::map_range(linalgOp.iterator_types(), [](Attribute strAttr) {
-          return utils::symbolizeIteratorType(
-                     strAttr.cast<StringAttr>().getValue())
-              .value();
+    return llvm::to_vector(llvm::map_range(
+        linalgOp.getIteratorTypesArray(), [](StringRef iteratorType) {
+          return utils::symbolizeIteratorType(iteratorType).value();
         }));
   }
 
@@ -74,7 +72,7 @@ struct ExternalLinalgOpTilingInterface
                                          ArrayRef<OpFoldResult> sizes) const {
     Location loc = op->getLoc();
     linalg::LinalgOp linalgOp = cast<linalg::LinalgOp>(op);
-    SmallVector<Value> valuesToTile = linalgOp.getInputAndOutputOperands();
+    OperandRange valuesToTile = linalgOp->getOperands();
     SmallVector<Optional<linalg::SliceParameters>> allSliceParams =
         linalg::computeAllSliceParameters(b, loc, linalgOp, valuesToTile,
                                           offsets, sizes, {}, true);
@@ -98,7 +96,7 @@ struct ExternalLinalgOpTilingInterface
     }
 
     SmallVector<Type> resultTensorTypes = llvm::to_vector(llvm::map_range(
-        linalgOp.getOutputTensorOperands(), [&](OpOperand *opOperand) {
+        linalgOp.getOutputOperands(), [&](OpOperand *opOperand) {
           return tiledOperands[opOperand->getOperandNumber()].getType();
         }));
 
@@ -120,7 +118,7 @@ struct ExternalLinalgOpTilingInterface
     // map the offsets and sizes from the result to iteration space tiles
     // (filling in full extent for dimensions not used to access the result).
     AffineMap indexingMap =
-        linalgOp.getTiedIndexingMapForResult(op->getResult(resultNumber));
+        linalgOp.getIndexingMapMatchingResult(op->getResult(resultNumber));
     if (!indexingMap.isProjectedPermutation()) {
       return op->emitOpError(
           "unhandled tiled implementation generation when result is not "
@@ -165,6 +163,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
         *ctx);
     thlo::ReductionOp::attachInterface<
         ExternalLinalgOpTilingInterface<thlo::ReductionOp>>(*ctx);
+    thlo::TransposeOp::attachInterface<
+        ExternalLinalgOpTilingInterface<thlo::TransposeOp>>(*ctx);
   });
 }
 

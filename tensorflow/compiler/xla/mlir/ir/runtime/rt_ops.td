@@ -27,6 +27,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
 include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.td"
 include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
@@ -37,6 +38,45 @@ include "tensorflow/compiler/xla/mlir/ir/runtime/rt_interfaces.td"
 
 class RT_Op<string mnemonic, list<Trait> traits = []> :
       Op<RuntimeDialect, mnemonic, traits> {
+}
+
+//===----------------------------------------------------------------------===//
+// ExportOp
+//===----------------------------------------------------------------------===//
+
+def RT_ExportOp : RT_Op<"export", [
+    DeclareOpInterfaceMethods<SymbolUserOpInterface>,
+    HasParent<"mlir::ModuleOp">]> {
+  let summary = "exports a function from the module";
+
+  let description = [{
+    Specifies an exported function that can be called externally by the XLA
+    runtime and becomes visible as an XLA executable function.
+
+    Optional ordinal attribute specifies exported function ordinal in the
+    executable. If ordinal is not defined, it will be assigned automatically by
+    the ordinal assignment pass.
+
+    Each ordinal must be unique and ordinals are contiguous starting from zero.
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$function_ref,
+    OptionalAttr<RT_Ordinal>:$ordinal
+  );
+
+  let skipDefaultBuilders = 1;
+  let builders = [
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref)>,
+    OpBuilder<(ins "mlir::func::FuncOp":$function_ref, "unsigned":$ordinal)>,
+  ];
+
+  let extraClassDeclaration = [{
+    llvm::Optional<unsigned> ordinal();
+    mlir::func::FuncOp exported(mlir::SymbolTable& sym_table);
+  }];
+
+  let assemblyFormat = "$function_ref (`ordinal` $ordinal^)? attr-dict";
 }
 
 //===----------------------------------------------------------------------===//
@@ -277,7 +317,7 @@ def RT_TraceOp : RT_Op<"trace",
 //===----------------------------------------------------------------------===//
 
 def RT_YieldOp : RT_Op<"yield",
-    [HasParent<"TraceOp">, NoSideEffect, Terminator,
+    [HasParent<"TraceOp">, Pure, Terminator,
      DeclareOpInterfaceMethods<RegionBranchTerminatorOpInterface>]> {
   let summary = "terminator for rt.trace operation";
 

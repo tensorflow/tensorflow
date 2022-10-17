@@ -18,9 +18,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-hoist-replicate-invariant-resource-writes"
 
@@ -29,8 +30,11 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_HOISTREPLICATEINVARIANTRESOURCEWRITESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct HoistReplicateInvariantResourceWritesPass
-    : public TF::HoistReplicateInvariantResourceWritesPassBase<
+    : public impl::HoistReplicateInvariantResourceWritesPassBase<
           HoistReplicateInvariantResourceWritesPass> {
   void runOnOperation() override;
 };

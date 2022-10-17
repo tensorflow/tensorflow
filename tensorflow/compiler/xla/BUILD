@@ -1,11 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load("//third_party/compute_library:build_defs.bzl", "if_enable_acl")
@@ -277,6 +275,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/tsl/lib/gtl:iterator_range",
+        "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
@@ -438,9 +437,7 @@ tf_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
-        "//tensorflow/core:lib",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/strings",
@@ -514,10 +511,10 @@ cc_library(
         ":util",
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
-        "//tensorflow/core/util:byteswaparray",
         "//tensorflow/tsl/lib/core:bitmap",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
@@ -929,6 +926,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/lib/math:math_util",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
@@ -964,6 +962,7 @@ cc_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/tsl/platform:logging",
+            "//tensorflow/tsl/util:command_line_flags",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/strings:str_format",
@@ -981,6 +980,7 @@ tf_cc_test(
             "//tensorflow/core:lib",
             "//tensorflow/tsl/platform:logging",
             "//tensorflow/tsl/platform:test",
+            "//tensorflow/tsl/util:command_line_flags",
             "@com_google_absl//absl/strings:str_format",
         ],
 )
@@ -1000,6 +1000,7 @@ cc_library(
             ":xla_proto_cc",
             "//tensorflow/core:framework_internal",
             "//tensorflow/tsl/platform:logging",
+            "//tensorflow/tsl/util:command_line_flags",
             "@com_google_absl//absl/base",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/container:node_hash_map",

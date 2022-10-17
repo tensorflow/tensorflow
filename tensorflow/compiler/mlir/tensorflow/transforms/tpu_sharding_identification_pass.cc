@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -54,8 +53,11 @@ constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
 
+#define GEN_PASS_DEF_TPUSHARDINGIDENTIFICATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUShardingIdentificationPass
-    : public TF::TPUShardingIdentificationPassBase<
+    : public impl::TPUShardingIdentificationPassBase<
           TPUShardingIdentificationPass> {
   void runOnOperation() final;
 };

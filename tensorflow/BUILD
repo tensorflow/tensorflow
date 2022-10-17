@@ -23,12 +23,11 @@ load(
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "ADDITIONAL_API_INDEXABLE_SETTINGS")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
@@ -315,6 +314,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
@@ -386,6 +386,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -408,6 +409,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
     flag_values = if_google(
@@ -611,12 +613,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "with_numa_support",
-    define_values = {"with_numa_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
@@ -807,11 +803,12 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
+        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # This flag disables all google production dependencies, intended for
@@ -854,7 +851,7 @@ selects.config_setting_group(
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -875,7 +872,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -884,7 +881,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -1006,6 +1003,13 @@ bzl_library(
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
     ],
+)
+
+bzl_library(
+    name = "tensorflow_default_bzl",
+    srcs = ["tensorflow.default.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":tensorflow_bzl"],
 )
 
 # copybara:comment_begin(oss-only)
@@ -1171,7 +1175,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(

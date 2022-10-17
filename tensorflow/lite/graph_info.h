@@ -147,7 +147,7 @@ using ControlEdges = std::vector<ControlEdge>;
 // The function assumes that `*node_subsets` is initially empty.
 TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
-    std::vector<NodeSubset>* node_subsets, bool greedily = true,
+    std::vector<NodeSubset>* node_subsets, bool greedily,
     const ControlEdges* control_edges = nullptr);
 
 }  // namespace tflite

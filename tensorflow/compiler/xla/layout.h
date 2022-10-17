@@ -219,7 +219,7 @@ class Layout {
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 
   // Methods for accessing the tile field.
-  int tiles_size() const { return tiles_.size(); }
+  int64_t tiles_size() const { return tiles_.size(); }
   const Tile& tiles(int index) const { return tiles_.at(index); }
   Tile* mutable_tiles(int index) { return &tiles_.at(index); }
   Tile* add_tiles() {

@@ -206,6 +206,7 @@ bool CanInferShape(HloOpcode code) {
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kStochasticConvert:
       return false;
   }
 }
@@ -1368,7 +1369,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kXor:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
-    case HloOpcode::kShiftRightLogical: {
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kStochasticConvert: {
       if ((!preset_operands &&
            !ParseOperands(&operands, builder, /*expected_size=*/2)) ||
           !ParseAttributes(attrs, allow_attributes)) {

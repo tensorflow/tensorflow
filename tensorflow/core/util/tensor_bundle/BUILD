@@ -9,12 +9,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -25,12 +20,14 @@ package(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "byte_swap_array.h",
         "byte_swap_tensor.cc",
         "byte_swap_tensor.h",
         "naming.cc",
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
+        "//tensorflow/tsl/util/tensor_bundle:mobile_srcs",
     ],
 )
 
@@ -78,15 +75,26 @@ cc_library(
 )
 
 cc_library(
+    name = "byteswaparray",
+    hdrs = ["byte_swap_array.h"],
+    deps = [
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
+    ],
+)
+
+cc_library(
     name = "byteswaptensor",
     srcs = ["byte_swap_tensor.cc"],
     hdrs = ["byte_swap_tensor.h"],
     deps = [
+        ":byteswaparray",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/util:byteswaparray",
     ],
 )
 

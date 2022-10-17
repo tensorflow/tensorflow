@@ -47,6 +47,8 @@ def RuntimeDialect : Dialect {
   let hasOperationAttrVerify = 1;
 }
 
+def RT_Ordinal : SignlessIntegerAttrBase<I32, "ordinal value">;
+
 //===----------------------------------------------------------------------===//
 // Types for integrating XLA executables with the runtime.
 //===----------------------------------------------------------------------===//

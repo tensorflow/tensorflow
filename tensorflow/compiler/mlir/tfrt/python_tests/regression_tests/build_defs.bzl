@@ -1,6 +1,6 @@
 """Generate regression test targets."""
 
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 _ALWAYS_EXCLUDE = ["*.disabled.mlir"]
 _default_test_file_exts = ["mlir"]

@@ -18,14 +18,15 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 load("build_defs.bzl", "embedded_binary")
-load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_default_visibility_allowlist")
+load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibility_allowlist")
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-] + minibenchmark_default_visibility_allowlist()
+    "//tensorflow/lite/tools/benchmark:__subpackages__",
+] + minibenchmark_visibility_allowlist()
 
 minibenchmark_visibility_group = default_visibility_group + [
-    "//tensorflow_lite_support/cc:__subpackages__",
+    "@org_tensorflow_lite_support//tensorflow_lite_support/cc:__subpackages__",
 ]
 
 package(
@@ -438,10 +439,12 @@ cc_library(
 
 cc_library(
     name = "validator_runner_options",
+    srcs = ["validator_runner_options.cc"],
     hdrs = ["validator_runner_options.h"],
     deps = [
         "//tensorflow/lite:stderr_reporter",
         "//tensorflow/lite/core/api:error_reporter",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/nnapi/sl:nnapi_support_library",  # buildcleaner: keep
         "//tensorflow/lite/nnapi/sl:nnapi_support_library_headers",
     ],
@@ -515,11 +518,12 @@ cc_library(
 # SetBigCoresAffinity function.
 # This allow us to override the SetBigCoresAffinity definition during test.
 # We cannot simply alter the SetBigCoresAffinity behaviour to make it
-# controllabe by tests because the validation code will run in a separate
+# controllable by tests because the validation code will run in a separate
 # process.
 cc_library(
     name = "validator_runner_entrypoint_without_affinity_deps",
     srcs = ["validator_runner_entrypoint.cc"],
+    hdrs = ["validator_runner_entrypoint.h"],
     deps = [
         ":constants",
         ":fb_storage",
@@ -622,8 +626,10 @@ cc_library(
         ":status_codes",
         "@com_google_absl//absl/strings",
         "@flatbuffers//:runtime_cc",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite:stderr_reporter",
     ] + select({
         clean_dep("//tensorflow:android"): [
             ":embedded_runner_executable",
@@ -872,7 +878,10 @@ cc_test(
 cc_binary(
     name = "validator_runner_so_for_tests",
     testonly = 1,
-    srcs = ["validator_runner_entrypoint.cc"],
+    srcs = [
+        "validator_runner_entrypoint.cc",
+        "validator_runner_entrypoint.h",
+    ],
     linkshared = True,
     deps = [
         ":constants",
@@ -1064,14 +1073,14 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
+        ":fb_storage",
         ":status_codes",
         ":validator",
-        ":validator_runner",
-        ":validator_runner_entrypoint_without_affinity_deps",
-        "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        # This target is used with dlsym() in the test.
+        ":validator_runner_entrypoint_without_affinity_deps",  # buildcleaner: keep
         "@com_google_googletest//:gtest_main",
         "@flatbuffers",
+        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
     ],
 )
 

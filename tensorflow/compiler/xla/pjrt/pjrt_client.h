@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -93,7 +94,7 @@ using PjRtDeviceAttribute =
 
 class PjRtDevice {
  public:
-  virtual ~PjRtDevice() {}
+  virtual ~PjRtDevice() = default;
 
   // Return the client that owns this device.
   virtual PjRtClient* client() const = 0;
@@ -253,16 +254,19 @@ class PjRtChunk {
 // This class is thread-safe.
 class CopyToDeviceStream {
  public:
-  explicit CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
+  CopyToDeviceStream(int64_t total_bytes, int64_t granule_bytes)
       : total_bytes_(total_bytes), granule_bytes_(granule_bytes) {}
+
+  virtual ~CopyToDeviceStream();
 
   // Emplaces a new Chunk of data to copy to the device. Returns a non-OK status
   // if the Chunk's size causes the amount of transferred data to exceed
-  // total_bytes() or if the stream is already complete.
+  // total_bytes(), if the stream is already complete, or if the chunk is not a
+  // multiple of granule_size_in_bytes().
   //
-  // The size of the chunk must be a multiple of granule_bytes().
-  // TODO(jmolloy): Enforce the granule size.
-  Status AddChunk(PjRtChunk chunk);
+  // The transfer is started immediately, and the returned future is fulfilled
+  // when the transfer completes or fails.
+  virtual PjRtFuture<Status> AddChunk(PjRtChunk chunk) = 0;
 
   // Returns the total amount of data the stream expects to be transferred.
   int64_t total_bytes() const { return total_bytes_; }
@@ -273,31 +277,29 @@ class CopyToDeviceStream {
 
   // Returns the amount of data the stream currently has either transferred or
   // has buffered to transfer.
-  int64_t current_bytes() const {
+  int64_t current_bytes() const ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(&mu_);
     return current_bytes_;
   }
 
   // Returns true if the stream is complete; all expected bytes have been
   // transferred or are buffered to transfer.
-  bool IsComplete() const {
+  bool IsComplete() const ABSL_LOCKS_EXCLUDED(mu_) {
     absl::MutexLock lock(&mu_);
-    return current_bytes_ == total_bytes_;
+    return IsCompleteLocked();
   }
 
   // Returns true if the stream is empty; no data has been queued.
   bool empty() const { return current_bytes() == 0; }
 
-  // Consumes the next chunk. If no chunks remain, returns nullopt. Blocks
-  // until a chunk is available.
-  std::optional<PjRtChunk> ConsumeNextChunk();
-
-  // Members are protected to allow subclassing for mocking in tests.
  protected:
+  bool IsCompleteLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return current_bytes_ == total_bytes_;
+  }
+
   int64_t total_bytes_;
   int64_t granule_bytes_;
   int64_t current_bytes_ ABSL_GUARDED_BY(mu_) = 0;
-  std::deque<PjRtChunk> buffered_chunks_ ABSL_GUARDED_BY(mu_);
   mutable absl::Mutex mu_;
 };
 
@@ -495,28 +497,28 @@ class PjRtClient {
 
   // A client may want to create a buffer, and hand the buffer to other PjRt
   // methods, before the data to store in the buffer is available to the client.
-  // This is supported using CreateBuffersForAsyncTransfer, which returns an
-  // AsyncBufferTransferManager helper object.
+  // This is supported using CreateBuffersForAsyncHostToDevice, which returns an
+  // AsyncHostToDeviceTransferManager helper object.
   //
-  // The PjRtBuffers can be retrieved from the AsyncBufferTransferManager and
-  // safely passed immediately to downstream PjRt method calls. Subsequently the
-  // client can call methods on the AsyncBufferTransferManager object to copy
-  // data into the buffers, and once the data copies are complete, the buffers'
-  // definition events will automatically become ready, unblocking downstream
-  // consumers of the buffers.
+  // The PjRtBuffers can be retrieved from the AsyncHostToDeviceTransferManager
+  // and safely passed immediately to downstream PjRt method calls. Subsequently
+  // the client can call methods on the AsyncHostToDeviceTransferManager object
+  // to copy data into the buffers, and once the data copies are complete, the
+  // buffers' definition events will automatically become ready, unblocking
+  // downstream consumers of the buffers.
   //
-  // A single call to CreateBuffersForAsyncTransfer creates a "batch" of buffers
-  // that share a single definition event, which may amortize some performance
-  // overheads, but means that none of the buffers are available to downstream
-  // consumers until all the transfers have completed. Multiple calls to
-  // CreateBuffersForAsyncTransfer should be made if it is desirable for buffers
-  // to become available as soon as transfers into them complete.
+  // A single call to CreateBuffersForAsyncHostToDevice creates a "batch" of
+  // buffers that share a single definition event, which may amortize some
+  // performance overheads, but means that none of the buffers are available to
+  // downstream consumers until all the transfers have completed. Multiple calls
+  // to CreateBuffersForAsyncHostToDevice should be made if it is desirable for
+  // buffers to become available as soon as transfers into them complete.
 
   // Helper class to all clients to asynchronously transfer data into buffers
   // that are created uninitialized, see comments immediately above.
-  class AsyncBufferTransferManager {
+  class AsyncHostToDeviceTransferManager {
    public:
-    virtual ~AsyncBufferTransferManager() = default;
+    virtual ~AsyncHostToDeviceTransferManager() = default;
 
     // Returns the number of buffers managed by this object.
     virtual size_t buffer_count() const = 0;
@@ -588,9 +590,9 @@ class PjRtClient {
 
   // Returns a manager for async transfers into a set of buffers with on-host
   // shapes 'shapes'.
-  virtual StatusOr<std::unique_ptr<AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) = 0;
+  virtual StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) = 0;
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
@@ -914,6 +916,51 @@ class PjRtBuffer {
           serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) = 0;
 
+  // Helper to allow a caller to indicate that it is going to do some "sends"
+  // of the buffer a later date, where a send is a transfer out of a device
+  // buffer, either copying to host, or to a remote device.
+  //
+  // An AsyncSendPlaceholder is associated with a particular buffer, and acts as
+  // a way for the caller to inform the system of a partial ordering on actions.
+  // If the caller writes:
+  //   1) auto placeholder = buffer->CreateAsyncSendPlaceholder();
+  //   2) auto results = client->ExecuteSharded(...);
+  //   3) [..] other client work
+  //   4) auto s = placeholder->ToLiteral(...);
+  // then that means that the ToLiteral in (4) is earlier than the work in
+  // (2+3) in the partial order. For example, the work in (2+3) may depend
+  // on the D2H in (4), for example via a cross-host dependency that is
+  // otherwise not visible to the PjRtClient.
+  //
+  // The AsyncSendPlaceholder may not outlive the buffer it was created by,
+  // and it should be destroyed as soon as possible after its last use.
+  class AsyncSendPlaceholder {
+   public:
+    virtual ~AsyncSendPlaceholder() = default;
+
+    // Equivalent to PjRtBuffer::ToLiteral on the underlying buffer;
+    virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+
+    // Equivalent to PjRtBuffer::CopyRawToHost on the underlying buffer;
+    virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                             int64_t transfer_size) = 0;
+
+    // Equivalent to PjRtBuffer::CopyToRemoteDevice on the underlying buffer;
+    virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                                    RemoteSendCallback on_done) = 0;
+
+    // Equivalent to PjRtBuffer::CopyToRemoteDeviceScattered on the underlying
+    // buffer;
+    virtual void CopyToRemoteDeviceScattered(
+        absl::Span<const std::pair<std::string, RemoteSendCallback>>
+            serialized_descriptors_and_callbacks,
+        const ScatterDetails& scatter_details) = 0;
+  };
+  virtual StatusOr<std::unique_ptr<AsyncSendPlaceholder>>
+  CreateAsyncSendPlaceholder() {
+    return Unimplemented("AsyncSendPlaceholder is not supported.");
+  }
+
   // Returns a future that can be used to discover when the data in the
   // PjRtBuffer has been computed, or an error has occurred.
   //
@@ -1001,7 +1048,7 @@ struct RecvCallback {
   // guarantee that the callback here will be invoked in the same order as their
   // corresponding HLO Recv ops.
   std::function<void(const PjRtTransferMetadata& metadata,
-                     CopyToDeviceStream& stream)>
+                     std::unique_ptr<CopyToDeviceStream> stream)>
       callback;
 };
 
@@ -1061,7 +1108,7 @@ struct ExecuteOptions {
 // when passed to the execution.
 class PjRtLoadedExecutable : public PjRtExecutable {
  public:
-  virtual ~PjRtLoadedExecutable() = default;
+  ~PjRtLoadedExecutable() override = default;
 
   virtual PjRtClient* client() const = 0;
 

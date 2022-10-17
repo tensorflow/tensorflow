@@ -32,8 +32,6 @@ _KERAS_GET_SESSION_FUNCTION = None
 _KERAS_LOAD_MODEL_FUNCTION = None
 _KERAS_LOAD_CONTEXT_FUNCTION = None
 
-# TODO(scottzhu): Disable duplicated inject once keras is moved to
-# third_party/py/keras.
 # TODO(b/169898786): Use the Keras public API when TFLite moves out of TF
 
 

@@ -14,16 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_STRIPNOINLINEATTRIBUTEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // This tranformation pass strips any "_noinline" attributes from the module.
 struct StripNoinlineAttributePass
-    : public StripNoinlineAttributePassBase<StripNoinlineAttributePass> {
+    : public impl::StripNoinlineAttributePassBase<StripNoinlineAttributePass> {
  public:
   // void runOnOperation() override;
   void runOnOperation() override {

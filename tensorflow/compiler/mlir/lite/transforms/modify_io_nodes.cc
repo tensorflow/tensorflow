@@ -33,10 +33,11 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_MODIFYIONODESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
-struct ModifyIONodesPass : public ModifyIONodesPassBase<ModifyIONodesPass> {
+struct ModifyIONodesPass
+    : public impl::ModifyIONodesPassBase<ModifyIONodesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
 

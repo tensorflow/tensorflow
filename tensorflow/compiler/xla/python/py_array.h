@@ -85,6 +85,9 @@ class PyArray : public pybind11::object {
     std::shared_ptr<PyClient> py_client;
     std::shared_ptr<Traceback> traceback;
     std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
+
+    // optional field, used only in python
+    std::vector<PyBuffer::object> py_buffers;
   };
 
   const pybind11::object& aval() const { return GetStorage().aval; }
@@ -118,8 +121,14 @@ class PyArray : public pybind11::object {
   const std::vector<std::shared_ptr<PjRtBuffer>>& pjrt_buffers() const {
     return GetStorage().pjrt_buffers;
   }
+  std::vector<PyBuffer::object>& py_buffers() {
+    return GetStorage().py_buffers;
+  }
+  const std::vector<PyBuffer::object>& py_buffers() const {
+    return GetStorage().py_buffers;
+  }
 
-  pybind11::object arrays() const;
+  pybind11::object arrays();
   Status set_arrays(pybind11::object obj);
 
   PjRtBuffer* GetBuffer(int device_id) const {
@@ -141,19 +150,10 @@ class PyArray : public pybind11::object {
     return arg.get_type().is(PyArray::type());
   }
 
-  Status BlockUntilReady() const {
-    pybind11::gil_scoped_release gil_release;
-    Status status;
-    for (const auto& pjrt_buffer : pjrt_buffers()) {
-      auto s = pjrt_buffer->GetReadyFuture().Await();
-      if (!s.ok()) status = std::move(s);
-    }
-    return status;
-  }
+  Status BlockUntilReady() const;
 
  private:
-  void Check();
-  void Rearrange();
+  void CheckAndRearrange();
 
   Storage& GetStorage();
   const Storage& GetStorage() const;

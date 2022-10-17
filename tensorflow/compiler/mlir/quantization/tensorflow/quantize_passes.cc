@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -53,7 +53,9 @@ void AddQuantizeQatPasses(mlir::PassManager &pm,
   // connected to FakeQuantOp instead of the ConstOp so need to add separate
   // pattern for FakeQuantOp.
   // pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateInsertQuantizedFunctionsPass(
       mlir::quant::QuantizationMethod::kQuantizationAwareTraining,
       quantization_options.op_set()));
@@ -94,11 +96,14 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
 }
 
-void AddQuantizePtqPreCalibrationPasses(mlir::PassManager &pm) {
+void AddQuantizePtqPreCalibrationPasses(
+    mlir::PassManager &pm, const QuantizationOptions &quantization_options) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addNestedPass<mlir::func::FuncOp>(mlir::quant::CreatePrepareLiftingPass());
-  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass());
+  pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsPass(
+      quantization_options.op_set()));
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreateInsertCustomAggregationOpsPass());
   pm.addPass(mlir::quant::CreateIssueIDsOfCustomAggregationOpsPass());
