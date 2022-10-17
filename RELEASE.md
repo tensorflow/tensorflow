@@ -49,7 +49,8 @@ This release contains contributions from many people at Google, as well as:
         checkpoint saving/loading, but at the cost of breaking checkpoint
         backward compatibility in some cases. If you want to keep using an old
         checkpoint, please change your optimizer to
-        `tf.keras.optimizer.legacy.XXX` (e.g. `tf.keras.optimizer.legacy.Adam`).
+        `tf.keras.optimizers.legacy.XXX` (e.g.
+        `tf.keras.optimizers.legacy.Adam`).
     *   **TF1 compatibility.** The new optimizer does not support TF1 any more,
         so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`.
         We highly recommend to migrate your workflow to TF2 for stable
