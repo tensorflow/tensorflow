@@ -69,9 +69,6 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
        {"SHUFFLE", is_built_with_rocm_ ? "i32 @llvm.amdgcn.ds.bpermute"
                                        : "float @llvm.nvvm.shfl.sync.down.f32"},
        {"TIDX", is_built_with_rocm_ ? "@llvm.amdgcn.workitem.id.x"
-<<<<<<< HEAD
-                                    : "@llvm.nvvm.read.ptx.sreg.tid.x"}});
-=======
                                     : "@llvm.nvvm.read.ptx.sreg.tid.x"},
        {"LCAL", is_built_with_rocm_ ? "%[[LOGICAL_T1:.*]] = call { i1, i64 } "
                                       "@llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])"
@@ -82,7 +79,6 @@ std::string GpuCodegenTest::MakePlatformSpecificLlvm(absl::string_view input) {
             : "0"},
        {"BR_CAL", is_built_with_rocm_ ? "br i1 %[[LOGICAL_T2]],"
                                       : "br i1 %[[LOGICAL_T0]]"}});
->>>>>>> upstream/master
 }
 
 }  // namespace gpu
