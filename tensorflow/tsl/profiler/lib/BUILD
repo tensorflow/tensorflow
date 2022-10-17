@@ -1,6 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",

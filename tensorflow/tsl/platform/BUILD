@@ -5,7 +5,7 @@
 #   to other TF components outside of TSL.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
     "tf_copts",
