@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_domain_verifier.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -818,6 +819,38 @@ ENTRY entry {
 
   EXPECT_TRUE(tuple1->has_sharding());
   EXPECT_EQ(tuple0->sharding(), tuple1->sharding());
+}
+
+// Test HloDomainRemover with ShardingPropagation::NormalizeDomain to generate
+// correct shardings after removing doman instruction after tuple instructions
+// with the same sharding for every tuple element.
+TEST_F(HloDomainTest, DomainTupleSameSharding) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = u32[2]{0} parameter(0), sharding={devices=[2]0,1}
+  p1 = u32[2]{0} parameter(1), sharding={devices=[2]0,1}
+  tuple.0 = (u32[2]{0}, u32[2]{0}) tuple(p0, p1), sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  get-tuple-element.0 = u32[2]{0} get-tuple-element(tuple.0), index=0
+  get-tuple-element.1 = u32[2]{0} get-tuple-element(tuple.0), index=1
+  ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingPropagation::NormalizeDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+  auto tuple0 = FindInstruction(module.get(), "tuple.0");
+  EXPECT_TRUE(tuple0->has_sharding());
+  EXPECT_TRUE(tuple0->sharding().IsTuple());
+  EXPECT_EQ(tuple0->sharding().tuple_elements().size(), 2);
 }
 
 }  // namespace

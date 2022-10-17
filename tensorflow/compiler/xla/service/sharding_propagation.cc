@@ -1435,7 +1435,19 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
           // Set sharding only if it is different. We don't overwrite the
           // metadata if it has the same sharding besides metadata.
           if (!operand->has_sharding() || operand->sharding() != *sharding) {
-            d->mutable_operand(0)->set_sharding(*sharding);
+            if (operand->has_sharding() && operand->sharding().IsTuple() &&
+                !sharding->IsTuple()) {
+              // Expand sharding into tuple sharding per
+              // CloneShardingForDomain() in
+              // third_party/tensorflow/compiler/xla/service/hlo_sharding_metadata.cc
+              // Create Tuple HloSharding.
+              ShapeTree<HloSharding> output_tuple_sharding(operand->shape(),
+                                                           *sharding);
+              d->mutable_operand(0)->set_sharding(
+                  HloSharding::Tuple(output_tuple_sharding));
+            } else {
+              d->mutable_operand(0)->set_sharding(*sharding);
+            }
           }
         }
         return OkStatus();
