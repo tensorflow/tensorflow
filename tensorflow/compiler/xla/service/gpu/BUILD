@@ -223,6 +223,7 @@ cc_library(
     name = "ir_emitter",
     srcs = [
         "ir_emitter.cc",
+        "ir_emitter_context.cc",
         "ir_emitter_nested.cc",
         "ir_emitter_unnested.cc",
     ],
@@ -243,6 +244,7 @@ cc_library(
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable",
+        ":gpu_device_info",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
         ":launch_dimensions",

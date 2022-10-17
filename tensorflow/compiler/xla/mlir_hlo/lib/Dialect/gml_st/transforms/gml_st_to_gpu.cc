@@ -97,7 +97,7 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
     patterns.add<ParallelOpToGpuPattern, GenericOpToWarpReductionPattern,
                  MultiDimReductionOpToWarpReductionPattern>(&getContext());
     ConversionTarget target(getContext());
-    target.addIllegalDialect<GmlStDialect>();
+    target.addIllegalOp<ParallelOp>();
     target.addIllegalOp<vector::MultiDimReductionOp>();
     target.addDynamicallyLegalOp<linalg::GenericOp>([](linalg::GenericOp op) {
       return llvm::none_of(op.getIteratorTypesArray(),
@@ -295,7 +295,8 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
 
     bvm.map(parallel.getInductionVars().front(),
             nestingLevelToInductionVarMap[nestingLevel]);
-    loopIterators.push_back(parallel.getBody()->without_terminator());
+    Block* body = parallel.getBody();
+    loopIterators.push_back(llvm::make_range(body->begin(), body->end()));
     return success();
   };
 
@@ -311,6 +312,21 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
             llvm::make_range(std::next(op.getIterator()), currentLoop.end()));
         if (failed(processParallelOp(nestedParallel))) return failure();
         break;
+      }
+      if (auto setYield = dyn_cast<SetYieldOp>(&op)) {
+        // convert setYield into distribute
+        auto parallelOp = setYield->getParentOfType<ParallelOp>();
+        assert(parallelOp &&
+               "gml_st.set_yield should have a parent gml_st.parallel op");
+        for (auto [result, src, set] :
+             llvm::zip(parallelOp.getResults(), setYield.getSrcs(),
+                       setYield.getSets())) {
+          bvm.map(result,
+                  rewriter.create<DistributeOp>(op.getLoc(), result.getType(),
+                                                bvm.lookupOrDefault(src),
+                                                bvm.lookupOrDefault(set)));
+        }
+        continue;
       }
       // TODO(b/244314146): Figure out what we need to do for operations
       // encountered on upper nesting levels to correctly lower them after the

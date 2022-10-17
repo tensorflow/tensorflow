@@ -819,7 +819,7 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
 
   Value result = op.getResult();
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
@@ -1317,7 +1317,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
-  if (failed(GetTuple(op, op.operands(), ctx, args))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
@@ -1421,7 +1421,7 @@ LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
   value_map[op] = xla::Map(ctx.builder, operands, computation,
                            Convert_dimensions(op.getDimensions()));
   return success();
@@ -1431,7 +1431,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
 
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
 
   const auto sharding = ctx.builder->sharding();
   xla::XlaOp operand;
@@ -1444,7 +1444,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
     operand = Tuple(ctx.builder, operands);
   }
   std::vector<xla::Shape> subshapes;
-  for (auto operand : op.operands())
+  for (auto operand : op.getInputs())
     subshapes.push_back(xla::TypeToShape(operand.getType()));
 
   xla::Shape shape_with_layout = xla::ShapeUtil::MakeTupleShape(subshapes);
@@ -1547,7 +1547,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
       failed(GetTuple(op, op.getInitValues(), ctx, init_values))) {
     return failure();
   }
@@ -1571,7 +1571,7 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
       failed(GetTuple(op, op.getInitValues(), ctx, init_values))) {
     return failure();
   }
@@ -1707,7 +1707,7 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
 
   llvm::SmallVector<xla::XlaOp> operands;
   llvm::SmallVector<xla::XlaOp> updates;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
   if (failed(GetTuple(op, op.getUpdates(), ctx, updates))) return failure();
 
   xla::XlaOp scatter_indices;
@@ -1759,7 +1759,7 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
 
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
 
   xla::XlaOp operand;
   if (operands.size() == 1)
@@ -1803,7 +1803,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
     return failure();
 
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
   auto sorted =
       xla::Sort(operands, comparator, op.getDimension(), op.getIsStable());
 
@@ -1926,7 +1926,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
 
   auto& values = *ctx.values;
   llvm::SmallVector<xla::XlaOp, 4> operands;
-  for (auto operand : op.operands()) operands.push_back(values[operand]);
+  for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
   auto fusion_kind_string =
       mlir::mhlo::stringifyFusionKind(op.getFusionKind().getValue());

@@ -182,7 +182,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
         scatterOp.getScatterDimensionNumbers();
 
     auto operandType =
-        scatterOp.operands().front().getType().cast<RankedTensorType>();
+        scatterOp.getInputs().front().getType().cast<RankedTensorType>();
     int64_t operandRank = operandType.getRank();
     auto [operandPermutation, operandPermutationInverse] =
         makeOperandStartIndexPermutations(
@@ -193,7 +193,7 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
                                  dimsAttrs.getIndexVectorDim());
 
     SmallVector<Value> canonicalOperands = transposeTensors(
-        rewriter, loc, scatterOp.operands(), operandPermutation);
+        rewriter, loc, scatterOp.getInputs(), operandPermutation);
 
     SmallVector<Value> canonicalUpdates = canonicalizeUpdates(
         rewriter, loc, scatterOp.getUpdates(),

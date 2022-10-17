@@ -16,6 +16,7 @@
 
 import collections
 import pickle
+import platform
 
 from absl.testing import parameterized
 
@@ -476,6 +477,10 @@ class CanonicalizationTest(test.TestCase, parameterized.TestCase):
       args_1_2_kwargs_z_3,
   )
   def test_posonly(self, args, kwargs):
+
+    major, minor, _ = platform.python_version_tuple()
+    if not (major == "3" and int(minor) >= 8):
+      self.skipTest("Positional only args are supported in Python 3.8+")
 
     def foo(x, y, /, z):
       del x, y, z

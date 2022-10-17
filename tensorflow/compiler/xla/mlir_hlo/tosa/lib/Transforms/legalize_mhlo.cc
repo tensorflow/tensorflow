@@ -248,7 +248,7 @@ struct ConvertMhloReduceOp : public OpRewritePattern<mhlo::ReduceOp> {
       return rewriter.notifyMatchFailure(op, "body required to contain 2 ops");
     }
 
-    auto operands = op.operands().front();
+    auto operands = op.getInputs().front();
     ShapedType inputType = operands.getType().cast<ShapedType>();
     uint64_t dimension = op.getDimensions().getValues<uint64_t>().begin()[0];
     Operation& innerOp = bodyBlock.front();

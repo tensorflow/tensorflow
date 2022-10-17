@@ -39,6 +39,15 @@
             android:exported="true"
             android:noHistory="true">
         </activity>
+        <!-- This Activity runs Delegate Performance Benchmark for accuracy. -->
+        <activity
+            android:name=".BenchmarkAccuracyActivity"
+            android:screenOrientation="portrait"
+            android:label="TFLite Delegate Performance Benchmark - Accuracy"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="true"
+            android:noHistory="true">
+        </activity>
     </application>
 
 </manifest>

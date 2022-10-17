@@ -481,7 +481,7 @@ void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
   Type outputElementType =
-      getOutputs().front().getType().cast<ShapedType>().getElementType();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
 
   for (Type inputArgType : TypeRange{getInputs()}) {
     Type inputArgElementType = inputArgType.cast<ShapedType>().getElementType();
@@ -725,7 +725,7 @@ LogicalResult ScatterOp::verify() {
   // The update computation should yield exactly 1 result.
   auto updateTerminator = cast<YieldOp>(getBody()->getTerminator());
   Type outputElementType =
-      getOutputs().front().getType().cast<ShapedType>().getElementType();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
   if (!succeeded(checkYieldOutputs(updateTerminator, outputElementType)))
     return failure();
 
@@ -1247,7 +1247,7 @@ LogicalResult MapOp::verify() {
 
   // The shape of each input must match the shape of the output.
   auto outputShape =
-      getOutputs().front().getType().cast<ShapedType>().getShape();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getShape();
   for (Type inputArgType : TypeRange{getInputs()}) {
     auto inputElemShape = inputArgType.cast<ShapedType>().getShape();
     if (inputElemShape != outputShape) {
@@ -1260,7 +1260,7 @@ LogicalResult MapOp::verify() {
   // The mapper should yield exactly one output.
   YieldOp mapperTerminator = cast<YieldOp>(bodyBlock->getTerminator());
   Type outputElementType =
-      getOutputs().front().getType().cast<ShapedType>().getElementType();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
   if (!succeeded(checkYieldOutputs(mapperTerminator, outputElementType)))
     return failure();
 
@@ -1318,11 +1318,17 @@ LogicalResult SortOp::verify() {
 
   // Checks that the arity of the comparator is equal to twice the number of
   // inputs.
-  if (comparatorArgs.size() != getNumInputs() * 2)
+  int64_t numInputs = getNumInputs();
+  int64_t numOutputs = getNumOutputs();
+  if (getNumOutputs() != numInputs) {
+    return emitOpError() << "expected the number of inputs " << numInputs
+                         << " to match the number of outputs " << numOutputs;
+  }
+  if (comparatorArgs.size() != numInputs * 2) {
     return emitOpError() << "expected the number of block arguments "
                          << comparatorArgs.size() << " to be twice the number "
-                         << "of inputs (2*" << getNumInputs() << ")";
-
+                         << "of inputs (2*" << numInputs << ")";
+  }
   // Checks that the comparator's arguments match the element type of the
   // inputs.
   TypeRange inputTypes = TypeRange{getInputs()};
@@ -1363,8 +1369,9 @@ LogicalResult SortOp::verify() {
   }
 
   // Checks that the outputs have the same shape as the inputs.
-  for (auto &item : llvm::enumerate(TypeRange{getOutputs()})) {
-    ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
+  for (auto &item : llvm::enumerate(getInits())) {
+    ArrayRef<int64_t> shape =
+        item.value().getType().cast<ShapedType>().getShape();
     if (shape != referenceShape) {
       return emitOpError() << "expected outputs to have shape ("
                            << referenceShape << ") but output " << item.index()

@@ -206,3 +206,59 @@ func.func @imperfect_tiling(%arg0: memref<2051xf32>) -> memref<2051xf32> {
 // CHECK:       memref.load
 // CHECK:       math.log
 // CHECK:       memref.store
+
+// -----
+
+#layout = strided<[1], offset: ?>
+
+func.func @vectorized_tiling(%arg0: memref<2048xf32>) -> memref<2048xf32> {
+  %c2048 = arith.constant 2048 : index
+  %c0 = arith.constant 0 : index
+  %c1024 = arith.constant 1024 : index
+  %c128 = arith.constant 128 : index
+  %c4 = arith.constant 4 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %alloc = memref.alloc() {alignment = 64 : i64} : memref<2048xf32>
+  gml_st.parallel (%arg1) = (%c0) to (%c2048) step (%c1024) {
+    %subview = memref.subview %arg0[%arg1] [1024] [1]
+      : memref<2048xf32> to memref<1024xf32, #layout>
+    %subview_0 = memref.subview %alloc[%arg1] [1024] [1]
+      : memref<2048xf32> to memref<1024xf32, #layout>
+    gml_st.parallel (%arg2) = (%c0) to (%c1024) step (%c128) {
+      %subview_1 = memref.subview %subview[%arg2] [128] [1]
+        : memref<1024xf32, #layout> to memref<128xf32, #layout>
+      %0 = vector.transfer_read %subview_1[%c0], %cst {in_bounds = [true]}
+        : memref<128xf32, #layout>, vector<128xf32>
+      %subview_2 = memref.subview %subview_0[%arg2] [128] [1]
+        : memref<1024xf32, #layout> to memref<128xf32, #layout>
+      %1 = vector.transfer_read %subview_2[%c0], %cst {in_bounds = [true]}
+        : memref<128xf32, #layout>, vector<128xf32>
+      %2 = gml_st.parallel (%arg3) = (%c0) to (%c128) step (%c4) {
+        %3 = gml_st.space [128] : !gml_st.tile<128>
+        %4 = gml_st.tile %3 [%arg3] [4] [1]
+          : !gml_st.tile<128> to !gml_st.tile<4>
+        %5 = gml_st.materialize %0[%4]
+          : vector<128xf32>[!gml_st.tile<4>] to vector<4xf32>
+        %6 = math.absf %5 : vector<4xf32>
+        gml_st.set_yield %6 into %1[%4]
+          : vector<4xf32> into vector<128xf32>[!gml_st.tile<4>]
+      } : vector<128xf32>
+      vector.transfer_write %2, %subview_2[%c0] {in_bounds = [true]}
+        : vector<128xf32>, memref<128xf32, #layout>
+      gml_st.set_yield
+    }
+    gml_st.set_yield
+  }
+  return %alloc : memref<2048xf32>
+}
+// CHECK-LABEL: @vectorized_tiling
+// CHECK-NOT: gml_st.parallel
+// CHECK: %[[IN:.*]] = vector.transfer_read
+// CHECK-NOT: gml_st.parallel
+// CHECK: %[[THREADTILE:.*]] = gml_st.tile {{.*}} [{{.*}}] [4] [1]
+// CHECK: %[[THREADIN:.*]] = gml_st.materialize %[[IN]][%[[THREADTILE]]]
+// CHECK: %[[THREADOUT:.*]] = math.absf %[[THREADIN]]
+// CHECK: %[[OUT:.*]] = gml_st.distribute %[[THREADOUT]]
+// CHECK-SAME:  into[%[[THREADTILE]]] : vector<4xf32> into
+// CHECK-SAME:  vector<128xf32>[!gml_st.tile<4>]
+// CHECK: vector.transfer_write %[[OUT]]

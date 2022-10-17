@@ -22,7 +22,6 @@ cc_binary(
     }),
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )

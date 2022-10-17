@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Matchers.h"
 
 namespace mlir {
 namespace gml_st {
@@ -115,11 +116,7 @@ static void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, LoopOp mainLoop,
   });
 }
 
-bool isZero(Value v) {
-  if (auto cst = v.getDefiningOp<arith::ConstantIndexOp>())
-    return cst.value() == 0;
-  return false;
-}
+bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 using ::mlir::linalg::LinalgOp;
 
 void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
@@ -145,8 +142,8 @@ void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
     nestedBuilder.create<gml_st::YieldOp>(nestedLoc, results);
   };
 
-  SmallVector<Value> inputOperands = linalgOp.getInputOperands();
-  SmallVector<Value> outputOperands = linalgOp.getOutputOperands();
+  SmallVector<Value> inputs{linalgOp.getInputOperands()};
+  SmallVector<Value> outputs{linalgOp.getOutputOperands()};
 
   SmallVector<Value> lbsValue =
       mlir::getValueOrCreateConstantIndexOp(b, loc, lbs);
@@ -154,9 +151,9 @@ void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
       mlir::getValueOrCreateConstantIndexOp(b, loc, ubs);
   SmallVector<Value> stepsValue =
       mlir::getValueOrCreateConstantIndexOp(b, loc, steps);
-  auto tiledLoop = b.create<LoopOp>(
-      loc, lbsValue, ubsValue, stepsValue, inputOperands, outputOperands,
-      b.getArrayAttr(iteratorTypes), wrappedBuilderFn);
+  auto tiledLoop =
+      b.create<LoopOp>(loc, lbsValue, ubsValue, stepsValue, inputs, outputs,
+                       b.getArrayAttr(iteratorTypes), wrappedBuilderFn);
   if (!distributionTypes.empty())
     tiledLoop.setDistributionTypes(b, distributionTypes);
 }
@@ -219,8 +216,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
 
     // Tile the `operandValuesToUse` that either match the `op` operands
     // themselves or the tile loop arguments forwarding them.
-    assert(operandValuesToUse.size() ==
-               static_cast<size_t>(op.getNumInputsAndOutputs()) &&
+    assert(operandValuesToUse.size() == op->getNumOperands() &&
            "expect the number of operands and inputs and outputs to match");
     SmallVector<Value> valuesToTile = operandValuesToUse;
     auto sizeBounds = makeComposedFoldedMultiResultAffineApply(
@@ -231,7 +227,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
         /*omitPartialTileCheck=*/false);
 
     SmallVector<Type, 4> resultTensorTypes;
-    for (OpOperand *opOperand : op.getOutputTensorOperands())
+    for (OpOperand *opOperand : op.getOutputOperands())
       resultTensorTypes.push_back(
           tiledOperands[opOperand->getOperandNumber()].getType());
 
@@ -239,7 +235,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
 
     // Insert a insert_slice for each output tensor.
     unsigned resultIdx = 0;
-    for (OpOperand *opOperand : op.getOutputTensorOperands()) {
+    for (OpOperand *opOperand : op.getOutputOperands()) {
       Value outputTensor = tiledOperands[opOperand->getOperandNumber()];
       IRRewriter rewriter(b);
       if (auto sliceOp = outputTensor.getDefiningOp<tensor::ExtractSliceOp>()) {
