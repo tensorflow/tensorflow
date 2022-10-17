@@ -445,7 +445,7 @@ func.func @sort_mismatched_number_of_inputs_and_outputs(
       %input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
       %init1: tensor<?x?xf32>)
     -> tensor<?x?xf32> {
-  // expected-error@+1{{'thlo.sort' op expected 2 operands, but found 3}}
+  // expected-error@+1{{'thlo.sort' op expected the number of inputs 2 to match the number of outputs 1}}
   %sorted = thlo.sort
       ins(%input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>)
       outs(%init1: tensor<?x?xf32>)

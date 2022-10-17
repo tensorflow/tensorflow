@@ -102,8 +102,7 @@ struct ThloSortOpBufferizationModel
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
                                const AnalysisState & /*state*/) const {
-    return cast<linalg::DestinationStyleOpInterface>(op).isOutputTensor(
-        &opOperand);
+    return cast<linalg::DestinationStyleOpInterface>(op).isOutput(&opOperand);
   }
 
   SmallVector<OpOperand *> getAliasingOpOperand(
@@ -120,7 +119,7 @@ struct ThloSortOpBufferizationModel
     auto dstStyleOp = cast<linalg::DestinationStyleOpInterface>(op);
 
     // The i-th "out" tensor may alias with the i-th OpResult.
-    if (dstStyleOp.isOutputTensor(&opOperand))
+    if (dstStyleOp.isOutput(&opOperand))
       return {dstStyleOp.getTiedOpResult(&opOperand)};
     return {};
   }

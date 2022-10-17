@@ -190,13 +190,12 @@ class BufferReuseAnalysis {
       return false;
 
     if (auto generic_op = dyn_cast<linalg::GenericOp>(op)) {
-      SmallVector<OpOperand *> op_operands =
-          generic_op.getInputAndOutputOperands();
-      auto old_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
-        return op_operand->get() == old_buffer;
+      auto op_operands = op->getOpOperands();
+      auto old_it = llvm::find_if(op_operands, [&](OpOperand &op_operand) {
+        return op_operand.get() == old_buffer;
       });
-      auto new_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
-        return op_operand->get() == new_buffer;
+      auto new_it = llvm::find_if(op_operands, [&](OpOperand &op_operand) {
+        return op_operand.get() == new_buffer;
       });
       assert(old_it != op_operands.end() && new_it != op_operands.end() &&
              "Expect `old/new_buffer` to be operand of `op`.");
@@ -218,8 +217,8 @@ class BufferReuseAnalysis {
       // have the same size we also know that when one side has an identity map
       // and the other side only drops dimensions, these dimensions have to be
       // of size 1.
-      AffineMap old_indexing_map = generic_op.getMatchingIndexingMap(*old_it);
-      AffineMap new_indexing_map = generic_op.getMatchingIndexingMap(*new_it);
+      AffineMap old_indexing_map = generic_op.getMatchingIndexingMap(old_it);
+      AffineMap new_indexing_map = generic_op.getMatchingIndexingMap(new_it);
       return (old_indexing_map == new_indexing_map &&
               old_indexing_map.isProjectedPermutation()) ||
              (old_indexing_map.isIdentity() &&
