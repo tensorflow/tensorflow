@@ -22,6 +22,7 @@ load("special_rules.bzl", "jpeg_copts", "libjpeg_deps", "minibenchmark_visibilit
 
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+    "//tensorflow/lite/tools/benchmark:__subpackages__",
 ] + minibenchmark_visibility_allowlist()
 
 minibenchmark_visibility_group = default_visibility_group + [
