@@ -1,5 +1,9 @@
 # Release 2.11.0
 
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
+# Release 2.11.0
+
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
 * `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
