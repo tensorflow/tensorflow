@@ -317,10 +317,14 @@ Status PyArray::RegisterTypes(py::module& m) {
           auto py_arrays = py::cast<std::vector<PyArray>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding), py_arrays,
                           committed, skip_checks);
-        } else {
+        } else if (arrays[0].get_type().ptr() == PyBuffer::type()) {
           auto py_buffers = py::cast<std::vector<PyBuffer::object>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding),
                           py_buffers, committed, skip_checks);
+        } else {
+          throw py::type_error(
+              absl::StrCat("Unsupported type for elements in `arrays`: ",
+                           std::string(py::str(arrays[0].get_type()))));
         }
       },
       py::is_method(type), py::arg("aval"), py::arg("sharding"),
