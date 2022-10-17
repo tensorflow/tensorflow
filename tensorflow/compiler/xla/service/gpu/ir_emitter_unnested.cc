@@ -4604,8 +4604,7 @@ StatusOr<ReductionCodegenInfo> IrEmitterUnnested::ComputeReductionCodegenInfo(
     }
   }
 
-  VLOG(3) << "Each threads will produce " << num_partial_results
-          << " output(s)";
+  VLOG(3) << "Each thread will produce " << num_partial_results << " output(s)";
   reduction_tiling[kDimX] *= num_partial_results;
 
   Vector3 num_threads = {1, num_threads_y, num_threads_x};
@@ -4893,7 +4892,7 @@ Status IrEmitterUnnested::EmitUnnestedReduction(
        /*z=*/1},
       {/*x=*/tiling_scheme.GetNumThreadsPerBlockPhysical(), /*y=*/1, /*z=*/1});
   VLOG(3) << "Launch dimensions of "
-          << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc())
+          << mlir::mhlo::GetDebugNameFromLocation(fusion.getLoc()) << ": "
           << launch_dimensions.ToString();
 
   std::vector<llvm_ir::IrArray> ir_arrays;
