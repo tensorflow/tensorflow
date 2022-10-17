@@ -15,28 +15,7 @@ Before sending your pull requests, make sure you do the following:
 
 ## How to become a contributor and submit your own code
 
-```mermaid
-flowchart LR
-A(New PR) ---> B{Valid}
-B --> |Yes| C(Review)
-B --> |No| D(Send back/Reject)
-C --> E{Need change}
-E --> |No| F(Approved)
-E --> |Yes| G(Change requested)
-G --> C
-F --> H{Kokoro tests}
-H --> |Fail| G
-H --> |Pass| I(Copy to G3)
-I --> J{Run tests}
-J --> |Fail| G
-J -----> |Pass| K(Merged)
-
-click A "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#1-new-pr" _blank
-click B "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#2-valid" _blank
-click C "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#3-review" _blank
-click F "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#4-approved" _blank
-click I "https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md#5-copy-to-g3" _blank
-```
+![Screen Shot 2022-08-30 at 7 27 04 PM](https://user-images.githubusercontent.com/42785357/187579207-9924eb32-da31-47bb-99f9-d8bf1aa238ad.png)
 
 ### Typical Pull Request Workflow -
 
