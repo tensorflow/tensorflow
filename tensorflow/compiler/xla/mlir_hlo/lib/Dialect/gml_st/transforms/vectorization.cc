@@ -90,16 +90,17 @@ struct VectorizationPattern : public mlir::OpRewritePattern<OpTy> {
   VectorizationPattern(MLIRContext *context,
                        llvm::function_ref<bool(OpTy)> matchFn,
                        mlir::PatternBenefit benefit = 1)
-      : mlir::OpRewritePattern<OpTy>(context, benefit), matchFn(matchFn) {}
+      : mlir::OpRewritePattern<OpTy>(context, benefit), filterFn(matchFn) {}
 
   LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    if (!matchFn(op)) return failure();
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
     return mlir::linalg::vectorize(rewriter, op);
   }
 
  private:
-  llvm::function_ref<bool(OpTy)> matchFn;
+  llvm::function_ref<bool(OpTy)> filterFn;
 };
 
 // Generates an offset of all 0s suitable as the index paramter for the builder
@@ -155,17 +156,22 @@ void convertVectorResultsToTensor(Operation *op, ValueRange destinations,
 
 struct MaterializeOpVectorizationPattern
     : public OpRewritePattern<MaterializeOp> {
-  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+  MaterializeOpVectorizationPattern(
+      MLIRContext *context, llvm::function_ref<bool(MaterializeOp)> filterFn,
+      PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit), filterFn(filterFn) {}
 
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
     TypedValue<ShapedType> source = op.getSource();
     ShapedType sourceType = source.getType();
     // TODO(b/244314345): Support imperfect tiling, which results in dynamic
     // shapes.
     if (!sourceType.isa<RankedTensorType>() ||
         sourceType.getNumDynamicDims() > 0)
-      return failure();
+      return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
     BlockAndValueMapping bvm;
@@ -186,12 +192,21 @@ struct MaterializeOpVectorizationPattern
     rewriter.replaceOp(op, bvm.lookupOrDefault(op));
     return success();
   }
+
+ private:
+  llvm::function_ref<bool(MaterializeOp)> filterFn;
 };
 
 struct ParallelOpVectorizationPattern : public OpRewritePattern<ParallelOp> {
-  using OpRewritePattern<ParallelOp>::OpRewritePattern;
+  ParallelOpVectorizationPattern(MLIRContext *context,
+                                 llvm::function_ref<bool(ParallelOp)> filterFn,
+                                 PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit), filterFn(filterFn) {}
 
-  LogicalResult match(ParallelOp op) const override {
+  LogicalResult matchAndRewrite(ParallelOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
     SetYieldOp setYield = op.getTerminator();
     // Make sure that all the arguments are either tiles or ranked tensors, and
     // that we have at least one tensor (so that the rewrite is not a no-op).
@@ -209,10 +224,15 @@ struct ParallelOpVectorizationPattern : public OpRewritePattern<ParallelOp> {
     }
     // We currently only support set_yield without an accumulator, since this
     // pattern is only needed for GPU, where accumulators are not used.
-    return success(hasTensor && setYield.getAccumulators().empty());
-  }
+    if (!hasTensor) {
+      return rewriter.notifyMatchFailure(
+          op, "should yield at least one tensor to be vectorized");
+    }
+    if (!setYield.getAccumulators().empty()) {
+      return rewriter.notifyMatchFailure(
+          op, "shoud not use set_yield accumulators");
+    }
 
-  void rewrite(ParallelOp op, PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
     BlockAndValueMapping bvm;
 
@@ -238,7 +258,7 @@ struct ParallelOpVectorizationPattern : public OpRewritePattern<ParallelOp> {
     };
     auto vectorParallel = rewriter.create<ParallelOp>(
         loc, resultTypes, op.getLowerBound(), op.getUpperBound(), op.getStep(),
-        llvm::None, bodyBuilder);
+        op.getDistributionTypeAttr(), bodyBuilder);
     bvm.map(op.getResults(), vectorParallel.getResults());
 
     convertVectorResultsToTensor(op, op.getTerminator().getDsts(), bvm,
@@ -247,7 +267,11 @@ struct ParallelOpVectorizationPattern : public OpRewritePattern<ParallelOp> {
         op.getResults(), [&](Value v) { return bvm.lookupOrDefault(v); }));
 
     rewriter.replaceOp(op, mappedResults);
+    return success();
   }
+
+ private:
+  llvm::function_ref<bool(ParallelOp)> filterFn;
 };
 
 RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx) {
@@ -284,8 +308,11 @@ bool isGenericOpTiledOrOneDimReduction(GenericOp generic) {
 
 struct VectorizeGmlStLoopsPass
     : public impl::VectorizeGmlStLoopsPassBase<VectorizeGmlStLoopsPass> {
-  explicit VectorizeGmlStLoopsPass(bool vectorizeGmlStOpsParam) {
+  VectorizeGmlStLoopsPass(bool vectorizeGmlStOpsParam,
+                          ArrayRef<StringRef> distributionLabelsParam) {
     vectorizeGmlStOps = vectorizeGmlStOpsParam;
+    for (StringRef distribution : distributionLabelsParam)
+      distributionLabels.push_back(distribution.str());
   }
 
   void getDependentDialects(mlir::DialectRegistry &registry) const override {
@@ -296,24 +323,52 @@ struct VectorizeGmlStLoopsPass
     auto func = getOperation();
     auto *ctx = func.getContext();
 
+    auto isValidDistribution = [&](Operation *op) {
+      if (distributionLabels.empty()) return true;
+      ParallelOp parent = op->getParentOfType<ParallelOp>();
+      if (!parent || !parent.getDistributionType().has_value()) return false;
+      return llvm::find(distributionLabels,
+                        parent.getDistributionType().value()) !=
+             distributionLabels.end();
+    };
+    // These lambdas have to be assigned to local variables, so that they
+    // survive beyond patterns.add() and applyPatternsAndFoldGreedily() calls.
+    auto fillOpFilter = [&](FillOp op) {
+      return isValidDistribution(op) && isFillTiledOrSmall(op);
+    };
+    auto genericOpFilter = [&](GenericOp op) {
+      return isValidDistribution(op) && isGenericOpTiledOrOneDimReduction(op);
+    };
+    auto materializeOpFilter = [&](MaterializeOp op) {
+      // Materialize op should only be vectorized if the producer of its
+      // source is within the vectorized region, otherwise we vectorize one
+      // level too much. (E.g., for GPU, if we are vectorizing up to warp level,
+      // we should not vectorize materializes of warp-level tiles from
+      // block-level tiles, since it means we are inserting a
+      // vector.transfer_read on the source, i.e., a block-level tile).
+      Operation *sourceOp = op.getSource().getDefiningOp();
+      return sourceOp && isValidDistribution(sourceOp);
+    };
+
     RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
     patterns.add<TransferReadOfOneDimExpandShape>(func.getContext());
-    patterns.add<VectorizationPattern<FillOp>>(ctx, isFillTiledOrSmall);
-    patterns.add<VectorizationPattern<GenericOp>>(
-        ctx, isGenericOpTiledOrOneDimReduction);
+    patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
+    patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
     if (vectorizeGmlStOps) {
-      patterns.add<MaterializeOpVectorizationPattern,
-                   ParallelOpVectorizationPattern>(ctx);
+      patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
+      patterns.add<ParallelOpVectorizationPattern>(ctx, isValidDistribution);
     }
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+      return signalPassFailure();
   }
 };
 
 }  // namespace
 
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
-    bool vectorizeGmlStOps) {
-  return std::make_unique<VectorizeGmlStLoopsPass>(vectorizeGmlStOps);
+    bool vectorizeGmlStOps, ArrayRef<StringRef> distributionLabels) {
+  return std::make_unique<VectorizeGmlStLoopsPass>(vectorizeGmlStOps,
+                                                   distributionLabels);
 }
 
 }  // namespace gml_st

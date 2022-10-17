@@ -118,6 +118,11 @@ def VectorizeGmlStLoopsPass :
   let options = [
     Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
            "If true, vectorizes GmlSt ops in addition to linalg ops">,
+    ListOption<"distributionLabels", "included-distribution-labels",
+               "std::string", "Distribution labels of gml_st.parallel ops "
+               "where vectorization is allowed. Empty list signifies that "
+               "vectorization is allowed within all loops.",
+               "llvm::cl::ZeroOrMore">,
   ];
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
