@@ -4796,6 +4796,11 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
+  
+  Raises:
+    ValueError: If
+      - explicit padding is used with an input tensor of rank 5.
+      - explicit padding is used with data_format='NCHW_VECT_C'.
   """
   if input.shape is not None:
     n = len(input.shape) - 2
@@ -5050,6 +5055,9 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
   Returns:
     A `Tensor` of format specified by `data_format`.
     The max pooled output tensor.
+  
+  Raises:
+    ValueError: If explicit padding is used with data_format='NCHW_VECT_C'.
   """
   with ops.name_scope(name, "MaxPool2d", [input]) as name:
     if data_format is None:
