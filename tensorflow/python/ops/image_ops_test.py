@@ -6289,14 +6289,14 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         self.evaluate(op)
 
   def testImageCropAndResizeWithNon1DBoxes(self):
-    with self.session():
-      with self.assertRaises((errors.InvalidArgumentError, ValueError)):
-        op = image_ops_impl.crop_and_resize_v2(
-            image=np.ones((2, 2, 2, 2)),
-            boxes=np.ones((0, 4)),
-            box_indices=np.ones((0, 1)),
-            crop_size=[1, 1])
-        self.evaluate(op)
+    with self.assertRaisesRegex(
+        (errors.InvalidArgumentError, ValueError), "must be rank 1"):
+      op = image_ops_impl.crop_and_resize_v2(
+          image=np.ones((2, 2, 2, 2)),
+          boxes=np.ones((0, 4)),
+          box_indices=np.ones((0, 1)),
+          crop_size=[1, 1])
+      self.evaluate(op)
 
   @parameterized.named_parameters(
       ("_jpeg", "JPEG", "jpeg_merge_test1.jpg"),

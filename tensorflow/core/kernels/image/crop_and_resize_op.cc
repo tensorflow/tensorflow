@@ -148,8 +148,8 @@ class CropAndResizeOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(
         context, image_height > 0 && image_width > 0,
         errors::InvalidArgument("image dimensions must be positive"), done);
-    OP_REQUIRES_ASYNC(context, box_index.dims() == 1,
-                      errors::InvalidArgument("box_indices must be 1-D",
+    OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(box_index.shape()),
+                      errors::InvalidArgument("box_indices must be rank 1 but is shape ",
                                               box_index.shape().DebugString()),
                       done);
     int num_boxes = 0;
