@@ -6,25 +6,26 @@
     *   **Checkpoint loading failure.** The new optimizer handles optimizer state differently from the old optimizer, which simplies the logic of
         checkpoint saving/loading, but at the cost of breaking checkpoint backward compatibility in some cases. If you want to keep using an old
         checkpoint, please change your optimizer to `tf.keras.optimizer.legacy.XXX` (e.g. `tf.keras.optimizer.legacy.Adam`).
-    *   **TF1 compatibility.** The new optimizer does not support TF1 any more, so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`.
+    *   **TF1 compatibility.** The new optimizer, `tf.keras.optimizers.Optimizer`, does not support TF1 any more, so please use the legacy optimizer
+        `tf.keras.optimizer.legacy.XXX`.
         We highly recommend to migrate your workflow to TF2 for stable support and new features.
-    *   **API not found.** The new optimizer has a different set of public APIs from the old optimizer. These API changes are mostly related to
-        getting rid of slot variables and TF1 support. Please check the API documentation to find alternatives to the missing API. If you must
-        call the deprecated API, please change your optimizer to the legacy optimizer.
+    *   **Old optimizer API not found.** The new optimizer, `tf.keras.optimizers.Optimizer`, has a different set of public APIs from the old optimizer.
+        These API changes are mostly related to getting rid of slot variables and TF1 support. Please check the API documentation to find alternatives
+        to the missing API. If you must call the deprecated API, please change your optimizer to the legacy optimizer.
     *   **Learning rate schedule access.** When using a `LearningRateSchedule`, The new optimizer's `learning_rate` property returns the
         current learning rate value instead of a `LearningRateSchedule` object as before. If you need to access the `LearningRateSchedule` object,
         please use `optimizer._learning_rate`.
-    *   **You implemented a custom optimizer based on the old optimizer.** Please set your optimizer to subclass
+    *   **If you implemented a custom optimizer based on the old optimizer.** Please set your optimizer to subclass
         `tf.keras.optimizer.legacy.XXX`. If you want to migrate to the new optimizer and find it does not support your optimizer, please file
         an issue in the Keras GitHub repo.
-    *   **Error such as `Cannot recognize variable...`.** The new optimizer requires all optimizer variables to be created at the first
+    *   **Errors, such as `Cannot recognize variable...`.** The new optimizer requires all optimizer variables to be created at the first
         `apply_gradients()` or `minimize()` call. If your workflow calls optimizer to update different parts of model in multiple stages,
         please call `optimizer.build(model.trainable_variables)` before the training loop.
     *   **Timeout or performance loss.** We don't anticipate this to happen, but if you see such issues, please use the legacy optimizer, and file
         an issue in the Keras GitHub repo.
 
-    The old Keras optimizer will never be deleted, but will not see any new feature additions. New optimizers (e.g., `Adafactor`) will
-    only be implemented based on `tf.keras.optimizers.Optimizer`, the new base class.
+    The old Keras optimizer will never be deleted, but will not see any new feature additions. New optimizers (for example,
+    `tf.keras.optimizers.Adafactor`) will only be implemented based on `tf.keras.optimizers.Optimizer`, the new base class.
 
 ## Major Features and Improvements
 
@@ -39,27 +40,28 @@
 
 *   `tf.experimental.StructuredTensor`
 
-    *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible and Tensorflow-native way to encode structured data such as protocol
+    *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible and TensorFlow-native way to encode structured data such as protocol
         buffers or pandas dataframes.
 
 *   `tf.keras`:
 
-    *   Added method `get_metrics_result()` to `tf.keras.models.Model`.
+    *   Added a new `get_metrics_result()` method to `tf.keras.models.Model`.
         *   Returns the current metrics values of the model as a dict.
-    *   Added group normalization layer `tf.keras.layers.GroupNormalization`.
+    *   Added a new group normalization layer - `tf.keras.layers.GroupNormalization`.
     *   Added weight decay support for all Keras optimizers.
     *   Added Adafactor optimizer `tf.keras.optimizers.Adafactor`.
-    *   Added `warmstart_embedding_matrix` to `tf.keras.utils`. This utility can be used to warmstart an embeddings matrix so you
-        reuse previously-learned word embeddings when working with a new set of words which may include previously unseen words (the embedding
-        vectors for unseen words will be randomly initialized).
+    *   Added `warmstart_embedding_matrix` to `tf.keras.utils`.
+        *   This utility can be used to warmstart an embeddings matrix, so you reuse previously-learned word embeddings when working with a new set of
+        words which may include previously unseen words (the embedding vectors for unseen words will be randomly initialized).
 
 *   `tf.Variable`:
 
-    *   Added `CompositeTensor` as a baseclass to `ResourceVariable`. This allows `tf.Variable`s to be nested in `tf.experimental.ExtensionType`s.
-    *   Added a new constructor argument `experimental_enable_variable_lifting` to `tf.Variable`, defaulting to True. When it's `False`, the variable
-        won't be lifted out of `tf.function`, thus it can be used as a `tf.function`-local variable: during each execution of the
-        `tf.function`, the variable will be created and then disposed, similar to a local (i.e. stack-allocated) variable in C/C++. Currently
-        `experimental_enable_variable_lifting=False` only works on non-XLA devices (e.g. under `@tf.function(jit_compile=False)`).
+    *   Added `CompositeTensor` as a baseclass to `ResourceVariable`.
+        *   This allows `tf.Variable`s to be nested in `tf.experimental.ExtensionType`s.
+    *   Added a new constructor argument `experimental_enable_variable_lifting` to `tf.Variable`, defaulting to True.
+        *   When it's `False`, the variable won't be lifted out of `tf.function`, thus it can be used as a `tf.function`-local variable: during each
+        execution of the `tf.function`, the variable will be created and then disposed, similar to a local (that is, stack-allocated) variable in C/C++. 
+        Currently, `experimental_enable_variable_lifting=False` only works on non-XLA devices (for example, under `@tf.function(jit_compile=False)`).
 
 *   TF SavedModel:
     *   Added `fingerprint.pb` to the SavedModel directory. The `fingerprint.pb` file is a protobuf containing the "fingerprint" of the SavedModel. See
