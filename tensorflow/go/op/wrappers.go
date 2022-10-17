@@ -51332,8 +51332,8 @@ func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths
 // and that `value` has shape
 //
 //	```
-//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)
-//	```,
+//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...),
+//	```
 //
 // this splits values into a TensorArray with T tensors.
 //
