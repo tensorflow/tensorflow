@@ -6703,6 +6703,21 @@ ENTRY entry {
                   op::Shape("s32[4]")));
 }
 
+TEST_F(SpmdPartitioningTest, ManualPartitionId) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  ROOT %lhs = s32[] partition-id(), sharding={manual}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::PartitionId());
+}
+
 TEST_F(SpmdPartitioningTest, DynamicSliceAlongNonPartitionedDimension) {
   absl::string_view hlo_string = R"(
 HloModule module

@@ -2167,8 +2167,9 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       }
       return HloSharding::Tuple(shape, subshardings);
     }
-    // Delay manual sharding substitution for CustomCalls.
-    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall) {
+    // Delay manual sharding substitution for CustomCalls and PartitionIds.
+    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall &&
+        opcode != HloOpcode::kPartitionId) {
       return HloSharding::AssignDevice(0);
     }
     return sharding;
@@ -4238,6 +4239,11 @@ StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
 }
 
 Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
+  if (hlo->has_sharding() && hlo->sharding().IsManual()) {
+    hlo->set_sharding(HloSharding::AssignDevice(0));
+    return DefaultAction(hlo);
+  }
+
   return Unimplemented(
       "PartitionId instruction is not supported for SPMD partitioning since "
       "the meaning is ambiguous -- whether the instruction is replicated or "
