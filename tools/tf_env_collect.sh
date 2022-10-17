@@ -103,8 +103,7 @@ ${python_bin_path} /tmp/check_os.py 2>&1  >> ${OUTPUT_FILE}
   
   echo
   echo '== check pips ==================================================='
-  pip list 2>&1 | grep "proto\|numpy\|tensorflow"
-  
+  pip list 2>&1 | grep "proto\|numpy\|tensorflow"  
   
   echo
   echo '== check for virtualenv ========================================='
@@ -141,7 +140,6 @@ LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
     echo DYLD_LIBRARY_PATH ${DYLD_LIBRARY_PATH} ;
   fi
   
-  
   echo
   echo '== nvidia-smi ==================================================='
   nvidia-smi 2>&1
@@ -177,4 +175,3 @@ echo "and use it to populate the fields in the github issue template."
 echo
 echo "cat ${OUTPUT_FILE}"
 echo
-
