@@ -15,6 +15,7 @@ cc_library(
     hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
+        "//tensorflow/core/ir:shape_inference_utils",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/transforms:PassIncGen",
         "@llvm-project//llvm:Support",

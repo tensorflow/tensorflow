@@ -651,7 +651,7 @@ def _flip(image, flip_index, scope_name):
 @tf_export('image.rot90')
 @dispatch.add_dispatch_support
 def rot90(image, k=1, name=None):
-  """Rotate image(s) counter-clockwise by 90 degrees.
+  """Rotate image(s) by 90 degrees.
 
 
   For example:
@@ -668,12 +668,17 @@ def rot90(image, k=1, name=None):
   >>> print(a_rot[...,0].numpy())
   [[3 1]
    [4 2]]
+  >>> # rotating `a` clockwise by 180 degrees
+  >>> a_rot=tf.image.rot90(a, k=-2)
+  >>> print(a_rot[...,0].numpy())
+  [[4 3]
+   [2 1]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer tensor. The number of times the image(s) are
-      rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are rotated by
+      90 degrees.
     name: A name for this operation (optional).
 
   Returns:

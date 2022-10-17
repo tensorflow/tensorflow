@@ -28,11 +28,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/determinism.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/tsl/platform/regexp.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/determinism.h"
+#include "tensorflow/tsl/util/env_var.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace xla {
 namespace gpu {
@@ -505,12 +505,12 @@ bool RequireDeterminism(const HloModuleConfig& config) {
   static bool require_cudnn_determinism = [] {
     // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
     bool cudnn_deterministic = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                               /*default_val=*/false,
-                                               &cudnn_deterministic));
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                        /*default_val=*/false,
+                                        &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return tensorflow::OpDeterminismRequired() || require_cudnn_determinism ||
+  return tsl::OpDeterminismRequired() || require_cudnn_determinism ||
          config.debug_options().xla_gpu_deterministic_ops();
 }
 
@@ -545,8 +545,8 @@ StatusOr<AutotuneResult> PickBestResult(
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
-          return tensorflow::proto_utils::FromDurationProto(lhs.run_time()) <
-                 tensorflow::proto_utils::FromDurationProto(rhs.run_time());
+          return tsl::proto_utils::FromDurationProto(lhs.run_time()) <
+                 tsl::proto_utils::FromDurationProto(rhs.run_time());
         });
   }
   return *selected_result;

@@ -492,7 +492,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
               coordinated_job_config.append(
                   coordination_config_pb2.CoordinatedJob(
                       name=job,
-                      num_tasks=len(cluster_spec.job_tasks(job))))
+                      num_tasks=cluster_spec.num_tasks(job)))
           context.context().configure_coordination_service(
               service_type="standalone",
               service_leader=multi_worker_util.coordination_leader(

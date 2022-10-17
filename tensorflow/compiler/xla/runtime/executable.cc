@@ -211,6 +211,7 @@ static bool VerifyArguments(bool verify_arguments) {
 Status Executable::InitializeCallFrame(unsigned ordinal, ArgumentsRef arguments,
                                        CallFrame* call_frame,
                                        bool verify_arguments) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   const Function& fn = functions_[ordinal];
 
   // TODO(ezhulenev): If executable is specialized for concrete shapes then
@@ -335,6 +336,7 @@ Status Executable::Execute(unsigned ordinal, ArgumentsRef arguments,
 
 void Executable::Execute(unsigned ordinal, CallFrame& call_frame,
                          const ExecuteOpts& opts) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   const Function& fn = functions_[ordinal];
 
   // Set the AsyncRuntime to be used by all async tasks spawned by the
@@ -371,6 +373,7 @@ Status Executable::ReturnResults(unsigned ordinal,
     return (results.ReturnError(err), err);
   }
 
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   const Function& fn = functions_[ordinal];
 
   // Try to convert results using registered conversion functions.
@@ -454,18 +457,22 @@ Status Executable::ReturnResults(unsigned ordinal,
 //===----------------------------------------------------------------------===//
 
 bool Executable::IsAsync(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return functions_[ordinal].results_memory_layout.has_async_results;
 }
 
 unsigned Executable::num_results(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return functions_[ordinal].runtime_signature.num_results();
 }
 
 const FunctionType& Executable::signature(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return functions_[ordinal].signature;
 }
 
 const FunctionType& Executable::runtime_signature(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return functions_[ordinal].runtime_signature;
 }
 
@@ -492,6 +499,7 @@ LogicalResult Executable::Call(ExecutionContext* ctx, class CustomCall& call,
 }
 
 FunctionRef Executable::function_ref(unsigned ordinal) const {
+  assert(ordinal < functions_.size() && "function ordinal out of bounds");
   return FunctionRef(this, ordinal);
 }
 

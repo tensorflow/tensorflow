@@ -1,20 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_libtpu", "if_with_tpu_support", "tf_cc_test", "tf_copts")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "tf_custom_op_py_library", "tf_jit_compilation_passes_extra_deps")
 load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
@@ -444,6 +431,34 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xla_compile_util",
+    srcs = ["xla_compile_util.cc"],
+    hdrs = ["xla_compile_util.h"],
+    visibility = [
+        ":internal",
+    ],
+    deps = [
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/core:framework",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compile_util_test",
+    srcs = [
+        "xla_compile_util_test.cc",
+    ],
+    deps = [
+        ":xla_compile_util",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:fake_input",
+        "//tensorflow/core/kernels:identity_op",
+        "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_proto_library(
     name = "xla_compilation_cache_proto",
     srcs = ["xla_compilation_cache.proto"],
@@ -463,6 +478,7 @@ cc_library(
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
         ":xla_compilation_cache_proto_cc",
+        ":xla_compile_util",
         "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/mlir/tf2xla:mlir_bridge_rollout_policy",

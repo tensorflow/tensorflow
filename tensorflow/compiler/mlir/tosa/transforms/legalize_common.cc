@@ -33,7 +33,6 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -2973,6 +2972,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                       Value input_value, StringRef mode,
                                       bool align_corners,
                                       bool half_pixel_centers) {
+  const bool is_bilinear = mode == "BILINEAR";
+  const bool is_nearest = mode == "NEAREST_NEIGHBOR";
   RankedTensorType input_type =
       input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
@@ -3021,85 +3022,110 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
   size_t output_height = output_shape[1];
   size_t output_width = output_shape[2];
 
-  double fp_stride_y =
-      static_cast<double>(input_height) / static_cast<double>(output_height);
-  double fp_stride_x =
-      static_cast<double>(input_width) / static_cast<double>(output_width);
-  if (align_corners && output_height > 1) {
-    fp_stride_y = static_cast<double>(input_height - 1) /
-                  static_cast<double>(output_height - 1);
-  }
-  if (align_corners && output_width > 1) {
-    fp_stride_x = static_cast<double>(input_width - 1) /
-                  static_cast<double>(output_width - 1);
+  // The ratio below is a non-zero positive value if this is a power-of-two
+  // upscaling.
+  int height_ratio = 0;
+  if (output_height % input_height == 0) {
+    int quotient = output_height / input_height;
+    if (llvm::isPowerOf2_64(quotient)) {
+      height_ratio = quotient;
+    }
   }
 
-  double fp_offset_y, fp_offset_x;
-  if (half_pixel_centers) {
-    fp_offset_y = fp_stride_y * 0.5f - 0.5f;
-    fp_offset_x = fp_stride_x * 0.5f - 0.5f;
-  } else {
-    fp_offset_y = 0.0f;
-    fp_offset_x = 0.0f;
+  int width_ratio = 0;
+  if (output_width % input_width == 0) {
+    int quotient = output_width / input_width;
+    if (llvm::isPowerOf2_64(quotient)) {
+      width_ratio = quotient;
+    }
   }
 
-  // oh * fp_stride_y + fp_offset_y = ix
-
-  ArrayAttr output_size =
-      rewriter.getI64ArrayAttr({static_cast<int64_t>(output_height),
-                                static_cast<int64_t>(output_width)});
-  StringAttr resize_mode = rewriter.getStringAttr(mode);
-
-  if (input_is_qtype) {
-    // Magic shift number TFLite resize bilinear use
-    // reference: tensorflow/lite/kernels/internal/reference/reference_ops.h
-    int32_t shift = 10;
-
-    // 1.0 is equivalent to (1 << shift) in quantized space.
-    // Here we noted as unit = (1 << shift).
-    double unit = static_cast<double>(1 << shift);
-
-    // Stride and Offset is int16.
-    int32_t stride_y = std::lround(fp_stride_y * unit);
-    int32_t stride_x = std::lround(fp_stride_x * unit);
-    int32_t offset_y = std::lround(fp_offset_y * unit);
-    int32_t offset_x = std::lround(fp_offset_x * unit);
-
-    // Numerically we can decrement shift to let these number fits within 16
-    // bits but that's not commonly seen and won't match TFLite reference
-    if (stride_y > std::numeric_limits<int16_t>::max() ||
-        stride_x > std::numeric_limits<int16_t>::max() ||
-        stride_y < std::numeric_limits<int16_t>::min() ||
-        stride_x < std::numeric_limits<int16_t>::min() ||
-        offset_y > std::numeric_limits<int16_t>::max() ||
-        offset_x > std::numeric_limits<int16_t>::max() ||
-        offset_y < std::numeric_limits<int16_t>::min() ||
-        offset_x < std::numeric_limits<int16_t>::min()) {
-      (void)rewriter.notifyMatchFailure(op,
-                                        "stride or offset out of 16 bit range");
-      return llvm::None;
+  // Align corners sets the scaling ratio to (OH - 1)/(IH - 1)
+  // rather than OH / IH. Similarly for width.
+  auto normalize = [&](int input, int output, int& n, int& d, int& offset,
+                       int& border) {
+    // Dimension is length 1, we are just sampling from one value.
+    if (input == 1) {
+      n = 0;
+      d = 1;
+      offset = 0;
+      border = output - 1;
+      return;
     }
 
-    ArrayAttr stride = rewriter.getI64ArrayAttr({stride_y, stride_x});
-    ArrayAttr offset = rewriter.getI64ArrayAttr({offset_y, offset_x});
-    IntegerAttr shift_attr = rewriter.getI32IntegerAttr(shift);
+    // Apply if aligned and capable to be aligned.
+    bool apply_aligned = align_corners && (output > 1);
+    n = apply_aligned ? (output - 1) : output;
+    d = apply_aligned ? (input - 1) : input;
+
+    // Simplify the scalers, make sure they are even values.
+    int gcd = std::gcd(n, d);
+    n = 2 * n / gcd;
+    d = 2 * d / gcd;
+
+    // If half pixel centers we need to sample half a pixel inward.
+    offset = half_pixel_centers ? d / 2 : 0;
+
+    // If nearest neighbours we need to guarantee we round up.
+    if (is_nearest && align_corners) {
+      offset += n / 2;
+    }
+
+    if (is_bilinear && half_pixel_centers) {
+      offset -= n / 2;
+    }
+
+    // We can compute this directly based on previous values.
+    border = d * (output - 1) - n * (input - 1) + offset;
+  };
+
+  int scale_y_n, scale_y_d, offset_y, border_y;
+  int scale_x_n, scale_x_d, offset_x, border_x;
+  normalize(input_height, output_height, scale_y_n, scale_y_d, offset_y,
+            border_y);
+  normalize(input_width, output_width, scale_x_n, scale_x_d, offset_x,
+            border_x);
+
+  ArrayAttr scale =
+      rewriter.getI64ArrayAttr({scale_y_n, scale_y_d, scale_x_n, scale_x_d});
+  ArrayAttr offset = rewriter.getI64ArrayAttr({offset_y, offset_x});
+  ArrayAttr border = rewriter.getI64ArrayAttr({border_y, border_x});
+
+  StringAttr resize_mode = rewriter.getStringAttr(mode);
+
+  auto isInt16Range = [](int x) {
+    return (x <= std::numeric_limits<int16_t>::max()) &&
+           (x >= std::numeric_limits<int16_t>::min());
+  };
+
+  if (input_is_qtype) {
+    // It isn't commonly seen these numbers aren't fit within 16 bits, and won't
+    // match TFLite reference.
+    if (!isInt16Range(scale_y_n) || !isInt16Range(scale_y_d) ||
+        !isInt16Range(scale_x_n) || !isInt16Range(scale_x_d) ||
+        !isInt16Range(offset_y) || !isInt16Range(offset_x) ||
+        !isInt16Range(border_y) || !isInt16Range(border_x)) {
+      return (void)rewriter.notifyMatchFailure(
+                 op, "stride or offset out of 16 bit range"),
+             llvm::None;
+    }
 
     // If quantized bilinear mode, need to lower to RESIZE + RESCALE pair.
-    if (mode == "BILINEAR") {
+    if (is_bilinear) {
       RankedTensorType output_acc_type;
       auto input_element_qtype =
           input_type.getElementType().cast<mlir::quant::UniformQuantizedType>();
 
-      bool scale32;
+      bool is_scale32;
 
       // TOSA RESIZE: 16 bit input -> 48 bit output, or 8 bit input -> 32 bit
       // output.
       if (input_element_qtype.getStorageTypeIntegralWidth() == 16) {
-        scale32 = false;
+        is_scale32 = false;
         output_acc_type = tensorflow::GetTypeFromTFTensorShape(
             output_type.getShape(), rewriter.getIntegerType(48));
       } else if (input_element_qtype.getStorageTypeIntegralWidth() == 8) {
-        scale32 = true;
+        is_scale32 = true;
         output_acc_type = tensorflow::GetTypeFromTFTensorShape(
             output_type.getShape(), rewriter.getI32Type());
       } else {
@@ -3109,9 +3135,8 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       }
 
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
-          rewriter, op->getLoc(), output_acc_type, input_value, output_size,
-          stride, offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
-          rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
+          rewriter, op->getLoc(), output_acc_type, input_value, scale, offset,
+          border, resize_mode);
 
 #ifdef RESIZE_BILINEAR_LOWER_SYMMETRIC_ROUNDING
       // TFLite resize_bilinear always assume input and output tensors have
@@ -3152,14 +3177,14 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
       // This should be the expected lowering, but is +-1 within compared to
       // TFLite reference.
       return buildRescale(rewriter, op, output_type, resize_op.getResult(),
-                          1.0 / (1 << 20), 0, 0, false, scale32);
+                          1.0 / (scale_y_n * scale_x_n), 0, 0, false,
+                          is_scale32);
 #endif
 
-    } else if (mode == "NEAREST_NEIGHBOR") {
+    } else if (is_nearest) {
       auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
-          rewriter, op->getLoc(), output_type, input_value, output_size, stride,
-          offset, shift_attr, rewriter.getF32ArrayAttr({0.0, 0.0}),
-          rewriter.getF32ArrayAttr({0.0, 0.0}), resize_mode);
+          rewriter, op->getLoc(), output_type, input_value, scale, offset,
+          border, resize_mode);
       return resize_op.getResult();
     } else {
       (void)rewriter.notifyMatchFailure(
@@ -3168,14 +3193,9 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
     }
   } else {
     auto resize_op = CreateOpAndInfer<tosa::ResizeOp>(
-        rewriter, op->getLoc(), output_type, input_value, output_size,
-        rewriter.getI64ArrayAttr({0, 0}), rewriter.getI64ArrayAttr({0, 0}),
-        rewriter.getI32IntegerAttr(0),
-        rewriter.getF32ArrayAttr(
-            {static_cast<float>(fp_stride_y), static_cast<float>(fp_stride_x)}),
-        rewriter.getF32ArrayAttr(
-            {static_cast<float>(fp_offset_y), static_cast<float>(fp_offset_x)}),
+        rewriter, op->getLoc(), output_type, input_value, scale, offset, border,
         resize_mode);
+
     return resize_op.getResult();
   }
 }
@@ -3419,6 +3439,107 @@ llvm::Optional<Value> convertTFConv2DCommon(
              rewriter, op->getLoc(), output_type, input,
              a1_filter_transpose_op.getResult(), bias, pad, stride, dilation)
       .getResult();
+}
+
+llvm::Optional<Value> convertConv3DCommon(PatternRewriter& rewriter,
+                                          Operation* op, ShapedType output_type,
+                                          Value input, Value filter, Value bias,
+                                          ArrayRef<int64_t> strides,
+                                          ArrayRef<int64_t> dilations,
+                                          StringRef padding_ref,
+                                          StringRef data_format_ref) {
+  if (data_format_ref.str() != "NDHWC") {
+    (void)rewriter.notifyMatchFailure(op, "currently only supports NDHWC");
+    return llvm::None;
+  }
+
+  tensorflow::Padding tf_pad;
+  if (!GetPaddingFromString(padding_ref.str(), &tf_pad).ok()) {
+    (void)rewriter.notifyMatchFailure(
+        op, "could not get padding data from padding string term");
+    return llvm::None;
+  }
+
+  // Since NDHWC/NCDHW aren't presented in TensorFormat, here these are
+  // represented by mapping NDHWC to NHWC, and NCDHW to NCHW, with the knowledge
+  // of rank of input tensor.
+  tensorflow::TensorFormat data_format_tf;
+  if (!FormatFromString("NHWC", &data_format_tf)) return llvm::None;
+
+  if (tf_pad == tensorflow::Padding::EXPLICIT) {
+    (void)rewriter.notifyMatchFailure(op, "doesn't support explicit padding");
+    return llvm::None;
+  }
+
+  ArrayAttr strides_attr = rewriter.getI64ArrayAttr(strides);
+  ArrayAttr dilations_attr = rewriter.getI64ArrayAttr(dilations);
+  RankedTensorType input_type = input.getType().cast<RankedTensorType>();
+  RankedTensorType filter_type = filter.getType().cast<RankedTensorType>();
+
+  ArrayAttr pads_attr;
+  if (!getPaddingValuesFromPadType(tf_pad, data_format_tf, 0, input_type,
+                                   filter_type, strides_attr, dilations_attr,
+                                   rewriter, pads_attr)) {
+    (void)rewriter.notifyMatchFailure(op, "can't get padding values from type");
+    return llvm::None;
+  }
+
+  // Note that the kernel shape of tfl.conv_3d isn't [O, D, H, W, I] but
+  // [D, H, W, I, O] which is the same as in TF.
+  // Transpose filter shape from [D, H, W, I, O] to [O, D, H, W, C]
+  auto filter_shape = filter_type.getShape();
+  SmallVector<int64_t, 5> a1_transpose_dims;
+  a1_transpose_dims.push_back(filter_shape[4]);
+  a1_transpose_dims.push_back(filter_shape[0]);
+  a1_transpose_dims.push_back(filter_shape[1]);
+  a1_transpose_dims.push_back(filter_shape[2]);
+  a1_transpose_dims.push_back(filter_shape[3]);
+  llvm::Optional<Value> a1_filter_transpose_perm = getConstTensor<int32_t>(
+      rewriter, op, /*vec=*/{4, 0, 1, 2, 3}, /*shape=*/{5});
+
+  if (!a1_filter_transpose_perm) return llvm::None;
+
+  auto a1_filter_transpose_op = CreateOpAndInfer<tosa::TransposeOp>(
+      rewriter, op->getLoc(),
+      RankedTensorType::get(a1_transpose_dims, filter_type.getElementType()),
+      filter, a1_filter_transpose_perm.value());
+
+  return CreateOpAndInfer<tosa::Conv3DOp>(
+             rewriter, op->getLoc(), output_type, input,
+             a1_filter_transpose_op.getResult(), bias, pads_attr, strides_attr,
+             dilations_attr)
+      .getResult();
+}
+
+llvm::Optional<Value> convertTFConv3DCommon(
+    PatternRewriter& rewriter, Operation* op, ShapedType output_type,
+    Value input, Value filter, Value bias, ArrayAttr strides_attr,
+    ArrayAttr dilations_attr, StringRef padding_ref,
+    StringRef data_format_ref) {
+  SmallVector<int64_t, 3> strides;
+  if (!strides_attr) {
+    // Defaults to [1, 1, 1].
+    strides = {1, 1, 1};
+  } else {
+    int64_t stride_d = strides_attr[1].cast<IntegerAttr>().getInt();
+    int64_t stride_h = strides_attr[2].cast<IntegerAttr>().getInt();
+    int64_t stride_w = strides_attr[3].cast<IntegerAttr>().getInt();
+    strides = {stride_d, stride_h, stride_w};
+  }
+
+  SmallVector<int64_t, 3> dilations;
+  if (!dilations_attr) {
+    // Defaults to [1, 1, 1].
+    dilations = {1, 1, 1};
+  } else {
+    int64_t dilation_d = dilations_attr[1].cast<IntegerAttr>().getInt();
+    int64_t dilation_h = dilations_attr[2].cast<IntegerAttr>().getInt();
+    int64_t dilation_w = dilations_attr[3].cast<IntegerAttr>().getInt();
+    dilations = {dilation_d, dilation_h, dilation_w};
+  }
+
+  return convertConv3DCommon(rewriter, op, output_type, input, filter, bias,
+                             strides, dilations, padding_ref, data_format_ref);
 }
 
 // Lowers Gather operators to a sequence of TOSA ops.

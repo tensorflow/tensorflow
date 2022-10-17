@@ -93,6 +93,7 @@ DECL_CONVERT_OP(ExpandDims);
 DECL_CONVERT_OP(Squeeze);
 DECL_CONVERT_OP(Fill);
 DECL_CONVERT_OP(Conv2D);
+DECL_CONVERT_OP(Conv3D);
 DECL_CONVERT_OP(DepthwiseConv2dNative);
 DECL_CONVERT_OP(Conv2DBackpropInput);
 DECL_CONVERT_OP(Elu);
@@ -844,6 +845,40 @@ LogicalResult ConvertTFConv2DOp::matchAndRewrite(
   if (!result) return failure();
 
   rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
+LogicalResult ConvertTFConv3DOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tf_conv3d_op = cast<TF::Conv3DOp>(op);
+
+  RankedTensorType filter_type =
+      tf_conv3d_op.filter().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      tf_conv3d_op.getResult().getType().dyn_cast<RankedTensorType>();
+
+  if (!filter_type || !output_type) {
+    return rewriter.notifyMatchFailure(
+        op, "filter/output are not all a ranked tensor");
+  }
+
+  // Set up a zero attr for subsequent pattern replacement if required
+  auto bias_dim = filter_type.getShape().back();
+  RankedTensorType bias_type =
+      RankedTensorType::get({bias_dim}, filter_type.getElementType());
+  auto bias_attr = rewriter.getZeroAttr(bias_type);
+  auto bias = CreateOpAndInfer<tosa::ConstOp>(rewriter, op->getLoc(), bias_type,
+                                              bias_attr.cast<ElementsAttr>());
+
+  llvm::Optional<Value> result = convertTFConv3DCommon(
+      rewriter, op, output_type, tf_conv3d_op.input(), tf_conv3d_op.filter(),
+      bias, tf_conv3d_op.strides(), tf_conv3d_op.dilations(),
+      tf_conv3d_op.padding(), tf_conv3d_op.data_format());
+
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.value()});
 
   return success();
 }
@@ -2320,6 +2355,7 @@ void populateLegalizeTFPatterns(MLIRContext* ctx, RewritePatternSet& patterns) {
   patterns.add<ConvertTFSqueezeOp>(ctx);
   patterns.add<ConvertTFFillOp>(ctx);
   patterns.add<ConvertTFConv2DOp>(ctx);
+  patterns.add<ConvertTFConv3DOp>(ctx);
   patterns.add<ConvertTFDepthwiseConv2dNativeOp>(ctx);
   patterns.add<ConvertTFConv2DBackpropInputOp>(ctx);
   patterns.add<ConvertTFEluOp>(ctx);

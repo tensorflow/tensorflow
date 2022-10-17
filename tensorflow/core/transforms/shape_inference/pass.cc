@@ -208,7 +208,7 @@ void ShapeInference::runOnOperation() {
       TensorType inferred_type;
       if (result.hasRank()) {
         inferred_type =
-            RankedTensorType::get(result.getDims(), result.getElementType());
+            GetTypeFromTFTensorShape(result.getDims(), result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }

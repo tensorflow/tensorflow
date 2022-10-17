@@ -27,7 +27,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/python_binding/conversion_utils.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 #include "tensorflow/compiler/mlir/tfrt/python_tests/python_test_attrs_registration.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tfrt/jitrt/async_task_runner.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 #include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
@@ -55,12 +57,12 @@ using ::tfrt::StrCat;
 
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
 using ::tfrt::jitrt::RemainingResultsConverter;
 using ::tfrt::jitrt::ReturnStridedMemref;
 
 using ::xla::runtime::Executable;
-using ::xla::runtime::HostContextAsyncTaskRunner;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
 
@@ -84,22 +86,24 @@ TfJitRtExecutor::Handle TfJitRtExecutor::Compile(
   copts.num_worker_threads = 4;
 
   JitExecutable::Options opts;
-  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    RegisterDefaultJitRtDialects(registry);
-    // Needed to verify function argument attributes which are used to
-    // annotate dynamic shaped types with static type information.
-    mlir::tfrt::RegisterPythonTestAttrsDialect(registry);
-  };
-  opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-    tensorflow::TfJitRtPipelineOptions opts;
-    opts.vectorize = vectorize;
-    opts.codegen_transpose = codegen_transpose;
-    opts.legalize_i1_tensors = legalize_i1_tensors;
-    opts.one_shot_bufferize = one_shot_bufferize;
-    tensorflow::CreateTfJitRtPipeline(pm, opts);
-    CreateDefaultJitRtCompilationPipeline(pm, copts);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        RegisterDefaultJitRtDialects(dialects);
+        // Needed to verify function argument attributes which are used to
+        // annotate dynamic shaped types with static type information.
+        mlir::tfrt::RegisterPythonTestAttrsDialect(*dialects);
+      };
+  opts.compiler.create_compilation_pipeline =
+      [=](xla::runtime::PassManager& passes) {
+        tensorflow::TfJitRtPipelineOptions opts;
+        opts.vectorize = vectorize;
+        opts.codegen_transpose = codegen_transpose;
+        opts.legalize_i1_tensors = legalize_i1_tensors;
+        opts.one_shot_bufferize = one_shot_bufferize;
+        tensorflow::CreateTfJitRtPipeline(*passes, opts);
+        CreateDefaultJitRtCompilationPipeline(passes, copts);
+      };
   if (specialization != Specialization::kDisabled) {
     opts.compiler.create_specialization_pipeline =
         CreateJitRtSpecializationPipeline;

@@ -36,6 +36,7 @@ using shape_inference::UnchangedShape;
 // InitializeHostForDistributedTpuOp, and outputs the latter's result.
 REGISTER_OP("ConfigureAndInitializeGlobalTPU")
     .Output("output: int32")
+    .Attr("use_tfrt_host_runtime: bool = true")
     .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;

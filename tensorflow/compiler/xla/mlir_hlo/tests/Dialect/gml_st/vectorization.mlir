@@ -66,7 +66,8 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   %sum = gml_st.loop (%i, %j) = (%c0, %c0) to (%c80, %c60) step (%c4, %c4)
           ins (%in_ = %in: tensor<80x60xf32>, %cst_ = %cst: f32)
           outs (%out_ = %out: tensor<80xf32>)
-          iterators["parallel", "reduction"] {
+          iterators[#gml_st.iterator_type<parallel>,
+                    #gml_st.iterator_type<reduction>] {
     %in_sub = tensor.extract_slice %in_[%i, %j] [4, 4] [1, 1]
         : tensor<80x60xf32> to tensor<4x4xf32>
     %out_sub = tensor.extract_slice %out_[%i] [4] [1]
@@ -128,7 +129,7 @@ func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
   %4 = gml_st.loop (%arg1) = (%c0) to (%c16) step (%c8)
       ins (%arg2 = %arg0: tensor<16xf32>)
       outs (%arg3 = %3: tensor<8xf32>)
-      iterators["reduction"] {
+      iterators[#gml_st.iterator_type<reduction>] {
     %6 = tensor.extract_slice %arg2[%arg1] [8] [1]
       : tensor<16xf32> to tensor<8xf32>
     %7 = tensor.expand_shape %6 [[0, 1]]

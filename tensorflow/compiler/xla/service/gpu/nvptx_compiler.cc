@@ -55,10 +55,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace gpu {
@@ -375,8 +375,8 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::CudaComputeCapability cc, const HloModuleConfig& hlo_module_config,
     bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
-  tensorflow::profiler::TraceMe activity(
-      "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
+  tsl::profiler::TraceMe activity("PTX->CUBIN",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   bool inserted;
   decltype(compilation_cache_.begin()) iter;
   // Pointers into compilation_cache_ where the ptx and (optional) cubin are

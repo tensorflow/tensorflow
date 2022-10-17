@@ -9,6 +9,7 @@ tensorflow/compiler/mlir/quantization/tensorflow/internal_visibility_allowlist.b
 tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:
 tensorflow/core/tfrt/mla/mla_utils.h:
 tensorflow/core/tfrt/tpu/tpu_resources.h:
@@ -82,6 +83,9 @@ tensorflow/python/tpu/profiler/pip_package/setup:.py
 tensorflow/python/tpu/tpu.bzl:
 tensorflow/security/fuzzing/tf_fuzzing:.bzl
 tensorflow/stream_executor/build_defs.bzl:
+tensorflow/tools/benchmark/parse_onednn_benchmarks:.py
+tensorflow/tools/benchmark/run_models:.sh
+tensorflow/tools/benchmark/run_onednn_benchmarks:.sh
 tensorflow/tools/build_info/BUILD:
 tensorflow/tools/ci_build/a100/nightly.sh:
 tensorflow/tools/ci_build/horovod/gpu/nightly.sh:

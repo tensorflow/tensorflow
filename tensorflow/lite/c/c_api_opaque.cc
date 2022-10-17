@@ -144,3 +144,24 @@ TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
   *registration_external = derived_registration;
   return kTfLiteOk;
 }
+
+TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+    struct TfLiteOpaqueContext* opaque_context,
+    TfLiteRegistrationExternal* registration_external,
+    const TfLiteIntArray* nodes_to_replace,
+    struct TfLiteOpaqueDelegateStruct* opaque_delegate) {
+  // The following casts are safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent, or on
+  // TfLiteOpaqueNode and TfLiteNode being equivalent.
+
+  TfLiteContext* context = reinterpret_cast<TfLiteContext*>(opaque_context);
+  TfLiteDelegate* delegate = reinterpret_cast<TfLiteDelegate*>(opaque_delegate);
+
+  TfLiteRegistration registration{};
+  registration.registration_external = registration_external;
+
+  TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
+      context, registration, nodes_to_replace, delegate);
+  return status;
+}

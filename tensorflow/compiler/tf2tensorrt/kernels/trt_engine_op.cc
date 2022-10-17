@@ -663,6 +663,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
   // TODO(laigd): need to check that input shape matches.
   // Pass input data to calibrator
   std::unordered_map<string, void*> input_data;
+  bool input_size_ok = true;
   for (int i = 0; i < num_inputs; i++) {
     const Tensor& t = ctx->input(i);
     void* data_address = GetTensorAddress(&t);
@@ -672,34 +673,42 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                       dummy_async_helper);
     // Check the allocated buffer is sufficient for input
     const auto device_tensor = &calib_ctx->device_tensors_.at(i);
-    CHECK_EQ(t.TotalBytes(), device_tensor->TotalBytes());
+    if (t.TotalBytes() != device_tensor->TotalBytes()) {
+      // This can happen if the network has data dependent shapes.
+      input_size_ok = false;
+      VLOG(2) << "Size differs for input " << i
+              << ", skipping calibration for this input.";
+      break;
+    }
     input_data.emplace(StrCat(IONamePrefixes::kInputPHName, i), data_address);
   }
-  VLOG(2) << "Filled map for sending";
-  // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
-  // files.
-  const cudaStream_t* stream = CHECK_NOTNULL(
-      reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
-                                                ->stream()
-                                                ->implementation()
-                                                ->GpuStreamMemberHack()));
-  // TRTInt8Calibrator::setBatch will wait until TRTInt8Calibrator::getBatch is
-  // called before proceeding with feeding the calibration data to the
-  // calibrator. It returns true if the calibration data is accepted and
-  // returns false if calibration is terminated due to errors.
-  //
-  // If TRTInt8Calibrator::getBatch is never called, which could happen if
-  // there is any problem in building the cuda engine for calibration inside
-  // TensorRT, then the TRTInt8Calibrator::setBatch call here will hang until
-  // TRTInt8Calibrator::setDone is called by the calibration thread in
-  // AllocateCalibrationResources.
-  //
-  // In both of the above cases, setBatch here returns a boolean value to
-  // indicate the result of the calibration process.
-  if (!calib_ctx->calibrator_->setBatch(input_data, *stream)) {
-    VLOG(2) << "Failed to feed calibration data";
-  } else {
-    VLOG(2) << "Passed calibration data";
+  if (input_size_ok) {
+    VLOG(2) << "Filled map for sending";
+    // Copied from gpu_kernel_helper.h as the header can only be used in *.cu.cc
+    // files.
+    const cudaStream_t* stream = CHECK_NOTNULL(
+        reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
+                                                  ->stream()
+                                                  ->implementation()
+                                                  ->GpuStreamMemberHack()));
+    // TRTInt8Calibrator::setBatch will wait until TRTInt8Calibrator::getBatch
+    // is called before proceeding with feeding the calibration data to the
+    // calibrator. It returns true if the calibration data is accepted and
+    // returns false if calibration is terminated due to errors.
+    //
+    // If TRTInt8Calibrator::getBatch is never called, which could happen if
+    // there is any problem in building the cuda engine for calibration inside
+    // TensorRT, then the TRTInt8Calibrator::setBatch call here will hang until
+    // TRTInt8Calibrator::setDone is called by the calibration thread in
+    // AllocateCalibrationResources.
+    //
+    // In both of the above cases, setBatch here returns a boolean value to
+    // indicate the result of the calibration process.
+    if (!calib_ctx->calibrator_->setBatch(input_data, *stream)) {
+      VLOG(2) << "Failed to feed calibration data";
+    } else {
+      VLOG(2) << "Passed calibration data";
+    }
   }
   ExecuteNativeSegment(ctx, async_helper);
 }

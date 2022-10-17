@@ -49,7 +49,7 @@ bool HasStaticShape(Value value) {
 
 bool HasStaticShapeAtDims(Value value, llvm::ArrayRef<int> dims) {
   auto shaped_type = value.getType().dyn_cast<ShapedType>();
-  if (!shaped_type) return false;
+  if (!shaped_type || !shaped_type.hasRank()) return false;
 
   for (auto dim : dims) {
     if (shaped_type.isDynamicDim(dim)) return false;

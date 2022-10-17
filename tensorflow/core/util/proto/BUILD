@@ -70,9 +70,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
+        "//tensorflow/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
-        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 

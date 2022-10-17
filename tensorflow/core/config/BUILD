@@ -3,12 +3,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 
-package(
-    default_visibility = [
-        "//tensorflow/core/config:__subpackages__",
-    ],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 exports_files(
     ["flags_api_wrapper.cc"],

@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -98,8 +98,8 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
-    PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
-    bool compute_stats)
+    tsl::PlatformDeviceId platform_device_id, size_t pool_size,
+    bool reserve_memory, bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
       reserve_memory_(reserve_memory) {
   ++number_instantiated_;
@@ -206,7 +206,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   // Set read/write access to all GPUs.
   static auto* all_pools_ = new std::vector<CUmemoryPool*>();
-  static auto* all_ids_ = new std::vector<PlatformDeviceId>();
+  static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
   DCHECK(all_pools_->size() == all_ids_->size());
   for (int i = 0; i < all_pools_->size(); ++i) {
     // Set the current pool access to the previous GPUs.

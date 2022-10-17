@@ -112,7 +112,7 @@ def CreateOp: FallbackSync_Op<"createop", [CoreRT_TypedAttributeTrait]> {
 }
 
 def SyncExecuteOp : FallbackSync_Op<"executeop",
-    [NoSideEffect, CoreRT_TypedAttributeTrait]> {
+    [Pure, CoreRT_TypedAttributeTrait]> {
   let summary = "The Fallback Sync ExecuteOp";
   let description = [{
     The ExecuteOp executes an operation on the specified device.

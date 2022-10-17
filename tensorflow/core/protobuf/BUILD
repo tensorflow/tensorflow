@@ -37,7 +37,6 @@ COMMON_PROTO_SRCS = [
     "rewriter_config.proto",
     "tensor_bundle.proto",
     "saver.proto",
-    "status.proto",
     "verifier_config.proto",
 ]
 
@@ -63,9 +62,9 @@ COMMON_PROTO_SRCS = [
 tf_proto_library(
     name = "autotuning_proto",
     srcs = ["autotuning.proto"],
+    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/protobuf:autotuning_proto"],
-    exports = ["//tensorflow/tsl/protobuf:autotuning_proto"],
+    protodeps = ["//tensorflow/compiler/xla/stream_executor:dnn_proto"],
 )
 
 tf_proto_library(
@@ -132,6 +131,7 @@ tf_proto_library(
     name = "coordination_config_proto",
     srcs = ["coordination_config.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
 )
 
 tf_proto_library(

@@ -24,23 +24,10 @@ namespace functor {
 
 template <typename T>
 struct nextafter_op {
-  // GPU kernels on ROCm may have issues including standard C++ APIs. Use
-  // specialized member functions and invoke HIP runtime APIs instead.
-#if !TENSORFLOW_USE_ROCM
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x1,
                                                            const T& x2) const {
     return std::nextafter(x1, x2);
   }
-#else
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const float operator()(
-      const float& x1, const float& x2) const {
-    return nextafterf(x1, x2);
-  }
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const double operator()(
-      const double& x1, const double& x2) const {
-    return nextafter(x1, x2);
-  }
-#endif
 };
 
 template <typename T>

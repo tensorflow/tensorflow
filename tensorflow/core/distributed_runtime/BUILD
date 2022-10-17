@@ -11,9 +11,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_grpc_cc_dependencies")
 
 # For platform specific build config
 load(
@@ -158,7 +156,6 @@ cc_library(
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
     ],
@@ -385,7 +382,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/core/protobuf:master_proto_cc",
     ],
 )
@@ -431,10 +427,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
-        ":session_mgr",
-        ":worker_cache",
         ":worker_env",
-        ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",

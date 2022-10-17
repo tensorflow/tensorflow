@@ -808,7 +808,7 @@ selects.config_setting_group(
         ":emscripten",
         ":ios",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # This flag disables all google production dependencies, intended for
@@ -851,7 +851,7 @@ selects.config_setting_group(
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -872,7 +872,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -881,7 +881,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -1175,7 +1175,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(

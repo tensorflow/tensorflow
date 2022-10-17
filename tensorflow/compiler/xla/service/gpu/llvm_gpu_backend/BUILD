@@ -59,8 +59,9 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/util:env_var",
     ] + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "@llvm-project//llvm:AMDGPUCodeGen",

@@ -197,6 +197,35 @@ void THLODialect::initialize() {
 }
 
 //===----------------------------------------------------------------------===//
+// YieldOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult checkYieldOutputs(YieldOp yieldOp,
+                                TypeRange expectedElementTypes) {
+  uint64_t numOutputs = expectedElementTypes.size();
+  if (yieldOp.getValues().size() != numOutputs) {
+    return yieldOp.emitOpError("expects number of tensor output args = ")
+           << numOutputs << " to match the number of yield operands = "
+           << yieldOp.getValues().size();
+  }
+
+  for (auto &item : llvm::enumerate(
+           llvm::zip(expectedElementTypes, yieldOp.getOperandTypes()))) {
+    Type outputElementType, resultType;
+    unsigned index = item.index();
+    std::tie(outputElementType, resultType) = item.value();
+    if (outputElementType != resultType)
+      return yieldOp.emitOpError("expects yield operand ")
+             << index << " with type = " << resultType
+             << " to match output arg element type = " << outputElementType;
+  }
+
+  return success();
+}
+
+LogicalResult YieldOp::verify() { return success(); }
+
+//===----------------------------------------------------------------------===//
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
@@ -236,7 +265,7 @@ namespace {
 Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
                                    Location loc, Value tile) {
   uint64_t concatDim = op.getDimension();
-  auto resultTy = op.getResult().getType().cast<RankedTensorType>();
+  RankedTensorType resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t rank = resultTy.getRank();
   OperandRange allOperands = op.getInputs();
   Value anyOperand = allOperands.front();
@@ -334,8 +363,10 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
       builder.create<gml_st::MaterializeOp>(loc, op.getInit(), tile);
   auto subResultType =
       RankedTensorType::get(tileType.getShape(), resultTy.getElementType());
-  return builder.create<thlo::ConcatenateOp>(loc, subResultType, subOperands,
-                                             subInit, concatDim);
+  return builder
+      .create<thlo::ConcatenateOp>(loc, subResultType, subOperands, subInit,
+                                   concatDim)
+      ->getResult(0);
 }
 
 Value fuseConcatenateOpThroughPointRecursively(
@@ -405,7 +436,7 @@ Value fuseConcatenateOpThroughPointRecursively(
 
 Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
                                     Location loc, Value subset) {
-  auto resultTy = op.getType().cast<RankedTensorType>();
+  auto resultTy = op.getType(0).cast<RankedTensorType>();
   int64_t resultRank = resultTy.getRank();
   uint64_t concatDim = op.getDimension();
 
@@ -449,6 +480,19 @@ ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
 void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
+  Type outputElementType =
+      getOutputs().front().getType().cast<ShapedType>().getElementType();
+
+  for (Type inputArgType : TypeRange{getInputs()}) {
+    Type inputArgElementType = inputArgType.cast<ShapedType>().getElementType();
+    if (inputArgElementType != outputElementType) {
+      return emitOpError() << "expected element type of input "
+                           << inputArgElementType
+                           << " to match output element type "
+                           << outputElementType;
+    }
+  }
+
   return verifyDestinationStyleOp(getOperation());
 }
 
@@ -500,6 +544,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   // Create tile subset.
   auto loc = getLoc();
   auto tile = createTileOp(b, loc, getInit(), offsets, sizes);
+  auto initRank = getInit().getType().cast<RankedTensorType>().getRank();
 
   // Create the needed constants only once.
   DenseMap<uint64_t, Value> localIndexConstants;
@@ -510,6 +555,9 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
     localIndexConstants[c] = cst;
     return cst;
   };
+
+  DenseSet<int64_t> dimensionsThatStay(getBroadcastDimensions().begin(),
+                                       getBroadcastDimensions().end());
 
   // Materialize operand space.
   auto operandTy = getOperand().getType().cast<RankedTensorType>();
@@ -530,11 +578,6 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
     operandDims.push_back(dim);
   }
 
-  // Collapse the subset to operate only on corresponding dimensions.
-  // TODO(frgossen): Only generate this when needed.
-  auto collapsedSubset =
-      b.create<gml_st::DropDimsOp>(loc, tile, getBroadcastDimensionsAttr());
-
   // Find the expanding dimensions. If corresponding operand and result
   // dimensions are different then the dimension is expanding.
   // TODO(frgossen): Use info from known expanding and known non-expanding
@@ -554,10 +597,11 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
   SmallVector<Value> operandOffsets;
   Value zero = getIndexConstant(0);
-  for (int i = 0; i < operandRank; ++i) {
-    Value isExpanding = operandExpandingDims[i];
+  for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
+    if (!dimensionsThatStay.contains(initId)) continue;
+    Value isExpanding = operandExpandingDims[operandId++];
     Value collapsedSubsetOffset =
-        b.create<gml_st::OffsetOp>(loc, collapsedSubset, getIndexConstant(i));
+        b.create<gml_st::OffsetOp>(loc, tile, getIndexConstant(initId));
     operandOffsets.push_back(b.create<arith::SelectOp>(loc, isExpanding, zero,
                                                        collapsedSubsetOffset));
   }
@@ -567,10 +611,11 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
   SmallVector<Value> tileSizes;
   Value one = getIndexConstant(1);
-  for (int i = 0; i < operandRank; ++i) {
-    Value isExpanding = operandExpandingDims[i];
+  for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
+    if (!dimensionsThatStay.contains(initId)) continue;
+    Value isExpanding = operandExpandingDims[operandId++];
     Value tileSize =
-        b.create<gml_st::SizeOp>(loc, collapsedSubset, getIndexConstant(i));
+        b.create<gml_st::SizeOp>(loc, tile, getIndexConstant(initId));
     tileSizes.push_back(
         b.create<arith::SelectOp>(loc, isExpanding, one, tileSize));
   }
@@ -592,7 +637,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
 
   // Finally, materialize tiled broadcast.
   auto tileTy = tile.getType();
-  auto resultTy = getResult().getType().cast<RankedTensorType>();
+  auto resultTy = getType(0).cast<RankedTensorType>();
   auto tiledResultTy =
       RankedTensorType::get(tileTy.getShape(), resultTy.getElementType());
   return b.create<DynamicBroadcastInDimOp>(
@@ -641,7 +686,7 @@ void ScatterOp::print(OpAsmPrinter &p) {
 LogicalResult ScatterOp::verify() {
   if (failed(verifyDestinationStyleOp(getOperation()))) return failure();
 
-  auto indicesType = getIndices().getType().cast<RankedTensorType>();
+  auto indicesType = getIndices().getType().cast<ShapedType>();
   int64_t indicesRank = indicesType.getRank();
 
   if (indicesRank != 2)
@@ -676,6 +721,13 @@ LogicalResult ScatterOp::verify() {
     return emitOpError()
            << "expected `updates` element type to match `init` element type";
   }
+
+  // The update computation should yield exactly 1 result.
+  auto updateTerminator = cast<YieldOp>(getBody()->getTerminator());
+  Type outputElementType =
+      getOutputs().front().getType().cast<ShapedType>().getElementType();
+  if (!succeeded(checkYieldOutputs(updateTerminator, outputElementType)))
+    return failure();
 
   return success();
 }
@@ -940,14 +992,13 @@ LogicalResult TransposeOp::verify() {
                            << "]) = " << inputDim;
     }
   }
+
   return verifyDestinationStyleOp(getOperation());
 }
 
-ArrayAttr TransposeOp::iterator_types() {
+SmallVector<StringRef> TransposeOp::getIteratorTypesArray() {
   int64_t rank = getInit().getType().getRank();
-  return Builder(getContext())
-      .getStrArrayAttr(
-          SmallVector<StringRef>(rank, getParallelIteratorTypeName()));
+  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
 }
 
 ArrayAttr TransposeOp::getIndexingMaps() {
@@ -1101,16 +1152,21 @@ LogicalResult ReductionOp::verify() {
                          << blockArgumentOutputTypes;
   }
 
+  // The reducer should yield exactly getNumOutputs() outputs.
+  YieldOp blockTerminator = cast<YieldOp>(block->getTerminator());
+  if (!succeeded(checkYieldOutputs(blockTerminator, outputElementTypes)))
+    return failure();
+
   return verifyDestinationStyleOp(getOperation());
 }
 
-ArrayAttr ReductionOp::iterator_types() {
+SmallVector<StringRef> ReductionOp::getIteratorTypesArray() {
   int64_t inputRank = getInputs()[0].getType().cast<ShapedType>().getRank();
   SmallVector<StringRef> iteratorTypes(inputRank,
                                        getParallelIteratorTypeName());
   for (int64_t reductionDim : getDimensions())
     iteratorTypes[reductionDim] = getReductionIteratorTypeName();
-  return Builder(getContext()).getStrArrayAttr(iteratorTypes);
+  return iteratorTypes;
 }
 
 ArrayAttr ReductionOp::getIndexingMaps() {
@@ -1189,14 +1245,31 @@ LogicalResult MapOp::verify() {
     }
   }
 
+  // The shape of each input must match the shape of the output.
+  auto outputShape =
+      getOutputs().front().getType().cast<ShapedType>().getShape();
+  for (Type inputArgType : TypeRange{getInputs()}) {
+    auto inputElemShape = inputArgType.cast<ShapedType>().getShape();
+    if (inputElemShape != outputShape) {
+      return emitOpError() << "expected shape of input (" << inputElemShape
+                           << ") to match shape of output (" << outputShape
+                           << ")";
+    }
+  }
+
+  // The mapper should yield exactly one output.
+  YieldOp mapperTerminator = cast<YieldOp>(bodyBlock->getTerminator());
+  Type outputElementType =
+      getOutputs().front().getType().cast<ShapedType>().getElementType();
+  if (!succeeded(checkYieldOutputs(mapperTerminator, outputElementType)))
+    return failure();
+
   return verifyDestinationStyleOp(getOperation());
 }
 
-ArrayAttr MapOp::iterator_types() {
+SmallVector<StringRef> MapOp::getIteratorTypesArray() {
   int64_t rank = getInit().getType().getRank();
-  return Builder(getContext())
-      .getStrArrayAttr(
-          SmallVector<StringRef>(rank, getParallelIteratorTypeName()));
+  return SmallVector<StringRef>(rank, getParallelIteratorTypeName());
 }
 
 ArrayAttr MapOp::getIndexingMaps() {
@@ -1210,36 +1283,187 @@ ArrayAttr MapOp::getIndexingMaps() {
 bool MapOp::hasIndexSemantics() { return false; }
 
 //===----------------------------------------------------------------------===//
-// YieldOp
+// SortOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult YieldOp::verify() {
-  auto parentOp = dyn_cast<linalg::DestinationStyleOpInterface>(
-      *(getOperation()->getParentOp()));
+ParseResult SortOp::parse(OpAsmParser &parser, OperationState &result) {
+  if (parseDstStyleOp(parser, result)) return failure();
 
-  SmallVector<Value, 2> tensorOuts;
-  llvm::copy_if(
-      parentOp.getOutputs(), std::back_inserter(tensorOuts),
-      [&](Value out) { return out.getType().isa<RankedTensorType>(); });
-  if (tensorOuts.size() != getValues().size())
-    return emitOpError("expects number of tensor output args = ")
-           << tensorOuts.size()
-           << " to match the number of yield operands = " << getValues().size();
-
-  TypeRange tensorTypes{ValueRange{tensorOuts}};
-  for (auto &item :
-       llvm::enumerate(llvm::zip(tensorTypes, getOperandTypes()))) {
-    Type outputType, resultType;
-    unsigned index = item.index();
-    std::tie(outputType, resultType) = item.value();
-    Type outputElementType =
-        outputType.cast<RankedTensorType>().getElementType();
-    if (outputElementType != resultType)
-      return emitOpError("expects yield operand ")
-             << index << " with type = " << resultType
-             << " to match output arg element type = " << outputElementType;
+  SmallVector<OpAsmParser::Argument> regionArgs;
+  if (parser.parseArgumentList(regionArgs, OpAsmParser::Delimiter::Paren,
+                               /*allowType=*/true, /*allowAttrs=*/true)) {
+    return failure();
   }
+
+  Region *comparator = result.addRegion();
+  if (parser.parseRegion(*comparator, regionArgs)) return failure();
+
   return success();
+}
+
+void SortOp::print(OpAsmPrinter &p) {
+  printDstStyleOp<SortOp>(*this, p);
+
+  p << "(";
+  llvm::interleaveComma(getComparator().getArguments(), p,
+                        [&](auto arg) { p.printRegionArgument(arg); });
+  p << ") ";
+
+  p.printRegion(getComparator(), /*printEntryBlockArgs=*/false);
+}
+
+LogicalResult SortOp::verify() {
+  auto *comparatorBlock = getBody();
+  auto comparatorArgs = comparatorBlock->getArguments();
+
+  // Checks that the arity of the comparator is equal to twice the number of
+  // inputs.
+  if (comparatorArgs.size() != getNumInputs() * 2)
+    return emitOpError() << "expected the number of block arguments "
+                         << comparatorArgs.size() << " to be twice the number "
+                         << "of inputs (2*" << getNumInputs() << ")";
+
+  // Checks that the comparator's arguments match the element type of the
+  // inputs.
+  TypeRange inputTypes = TypeRange{getInputs()};
+  TypeRange comparatorArgElementTypes = comparatorBlock->getArgumentTypes();
+  for (size_t i = 0; i < getInputs().size(); ++i) {
+    Type inputArgElemType = inputTypes[i].cast<ShapedType>().getElementType(),
+         comparatorArgElemType1 = comparatorArgElementTypes[2 * i],
+         comparatorArgElemType2 = comparatorArgElementTypes[2 * i + 1];
+    if (comparatorArgElemType1 != inputArgElemType ||
+        comparatorArgElemType2 != inputArgElemType)
+      return emitOpError() << "expected element type of input " << i
+                           << " to match type of the corresponding "
+                              "arguments to the comparison function but got "
+                           << inputArgElemType << " and ("
+                           << comparatorArgElemType1 << ", "
+                           << comparatorArgElemType2 << ")";
+  }
+
+  // Checks that the comparator yields exactly one boolean output.
+  YieldOp comparatorTerminator =
+      cast<YieldOp>(comparatorBlock->getTerminator());
+  if (!succeeded(
+          checkYieldOutputs(comparatorTerminator,
+                            TypeRange({IntegerType::get(getContext(), 1)}))))
+    return failure();
+
+  // Checks that the inputs all have the same shape.
+  ArrayRef<int64_t> referenceShape =
+      getInputs().front().getType().cast<ShapedType>().getShape();
+
+  for (auto &item : llvm::enumerate(TypeRange{getInputs()})) {
+    ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
+    if (shape != referenceShape) {
+      return emitOpError() << "expected all inputs to have the same shape ("
+                           << referenceShape << ") but input " << item.index()
+                           << " has shape (" << shape << ")";
+    }
+  }
+
+  // Checks that the outputs have the same shape as the inputs.
+  for (auto &item : llvm::enumerate(TypeRange{getOutputs()})) {
+    ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
+    if (shape != referenceShape) {
+      return emitOpError() << "expected outputs to have shape ("
+                           << referenceShape << ") but output " << item.index()
+                           << " has shape (" << shape << ")";
+    }
+  }
+
+  // Checks that the rank of the reference shape is larger than the absolute
+  // value of the sorting dimension. This is enough to ensure that the dimension
+  // is valid, since all inputs are known to have the same shape.
+  int64_t referenceRank = referenceShape.size();
+  if (getDimension() >= referenceRank || getDimension() < 0) {
+    return emitOpError() << "sorting dimension must be in range [0, "
+                         << referenceRank << ") but got " << getDimension();
+  }
+
+  return verifyDestinationStyleOp(getOperation());
+}
+
+SmallVector<utils::IteratorType> SortOp::getLoopIteratorTypes() {
+  return getParallelIteratorTypes(getType(0).cast<ShapedType>().getRank() - 1);
+}
+
+SmallVector<Value> SortOp::getDestinationOperands(OpBuilder &) {
+  return {getInits()};
+}
+
+SmallVector<Range> SortOp::getIterationDomain(OpBuilder &b) {
+  Location loc = getLoc();
+  auto oneInit = getInits().front();
+  auto operandsRank = oneInit.getType().cast<ShapedType>().getRank();
+
+  SmallVector<Range> iterationDomain(operandsRank - 1);
+
+  IntegerAttr zero = b.getIndexAttr(0);
+  IntegerAttr one = b.getIndexAttr(1);
+  int64_t sortDimension = getDimension();
+
+  for (auto axis : llvm::seq<int64_t>(0, operandsRank - 1)) {
+    int64_t operandAxis = (axis >= sortDimension) ? axis + 1 : axis;
+    iterationDomain[axis].offset = zero;
+    iterationDomain[axis].size =
+        b.createOrFold<tensor::DimOp>(loc, oneInit, operandAxis);
+    iterationDomain[axis].stride = one;
+  }
+  return iterationDomain;
+}
+
+mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
+    OpBuilder &b, ArrayRef<OpFoldResult> offsets,
+    ArrayRef<OpFoldResult> sizes) {
+  auto loc = getLoc();
+  SmallVector<OpFoldResult> tileOffsets = llvm::to_vector(offsets);
+  SmallVector<OpFoldResult> tileSizes = llvm::to_vector(sizes);
+
+  size_t numOutputs = getNumOutputs();
+  int64_t sortDimension = getDimension();
+
+  Value oneInput = getInputs().front();
+
+  // Capture the entire sorting axis in each tile.
+  tileOffsets.insert(tileOffsets.begin() + sortDimension, b.getIndexAttr(0));
+
+  OpFoldResult sortDimensionSize =
+      b.createOrFold<tensor::DimOp>(loc, oneInput, sortDimension);
+  tileSizes.insert(tileSizes.begin() + sortDimension, sortDimensionSize);
+
+  gml_st::TileOp tile = createTileOp(b, loc, oneInput, tileOffsets, tileSizes);
+
+  // Materialize the tile for each input and init.
+  SmallVector<Value> tiledInputsAndInits;
+  SmallVector<Type> tiledResultTypes;
+  tiledInputsAndInits.reserve(numOutputs * 2);
+  tiledResultTypes.reserve(numOutputs);
+
+  auto oneInputShape = oneInput.getType().cast<ShapedType>().getShape();
+
+  for (const auto &input : getInputs()) {
+    tiledInputsAndInits.push_back(
+        b.create<gml_st::MaterializeOp>(loc, input, tile));
+    tiledResultTypes.push_back(RankedTensorType::get(
+        oneInputShape, input.getType().cast<ShapedType>().getElementType()));
+  }
+
+  for (const auto &init : getInits()) {
+    tiledInputsAndInits.push_back(
+        b.create<gml_st::MaterializeOp>(loc, init, tile));
+  }
+
+  auto dpsInterface =
+      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  return dpsInterface.clone(b, loc, tiledResultTypes, tiledInputsAndInits);
+}
+
+FailureOr<Value> SortOp::generateResultTileValue(OpBuilder &b,
+                                                 unsigned resultNumber,
+                                                 ArrayRef<OpFoldResult> offsets,
+                                                 ArrayRef<OpFoldResult> sizes) {
+  return getTiledImplementation(b, offsets, sizes)->getResult(resultNumber);
 }
 
 }  // namespace thlo

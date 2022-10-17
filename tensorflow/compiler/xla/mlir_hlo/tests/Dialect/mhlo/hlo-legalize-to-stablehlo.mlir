@@ -229,7 +229,7 @@ func.func @attr_precision_config_highest(%arg0: tensor<8x16xf32>, %arg1: tensor<
 
 func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
-    // CHECK: rng_algorithm = #stablehlo.rng_algorithm<DEFAULT>
+    // CHECK: rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
     rng_algorithm = #mhlo.rng_algorithm<DEFAULT>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -238,7 +238,7 @@ func.func @attr_rng_algorithm_default(%arg0: tensor<f32>) -> (tensor<f32>, tenso
 
 func.func @attr_rng_algorithm_three_fry(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
-    // CHECK: rng_algorithm = #stablehlo.rng_algorithm<THREE_FRY>
+    // CHECK: rng_algorithm = #stablehlo<rng_algorithm THREE_FRY>
     rng_algorithm = #mhlo.rng_algorithm<THREE_FRY>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -247,7 +247,7 @@ func.func @attr_rng_algorithm_three_fry(%arg0: tensor<f32>) -> (tensor<f32>, ten
 
 func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
-    // CHECK: rng_algorithm = #stablehlo.rng_algorithm<PHILOX>
+    // CHECK: rng_algorithm = #stablehlo<rng_algorithm PHILOX>
     rng_algorithm = #mhlo.rng_algorithm<PHILOX>
   } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   func.return %0#0, %0#1 : tensor<f32>, tensor<f32>
@@ -256,7 +256,7 @@ func.func @attr_rng_algorithm_philox(%arg0: tensor<f32>) -> (tensor<f32>, tensor
 
 func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
-    // CHECK: rng_distribution = #stablehlo.rng_distribution<UNIFORM>
+    // CHECK: rng_distribution = #stablehlo<rng_distribution UNIFORM>
     rng_distribution = #mhlo.rng_distribution<UNIFORM>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
@@ -265,7 +265,7 @@ func.func @attr_rng_distribution_uniform(%arg0: tensor<f32>, %arg1: tensor<f32>,
 
 func.func @attr_rng_distribution_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
-    // CHECK: rng_distribution = #stablehlo.rng_distribution<NORMAL>
+    // CHECK: rng_distribution = #stablehlo<rng_distribution NORMAL>
     rng_distribution = #mhlo.rng_distribution<NORMAL>
   } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   func.return %0 : tensor<f32>
@@ -347,13 +347,14 @@ func.func @op_all_gather(%arg0: tensor<16x8xf32>) -> tensor<16x16xf32> {
   //               CHECK: "stablehlo.all_gather"(%arg0) {
   //          CHECK-SAME:   all_gather_dim = 1 : i64,
   //          CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
-  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
+  //          CHECK-SAME:   use_global_device_ids
   //          CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<16x16xf32>
   %0 = "mhlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
-    // AllGatherOp::use_global_device_ids is unsupported at the moment (see negative test below).
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
+    use_global_device_ids
   } : (tensor<16x8xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }
@@ -1266,7 +1267,7 @@ func.func @op_reverse(%arg0: tensor<16xf32>) -> tensor<16xf32> {
 
 func.func @op_rng_bit_generator(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>) {
   //      CHECK: "stablehlo.rng_bit_generator"(%arg0) {
-  // CHECK-SAME:   rng_algorithm = #stablehlo.rng_algorithm<PHILOX>
+  // CHECK-SAME:   rng_algorithm = #stablehlo<rng_algorithm PHILOX>
   // CHECK-SAME: } : (tensor<f32>) -> (tensor<f32>, tensor<f32>)
   %0:2 = "mhlo.rng_bit_generator"(%arg0) {
     rng_algorithm = #mhlo.rng_algorithm<PHILOX>
@@ -1277,7 +1278,7 @@ func.func @op_rng_bit_generator(%arg0: tensor<f32>) -> (tensor<f32>, tensor<f32>
 
 func.func @op_rng(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<?xindex>) -> tensor<f32> {
   //      CHECK: "stablehlo.rng"(%arg0, %arg1, %arg2) {
-  // CHECK-SAME:   rng_distribution = #stablehlo.rng_distribution<NORMAL>
+  // CHECK-SAME:   rng_distribution = #stablehlo<rng_distribution NORMAL>
   // CHECK-SAME: } : (tensor<f32>, tensor<f32>, tensor<?xindex>) -> tensor<f32>
   %0 = "mhlo.rng"(%arg0, %arg1, %arg2) {
     rng_distribution = #mhlo.rng_distribution<NORMAL>
@@ -1787,6 +1788,17 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!mhlo.token> {
 
 // -----
 
+func.func @op_collective_permute_channel(%arg0: tensor<16x8xf32>) -> tensor<16x8xf32> {
+  // expected-error@+1 {{failed to legalize operation 'mhlo.collective_permute' that was explicitly marked illegal}}
+  %0 = "mhlo.collective_permute"(%arg0) {
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>
+  } : (tensor<16x8xf32>) -> tensor<16x8xf32>
+  func.return %0 : tensor<16x8xf32>
+}
+
+// -----
+
 func.func @attr_precision_config_packed_nibble(%arg0: tensor<8x16xf32>, %arg1: tensor<16x8xf32>) -> tensor<8x8xf32> {
   // expected-error@+1 {{failed to legalize operation 'mhlo.dot' that was explicitly marked illegal}}
   %0 = "mhlo.dot"(%arg0, %arg1) {
@@ -1801,19 +1813,6 @@ func.func @op_add_dependency(%arg0: tensor<16xf32>, %arg1: !mhlo.token) -> tenso
   // expected-error@+1 {{failed to legalize operation 'mhlo.add_dependency' that was explicitly marked illegal}}
   %0 = "mhlo.add_dependency"(%arg0, %arg1) : (tensor<16xf32>, !mhlo.token) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
-}
-
-// -----
-
-func.func @op_all_gather_use_global_device_ids(%arg0: tensor<16x8xf32>) -> tensor<16x16xf32> {
-  // expected-error@+1 {{failed to legalize operation 'mhlo.all_gather' that was explicitly marked illegal}}
-  %0 = "mhlo.all_gather"(%arg0) {
-    all_gather_dim = 1 : i64,
-    replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
-    channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
-    use_global_device_ids
-  } : (tensor<16x8xf32>) -> tensor<16x16xf32>
-  func.return %0 : tensor<16x16xf32>
 }
 
 // -----

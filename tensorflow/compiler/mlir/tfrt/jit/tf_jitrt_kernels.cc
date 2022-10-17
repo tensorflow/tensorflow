@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -460,37 +461,42 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                               : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      mlir::RegisterAllTensorFlowDialects(registry);
-      RegisterDefaultJitRtDialects(registry);
-    };
+    opts.compiler.register_dialects =
+        [](xla::runtime::DialectRegistry& dialects) {
+          mlir::RegisterAllTensorFlowDialects(*dialects);
+          RegisterDefaultJitRtDialects(dialects);
+        };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
+    opts.compiler.create_compilation_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          // TODO(yijiagu) : Add crash reproducer for xla::runtime::PassManager
+          /* if (GetJitRtFlags().enable_crash_reproducer)
+               SetCrashReproducer(pm, kCrashReproducerStdErr); */
 
-      TfJitRtPipelineOptions opts;
-      if (tf_jitrt_opts) {
-        opts.vectorize = tf_jitrt_opts->vectorize;
-        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-      } else {
-        opts.vectorize = GetJitRtFlags().vectorize;
-      }
+          TfJitRtPipelineOptions opts;
+          if (tf_jitrt_opts) {
+            opts.vectorize = tf_jitrt_opts->vectorize;
+            opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+          } else {
+            opts.vectorize = GetJitRtFlags().vectorize;
+          }
 
-      // Lower from Tensorflow to Linalg on buffers.
-      CreateTfJitRtPipeline(pm, opts);
+          // Lower from Tensorflow to Linalg on buffers.
+          CreateTfJitRtPipeline(*passes, opts);
 
-      // Use default JitRt compilation pipeline to lower to LLVM.
-      CreateDefaultJitRtCompilationPipeline(pm, copts);
-    };
+          // Use default JitRt compilation pipeline to lower to LLVM.
+          CreateDefaultJitRtCompilationPipeline(passes, copts);
+        };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
-      CreateJitRtSpecializationPipeline(pm);
-    };
+    opts.compiler.create_specialization_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          // TODO(yijiagu) : Add crash reproducer for xla::runtime::PassManager
+          /*           if (GetJitRtFlags().enable_crash_reproducer)
+                      SetCrashReproducer(pm, kCrashReproducerStdErr); */
+          CreateJitRtSpecializationPipeline(passes);
+        };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.

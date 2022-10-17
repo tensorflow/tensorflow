@@ -140,14 +140,14 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     // have features that either haven't been proposed to StableHLO yet
     // or aren't planned to be proposed to StableHLO.
     // The check below makes sure we only proceed for supported ops.
-    if constexpr (std::is_same<HloOpTy, mhlo::AllGatherOp>::value) {
-      // Added to MHLO to be consistent with mhlo.all_reduce.
-      // Hasn't been proposed to StableHLO yet.
-      if (hloOp.use_global_device_ids()) return failure();
-    } else if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
+    if constexpr (std::is_same<HloOpTy, mhlo::CustomCallOp>::value) {
       // Added to MHLO per feature request from JAX.
       // Hasn't been proposed to StableHLO yet.
-      if (!hloOp.output_operand_aliases().empty()) return failure();
+      if (!hloOp.getOutputOperandAliases().empty()) return failure();
+    }
+    if constexpr (std::is_same<HloOpTy, mhlo::CollectivePermuteOp>::value) {
+      // StableHLO does not support channel handles on CollectivePermute.
+      if (hloOp.getChannelHandle()) return failure();
     }
 
     // Convert MHLO types to StableHLO equivalents.
@@ -183,7 +183,7 @@ class HloToStablehloOpConverter : public OpConversionPattern<HloOpTy> {
     if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
       stablehloOp = rewriter.replaceOpWithNewOp<stablehlo::CaseOp>(
           hloOp, stablehloTypes, stablehloOperands, stablehloAttrs,
-          hloOp.branches().size());
+          hloOp.getBranches().size());
     } else {
       stablehloOp = rewriter.replaceOpWithNewOp<HloToStablehloOp<HloOpTy>>(
           hloOp, stablehloTypes, stablehloOperands, stablehloAttrs);

@@ -268,6 +268,7 @@ filegroup(
         "testdata/VarsAndArithmeticObjectGraph/**",
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
+        "testdata/OptimizerSlotVariableModule/**",
     ]),
 )
 

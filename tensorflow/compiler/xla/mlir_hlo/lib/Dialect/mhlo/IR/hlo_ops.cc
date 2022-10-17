@@ -693,16 +693,14 @@ LogicalResult TypeExtensionsAttr::verifyEncoding(
 }
 
 //===----------------------------------------------------------------------===//
-// AllReduceOp
+// CollectivePermuteOp
 //===----------------------------------------------------------------------===//
 
-void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllReduceOp::build(odsBuilder, odsState, resultType, operand, replicaGroups,
-                     channelHandle,
-                     /*use_global_device_ids=*/nullptr);
+void CollectivePermuteOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                                Type resultType, Value operand,
+                                DenseIntElementsAttr sourceTargetPairs) {
+  CollectivePermuteOp::build(odsBuilder, odsState, resultType, operand,
+                             sourceTargetPairs, /*channel_handle=*/nullptr);
 }
 
 //===----------------------------------------------------------------------===//
@@ -738,16 +736,6 @@ void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
                          scatterDimension, replicaGroups, channelHandle,
                          /*use_global_device_ids=*/nullptr);
-}
-
-void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                            Type resultType, Value operand,
-                            uint64_t scatterDimension,
-                            DenseIntElementsAttr replicaGroups,
-                            ChannelHandleAttr channelHandle) {
-  ReduceScatterOp::build(odsBuilder, odsState, resultType, operand,
-                         scatterDimension, replicaGroups, channelHandle,
-                         /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2125,12 +2113,12 @@ LogicalResult GatherOp::inferReturnTypeComponents(
 LogicalResult simplifyDynamicGatherToGather(DynamicGatherOp op,
                                             PatternRewriter& rewriter) {
   DenseIntElementsAttr sliceSizes;
-  if (!matchPattern(op.slice_sizes(), m_Constant(&sliceSizes))) {
+  if (!matchPattern(op.getSliceSizes(), m_Constant(&sliceSizes))) {
     return failure();
   }
   rewriter.replaceOpWithNewOp<mhlo::GatherOp>(
-      op, op.operand(), op.start_indices(), op.dimension_numbersAttr(),
-      sliceSizes, op.indices_are_sortedAttr());
+      op, op.getOperand(), op.getStartIndices(), op.getDimensionNumbersAttr(),
+      sliceSizes, op.getIndicesAreSortedAttr());
   return success();
 }
 
@@ -3157,15 +3145,6 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
                      replicaGroups, channelHandle,
                      /*use_global_device_ids=*/nullptr);
-}
-
-void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand, uint64_t allGatherDim,
-                        DenseIntElementsAttr replicaGroups,
-                        ChannelHandleAttr channelHandle) {
-  AllGatherOp::build(odsBuilder, odsState, resultType, operand, allGatherDim,
-                     replicaGroups, channelHandle,
-                     /*use_global_device_ids=*/false);
 }
 
 //===----------------------------------------------------------------------===//

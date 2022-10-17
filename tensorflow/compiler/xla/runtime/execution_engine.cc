@@ -145,6 +145,12 @@ static absl::Status SetUpExportedFunction(llvm::Module &module,
   builder.CreateCall(func, args);
   builder.CreateRetVoid();
 
+  // Always keep the frame pointer inside jit-compiled modules, so that we can
+  // correctly walk the stack when collecting profiles at run time.
+  for (llvm::Function &fn : module.functions()) {
+    if (!fn.isDeclaration()) fn.addFnAttr("frame-pointer", "all");
+  }
+
   return absl::OkStatus();
 }
 

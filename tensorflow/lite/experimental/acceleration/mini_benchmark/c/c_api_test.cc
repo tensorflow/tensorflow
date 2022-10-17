@@ -28,6 +28,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "flatbuffers/vector.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
@@ -35,6 +36,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 
 namespace {
+
+using ::testing::_;
 
 std::vector<const tflite::BenchmarkEvent*> ToBenchmarkEvents(uint8_t* data,
                                                              size_t size) {
@@ -49,6 +52,17 @@ std::vector<const tflite::BenchmarkEvent*> ToBenchmarkEvents(uint8_t* data,
   }
   return results;
 }
+
+class MockErrorReporter {
+ public:
+  static int InvokeErrorReporter(void* user_data, const char* format,
+                                 va_list args) {
+    MockErrorReporter* error_reporter =
+        static_cast<MockErrorReporter*>(user_data);
+    return error_reporter->Log(format, args);
+  }
+  MOCK_METHOD(int, Log, (const char* format, va_list args));
+};
 
 class CApiTest : public ::testing::Test {
  protected:
@@ -209,4 +223,35 @@ TEST_F(CApiTest, ReturnEmptyWhenTestTimedOut) {
   TfLiteMiniBenchmarkResultFree(result);
 }
 
+TEST_F(CApiTest, UseProvidedErrorReporterWhenFail) {
+  mini_benchmark_fbb_.Finish(tflite::CreateMinibenchmarkSettings(
+      mini_benchmark_fbb_, CreateTFLiteSettings(), 0, 0, 0));
+  TfLiteMiniBenchmarkSettings settings{
+      mini_benchmark_fbb_.GetBufferPointer(),
+      mini_benchmark_fbb_.GetSize(),
+  };
+  MockErrorReporter reporter;
+  EXPECT_CALL(reporter, Log(_, _)).Times(testing::AtLeast(1));
+  settings.error_reporter_user_data = &reporter;
+  settings.error_reporter_func = &MockErrorReporter::InvokeErrorReporter;
+
+  TfLiteMiniBenchmarkResult* result =
+      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+  EXPECT_THAT(result->init_status,
+              tflite::acceleration::kMinibenchmarkPreconditionNotMet);
+  TfLiteMiniBenchmarkResultFree(result);
+}
+
+TEST_F(CApiTest, ReturnFailStatusWhenSettingsCorrupted) {
+  std::vector<uint8_t> settings_corrupted(10, 1);
+  TfLiteMiniBenchmarkSettings settings{settings_corrupted.data(),
+                                       settings_corrupted.size()};
+  TfLiteMiniBenchmarkResult* result =
+      TfLiteBlockingValidatorRunnerTriggerValidation(&settings);
+
+  EXPECT_THAT(
+      result->init_status,
+      tflite::acceleration::kMinibenchmarkCorruptSizePrefixedFlatbufferFile);
+  TfLiteMiniBenchmarkResultFree(result);
+}
 }  // namespace

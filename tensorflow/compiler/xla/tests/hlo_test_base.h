@@ -360,12 +360,17 @@ class HloTestBase : public ManifestCheckingTest {
       HloModule*, std::unique_ptr<HloComputation> computation);
   void UpdateEntryComputationLayout(HloModule* module);
 
+  StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
+
  protected:
   // Helper functions to get test and reference platforms.
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
 
  private:
+  std::unique_ptr<HloRunnerInterface> runner_;
+  se::Platform* test_platform_;
+
   // Given the test module, makes a reference module that is ready to run on the
   // reference platform. This assumes that the given module is ready to run on
   // the test platform.

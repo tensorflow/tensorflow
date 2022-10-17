@@ -1,4 +1,4 @@
-load("//tensorflow/tsl/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 
 package(licenses = ["notice"])
 

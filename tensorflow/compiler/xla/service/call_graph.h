@@ -252,7 +252,8 @@ class CallGraph {
 
   // Returns a vector of instructions calling the passed computation.
   // (Often a vector of size 1.)
-  std::vector<HloInstruction*> GetComputationCallers(HloComputation* c) const;
+  std::vector<HloInstruction*> GetComputationCallers(
+      const HloComputation* c) const;
 
   std::string ToString() const;
 

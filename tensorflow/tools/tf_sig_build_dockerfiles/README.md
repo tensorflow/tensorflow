@@ -10,8 +10,9 @@ These docker containers are for building and testing TensorFlow in CI
 environments (and for users replicating those CI builds). They are openly
 developed in TF SIG Build, verified by Google developers, and published to
 tensorflow/build on [Docker Hub](https://hub.docker.com/r/tensorflow/build/).
-The TensorFlow OSS DevInfra team is evaluating these containers for building
-`tf-nightly`.
+The TensorFlow OSS DevInfra team uses these containers for most of our
+Linux-based CI, including `tf-nightly` tests and Pip packages and TF release
+packages for TensorFlow 2.9 onwards.
 
 ## Tags
 

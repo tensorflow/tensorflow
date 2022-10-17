@@ -22,8 +22,8 @@ limitations under the License.
 namespace mlir {
 namespace linalg {
 class LinalgOp;
-class TiledLinalgOp;
-class LinalgTilingOptions;
+struct TiledLinalgOp;
+struct LinalgTilingOptions;
 }  // namespace linalg
 }  // namespace mlir
 

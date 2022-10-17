@@ -399,6 +399,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "compiler_headers",
+    hdrs = ["compiler.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 tf_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],

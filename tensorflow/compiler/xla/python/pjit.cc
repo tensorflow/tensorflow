@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_values.h"
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 namespace {
@@ -160,7 +160,7 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
 }
 
 xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
-  tensorflow::profiler::TraceMe traceme(
+  tsl::profiler::TraceMe traceme(
       [&] { return absl::StrCat("JaxPjitFunction(", function_name_, ")"); });
   ParsedArgumentsAsBuffers arguments;
 

@@ -46,7 +46,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "@com_google_absl//absl/time",
     ],
 )
@@ -71,7 +70,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
     ],
 )
 
@@ -101,7 +99,6 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
     ],
 )
 
@@ -135,6 +132,5 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
     ],
 )

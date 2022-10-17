@@ -2494,3 +2494,25 @@ def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
   }];
   let constructor = "TF::CreateLocalizeVarHandlesPass()";
 }
+
+def StripTfAttributesPass : Pass<"tf-strip-tf-attributes", "func::FuncOp"> {
+  let summary = "Removes TF specific attributes";
+  let description = [{
+      Removes attributes that are TF specific (start with "tf.") or that
+      have a value from the TF dialect. Useful after legalizing TF graphs
+      to other dialects, to remove any TF remnants.
+  }];
+  let constructor = "TF::CreateStripTfAttributesPass()";
+}
+
+def NameAnonymousIteratorsPass : Pass<"tf-name-anonymous-iterators", "ModuleOp"> {
+  let summary = "Converts anonymous iterators to named iterators";
+  let description = [{
+      This converts AnonymousIterator ops to Iterator, thus giving them a name.
+      For example, this will convert
+        %0 = "tf.AnonymousIteratorV3"() {...}
+      to
+        %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
+  }];
+  let constructor = "TF::CreateNameAnonymousIteratorsPass()";
+}

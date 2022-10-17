@@ -6656,15 +6656,32 @@ func ConcatenateDataset(scope *Scope, input_dataset tf.Output, another_dataset t
 	return op.Output(0)
 }
 
+// ConfigureAndInitializeGlobalTPUAttr is an optional argument to ConfigureAndInitializeGlobalTPU.
+type ConfigureAndInitializeGlobalTPUAttr func(optionalAttr)
+
+// ConfigureAndInitializeGlobalTPUUseTfrtHostRuntime sets the optional use_tfrt_host_runtime attribute to value.
+// If not specified, defaults to true
+func ConfigureAndInitializeGlobalTPUUseTfrtHostRuntime(value bool) ConfigureAndInitializeGlobalTPUAttr {
+	return func(m optionalAttr) {
+		m["use_tfrt_host_runtime"] = value
+	}
+}
+
 // An op that sets up the centralized structures for a distributed TPU system.
 //
 // Returns A vector containing the global TPU id of each TPU on the host.
-func ConfigureAndInitializeGlobalTPU(scope *Scope) (output tf.Output) {
+func ConfigureAndInitializeGlobalTPU(scope *Scope, optional ...ConfigureAndInitializeGlobalTPUAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ConfigureAndInitializeGlobalTPU",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -50923,7 +50940,9 @@ func TensorArrayConcatV3ElementShapeExcept0(value tf.Shape) TensorArrayConcatV3A
 //
 // and concatenates them into a Tensor of shape:
 //
-//	```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```
+//	```
+//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)
+//	```
 //
 // All elements must have the same shape (excepting the first dimension).
 //
@@ -51306,21 +51325,29 @@ func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths
 //
 // Assuming that `lengths` takes on values
 //
-//	```(n0, n1, ..., n(T-1))```
+//	```
+//	(n0, n1, ..., n(T-1))
+//	```
 //
 // and that `value` has shape
 //
-//	```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+//	```
+//	(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)
+//	```,
 //
 // this splits values into a TensorArray with T tensors.
 //
 // TensorArray index t will be the subtensor of values with starting position
 //
-//	```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+//	```
+//	(n0 + n1 + ... + n(t-1), 0, 0, ...)
+//	```
 //
 // and having size
 //
-//	```nt x d0 x d1 x ...```
+//	```
+//	nt x d0 x d1 x ...
+//	```
 //
 // Arguments:
 //

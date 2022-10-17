@@ -87,7 +87,7 @@ This op captures all needed live-in values.
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [Pure, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.

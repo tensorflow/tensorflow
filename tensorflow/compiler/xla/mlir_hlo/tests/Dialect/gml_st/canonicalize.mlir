@@ -205,7 +205,7 @@ func.func @fold_tensor_cast(%in: tensor<4x600xf32>,
   %result = gml_st.loop (%i) = (%c0) to (%c600) step (%c4)
       ins (%in_ = %in_cast: tensor<?x600xf32>)
       outs (%out_ = %out_cast: tensor<?xf32>)
-      iterators["reduction"] {
+      iterators[#gml_st.iterator_type<reduction>] {
     %dim_in = tensor.dim %in_, %c0 : tensor<?x600xf32>
     %dim_out = tensor.dim %out_, %c0 : tensor<?xf32>
 
@@ -261,7 +261,8 @@ func.func @remove_empty_loop(%in: tensor<16xf32>, %out: tensor<f32>,
   %0 = gml_st.loop (%i, %j) = (%c0, %c0) to (%c16, %c0) step (%c4, %c4)
       ins (%in_ = %in: tensor<16xf32>)
       outs (%out_ = %out: tensor<f32>, %buf_ = %buf: memref<f32>)
-      iterators["reduction", "parallel"] {
+      iterators[#gml_st.iterator_type<reduction>,
+                #gml_st.iterator_type<parallel>] {
     %in_sub = tensor.extract_slice %in_[%i][4][1]
       : tensor<16xf32> to tensor<4xf32>
     %result = func.call @reduce(%in_sub, %out_):

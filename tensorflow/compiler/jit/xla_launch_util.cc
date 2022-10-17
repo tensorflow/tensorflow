@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -204,9 +206,32 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
-        var ? absl::make_optional(*var->tensor()) : std::nullopt;
+        var ? std::make_optional(*var->tensor()) : std::nullopt;
   }
   return OkStatus();
+}
+
+StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+    OpKernelContext* ctx) {
+  std::vector<int> constant_input_indices;
+  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
+      &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
+  if (!absl::c_all_of(constant_input_indices, [&](int idx) {
+        return ctx->input_memory_type(idx) == HOST_MEMORY;
+      })) {
+    return errors::Internal("Unexpected device placement for a constant input");
+  }
+  return constant_input_indices;
+}
+
+std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
+  std::vector<int> out;
+  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+    if (ctx->input(i).dtype() == DT_RESOURCE) {
+      out.push_back(i);
+    }
+  }
+  return out;
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(

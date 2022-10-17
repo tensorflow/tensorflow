@@ -49,9 +49,7 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "mlir/Transforms/LocationSnapshot.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/location_metadata.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/gpu_passes.h"
@@ -141,6 +139,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_computation_deduplicator.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
+#include "tensorflow/compiler/xla/service/hlo_constant_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -187,10 +186,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/blocking_counter.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -199,6 +198,8 @@ limitations under the License.
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -294,7 +295,7 @@ bool ConvIsLowerable(HloInstruction* conv) {
 }  // end anonymous namespace
 
 using OwnedThunkSequence = GpuExecutable::OwnedThunkSequence;
-using OwnedJitRtProgram = GpuExecutable::OwnedJitRtProgram;
+using OwnedJitRtProgram = GpuExecutable::OwnedXlaRuntimeProgram;
 
 StatusOr<std::unique_ptr<Executable>>
 GpuXlaRuntimeAotCompilationResult::LoadExecutable(
@@ -394,6 +395,7 @@ Status GpuCompiler::OptimizeHloModule(
       spmd_simplify.AddPass<ConditionalSimplifier>();
       spmd_simplify.AddPass<HloDCE>();
 
+      spmd_pipeline.AddPass<HloConstantSplitter>();
       spmd_pipeline.AddPass<ShardingPropagation>(
           /*is_spmd=*/true, /*propagate_metadata=*/false,
           hlo_module->config().allow_spmd_sharding_propagation_to_output());
@@ -845,9 +847,9 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
   uint64_t start_usecs = tsl::Env::Default()->NowMicros();
-  tensorflow::profiler::TraceMe activity(
+  tsl::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
-      tensorflow::profiler::TraceMeLevel::kInfo);
+      tsl::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
       OptimizeHloModule(module.get(), stream_exec, options.device_allocator));
 
@@ -938,7 +940,7 @@ static StatusOr<OwnedJitRtProgram> LowerToJitRt(
 
   // TODO(b/232033540): Pass MLIR module directly to JitRt to instantiate an
   // executable, without forcing serialization.
-  return std::make_unique<GpuExecutable::JitRtProgram>(
+  return std::make_unique<GpuExecutable::XlaRuntimeProgram>(
       entry_function_name.str(), os.str(), buffer_sizes.vec(),
       hlo_module->config().debug_options());
 }
@@ -1117,7 +1119,7 @@ static Status CompileModuleToLlvmIrImpl(
     RecordHloToLlvmDuration(end_usecs - start_usecs);
   }
 
-  if (IsJitRtExecutableEnabled(hlo_module->config())) {
+  if (IsXlaRuntimeExecutableEnabled(hlo_module->config())) {
     std::vector<int64_t> buffer_sizes;
     llvm::transform(
         results->allocations, std::back_inserter(buffer_sizes),
@@ -1538,9 +1540,10 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     opts.compiler.symbols_binding = runtime::ToSymbolsBinding(
         PopulateXlaGpuCustomCalls, PopulateXlaGpuTypeIdNames);
 
-    opts.compiler.create_compilation_pipeline = [copts](mlir::PassManager& pm) {
-      runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
-    };
+    opts.compiler.create_compilation_pipeline =
+        [copts](xla::runtime::PassManager& passes) {
+          runtime::CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+        };
 
     // Instantiate new JitExecutable from the MLIR source.
     auto jit_executable = runtime::JitExecutable::Instantiate(

@@ -43,7 +43,7 @@ ENTRY main {
 )";
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0, 0}));
 
-  auto module = ParseAndReturnVerifiedModule(hlo_text).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_text).value();
   std::unique_ptr<HloModule> compiled_module =
       backend()
           .compiler()

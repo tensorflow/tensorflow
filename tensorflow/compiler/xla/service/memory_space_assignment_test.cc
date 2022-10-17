@@ -5183,6 +5183,88 @@ ENTRY entry {
   EXPECT_EQ(cp_done1->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       TupleInPlaceAsyncCollectivePermuteSameBufferRoot) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  param2 = bf16[48]{0} parameter(1)
+  negate0.1 = bf16[48]{0} negate(param2)
+  negate0.2 = bf16[48]{0} negate(param2)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0.0 = (s32[]) tuple(const0)
+  tuple0 = ((s32[]), (s32[])) tuple(tuple0.0, tuple0.0)
+  tuple1.0 = (s32[]) tuple(const1)
+  tuple1 = ((s32[]), (s32[])) tuple(tuple1.0, tuple1.0)
+  tuple2 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.1, negate0.1)
+  tuple3 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.2, negate0.2)
+  collective-permute-start.1 = ((bf16[48]{0}, bf16[48]{0}), (bf16[48]{0}, bf16[48]{0}), u32[], u32[]) collective-permute-start(tuple2, tuple3, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  ROOT collective-permute-done.1 = (bf16[48]{0}, bf16[48]{0}) collective-permute-done(collective-permute-start.1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* cp_done1 =
+      FindInstruction(module.get(), "collective-permute-done.1");
+  EXPECT_EQ(cp_done1->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
+  ShapeUtil::ForEachSubshape(
+      cp_done1->shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.IsArray() && subshape.has_layout()) {
+          EXPECT_EQ(subshape.layout().memory_space(), kDefaultMemorySpace);
+        }
+      });
+}
+
+TEST_P(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
+  absl::string_view hlo_string = R"(
+ HloModule inplace_collective_permute, is_scheduled=true
+
+ ENTRY %inplace_collective_permute {
+   %param.0 = u32[8,1,1] parameter(0), sharding={replicated}
+   %constant.1000 = u32[] constant(1000)
+   %broadcast.1 = u32[8,1,1] broadcast(u32[] %constant.1000), dimensions={}
+   %broadcast.2 = u32[8,1,1] broadcast(u32[] %constant.1000), dimensions={}
+   %tuple.input = (u32[8,1,1], u32[8,1,1]) tuple(u32[8,1,1] %param.0, u32[8,1,1] %param.0)
+   %tuple.output = (u32[8,1,1], u32[8,1,1]) tuple(u32[8,1,1] %broadcast.1, u32[8,1,1] %broadcast.2)
+   %constant.0 = s32[] constant(0)
+   %constant.1 = s32[] constant(1)
+   %constant.2 = s32[] constant(2)
+   %indices.0.0.0 = (s32[], s32[], s32[]) tuple(s32[] %constant.0, s32[] %constant.0, s32[] %constant.0)
+   %indices.1.0.0 = (s32[], s32[], s32[]) tuple(s32[] %constant.1, s32[] %constant.0, s32[] %constant.0)
+   %indices.2.0.0 = (s32[], s32[], s32[]) tuple(s32[] %constant.2, s32[] %constant.0, s32[] %constant.0)
+   %indices.000.100 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple((s32[], s32[], s32[]) %indices.0.0.0, (s32[], s32[], s32[]) %indices.1.0.0)
+   %indices.000.200 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple((s32[], s32[], s32[]) %indices.0.0.0, (s32[], s32[], s32[]) %indices.2.0.0)
+   %indices.000.0 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple((s32[], s32[], s32[]) %indices.0.0.0, (s32[], s32[], s32[]) %indices.0.0.0)
+   %input.indices = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.100, ((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.0)
+   %output.indices = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.100, ((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.200)
+   %collective-permute-start = ((u32[8,1,1], u32[8,1,1]), (u32[8,1,1], u32[8,1,1]), u32[], u32[]) collective-permute-start((u32[8,1,1], u32[8,1,1]) %tuple.input, (u32[8,1,1], u32[8,1,1]) %tuple.output, (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) %input.indices, (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) %output.indices), channel_id=42, source_target_pairs={{0,1},{1,0},{1,0},{0,1}}, slice_sizes={{4},{4},{4},{4}}
+   ROOT %collective-permute-done = (u32[8,1,1], u32[8,1,1]) collective-permute-done(((u32[8,1,1], u32[8,1,1]), (u32[8,1,1], u32[8,1,1]), u32[], u32[]) %collective-permute-start), sharding={replicated}
+ }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* cp_done =
+      FindInstruction(module.get(), "collective-permute-done");
+  EXPECT_EQ(cp_done->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
+  ShapeUtil::ForEachSubshape(
+      cp_done->shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.IsArray() && subshape.has_layout()) {
+          EXPECT_EQ(subshape.layout().memory_space(), kDefaultMemorySpace);
+        }
+      });
+}
+
 TEST_P(MemorySpaceAssignmentTest, ReservedScopedMemory) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true

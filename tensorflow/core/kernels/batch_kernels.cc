@@ -895,7 +895,7 @@ class UnbatchGradResource : public ResourceBase {
     const Tensor& batch_key_t = context->input(3);
 
     mutex_lock ml(mu_);
-    if (batch_key_t.NumElements() != 1) {
+    if (!TensorShapeUtils::IsScalar(batch_key_t.shape())) {
       return errors::InvalidArgument("Expected `id` to be scalar. Received ",
                                      batch_key_t.DebugString());
     }

@@ -18,13 +18,16 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Matchers.h"
 
 namespace mlir {
 namespace gml_st {
@@ -113,11 +116,7 @@ static void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, LoopOp mainLoop,
   });
 }
 
-bool isZero(Value v) {
-  if (auto cst = v.getDefiningOp<arith::ConstantIndexOp>())
-    return cst.value() == 0;
-  return false;
-}
+bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 using ::mlir::linalg::LinalgOp;
 
 void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
@@ -201,10 +200,10 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
                                         allShapeSizes, tileSizesFold);
 
   SmallVector<Attribute, 4> iteratorTypes;
-  for (const auto &attr :
-       enumerate(op.iterator_types().cast<ArrayAttr>().getValue())) {
+  for (const auto &attr : enumerate(op.getIteratorTypesArray())) {
     if (loopIndexToRangeIndex.count(attr.index()))
-      iteratorTypes.push_back(attr.value());
+      iteratorTypes.push_back(IteratorTypeAttr::get(
+          b.getContext(), utils::symbolizeIteratorType(attr.value()).value()));
   }
 
   // 2. Create the tiled loops.

@@ -80,7 +80,7 @@ struct DetensorizeLinalgOp : public OpConversionPattern<GenericOp> {
 
     auto linalg_op = rewriter.create<GenericOp>(
         loc, op.getResultTypes(), inputs, op.getOutputs(),
-        rewriter.getAffineMapArrayAttr(indexing_maps), op.iterator_types(),
+        rewriter.getAffineMapArrayAttr(indexing_maps), op.getIteratorTypes(),
         mlir::StringAttr(), mlir::StringAttr());
     mlir::Region& region = linalg_op.getRegion();
     rewriter.inlineRegionBefore(op.getBodyRegion(), region, region.end());

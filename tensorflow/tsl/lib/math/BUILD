@@ -1,5 +1,8 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 package(
     default_visibility = [
@@ -23,7 +26,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "math_util_test",
     size = "small",
     srcs = [

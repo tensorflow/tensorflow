@@ -20,6 +20,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -95,18 +96,77 @@ void AffineDequantize(const ConstTensorTin& input_tensor, float scale,
 // This function is used for dynamic range quantization in hybrid (float x qint)
 // kernels.
 //
-// This function behavior aligns with TFLite AsymmetricQuantize() to achieve
-// feature parity with TFLite which is required since supporting mobile
-// executions is the one of the major use cases. The behavior is same except for
-// following difference:
-// TFLite AsymmetricQuantize() uses
-// round(input / scale + zero_point),
-// while AffineQuantize() uses
-// floor(input_val * (1./scale) + 0.5) + zero_point
-void AsymmetricQuantize(const Tensor& tensor, int apply_offset, int apply_size,
-                        int32_t quantization_min_val,
-                        int32_t quantization_max_val, float& scale,
-                        int32_t& zero_point, Tensor& quantized_tensor);
+// This function behavior aligns with TFLite AsymmetricQuantize()
+// (https://github.com/tensorflow/tensorflow/blob/779d3824c8b38a622773940011ced0388697b951/tensorflow/lite/kernels/internal/reference/portable_tensor_utils.cc#L72)
+// to achieve feature parity with TFLite which is required since supporting
+// mobile executions is the one of the major use cases. The behavior is same
+// except for following difference: TFLite AsymmetricQuantize() uses round(input
+// / scale + zero_point), while AffineQuantize() uses floor(input_val *
+// (1./scale) + 0.5) + zero_point
+template <typename ConstTensorTin, typename TensorTout>
+Status AsymmetricQuantize(const ConstTensorTin& input_tensor,
+                          int32_t quantization_min_val,
+                          int32_t quantization_max_val, float& scale,
+                          int32& zero_point, TensorTout quantized_tensor) {
+  if (quantization_min_val >= quantization_max_val) {
+    // NOLINTNEXTLINE
+    return errors::InvalidArgument(
+        "quantization_min_val must be smaller than quantization_max_val. "
+        "Given ",
+        quantization_min_val, ", ", quantization_max_val);
+  }
+
+  Eigen::Tensor<float, 0, Eigen::RowMajor> input_tensor_min =
+      input_tensor.minimum();
+  Eigen::Tensor<float, 0, Eigen::RowMajor> input_tensor_max =
+      input_tensor.maximum();
+  const double rmin = static_cast<double>(std::min(0.0f, input_tensor_min()));
+  const double rmax = static_cast<double>(std::max(0.0f, input_tensor_max()));
+  const double qmin_double = quantization_min_val;
+  const double qmax_double = quantization_max_val;
+
+  float inv_scale = 0;
+  scale = (rmax - rmin) / (qmax_double - qmin_double);
+  if (rmax - rmin != 0) {
+    // Re-calculate the inverse instead of using (1./scale), to avoid loss of
+    // precision.
+    inv_scale = (qmax_double - qmin_double) / (rmax - rmin);
+  }
+  if (scale == 0 || !std::isfinite(inv_scale)) {
+    quantized_tensor.setZero();
+    scale = 1.0;
+    zero_point = 0;
+    return OkStatus();
+  }
+
+  // Using the scale calculated from the quantization range and data range,
+  // calculate zero point from quantization min and quantization max.
+  // Among those two, choose the zero point that has smaller error.
+  const double zero_point_from_min = qmin_double - rmin / scale;
+  const double zero_point_from_max = qmax_double - rmax / scale;
+  const double zero_point_from_min_error =
+      std::abs(qmin_double) + std::abs(rmin / scale);
+  const double zero_point_from_max_error =
+      std::abs(qmax_double) + std::abs(rmax / scale);
+  const double zero_point_double =
+      zero_point_from_min_error < zero_point_from_max_error
+          ? zero_point_from_min
+          : zero_point_from_max;
+
+  int8_t nudged_zero_point = 0;
+  if (zero_point_double <= qmin_double) {
+    nudged_zero_point = quantization_min_val;
+  } else if (zero_point_double >= qmax_double) {
+    nudged_zero_point = quantization_max_val;
+  } else {
+    nudged_zero_point = static_cast<int8_t>(round(zero_point_double));
+  }
+  zero_point = nudged_zero_point;
+
+  AffineQuantize(input_tensor, inv_scale, zero_point, quantization_min_val,
+                 quantization_max_val, quantized_tensor);
+  return OkStatus();
+}
 
 // Given double_multiplier, quantize it where it is represented by two int32_t,
 // quantized_multiplier and shift.

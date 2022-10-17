@@ -148,7 +148,7 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/mlir_hlo:hlo_legalize_to_memref",
+        "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:type_conversion",

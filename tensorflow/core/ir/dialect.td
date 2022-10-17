@@ -172,7 +172,7 @@ def TFGraphDialect : Dialect {
   let useDefaultAttributePrinterParser = 1;
   let hasNonDefaultDestructor = 1;
   let hasOperationInterfaceFallback = 1;
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 #endif // TFG_DIALECT

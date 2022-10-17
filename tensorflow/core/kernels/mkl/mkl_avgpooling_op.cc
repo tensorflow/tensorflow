@@ -70,9 +70,11 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       Tensor* output_tensor = nullptr;
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
+      // Check for corner case - if output is an empty tensor, return.
+      TensorShape out_tf_shape = MklDnnDimsToTFShape(output_dims_mkl_order);
 
       // If input is an empty tensor, allocate an empty output tensor.
-      if (input_tensor.NumElements() == 0) {
+      if (input_tensor.NumElements() == 0 || out_tf_shape.num_elements() == 0) {
         const int kOutputIndex = 0;
         this->AllocateEmptyOutputTensor(context, kOutputIndex, &pool_params,
                                         output_dims_mkl_order, &output_tensor);

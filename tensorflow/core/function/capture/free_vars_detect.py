@@ -47,6 +47,16 @@ def _parse_and_analyze(func):
   return node
 
 
+def _handle_wrap_partial_func(obj):
+  """Handle wrapped function and partial functions."""
+  while hasattr(obj, "__wrapped__"):
+    obj = obj.__wrapped__
+  if isinstance(obj, functools.partial) or isinstance(obj,
+                                                      functools.partialmethod):
+    obj = obj.func
+  return obj
+
+
 def _get_self_obj_from_closure(fn):
   """Get the object that `self` keyword refers to within a function.
 
@@ -92,7 +102,11 @@ def _get_self_obj_from_closure(fn):
   if fn.__closure__:
     for cls_name in qual_name:
       for cell in fn.__closure__:
-        closure = cell.cell_contents
+        try:
+          closure = cell.cell_contents
+        except ValueError:
+          # Continue when cell is empty and its content is unavailable
+          continue
         if inspect.isclass(type(closure)):
           if type(closure).__name__ == cls_name:
             obj = closure
@@ -103,7 +117,18 @@ def _get_self_obj_from_closure(fn):
 
 def _search_callable_free_vars(fn):
   """Search free vars from a callable object."""
-  node = _parse_and_analyze(fn)
+  fn = _handle_wrap_partial_func(fn)
+
+  try:
+    node = _parse_and_analyze(fn)
+  except ValueError:
+    # When source code unavailable, return empty result
+    return []
+  except NotImplementedError:
+    # Autograph cannot handle multiple lambda functions with same line number
+    # and args name.
+    return []
+
   scope = anno.getanno(node, anno.Static.SCOPE)
   free_vars_all = list(scope.free_vars)
   namespace = inspect_utils.getnamespace(fn)
@@ -115,7 +140,7 @@ def _search_callable_free_vars(fn):
     if var.is_simple():
       if base in builtins.__dict__.keys():
         continue
-      obj = namespace[base]
+      obj = namespace.get(base, None)
     else:
       assert var.is_composite()
       # A compositve qualified name `QN` can be either an attr or a subscript
@@ -137,7 +162,7 @@ def _search_callable_free_vars(fn):
           attr = str(var.qn[1])
           # For method, access the object that `self` refers to via __self__
           if hasattr(fn, "__self__"):
-            obj = getattr(fn.__self__, attr)
+            obj = getattr(fn.__self__, attr, None)
           # For function (not method) `self` usage under enclosing class scope
           elif hasattr(fn, "__closure__"):
             self_obj = _get_self_obj_from_closure(fn)
@@ -153,8 +178,7 @@ def _search_callable_free_vars(fn):
     if (inspect.ismodule(obj) or inspect.isclass(obj)):
       continue
     elif inspect.isfunction(obj) or inspect.ismethod(obj):
-      while hasattr(fn, "__wrapped__"):
-        obj = obj.__wrapped__
+      obj = _handle_wrap_partial_func(obj)
       if obj.__module__ != fn.__module__:
         continue
       filtered.append(FreeVar(str(var), True, obj))
@@ -195,8 +219,7 @@ def _detect_function_free_vars(fn):
       fn, types.MethodType
   ), f"The input should be of Python function type. Got type: {type(fn)}."
 
-  while hasattr(fn, "__wrapped__"):
-    fn = fn.__wrapped__
+  fn = _handle_wrap_partial_func(fn)
 
   queue = collections.deque([fn])
   fn_map = dict()
@@ -221,22 +244,14 @@ def _detect_function_free_vars(fn):
   return fn_map
 
 
-def generate_logging(fn, fn_threshold=5, var_threshold=10):
+def generate_free_var_logging(fn, fn_threshold=5, var_threshold=10):
   """Generate loggings of free vars from fn."""
-  if fn is None:
+  # Now only detect free vars for function/method
+  if not (isinstance(fn, types.FunctionType) or isinstance(
+      fn, types.MethodType) or isinstance(fn, functools.partial) or
+          isinstance(fn, functools.partialmethod)):
     return None
-  assert isinstance(fn, types.FunctionType) or isinstance(
-      fn, types.MethodType
-  ) or isinstance(fn, functools.partial) or isinstance(
-      fn, functools.partialmethod
-  ), f"The input should be of Python function/method type. Got type: {type(fn)}."
-
-  while hasattr(fn, "__wrapped__"):
-    fn = fn.__wrapped__
-
-  if isinstance(fn, functools.partial) or isinstance(fn,
-                                                     functools.partialmethod):
-    fn = fn.func
+  fn = _handle_wrap_partial_func(fn)
 
   fn_vars_map = _detect_function_free_vars(fn)
   # If not free vars detected, return None
@@ -288,3 +303,30 @@ def generate_logging(fn, fn_threshold=5, var_threshold=10):
     logging_txt.append(ellipsis_line)
 
   return "\n".join(logging_txt)
+
+
+class FreevarDetector():
+  """Generate logging string for free vars detection and cache results."""
+
+  def __init__(self):
+    self.cache = dict()
+
+  def logging_free_vars(self, fn):
+    """Return logging string for free vars detection."""
+    if not (hasattr(fn, "__module__") and hasattr(fn, "__qualname__")):
+      return None
+
+    fn_key = (fn.__module__, fn.__qualname__)
+
+    # To prevent log spam, only generate logging once for each function
+    if fn_key in self.cache:
+      return None
+
+    try:
+      logging_txt = generate_free_var_logging(fn)
+    except Exception:  # pylint: disable=broad-except
+      # Only for logging purpose, do not raise errors to users
+      logging_txt = None
+    self.cache[fn_key] = logging_txt
+
+    return self.cache[fn_key]

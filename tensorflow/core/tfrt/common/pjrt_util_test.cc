@@ -28,11 +28,14 @@ namespace {
 using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 
-TEST(PjRtUtilTest, SetAndDeletePjRtClient) {
+TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
   TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
       DEVICE_CPU,
       xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
           .value()));
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client,
+                          GetPjRtClientFromTFGlobalResourceManager(DEVICE_CPU));
+  EXPECT_THAT(pjrt_client, ::testing::NotNull());
   TF_ASSERT_OK(
       DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_CPU));
 }
@@ -58,6 +61,16 @@ TEST(PjRtUtilTest, DeleteNoPjRtStateOk) {
                                         kPjRtStateResourceName);
   TF_ASSERT_OK(
       DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_TPU));
+}
+
+TEST(PjRtStateResourceManagerTest, GetNotExistPjRtClient) {
+  TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
+      DEVICE_CPU,
+      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
+          .value()));
+  EXPECT_THAT(GetPjRtClientFromTFGlobalResourceManager(DEVICE_TPU),
+              StatusIs(error::NOT_FOUND,
+                       HasSubstr("PjRt client not found for device type")));
 }
 
 }  // namespace

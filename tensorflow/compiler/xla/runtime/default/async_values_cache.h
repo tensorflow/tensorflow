@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/DenseMap.h"
+#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
 
@@ -30,6 +31,7 @@ using tfrt::AsyncValueRef;
 using tfrt::Chain;
 using tfrt::MakeConstructedAsyncValueRef;
 using tfrt::MakeUnconstructedAsyncValueRef;
+using tfrt::RunWhenReady;
 
 template <typename Key, typename Value>
 class AsyncValuesCache {

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
+#include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 namespace mlir {
 namespace tfg {
@@ -57,7 +58,7 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
     SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
     for (int64_t &dim : dims)
       if (dim < -1) dim = -1;
-    inferred = RankedTensorType::get(dims, element_type);
+    inferred = GetTypeFromTFTensorShape(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }

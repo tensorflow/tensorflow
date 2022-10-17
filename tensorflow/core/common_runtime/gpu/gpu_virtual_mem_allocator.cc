@@ -44,7 +44,7 @@ StatusOr<bool> SupportsVirtualAddressManagement(GpuDeviceHandle device) {
 }
 
 Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
-                                            PlatformDeviceId gpu_id) {
+                                            tsl::PlatformDeviceId gpu_id) {
   TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
                       SupportsVirtualAddressManagement(device));
   if (!supports_virtual_address_management) {
@@ -62,8 +62,8 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
 GpuVirtualMemAllocator::Create(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,
-    PlatformDeviceId gpu_id, size_t virtual_address_space_size,
-    const std::vector<PlatformDeviceId>& peer_gpu_ids) {
+    tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
+    const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids) {
   std::vector<GpuDeviceHandle> access_gpu_handles;
   access_gpu_handles.reserve(peer_gpu_ids.size() + 1);
 
@@ -111,7 +111,7 @@ GpuVirtualMemAllocator::Create(
 GpuVirtualMemAllocator::GpuVirtualMemAllocator(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,
-    PlatformDeviceId gpu_id,
+    tsl::PlatformDeviceId gpu_id,
     const std::vector<GpuDeviceHandle> access_gpu_handles,
     GpuDriver::VmemSpan vmem, size_t granularity)
     : SubAllocator(alloc_visitors, free_visitors),

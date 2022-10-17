@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -154,10 +155,86 @@ inline constexpr bool IsArrayType(PrimitiveType primitive_type) {
 }
 
 // Returns the number of bits in the representation for a given type.
-int BitWidth(PrimitiveType type);
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline int BitWidth(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return 1;
+
+    case S8:
+    case U8:
+      return 8;
+
+    case S16:
+    case U16:
+    case F16:
+    case BF16:
+      return 16;
+
+    case U32:
+    case S32:
+    case F32:
+      return 32;
+
+    case U64:
+    case S64:
+    case F64:
+    case C64:
+      return 64;
+
+    case C128:
+      return 128;
+
+    case TUPLE:
+      LOG(FATAL) << "TUPLE is an invalid type for BitWidth";
+
+    case OPAQUE_TYPE:
+      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for BitWidth";
+
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << type;
+  }
+}
 
 // Returns the number of bytes in the representation for a given type.
-int ByteWidth(PrimitiveType type);
+ABSL_ATTRIBUTE_ALWAYS_INLINE inline int ByteWidth(PrimitiveType type) {
+  switch (type) {
+    case PRED:
+      return 1;
+
+    case S8:
+    case U8:
+      return 1;
+
+    case S16:
+    case U16:
+    case F16:
+    case BF16:
+      return 2;
+
+    case U32:
+    case S32:
+    case F32:
+      return 4;
+
+    case U64:
+    case S64:
+    case F64:
+    case C64:
+      return 8;
+
+    case C128:
+      return 16;
+
+    case TUPLE:
+      LOG(FATAL) << "TUPLE is an invalid type for ByteWidth";
+
+    case OPAQUE_TYPE:
+      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for ByteWidth";
+
+    default:
+      LOG(FATAL) << "Unhandled primitive type " << type;
+  }
+}
 
 PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 

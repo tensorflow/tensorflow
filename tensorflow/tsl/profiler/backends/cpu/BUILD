@@ -1,6 +1,6 @@
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 cc_library(
@@ -62,6 +62,62 @@ tf_cc_test(
         "//tensorflow/tsl/profiler/utils:math_utils",
         "//tensorflow/tsl/profiler/utils:time_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "annotation_stack",
+    hdrs = ["annotation_stack.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/tsl/profiler:internal",
+    ],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+    ] + if_static([
+        ":annotation_stack_impl",
+    ]),
+)
+
+cc_library(
+    name = "annotation_stack_impl",
+    srcs = [
+        "annotation_stack.cc",
+        "annotation_stack.h",
+    ],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler/backends/cpu:__pkg__",
+        "//tensorflow/tsl/profiler:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "host_tracer_utils",
+    srcs = ["host_tracer_utils.cc"],
+    hdrs = ["host_tracer_utils.h"],
+    copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/core/profiler:internal",
+        "//tensorflow/tsl/profiler:internal",
+    ],
+    deps = [
+        ":traceme_recorder",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/utils:parse_annotation",
+        "//tensorflow/tsl/profiler/utils:tf_op_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_builder",
+        "//tensorflow/tsl/profiler/utils:xplane_utils",
         "@com_google_absl//absl/strings",
     ],
 )

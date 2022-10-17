@@ -99,6 +99,7 @@ TEST(Types, TestTypeNames) {
   EXPECT_EQ(type_name(kTfLiteString), "STRING");
   EXPECT_EQ(type_name(kTfLiteResource), "RESOURCE");
   EXPECT_EQ(type_name(kTfLiteVariant), "VARIANT");
+  EXPECT_EQ(type_name(kTfLiteInt4), "INT4");
 }
 
 TEST(Quantization, TestQuantizationFree) {

@@ -408,8 +408,7 @@ static StatusOr<runtime::MemrefDesc> BufferToMemref(
 // runtime signature.
 Status XlaRuntimeCpuExecutable::Execute(
     const std::vector<BufferDesc>& descriptor_table) {
-  const runtime::FunctionType& signature =
-      default_executable_->runtime_signature();
+  const runtime::FunctionType& signature = GetExecutable().runtime_signature();
 
   size_t num_arguments = xla_framework_mapping_.inputs.size();
   if (xla_framework_mapping_.output_is_tuple) {
@@ -464,8 +463,8 @@ Status XlaRuntimeCpuExecutable::Execute(
   // Skip verification. The MemrefDesc's we created above come from the runtime
   // signature; verifying them against the same signature would be redundant.
   if (auto status =
-          default_executable_->InitializeCallFrame(arguments, &call_frame,
-                                                   /*verify_arguments=*/false);
+          GetExecutable().InitializeCallFrame(arguments, &call_frame,
+                                              /*verify_arguments=*/false);
       !status.ok()) {
     return InternalError("Failed to initialize call frame: %s.",
                          status.message());
@@ -481,8 +480,8 @@ Status XlaRuntimeCpuExecutable::Execute(
       reinterpret_cast<runtime::AsyncTaskRunner*>(0xdeadbeef);
 
   // Execute with the prepared call frame.
-  default_executable_->Execute(call_frame, opts);
-  if (auto status = default_executable_->ReturnResults(converter, &call_frame);
+  GetExecutable().Execute(call_frame, opts);
+  if (auto status = GetExecutable().ReturnResults(converter, &call_frame);
       !status.ok()) {
     return InternalError("Failed to execute XLA Runtime executable: %s.",
                          status.message());
