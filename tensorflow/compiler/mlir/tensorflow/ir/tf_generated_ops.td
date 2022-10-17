@@ -18612,21 +18612,29 @@ Split the data from the input value into TensorArray elements.
   let description = [{
 Assuming that `lengths` takes on values
 
-  ```(n0, n1, ..., n(T-1))```
+  ```
+  (n0, n1, ..., n(T-1))
+  ```
 
 and that `value` has shape
 
-  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+  ```
+  (n0 + n1 + ... + n(T-1) x d0 x d1 x ...)
+  ```,
 
 this splits values into a TensorArray with T tensors.
 
 TensorArray index t will be the subtensor of values with starting position
 
-  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+  ```
+  (n0 + n1 + ... + n(t-1), 0, 0, ...)
+  ```
 
 and having size
 
-  ```nt x d0 x d1 x ...```
+  ```
+  nt x d0 x d1 x ...
+  ```
   }];
 
   let arguments = (ins

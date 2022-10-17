@@ -254,12 +254,6 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
         op, "missing tile size computation function");
   }
 
-  // Implement adding accumulator to the gml_st.parallel terminator.
-  if (options.distribute && llvm::count(op.getLoopIteratorTypes(),
-                                        utils::IteratorType::reduction) > 0) {
-    return failure();
-  }
-
   // 1. Get the range of the loops that are represented by the operation.
   SmallVector<Range> iterationDomain = op.getIterationDomain(rewriter);
   size_t numLoops = iterationDomain.size();
@@ -274,6 +268,7 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
     OpBuilder::InsertionGuard guard(rewriter);
     tileSizeVector = options.tileSizeComputationFn(rewriter, op);
   }
+
   if (tileSizeVector.size() < iterationDomain.size()) {
     auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
     tileSizeVector.append(numLoops - tileSizeVector.size(), zero);

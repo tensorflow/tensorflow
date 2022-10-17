@@ -629,23 +629,6 @@ cc_library(
 )
 
 cc_library(
-    name = "slice_tester",
-    testonly = 1,
-    srcs = ["slice_tester.cc"],
-    hdrs = ["slice_tester.h"],
-    deps = [
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_conversion_utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//testing/base/public:gunit_for_library_testonly",
-        "@flatbuffers",
-    ],
-)
-
-cc_library(
     name = "split_tester",
     testonly = 1,
     srcs = ["split_tester.cc"],
@@ -1547,21 +1530,6 @@ cc_test(
 )
 
 cc_test(
-    name = "signed_quantized_slice_test",
-    srcs = ["signed_quantized_slice_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":slice_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
     name = "signed_quantized_split_test",
     srcs = ["signed_quantized_split_test.cc"],
     linkopts = select({
@@ -1622,14 +1590,14 @@ cc_test(
 )
 
 cc_test(
-    name = "slice_test",
-    srcs = ["slice_test.cc"],
+    name = "split_test",
+    srcs = ["split_test.cc"],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
     deps = [
-        ":slice_tester",
+        ":split_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1645,21 +1613,6 @@ cc_test(
     }),
     deps = [
         ":softmax_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "split_test",
-    srcs = ["split_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":split_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1960,21 +1913,6 @@ cc_test(
     }),
     deps = [
         ":quantized_resize_bilinear_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "unsigned_quantized_slice_test",
-    srcs = ["unsigned_quantized_slice_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":slice_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
