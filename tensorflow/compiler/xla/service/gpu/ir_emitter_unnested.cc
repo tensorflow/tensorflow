@@ -535,54 +535,16 @@ Status IrEmitterUnnested::EmitConstant(mlir::Operation* op) {
   auto module = get_global->getParentOfType<mlir::ModuleOp>();
   auto global = mlir::cast<mlir::memref::GlobalOp>(
       module.lookupSymbol(get_global.getName()));
-
   auto literal = global.getInitialValue()->dyn_cast<mlir::DenseElementsAttr>();
   TF_RET_CHECK(literal);
-
-  const bool should_emit_initializer = literal.getType().getNumElements() <= 1;
-
   TF_ASSIGN_OR_RETURN(int element_bytes,
                       GetElementTypeBytes(literal.getType().getElementType()));
-  llvm::ArrayType* global_type = llvm::ArrayType::get(
-      b_.getInt8Ty(), literal.getType().getNumElements() * element_bytes);
-
-  GpuExecutable::ConstantInfo info;
-  llvm::Constant* initializer;
-  if (should_emit_initializer) {
-    std::vector<uint8_t> content;
-    TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
-    initializer =
-        llvm::ConstantDataArray::get<uint8_t>(module_->getContext(), content);
-  } else {
-    TF_RETURN_IF_ERROR(
-        CopyDenseElementsDataToXlaFormat(literal, &info.content));
-    initializer = llvm::ConstantAggregateZero::get(global_type);
-  }
-
-  // These globals will be looked up by name by GpuExecutable so we need to
-  // give them an external linkage.  Not all of their uses are visible in
-  // the LLVM IR so we can't give then a linkage that merely preserves their
-  // names (like available_externally), we also need to ensure that they stick
-  // around even if they're "unused".
-  //
-  // We may have to be more clever here in the future if we notice that we're
-  // keeping around too many globals because of their linkage.
-  llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-      global_type, /*isConstant=*/should_emit_initializer,
-      llvm::GlobalValue::ExternalLinkage,
-      /*Initializer=*/initializer, global.getSymName(),
-      /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-      /*AddressSpace=*/0,
-      /*isExternallyInitialized=*/false);
-  global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-  module_->getGlobalList().push_back(global_for_const);
-
-  info.symbol_name.assign(global.getSymName().begin(),
-                          global.getSymName().end());
-
-  info.allocation_index =
-      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-  ir_emitter_context_->constants().push_back(std::move(info));
+  std::vector<uint8_t> content;
+  TF_RETURN_IF_ERROR(CopyDenseElementsDataToXlaFormat(literal, &content));
+  ir_emitter_context_->emit_constant(
+      literal.getType().getNumElements(), element_bytes, global.getSymName(),
+      global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt(), content,
+      &b_);
   return OkStatus();
 }
 
