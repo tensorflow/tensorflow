@@ -90,6 +90,7 @@ function generate_tflite_aar {
   popd > /dev/null
   bazel ${CACHE_DIR_FLAG} build -c opt --cxxopt='--std=c++17' \
         --fat_apk_cpu=${TARGET_ARCHS} \
+        --define=xnn_enable_arm_fp16=false \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tmp:tensorflow-lite
 
