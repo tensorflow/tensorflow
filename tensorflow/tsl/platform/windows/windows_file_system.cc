@@ -345,32 +345,29 @@ static std::wstring GetUncPathName(const std::string& path) {
   return GetUncPathName(Utf8ToWideChar(path));
 }
 
-static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool checkExisting = true) {
+static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath) {
 
   WCHAR path[MAX_LONGPATH_LENGTH];
 
   std::wstring uncLinkPath = GetUncPathName(linkPath);
 
-  if(checkExisting) {
-    HANDLE hFile = ::CreateFileW( uncLinkPath.c_str(),
-    // HANDLE hFile = ::CreateFileW( linkPath.c_str(),
-      GENERIC_READ,
-      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,  
-      0,
-      OPEN_EXISTING,
-      FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED,
-      0);
+  HANDLE hFile = ::CreateFileW( uncLinkPath.c_str(),
+    GENERIC_READ,
+    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,  
+    0,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED,
+    0);
 
-    if (INVALID_HANDLE_VALUE != hFile) {
-      auto rcode = GetFinalPathNameByHandleW(hFile, path, MAX_LONGPATH_LENGTH, FILE_NAME_NORMALIZED);
-      ::CloseHandle(hFile);
-      if (rcode) {
-        return std::wstring(path, path + rcode);
-      }
-    } else {
-      DWORD dwErr = GetLastError();
-      LOG(ERROR) << "ERROR: GetSymbolicLinkTarget cannot open file for " << WideCharToUtf8(uncLinkPath).c_str() << " GetLastError: " << dwErr << "\n";
+  if (INVALID_HANDLE_VALUE != hFile) {
+    auto rcode = GetFinalPathNameByHandleW(hFile, path, MAX_LONGPATH_LENGTH, FILE_NAME_NORMALIZED);
+    ::CloseHandle(hFile);
+    if (rcode) {
+      return std::wstring(path, path + rcode);
     }
+  } else {
+    DWORD dwErr = GetLastError();
+    LOG(ERROR) << "ERROR: GetSymbolicLinkTarget cannot open file for " << WideCharToUtf8(uncLinkPath).c_str() << " GetLastError: " << dwErr << "\n";
   }
 
   return uncLinkPath;
@@ -381,7 +378,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
     std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
-  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   LOG(INFO) << "WindowsFileSystem::NewRandomAccessFile 0 => " << WideCharToUtf8(ws_final_fname).c_str() << "\n";
   result->reset();
 
@@ -902,7 +899,7 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
                                       TransactionToken* token, uint64* size) {
   string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
-  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
   LOG(INFO) << "WindowsFileSystem::GetFileSize 0 => " << WideCharToUtf8(ws_final_fname).c_str();
@@ -925,7 +922,7 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
 Status WindowsFileSystem::IsDirectory(const string& fname,
                                       TransactionToken* token) {
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
-  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
+  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   std::string str_final_fname( ws_final_fname.begin(), ws_final_fname.end() );
   TF_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
