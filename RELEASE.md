@@ -63,6 +63,12 @@
 *   TF SavedModel:
     *   Added `fingerprint.pb` to the SavedModel directory. The `fingerprint.pb` file is a protobuf containing the "fingerprint" of the SavedModel. See
         the [RFC](https://github.com/tensorflow/community/pull/415) for more details regarding its design and properties.
+        
+*   TF pip:
+    *   Windows CPU-builds for x86/x64 processors are now built, maintained, tested and released by a third party: Intel. Installing the windows-native
+        pip packages for `tensorflow` or `tensorflow-cpu` would install Intel's tensorflow-intel package. These packages are provided as-is. Tensorflow
+        will use reasonable efforts to maintain the availability and integrity of this pip package. There may be delays if the third party fails to
+        release the pip package. For using TensorFlow GPU on Windows, you will need to install TensorFlow in WSL2.
 
 ## Bug Fixes and Other Changes
 
@@ -284,7 +290,8 @@ This release contains contributions from many people at Google, as well as:
         bfloat16 auto-mixed precision grappler graph optimization pass has been
         renamed from `auto_mixed_precision_mkl` to
         `auto_mixed_precision_onednn_bfloat16`. See example usage
-        [here](https://www.intel.com/content/www/us/en/developer/articles/guide/getting-started-with-automixedprecisionmkl.html).
+        [here](https://www.
+        .com/content/www/us/en/developer/articles/guide/getting-started-with-automixedprecisionmkl.html).
     *   **aarch64 CPUs:** Experimental performance optimizations from
         [Compute Library for the Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary)
         are available through oneDNN in the default Linux aarch64 package (`pip
