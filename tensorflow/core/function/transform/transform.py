@@ -149,11 +149,12 @@ def transform_function(
   with ops.init_scope():
     _replicate_gradient_functions(cf._func_graph, func_graph)  # pylint: disable=protected-access
 
+  # pylint: disable=protected-access
   # Get the new ConcreteFunction.
-  updated_cf = function_lib.ConcreteFunction(func_graph, attrs=fndef.attr)
+  updated_cf = function_lib.ConcreteFunction(
+      func_graph, attrs=fndef.attr, spec=cf._function_spec)
 
   # Set arg_keywords and positional_args
-  # pylint: disable=protected-access
   updated_cf._arg_keywords = cf._arg_keywords
   updated_cf._num_positional_args = cf._num_positional_args
   saved_model_utils.restore_captures(updated_cf, cf.captured_inputs)

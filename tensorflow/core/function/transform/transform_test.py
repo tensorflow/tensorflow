@@ -112,6 +112,24 @@ class TransformTest(test.TestCase, parameterized.TestCase):
         f_g(constant_op.constant(2.0), constant_op.constant(3.0)), 5.0)
 
   @test_util.run_v2_only
+  def test_function_spec(self):
+    @def_function.function
+    def f(x, y):
+      return math_ops.add(x, y, name="x_plus_y")
+
+    args = [1, 1]
+    self.assertEqual(f(*args), 2)
+
+    updated_f = transform.transform_function(
+        f, inputs=args, transform_fn=add_to_multiply)
+    self.assertEqual(updated_f(*args), 1)
+
+    self.assertSequenceAlmostEqual(
+        f.get_concrete_function(
+            *args).pretty_printed_signature().split("\n")[1:],
+        updated_f.pretty_printed_signature().split("\n")[1:])
+
+  @test_util.run_v2_only
   def test_transform_with_custom_gradients(self):
 
     @custom_gradient.custom_gradient
