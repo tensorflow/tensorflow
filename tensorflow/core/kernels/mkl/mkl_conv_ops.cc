@@ -511,6 +511,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     for (auto const& post_op_param : convFwdDims.post_op_params) {
       key_creator.AddAsKey(post_op_param.name);
       if (post_op_param.name == "activation") {
+        key_creator.AddAsKey(post_op_param.alg);
         DCHECK_EQ(post_op_param.param.size(), 3);
         for (auto& param : post_op_param.param) {
           key_creator.AddAsKey(param);
