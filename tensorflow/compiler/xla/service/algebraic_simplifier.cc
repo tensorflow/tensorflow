@@ -5141,6 +5141,29 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     return ReplaceInstruction(dynamic_slice, operand);
   }
 
+  // DynamicSlice clamps the offset. If the slice size has the same size on a
+  // dim as the operand, we can replace it with zero.
+  std::vector<int> same_size_dims_to_simplify;
+  for (int64_t dim = 0; dim < operand->shape().rank(); ++dim) {
+    if (!(dynamic_slice->operand(dim + 1)->IsConstant() &&
+          IsAll(dynamic_slice->operand(dim + 1), 0)) &&
+        operand->shape().dimensions(dim) ==
+            dynamic_slice->shape().dimensions(dim)) {
+      same_size_dims_to_simplify.push_back(dim);
+    }
+  }
+  if (!same_size_dims_to_simplify.empty()) {
+    HloInstruction* zero = MakeScalarLike(dynamic_slice->mutable_operand(1), 0);
+    auto new_operands = dynamic_slice->mutable_operands();
+    for (int64_t dim : same_size_dims_to_simplify) {
+      new_operands[dim + 1] = zero;
+    }
+    return ReplaceInstruction(
+        dynamic_slice,
+        dynamic_slice->AddInstruction(dynamic_slice->CloneWithNewOperands(
+            dynamic_slice->shape(), new_operands)));
+  }
+
   HloInstruction* broadcast_operand;
   if (Match(operand, m::Broadcast(m::Op(&broadcast_operand)))) {
     std::vector<HloInstruction*> new_indices;
@@ -5441,6 +5464,31 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
   // equal to dus_update.
   if (SameShape(dynamic_update_slice, dus_update)) {
     return ReplaceInstruction(dynamic_update_slice, dus_update);
+  }
+
+  // DynamicUpdateSlice clamps the offset. If the slice size has the same size
+  // on a dim as dus_update, we can replace it with zero.
+  std::vector<int> same_size_dims_to_simplify;
+  for (int64_t dim = 0; dim < dus_update->shape().rank(); ++dim) {
+    if (!(dynamic_update_slice->operand(dim + 2)->IsConstant() &&
+          IsAll(dynamic_update_slice->operand(dim + 2), 0)) &&
+        dus_update->shape().dimensions(dim) ==
+            dynamic_update_slice->shape().dimensions(dim)) {
+      same_size_dims_to_simplify.push_back(dim);
+    }
+  }
+  if (!same_size_dims_to_simplify.empty()) {
+    HloInstruction* zero =
+        MakeScalarLike(dynamic_update_slice->mutable_operand(2), 0);
+    auto new_operands = dynamic_update_slice->mutable_operands();
+    for (int64_t dim : same_size_dims_to_simplify) {
+      new_operands[dim + 2] = zero;
+    }
+    return ReplaceInstruction(
+        dynamic_update_slice,
+        dynamic_update_slice->AddInstruction(
+            dynamic_update_slice->CloneWithNewOperands(
+                dynamic_update_slice->shape(), new_operands)));
   }
 
   // If any dimension of dus_update is 0, elide the DynamicUpdateSlice.  This
