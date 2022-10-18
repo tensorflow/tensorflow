@@ -45,6 +45,10 @@ build --action_env=CUDA_TOOLKIT_PATH="/usr/local/cuda-11.8"
 build --action_env=GCC_HOST_COMPILER_PATH="/dt9/usr/bin/gcc"
 build --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib"
 build --crosstool_top="@sigbuild-r2.11_config_cuda//crosstool:toolchain"
+# TensorRT 7 for CUDA 11.1 is compatible with CUDA 11.2, but requires
+# libnvrtc.so.11.1. See https://github.com/NVIDIA/TensorRT/issues/1064.
+# TODO(b/187962120): Remove CUDA-11.1 when upgrading to TensorRT 8.
+build --action_env=LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/tensorrt/lib:/usr/local/cuda-11.1/lib64""
 
 # CUDA: Enable TensorRT optimizations
 # https://developer.nvidia.com/tensorrt
@@ -129,7 +133,10 @@ build:rbe --project_id="tensorflow-testing"
 
 # For Remote build execution -- GPU configuration
 build:rbe --repo_env=REMOTE_GPU_TESTING=1
-test:rbe --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+# TensorRT 7 for CUDA 11.1 is compatible with CUDA 11.2, but requires
+# libnvrtc.so.11.1. See https://github.com/NVIDIA/TensorRT/issues/1064.
+# TODO(b/187962120): Remove when upgrading to TensorRT 8.
+test:rbe --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda-11.1/lib64"
 build:rbe --repo_env=TF_CUDA_CONFIG_REPO="@sigbuild-r2.11_config_cuda"
 build:rbe --repo_env=TF_TENSORRT_CONFIG_REPO="@sigbuild-r2.11_config_tensorrt"
 build:rbe --repo_env=TF_NCCL_CONFIG_REPO="@sigbuild-r2.11_config_nccl"
