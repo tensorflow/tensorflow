@@ -17,6 +17,11 @@ py_library(
 )
 
 py_library(
+    name = "batch_op",
+    srcs = ["batch_op.py"],
+)
+
+py_library(
     name = "counter_op",
     srcs = ["counter_op.py"],
 )
@@ -40,6 +45,7 @@ py_library(
     srcs = ["dataset_ops.py"],
     srcs_version = "PY3",
     deps = [
+        ":batch_op",
         ":counter_op",
         ":filter_op",
         ":from_tensor_slices_op",
