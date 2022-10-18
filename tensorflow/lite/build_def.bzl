@@ -662,11 +662,13 @@ def tflite_custom_c_library(
         **kwargs
     )
 
+# TODO(b/254126721): Move tflite_combine_cc_tests macro to lite/testing/build_def.bzl.
 def tflite_combine_cc_tests(
         name,
         deps_conditions,
         extra_cc_test_tags = [],
         extra_build_test_tags = [],
+        generate_cc_library = False,
         **kwargs):
     """Combine all certain cc_tests into a single cc_test and a build_test.
 
@@ -678,6 +680,10 @@ def tflite_combine_cc_tests(
           combined cc_test.
       extra_build_test_tags: the list of extra tags appended to the created
           corresponding build_test for the combined cc_test.
+      generate_cc_library: if set to True, additionally generates a combined
+          cc_library containing all kernel tests. The generated cc_library
+          will exclude all dependencies in `deps_conditions`, so that users
+          can plugin their own test driver and entry point.
       **kwargs: kwargs to pass to the cc_test rule of the test suite.
     """
     combined_test_srcs = {}
@@ -725,6 +731,15 @@ def tflite_combine_cc_tests(
                 "tflite_portable_build_test",
             ] + extra_build_test_tags,
         )
+        if generate_cc_library:
+            native.cc_library(
+                name = "%s_lib" % name,
+                srcs = list(combined_test_srcs),
+                deps = [d for d in combined_test_deps if d not in deps_conditions],
+                testonly = 1,
+                alwayslink = 1,
+                **kwargs
+            )
 
 def tflite_self_contained_libs_test_suite(name):
     """Indicate that cc_library rules in this package *should* be self-contained.

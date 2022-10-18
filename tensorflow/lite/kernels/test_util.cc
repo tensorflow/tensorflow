@@ -376,6 +376,22 @@ int CountPartitionsExecutedByCpuKernel(const Interpreter* interpreter) {
 
 }  // namespace
 
+/*static*/ AccelerationValidator* AccelerationValidator::Get() {
+  static AccelerationValidator* const validator = new AccelerationValidator();
+  return validator;
+}
+
+void AccelerationValidator::AddCallback(Callback callback) {
+  callbacks_.push_back(std::move(callback));
+}
+
+void AccelerationValidator::Validate(const SingleOpModel& model) const {
+  for (const auto& callback : callbacks_) {
+    if (callback == nullptr) continue;
+    callback(model);
+  }
+}
+
 void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
   std::optional<NnapiAccelerationTestParams> validation_params =
       GetNnapiAccelerationTestParam(test_id);
@@ -407,10 +423,15 @@ void SingleOpModel::ValidateAcceleration() {
   if (GetForceUseNnapi()) {
     ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
   }
+  AccelerationValidator::Get()->Validate(*this);
 }
 
 int SingleOpModel::CountOpsExecutedByCpuKernel() {
   return CountPartitionsExecutedByCpuKernel(interpreter_.get());
+}
+
+int SingleOpModel::CountNumberOfDelegatedPartitions() const {
+  return CountPartitionsDelegatedTo(interpreter_.get(), delegate_);
 }
 
 SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }
