@@ -222,6 +222,10 @@ TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
+  // "Resets" cancellation flag so cancellation happens before this invoke will
+  // not take effect.
+  if (cancellation_enabled_) (void)continue_invocation_.test_and_set();
+
   // Denormal floating point numbers could cause significant slowdown on
   // platforms like x86, therefore, we suppress denormals here to prevent this
   // from happening.
@@ -480,5 +484,15 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus Interpreter::EnableCancellation() {
+  cancellation_enabled_ = true;
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->EnableCancellation(&continue_invocation_));
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
 
 }  // namespace tflite
