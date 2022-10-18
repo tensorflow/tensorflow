@@ -62,9 +62,9 @@ TEST_F(HorizontalInputFusionTest, BasicTest) {
    ROOT tuple.1 = (f16[], f16[]) tuple(fusion.1, fusion.2)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).value());
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();
@@ -206,9 +206,9 @@ TEST_F(HorizontalInputFusionTest, MultiOutputFusionTest) {
        tuple(gte.3, gte.4, gte.5, gte.6)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).value());
 }
 
 TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
@@ -230,9 +230,9 @@ TEST_F(HorizontalInputFusionTest, NonfusionInstrs) {
    ROOT tuple.0 = (f16[], f16[]) tuple(reduce.0, reduce.1)
  }
 )")
-                    .ValueOrDie();
+                    .value();
 
-  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(GpuHorizontalInputFusion().Run(module.get()).value());
 
   const HloInstruction* entry_root =
       module->entry_computation()->root_instruction();

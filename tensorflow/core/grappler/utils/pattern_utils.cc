@@ -23,17 +23,31 @@ namespace tensorflow {
 namespace grappler {
 namespace utils {
 
-inline const bool IsCommutativeOp(const string& op) {
+const bool IsCommutativeOp(const string& op) {
   // TODO(intel-tf): Add more ops to this list if needed.
-  static const auto* commutative_ops =
-      new absl::flat_hash_set<string>({"Add", "AddV2", "Mul"});
-  return commutative_ops->contains(op);
+  std::vector<string> op_list = str_util::Split(op, '|');
+  static const auto* commutative_ops = new absl::flat_hash_set<string>(
+      {"Add", "AddV2", "Mul", "Maximum", "SquaredDifference"});
+  for (const string& op_ : op_list) {
+    if (commutative_ops->contains(op_)) return true;
+  }
+  return false;
 }
 
 // op1 is an op name in the pattern and it could be wildcard `*` or some
-// registered op in tensorflow. op2 is an op name in the computation graph and
+// registered op in tensorflow and may have multiple ops separated by '|'.
+// op2 is an op name in the computation graph and
 // is always one of the registered ops in tensorflow.
-inline bool IsSame(string op1, string op2) { return op1 == "*" || op1 == op2; }
+bool IsSame(string op1, string op2) {
+  if (op1 == "*") return true;
+
+  std::vector<string> op1_list = str_util::Split(op1, '|');
+  for (const string& op_1 : op1_list) {
+    if (op_1 == op2) return true;
+  }
+
+  return false;
+}
 
 // A subgraph pattern syntax implicitly defines a DAG having a single root. We
 // traverse the syntax DAG in DFS manner. This function finds a match for
@@ -121,8 +135,12 @@ bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
       if (IsCommutativeOp(op_name) && num_children == 2) {
         MutableNodeView* graph_child0_node_view =
             graph_view_->GetNode(graph_children[0].node_index());
-        if (!IsSame(pattern.children[0].op, graph_child0_node_view->GetOp()) &&
-            IsSame(pattern.children[1].op, graph_child0_node_view->GetOp()))
+        MutableNodeView* graph_child1_node_view =
+            graph_view_->GetNode(graph_children[1].node_index());
+        if ((!IsSame(pattern.children[0].op, graph_child0_node_view->GetOp()) &&
+             IsSame(pattern.children[1].op, graph_child0_node_view->GetOp())) ||
+            (!IsSame(pattern.children[1].op, graph_child1_node_view->GetOp()) &&
+             IsSame(pattern.children[0].op, graph_child1_node_view->GetOp())))
           std::swap(pattern_child_indices[0], pattern_child_indices[1]);
       }
       for (int i = 0; i < num_children; ++i) {

@@ -48,7 +48,7 @@ from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export

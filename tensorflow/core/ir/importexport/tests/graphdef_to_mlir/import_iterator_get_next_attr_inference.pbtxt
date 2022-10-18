@@ -1,11 +1,11 @@
 # RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
 
 # CHECK: IteratorGetNext
-# CHECK-SAME: -> (tensor<1x8xbf16>, tensor<2x?x16xf32>, tensor<*xf64>)
+# CHECK-SAME: -> (tensor<*xbf16>, tensor<*xf32>, tensor<*xf64>)
 # CHECK: IteratorGetNextSync
-# CHECK-SAME: -> (tensor<*xi16>, tensor<3x24xi32>, tensor<?x4x32xi64>)
+# CHECK-SAME: -> (tensor<*xi16>, tensor<*xi32>, tensor<*xi64>)
 # CHECK: MultiDeviceIteratorGetNextFromShard
-# CHECK-SAME: -> (tensor<5x40xf16>, tensor<*xcomplex<f32>>, tensor<6x48x?xcomplex<f64>>)
+# CHECK-SAME: -> (tensor<*xf16>, tensor<*xcomplex<f32>>, tensor<*xcomplex<f64>>)
 
 node {
   name: "args_0"

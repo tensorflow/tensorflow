@@ -1,7 +1,4 @@
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 py_library(
     name = "data",

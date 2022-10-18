@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -26,18 +27,19 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 using stream_executor::port::StatusOr;
 
-extern const char* const kTPUReplicatedHost;
-extern const char* const kNumCoresPerReplicaAttr;
-extern const char* const kTopologyAttr;
-extern const char* const kDeviceAssignmentAttr;
+inline constexpr absl::string_view kTPUReplicatedHost = "TPU_REPLICATED_HOST";
+inline constexpr absl::string_view kNumCoresPerReplicaAttr =
+    "num_cores_per_replica";
+inline constexpr absl::string_view kTopologyAttr = "topology";
+inline constexpr absl::string_view kDeviceAssignmentAttr = "device_assignment";
 
 // A TPU device for execution alongside its associated host CPU device.
 struct TPUDeviceAndHost {

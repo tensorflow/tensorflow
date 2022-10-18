@@ -33,7 +33,7 @@ namespace {
 
 Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
                          PjRtClient* client) {
-  XlaComputation computation = builder->Build(root).ValueOrDie();
+  XlaComputation computation = builder->Build(root).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -43,13 +43,13 @@ Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       client->Compile(computation, std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Accumulates the received data.
@@ -89,14 +89,14 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClientWithNonLocalDevice() {
   se::StreamExecutorConfig config(0);
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       platform->GetExecutor(config));
-  auto device_state = absl::make_unique<LocalDeviceState>(
+  auto device_state = std::make_unique<LocalDeviceState>(
       executor, client, LocalDeviceState::kSynchronous,
       /*max_inflight_computations=*/32,
       /*allow_event_reuse=*/false, /*use_callback_stream=*/false);
 
   std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  devices.push_back(absl::make_unique<CpuDevice>(0, std::move(device_state)));
-  devices.push_back(absl::make_unique<CpuDevice>(1, nullptr));
+  devices.push_back(std::make_unique<CpuDevice>(0, std::move(device_state)));
+  devices.push_back(std::make_unique<CpuDevice>(1, nullptr));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
       CpuName(), client, std::move(devices), /*process_index=*/0,
@@ -110,7 +110,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -127,7 +127,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   XlaOp send = outfeed_receiver
                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                          consumer_id0, {data})
-                   .ValueOrDie();
+                   .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -143,7 +143,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -160,7 +160,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder0, CreateToken(&builder0),
                                           consumer_id0, {data0})
-                    .ValueOrDie();
+                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder0, send0, 0, cpu_client.get()).ok());
 
   XlaBuilder builder1("execute_test_outfeed_1");
@@ -170,7 +170,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp send1 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder1, CreateToken(&builder1),
                                           consumer_id1, {data1})
-                    .ValueOrDie();
+                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder1, send1, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -188,7 +188,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -205,7 +205,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                           consumer_id0, {data0})
-                    .ValueOrDie();
+                    .value();
 
   constexpr int consumer_id1 = 6;
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
@@ -213,7 +213,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp send1 =
       outfeed_receiver
           ->AddOutfeedToBuilder(&builder, send0, consumer_id1, {data1})
-          .ValueOrDie();
+          .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send1, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.
@@ -231,7 +231,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -248,7 +248,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                           consumer_id0, {data0})
-                    .ValueOrDie();
+                    .value();
 
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
   XlaOp data1 = Iota(&builder, shape1, 0);
@@ -265,7 +265,7 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
                           GetCpuClient(true));
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -291,7 +291,7 @@ TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
                           GetCpuClientWithNonLocalDevice());
   std::vector<PjRtClient*> clients{cpu_client.get()};
 
-  auto receiver = absl::make_unique<Accumulator>();
+  auto receiver = std::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
       [&receiver](PjRtDevice* device, uint32_t consumer_id,
                   std::shared_ptr<Literal> data) {
@@ -308,7 +308,7 @@ TEST(OutfeedReceiverTest, NonLocalDevicesIgnored) {
   XlaOp send = outfeed_receiver
                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
                                          consumer_id0, {data})
-                   .ValueOrDie();
+                   .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
   // Shutdown the receiver, to force it to wait to deliver the callbacks.

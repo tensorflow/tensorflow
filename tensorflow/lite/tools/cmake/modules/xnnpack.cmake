@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   xnnpack
   GIT_REPOSITORY https://github.com/google/XNNPACK
   # Sync with tensorflow/workspace2.bzl
-  GIT_TAG 5b5b61f38ebfc0ed7e930654300750c29920ade7
+  GIT_TAG 93b9f902393b3a164d4bb44fcd210ca4d612e68f
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"
   SOURCE_DIR "${CMAKE_BINARY_DIR}/xnnpack"
@@ -43,7 +43,6 @@ set(XNNPACK_BUILD_BENCHMARKS OFF CACHE BOOL "Disable XNNPACK benchmarks.")
 add_subdirectory(
   "${xnnpack_SOURCE_DIR}"
   "${xnnpack_BINARY_DIR}"
-  EXCLUDE_FROM_ALL
 )
 
 include_directories(

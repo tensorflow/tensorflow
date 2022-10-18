@@ -28,24 +28,15 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace strings {
-
-// Return a C++ string
-extern std::string Printf(const char* format, ...)
-    // Tell the compiler to do printf format string checking.
-    TF_PRINTF_ATTRIBUTE(1, 2);
-
-// Append result to a supplied string
-extern void Appendf(std::string* dst, const char* format, ...)
-    // Tell the compiler to do printf format string checking.
-    TF_PRINTF_ATTRIBUTE(2, 3);
-
-// Lower-level routine that takes a va_list and appends to a specified
-// string.  All other routines are just convenience wrappers around it.
-extern void Appendv(std::string* dst, const char* format, va_list ap);
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::strings::Appendf;
+using tsl::strings::Appendv;
+using tsl::strings::Printf;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace strings
 }  // namespace tensorflow
 

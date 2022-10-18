@@ -215,6 +215,7 @@ class TracingContext(metaclass=abc.ABCMeta):
 class SupportsTracingProtocol(Protocol):
   """A protocol allowing custom classes to control tf.function retracing."""
 
+  @doc_controls.doc_private
   @abc.abstractmethod
   def __tf_tracing_type__(self, context: TracingContext) -> TraceType:
     """Returns the tracing type of this object.

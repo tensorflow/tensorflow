@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ApproximateEqual"
   input_arg {
     name: "x"

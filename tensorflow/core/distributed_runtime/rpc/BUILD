@@ -10,11 +10,7 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_grpc_cc_dependencies", "tf_grpc_dependencies")
 
 # For platform specific build config
 load(
@@ -539,6 +535,8 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "grpc_session_test",
     size = "medium",
+    # highly variable test time. Typically ~2m, but can spike to 5+min.
+    timeout = "long",
     srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [

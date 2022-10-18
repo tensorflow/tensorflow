@@ -72,7 +72,7 @@ may change.
 ## Selectively build TensorFlow Lite with Bazel
 
 This section assumes that you have downloaded TensorFlow source codes and
-[set up the local development environment](https://www.tensorflow.org/lite/guide/build_android#set_up_build_environment_without_docker)
+[set up the local development environment](https://www.tensorflow.org/lite/android/lite_build#set_up_build_environment_without_docker)
 to Bazel.
 
 ### Build AAR files for Android project
@@ -247,14 +247,14 @@ tflite_cc_shared_object(
 The newly added target can be built as follows:
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++14 \
+bazel build -c opt --cxxopt=--std=c++17 \
   //tmp:tensorflowlite_c
 ```
 
 and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++14 --config=android_arm \
+bazel build -c opt --cxxopt=--std=c++17 --config=android_arm \
   //tmp:tensorflowlite_c
 ```
 
@@ -311,14 +311,14 @@ tflite_cc_shared_object(
 The newly added target can be built as follows:
 
 ```sh
-bazel build -c opt  --cxxopt=--std=c++14 \
+bazel build -c opt  --cxxopt=--std=c++17 \
   //tmp:tensorflowlite
 ```
 
 and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++14 --config=android_arm \
+bazel build -c opt --cxxopt=--std=c++17 --config=android_arm \
   //tmp:tensorflowlite
 ```
 
@@ -349,7 +349,7 @@ tflite_flex_shared_library(
 The newly added target can be built as follows:
 
 ```sh
-bazel build -c opt --cxxopt='--std=c++14' \
+bazel build -c opt --cxxopt='--std=c++17' \
       --config=monolithic \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
       //tmp:tensorflowlite_flex
@@ -358,7 +358,7 @@ bazel build -c opt --cxxopt='--std=c++14' \
 and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt='--std=c++14' \
+bazel build -c opt --cxxopt='--std=c++17' \
       --config=android_arm \
       --config=monolithic \
       --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
@@ -370,7 +370,7 @@ bazel build -c opt --cxxopt='--std=c++14' \
 This section assumes that you have installed
 [Docker](https://docs.docker.com/get-docker/) on your local machine and
 downloaded the TensorFlow Lite Dockerfile
-[here](https://www.tensorflow.org/lite/guide/build_android#set_up_build_environment_using_docker).
+[here](https://www.tensorflow.org/lite/android/lite_build#set_up_build_environment_using_docker).
 
 After downloading the above Dockerfile, you can build the docker image by
 running:
@@ -414,9 +414,9 @@ caching.
 ## Add AAR files to project
 
 Add AAR files by directly
-[importing the AAR into your project](https://www.tensorflow.org/lite/guide/build_android#add_aar_directly_to_project),
+[importing the AAR into your project](https://www.tensorflow.org/lite/android/lite_build#add_aar_directly_to_project),
 or by
-[publishing the custom AAR to your local Maven repository](https://www.tensorflow.org/lite/guide/build_android#install_aar_to_local_maven_repository).
+[publishing the custom AAR to your local Maven repository](https://www.tensorflow.org/lite/android/lite_build#install_aar_to_local_maven_repository).
 Note that you have to add the AAR files for `tensorflow-lite-select-tf-ops.aar`
 as well if you generate it.
 

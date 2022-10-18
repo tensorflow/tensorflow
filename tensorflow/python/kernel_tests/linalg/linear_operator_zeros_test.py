@@ -52,6 +52,13 @@ class LinearOperatorZerosTest(
         shapes_info((3, 4, 4)),
         shapes_info((2, 1, 4, 4))]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+    ]
+
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):

@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -60,19 +59,38 @@ StatusOr<mlir::Operation*> EmitAllReduce(
     const absl::flat_hash_set<std::string>& reduced_dims,
     mlir::Operation* input, absl::string_view reduce_op);
 
+// Emits a barrier used for synchronization purposes and returns
+// a R1 const value using `value`. More precisely, this barrier
+// guarantees that
+//    1. Side-effect Ops before this barrier are complete before this op begins.
+//    2. Side-effect Ops after this barrier start after this barrier completes.
+//
+// Note that the returned operation must be used in the graph. If it is not
+// used, then this op will be removed from the graph from various compiler
+// passes and thus there will be no barrier.
+//
+// Used for introducing a barrier before every Merge op during checkpointing.
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value);
+
 // Given input `tensor` that is sharded across spatial dimensions, conduct
 // halo exchange such that each spatially sharded input blocks exchange
 // `halo_size` slice with its neighboring processors.
 // If the input block is at the left/right/top/bottom edge, then ghost halo
 // tensor (zero) are padded instead. `mesh_dim` specifies the dimension which
 // halo exchange will be conducted. For example, if we consider a 4D Tensor
-// (batch, width, height, channel) that has layout (*, x, y, *). Then,
-// `mesh_dim` ==  "x" would mean that halo exchange will occur along the width
+// (batch, height, width, channel) that has layout (*, h, w, *). Then,
+// `mesh_dim` ==  "w" would mean that halo exchange will occur along the width
 // dimension. That is halo tensors with right/left neighbors will be exchanged.
-StatusOr<mlir::Value> EmitHaloExchange(
-    int halo_size, const std::string& mesh_dim, const Layout& layout,
-    mlir::OpBuilder& builder, mlir::tf_device::ClusterOp cluster,
-    mlir::Location location, mlir::Value tensor);
+StatusOr<mlir::Value> EmitHaloExchange(mlir::OpBuilder& builder, int halo_size,
+                                       const std::string& mesh_dim,
+                                       const Layout& layout,
+                                       mlir::Value mesh_coordinates,
+                                       mlir::tf_device::ClusterOp cluster,
+                                       mlir::Location location,
+                                       mlir::Value tensor);
 
 // Emits a DenseToSparse op followed by a SparseToDenseOp.
 // This is useful for emitting a Relayout on a SparseTensor.
@@ -80,6 +98,7 @@ StatusOr<mlir::Value> EmitHaloExchange(
 StatusOr<mlir::Value> EmitDenseToSparseToDense(
     mlir::OpBuilder& builder, mlir::Value input,
     llvm::SmallPtrSet<mlir::Operation*, 4>* newly_created_ops = nullptr);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

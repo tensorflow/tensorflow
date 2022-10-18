@@ -18,15 +18,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_LAYOUT_UTIL_H_
 
+#include <optional>
 #include <string>
+#include <vector>
 
-#include "absl/hash/hash.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -36,9 +35,10 @@ class LayoutUtil {
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
   static Layout MakeLayout(absl::Span<const int64_t> minor_to_major,
+                           absl::Span<const DimLevelType> dim_level_types = {},
                            absl::Span<const Tile> tiles = {},
-                           int64_t element_size_in_bits = 0,
-                           int64_t memory_space = 0);
+                           int64_t memory_space = 0,
+                           std::optional<Shape> physical_shape = std::nullopt);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
@@ -90,11 +90,46 @@ class LayoutUtil {
   // Clears the layout on all Shapes within the given ProgramShape.
   static void ClearLayout(ProgramShape* program_shape);
 
-  // Returns whether the given Shape is an array and has a dense format layout.
+  // Clears the tiling fields from the shape and/or all of its subshapes.
+  static void ClearTiles(Shape* shape);
+
+  // Returns whether the given Shape is an array and has a dense in-memory
+  // representation.
   static bool IsDenseArray(const Shape& shape);
 
-  // Returns whether the given Layout has a dense format.
+  // Returns whether the given Shape is an array and has a sparse in-memory
+  // representation.
+  static bool IsSparseArray(const Shape& shape);
+
+  // Returns whether the given Shape is a sparse array and has a COO (coordinate
+  // matrix) in-memory representation.
+  static bool IsCOOArray(const Shape& shape);
+
+  // Returns whether the given Shape is a sparse array and has a CSR (compressed
+  // sparse row) in-memory representation.
+  static bool IsCSRArray(const Shape& shape);
+
+  // Returns whether the given Shape is a sparse array and has a CSR (compressed
+  // sparse row) in-memory representation.
+  static bool IsCSCArray(const Shape& shape);
+
+  // Returns whether the given Layout has a dense in-memory representation.
   static bool IsDense(const Layout& layout);
+
+  // Returns whether the given Layout has a sparse in-memory representation.
+  static bool IsSparse(const Layout& layout);
+
+  // Returns whether the given Layout represents a COO (coordinate matrix)
+  // sparse array.
+  static bool IsCOO(const Layout& layout);
+
+  // Returns whether the given Layout represents a CSC (compressed sparse
+  // column) array.
+  static bool IsCSR(const Layout& layout);
+
+  // Returns whether the given Layout represents a CSC (compressed sparse
+  // column) array.
+  static bool IsCSC(const Layout& layout);
 
   // Returns whether the layout is monotonic and dim 0 is minor in the layout.
   // * R0 and R1: this is always trivially true.
@@ -106,6 +141,8 @@ class LayoutUtil {
   // * R0 and R1: this is always trivially true.
   // * R2+: equivalent to row-major. Dimension 0 is the major, dimension 1 is
   //        more minor, and so on until dimension N-1 which is the minor.
+  //
+  // Returns `true` for "default", major-to-minor layouts (e.g. {3,2,1,0}).
   static bool IsMonotonicWithDim0Major(const Layout& layout);
 
   // Returns whether the given shape has a layout. For tuple shapes, true is
@@ -119,7 +156,7 @@ class LayoutUtil {
   static bool Equal(const Layout& lhs, const Layout& rhs);
 
   // Returns the minor_to_major array for the given Shape.  Requires that the
-  // shape is an array and has a dense layout.
+  // shape is an array.
   static absl::Span<const int64_t> MinorToMajor(const Shape& shape);
   static absl::Span<const int64_t> MinorToMajor(const Layout& layout);
 
@@ -191,6 +228,10 @@ class LayoutUtil {
   // in the layout. This method is also performance critical.
   static int64_t LinearIndex(const Shape& shape,
                              absl::Span<const int64_t> indices);
+
+  // If the shape has a layout, returns the contained memory space.  Otherwise,
+  // returns Layout::kDefaultMemorySpace.
+  static int64_t MemorySpace(const Shape& shape);
 
  private:
   LayoutUtil(const LayoutUtil&) = delete;

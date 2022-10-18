@@ -69,7 +69,7 @@ class PrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       thread = self.checkedThread(self.assert_op_cancelled, args=(get_next(),))
       thread.start()
-      time.sleep(0.5)
+      time.sleep(2)
       sess.close()
       thread.join()
 

@@ -38,12 +38,12 @@ class NnapiPlugin : public DelegatePluginInterface {
     std::unique_ptr<tflite::StatefulNnApiDelegate> nnapi_delegate = nullptr;
     if (!support_library_handle_) {
       nnapi_delegate =
-          absl::make_unique<tflite::StatefulNnApiDelegate>(options_);
+          std::make_unique<tflite::StatefulNnApiDelegate>(options_);
     } else {
       auto nnapi_support_library_driver =
           reinterpret_cast<const NnApiSLDriverImplFL5*>(
               support_library_handle_);
-      nnapi_delegate = absl::make_unique<tflite::StatefulNnApiDelegate>(
+      nnapi_delegate = std::make_unique<tflite::StatefulNnApiDelegate>(
           nnapi_support_library_driver, options_);
     }
     return TfLiteDelegatePtr(
@@ -58,7 +58,7 @@ class NnapiPlugin : public DelegatePluginInterface {
   }
   static std::unique_ptr<NnapiPlugin> New(
       const TFLiteSettings& tflite_settings) {
-    return absl::make_unique<NnapiPlugin>(tflite_settings);
+    return std::make_unique<NnapiPlugin>(tflite_settings);
   }
   explicit NnapiPlugin(const TFLiteSettings& tflite_settings) {
     const NNAPISettings* nnapi_settings = tflite_settings.nnapi_settings();

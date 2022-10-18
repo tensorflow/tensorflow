@@ -20,11 +20,10 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
-#include "absl/memory/memory.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -64,14 +63,14 @@ struct ParsedStaticWhileLoop {
 // value or the loop bound's value depends on the while's parent computation's
 // parameter.
 struct ParsedWhileLoop {
-  absl::optional<ParsedStaticWhileLoop> static_while_loop;
+  std::optional<ParsedStaticWhileLoop> static_while_loop;
   bool is_dynamic() const { return !static_while_loop.has_value(); }
 };
 constexpr ParsedWhileLoop kParsedDynamicWhileLoop = ParsedWhileLoop();
 
 // Tries to parse a while loop using a set of predefined patterns.
 // Returns the parsing result.
-absl::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
+std::optional<ParsedWhileLoop> PatternMatchParseWhileLoop(
     HloInstruction* while_op);
 
 // Responsible for evaluating HLO and obtain literal as the evaluation results.
@@ -295,6 +294,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGather(HloInstruction* gather) override;
 
+  Status HandleScatter(HloInstruction* hlo) override;
+
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleAsyncStart(HloInstruction* async_start) override;
@@ -318,8 +319,6 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleWhile(HloInstruction* while_hlo) override;
 
   Status HandleSelect(HloInstruction* select) override;
-
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
 
   Status HandleBroadcast(HloInstruction* broadcast) override;
 

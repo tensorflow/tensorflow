@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
@@ -24,7 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FUSION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 // -------------------------------------------------------------------------- //
@@ -62,7 +63,7 @@ static bool IsBroadcast(Operation *op) {
 
   // Check the input operand indexing map.
   OpOperand *operand = generic.getInputOperand(0);
-  AffineMap indexing_map = generic.getTiedIndexingMap(operand);
+  AffineMap indexing_map = generic.getMatchingIndexingMap(operand);
 
   if (!indexing_map.isProjectedPermutation() ||
       indexing_map.getNumDims() == indexing_map.getNumResults())
@@ -73,21 +74,57 @@ static bool IsBroadcast(Operation *op) {
 }
 
 // Decide if the producer operation should be fused into the consumer.
-static bool ControlElementwiseOpsFusion(const OpResult &producer_result,
-                                        OpOperand &) {
+static bool ControlElementwiseOpsFusion(OpOperand *fused_operand) {
   // TODO(ezhulenev): This is a very simplistic heuristic, we need something
   // better to decide when fusion is beneficial.
 
   // Always fuse broadcasts into the consumer.
-  if (IsBroadcast(producer_result.getOwner())) return true;
+  Operation *producer = fused_operand->get().getDefiningOp();
+  if (!producer) return false;
+
+  if (IsBroadcast(producer)) return true;
 
   // If producer result has multiple users do not fuse it into the consumer.
-  if (!llvm::hasSingleElement(producer_result.getUsers())) return false;
+  if (!producer->hasOneUse()) return false;
 
   return true;
 }
 
-struct FusionPass : public FusionBase<FusionPass> {
+// Check if the reshape operation is only expansion into/collapsing of
+// unit-dimension.
+template <typename TensorReshapeOp>
+static bool IsUnitDimExpansionOnly(TensorReshapeOp reshape_op) {
+  constexpr bool is_expanding =
+      std::is_same<TensorReshapeOp, tensor::ExpandShapeOp>::value;
+  llvm::ArrayRef<int64_t> expanded_shape =
+      (is_expanding ? reshape_op.getResultType().getShape()
+                    : reshape_op.getSrcType().getShape());
+  for (auto &indices : reshape_op.getReassociationIndices()) {
+    unsigned num_unit_dims = 0;
+    for (int64_t position : indices)
+      if (expanded_shape[position] == 1) num_unit_dims++;
+    if (num_unit_dims != indices.size() - 1) return false;
+  }
+  return true;
+}
+
+// Control function to skip unit dim reshape when fusing reshapes by expansion.
+static bool SkipUnitDimReshape(OpOperand *fusedOperand) {
+  Operation *producer = fusedOperand->get().getDefiningOp();
+  // If producer result has multiple users do not fuse it into the consumer.
+  if (!producer || !producer->hasOneUse()) return false;
+
+  if (auto producer_collapse_op = dyn_cast<tensor::CollapseShapeOp>(producer)) {
+    return !IsUnitDimExpansionOnly(producer_collapse_op);
+  }
+  if (auto consumer_expand_op =
+          dyn_cast<tensor::ExpandShapeOp>(fusedOperand->getOwner())) {
+    return !IsUnitDimExpansionOnly(consumer_expand_op);
+  }
+  return true;
+}
+
+struct FusionPass : public impl::FusionBase<FusionPass> {
   void runOnOperation() override {
     Operation *op = getOperation();
 
@@ -96,10 +133,8 @@ struct FusionPass : public FusionBase<FusionPass> {
     linalg::populateElementwiseOpsFusionPatterns(patterns,
                                                  ControlElementwiseOpsFusion);
 
-    linalg::populateFoldReshapeOpsByExpansionPatterns(
-        patterns, linalg::skipUnitDimReshape);
-
-    linalg::populateSparseTensorRewriting(patterns);
+    linalg::populateFoldReshapeOpsByExpansionPatterns(patterns,
+                                                      SkipUnitDimReshape);
 
     linalg::populateConstantFoldLinalgOperations(patterns,
                                                  ControlElementwiseOpsFusion);
@@ -110,7 +145,11 @@ struct FusionPass : public FusionBase<FusionPass> {
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);
     context->getLoadedDialect<linalg::LinalgDialect>()
         ->getCanonicalizationPatterns(patterns);
-    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns));
+    // Use TopDownTraversal for compile time reasons.
+    mlir::GreedyRewriteConfig grc;
+    grc.useTopDownTraversal = true;
+    (void)applyPatternsAndFoldGreedily(op->getRegions(), std::move(patterns),
+                                       grc);
   }
 };
 

@@ -180,7 +180,13 @@ def connect_to_cluster(cluster_spec_or_resolver,
 
   if context.context().coordination_service is None:
     # Maybe enable coordination service for the communication protocol
-    coordination_service = remote_utils.coordination_service_type(protocol)
+    # TODO(b/243839559): Fix UPTC + Coordination service crashing
+    if isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):
+      is_uptc_sess = ".uptc-worker." in cluster_spec_or_resolver.master()
+      coordination_service = remote_utils.coordination_service_type(
+          protocol, is_uptc_sess)
+    else:
+      coordination_service = remote_utils.coordination_service_type(protocol)
     if coordination_service:
       context.context().configure_coordination_service(coordination_service)
 

@@ -1,17 +1,7 @@
 # Tensorflow util package
 
-load("//tensorflow:tensorflow.bzl", "py_strict_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
@@ -64,7 +54,6 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_tfprof",
     srcs = ["tfprof_wrapper.cc"],
-    module_name = "_pywrap_tfprof",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -80,7 +69,6 @@ tf_python_pybind_extension(
     name = "_pywrap_utils",
     srcs = ["util_wrapper.cc"],
     hdrs = ["util.h"],
-    module_name = "_pywrap_utils",
     deps = [
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/python:pybind11_lib",
@@ -93,7 +81,6 @@ tf_python_pybind_extension(
     name = "_pywrap_nest",
     srcs = ["nest_wrapper.cc"],
     hdrs = ["nest.h"],
-    module_name = "_pywrap_nest",
     deps = [
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
@@ -121,7 +108,6 @@ tf_python_pybind_extension(
     name = "_pywrap_kernel_registry",
     srcs = ["kernel_registry_wrapper.cc"],
     hdrs = ["kernel_registry.h"],
-    module_name = "_pywrap_kernel_registry",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -135,7 +121,6 @@ tf_python_pybind_extension(
 tf_python_pybind_extension(
     name = "_pywrap_stat_summarizer",
     srcs = ["stat_summarizer_wrapper.cc"],
-    module_name = "_pywrap_stat_summarizer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
@@ -151,7 +136,6 @@ tf_python_pybind_extension(
     srcs = ["tensor_float_32.cc"],
     hdrs = ["//tensorflow/core/platform:tensor_float_32_hdr"],
     compatible_with = get_compatible_with_portable(),
-    module_name = "_pywrap_tensor_float_32_execution",
     deps = [
         "@pybind11",
     ],
@@ -162,7 +146,6 @@ tf_python_pybind_extension(
     srcs = ["determinism.cc"],
     hdrs = ["//tensorflow/core/util:determinism_hdr"],
     compatible_with = get_compatible_with_portable(),
-    module_name = "_pywrap_determinism",
     deps = [
         "@pybind11",
     ],
@@ -172,7 +155,6 @@ tf_python_pybind_extension(
     name = "_pywrap_util_port",
     srcs = ["port_wrapper.cc"],
     hdrs = ["//tensorflow/core/util:port_hdrs"],
-    module_name = "_pywrap_util_port",
     deps = [
         "//tensorflow/core/util:port",
         "//third_party/python_runtime:headers",
@@ -184,7 +166,6 @@ tf_python_pybind_extension(
     name = "_pywrap_transform_graph",
     srcs = ["transform_graph_wrapper.cc"],
     hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
-    module_name = "_pywrap_transform_graph",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -206,7 +187,6 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
-    module_name = "_pywrap_checkpoint_reader",
     deps = [
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:op_gen_lib",
@@ -249,7 +229,11 @@ tf_py_test(
 
 tf_py_test(
     name = "deprecation_test",
-    srcs = ["deprecation_test.py"],
+    srcs = [
+        "deprecated_module.py",
+        "deprecated_module_new.py",
+        "deprecation_test.py",
+    ],
     python_version = "PY3",
     deps = [
         ":util",
@@ -346,8 +330,6 @@ tf_python_pybind_extension(
         # Using header directly is required to avoid ODR violations.
         "stack_trace.h",
     ],
-    # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
-    module_name = "_tf_stack",
     deps = [
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
@@ -420,7 +402,6 @@ tf_python_pybind_extension(
     hdrs = [
         "function_parameter_canonicalizer.h",
     ],
-    module_name = "_function_parameter_canonicalizer_binding_for_test",
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
@@ -482,17 +463,6 @@ py_library(
         "//tensorflow/python/util/protobuf",
         "//tensorflow/tools/docs:doc_controls",
         "//tensorflow/tools/compatibility:all_renames_v2",
-    ],
-)
-
-py_strict_library(
-    name = "traceback_utils",
-    srcs = ["traceback_utils.py"],
-    compatible_with = get_compatible_with_portable(),
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:__subpackages__"],
-    deps = [
-        ":tf_decorator",
     ],
 )
 
@@ -649,7 +619,6 @@ tf_py_test(
 tf_python_pybind_extension(
     name = "fast_module_type",
     srcs = ["fast_module_type.cc"],
-    module_name = "fast_module_type",
     deps = [
         "//tensorflow/core/platform:logging",
         "//third_party/python_runtime:headers",
@@ -720,5 +689,20 @@ tf_py_test(
         ":util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
+    ],
+)
+
+tf_py_test(
+    name = "variable_utils_test",
+    srcs = ["variable_utils_test.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:test",
     ],
 )

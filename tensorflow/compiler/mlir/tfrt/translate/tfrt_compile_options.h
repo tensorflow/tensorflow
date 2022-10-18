@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 
 #include <iosfwd>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -123,7 +124,15 @@ struct TfrtCompileOptions {
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = false;
+
+  // Whether to enable the DecomposeResourceOpsPass.
+  bool decompose_resource_ops = true;
+
+  // Whether to compile to sync TFRT dialect.
+  bool compile_to_sync_tfrt_dialect = false;
 };
+
+std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);
 
 }  // namespace tensorflow
 

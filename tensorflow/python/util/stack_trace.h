@@ -117,7 +117,7 @@ class StackTrace final {
 };
 
 // A class that manages Python stack traces in a circular buffer. Users can
-// insert stack trace entries and retrive them by ids.
+// insert stack trace entries and retrieve them by ids.
 class StackTraceManager {
  public:
   static constexpr int kStackTraceCircularBufferSize = 1024;

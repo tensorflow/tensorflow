@@ -18,13 +18,10 @@
 import numbers
 import numpy as np
 
-from tensorflow.python.client import pywrap_tf_session
-from tensorflow.python.compat import compat as forward_compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -35,7 +32,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 # 'Constant' gets imported in the module 'array_ops'.
 from tensorflow.python.framework.constant_op import constant
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 # go/tf-wildcard-import
@@ -43,6 +39,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.types import core
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
@@ -286,7 +283,9 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor` or CompositeTensor. Has the same type and contents as `input`.
   """
-  if isinstance(input, composite_tensor.CompositeTensor):
+  # Don't expand ResourceVariables, so identity(variable) will return a Tensor.
+  if (isinstance(input, composite_tensor.CompositeTensor) and
+      not _pywrap_utils.IsResourceVariable(input)):
     return nest.map_structure(identity, input, expand_composites=True)
   if context.executing_eagerly() and not hasattr(input, "graph"):
     # Make sure we get an input with handle data attached from resource
@@ -615,7 +614,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
-  known until execution time. Hence when defining custom layers and models
+  known until execution time. Hence, when defining custom layers and models
   for graph mode, prefer the dynamic `tf.shape(x)` over the static `x.shape`.
 
   Args:
@@ -926,31 +925,31 @@ def _slice_helper(tensor, slice_spec, var=None):
   ```python
   # Strip leading and trailing 2 elements
   foo = tf.constant([1,2,3,4,5,6])
-  print(foo[2:-2].eval())  # => [3,4]
+  print(foo[2:-2])  # => [3,4]
 
   # Skip every other row and reverse the order of the columns
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[::2,::-1].eval())  # => [[3,2,1], [9,8,7]]
+  print(foo[::2,::-1])  # => [[3,2,1], [9,8,7]]
 
   # Use scalar tensors as indices on both dimensions
-  print(foo[tf.constant(0), tf.constant(2)].eval())  # => 3
+  print(foo[tf.constant(0), tf.constant(2)])  # => 3
 
   # Insert another dimension
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval()) # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[:, tf.newaxis, :].eval()) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
-  print(foo[:, :, tf.newaxis].eval()) # => [[[1],[2],[3]], [[4],[5],[6]],
+  print(foo[tf.newaxis, :, :]) # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[:, tf.newaxis, :]) # => [[[1,2,3]], [[4,5,6]], [[7,8,9]]]
+  print(foo[:, :, tf.newaxis]) # => [[[1],[2],[3]], [[4],[5],[6]],
   [[7],[8],[9]]]
 
   # Ellipses (3 equivalent operations)
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
-  print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, :, :])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis, ...])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+  print(foo[tf.newaxis])  # => [[[1,2,3], [4,5,6], [7,8,9]]]
 
   # Masks
   foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
-  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
+  print(foo[foo > 2])  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -1315,18 +1314,16 @@ def _SliceHelperVar(var, slice_spec):
   This function in addition also allows assignment to a sliced range.
   This is similar to `__setitem__` functionality in Python. However,
   the syntax is different so that the user can capture the assignment
-  operation for grouping or passing to `sess.run()`.
+  operation for grouping or passing to `sess.run()` in TF1.
   For example,
 
   ```python
   import tensorflow as tf
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
-  with tf.compat.v1.Session() as sess:
-    sess.run(tf.compat.v1.global_variables_initializer())
-    print(sess.run(A[:2, :2]))  # => [[1,2], [4,5]]
+  print(A[:2, :2])  # => [[1,2], [4,5]]
 
-    op = A[:2,:2].assign(22. * tf.ones((2, 2)))
-    print(sess.run(op))  # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
+  A[:2,:2].assign(22. * tf.ones((2, 2))))
+  print(A) # => [[22, 22, 3], [22, 22, 6], [7,8,9]]
   ```
 
   Note that assignments currently do not support NumPy broadcasting
@@ -2029,7 +2026,7 @@ def unique(x, out_idx=dtypes.int32, name=None):
 
   See also `tf.unique_with_counts`.
 
-  This operation returns a tensor `y` containing all of the unique elements
+  This operation returns a tensor `y` containing all the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
   also returns a tensor `idx` the same size as `x` that contains the index
   of each value of `x` in the unique output `y`. In other words:
@@ -2077,7 +2074,7 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
 
   See also `tf.unique`.
 
-  This operation returns a tensor `y` containing all of the unique elements
+  This operation returns a tensor `y` containing all the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
   also returns a tensor `idx` the same size as `x` that contains the index
   of each value of `x` in the unique output `y`. Finally, it returns a
@@ -2214,7 +2211,7 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
 
   The returned tensor's dimension `i` will correspond to the input dimension
   `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
-  of the input tensor. Hence by default, this operation performs a regular
+  of the input tensor. Hence, by default, this operation performs a regular
   matrix transpose on 2-D input Tensors.
 
   If conjugate is `True` and `a.dtype` is either `complex64` or `complex128`
@@ -2295,7 +2292,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
   The returned tensor's dimension i will correspond to the input dimension
   `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
-  the rank of the input tensor. Hence by default, this operation performs a
+  the rank of the input tensor. Hence, by default, this operation performs a
   regular matrix transpose on 2-D input Tensors. If conjugate is True and
   `a.dtype` is either `complex64` or `complex128` then the values of `a`
   are conjugated and transposed.
@@ -3016,7 +3013,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():
-          # Create a constant if it won't be very big. Otherwise create a fill
+          # Create a constant if it won't be very big. Otherwise, create a fill
           # op to prevent serialized GraphDefs from becoming too large.
           output = _constant_if_small(zero, shape, dtype, name)
           if output is not None:
@@ -3272,7 +3269,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():
-          # Create a constant if it won't be very big. Otherwise create a fill
+          # Create a constant if it won't be very big. Otherwise, create a fill
           # op to prevent serialized GraphDefs from becoming too large.
           output = _constant_if_small(one, shape, dtype, name)
           if output is not None:
@@ -3431,7 +3428,6 @@ def sparse_placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
 
-  @compatibility{eager} Placeholders are not compatible with eager execution.
 
   Args:
     dtype: The type of `values` elements in the tensor to be fed.
@@ -3445,6 +3441,20 @@ def sparse_placeholder(dtype, shape=None, name=None):
 
   Raises:
     RuntimeError: if eager execution is enabled
+
+  @compatibility(TF2)
+  This API is not compatible with eager execution and `tf.function`. To migrate
+  to TF2, rewrite the code to be compatible with eager execution. Check the
+  [migration
+  guide](https://www.tensorflow.org/guide/migrate#1_replace_v1sessionrun_calls)
+  on replacing `Session.run` calls. In TF2, you can just pass tensors directly
+  into ops and layers. If you want to explicitly set up your inputs, also see
+  [Keras functional API](https://www.tensorflow.org/guide/keras/functional) on
+  how to use `tf.keras.Input` to replace `tf.compat.v1.sparse_placeholder`.
+  `tf.function` arguments also do the job of `tf.compat.v1.sparse_placeholder`.
+  For more details please read [Better
+  performance with tf.function](https://www.tensorflow.org/guide/function).
+  @end_compatibility
   """
   if context.executing_eagerly():
     raise RuntimeError("`sparse_placeholder` is not compatible with "
@@ -3493,7 +3503,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
   # default shape out of the placeholder. Override that
   # shape to be the value determined here, so partial shapes can be
   # propagated.
-  result._dense_shape_default = dense_shape_default
+  result.set_shape(dense_shape_default)
   return result
 
 # pylint: enable=redefined-outer-name
@@ -3621,7 +3631,9 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tf_type(constant_values) and constant_values == 0:
+    if (not tensor_util.is_tf_type(constant_values) and
+        np.ndim(constant_values) == 0 and
+        constant_values == np.zeros_like(constant_values)):
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(
@@ -4610,12 +4622,36 @@ def squeeze_v2(input, axis=None, name=None):
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
   tf.shape(tf.squeeze(t, [2, 4]))  # [1, 2, 3, 1]
   ```
-
+  
   Unlike the older op `tf.compat.v1.squeeze`, this op does not accept a
   deprecated `squeeze_dims` argument.
 
   Note: if `input` is a `tf.RaggedTensor`, then this operation takes `O(N)`
   time, where `N` is the number of elements in the squeezed dimensions.
+  
+  Note: If squeeze is performed on dimensions of unknown sizes, then the
+  returned Tensor will be of unknown shape. A common situation is when the
+  first (batch) dimension is of size `None`, `tf.squeeze` returns
+  `<unknown>` shape which may be a surprise. Specify the `axis=` argument
+  to get the expected result, as illustrated in the following example:
+  
+  ```python
+  @tf.function
+  def func(x):
+    print('x.shape:', x.shape)
+    known_axes = [i for i, size in enumerate(x.shape) if size == 1]
+    y = tf.squeeze(x, axis=known_axes)
+    print('shape of tf.squeeze(x, axis=known_axes):', y.shape)
+    y = tf.squeeze(x)
+    print('shape of tf.squeeze(x):', y.shape)
+    return 0
+ 
+  _ = func.get_concrete_function(tf.TensorSpec([None, 1, 2], dtype=tf.int32))
+  # Output is.
+  # x.shape: (None, 1, 2)
+  # shape of tf.squeeze(x, axis=known_axes): (None, 2)
+  # shape of tf.squeeze(x): <unknown>
+  ```
 
   Args:
     input: A `Tensor`. The `input` to squeeze.
@@ -5441,8 +5477,8 @@ def gather_nd(params, indices, name=None, batch_dims=0):
   arranged along the last axis of `indices`.
 
   This is similar to `tf.gather`, in which `indices` defines slices into the
-  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into the
-  first `N` dimensions of `params`, where `N = indices.shape[-1]`.
+  first dimension of `params`. In `tf.gather_nd`, `indices` defines slices into
+  the first `N` dimensions of `params`, where `N = indices.shape[-1]`.
 
   Caution: On CPU, if an out of bound index is found, an error is returned.
   On GPU, if an out of bound index is found, a 0 is stored in the
@@ -5507,7 +5543,7 @@ def gather_nd(params, indices, name=None, batch_dims=0):
 
   ## Batches
 
-  Additionally both `params` and `indices` can have `M` leading batch
+  Additionally, both `params` and `indices` can have `M` leading batch
   dimensions that exactly match. In this case `batch_dims` must be set to `M`.
 
   For example, to collect one row from each of a batch of matrices you could
@@ -5817,7 +5853,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
     the index vectors each point to scalars in `tensor` and each update is a
     scalar.
   * If the length of the index vectors is less than the rank of `tensor`, then
-    the index vectors each point to slices of `tensor` and shape of the updates
+    the index vectors each point to the slices of `tensor` and shape of the updates
     must match that slice.
 
   Overall this leads to the following shape constraints:
@@ -5899,8 +5935,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
 
   ```
   num_updates, index_depth = indices.shape.as_list()
-  inner_shape = tensor.shape[:index_depth]
-  outer_shape = tensor.shape[index_depth:]
+  outer_shape = tensor.shape[:index_depth]
+  inner_shape = tensor.shape[index_depth:]
   assert updates.shape == [num_updates, inner_shape]
   ```
 
@@ -6397,7 +6433,7 @@ def searchsorted(sorted_sequence,
 
   Note: This operation assumes that `sorted_sequence` **is sorted** along the
   innermost axis, maybe using `tf.sort(..., axis=-1)`. **If the sequence is not
-  sorted no error is raised** and the content of the returned tensor is not well
+  sorted, no error is raised** and the content of the returned tensor is not well
   defined.
 
   Args:
@@ -6648,7 +6684,7 @@ def fingerprint(data, method="farmhash64", name=None):
   Args:
     data: A `Tensor`. Must have rank 1 or higher.
     method: A `Tensor` of type `tf.string`. Fingerprint method used by this op.
-      Currently available method is `farmhash64`.
+      Currently, available method is `farmhash64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -6751,10 +6787,11 @@ def repeat_with_axis(data, repeats, axis, name=None):
          [3, 3, 4, 4, 4]], dtype=int32)>
 
   """
-  # Whether the execution happens on the XLA path.
-  on_xla_path = (
-      control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()) or
-      config.get_optimizer_jit() or pywrap_tf_session.TF_GetXlaAutoJitEnabled())
+  # Whether the execution uses the optimized non-XLA implementation below.
+  # TODO(b/236387200): Separate the implementations at a lower level, so that
+  # non-XLA path gets the performance benefits and the XLA path is not broken
+  # after loading a saved model with the optimization.
+  use_optimized_non_xla_implementation = False
 
   if not isinstance(axis, int):
     raise TypeError("Argument `axis` must be an int. "
@@ -6765,7 +6802,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # Note: We want to pass dtype=None to convert_to_int_tensor so that the
     # existing type is maintained instead of force-casting to int32. However,
     # this is not compatible with the implementation used on the XLA path.
-    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
+    if not use_optimized_non_xla_implementation:
       repeats = convert_to_int_tensor(repeats, name="repeats")
     else:
       repeats = convert_to_int_tensor(repeats, name="repeats", dtype=None)
@@ -6790,7 +6827,6 @@ def repeat_with_axis(data, repeats, axis, name=None):
                             axis=0)
       return reshape(tiled, result_shape)
 
-
     # Check data Tensor shapes.
     if repeats.shape.ndims == 1:
       data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
@@ -6800,7 +6836,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # The implementation on the else branch has better performance. However, it
     # does not work on the XLA path since it relies on the range op with a
     # shape that is not a compile-time constant.
-    if (on_xla_path or not forward_compat.forward_compatible(2022, 3, 30)):
+    if not use_optimized_non_xla_implementation:
       repeats_original = repeats
 
       # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
@@ -6856,7 +6892,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
       # E.g., repeats = [3, 4, 0, 2, 1].
       # E.g., repeats_scan = [3, 7, 7, 9, 10].
       repeats_scan = math_ops.cumsum(repeats)
-      # This concat just prepends 0 to handle the case when repeats is empty.
+      # This concat just prepends 0 to handle the case when repeats are empty.
       # E.g., output_size = [0, 3, 7, 7, 9, 10][-1] = 10.
       output_size = concat([zeros(1, dtype=repeats_scan.dtype), repeats_scan],
                            axis=0)[-1]
@@ -6906,7 +6942,7 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     repeats: An 1-D `int` Tensor. The number of repetitions for each element.
       repeats is broadcasted to fit the shape of the given axis. `len(repeats)`
       must equal `input.shape[axis]` if axis is not None.
-    axis: An int. The axis along which to repeat values. By default (axis=None),
+    axis: An int. The axis along which to repeat values. By default, (axis=None),
       use the flattened input array, and return a flat output array.
     name: A name for the operation.
 
@@ -6983,7 +7019,10 @@ def stop_gradient(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same dtype as `input`.
   """
-  if isinstance(input, composite_tensor.CompositeTensor):
+  # Don't expand ResourceVariables, so stop_gradient(variable) will return a
+  # Tensor.
+  if (isinstance(input, composite_tensor.CompositeTensor) and
+      not _pywrap_utils.IsResourceVariable(input)):
     return nest.map_structure(stop_gradient, input, expand_composites=True)
   # The StopGradient op has a gradient function registered which returns None
   # (meaning statically known to be zero). For correctness, that's all we

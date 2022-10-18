@@ -17,10 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TRANSFER_OPS_H_
 
 #include "tensorflow/compiler/jit/xla_device.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/stream_executor_util.h"
-#include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
 namespace tensorflow {
 

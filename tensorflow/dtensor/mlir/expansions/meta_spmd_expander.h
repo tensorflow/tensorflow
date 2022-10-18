@@ -114,21 +114,6 @@ class TransposeSPMDExpander : public SPMDExpanderBase {
       const llvm::DenseMap<int, Layout>& output_layouts) override;
 };
 
-class InvertPermutationSPMDExpander : public SPMDExpanderBase {
- public:
-  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override {
-    return InferSPMDExpandedLocalShape(op);
-  }
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& input_layouts) override;
-
-  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& output_layouts) override;
-};
-
 class OneHotSPMDExpander : public SPMDExpanderBase {
  public:
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;

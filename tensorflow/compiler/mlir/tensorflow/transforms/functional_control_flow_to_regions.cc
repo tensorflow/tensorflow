@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-functional-cf-to-region"
@@ -43,8 +42,11 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_FUNCTIONALCONTROLFLOWTOREGIONSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct FunctionalControlFlowToRegions
-    : public TF::FunctionalControlFlowToRegionsPassBase<
+    : public impl::FunctionalControlFlowToRegionsPassBase<
           FunctionalControlFlowToRegions> {
   void runOnOperation() override;
 };
@@ -55,7 +57,7 @@ struct FunctionalControlFlowToRegions
 // the input arguments are used as is (for IfOp) or block arguments of the same
 // type as the input arguments are created and then used as call arguments (for
 // While).
-YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
+YieldOp CreateCall(Operation* op, func::FuncOp func, Region& caller_region,
                    ValueRange args, bool use_region_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");

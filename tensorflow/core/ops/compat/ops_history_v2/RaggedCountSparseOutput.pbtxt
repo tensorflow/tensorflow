@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RaggedCountSparseOutput"
   input_arg {
     name: "splits"

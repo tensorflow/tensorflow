@@ -20,6 +20,7 @@
 import logging as _logging
 import os as _os
 import sys as _sys
+import _thread
 import time as _time
 import traceback as _traceback
 from logging import DEBUG
@@ -28,8 +29,6 @@ from logging import FATAL
 from logging import INFO
 from logging import WARN
 import threading
-
-import six
 
 from tensorflow.python.util.tf_export import tf_export
 
@@ -319,9 +318,7 @@ def set_verbosity(v):
 
 def _get_thread_id():
   """Get id of current thread, suitable for logging as an unsigned quantity."""
-  # pylint: disable=protected-access
-  thread_id = six.moves._thread.get_ident()
-  # pylint:enable=protected-access
+  thread_id = _thread.get_ident()
   return thread_id & _THREAD_ID_MASK
 
 

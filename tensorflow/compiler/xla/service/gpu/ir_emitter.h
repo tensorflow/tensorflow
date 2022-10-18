@@ -86,7 +86,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleTuple(HloInstruction* tuple) override;
   Status HandleScatter(HloInstruction* scatter) override;
-  Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
@@ -95,7 +94,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
 
-  Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
+  Status FinishVisit(HloInstruction* root) override { return OkStatus(); }
 
   llvm::IRBuilder<>* builder() { return &b_; }
 
@@ -149,11 +148,13 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // atomicAdd(output_address, *source_address).
   Status EmitAtomicOperationForNestedComputation(
       const HloComputation& nested_computation, llvm::Value* output_address,
-      llvm::Value* source_address);
+      llvm::Value* source_address, llvm::Type* element_type);
 
   GpuElementalIrEmitter::NestedComputer GetNestedComputer() {
-    return std::bind(&IrEmitter::ComputeNestedElement, this,
-                     std::placeholders::_1, std::placeholders::_2);
+    return [&](const HloComputation& computation,
+               absl::Span<llvm::Value* const> parameter_elements) {
+      return ComputeNestedElement(computation, parameter_elements);
+    };
   }
 
   StatusOr<std::vector<llvm::Value*>> ComputeNestedElement(
@@ -181,6 +182,10 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   void BindFusionArguments(const HloInstruction* fusion,
                            FusedIrEmitter* fused_emitter);
 
+  // Emit a fence for AMDGPU if necessary.
+  void MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
+                               const char* sync_scope_id);
+
  private:
   // A helper method for EmitAtomicOperationForNestedComputation. Certain
   // computations, such as floating-point addition and integer maximization, can
@@ -196,7 +201,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // small data types.
   Status EmitAtomicOperationUsingCAS(const HloComputation& computation,
                                      llvm::Value* output_address,
-                                     llvm::Value* source_address);
+                                     llvm::Value* source_address,
+                                     llvm::Type* element_type);
 
   // A helper method for HandleSort(). It adds the inner comparison loop where
   // we compare elements pointed to by 'keys_index' and 'compare_keys_index'.

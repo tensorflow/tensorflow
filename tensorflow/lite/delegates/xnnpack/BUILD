@@ -1,6 +1,6 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -42,12 +42,7 @@ config_setting(
 cc_library(
     name = "tflite_with_xnnpack_qs8_default",
     compatible_with = get_compatible_with_portable(),
-    defines = select({
-        # Enable for WebAssembly builds
-        "//tensorflow:emscripten": ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
-        # Disable for all other builds
-        "//conditions:default": [],
-    }),
+    defines = ["XNNPACK_DELEGATE_ENABLE_QS8=1"],
 )
 
 cc_library(
@@ -121,6 +116,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -152,6 +148,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -232,6 +229,7 @@ cc_library(
     hdrs = ["conv_2d_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -268,6 +266,7 @@ cc_library(
     hdrs = ["depthwise_conv_2d_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -304,6 +303,7 @@ cc_library(
     hdrs = ["fully_connected_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -374,6 +374,7 @@ cc_library(
     hdrs = ["prelu_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -426,6 +427,7 @@ cc_library(
     srcs = ["quantized_conv_2d_tester.cc"],
     hdrs = ["quantized_conv_2d_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -443,6 +445,7 @@ cc_library(
     srcs = ["quantized_depthwise_conv_2d_tester.cc"],
     hdrs = ["quantized_depthwise_conv_2d_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -459,6 +462,24 @@ cc_library(
     testonly = 1,
     srcs = ["quantized_fully_connected_tester.cc"],
     hdrs = ["quantized_fully_connected_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "quantized_leaky_relu_tester",
+    testonly = 1,
+    srcs = ["quantized_leaky_relu_tester.cc"],
+    hdrs = ["quantized_leaky_relu_tester.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -608,6 +629,23 @@ cc_library(
 )
 
 cc_library(
+    name = "slice_tester",
+    testonly = 1,
+    srcs = ["slice_tester.cc"],
+    hdrs = ["slice_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "split_tester",
     testonly = 1,
     srcs = ["split_tester.cc"],
@@ -642,10 +680,45 @@ cc_library(
 )
 
 cc_library(
+    name = "strided_slice_tester",
+    testonly = 1,
+    srcs = ["strided_slice_tester.cc"],
+    hdrs = ["strided_slice_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "unary_elementwise_tester",
     testonly = 1,
     srcs = ["unary_elementwise_tester.cc"],
     hdrs = ["unary_elementwise_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "transpose_tester",
+    testonly = 1,
+    srcs = ["transpose_tester.cc"],
+    hdrs = ["transpose_tester.h"],
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
@@ -665,6 +738,7 @@ cc_library(
     hdrs = ["transpose_conv_tester.h"],
     deps = [
         ":test_util",
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -683,6 +757,7 @@ cc_library(
     srcs = ["quantized_transpose_conv_tester.cc"],
     hdrs = ["quantized_transpose_conv_tester.h"],
     deps = [
+        ":xnnpack_delegate_test_mode",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/c:common",
@@ -1115,6 +1190,66 @@ cc_test(
 )
 
 cc_test(
+    name = "quantize_float32_to_int8_test",
+    srcs = ["quantize_float32_to_int8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_float32_to_uint8_test",
+    srcs = ["quantize_float32_to_uint8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_int8_to_int8_test",
+    srcs = ["quantize_int8_to_int8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "quantize_uint8_to_uint8_test",
+    srcs = ["quantize_uint8_to_uint8_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantize_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "relu_test",
     srcs = ["relu_test.cc"],
     linkopts = select({
@@ -1213,21 +1348,6 @@ cc_test(
     }),
     deps = [
         ":dequantize_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "signed_quantize_test",
-    srcs = ["signed_quantize_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1340,6 +1460,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_leaky_relu_test",
+    srcs = ["signed_quantized_leaky_relu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_leaky_relu_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_logistic_test",
     srcs = ["signed_quantized_logistic_test.cc"],
     linkopts = select({
@@ -1430,6 +1565,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_slice_test",
+    srcs = ["signed_quantized_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_split_test",
     srcs = ["signed_quantized_split_test.cc"],
     linkopts = select({
@@ -1438,6 +1588,21 @@ cc_test(
     }),
     deps = [
         ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "signed_quantized_strided_slice_test",
+    srcs = ["signed_quantized_strided_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":strided_slice_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1460,6 +1625,21 @@ cc_test(
 )
 
 cc_test(
+    name = "signed_quantized_transpose_test",
+    srcs = ["signed_quantized_transpose_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":transpose_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "signed_quantized_transpose_conv_test",
     srcs = ["signed_quantized_transpose_conv_test.cc"],
     linkopts = select({
@@ -1475,14 +1655,14 @@ cc_test(
 )
 
 cc_test(
-    name = "split_test",
-    srcs = ["split_test.cc"],
+    name = "slice_test",
+    srcs = ["slice_test.cc"],
     linkopts = select({
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
     deps = [
-        ":split_tester",
+        ":slice_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1498,6 +1678,21 @@ cc_test(
     }),
     deps = [
         ":softmax_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "split_test",
+    srcs = ["split_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":split_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1550,6 +1745,21 @@ cc_test(
 )
 
 cc_test(
+    name = "strided_slice_test",
+    srcs = ["strided_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":strided_slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "sub_test",
     srcs = ["sub_test.cc"],
     linkopts = select({
@@ -1559,6 +1769,21 @@ cc_test(
     deps = [
         ":binary_elementwise_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":transpose_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
@@ -1588,21 +1813,6 @@ cc_test(
     }),
     deps = [
         ":dequantize_tester",
-        ":test_main",
-        ":xnnpack_delegate_test_mode",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "unsigned_quantize_test",
-    srcs = ["unsigned_quantize_test.cc"],
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":quantize_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1700,6 +1910,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_leaky_relu_test",
+    srcs = ["unsigned_quantized_leaky_relu_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":quantized_leaky_relu_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_logistic_test",
     srcs = ["unsigned_quantized_logistic_test.cc"],
     linkopts = select({
@@ -1790,6 +2015,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_slice_test",
+    srcs = ["unsigned_quantized_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":slice_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_split_test",
     srcs = ["unsigned_quantized_split_test.cc"],
     linkopts = select({
@@ -1798,6 +2038,21 @@ cc_test(
     }),
     deps = [
         ":split_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "unsigned_quantized_strided_slice_test",
+    srcs = ["unsigned_quantized_strided_slice_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":strided_slice_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
@@ -1820,6 +2075,21 @@ cc_test(
 )
 
 cc_test(
+    name = "unsigned_quantized_transpose_test",
+    srcs = ["unsigned_quantized_transpose_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":transpose_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "unsigned_quantized_transpose_conv_test",
     srcs = ["unsigned_quantized_transpose_conv_test.cc"],
     linkopts = select({
@@ -1830,6 +2100,19 @@ cc_test(
         ":quantized_transpose_conv_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "weights_cache_test",
+    srcs = ["weights_cache_test.cc"],
+    deps = [
+        ":conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -30,26 +30,26 @@ namespace toco {
   *modified = false;
   auto conv_it = model->operators.begin() + op_index;
   if (conv_it->get()->type != OperatorType::kConv) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto* conv_op = static_cast<ConvOperator*>(conv_it->get());
   if (conv_op->stride_width != conv_op->stride_height) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if ((conv_op->dilation_width_factor != 1) ||
       (conv_op->dilation_height_factor != 1)) {
     // Depthwise conv does not support dilation
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto& input_array = model->GetArray(conv_op->inputs[0]);
   if (!input_array.has_shape()) {
     // Shapes not propagated yet
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (input_array.shape().dims(3) != 1) {
     // Not a pure convolution: Conv does accumulation across the depth
     // dimension.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   const auto& weights_name = conv_op->inputs[1];
@@ -59,15 +59,15 @@ namespace toco {
         "Not changing %s to DepthwiseConv because the weights is consumed by "
         "another op.",
         LogName(*conv_op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   auto& weights_array = model->GetArray(weights_name);
   if (!weights_array.buffer) {
     // Yield until the weights are resolved as a constant array.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (weights_array.data_type != ArrayDataType::kFloat) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   // At this point we know we have a pure conv. Rewrite it as DepthwiseConv.
   AddMessageF(
@@ -113,7 +113,7 @@ namespace toco {
   *weights_array.mutable_shape()->mutable_dims() = {1, width, height, depth};
   weights_buffer.data = depthwise_conv_weights_data;
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

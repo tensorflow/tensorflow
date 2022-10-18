@@ -6,7 +6,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'2.0\', \'False\', \'0.0\', \'-1\', \'auto\', \'binary_focal_crossentropy\'], "
+    argspec: "args=[\'self\', \'apply_class_balancing\', \'alpha\', \'gamma\', \'from_logits\', \'label_smoothing\', \'axis\', \'reduction\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'0.25\', \'2.0\', \'False\', \'0.0\', \'-1\', \'auto\', \'binary_focal_crossentropy\'], "
   }
   member_method {
     name: "call"

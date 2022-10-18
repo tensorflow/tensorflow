@@ -42,9 +42,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -68,7 +68,7 @@ class BatchNormalizationTest : public ClientLibraryTestBase {
 
   XlaOp CheckShape(XlaBuilder* b, const XlaOp operand,
                    const Shape& expected_shape) const {
-    Shape actual_shape = b->GetShape(operand).ConsumeValueOrDie();
+    Shape actual_shape = b->GetShape(operand).value();
     CHECK(ShapeUtil::Equal(expected_shape, actual_shape))
         << "want " << ShapeUtil::HumanString(expected_shape) << " got "
         << ShapeUtil::HumanString(actual_shape);
@@ -106,7 +106,7 @@ XLA_TEST_F(BatchNormalizationTest, SquareTesseractElementwise) {
   auto x = ConstantLiteral(&builder, input_literal_);
   Square(x);
 
-  using tensorflow::MathUtil;
+  using tsl::MathUtil;
 
   Array4D<float> expected(kSamples, kZ, kY, kX);
   Array2D<float> expected_pz({
@@ -169,8 +169,8 @@ XLA_TEST_F(BatchNormalizationTest, SpecComparisonForward) {
       Reduce(input_activations, ConstantR0<float>(&builder, 0.0f), add,
              /*dimensions_to_reduce=*/{0, 2, 3}),
       TwoElementVectorF32);
-  auto input_shape = builder.GetShape(input_activations).ConsumeValueOrDie();
-  auto sum_shape = builder.GetShape(sum).ConsumeValueOrDie();
+  auto input_shape = builder.GetShape(input_activations).value();
+  auto sum_shape = builder.GetShape(sum).value();
   auto count =
       ConstantR0<float>(&builder, ShapeUtil::ElementsIn(input_shape) /
                                       ShapeUtil::ElementsIn(sum_shape));
@@ -591,11 +591,11 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedTrainingTests) {
        LiteralUtil::CreateR1<float>(var)});
 
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
   std::unique_ptr<GlobalData> scale_data =
-      client_->TransferToServer(scale_literal).ConsumeValueOrDie();
+      client_->TransferToServer(scale_literal).value();
   std::unique_ptr<GlobalData> offset_data =
-      client_->TransferToServer(offset_literal).ConsumeValueOrDie();
+      client_->TransferToServer(offset_literal).value();
 
   BatchNormTraining(input_activations, scale_activations, offset_activations,
                     epsilon, feature_index);
@@ -692,15 +692,15 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedInferencingTests) {
   Array4D<float> expected = normalized;
 
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
   std::unique_ptr<GlobalData> scale_data =
-      client_->TransferToServer(scale_literal).ConsumeValueOrDie();
+      client_->TransferToServer(scale_literal).value();
   std::unique_ptr<GlobalData> offset_data =
-      client_->TransferToServer(offset_literal).ConsumeValueOrDie();
+      client_->TransferToServer(offset_literal).value();
   std::unique_ptr<GlobalData> mean_data =
-      client_->TransferToServer(mean_literal).ConsumeValueOrDie();
+      client_->TransferToServer(mean_literal).value();
   std::unique_ptr<GlobalData> variance_data =
-      client_->TransferToServer(var_literal).ConsumeValueOrDie();
+      client_->TransferToServer(var_literal).value();
 
   BatchNormInference(input_activations, scale_activations, offset_activations,
                      mean_activations, variance_activations, epsilon,
@@ -877,15 +877,15 @@ XLA_TEST_P(BatchNormTestManySizes, RandomizedGradTests) {
       Parameter(&builder, 4, grad_output_literal.shape(), "grad_output");
 
   std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(input_literal).ConsumeValueOrDie();
+      client_->TransferToServer(input_literal).value();
   std::unique_ptr<GlobalData> scale_data =
-      client_->TransferToServer(scale_literal).ConsumeValueOrDie();
+      client_->TransferToServer(scale_literal).value();
   std::unique_ptr<GlobalData> mean_data =
-      client_->TransferToServer(mean_literal).ConsumeValueOrDie();
+      client_->TransferToServer(mean_literal).value();
   std::unique_ptr<GlobalData> var_data =
-      client_->TransferToServer(var_literal).ConsumeValueOrDie();
+      client_->TransferToServer(var_literal).value();
   std::unique_ptr<GlobalData> grad_output_data =
-      client_->TransferToServer(grad_output_literal).ConsumeValueOrDie();
+      client_->TransferToServer(grad_output_literal).value();
 
   BatchNormGrad(input_parameter, scale_parameter, mean_parameter, var_parameter,
                 grad_output_parameter, epsilon, feature_index);

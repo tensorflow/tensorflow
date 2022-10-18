@@ -145,7 +145,7 @@ absl::string_view GpuModelName(const DeviceCapabilities& device_cap) {
 HardwareType ParseHardwareType(absl::string_view device_type) {
   if (absl::StrContains(device_type, "GPU")) return HardwareType::GPU;
   if (device_type == "CPU") return HardwareType::CPU_ONLY;
-  if (device_type == "TPU") return HardwareType::TPU;
+  if (absl::StrContains(device_type, "TPU")) return HardwareType::TPU;
   return HardwareType::UNKNOWN_HARDWARE;
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>

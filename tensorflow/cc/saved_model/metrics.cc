@@ -73,6 +73,18 @@ auto* checkpoint_read_durations = monitoring::Sampler<1>::New(
     // Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
     monitoring::Buckets::Exponential(1000, 1.5, 41));
 
+// Distribution of async checkpoint write durations.
+auto* async_checkpoint_write_durations = monitoring::Sampler<1>::New(
+    {
+        "/tensorflow/core/checkpoint/write/async_write_durations",  // Metric
+                                                                    // name.
+        "Distribution of the wall time duration in microseconds of the async "
+        "checkpoint write operation",  // Metric description.
+        "api_label"                    // Cell label.
+    },
+    // Scale of 1000, growth factor of 1.5 with upper bound of ~184 minutes.
+    monitoring::Buckets::Exponential(1000, 1.5, 41));
+
 // Counter that accumulates total time elapsed between module import time and
 // the last successful Checkpoint write prior to job pre-emption or completion.
 auto* checkpoint_training_time_saved = monitoring::Counter<1>::New(
@@ -115,6 +127,11 @@ monitoring::SamplerCell& CheckpointReadDuration(absl::string_view api_label) {
 
 monitoring::SamplerCell& CheckpointWriteDuration(absl::string_view api_label) {
   return *checkpoint_write_durations->GetCell(std::string(api_label));
+}
+
+monitoring::SamplerCell& AsyncCheckpointWriteDuration(
+    absl::string_view api_label) {
+  return *async_checkpoint_write_durations->GetCell(std::string(api_label));
 }
 
 monitoring::CounterCell& TrainingTimeSaved(absl::string_view api_label) {

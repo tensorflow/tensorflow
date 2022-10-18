@@ -216,8 +216,7 @@ class Input {
         tensor_(init.tensor) {}
 
   Input(const Tensor& t)  // NOLINT(runtime/explicit)
-      : status_(Status::OK()),
-        tensor_(t) {}
+      : status_(OkStatus()), tensor_(t) {}
 
   Input(const std::initializer_list<Initializer>&
             init) {  // NOLINT(runtime/explicit)

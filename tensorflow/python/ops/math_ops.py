@@ -66,9 +66,9 @@ tf.math.unsorted_segment_sum(c, tf.constant([0, 1, 0]), num_segments=2)
 ```
 
 """
+import builtins
 import numbers
 import numpy as np
-import builtins
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -1910,8 +1910,8 @@ def equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
-    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor`.
+    y: A `tf.Tensor`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1947,8 +1947,8 @@ def not_equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
-    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor`.
+    y: A `tf.Tensor`.
     name: A name for the operation (optional).
 
   Returns:
@@ -4007,12 +4007,10 @@ def add(x, y, name=None):
 @tf_export("math.add_n", "add_n")
 @dispatch.add_dispatch_support(iterable_parameters=["inputs"])
 def add_n(inputs, name=None):
-  """Adds all input tensors element-wise.
+  """Returns the element-wise sum of a list of tensors.
 
-  `tf.math.add_n` performs the same operation as `tf.math.accumulate_n`.
-
-  This op does not [broadcast](
-  https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
+  All inputs in the list must have the same shape. This op does not
+  [broadcast](https://docs.scipy.org/doc/numpy-1.13.0/user/basics.broadcasting.html)
   its inputs. If you need broadcasting, use `tf.math.add` (or the `+` operator)
   instead.
 
@@ -4020,10 +4018,17 @@ def add_n(inputs, name=None):
 
   >>> a = tf.constant([[3, 5], [4, 8]])
   >>> b = tf.constant([[1, 6], [2, 9]])
-  >>> tf.math.add_n([a, b, a])
-  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+  >>> tf.math.add_n([a, b, a]).numpy()
   array([[ 7, 16],
-         [10, 25]], dtype=int32)>
+         [10, 25]], dtype=int32)
+
+  See Also:
+
+  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+    operation, but `tf.add_n` may be more efficient because it sums the
+    tensors directly. `reduce_sum` on the other hand calls
+    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    into a single tensor before summing.
 
   Args:
     inputs: A list of `tf.Tensor` or `tf.IndexedSlices` objects, each with the
@@ -4059,29 +4064,42 @@ def add_n(inputs, name=None):
   return gen_math_ops.add_n(inputs, name=name)
 
 
+
 @tf_export("math.accumulate_n", v1=["math.accumulate_n", "accumulate_n"])
 @dispatch.add_dispatch_support
-@deprecation.deprecated_endpoints("accumulate_n")
+@deprecation.deprecated(None, "Use `tf.math.add_n` Instead")
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
 
   Optionally, pass `shape` and `tensor_dtype` for shape and type checking,
   otherwise, these are inferred.
 
-  `accumulate_n` performs the same operation as `tf.math.add_n`.
-
   For example:
 
-  ```python
-  a = tf.constant([[1, 2], [3, 4]])
-  b = tf.constant([[5, 0], [0, 6]])
-  tf.math.accumulate_n([a, b, a])  # [[7, 4], [6, 14]]
+  >>> a = tf.constant([[1, 2], [3, 4]])
+  >>> b = tf.constant([[5, 0], [0, 6]])
+  >>> tf.math.accumulate_n([a, b, a]).numpy()
+  array([[ 7, 4],
+         [ 6, 14]], dtype=int32)
 
-  # Explicitly pass shape and type
-  tf.math.accumulate_n([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
-                                                                 # [[7,  4],
-                                                                 #  [6, 14]]
-  ```
+  >>> # Explicitly pass shape and type
+  >>> tf.math.accumulate_n(
+  ...     [a, b, a], shape=[2, 2], tensor_dtype=tf.int32).numpy()
+  array([[ 7,  4],
+         [ 6, 14]], dtype=int32)
+
+  Note: The input must be a list or tuple. This function does not handle
+  `IndexedSlices`
+
+  See Also:
+
+  * `tf.reduce_sum(inputs, axis=0)` - This performe the same mathematical
+    operation, but `tf.add_n` may be more efficient because it sums the
+    tensors directly. `reduce_sum` on the other hand calls
+    `tf.convert_to_tensor` on the list of tensors, unncessairly stacking them
+    into a single tensor before summing.
+  * `tf.add_n` - This is another python wrapper for the same Op. It has
+    nearly identical functionality.
 
   Args:
     inputs: A list of `Tensor` objects, each with same shape and type.

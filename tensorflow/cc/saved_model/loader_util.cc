@@ -42,7 +42,7 @@ Status GetInitOp(const string& export_dir, const MetaGraphDef& meta_graph_def,
                                         kSavedModelInitOpSignatureKey);
     }
     *init_op_name = sig_def_outputs_it->second.name();
-    return Status::OK();
+    return OkStatus();
   }
 
   const auto& collection_def_map = meta_graph_def.collection_def();
@@ -62,7 +62,7 @@ Status GetInitOp(const string& export_dir, const MetaGraphDef& meta_graph_def,
     }
     *init_op_name = init_op_it->second.node_list().value(0);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
@@ -73,13 +73,13 @@ Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
     for (const auto& asset : meta_graph_def.asset_file_def()) {
       asset_file_defs->push_back(asset);
     }
-    return Status::OK();
+    return OkStatus();
   }
   // Fall back to read from collection to be backward compatible with v1.
   const auto& collection_def_map = meta_graph_def.collection_def();
   const auto assets_it = collection_def_map.find(kSavedModelAssetsKey);
   if (assets_it == collection_def_map.end()) {
-    return Status::OK();
+    return OkStatus();
   }
   const auto& any_assets = assets_it->second.any_list().value();
   for (const auto& any_asset : any_assets) {
@@ -88,7 +88,7 @@ Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
         ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef"));
     asset_file_defs->push_back(asset_file_def);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace internal

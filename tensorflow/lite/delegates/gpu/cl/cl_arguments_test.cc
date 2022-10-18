@@ -35,7 +35,7 @@ TEST(CLArgumentsTest, TestSelectorResolve) {
 
   Arguments args;
   args.AddObjectRef("weights", AccessType::READ,
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   std::string sample_code = R"(
 __kernel void main_function($0) {
   if (a < 3) {
@@ -59,7 +59,7 @@ TEST(CLArgumentsTest, TestNoSelector) {
 
   Arguments args;
   args.AddObjectRef("weights", AccessType::READ,
-                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+                    std::make_unique<BufferDescriptor>(std::move(desc)));
   std::string sample_code = R"(
   if (a < 3) {
     value = args.weights.UnknownSelector(id);

@@ -16,9 +16,12 @@
 import numpy as np
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
@@ -125,6 +128,16 @@ class SobolSampleOpTest(test_util.TensorFlowTestCase):
     # this case.
     s = math_ops.sobol_sample(10, 100)
     self.assertEqual(dtypes.float32, s.dtype)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_non_scalar_input(self):
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                r'Shape must be rank 0 but is rank 1|'
+                                r'\w+ must be a scalar'):
+      self.evaluate(gen_math_ops.sobol_sample(
+          dim=7,
+          num_results=constant_op.constant([1, 0]),
+          skip=constant_op.constant([1])))
 
 if __name__ == '__main__':
   googletest.main()

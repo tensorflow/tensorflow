@@ -41,7 +41,7 @@ static Status ReadEntireFile(Env* env, const string& filename, T* contents) {
   io::RandomAccessInputStream input_stream(file.get());
   io::BufferedInputStream in(&input_stream, 1 << 20);
   TF_RETURN_IF_ERROR(in.ReadAll(contents));
-  return Status::OK();
+  return OkStatus();
 }
 
 class WholeFileReader : public ReaderBase {
@@ -56,7 +56,7 @@ class WholeFileReader : public ReaderBase {
     TF_RETURN_IF_ERROR(ReadEntireFile(env_, *key, value));
     *produced = true;
     *at_end = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Stores state in a ReaderBaseState proto, since WholeFileReader has
@@ -65,7 +65,7 @@ class WholeFileReader : public ReaderBase {
     ReaderBaseState base_state;
     SaveBaseState(&base_state);
     SerializeToTString(base_state, state);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status RestoreStateLocked(const tstring& state) override {
@@ -75,7 +75,7 @@ class WholeFileReader : public ReaderBase {
                                      absl::CEscape(state));
     }
     TF_RETURN_IF_ERROR(RestoreBaseState(base_state));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

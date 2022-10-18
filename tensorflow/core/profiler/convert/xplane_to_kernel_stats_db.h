@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <functional>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
@@ -29,7 +29,7 @@ namespace profiler {
 
 void ConvertDeviceTraceXPlaneToKernelReports(
     const XPlane& device_trace,
-    const std::function<void(const XEventVisitor&, KernelReport*)>&
+    const std::function<void(const GpuEventStats&, KernelReport*)>&
         on_kernel_fn,
     KernelReportMap* reports);
 

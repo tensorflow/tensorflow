@@ -22,7 +22,7 @@ func.func @main(%arg0: tensor<128x224x224x4xf16>, %arg1: tensor<64x7x7x4xf16>) -
     lhs_dilations = dense<1> : tensor<2xi64>,
     xla_shape = "f16[128,64,112,112]{1,3,2,0}",
     padding = dense<3> : tensor<2x2xi64>,
-    precision_config = [ #mhlo<"precision DEFAULT">, #mhlo<"precision DEFAULT"> ],
+    precision_config = [ #mhlo<precision DEFAULT>, #mhlo<precision DEFAULT> ],
     rhs_dilations = dense<1> : tensor<2xi64>,
     window_strides = dense<2> : tensor<2xi64>
   } : (tensor<128x224x224x4xf16>, tensor<64x7x7x4xf16>)-> tensor<128x64x112x112xf16> loc("root.42")

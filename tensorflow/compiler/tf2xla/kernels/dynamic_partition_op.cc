@@ -108,8 +108,8 @@ class DynamicPartitionOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::Shape data_shape = ctx->InputXlaShape(0).ConsumeValueOrDie();
-    xla::Shape partition_shape = ctx->InputXlaShape(1).ConsumeValueOrDie();
+    xla::Shape data_shape = ctx->InputXlaShape(0).value();
+    xla::Shape partition_shape = ctx->InputXlaShape(1).value();
     xla::XlaOp data = ctx->Input(0);
     xla::XlaOp partitions = ctx->Input(1);
     std::vector<int64_t> partitions_static;

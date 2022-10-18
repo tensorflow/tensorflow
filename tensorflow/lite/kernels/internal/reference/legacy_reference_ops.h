@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 
+#include <algorithm>
+
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/legacy_types.h"

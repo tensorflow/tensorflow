@@ -14,9 +14,10 @@
 # ==============================================================================
 """Various types of Trackable objects."""
 
-from tensorflow.python.training.tracking import asset
-from tensorflow.python.training.tracking import autotrackable
-from tensorflow.python.training.tracking import resource
+from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import resource
+
 
 AutoTrackable = autotrackable.AutoTrackable
 Asset = asset.Asset

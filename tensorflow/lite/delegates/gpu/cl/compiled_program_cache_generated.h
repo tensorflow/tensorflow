@@ -26,10 +26,13 @@ namespace cl {
 namespace data {
 
 struct Program;
+struct ProgramBuilder;
 
 struct CompiledCache;
+struct CompiledCacheBuilder;
 
 struct Program FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ProgramBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FINGERPRINT = 4,
     VT_BINARY = 6
@@ -42,7 +45,7 @@ struct Program FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<uint64_t>(verifier, VT_FINGERPRINT) &&
+           VerifyField<uint64_t>(verifier, VT_FINGERPRINT, 8) &&
            VerifyOffset(verifier, VT_BINARY) &&
            verifier.VerifyVector(binary()) &&
            verifier.EndTable();
@@ -50,6 +53,7 @@ struct Program FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 };
 
 struct ProgramBuilder {
+  typedef Program Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_fingerprint(uint64_t fingerprint) {
@@ -62,7 +66,6 @@ struct ProgramBuilder {
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ProgramBuilder &operator=(const ProgramBuilder &);
   flatbuffers::Offset<Program> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<Program>(end);
@@ -92,6 +95,7 @@ inline flatbuffers::Offset<Program> CreateProgramDirect(
 }
 
 struct CompiledCache FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef CompiledCacheBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_DRIVER_VERSION = 4,
     VT_PROGRAMS = 6
@@ -99,8 +103,8 @@ struct CompiledCache FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::String *driver_version() const {
     return GetPointer<const flatbuffers::String *>(VT_DRIVER_VERSION);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<Program>> *programs() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<Program>> *>(VT_PROGRAMS);
+  const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>> *programs() const {
+    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>> *>(VT_PROGRAMS);
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -114,19 +118,19 @@ struct CompiledCache FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 };
 
 struct CompiledCacheBuilder {
+  typedef CompiledCache Table;
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_driver_version(flatbuffers::Offset<flatbuffers::String> driver_version) {
     fbb_.AddOffset(CompiledCache::VT_DRIVER_VERSION, driver_version);
   }
-  void add_programs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Program>>> programs) {
+  void add_programs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>>> programs) {
     fbb_.AddOffset(CompiledCache::VT_PROGRAMS, programs);
   }
   explicit CompiledCacheBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  CompiledCacheBuilder &operator=(const CompiledCacheBuilder &);
   flatbuffers::Offset<CompiledCache> Finish() {
     const auto end = fbb_.EndTable(start_);
     auto o = flatbuffers::Offset<CompiledCache>(end);
@@ -137,7 +141,7 @@ struct CompiledCacheBuilder {
 inline flatbuffers::Offset<CompiledCache> CreateCompiledCache(
     flatbuffers::FlatBufferBuilder &_fbb,
     flatbuffers::Offset<flatbuffers::String> driver_version = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Program>>> programs = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>>> programs = 0) {
   CompiledCacheBuilder builder_(_fbb);
   builder_.add_programs(programs);
   builder_.add_driver_version(driver_version);
@@ -147,9 +151,9 @@ inline flatbuffers::Offset<CompiledCache> CreateCompiledCache(
 inline flatbuffers::Offset<CompiledCache> CreateCompiledCacheDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const char *driver_version = nullptr,
-    const std::vector<flatbuffers::Offset<Program>> *programs = nullptr) {
+    const std::vector<flatbuffers::Offset<tflite::gpu::cl::data::Program>> *programs = nullptr) {
   auto driver_version__ = driver_version ? _fbb.CreateString(driver_version) : 0;
-  auto programs__ = programs ? _fbb.CreateVector<flatbuffers::Offset<Program>>(*programs) : 0;
+  auto programs__ = programs ? _fbb.CreateVector<flatbuffers::Offset<tflite::gpu::cl::data::Program>>(*programs) : 0;
   return tflite::gpu::cl::data::CreateCompiledCache(
       _fbb,
       driver_version__,
@@ -171,6 +175,11 @@ inline const char *CompiledCacheIdentifier() {
 inline bool CompiledCacheBufferHasIdentifier(const void *buf) {
   return flatbuffers::BufferHasIdentifier(
       buf, CompiledCacheIdentifier());
+}
+
+inline bool SizePrefixedCompiledCacheBufferHasIdentifier(const void *buf) {
+  return flatbuffers::BufferHasIdentifier(
+      buf, CompiledCacheIdentifier(), true);
 }
 
 inline bool VerifyCompiledCacheBuffer(

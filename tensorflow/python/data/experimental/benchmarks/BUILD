@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -140,7 +140,6 @@ tf_py_test(
         "//tensorflow/python/data/experimental/ops:resampling",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

@@ -117,7 +117,7 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     }
 
   def setUp(self):
-    super(trt_test.TfTrtIntegrationTestBase, self).setUp()  # pylint: disable=bad-super-call
+    super().setUp()
     # Disable layout optimizer, since it will convert BiasAdd with NHWC
     # format to NCHW format under four dimentional input.
     self.DisableNonTrtOptimizers()

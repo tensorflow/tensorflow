@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_ASM_OPTS_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_ASM_OPTS_UTIL_H_
 
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace xla {
 namespace gpu {

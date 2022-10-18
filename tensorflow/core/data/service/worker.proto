@@ -29,8 +29,8 @@ message GetElementRequest {
   // Whether to skip the round if data isn't ready fast enough.
   bool allow_skip = 5;
   // The trainer ID used to read elements from a multi-trainer cache. This cache
-  // enables sharing data across concurrent training jobs. If set, this request
-  // will read the data requested by other trainers, if available.
+  // enables sharing data across concurrent training iterations. If set, this
+  // request will read the data requested by other trainers, if available.
   string trainer_id = 6;
 }
 

@@ -37,7 +37,7 @@ Status RemoveControlDependencies(const GraphDef& input_graph_def,
             }
         }
     }
-    return Status::OK();
+    return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("remove_control_dependencies", RemoveControlDependencies);

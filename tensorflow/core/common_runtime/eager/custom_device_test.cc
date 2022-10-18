@@ -39,7 +39,7 @@ class TestCustomDevice : public CustomDevice {
                             ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
-    return Status::OK();
+    return OkStatus();
   }
   Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* tensor,
@@ -47,7 +47,7 @@ class TestCustomDevice : public CustomDevice {
       ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
-    return Status::OK();
+    return OkStatus();
   }
   Status Execute(const ImmediateExecutionOperation* op,
                  ImmediateExecutionTensorHandle** retvals,
@@ -58,6 +58,12 @@ class TestCustomDevice : public CustomDevice {
   Status Pack(absl::Span<ImmediateExecutionTensorHandle*> handles,
               ImmediateExecutionTensorHandle** result) override {
     return errors::Unimplemented("Packing is not implemented");
+  }
+
+  // Pins `op` to `device`.
+  StatusOr<bool> ShallPinToThisDevice(
+      const ImmediateExecutionOperation* op) override {
+    return errors::Unimplemented("No preference in custom device pinning.");
   }
 
  private:
@@ -74,12 +80,12 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
   void* DevicePointer() const override { return nullptr; }
   Status NumDims(int* num_dims) const override {
     *num_dims = 1;
-    return Status::OK();
+    return OkStatus();
   }
   Status Dim(int dim_index, int64_t* dim) const override {
     if (dim_index == 0) {
       *dim = length_;
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::Internal("Dim out of bounds");
     }
@@ -87,7 +93,7 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
 
   Status SummarizeValue(std::string& summary) const override {
     summary = std::string("TestValue");
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

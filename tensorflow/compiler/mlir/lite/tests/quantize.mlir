@@ -1,6 +1,6 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize | FileCheck %s
-// RUN: tf-opt %s -tfl-quantize -tfl-legacy-quantize | FileCheck --check-prefix=LEGACY %s
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize -tfl-ops-blocklist="tfl.fully_connected,tfl.softmax" -tfl-locs-blocklist="Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
+// RUN: tf-opt %s -tfl-quantize="legacy-quantize=true" | FileCheck --check-prefix=LEGACY %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-quantize="ops-blocklist=tfl.fully_connected,tfl.softmax locs-blocklist=Block,NullBlock" | FileCheck --check-prefix=BLOCK %s
 
 // CHECK-LABEL: QuantizeFloatConst
 func.func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>> {
@@ -9,6 +9,16 @@ func.func @QuantizeFloatConst() -> tensor<2x2x!quant.uniform<u8:f32, 7.843137254
   func.return %1 : tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>
 
 // CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x2x!quant.uniform<u8:f32, 7.8431372549019615E-4:128>>, value = dense<0> : tensor<2x2xi8>}
+// CHECK:  return %[[cst]]
+}
+
+// CHECK-LABEL: QuantizeFloatConst4Bits
+func.func @QuantizeFloatConst4Bits() -> tensor<2x4x!quant.uniform<i4:f32, 2.500000e-01:-1>> {
+  %0 = arith.constant dense<[[-0.75, -0.5, -0.25, 0.0], [0.25, 0.5, 0.75, 1.0]]> : tensor<2x4xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<2x4x!quant.uniform<i4:f32, 2.500000e-01:-1>>} : (tensor<2x4xf32>) -> tensor<2x4x!quant.uniform<i4:f32, 2.500000e-01:-1>>
+  func.return %1 : tensor<2x4x!quant.uniform<i4:f32, 2.500000e-01:-1>>
+
+// CHECK:  %[[cst:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<2x4x!quant.uniform<i4:f32, 2.500000e-01:-1>>, value = dense<{{\[\[}}-4, -3, -2, -1{{\]}}, [0, 1, 2, 3{{\]\]}}> : tensor<2x4xi4>}
 // CHECK:  return %[[cst]]
 }
 

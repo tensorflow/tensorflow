@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/cluster_ops_by_policy.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 
 namespace mlir {
 namespace tf_test {
@@ -26,8 +25,12 @@ using mlir::TFDevice::ClusteringPolicySet;
 using mlir::TFDevice::ValueConstraint;
 using mlir::TFDevice::ValuesConstraintSet;
 
+#define GEN_PASS_DEF_TESTCLUSTERINGPOLICYPASS
+#define GEN_PASS_DECL_TESTCLUSTERINGPOLICYPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 struct TestClusteringPolicyPass
-    : public TestClusteringPolicyPassBase<TestClusteringPolicyPass> {
+    : public impl::TestClusteringPolicyPassBase<TestClusteringPolicyPass> {
   void runOnOperation() override;
 };
 
@@ -56,7 +59,7 @@ class TestOpsClusteringPolicy : public ClusteringPolicy {
 };
 
 void TestClusteringPolicyPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
   ValuesConstraintSet constraints;
 
   ClusteringPolicySet policies;
@@ -78,7 +81,7 @@ void TestClusteringPolicyPass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTestClusteringPolicyPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTestClusteringPolicyPass() {
   return std::make_unique<TestClusteringPolicyPass>();
 }
 

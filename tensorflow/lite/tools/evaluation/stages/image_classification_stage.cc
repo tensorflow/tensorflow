@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <memory>
+#include <string>
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
@@ -47,7 +49,8 @@ TfLiteStatus ImageClassificationStage::Init(
   tflite_inference_config.set_name("tflite_inference");
   *tflite_inference_config.mutable_specification()
        ->mutable_tflite_inference_params() = params.inference_params();
-  inference_stage_.reset(new TfliteInferenceStage(tflite_inference_config));
+  inference_stage_ =
+      std::make_unique<TfliteInferenceStage>(tflite_inference_config);
   if (inference_stage_->Init(delegate_providers) != kTfLiteOk)
     return kTfLiteError;
 
@@ -73,9 +76,10 @@ TfLiteStatus ImageClassificationStage::Init(
     builder.AddCroppingStep(kCroppingFraction, true /*square*/);
     builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
     builder.AddDefaultNormalizationStep();
-    preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
+    preprocessing_stage_ =
+        std::make_unique<ImagePreprocessingStage>(builder.build());
   } else {
-    preprocessing_stage_.reset(new ImagePreprocessingStage(config_));
+    preprocessing_stage_ = std::make_unique<ImagePreprocessingStage>(config_);
   }
   if (preprocessing_stage_->Init() != kTfLiteOk) return kTfLiteError;
 
@@ -90,8 +94,8 @@ TfLiteStatus ImageClassificationStage::Init(
       LOG(ERROR) << "all_labels not set for TopkAccuracyEvalStage";
       return kTfLiteError;
     }
-    accuracy_eval_stage_.reset(
-        new TopkAccuracyEvalStage(topk_accuracy_eval_config));
+    accuracy_eval_stage_ =
+        std::make_unique<TopkAccuracyEvalStage>(topk_accuracy_eval_config);
     accuracy_eval_stage_->SetTaskInfo(*all_labels_, input_type,
                                       model_info->outputs[0]->dims);
     if (accuracy_eval_stage_->Init() != kTfLiteOk) return kTfLiteError;

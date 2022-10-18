@@ -1,4 +1,4 @@
-// RUN: tf-opt -tfl-prepare-tf=tfl-allow-bf16-and-f16-type-legalization=true %s | FileCheck %s
+// RUN: tf-opt -tfl-prepare-tf=allow-bf16-and-f16-type-legalization=true %s | FileCheck %s
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 

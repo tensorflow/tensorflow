@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"

@@ -13,7 +13,7 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 py_library(

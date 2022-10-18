@@ -44,6 +44,7 @@ from tensorflow.python.util import dispatch
 from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 autograph = lazy_loader.LazyLoader(
@@ -312,7 +313,7 @@ def _internal_py_func(func,
 
   original_func = func
   func = autograph.do_not_convert(func)
-  inp = list(inp)
+  inp = variable_utils.convert_variables_to_tensors(list(inp))
 
   # Normalize Tout.
   is_list_or_tuple = isinstance(Tout, (list, tuple))
@@ -487,7 +488,7 @@ def eager_py_func(func, inp, Tout, name=None):
     operation to a device in that server (e.g. using `with tf.device():`).
 
   * Currently `tf.py_function` is not compatible with XLA. Calling
-    `tf.py_function` inside `tf.function(jit_comiple=True)` will raise an
+    `tf.py_function` inside `tf.function(jit_compile=True)` will raise an
     error.
 
   Args:
@@ -732,7 +733,7 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
     operation to a device in that server (e.g. using `with tf.device():`).
 
   * Currently `tf.numpy_function` is not compatible with XLA. Calling
-    `tf.numpy_function` inside `tf.function(jit_comiple=True)` will raise an
+    `tf.numpy_function` inside `tf.function(jit_compile=True)` will raise an
     error.
 
   * Since the function takes numpy arrays, you cannot take gradients

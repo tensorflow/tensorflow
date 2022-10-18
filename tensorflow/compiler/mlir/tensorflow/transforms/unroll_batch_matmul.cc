@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -59,11 +58,14 @@ class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
                                 PatternRewriter& rewriter) const override;
 };
 
+#define GEN_PASS_DEF_UNROLLBATCHMATMULPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Unrolls a BatchMatMul on the batch dimension. We need to slice each batch out
 // of the inputs, matmul them individually, then stack them all back together at
 // the end.
 struct UnrollBatchMatMulPass
-    : public UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
+    : public impl::UnrollBatchMatMulPassBase<UnrollBatchMatMulPass> {
   void runOnOperation() override;
 };
 
@@ -283,7 +285,7 @@ LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   return success();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();
 }
 

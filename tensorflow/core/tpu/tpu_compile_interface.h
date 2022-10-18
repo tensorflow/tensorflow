@@ -33,6 +33,13 @@ class TpuCompileInterface {
   // Location: tensorflow/core/protobuf/tpu/compilation_result.proto
   static inline constexpr char kTpuCompileErrorPayloadKey[] =
       "type.googleapis.com/tensorflow.tpu.CompilationResultProto";
+
+  // Unique string added to the error message for permanent errors during
+  // XLA:TPU compilation. This can be used by TensorFlow models to distinguish
+  // compilation errors from transient errors created by TPU worker preemptions
+  // and restarts.
+  static inline constexpr char kTpuCompileErrorMessage[] =
+      "XLA:TPU compile permanent error";
 };
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_COMPILE_INTERFACE_H_

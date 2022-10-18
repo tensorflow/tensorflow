@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
@@ -100,7 +101,8 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
       # (or other host memory types). Then RemoteCall can
       # appropriately set AllocatorAttributes to control copies so
       # strings/host memory types stay on CPU.
-      fulltype = structure.full_type_from_spec(self._element_spec)
+      fulltype_list = type_utils.fulltypes_for_flat_tensors(self._element_spec)
+      fulltype = type_utils.fulltype_list_to_product(fulltype_list)
       for return_value in return_values:
         return_value.op.experimental_set_type(fulltype)
       return return_values
@@ -214,7 +216,7 @@ def _create_device_dataset(prototype_ds, incarnation_id, prefetch_buffer_size,
   return ds
 
 
-class MultiDeviceIterator(object):
+class MultiDeviceIterator:
   """An iterator over multiple devices."""
 
   def __init__(self,
@@ -237,6 +239,10 @@ class MultiDeviceIterator(object):
     """
     options = options_lib.Options()
     options.experimental_distribute.num_devices = len(devices)
+    # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+    # optimization to prevent potentially introducing asynchrony.
+    if prefetch_buffer_size == 0:
+      options.experimental_optimization.inject_prefetch = False
     dataset = dataset.with_options(options)
     self._dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
     self._experimental_slack = dataset.options().experimental_slack
@@ -477,6 +483,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
             "not be specified.")
       options = options_lib.Options()
       options.experimental_distribute.num_devices = len(devices)
+      # If `prefetch_buffer_size` is 0, we turn off the `inject_prefetch`
+      # optimization to prevent potentially introducing asynchrony.
+      if prefetch_buffer_size == 0:
+        options.experimental_optimization.inject_prefetch = False
       dataset = dataset.with_options(options)
       dataset = dataset._apply_debug_options()  # pylint: disable=protected-access
       self._element_spec = dataset.element_spec

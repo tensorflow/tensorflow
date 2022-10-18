@@ -99,7 +99,7 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
             " using device: ", context->device()->name());                    \
     }                                                                         \
     *to = tensor;                                                             \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);

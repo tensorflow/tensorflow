@@ -18,10 +18,10 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/gpu/gpu_stream.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif
 
 namespace xla {
@@ -64,7 +64,7 @@ Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (message) {
     return InternalError("CustomCall failed: %s", *message);
   } else {
-    return Status::OK();
+    return OkStatus();
   }
 #else   //  GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return Unavailable(

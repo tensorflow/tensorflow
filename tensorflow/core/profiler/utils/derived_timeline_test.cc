@@ -108,8 +108,7 @@ TEST(DerivedTimelineTest, DependencyTest) {
   const absl::string_view kTfOpName = "mul:Mul";
   const absl::string_view kKernelDetails = "kernel_details";
   XSpace space;
-  GroupMetadataMap group_metadata_map(
-      {{0, {"train 0", ""}}, {1, {"train 1", ""}}});
+  GroupMetadataMap group_metadata_map({{0, {"train 0"}}, {1, {"train 1"}}});
   XPlane* plane = GetOrCreateGpuXPlane(&space, /*device_ordinal=*/0);
   XPlaneBuilder plane_builder(plane);
   auto line_builder = plane_builder.GetOrCreateLine(0);

@@ -89,7 +89,7 @@ tensorflow::Status SerializeProto(T model_proto,
                                      model_proto),
         "Error while writing the resulting model proto");
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace graph_transforms

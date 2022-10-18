@@ -16,19 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_
 
-#include "tensorflow/stream_executor/platform.h"
-
-namespace stream_executor {
-namespace cuda {
-
-// Opaque and unique identifier for the cuda platform.
-// This is needed so that plugins can refer to/identify this platform without
-// instantiating a CudaPlatform object.
-// This is broken out here to avoid a circular dependency between CudaPlatform
-// and CudaExecutor.
-extern const Platform::Id kCudaPlatformId;
-
-}  // namespace cuda
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_PLATFORM_ID_H_

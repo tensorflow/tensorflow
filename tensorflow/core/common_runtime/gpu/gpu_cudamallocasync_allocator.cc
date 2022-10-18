@@ -16,17 +16,17 @@ limitations under the License.
 #include "absl/types/optional.h"
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 #endif  // GOOGLE_CUDA
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamallocasync_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -98,8 +98,8 @@ void GpuCudaMallocAsyncAllocator::PrintAllocatorStatistics() {
 std::atomic<int> GpuCudaMallocAsyncAllocator::number_instantiated_(0);
 
 GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
-    PlatformDeviceId platform_device_id, size_t pool_size, bool reserve_memory,
-    bool compute_stats)
+    tsl::PlatformDeviceId platform_device_id, size_t pool_size,
+    bool reserve_memory, bool compute_stats)
     : name_(absl::StrCat("gpu_async_", platform_device_id.value())),
       reserve_memory_(reserve_memory) {
   ++number_instantiated_;
@@ -111,7 +111,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
   // Initialized here as it only exist if compiled with a recent
   // enough CUDA.
   pool_ = nullptr;
@@ -122,7 +122,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
   if (driverVersion < 11020) {
     LOG(FATAL)  // Crash OK.
         << "Disable cuda_malloc_async or update your CUDA driver to a version"
-        << " compitible with CUDA 11.2 or higher."
+        << " compatible with CUDA 11.2 or higher."
         << " We detected a version compatible with: " << driverVersion;
   }
 
@@ -138,7 +138,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
 
-  // Check the the CUDA runtime is recent enough.
+  // Check the CUDA runtime is recent enough.
   if (auto status2 = cuDriverGetVersion(&driverVersion)) {
     LOG(FATAL)  // Crash OK.
         << "Error while fetching driver version: "
@@ -206,7 +206,7 @@ GpuCudaMallocAsyncAllocator::GpuCudaMallocAsyncAllocator(
 
   // Set read/write access to all GPUs.
   static auto* all_pools_ = new std::vector<CUmemoryPool*>();
-  static auto* all_ids_ = new std::vector<PlatformDeviceId>();
+  static auto* all_ids_ = new std::vector<tsl::PlatformDeviceId>();
   DCHECK(all_pools_->size() == all_ids_->size());
   for (int i = 0; i < all_pools_->size(); ++i) {
     // Set the current pool access to the previous GPUs.
@@ -386,7 +386,9 @@ bool GpuCudaMallocAsyncAllocator::ClearStats() {
 
 void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
 #if TF_CUDA_MALLOC_ASYNC_SUPPORTED
-  if (cuda_stream_ != nullptr) {
+  CUstream new_cuda_stream = *(static_cast<CUstream*>(stream));
+  // We don't need to re-set the CUDA stream if this is the same stream
+  if (cuda_stream_ != nullptr && new_cuda_stream != cuda_stream_) {
     LOG(FATAL) <<  // Crash OK.
         "Trying to set the stream twice. This isn't supported. ";
   }
@@ -397,7 +399,7 @@ void GpuCudaMallocAsyncAllocator::SetStreamAndPreallocateMemory(void* stream) {
     LOG(FATAL) <<  // Crash OK.
         "Failed to get CUDA pool attribute: " << GetCudaErrorMessage(status);
   }
-  cuda_stream_ = *(reinterpret_cast<CUstream*>(stream));
+  cuda_stream_ = new_cuda_stream;
   int64 prealloc_size = 0;
   // TF_CUDA_MALLOC_ASYNC_SUPPORTED_PREALLOC=-1 is a special value that
   // preallocates the total pool size.

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/gl_interop.h"
 
+#include <algorithm>
+#include <variant>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
@@ -270,9 +273,9 @@ GlClBufferCopier::GlClBufferCopier(const TensorObjectDef& input_def,
 
 absl::Status GlClBufferCopier::Convert(const TensorObject& input_obj,
                                        const TensorObject& output_obj) {
-  if (absl::holds_alternative<OpenGlBuffer>(input_obj)) {
-    auto ssbo = absl::get_if<OpenGlBuffer>(&input_obj);
-    auto cl_mem = absl::get_if<OpenClBuffer>(&output_obj);
+  if (std::holds_alternative<OpenGlBuffer>(input_obj)) {
+    auto ssbo = std::get_if<OpenGlBuffer>(&input_obj);
+    auto cl_mem = std::get_if<OpenClBuffer>(&output_obj);
     RETURN_IF_ERROR(
         TFLITE_GPU_CALL_GL(glBindBuffer, GL_SHADER_STORAGE_BUFFER, ssbo->id));
     void* ptr;
@@ -284,8 +287,8 @@ absl::Status GlClBufferCopier::Convert(const TensorObject& input_obj,
     RETURN_IF_ERROR(
         TFLITE_GPU_CALL_GL(glUnmapBuffer, GL_SHADER_STORAGE_BUFFER));
   } else {
-    auto cl_mem = absl::get_if<OpenClBuffer>(&input_obj);
-    auto ssbo = absl::get_if<OpenGlBuffer>(&output_obj);
+    auto cl_mem = std::get_if<OpenClBuffer>(&input_obj);
+    auto ssbo = std::get_if<OpenGlBuffer>(&output_obj);
     RETURN_IF_ERROR(
         TFLITE_GPU_CALL_GL(glBindBuffer, GL_SHADER_STORAGE_BUFFER, ssbo->id));
     void* ptr;

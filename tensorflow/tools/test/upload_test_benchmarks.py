@@ -83,7 +83,6 @@ import json
 import os
 import shutil
 
-from six import text_type
 from google.cloud import datastore
 
 
@@ -147,7 +146,7 @@ def upload_benchmark_data(client, data):
   """
   test_result = json.loads(data)
 
-  test_name = text_type(test_result["name"])
+  test_name = str(test_result["name"])
   start_time = datetime.datetime.utcfromtimestamp(
       float(test_result["startTime"]))
   batch = []
@@ -156,18 +155,14 @@ def upload_benchmark_data(client, data):
   # non-indexed JSON blob.
   t_key = client.key("Test")
   t_val = datastore.Entity(t_key, exclude_from_indexes=["info"])
-  t_val.update({
-      "test": test_name,
-      "start": start_time,
-      "info": text_type(data)
-  })
+  t_val.update({"test": test_name, "start": start_time, "info": str(data)})
   batch.append(t_val)
 
   # Create one Entry Entity for each benchmark entry.  The wall-clock timing is
   # the attribute to be fetched and displayed.  The full entry information is
   # also stored as a non-indexed JSON blob.
   for ent in test_result["entries"].get("entry", []):
-    ent_name = text_type(ent["name"])
+    ent_name = str(ent["name"])
     e_key = client.key("Entry")
     e_val = datastore.Entity(e_key, exclude_from_indexes=["info"])
     e_val.update({
@@ -175,7 +170,7 @@ def upload_benchmark_data(client, data):
         "start": start_time,
         "entry": ent_name,
         "timing": ent["wallTime"],
-        "info": text_type(json.dumps(ent))
+        "info": str(json.dumps(ent))
     })
     batch.append(e_val)
 

@@ -14,11 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/views/attr_view.h"
 
+#include <string>
+
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/common/case_format.h"
 #include "tensorflow/c/experimental/ops/gen/common/view_util.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace generator {
@@ -27,18 +28,29 @@ namespace cpp {
 string AttrView::VariableName() const { return attr_.name(); }
 
 string AttrView::VariableType() const {
+  // Completely special cases (e.g. strings are different when lists)
   if (attr_.full_type() == "string") {
     return "const char*";
-  }
-  if (attr_.full_type() == "type") {
-    return "DataType";
-  }
-  if (attr_.full_type() == "shape") {
-    return "const PartialTensorShape";
   }
   if (attr_.full_type() == "list(string)") {
     return "absl::Span<string const>";
   }
+
+  // Normal path: translate base type to C++ ...
+  string c_base_type = attr_.base_type();
+  if (attr_.base_type() == "type") {
+    c_base_type = "DataType";
+  } else if (attr_.base_type() == "shape") {
+    c_base_type = "const PartialTensorShape";
+  }
+
+  // ... and wrap in a Span<> if it's a list.
+  if (attr_.is_list()) {
+    return absl::Substitute("absl::Span<$0>", c_base_type);
+  } else {
+    return c_base_type;
+  }
+
   return attr_.full_type();
 }
 
@@ -79,6 +91,14 @@ string AttrView::VariableStrLen() const {
   return Call("strlen", {VariableName()});
 }
 
+string AttrView::VariableSpanData() const {
+  return Call(VariableName(), "data", {}, ".");
+}
+
+string AttrView::VariableSpanLen() const {
+  return Call(VariableName(), "length", {}, ".");
+}
+
 string AttrView::InputArg(bool with_default_value) const {
   string default_value = DefaultValue();
   if (!with_default_value || default_value.empty()) {
@@ -97,10 +117,14 @@ string AttrView::SetterMethod() const {
 }
 
 std::vector<string> AttrView::SetterArgs() const {
-  if (attr_.full_type() != "string") {
-    return {AttrNameString(), VariableName()};
-  } else {
+  if (attr_.full_type() == "string") {
     return {AttrNameString(), VariableName(), VariableStrLen()};
+  } else if (attr_.full_type() == "list(string)") {
+    return {AttrNameString(), VariableName()};  // accepts span directly
+  } else if (attr_.is_list()) {
+    return {AttrNameString(), VariableSpanData(), VariableSpanLen()};
+  } else {
+    return {AttrNameString(), VariableName()};
   }
 }
 

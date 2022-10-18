@@ -53,7 +53,7 @@ class PassThroughGradientFunction : public GradientFunction {
     if (grad_inputs[0]) {
       grad_inputs[0]->Ref();
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -81,7 +81,7 @@ Status ExpWithPassThroughGrad(AbstractContext* ctx,
                                           /*output_gradients=*/{},
                                           /*result=*/outputs));
   exp_output->Unref();
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_P(CustomGradientTest, ExpWithPassThroughGrad) {

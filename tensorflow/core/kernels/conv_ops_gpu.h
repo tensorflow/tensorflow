@@ -38,6 +38,9 @@ namespace tensorflow {
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64_t default_value_in_bytes);
 
+// Call the Dnn workspace limit from TF_CUDNN_WORKSPACE_LIMIT_IN_MB or default.
+int64 GetDnnWorkspaceLimitOrDefault();
+
 // A class to provide scratch-space allocator for Stream-Executor Cudnn
 // callback. TensorFlow is responsible for releasing the temporary buffers after
 // the kernel finishes.
@@ -105,10 +108,10 @@ StatusOr<AutotuneEntry<se::dnn::FusedConvOp>> AutotuneFusedConv(
     const se::dnn::BatchDescriptor& output_desc,
     const se::dnn::ConvolutionDescriptor& conv_desc,
     const se::dnn::ActivationMode activation_mode, double conv_input_scale,
-    double side_input_scale, se::DeviceMemory<T> input_ptr,
-    se::DeviceMemory<T> filter_ptr, se::DeviceMemory<T> output_ptr,
-    se::DeviceMemory<T> bias_ptr, se::DeviceMemory<T> side_input_ptr,
-    int64_t scratch_size);
+    double side_input_scale, double leakyrelu_alpha,
+    se::DeviceMemory<T> input_ptr, se::DeviceMemory<T> filter_ptr,
+    se::DeviceMemory<T> output_ptr, se::DeviceMemory<T> bias_ptr,
+    se::DeviceMemory<T> side_input_ptr, int64_t scratch_size);
 
 template <typename T>
 StatusOr<AutotuneEntry<se::dnn::ConvOp>> AutotuneUnfusedConv(
@@ -138,7 +141,7 @@ AllocateScratchOrFallback(se::ScratchAllocator* scratch_allocator,
   if (workspace_size > 0) {
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size);
     if (scratch_or.ok()) {
-      scratch_memory = scratch_or.ValueOrDie();
+      scratch_memory = scratch_or.value();
     } else if ((selected_runner = no_scratch_fallback)) {
       if (selected_runner->GetWorkspaceSize() > 0) {
         return errors::Internal(

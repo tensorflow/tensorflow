@@ -93,7 +93,7 @@ static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
         "Operands to %s must be real-valued floating-point, but got %s",
         op_name, PrimitiveType_Name(elem_ty));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaOp IsPosInf(XlaOp operand) {
@@ -1123,16 +1123,7 @@ XlaOp RoundToEven(XlaOp x) {
     // just ask for that explicitly.)
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("RoundToEven", x));
 
-    auto half = ScalarLike(x, 0.5);
-    auto one = ScalarLike(x, 1.0);
-    auto two = ScalarLike(x, 2.0);
-
-    auto round_val = Floor(x);
-    auto fraction = x - round_val;
-    auto nearest_even_int = round_val - two * Floor(half * x);
-    auto is_odd = Eq(nearest_even_int, one);
-    return Select(Or(Gt(fraction, half), And(Eq(fraction, half), is_odd)),
-                  round_val + one, round_val);
+    return RoundNearestEven(x);
   });
 }
 

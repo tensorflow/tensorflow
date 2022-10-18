@@ -169,6 +169,19 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     coord.join([t])
 
+  def _run_two_fns_in_parallel(self, first_fn, second_fn):
+    coord = coordinator.Coordinator(clean_stop_exception_types=[])
+
+    def wrapped_first_fn():
+      with coord.stop_on_exception():
+        first_fn()
+
+    t = threading.Thread(target=wrapped_first_fn)
+    t.start()
+
+    second_fn()
+    coord.join([t])
+
   def testWaitRaiseErrorAfterMarkFailure(self):
     if sys.version_info >= (3, 8) and platform.system() == 'Windows':
       # TODO(b/165013260): Fix this
@@ -398,6 +411,32 @@ class CoordinatedClosureQueueTest(test.TestCase):
     queue.wait()
     self.assertTrue(queue.done())
 
+  def testPutGetWithTag(self):
+    queue = coordinator_lib._CoordinatedClosureQueue()
+
+    closure1 = self._create_closure(queue._cancellation_mgr)
+    closure2 = self._create_closure(queue._cancellation_mgr)
+    closure3 = self._create_closure(queue._cancellation_mgr)
+
+    def put_fn():
+      queue.put(closure3, tag=1)
+      queue.put(closure2, tag=2)
+      queue.put(closure1)
+
+    def get_fn():
+      # The get should only return the closure with tag 2.
+      self.assertIs(closure2, queue.get(tag=2))
+
+    self._run_two_fns_in_parallel(put_fn, get_fn)
+
+    self.assertFalse(queue.done())
+    self.assertEqual(closure1, queue.get())
+    queue.mark_finished()
+
+    # It will not wait for closure3
+    self.assertTrue(queue.done())
+    queue.wait()
+
 
 class ErrorReportingThread(threading.Thread):
 
@@ -447,7 +486,7 @@ def make_coordinator(num_workers, num_ps):
   cluster_def = multi_worker_test_base.create_in_process_cluster(
       num_workers=num_workers, num_ps=num_ps, rpc_layer='grpc')
   cluster_def['chief'] = [
-      'localhost:%d' % multi_worker_test_base.pick_unused_port()
+      'localhost:%d' % test_util.pick_unused_port()
   ]
   cluster_resolver = SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer='grpc')
@@ -622,14 +661,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     distributed_iterator = iter(distributed_dataset)
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
-    iterator_1._rebuild_on(self.coordinator._cluster.workers[0])
     iterator_1 = iterator_1.fetch()
     elements_in_iterator_1 = [
         self.strategy.experimental_local_results(e)
         for e in iterator_1
     ]
     iterator_2 = distributed_iterator._values[1]
-    iterator_2._rebuild_on(self.coordinator._cluster.workers[1])
     iterator_2 = iterator_2.fetch()
     elements_in_iterator_2 = [
         self.strategy.experimental_local_results(e)
@@ -714,7 +751,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread,
     self.coordinator.schedule(worker_fn, args=(iter(per_worker_dataset),))
 
     with self.assertRaisesRegexp(
-        coordinator_lib.InputError,
+        coordinator_lib.ClosureInputError,
         'error message is Failed copying input tensor from'):
       self.coordinator.join()
 
@@ -926,11 +963,28 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
       return x + 1
 
     result = self.coordinator.schedule(func, args=(worker_local_val,))
-    with self.assertRaises(coordinator_lib.InputError):
+    with self.assertRaises(coordinator_lib.ClosureInputError):
       self.coordinator.join()
 
-    with self.assertRaises(coordinator_lib.InputError):
+    with self.assertRaises(coordinator_lib.ClosureInputError):
       result.fetch()
+
+  def testErroredInputNotUsed(self):
+    input_0 = self.coordinator._create_per_worker_resources(
+        self._normal_function)
+
+    self.coordinator._create_per_worker_resources(
+        self._error_function)
+
+    @def_function.function
+    def func(x):
+      return x + 1
+
+    result = self.coordinator.schedule(func, args=(input_0,))
+
+    # It should not raise.
+    self.coordinator.join()
+    result.fetch()
 
   def testCancellation(self):
     for _ in range(3):
@@ -946,6 +1000,27 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
 
     for _ in range(3):
       self.coordinator.schedule(self._normal_function)
+    self.coordinator.join()
+
+  def testResourceCanStillbeUsedAfterCancellation(self):
+
+    def input_fn():
+      return dataset_ops.DatasetV2.range(0, 5)
+
+    per_worker_dataset = self.coordinator.create_per_worker_dataset(input_fn)
+    per_worker_iterator = iter(per_worker_dataset)
+
+    @def_function.function
+    def worker_fn(iterator):
+      return next(iterator)
+
+    self.coordinator.schedule(worker_fn, args=(per_worker_iterator,))
+    self.coordinator.schedule(self._error_function)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.coordinator.join()
+
+    self.coordinator.schedule(worker_fn, args=(per_worker_iterator,))
     self.coordinator.join()
 
 

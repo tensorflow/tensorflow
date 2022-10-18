@@ -1,5 +1,5 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -122,6 +122,8 @@ cc_library(
     srcs = [
         "interfaces.cc",
         "ops.cc",
+        "tf_op_names.cc",
+        "tf_op_names.inc",
         "tf_op_wrapper.cc",
         "utility.cc",
     ],
@@ -164,8 +166,9 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/ir/importexport:convert_tensor",
         "//tensorflow/core/ir/importexport:convert_types",
-        "//tensorflow/core/ir/importexport:export",
+        "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/types:Dialect",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",

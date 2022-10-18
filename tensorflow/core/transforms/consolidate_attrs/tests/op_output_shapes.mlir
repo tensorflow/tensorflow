@@ -26,3 +26,12 @@ tfg.func @test_result_type(%arg0: tensor<i32>) -> (tensor<*xi32>) {
   // CHECK: return(%[[A]]) : tensor<4xi32>
   return(%A) : tensor<*xi32>
 }
+
+// -----
+
+// CHECK-LABEL: tfg.func @test_ignore_invalid_shape
+tfg.func @test_ignore_invalid_shape(%arg0: tensor<*xi32>) -> (tensor<*xi32>) {
+  // CHECK: %[[A:.*]], %{{.*}} = A {_output_shapes = []} : () -> (tensor<*xi32>)
+  %A, %ctl = A {_output_shapes = []} : () -> (tensor<*xi32>)
+  return(%A) : tensor<*xi32>
+}

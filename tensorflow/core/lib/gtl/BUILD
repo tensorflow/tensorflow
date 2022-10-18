@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
@@ -22,6 +22,9 @@ package(
         "//tensorflow/core/tfrt/utils:__pkg__",
         # tensorflow/examples/custom_ops_doc/simple_hash_table uses map_util
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
+        "//tensorflow/compiler/xla/stream_executor:__subpackages__",
+        # TODO(aminim): remove when array_slice migrates to TSL
+        "//tensorflow/tsl:__subpackages__",
     ],
     licenses = ["notice"],
 )
@@ -40,13 +43,16 @@ cc_library(
 cc_library(
     name = "cleanup",
     hdrs = ["cleanup.h"],
+    visibility = ["//visibility:public"],
     deps = ["//tensorflow/core/platform:macros"],
 )
 
 cc_library(
     name = "compactptrset",
     hdrs = ["compactptrset.h"],
-    deps = ["//tensorflow/core/lib/gtl:flatset"],
+    deps = [
+        "//tensorflow/tsl/lib/gtl:compactptrset",
+    ],
 )
 
 cc_library(
@@ -74,6 +80,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:flatmap",
     ],
 )
 
@@ -81,8 +88,7 @@ cc_library(
     name = "flatrep",
     hdrs = ["flatrep.h"],
     deps = [
-        "//tensorflow/core/platform:prefetch",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:flatrep",
     ],
 )
 
@@ -90,10 +96,7 @@ cc_library(
     name = "flatset",
     hdrs = ["flatset.h"],
     deps = [
-        "//tensorflow/core/lib/gtl:flatrep",
-        "//tensorflow/core/lib/hash",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:flatset",
     ],
 )
 
@@ -103,6 +106,7 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:inlined_vector",
         "@com_google_absl//absl/container:inlined_vector",
     ],
 )
@@ -111,14 +115,16 @@ cc_library(
     name = "int_type",
     hdrs = ["int_type.h"],
     deps = [
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/tsl/lib/gtl:int_type",
     ],
 )
 
 cc_library(
     name = "iterator_range",
     hdrs = ["iterator_range.h"],
+    deps = [
+        "//tensorflow/tsl/lib/gtl:iterator_range",
+    ],
 )
 
 cc_library(
@@ -137,6 +143,10 @@ cc_library(
         "//tensorflow/core/lib/gtl/subtle:map_traits",
     ],
     hdrs = ["map_util.h"],
+    deps = [
+        "//tensorflow/core/platform:hash",  # TODO(dduneavy) examples/custom_ops_doc transitively depends on this
+        "//tensorflow/tsl/lib/gtl:map_util",
+    ],
 )
 
 cc_library(
@@ -166,8 +176,10 @@ filegroup(
         "flatmap.h",
         "flatset.h",
         "inlined_vector.h",
+        "iterator_range.h",
         "optional.h",
         "priority_queue_util.h",
+        "//tensorflow/tsl/lib/gtl:legacy_lib_gtl_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -177,10 +189,10 @@ filegroup(
     srcs = [
         "edit_distance.h",
         "int_type.h",
-        "iterator_range.h",
         "manual_constructor.h",
         "map_util.h",
         "top_n.h",
+        "//tensorflow/tsl/lib/gtl:legacy_lib_internal_public_gtl_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -189,6 +201,7 @@ filegroup(
     name = "legacy_lib_test_internal_headers",
     srcs = [
         "manual_constructor.h",
+        "//tensorflow/tsl/lib/gtl:legacy_lib_test_internal_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -197,6 +210,7 @@ filegroup(
     name = "legacy_android_gif_internal_headers",
     srcs = [
         "cleanup.h",
+        "//tensorflow/tsl/lib/gtl:legacy_android_gif_internal_headers",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -213,6 +227,7 @@ filegroup(
         "flatrep.h",
         "inlined_vector.h",
         "top_n.h",
+        "//tensorflow/tsl/lib/gtl:mobile_srcs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -230,6 +245,7 @@ filegroup(
         "optional.h",
         "priority_queue_util.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",
+        "//tensorflow/tsl/lib/gtl:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -253,6 +269,7 @@ filegroup(
         "priority_queue_util.h",
         "top_n.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",
+        "//tensorflow/tsl/lib/gtl:legacy_lib_gtl_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -261,14 +278,8 @@ filegroup(
     name = "legacy_lib_gtl_tests",
     srcs = [
         "cleanup_test.cc",
-        "compactptrset_test.cc",
         "edit_distance_test.cc",
-        "flatmap_test.cc",
-        "flatset_test.cc",
-        "int_type_test.cc",
-        "iterator_range_test.cc",
         "manual_constructor_test.cc",
-        "map_util_test.cc",
         "top_n_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

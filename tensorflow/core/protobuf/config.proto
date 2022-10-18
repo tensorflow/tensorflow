@@ -123,6 +123,12 @@ message GPUOptions {
       // created with the default. If this field has values set, then the size
       // of this must match with the above memory_limit_mb.
       repeated int32 priority = 2;
+
+      // Virtual Device ordinal number determines the device ID of the device.
+      // A Virtual device with a lower ordinal number always receives the a
+      // smaller device id. The phyiscal device id and location in the
+      // virtual device list is used to break ties.
+      repeated int32 device_ordinal = 3;
     }
 
     // The multi virtual device settings. If empty (not set), it will create
@@ -132,15 +138,30 @@ message GPUOptions {
     // "visible_device_list" filtering if it is set), and the string represented
     // device names (e.g. /device:GPU:<id>) will refer to the virtual
     // devices and have the <id> field assigned sequentially starting from 0,
-    // according to the order they appear in this list and the "memory_limit"
-    // list inside each element. For example,
+    // according to the order of the virtual devices determined by
+    // device_ordinal and the location in the virtual device list.
+    //
+    // For example,
     //   visible_device_list = "1,0"
     //   virtual_devices { memory_limit: 1GB memory_limit: 2GB }
-    //   virtual_devices {}
-    // will create three virtual devices as:
+    //   virtual_devices { memory_limit: 3GB memory_limit: 4GB }
+    // will create 4 virtual devices as:
     //   /device:GPU:0 -> visible GPU 1 with 1GB memory
     //   /device:GPU:1 -> visible GPU 1 with 2GB memory
-    //   /device:GPU:2 -> visible GPU 0 with all available memory
+    //   /device:GPU:2 -> visible GPU 0 with 3GB memory
+    //   /device:GPU:3 -> visible GPU 0 with 4GB memory
+    //
+    // but
+    //   visible_device_list = "1,0"
+    //   virtual_devices { memory_limit: 1GB memory_limit: 2GB
+    //                     device_ordinal: 10 device_ordinal: 20}
+    //   virtual_devices { memory_limit: 3GB memory_limit: 4GB
+    //                     device_ordinal: 10 device_ordinal: 20}
+    // will create 4 virtual devices as:
+    //   /device:GPU:0 -> visible GPU 1 with 1GB memory  (ordinal 10)
+    //   /device:GPU:1 -> visible GPU 0 with 3GB memory  (ordinal 10)
+    //   /device:GPU:2 -> visible GPU 1 with 2GB memory  (ordinal 20)
+    //   /device:GPU:3 -> visible GPU 0 with 4GB memory  (ordinal 20)
     //
     // NOTE:
     // 1. It's invalid to set both this and "per_process_gpu_memory_fraction"
@@ -798,6 +819,9 @@ message RunMetadata {
   // level idea of what the built graph looks like (since the various graph
   // optimization passes might change the structure of the graph significantly).
   repeated FunctionGraphs function_graphs = 4;
+
+  // Metadata about the session.
+  SessionMetadata session_metadata = 5;
 }
 
 // Defines a connection between two tensors in a `GraphDef`.

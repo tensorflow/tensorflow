@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_TEST_UTIL_H_
 
+#include <functional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,10 @@ DatasetDef RangeSquareDataset(int64_t range);
 DatasetDef RangeDatasetWithShardHint(int64_t range);
 
 // Returns a test dataset representing
+// tf.data.Dataset.range(100000000).repeat().
+DatasetDef InfiniteDataset();
+
+// Returns a test dataset representing
 // tf.data.Dataset.from_tensor_slices(["filenames"]).interleave(
 //     lambda filepath: tf.data.TextLineDataset(filepath),
 //     cycle_length=10)
@@ -54,8 +60,8 @@ StatusOr<DatasetDef> InterleaveTextlineDataset(
 // Returns an error if `f()` returns an error.
 Status WaitWhile(std::function<StatusOr<bool>()> f);
 
-// TODO(yangchen): Make EqualsProto available in Googletest
-// (https://github.com/google/googletest/issues/1761).
+// TODO(b/229726259): Make EqualsProto available in Googletest
+// (Public feature request: https://github.com/google/googletest/issues/1761).
 class ProtoStringMatcher {
  public:
   explicit ProtoStringMatcher(const tensorflow::protobuf::Message& expected)

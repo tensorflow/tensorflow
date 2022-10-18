@@ -41,9 +41,14 @@ std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const BHWC& dst_shape, const GpuInfo& gpu_info, const OperationDef& op_def,
     ModelHints hints, WeightsDescription* weights_desc);
 
+std::unique_ptr<GPUOperation> SelectConvolutionBatchedMatMul(
+    const OHWI& weights_shape, const BHWC& dst_shape, const GpuInfo& gpu_info,
+    const OperationDef& op_def, ModelHints hints,
+    WeightsDescription* weights_desc);
+
 std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
     const WeightsDescription& weights_desc, const OperationDef& op_def,
-    ModelHints hints);
+    ModelHints hints, Layout input_layout);
 
 }  // namespace gpu
 }  // namespace tflite

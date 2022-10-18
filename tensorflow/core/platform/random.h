@@ -17,18 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_RANDOM_H_
 
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/random.h"
 
 namespace tensorflow {
 namespace random {
-
-// Return a 64-bit random value.  Different sequences are generated
-// in different processes.
-uint64 New64();
-
-// Return a 64-bit random value. Uses
-// std::mersenne_twister_engine::default_seed as seed value.
-uint64 New64DefaultSeed();
-
+using tsl::random::New64;             // NOLINT
+using tsl::random::New64DefaultSeed;  // NOLINT
 }  // namespace random
 }  // namespace tensorflow
 

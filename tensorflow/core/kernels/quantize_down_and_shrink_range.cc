@@ -40,8 +40,20 @@ class QuantizeDownAndShrinkRangeOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    const float input_min_float = ctx->input(1).flat<float>()(0);
-    const float input_max_float = ctx->input(2).flat<float>()(0);
+    const Tensor& input_min = ctx->input(1);
+    const Tensor& input_max = ctx->input(2);
+
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_min.shape()),
+        errors::InvalidArgument("`input_min` must be rank 0 but is rank ",
+                                input_min.dims()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_max.shape()),
+        errors::InvalidArgument("`input_max` must be rank 0 but is rank ",
+                                input_max.dims()));
+
+    const float input_min_float = input_min.scalar<float>()();
+    const float input_max_float = input_max.scalar<float>()();
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     Tensor* output_min = nullptr;

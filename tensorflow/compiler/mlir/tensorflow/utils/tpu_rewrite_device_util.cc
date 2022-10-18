@@ -29,22 +29,18 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
-
-const char* const kTPUReplicatedHost = "TPU_REPLICATED_HOST";
-const char* const kNumCoresPerReplicaAttr = "num_cores_per_replica";
-const char* const kTopologyAttr = "topology";
-const char* const kDeviceAssignmentAttr = "device_assignment";
 
 // Device coordinates are defined as (x, y, z, core), thus resulting in a rank 4
 // topology.
@@ -112,7 +108,7 @@ Status GetTPUSystemDevices(Devices devices,
 
   matched_devices->swap(system_devices);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds TPU devices associated to system device based on spec (e.g. from
@@ -159,7 +155,7 @@ Status GetTPUDevices(
     tpu_devices->push_back(std::move(host_tpu_devices));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Finds the compilation device from system device.
@@ -508,6 +504,14 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
   if (!topology_attr)
     return cluster.emitOpError("cluster op missing `topology` attribute");
 
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        llvm::formatv("requires attribute '{0}'",
+                      tensorflow::kNumCoresPerReplicaAttr)
+            .str());
+
   auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
       tensorflow::kDeviceAssignmentAttr);
   if (!device_assignment_attr)
@@ -527,13 +531,13 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
   auto status_or_tpu_device_assignment =
       tensorflow::GetTPUCompilationAndExecutionDevices(
           devices.device_names(), /*num_replicas=*/1,
-          /*num_cores_per_replica=*/1, topology_attr.getValue(),
-          status_or_device_coodinates.ConsumeValueOrDie());
+          num_cores_per_replica_attr.getInt(), topology_attr.getValue(),
+          std::move(status_or_device_coodinates).value());
   if (!status_or_tpu_device_assignment.ok())
     return cluster.emitError()
            << "error in fetching TPU compilation/execution devices: "
            << status_or_tpu_device_assignment.status().error_message();
-  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.value();
 
   *host_device = tpu_device_assignment.tpu_devices[0][0].host;
   return mlir::success();

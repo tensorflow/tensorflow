@@ -31,6 +31,7 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/numeric/bits.h"
@@ -40,11 +41,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -55,8 +54,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/UniformSupport.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -68,8 +69,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -96,9 +99,11 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 // TODO(hinsu): Add and use TensorFlow dialect ops for the ops created in this
 // pass.
 namespace {
+#define GEN_PASS_DEF_PREPARETFPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
+class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
 
@@ -107,43 +112,13 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, OperationPass<FuncOp>> {
   explicit PrepareTFPass(bool unfold_batch_matmul,
                          bool allow_bf16_and_f16_type_legalization,
                          bool use_fake_quant_num_bits = false) {
-    unfold_batch_matmul_ = unfold_batch_matmul;
-    allow_bf16_and_f16_type_legalization_ =
+    this->unfold_batch_matmul_ = unfold_batch_matmul;
+    this->allow_bf16_and_f16_type_legalization_ =
         allow_bf16_and_f16_type_legalization;
-    use_fake_quant_num_bits_ = use_fake_quant_num_bits;
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-prepare-tf";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Prepare TF for legalization to TensorFlow Lite dialect";
+    this->use_fake_quant_num_bits_ = use_fake_quant_num_bits;
   }
 
   void runOnOperation() override;
-
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
-                    TFL::TensorFlowLiteDialect>();
-  }
-
- private:
-  Option<bool> unfold_batch_matmul_{
-      *this, "tfl-unfold-batch-matmul",
-      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
-      llvm::cl::init(true)};
-
-  Option<bool> allow_bf16_and_f16_type_legalization_{
-      *this, "tfl-allow-bf16-and-f16-type-legalization",
-      llvm::cl::desc("Allow bf16 type legalization."), llvm::cl::init(false)};
-
-  Option<bool> use_fake_quant_num_bits_{
-      *this, "tfl-use-fake-quant-num-bits",
-      llvm::cl::desc("Use quantization calculated from fake quant attributes."),
-      llvm::cl::init(false)};
 };
 
 // Transient state for preserving data from match to rewrite
@@ -254,7 +229,8 @@ class ConvertTFConvOp : public RewritePattern {
     auto elem_type = filter_type.getElementType();
     auto bias_dim = static_cast<const ConcreteType *>(this)->getBiasDim(
         filter_type.getShape());
-    auto bias_type = RankedTensorType::get({bias_dim}, elem_type);
+    auto bias_type =
+        tensorflow::GetTypeFromTFTensorShape({bias_dim}, elem_type);
     auto bias_attr = rewriter.getZeroAttr(bias_type);
     auto bias =
         rewriter.create<TF::ConstOp>(op->getLoc(), bias_type, bias_attr);
@@ -274,7 +250,7 @@ class ConvertTFConvOp : public RewritePattern {
             static_cast<int32_t>(get_int(padding_attr_array[i]));
       }
 
-      RankedTensorType padding_attr_type = RankedTensorType::get(
+      RankedTensorType padding_attr_type = tensorflow::GetTypeFromTFTensorShape(
           {filter_type.getRank(), 2}, rewriter.getIntegerType(32));
       auto padding_attr =
           mlir::DenseIntElementsAttr::get(padding_attr_type, padding_values);
@@ -338,8 +314,8 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
                        Value filter) const {
     // Create a constant op for HWIO to OHWI transpose permutation.
     SmallVector<int, 4> perm = {3, 0, 1, 2};
-    auto perm_type = RankedTensorType::get({static_cast<int>(perm.size())},
-                                           rewriter.getIntegerType(32));
+    auto perm_type = tensorflow::GetTypeFromTFTensorShape(
+        {static_cast<int>(perm.size())}, rewriter.getIntegerType(32));
     auto perm_attr =
         DenseElementsAttr::get(perm_type, llvm::makeArrayRef<int>(perm));
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
@@ -351,7 +327,8 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
           return filter_type.getDimSize(dim);
         }));
     auto elem_type = filter_type.getElementType();
-    auto result_type = RankedTensorType::get(result_shape, elem_type);
+    auto result_type =
+        tensorflow::GetTypeFromTFTensorShape(result_shape, elem_type);
 
     return rewriter.create<TF::TransposeOp>(loc, result_type, filter, perm_op);
   }
@@ -410,9 +387,11 @@ class ConvertTFDepthwiseConv2dNative
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
     auto elem_type = filter_type.getElementType();
-    auto result_type = RankedTensorType::get(result_shape, elem_type);
+    auto result_type =
+        tensorflow::GetTypeFromTFTensorShape(result_shape, elem_type);
     // TensorFlow Lite `Reshape` op only support int32 shape tensor currently.
-    auto shape_type = RankedTensorType::get({4}, rewriter.getIntegerType(32));
+    auto shape_type =
+        tensorflow::GetTypeFromTFTensorShape({4}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(4);
     for (int i = 0; i < 4; ++i) {
       result_shape_data[i] =
@@ -483,8 +462,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int dim_size = revised_shape.size();
     Location loc = strided_slice_op.getLoc();
-    auto shape_type =
-        RankedTensorType::get({dim_size}, rewriter.getIntegerType(32));
+    auto shape_type = tensorflow::GetTypeFromTFTensorShape(
+        {dim_size}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(dim_size);
     for (int i = 0; i < dim_size; ++i) {
       result_shape_data[i] =
@@ -494,7 +473,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape =
         rewriter.create<arith::ConstantOp>(loc, shape_type, shape_attr);
-    auto revised_output_type = RankedTensorType::get(
+    auto revised_output_type = tensorflow::GetTypeFromTFTensorShape(
         revised_shape, original_input_type.getElementType());
     TF::ReshapeOp reshape = rewriter.create<TF::ReshapeOp>(
         loc, revised_output_type, original_input, shape);
@@ -647,8 +626,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
     auto attribute_type = rewriter.getIntegerType(64);
 
     int full_dim_count = padded_begin.size();
-    auto type =
-        RankedTensorType::get({full_dim_count}, rewriter.getIntegerType(32));
+    auto type = tensorflow::GetTypeFromTFTensorShape(
+        {full_dim_count}, rewriter.getIntegerType(32));
 
     auto begin_attr = DenseElementsAttr::get<int32_t>(type, padded_begin);
     auto begin_op =
@@ -760,17 +739,17 @@ struct ConvertTFStridedSlice : public RewritePattern {
       return failure();
     }
 
-    auto begin_end_type =
-        RankedTensorType::get({num_input_dims}, rewriter.getIntegerType(32));
+    auto begin_end_type = tensorflow::GetTypeFromTFTensorShape(
+        {num_input_dims}, rewriter.getIntegerType(32));
     auto new_begin_attr = rewriter.create<arith::ConstantOp>(
         op->getLoc(), begin_end_type,
         DenseElementsAttr::get<int32_t>(begin_end_type, padded_begin));
     auto new_end_attr = rewriter.create<arith::ConstantOp>(
         op->getLoc(), begin_end_type,
         DenseElementsAttr::get<int32_t>(begin_end_type, padded_end));
-    auto strides_type =
-        RankedTensorType::get({static_cast<long>(padded_strides.size())},
-                              rewriter.getIntegerType(32));
+    auto strides_type = tensorflow::GetTypeFromTFTensorShape(
+        {static_cast<int64_t>(padded_strides.size())},
+        rewriter.getIntegerType(32));
     auto new_strides_attr = rewriter.create<arith::ConstantOp>(
         op->getLoc(), strides_type,
         DenseElementsAttr::get<int32_t>(strides_type, padded_strides));
@@ -821,9 +800,9 @@ struct ConvertTFBroadcastTo : public RewritePattern {
       return failure();
     }
 
-    auto tf_fill_op = rewriter.create<TF::FillOp>(
-        op->getLoc(), output_type, tf_broadcast_to_op.shape(),
-        status_or_const_op.ValueOrDie());
+    auto tf_fill_op = rewriter.create<TF::FillOp>(op->getLoc(), output_type,
+                                                  tf_broadcast_to_op.shape(),
+                                                  status_or_const_op.value());
 
     auto mul_op = rewriter.create<TF::MulOp>(
         op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);
@@ -1015,14 +994,15 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     auto odsLoc = rewriter.getFusedLoc({fused_batch_norm->getLoc()});
 
     // We need to make sure input and output shapes are compatible.
-    int64_t last_dim = -1;
+    int64_t last_dim = ShapedType::kDynamicSize;
     {
       auto is_last_dim_compatible = [](const Value &v, int64_t &last_dim) {
         auto v_type = v.getType().dyn_cast_or_null<RankedTensorType>();
         if (!v_type) return true;
         int64_t v_last_dim = v_type.getDimSize(v_type.getRank() - 1);
-        if (v_last_dim == -1) return true;
-        if (last_dim != -1 && v_last_dim != last_dim) return false;
+        if (v_last_dim == ShapedType::kDynamicSize) return true;
+        if (last_dim != ShapedType::kDynamicSize && v_last_dim != last_dim)
+          return false;
         last_dim = v_last_dim;
         return true;
       };
@@ -1074,16 +1054,16 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
 
       ::mlir::TF::ConstOp reduce_dim_op;
       {
-        auto reduce_dim_type =
-            ::mlir::RankedTensorType::get({3}, rewriter.getIntegerType(32));
+        auto reduce_dim_type = tensorflow::GetTypeFromTFTensorShape(
+            {3}, rewriter.getIntegerType(32));
         ::mlir::SmallVector<int32_t, 3> reduce_dim_values = {0, 1, 2};
         reduce_dim_op = rewriter.create<TF::ConstOp>(
             odsLoc, ::mlir::DenseIntElementsAttr::get(reduce_dim_type,
                                                       reduce_dim_values));
       }
 
-      auto new_mean_type =
-          ::mlir::RankedTensorType::get({last_dim}, rewriter.getF32Type());
+      auto new_mean_type = tensorflow::GetTypeFromTFTensorShape(
+          {last_dim}, rewriter.getF32Type());
       ::mlir::TF::MeanOp mean_op_1;
       {
         ::mlir::Value x_value = (*x.begin());
@@ -1224,14 +1204,14 @@ LogicalResult ValidateOp(Operation *op) {
 
 // Converts a set of TF2XLA ops into pure TF ops for future legalizations as
 // TF2XLA ops aren't supported by later stages.
-LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
+LogicalResult ConvertTf2XlaOps(func::FuncOp func, MLIRContext *context) {
   ConversionTarget target(*context);
-  target.addLegalDialect<arith::ArithmeticDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<TF::TensorFlowDialect>();
   target.addLegalOp<ModuleOp>();
-  target.addLegalOp<FuncOp>();
-  target.addIllegalOp<TF::XlaConvOp>();
+  target.addLegalOp<func::FuncOp>();
+  target.addIllegalOp<TF::XlaConvV2Op>();
   target.addIllegalOp<TF::XlaGatherOp>();
 
   RewritePatternSet patterns(context);
@@ -1282,7 +1262,7 @@ struct ConvertRfftToRfft2d : public RewritePattern {
     // Expanded inputs.
     // Insert at -2 location.
     auto one_ele_type =
-        mlir::RankedTensorType::get({1}, rewriter.getIntegerType(32));
+        tensorflow::GetTypeFromTFTensorShape({1}, rewriter.getIntegerType(32));
     auto minus_two = CreateConstOpWithSingleValue(&rewriter, rfft_op.getLoc(),
                                                   one_ele_type, -2);
 
@@ -1301,7 +1281,7 @@ struct ConvertRfftToRfft2d : public RewritePattern {
       }
     }
 
-    auto expaned_input_type = mlir::RankedTensorType::get(
+    auto expaned_input_type = tensorflow::GetTypeFromTFTensorShape(
         expanded_input_shape, input_type.getElementType());
     TF::ExpandDimsOp expanded_input = rewriter.create<TF::ExpandDimsOp>(
         rfft_op.getLoc(), expaned_input_type, input, minus_two->getResult());
@@ -1314,15 +1294,15 @@ struct ConvertRfftToRfft2d : public RewritePattern {
     auto zero = CreateConstOpWithSingleValue(&rewriter, rfft_op.getLoc(),
                                              one_ele_type, 0);
 
-    auto expanded_fft_len_type =
-        mlir::RankedTensorType::get({2}, fft_len_type.getElementType());
+    auto expanded_fft_len_type = tensorflow::GetTypeFromTFTensorShape(
+        {2}, fft_len_type.getElementType());
 
     TF::ConcatV2Op expanded_fft_len = rewriter.create<TF::ConcatV2Op>(
         rfft_op.getLoc(), expanded_fft_len_type,
         SmallVector<Value, 2>({one.getResult(), fft_len}), zero->getResult());
 
     // Insert the rfft_2d.
-    auto rfft2d_out_type = mlir::RankedTensorType::get(
+    auto rfft2d_out_type = tensorflow::GetTypeFromTFTensorShape(
         expanded_output_shape, output_type.getElementType());
     TF::RFFT2DOp rfft2d = rewriter.create<TF::RFFT2DOp>(
         rfft_op.getLoc(), rfft2d_out_type, expanded_input.getResult(),
@@ -1397,6 +1377,8 @@ void PrepareTFPass::runOnOperation() {
 
   patterns.add<RemoveIdentity>(ctx);
   TFL::populateWithGenerated(patterns);
+  // Remove redundant reshape ops.
+  TF::ReshapeOp::getCanonicalizationPatterns(patterns, ctx);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
@@ -1426,6 +1408,8 @@ void PrepareTFPass::runOnOperation() {
            ConvertRfftToRfft2d, RemoveIdentity>(ctx);
   phase_2_patterns.add<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative>(
       ctx, allow_bf16_and_f16_type_legalization_);
+  // Remove redundant reshape ops.
+  TF::ReshapeOp::getCanonicalizationPatterns(phase_2_patterns, ctx);
 
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_2_patterns));
 }
@@ -1433,7 +1417,7 @@ void PrepareTFPass::runOnOperation() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul, bool allow_bf16_and_f16_type_legalization,
     bool use_fake_quant_num_bits) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul,
@@ -1441,7 +1425,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
                                          use_fake_quant_num_bits);
 }
 
-static PassRegistration<PrepareTFPass> pass;
+// Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareTFPass() {
+  return std::make_unique<PrepareTFPass>();
+}
 
 }  // namespace TFL
 }  // namespace mlir

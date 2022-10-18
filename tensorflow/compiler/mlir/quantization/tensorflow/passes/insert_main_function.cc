@@ -24,11 +24,14 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace mlir {
 namespace quant {
 namespace {
+
+using ::tensorflow::kImportModelDefaultGraphFuncName;
 
 constexpr char kEntryFunctionAttr[] = "tf.entry_function";
 constexpr char kExportedNameAttr[] = "tf_saved_model.exported_names";
@@ -56,24 +59,34 @@ class InsertMainFunctionPass
 
 // Checks if the module has a main function.
 bool HasMainFunction(ModuleOp& module) {
-  StringAttr main_func_id = StringAttr::get(module.getContext(), "main");
-  for (auto function : module.getOps<FuncOp>()) {
+  StringAttr main_func_id =
+      StringAttr::get(module.getContext(), kImportModelDefaultGraphFuncName);
+  for (auto function : module.getOps<func::FuncOp>()) {
     if (function.getName() == main_func_id) return true;
   }
   return false;
 }
 
 // Checks if a FuncOp is exported.
-bool IsExported(FuncOp& op) {
+bool IsExported(func::FuncOp op) {
   auto exported_names = op->getAttrOfType<ArrayAttr>(kExportedNameAttr);
   return exported_names && !exported_names.empty();
 }
 
 // Check if a function is an entry function.
-bool IsEntryFunction(FuncOp& op) { return op->hasAttr(kEntryFunctionAttr); }
+bool IsEntryFunction(func::FuncOp op) {
+  return op->hasAttr(kEntryFunctionAttr);
+}
+
+// Returns true iff the provided FuncOp is qualified to be included in the main
+// function.
+bool ShouldIncludeInMainFunction(func::FuncOp func_op) {
+  return !func_op.isPrivate() && IsExported(func_op) &&
+         IsEntryFunction(func_op);
+}
 
 // Sets a function to be private so it can be referred internally.
-void SetFunctionPrivate(FuncOp& func) {
+void SetFunctionPrivate(func::FuncOp& func) {
   func.setVisibility(SymbolTable::Visibility::Private);
 
   // The `tf_saved_model` attributes can only be appied to public functions.
@@ -111,8 +124,9 @@ bool CreateMainFunction(ModuleOp& module) {
   llvm::SmallVector<Location> arg_locs;
   llvm::SmallVector<Type> arg_types, result_types;
   std::vector<std::string> input_names, output_names;
-  for (auto function : module.getOps<FuncOp>()) {
-    if (function.isPrivate() || !IsExported(function)) continue;
+  for (auto function : module.getOps<func::FuncOp>()) {
+    if (!ShouldIncludeInMainFunction(function)) continue;
+
     arg_types.append(function.getArgumentTypes().begin(),
                      function.getArgumentTypes().end());
     auto& return_op = function.getBody().getBlocks().front().back();
@@ -148,7 +162,8 @@ bool CreateMainFunction(ModuleOp& module) {
 
   // Creates a new main function.
   auto func_type = FunctionType::get(context, arg_types, result_types);
-  auto main_func = builder.create<FuncOp>(module.getLoc(), "main", func_type);
+  auto main_func = builder.create<func::FuncOp>(
+      module.getLoc(), kImportModelDefaultGraphFuncName, func_type);
   builder.createBlock(&main_func.getBody(), main_func.begin(), arg_types,
                       arg_locs);
   SmallVector<NamedAttribute> func_attrs;
@@ -160,29 +175,33 @@ bool CreateMainFunction(ModuleOp& module) {
        StringAttr::get(context, absl::StrJoin(output_names, ","))});
   auto dictAttr = DictionaryAttr::get(context, func_attrs);
   main_func->setAttr(StringAttr::get(context, kEntryFunctionAttr), dictAttr);
-  main_func->setAttr(kExportedNameAttr, builder.getStrArrayAttr({"main"}));
+  main_func->setAttr(
+      kExportedNameAttr,
+      builder.getStrArrayAttr({kImportModelDefaultGraphFuncName}));
 
   if (input_names.size() != main_func.getNumArguments() ||
       output_names.size() != main_func.getNumResults()) {
-    module.emitError() << "number of inputs and outputs in the "
-                          "tf.entry_function attribute mismatched.";
+    module.emitError()
+        << "Number of inputs and outputs in the tf.entry_function attribute "
+           "mismatched. [Input] Expected: "
+        << input_names.size() << ", got: " << main_func.getNumArguments()
+        << ". [Output] Expected: " << output_names.size()
+        << ", got: " << main_func.getNumResults();
     return false;
   }
 
-  int numArgs = main_func.getNumArguments();
-  for (int i = 0; i < numArgs; ++i) {
+  const int num_args = main_func.getNumArguments();
+  for (int i = 0; i < num_args; ++i) {
     main_func.setArgAttr(
         i, kIndexPathAttr,
-        mlir::ArrayAttr::get(context,
-                             {mlir::StringAttr::get(context, input_names[i])}));
+        ArrayAttr::get(context, {StringAttr::get(context, input_names[i])}));
   }
 
-  int numResults = main_func.getNumResults();
-  for (int i = 0; i < numResults; ++i) {
+  const int num_results = main_func.getNumResults();
+  for (int i = 0; i < num_results; ++i) {
     main_func.setResultAttr(
         i, kIndexPathAttr,
-        mlir::ArrayAttr::get(
-            context, {mlir::StringAttr::get(context, output_names[i])}));
+        ArrayAttr::get(context, {StringAttr::get(context, output_names[i])}));
   }
 
   // Creates PartitionedCall ops to call exported functions.
@@ -190,11 +209,8 @@ bool CreateMainFunction(ModuleOp& module) {
   int arg_idx = 0;
   int result_idx = 0;
   llvm::SmallVector<Value> returning_values;
-  for (auto function : module.getOps<FuncOp>()) {
-    if (function.isPrivate() || !IsExported(function) ||
-        !IsEntryFunction(function)) {
-      continue;
-    }
+  for (auto function : module.getOps<func::FuncOp>()) {
+    if (!ShouldIncludeInMainFunction(function)) continue;
 
     llvm::ArrayRef<BlockArgument> new_args = llvm::makeArrayRef(
         main_func.getArguments().begin() + arg_idx, function.getNumArguments());
@@ -213,8 +229,8 @@ bool CreateMainFunction(ModuleOp& module) {
                             call_op.getResults().end());
     SetFunctionPrivate(function);
   }
-  builder.create<mlir::func::ReturnOp>(main_func.getBody().getLoc(),
-                                       returning_values);
+  builder.create<func::ReturnOp>(main_func.getBody().getLoc(),
+                                 returning_values);
 
   // Adds the new function to symbol table.
   SymbolTable symbol_table(module);

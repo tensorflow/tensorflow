@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 
 package(
     default_visibility = ["//tensorflow/core/function:__subpackages__"],
@@ -27,7 +27,6 @@ tf_python_pybind_extension(
     name = "test_pass_pybind",
     testonly = 1,
     srcs = ["test_pass_pybind.cc"],
-    module_name = "test_pass_pybind",
     deps = [
         ":test_pass_cc",
         "@pybind11",

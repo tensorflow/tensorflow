@@ -43,7 +43,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
                        ctx->InputExpression(i).HumanString()));
     XlaCompiler::Argument arg;
     arg.type = ctx->input_type(i);
-    arg.shape = ctx->InputXlaShape(i).ValueOrDie();
+    arg.shape = ctx->InputXlaShape(i).value();
     arg.name = absl::StrCat("_arg", i);
     if (registered_consts.count(i)) {
       arg.kind = XlaCompiler::Argument::kConstant;
@@ -53,7 +53,7 @@ Status MlirXlaOpKernel::ContextToXlaArgs(
     }
     xla_args.push_back(arg);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 MlirXlaOpKernel::MlirXlaOpKernel(OpKernelConstruction* ctx)
@@ -113,7 +113,7 @@ Status MlirXlaOpKernel::ConstructXlaOp(XlaOpKernelContext* ctx) {
     ctx->SetOutput(i, returns[i]);
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void MlirXlaOpKernel::Compile(XlaOpKernelContext* ctx) {

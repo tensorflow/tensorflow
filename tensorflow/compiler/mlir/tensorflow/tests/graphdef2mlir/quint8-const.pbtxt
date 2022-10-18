@@ -28,5 +28,5 @@ versions {
 }
 
 # CHECK: tf.Const
-# CHECK-SAME: value = opaque<"tf", "{{0[xX][0-9a-fA-F]*}}"> : tensor<!tf_type.quint8>
+# CHECK-SAME: value = #tf_type<tensor_proto : "{{0[xX][0-9a-fA-F]*}}"> : tensor<!tf_type.quint8>
 # CHECK-SAME: loc(fused["Const:", "Quantized_Constant"])

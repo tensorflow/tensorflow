@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <utility>
 
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
@@ -32,6 +33,9 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 using ResourceId = int64_t;
+inline constexpr ResourceId kUnknownResourceId =
+    ResourceAliasAnalysis::Info::kUnknownResourceId;
+static_assert(kUnknownResourceId < 0, "kUnknownResourceId must be < 0");
 
 namespace detail {
 
@@ -57,7 +61,7 @@ class SideEffectAnalysisInfo {
   SideEffectAnalysisInfo() = default;
 
   // Constructs analysis info by analyzing the given function.
-  SideEffectAnalysisInfo(FuncOp func_op,
+  SideEffectAnalysisInfo(func::FuncOp func_op,
                          const OpSideEffectCollector& op_side_effect_collector,
                          const TF::ResourceAliasAnalysis::Info& alias_analysis)
       : op_side_effect_collector_(op_side_effect_collector),
@@ -112,7 +116,7 @@ class SideEffectAnalysisInfo {
  private:
   // Runs the analysis and populates `sorted_control_predecessors_` and
   // `sorted_control_successors_` for `func_op`. Clears `control_predecessors_`.
-  void AnalyzeFunction(FuncOp func_op);
+  void AnalyzeFunction(func::FuncOp func_op);
 
   // Runs the analysis and populates `control_predecessors_` for `region`.
   void AnalyzeRegion(Region* region);
@@ -133,6 +137,12 @@ class SideEffectAnalysisInfo {
   // access considered.
   bool IsUnknownAccessIndirectlyTrackedByResource(ResourceId resource,
                                                   bool read_only);
+
+  // Returns a set of resource IDs that have potential dependencies to
+  // `resource_id` (i.e., there are potential dependencies between the
+  // resources corresponding to the IDs).
+  llvm::SmallSet<ResourceId, 8> GetDependentIds(ResourceId resource_id,
+                                                bool is_fetch_op) const;
 
   // Maps from an op to its control predecessors.
   llvm::SmallDenseMap<Operation*, llvm::SmallPtrSet<Operation*, 4>, 8>

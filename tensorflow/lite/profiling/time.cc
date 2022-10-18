@@ -31,7 +31,7 @@ namespace time {
 uint64_t NowMicros() {
   return static_cast<uint64_t>(
       std::chrono::duration_cast<std::chrono::microseconds>(
-          std::chrono::system_clock::now().time_since_epoch())
+          std::chrono::steady_clock::now().time_since_epoch())
           .count());
 }
 
@@ -42,9 +42,10 @@ void SleepForMicros(uint64_t micros) {
 #else
 
 uint64_t NowMicros() {
-  struct timeval tv;
-  gettimeofday(&tv, nullptr);
-  return static_cast<uint64_t>(tv.tv_sec) * 1e6 + tv.tv_usec;
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return static_cast<uint64_t>(ts.tv_sec) * 1e6 +
+         static_cast<uint64_t>(ts.tv_nsec) / 1e3;
 }
 
 void SleepForMicros(uint64_t micros) {

@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -35,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -140,7 +141,9 @@ Status IrEmitterNested::CodegenNestedComputation() {
     llvm::Argument* out_parameter = std::prev(function->arg_end(), 1);
 
     if (ShapeUtil::IsScalar(return_shape)) {
-      llvm::Value* ret_value = Load(root_value, "load_ret_value");
+      llvm::Value* ret_value =
+          Load(llvm_ir::ShapeToIrType(return_shape, module_), root_value,
+               "load_ret_value");
       Store(ret_value,
             BitCast(out_parameter, root_value->getType(), "bitcast_ret_value"));
     } else {
@@ -151,25 +154,27 @@ Status IrEmitterNested::CodegenNestedComputation() {
 
       for (int i = 0; i < return_shape.tuple_shapes_size(); i++) {
         const Shape& element_shape = return_shape.tuple_shapes(i);
-        llvm::Value* destination =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, tuple_ptr, &b_);
-        llvm::Value* source =
-            llvm_ir::EmitGetTupleElement(element_shape,
-                                         /*index=*/i,
-                                         /*alignment=*/1, root_value, &b_);
-        Store(Load(source), destination);
+        llvm::Value* destination = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, tuple_ptr, tuple_type, &b_);
+        llvm::Value* source = llvm_ir::EmitGetTupleElement(
+            element_shape,
+            /*index=*/i,
+            /*alignment=*/1, root_value,
+            llvm_ir::ShapeToIrType(root_instruction->shape(), module_), &b_);
+        Store(Load(llvm_ir::ShapeToIrType(element_shape, module_), source),
+              destination);
       }
     }
   }
   b_.SetInsertPoint(ret_instr);
   emitted_function_ = function;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IrEmitterNested::EmitTargetElementLoop(
@@ -183,7 +188,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
-    return Status::OK();
+    return OkStatus();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)
       .EmitLoop();
@@ -195,17 +200,6 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
       continue;
     }
     Literal& literal = *Cast<HloConstantInstruction>(instr)->mutable_literal();
-    const bool should_emit_initializer = ShouldEmitLiteralInLlvmIr(literal);
-    llvm::ArrayType* global_type =
-        llvm::ArrayType::get(b_.getInt8Ty(), literal.size_bytes());
-    llvm::Constant* initializer =
-        should_emit_initializer
-            ? llvm_ir::ConvertLiteralToIrConstant(literal, module_)
-            : llvm::ConstantAggregateZero::get(global_type);
-    if (should_emit_initializer) {
-      VLOG(3) << "Emitted initializer for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-    }
 
     // These globals will be looked up by name by GpuExecutable so we need to
     // give them an external linkage.  Not all of their uses are visible in
@@ -217,27 +211,16 @@ Status IrEmitterNested::EmitConstants(const HloComputation& computation) {
     // keeping around too many globals because of their linkage.
     std::string global_name = llvm_ir::ConstantHloToGlobalName(*instr);
 
-    llvm::GlobalVariable* global_for_const = new llvm::GlobalVariable(
-        global_type, /*isConstant=*/should_emit_initializer,
-        llvm::GlobalValue::ExternalLinkage,
-        /*Initializer=*/initializer, global_name,
-        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
-        /*AddressSpace=*/0,
-        /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
-    ir_emitter_context_->llvm_module()->getGlobalList().push_back(
-        global_for_const);
+    auto base = static_cast<const uint8_t*>(literal.untyped_data());
+    ir_emitter_context_->emit_constant(
+        literal.element_count(),
+        ShapeUtil::ByteSizeOfPrimitiveType(literal.shape().element_type()),
 
-    GpuExecutable::ConstantInfo info;
-    info.symbol_name = global_name;
-
-    if (!should_emit_initializer) {
-      auto base = static_cast<const uint8_t*>(literal.untyped_data());
-      info.content.assign(base, base + literal.size_bytes());
-    }
-    ir_emitter_context_->constants().push_back(std::move(info));
+        global_name,
+        /*allocation_idx=*/-1,
+        llvm::ArrayRef<uint8_t>(base, base + literal.size_bytes()), &b_);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

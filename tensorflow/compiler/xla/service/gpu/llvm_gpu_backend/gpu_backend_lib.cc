@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
@@ -61,14 +60,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/tracing.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/random.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -122,8 +119,7 @@ static std::string GetSmName(se::CudaComputeCapability compute_capability) {
 // from the input filename.
 std::string MakeNameForTempProduct(absl::string_view input_filename,
                                    absl::string_view extension) {
-  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
-                                  extension);
+  return ReplaceFilenameExtension(tsl::io::Basename(input_filename), extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -289,7 +285,7 @@ Status LinkWithBitcodeVector(
   llvm::Linker linker(*module);
 
   for (auto& bitcode_path : bitcode_path_vector) {
-    if (!tensorflow::Env::Default()->FileExists(bitcode_path).ok()) {
+    if (!tsl::Env::Default()->FileExists(bitcode_path).ok()) {
       LOG(ERROR) << "bitcode module is required by this HLO module but was "
                     "not found at "
                  << bitcode_path;
@@ -312,21 +308,21 @@ Status LinkWithBitcodeVector(
                                 bitcode_path);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
                                 const std::string& libdevice_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // CUDA 9+ uses a single libdevice file for all devices, and we don't support
   // older CUDAs.
   std::string libdevice_path =
-      tensorflow::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
-  if (!tensorflow::Env::Default()->FileExists(libdevice_path).ok()) {
+      tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
+  if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
     LOG(WARNING)
         << "libdevice is required by this HLO module but was not found at "
         << libdevice_path;
@@ -356,7 +352,7 @@ Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 std::unique_ptr<llvm::TargetMachine> NVPTXGetTargetMachine(
@@ -383,7 +379,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
 
   bool dump_ir = hlo_module_config.debug_options().xla_gpu_dump_llvmir();
   std::string outputs_dir;
-  tensorflow::io::GetTestUndeclaredOutputsDir(&outputs_dir);
+  tsl::io::GetTestUndeclaredOutputsDir(&outputs_dir);
   IrDumpingPassManager module_passes(module->getModuleIdentifier(), outputs_dir,
                                      dump_ir);
 
@@ -457,7 +453,7 @@ Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
   function_passes.doFinalization();
   module_passes.run(*module);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // One-time module initializer.
@@ -480,17 +476,20 @@ void NVPTXBackendInit(const HloModuleConfig& hlo_module_config) {
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
   FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
-  // Increase limit when scanning memory dependencies.  This helps to reduce
-  // more redundant load instructions.
-  //
-  // The specific value is currently large enough for s3d in shoc benchmark,
-  // which contains a lot of load instructions and many arithmetic instructions
-  // between those loads.
-  FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
   // Use div.full -- it matters for some float-division heavy benchmarks.
   // Using div.approx produces incorrect result for float32(max)/float32(max).
   FeedLLVMWithFlags({"-nvptx-prec-divf32=1"});
+
+  // SLPVectorizer is useful (vectorizes f16x2 ops) but slow.  Most of the
+  // slowness appears to be in trying to form horizontal reductions, which don't
+  // exist in PTX *anyway*.  Disable these.  While we're here, tweak
+  // SLPVectorizer so it doesn't try to create large vectors -- f16x2 are the
+  // only vectors supported in PTX.
+  FeedLLVMWithFlags({
+      "-slp-vectorize-hor=false",
+      "-slp-max-reg-size=32",
+  });
 
   llvm_ir::InitializeLLVMCommandLineOptions(
       hlo_module_config.debug_options().xla_backend_extra_options());
@@ -522,9 +521,9 @@ StatusOr<std::string> CompileToPtx(
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
   {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR:", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     // If the module has no functions or globals, there's nothing to compile.
@@ -536,7 +535,7 @@ StatusOr<std::string> CompileToPtx(
     }
 
     auto compute_capability =
-        absl::get_if<se::CudaComputeCapability>(&gpu_version);
+        std::get_if<se::CudaComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");
@@ -552,7 +551,7 @@ StatusOr<std::string> CompileToPtx(
       configure_target(target_machine.get());
     }
 
-    uint64_t start_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t start_usecs = tsl::Env::Default()->NowMicros();
 
     // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
@@ -560,15 +559,15 @@ StatusOr<std::string> CompileToPtx(
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
         kDefaultInlineThreshold));
 
-    uint64_t end_usecs = tensorflow::Env::Default()->NowMicros();
+    uint64_t end_usecs = tsl::Env::Default()->NowMicros();
     RecordLlvmPassesDuration(end_usecs - start_usecs);
 
-    start_usecs = tensorflow::Env::Default()->NowMicros();
+    start_usecs = tsl::Env::Default()->NowMicros();
 
     // Lower optimized LLVM module to PTX.
     ptx = EmitModuleToPTX(module, target_machine.get());
 
-    end_usecs = tensorflow::Env::Default()->NowMicros();
+    end_usecs = tsl::Env::Default()->NowMicros();
     RecordLlvmToPtxDuration(end_usecs - start_usecs);
   }
   return ptx;
@@ -592,7 +591,7 @@ std::vector<std::string> GetROCDLPaths(std::string gcn_arch_name,
   std::vector<std::string> result;
   result.reserve(rocdl_filenames->size() + 1);
   for (auto& filename : *rocdl_filenames) {
-    result.push_back(tensorflow::io::JoinPath(rocdl_dir_path, filename));
+    result.push_back(tsl::io::JoinPath(rocdl_dir_path, filename));
   }
 
   // Add AMDGPU version-specific bitcodes.
@@ -601,7 +600,7 @@ std::vector<std::string> GetROCDLPaths(std::string gcn_arch_name,
   if (!tokens.empty() && tokens[0].size() >= 3) {
     amdgpu_version = tokens[0].substr(3);
   }
-  result.push_back(tensorflow::io::JoinPath(
+  result.push_back(tsl::io::JoinPath(
       rocdl_dir_path,
       absl::StrCat("oclc_isa_version_", amdgpu_version, ".bc")));
   return result;
@@ -666,7 +665,7 @@ void HsacoCache::Add(const std::string& ir, uint64_t hash,
 // TargetMachine for the AMDGPU target.
 StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
     llvm::Module* module, llvm::TargetMachine* target_machine) {
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   std::vector<std::string> tempdir_vector;
   env->GetLocalTempDirectories(&tempdir_vector);
   if (tempdir_vector.empty()) {
@@ -677,30 +676,26 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
   bool keep_tempfiles = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
-                                             /*default_val=*/false,
-                                             &keep_tempfiles));
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
+                                      /*default_val=*/false, &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
-  std::string random_number = std::to_string(tensorflow::random::New64());
+  std::string random_number = std::to_string(tsl::random::New64());
   std::string ir_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
-  std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
+  std::string ir_path = tsl::io::JoinPath(tempdir_name, ir_filename);
 
   std::string ir_opt_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + "_opt.ll");
-  std::string ir_opt_path =
-      tensorflow::io::JoinPath(tempdir_name, ir_opt_filename);
+  std::string ir_opt_path = tsl::io::JoinPath(tempdir_name, ir_opt_filename);
 
   std::string isabin_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".o");
-  std::string isabin_path =
-      tensorflow::io::JoinPath(tempdir_name, isabin_filename);
+  std::string isabin_path = tsl::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename =
       absl::StrCat(module->getModuleIdentifier(), random_number + ".hsaco");
-  std::string hsaco_path =
-      tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
+  std::string hsaco_path = tsl::io::JoinPath(tempdir_name, hsaco_filename);
 
   std::error_code ec;
 
@@ -715,7 +710,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   // get creative to add a suffix.
   std::string module_id = module->getModuleIdentifier();
   IrDumpingPassManager codegen_passes(
-      ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
+      ReplaceFilenameExtension(tsl::io::Basename(module_id),
                                random_number + "-amdgpu.dummy"),
       "", false);
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
@@ -739,7 +734,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
-  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
+  std::string lld_path = tsl::io::JoinPath("/opt/rocm", "llvm/bin");
   auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
   if (!lld_program) {
     return xla::InternalError("unable to find ld.lld in PATH: %s",
@@ -781,7 +776,7 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
 Status LinkROCDLIfNecessary(llvm::Module* module, std::string gcn_arch_name,
                             const std::string& rocdl_dir_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
-    return Status::OK();
+    return OkStatus();
   }
 
   return LinkWithBitcodeVector(module,
@@ -794,7 +789,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
   // Link the input module with ROCDL.
 
   auto compute_capability =
-      absl::get_if<se::RocmComputeCapability>(&gpu_version);
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
   if (!compute_capability) {
     return xla::InternalError("Incompatible compute capability was specified.");
   }
@@ -810,7 +805,7 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // The following routine maps a feature token extracted from the
@@ -864,7 +859,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config) {
   auto compute_capability =
-      absl::get_if<se::RocmComputeCapability>(&gpu_version);
+      std::get_if<se::RocmComputeCapability>(&gpu_version);
 
   std::string gcn_arch_name = compute_capability->gcn_arch_name();
   auto arch = GetFeatureStrFromGCNArchName(gcn_arch_name);
@@ -918,13 +913,13 @@ StatusOr<std::vector<uint8_t>> CompileToHsaco(
   }
   str += hlo_module_config.compilation_cache_key();
   {
-    tensorflow::profiler::TraceMe activity(
+    tsl::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
-        tensorflow::profiler::TraceMeLevel::kInfo);
+        tsl::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
     auto compute_capability =
-        absl::get_if<se::RocmComputeCapability>(&gpu_version);
+        std::get_if<se::RocmComputeCapability>(&gpu_version);
     if (!compute_capability) {
       return xla::InternalError(
           "Incompatible compute capability was specified.");

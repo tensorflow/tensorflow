@@ -41,7 +41,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls

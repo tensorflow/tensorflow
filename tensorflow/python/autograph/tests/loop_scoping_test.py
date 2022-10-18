@@ -39,6 +39,46 @@ def while_with_local_var(x):
   return s
 
 
+def for_with_lambda_iter(l):
+  fns = []
+  results = []
+  for i in l:
+    fns.append(lambda: i)
+  for f in fns:
+    results.append(f())
+  return results
+
+
+def for_with_lambda_object():
+
+  class SomeRandomObject:
+
+    def bar(self, n):
+      return n + 1
+
+  def foo_init():
+    return tf.constant(0)
+
+  fns = []
+  results = []
+  foo = foo_init()
+  for i in tf.range(3):
+    foo = SomeRandomObject()
+    fns.append(lambda i=i: foo.bar(i))
+  for f in fns:
+    results.append(f())
+  return results
+
+
+def for_with_lambda_iter_local_var(l):
+  fns = []
+  results = []
+  for i in l:
+    fns.append(lambda i=i: i)
+  for f in fns:
+    results.append(f())
+  return results
+
 def for_initializes_local_var(l):
   s = 0
   for i in l:
@@ -143,6 +183,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       ([1, 2],),
   )
   def test_for_initializes_local_var_illegal_cases(self, l):
+    self.skipTest('TODO(mdanatg): Check')
     l = tf.constant(l)
     with self.assertRaisesRegex(ValueError, '"x" must be defined'):
       tf.function(for_initializes_local_var)(l)
@@ -161,6 +202,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       2,
   )
   def test_while_initializes_local_var_illegal_cases(self, x):
+    self.skipTest('TODO(mdanatg): check')
     x = tf.constant(x)
     with self.assertRaisesRegex(ValueError, '"y" must be defined'):
       tf.function(while_initializes_local_var)(x)
@@ -180,6 +222,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       ([1, 2],),
   )
   def test_for_defines_var_illegal_cases(self, l):
+    self.skipTest('TODO(mdanatg): check')
     l = tf.constant(l)
     with self.assertRaisesRegex(ValueError, '"x" must be defined'):
       tf.function(for_defines_var)(l)
@@ -199,6 +242,7 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
       (2,),
   )
   def test_while_defines_var_illegal_cases(self, x):
+    self.skipTest('TODO(mdanatg): check')
     x = tf.constant(x)
     with self.assertRaisesRegex(ValueError, '"y" must be defined'):
       tf.function(while_defines_var)(x)
@@ -248,6 +292,31 @@ class LoopScopingTest(reference_test_base.TestCase, parameterized.TestCase):
   def test_for_alters_iterate_range(self, n, fn):
     self.assertFunctionMatchesEager(for_alters_iterate, n, fn)
 
+
+class LoopLambdaScopingTest(reference_test_base.TestCase,
+                            parameterized.TestCase):
+
+  @parameterized.parameters(*itertools.product(
+      ([], [1], [1, 2], [(1, 2), (3, 4)]),
+      (list, list),
+  ))
+  def test_for_with_lambda_iter(self, l, type_):
+    self.skipTest('https://github.com/tensorflow/tensorflow/issues/56089')
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter, l)
+
+  def test_for_with_lambda_object(self):
+    self.skipTest('https://github.com/tensorflow/tensorflow/issues/56089')
+    self.assertFunctionMatchesEager(for_with_lambda_object)
+
+  @parameterized.parameters(*itertools.product(
+      ([], [1], [1, 2], [(1, 2), (3, 4)]),
+      (list, list),
+  ))
+  def test_for_with_lambda_iter_local_var(self, l, type_):
+    self.skipTest('https://github.com/tensorflow/tensorflow/issues/56089')
+    l = type_(l)
+    self.assertFunctionMatchesEager(for_with_lambda_iter_local_var, l)
 
 if __name__ == '__main__':
   tf.test.main()

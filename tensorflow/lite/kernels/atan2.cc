@@ -15,13 +15,12 @@
 #include <cmath>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace atan2 {
 
 TfLiteStatus EnsureSameShape(
@@ -101,6 +100,6 @@ TfLiteRegistration* Register_ATAN2() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

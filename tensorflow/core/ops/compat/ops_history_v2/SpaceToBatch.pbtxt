@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SpaceToBatch"
   input_arg {
     name: "input"

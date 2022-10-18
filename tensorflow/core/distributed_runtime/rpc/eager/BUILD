@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -14,8 +14,8 @@ cc_library(
     srcs = ["grpc_eager_service.h"],
     hdrs = ["grpc_eager_service.h"],
     deps = [
-        "//tensorflow/core/protobuf:eager_service_proto_cc",
-        "//tensorflow/stream_executor/platform",
+        "//tensorflow/core/protobuf:eager_service_cc_grpc_proto",
+        "//tensorflow/compiler/xla/stream_executor/platform",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -25,6 +25,9 @@ cc_library(
     hdrs = ["grpc_eager_client.h"],
     deps = [
         ":grpc_eager_service",
+        "//tensorflow/core/platform:error_payloads",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
@@ -68,6 +71,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
     ],

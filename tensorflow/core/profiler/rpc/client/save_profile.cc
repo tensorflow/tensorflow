@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/file_system_utils.h"
 
 // Windows.h #defines ERROR, but it is also used in
@@ -49,11 +50,12 @@ namespace {
 
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
+constexpr char kXPlanePb[] = "xplane.pb";
 
 Status DumpToolData(absl::string_view run_dir, absl::string_view host,
                     const ProfileToolData& tool, std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
-  if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return Status::OK();
+  if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return OkStatus();
   std::string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
   std::string path =
       ProfilerJoinPath(run_dir, absl::StrCat(host_prefix, tool.name()));
@@ -61,7 +63,7 @@ Status DumpToolData(absl::string_view run_dir, absl::string_view host,
   if (os) {
     *os << "Dumped tool data for " << tool.name() << " to " << path << '\n';
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status WriteGzippedDataToFile(const std::string& filepath,
@@ -75,7 +77,7 @@ Status WriteGzippedDataToFile(const std::string& filepath,
   TF_RETURN_IF_ERROR(buffer.Append(data));
   TF_RETURN_IF_ERROR(buffer.Close());
   TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetOrCreateRunDir(const std::string& repository_root,
@@ -85,7 +87,7 @@ Status GetOrCreateRunDir(const std::string& repository_root,
   *run_dir = ProfilerJoinPath(repository_root, run);
   *os << "Creating directory: " << *run_dir << '\n';
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*run_dir));
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -105,7 +107,7 @@ Status MaybeCreateEmptyEventFile(const std::string& logdir) {
   TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
   for (const std::string& child : children) {
     if (absl::EndsWith(child, kProfileEmptySuffix)) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   EventsWriter event_writer(ProfilerJoinPath(logdir, "events"));
@@ -115,7 +117,7 @@ Status MaybeCreateEmptyEventFile(const std::string& logdir) {
 Status SaveProfile(const std::string& repository_root, const std::string& run,
                    const std::string& host, const ProfileResponse& response,
                    std::ostream* os) {
-  if (response.tool_data().empty()) return Status::OK();
+  if (response.tool_data().empty()) return OkStatus();
   std::string run_dir;
   TF_RETURN_IF_ERROR(GetOrCreateRunDir(repository_root, run, &run_dir, os));
   // Windows file names do not support colons.
@@ -123,7 +125,7 @@ Status SaveProfile(const std::string& repository_root, const std::string& run,
   for (const auto& tool_data : response.tool_data()) {
     TF_RETURN_IF_ERROR(DumpToolData(run_dir, hostname, tool_data, os));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SaveGzippedToolData(const std::string& repository_root,
@@ -140,12 +142,28 @@ Status SaveGzippedToolData(const std::string& repository_root,
       ProfilerJoinPath(run_dir, absl::StrCat(host_prefix, tool_name));
   TF_RETURN_IF_ERROR(WriteGzippedDataToFile(path, data));
   LOG(INFO) << "Dumped gzipped tool data for " << tool_name << " to " << path;
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string GetCurrentTimeStampAsString() {
   return absl::FormatTime("%E4Y_%m_%d_%H_%M_%S", absl::Now(),
                           absl::LocalTimeZone());
+}
+
+Status SaveXSpace(const std::string& repository_root, const std::string& run,
+                  const std::string& host, const XSpace& xspace) {
+  std::string log_dir = ProfilerJoinPath(repository_root, run);
+  VLOG(1) << "Creating " << log_dir;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir));
+  std::string file_name = absl::StrCat(host, ".", kXPlanePb);
+  // Windows file names do not support colons.
+  absl::StrReplaceAll({{":", "_"}}, &file_name);
+
+  // Dumps profile data to <repository_root>/<run>/<host>_<port>.<kXPlanePb>
+  std::string out_path = ProfilerJoinPath(log_dir, file_name);
+  LOG(INFO) << "Collecting XSpace to repository: " << out_path;
+
+  return WriteBinaryProto(Env::Default(), out_path, xspace);
 }
 
 }  // namespace profiler

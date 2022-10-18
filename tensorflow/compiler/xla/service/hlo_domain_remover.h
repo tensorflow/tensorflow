@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -49,7 +49,10 @@ class HloDomainRemover : public HloModulePass {
   static StatusOr<int64_t> RemoveExitDomains(HloInstruction* instruction,
                                              absl::string_view domain_kind);
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   class RunContext;

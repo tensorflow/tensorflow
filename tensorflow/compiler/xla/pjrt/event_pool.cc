@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/event_pool.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -44,7 +45,7 @@ StatusOr<EventPool::Handle> EventPool::AllocateEvent(
     }
   }
   if (!event.event_) {
-    event.event_ = absl::make_unique<se::Event>(executor);
+    event.event_ = std::make_unique<se::Event>(executor);
     TF_RET_CHECK(event.event_->Init()) << "Event initialization failed";
   }
   return event;

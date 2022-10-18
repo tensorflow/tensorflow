@@ -108,7 +108,7 @@ inline void InsertSerializedPayloads(::tensorflow::Status& s,
 
 inline ::tensorflow::Status FromGrpcStatus(const ::grpc::Status& s) {
   if (s.ok()) {
-    return Status::OK();
+    return OkStatus();
   } else {
     ::tensorflow::Status converted;
     // Convert "UNKNOWN" stream removed errors into unavailable, to allow

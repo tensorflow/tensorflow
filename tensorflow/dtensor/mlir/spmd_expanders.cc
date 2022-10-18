@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/conv_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/cumsum_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/dataparallel_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/disable_copy_on_read_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/dtensor_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/einsum_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/elementwise_spmd_expander.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/gather_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/identity_n_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/io_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/nullary_spmd_expander.h"
@@ -215,9 +217,11 @@ REGISTER_SPMD(Conv2D, TF::Conv2DOp, ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropFilter, TF::Conv2DBackpropFilterOp,
               ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropInput, TF::Conv2DBackpropInputOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv3D, TF::Conv3DOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv3DBackpropFilterV2, TF::Conv3DBackpropFilterV2Op,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv3DBackpropInputV2, TF::Conv3DBackpropInputV2Op,
               ConvSPMDExpander);
-REGISTER_SPMD(Conv3D, TF::Conv3DOp, ConvSPMDExpander);
 REGISTER_SPMD(MaxPool, TF::MaxPoolOp, ConvSPMDExpander);
 REGISTER_SPMD(MaxPoolGrad, TF::MaxPoolGradOp, ConvSPMDExpander);
 
@@ -253,7 +257,8 @@ REGISTER_SPMD(Unpack, TF::UnpackOp, UnpackSPMDExpander);
 REGISTER_SPMD(Reshape, TF::ReshapeOp, ReshapeSPMDExpander);
 REGISTER_SPMD(Transpose, TF::TransposeOp, TransposeSPMDExpander);
 REGISTER_SPMD(InvertPermutation, TF::InvertPermutationOp,
-              InvertPermutationSPMDExpander);
+              ReplicatedOpSPMDExpander,
+              /*relayout_when_sharded=*/true);
 
 // Pad
 REGISTER_SPMD(Pad, TF::PadOp, PadSPMDExpander);
@@ -376,8 +381,8 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
 
 // DTensor Virtual ops
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
-REGISTER_SPMD(DTensorSe, TF::DTensorSend, DTensorSendSPMDExpander);
-REGISTER_SPMD(DTensorRe, TF::DTensorRecv, DTensorRecvSPMDExpander);
+REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
+REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 
 // TopKV2
 REGISTER_SPMD(TopKV2, TF::TopKV2Op, TopKSPMDExpander);
@@ -491,6 +496,8 @@ REGISTER_SPMD(SparseToDense, TF::SparseToDenseOp, SparseToDenseSPMDExpander);
 // StringFormat
 REGISTER_SPMD(StringFormat, TF::StringFormatOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+REGISTER_SPMD(StringToHashBucketFast, TF::StringToHashBucketFastOp,
+              ElementwiseSPMDExpander);
 
 // TensorList ops
 REGISTER_SPMD(TensorListReserve, TF::TensorListReserveOp,
@@ -499,5 +506,11 @@ REGISTER_SPMD(TensorListGetItem, TF::TensorListGetItemOp,
               TensorListGetItemSPMDExpander);
 REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
               TensorListSetItemSPMDExpander);
+
+// IO ops
+REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
+REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
+              DisableCopyOnReadSPMDExpander);
+REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);
 }  // namespace dtensor
 }  // namespace tensorflow

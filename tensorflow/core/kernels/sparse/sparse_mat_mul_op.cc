@@ -593,7 +593,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsrgemm2Info(&info_));
 #endif
     initialized_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
@@ -622,7 +622,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
         bufferSize));
 #endif
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetOutputStructure(const ConstCSRComponent<T>& a,
@@ -667,7 +667,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
           "CSRMatMul: CsrgemmNnz returned nnzTotalDevHostPtr < 0: ",
           *output_nnz);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Compute(const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
@@ -717,7 +717,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
     //     m, n, nnzTotalDevHostPtr, descrA_.descr(), c->values.data(),
     //     c->row_ptr.data(), c->col_ind.data()));
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

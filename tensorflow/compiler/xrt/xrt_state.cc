@@ -112,7 +112,7 @@ Status AllocateScopedShapedBuffer(
   TF_RETURN_IF_ERROR(
       transfer_manager->WriteTupleIndexTables(stream.get(), *(buffer->get())));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -191,7 +191,7 @@ void XRTTupleAllocation::ReleaseBuffers() {
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateUninitialized(
@@ -214,7 +214,7 @@ void XRTTupleAllocation::ReleaseBuffers() {
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
@@ -227,7 +227,7 @@ void XRTTupleAllocation::ReleaseBuffers() {
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
@@ -398,7 +398,7 @@ const se::DeviceMemoryBase& XRTTupleAllocation::root_allocation() const {
             });
   }
   (*allocation)->SetDeviceMemorySize();
-  return Status::OK();
+  return OkStatus();
 }
 
 void XRTTupleAllocation::SetDeviceMemorySize() {
@@ -447,9 +447,9 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
                 index.ToString());
           }
         }
-        return Status::OK();
+        return OkStatus();
       }));
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status XRTTupleAllocation::MakeTuple(
@@ -494,7 +494,7 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
           // of it.
           new_tuple_buffers->set_buffer(std::move(buffer), index);
         }
-        return Status::OK();
+        return OkStatus();
       }));
   // Transfer from the ScopedShapedBuffer to a ShapedBuffer, which does not own
   // the newly-allocated index tables. Right now there's no owner for the new
@@ -553,7 +553,7 @@ void XRTTupleAllocation::SetDeviceMemorySize() {
   // Get another reference since allocation_tmp will be Unrefed automatically on
   // exit.
   (*allocation)->Ref();
-  return Status::OK();
+  return OkStatus();
 }
 
 bool XRTTupleAllocation::IsExclusiveOwner() const {
@@ -644,7 +644,7 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
     }
     dest_buffer->Unref();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<xla::ExecutionInput> XRTTupleAllocation::ToExecutionInput(

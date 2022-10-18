@@ -1,14 +1,10 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud", "tf_custom_op_py_library", "tf_py_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_copts",
     "tf_custom_op_library",
     "tf_gen_op_wrapper_py",
+    "tf_kernel_library",
 )
 
 package(
@@ -22,7 +18,9 @@ cc_library(
     name = "calibrator_singleton",
     srcs = ["calibrator_singleton.cc"],
     hdrs = ["calibrator_singleton.h"],
+    compatible_with = get_compatible_with_cloud(),
     deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -40,16 +38,14 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "custom_aggregator_op_and_kernels",
     srcs = ["custom_aggregator_op.cc"],
-    copts = tf_copts(),
+    compatible_with = get_compatible_with_cloud(),
     deps = [
         ":calibrator_singleton",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
-    alwayslink = 1,
 )
 
 tf_custom_op_library(
@@ -63,6 +59,8 @@ tf_custom_op_library(
 tf_gen_op_wrapper_py(
     name = "gen_custom_aggregator_op_wrapper",
     out = "custom_aggregator_op_wrapper.py",
+    # Prevent unintentionally generating Python wrappers for all TF ops.
+    op_allowlist = ["CustomAggregator"],
     deps = [":custom_aggregator_op_and_kernels"],
 )
 
@@ -74,6 +72,9 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_custom_aggregator_op_wrapper",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/platform",
     ],
 )
 

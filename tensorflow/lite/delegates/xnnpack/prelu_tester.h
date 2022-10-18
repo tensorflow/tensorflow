@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -85,6 +86,12 @@ class PreluTester {
 
   inline bool SparseWeights() const { return sparse_weights_; }
 
+  inline PreluTester& WeightsCache(
+      TfLiteXNNPackDelegateWeightsCache* weights_cache) {
+    weights_cache_ = weights_cache;
+    return *this;
+  }
+
   void Test(TfLiteDelegate* delegate) const;
 
  private:
@@ -98,6 +105,7 @@ class PreluTester {
   bool int8_weights_ = false;
   bool int8_channel_wise_weights_ = false;
   bool sparse_weights_ = false;
+  TfLiteXNNPackDelegateWeightsCache* weights_cache_ = nullptr;
 };
 
 }  // namespace xnnpack

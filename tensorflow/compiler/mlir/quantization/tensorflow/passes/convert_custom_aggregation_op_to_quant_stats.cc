@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -37,7 +38,7 @@ namespace {
 
 class ConvertCustomAggregationOpToQuantStatsPass
     : public PassWrapper<ConvertCustomAggregationOpToQuantStatsPass,
-                         OperationPass<FuncOp>> {
+                         OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
       ConvertCustomAggregationOpToQuantStatsPass)
@@ -55,7 +56,8 @@ class ConvertCustomAggregationOpToQuantStatsPass
 
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
-    registry.insert<QuantizationDialect>();
+    registry.insert<quant::QuantizationDialect>();
+    registry.insert<quantfork::QuantizationForkDialect>();
   }
 
   void runOnOperation() override;
@@ -91,8 +93,8 @@ class ConvertCustomAggregationOpToQuantStats : public RewritePattern {
     ElementsAttr axis_stats;
     IntegerAttr axis;
 
-    rewriter.replaceOpWithNewOp<StatisticsOp>(op, op->getOperand(0),
-                                              layer_stats, axis_stats, axis);
+    rewriter.replaceOpWithNewOp<quantfork::StatisticsOp>(
+        op, op->getOperand(0), layer_stats, axis_stats, axis);
     return success();
   }
 };
@@ -102,7 +104,7 @@ static PassRegistration<ConvertCustomAggregationOpToQuantStatsPass> pass;
 void ConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
   MLIRContext *ctx = &getContext();
   RewritePatternSet patterns(ctx);
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   patterns.add<ConvertCustomAggregationOpToQuantStats>(ctx);
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
@@ -114,7 +116,7 @@ void ConvertCustomAggregationOpToQuantStatsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertCustomAggregationOpToQuantStatsPass() {
   return std::make_unique<ConvertCustomAggregationOpToQuantStatsPass>();
 }

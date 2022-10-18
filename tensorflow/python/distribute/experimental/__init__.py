@@ -19,4 +19,5 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.distribute.failure_handling import failure_handling
 # pylint: enable=unused-import

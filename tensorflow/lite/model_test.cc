@@ -29,10 +29,11 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/verifier.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/interpreter_test_util.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -291,7 +292,7 @@ TEST(BasicFlatBufferModel, TestWithNumThreads) {
   ASSERT_EQ(interpreter->subgraph(0)->context()->recommended_num_threads, -1);
 
   ASSERT_EQ(reporter.num_calls(), 0);
-  interpreter.reset(new Interpreter);
+  interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(builder(&interpreter, -2), kTfLiteError);
   ASSERT_EQ(interpreter, nullptr);
   ASSERT_EQ(reporter.num_calls(), 1);
@@ -731,7 +732,9 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
       ASSERT_TRUE(model);
       // Now try to build it into an interpreter.
       std::unique_ptr<Interpreter> interpreter;
-      InterpreterBuilder builder(*model, TrivialResolver());
+
+      TrivialResolver resolver;
+      InterpreterBuilder builder(*model, resolver);
       builder.AddDelegate(delegate.get());  // Does not transfer ownership.
       // Loop to check we can construct multiple interpreters from one builder.
       for (int i = 0; i < 3; i++) {
@@ -785,6 +788,31 @@ TEST(BasicFlatBufferModel, TestHandleModelWithWhileOpContainsForwardingInput) {
   buf.WriteToTensor(tensor, /*new_shape=*/nullptr);
 
   ASSERT_EQ(interpreter->Invoke(), kTfLiteOk);
+}
+
+TEST(BasicFlatBufferModel, TestHandleZeroSizeConstant) {
+  TestErrorReporter reporter;
+  FileCopyAllocation model_allocation(
+      "tensorflow/lite/testdata/zero_size_constant.bin", &reporter);
+  EXPECT_TRUE(model_allocation.valid());
+  ::flatbuffers::Verifier verifier(
+      reinterpret_cast<const uint8_t*>(model_allocation.base()),
+      model_allocation.bytes());
+  EXPECT_TRUE(VerifyModelBuffer(verifier));
+  const Model* model_fb = ::tflite::GetModel(model_allocation.base());
+
+  auto model = FlatBufferModel::BuildFromModel(model_fb);
+  EXPECT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  EXPECT_EQ(
+      InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
+      kTfLiteOk);
+  EXPECT_NE(interpreter, nullptr);
+
+  EXPECT_EQ(interpreter->tensors_size(), 3);
+  // Second tensor should be treated as constant.
+  ASSERT_EQ(interpreter->tensor(1)->allocation_type, kTfLiteMmapRo);
 }
 
 // TODO(aselle): Add tests for serialization of builtin op data types.

@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PMAP_LIB_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PMAP_LIB_H_
 
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/core/platform/logging.h"
 
 // TODO(jblespiau): The current implementation moves the Python logic to C++,
 // as a preliminary step to executing the `pmap` execution path from C++.

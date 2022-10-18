@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 //===----------------------------------------------------------------------===//
 // The post-quantize Passes.
@@ -37,7 +38,7 @@ namespace {
 
 // Applies all the clean up steps after quantization.
 class PostQuantizePass
-    : public PassWrapper<PostQuantizePass, OperationPass<FuncOp>> {
+    : public PassWrapper<PostQuantizePass, OperationPass<func::FuncOp>> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PostQuantizePass)
 
@@ -66,20 +67,21 @@ enum RemoveVolatileOpsType {
 
 // Remove the back-to-back quantize and dequantize ops with volatile attribute.
 template <RemoveVolatileOpsType remove_volatile_ops_type>
-struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
+struct RemoveVolatileOps
+    : public OpRewritePattern<quantfork::DequantizeCastOp> {
   explicit RemoveVolatileOps(MLIRContext* context)
-      : OpRewritePattern<DequantizeCastOp>(context, 1) {}
+      : OpRewritePattern<quantfork::DequantizeCastOp>(context, 1) {}
 
-  LogicalResult matchAndRewrite(DequantizeCastOp op,
+  LogicalResult matchAndRewrite(quantfork::DequantizeCastOp op,
                                 PatternRewriter& rewriter) const override {
-    auto input_op = op.arg().getDefiningOp();
-    if (auto q = llvm::dyn_cast_or_null<QuantizeCastOp>(input_op)) {
+    auto input_op = op.getArg().getDefiningOp();
+    if (auto q = llvm::dyn_cast_or_null<quantfork::QuantizeCastOp>(input_op)) {
       if (!q->getAttr(kVolatileOpAttrName)) return failure();
 
       if (remove_volatile_ops_type == kPreserveInputsAndOutputs) {
         // Don't remove leading and trailing QDQ for PTQ workflow, so the io
         // modifying lib can work correctly.
-        if (!q.arg().getDefiningOp()) return failure();
+        if (!q.getArg().getDefiningOp()) return failure();
         if (op->hasOneUse() &&
             op->user_begin()->hasTrait<OpTrait::IsTerminator>())
           return failure();
@@ -88,33 +90,36 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeCastOp> {
       // adjustments and should be kept. Instead, moving dequantize op before
       // the requantize op to remove the unnecessary requantize op.
       if (auto qtype =
-              QuantizedType::getQuantizedElementType(q.arg().getType())) {
+              QuantizedType::getQuantizedElementType(q.getArg().getType())) {
         rewriter.setInsertionPoint(op);
-        rewriter.replaceOpWithNewOp<DequantizeCastOp>(
-            op, op.getResult().getType(), q.arg());
+        rewriter.replaceOpWithNewOp<quantfork::DequantizeCastOp>(
+            op, op.getResult().getType(), q.getArg());
         return success();
       }
 
-      op.replaceAllUsesWith(q.arg());
+      op.replaceAllUsesWith(q.getArg());
       return success();
     }
     return failure();
   }
 };
 
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/post_quantize.inc"
+
 void PostQuantizePass::runOnOperation() {
   RewritePatternSet patterns(&getContext());
   auto func = getOperation();
   auto* ctx = func.getContext();
-  patterns.add<FoldTrivalRequantizeOp<QuantizeCastOp>,
+  patterns.add<FoldTrivalRequantizeOp<quantfork::QuantizeCastOp>,
                RemoveVolatileOps<kPreserveNone>>(ctx);
+  populateWithGenerated(patterns);
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow dialect PostQuantize pass.
-std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePostQuantizePass() {
   return std::make_unique<PostQuantizePass>();
 }
 

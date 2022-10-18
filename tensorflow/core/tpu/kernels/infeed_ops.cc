@@ -21,6 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -39,10 +43,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
-#include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
 
 namespace tensorflow {
 namespace {
@@ -141,7 +141,7 @@ Status GetInfeedShapeWithLayout(OpKernelConstruction* ctx,
       *output_shape->mutable_layout() =
           GetTPUInfeedLayout(*output_shape).layout();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   auto layout_func = [](const xla::Shape& shape) -> xla::Layout {
@@ -232,7 +232,7 @@ Status AutoTransposeAndLinearize(OpKernelContext* ctx,
       break;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // PrelinearizeOp is used to linearize one tensor to the device format.
@@ -461,7 +461,7 @@ Status TpuInfeedEnqueueOp::DoWork(OpKernelContext* ctx, int device_ordinal) {
       transfer_op_->TransferLiteralToInfeed(device_ordinal, literal));
   VLOG(1) << "TpuInfeedEnqueueOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
-  return Status::OK();
+  return OkStatus();
 }
 
 TpuInfeedEnqueueTupleOp::TpuInfeedEnqueueTupleOp(
@@ -537,7 +537,7 @@ Status TpuInfeedEnqueueTupleOp::DoWork(OpKernelContext* ctx,
   VLOG(1) << "TpuInfeedEnqueueTupleOp completes. iter_id="
           << ctx->frame_iter().iter_id << " device_ordinal=" << device_ordinal;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 InfeedEnqueuePrelinearizedBufferOp::InfeedEnqueuePrelinearizedBufferOp(
@@ -554,7 +554,7 @@ Status InfeedEnqueuePrelinearizedBufferOp::DoWork(OpKernelContext* ctx,
   TF_RETURN_IF_ERROR(
       transfer_op_->TransferBuffersToInfeed(device_ordinal, wrapper->buffers));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // These ops execute on either the TPU device or the CPU device. When running on

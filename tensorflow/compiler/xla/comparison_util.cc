@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/comparison_util.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -290,12 +290,12 @@ Comparison Comparison::Converse() const {
   return Comparison(xla::Converse(dir_), primitive_type_, order_);
 }
 
-absl::optional<Comparison> Comparison::Inverse() const {
+std::optional<Comparison> Comparison::Inverse() const {
   if (IsPartialOrder()) {
     // We assume comparisons don't have inverses unless they are total order,
     // e.g., a partial order floating point comparison can return true if one
     // operand is NaN.
-    return absl::nullopt;
+    return std::nullopt;
   }
   switch (primitive_type_) {
     case F16:
@@ -320,7 +320,7 @@ absl::optional<Comparison> Comparison::Inverse() const {
     case PRIMITIVE_TYPE_INVALID:
     case PrimitiveType_INT_MAX_SENTINEL_DO_NOT_USE_:
     case PrimitiveType_INT_MIN_SENTINEL_DO_NOT_USE_:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 

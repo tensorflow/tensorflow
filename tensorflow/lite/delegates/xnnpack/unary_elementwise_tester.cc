@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/xnnpack/unary_elementwise_tester.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <random>
 #include <vector>

@@ -66,7 +66,7 @@ Status FractionalPoolShapeFn(InferenceContext* c) {
   c->set_output(0, c->MakeShape(output_dims));
   c->set_output(1, c->Vector(output_dims[1]));
   c->set_output(2, c->Vector(output_dims[2]));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -121,7 +121,7 @@ REGISTER_OP("BatchNormWithGlobalNormalization")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->ReplaceDim(input, 3, last_dim, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
@@ -161,7 +161,7 @@ REGISTER_OP("BatchNormWithGlobalNormalizationGrad")
       c->set_output(2, vector_shape);
       c->set_output(3, vector_shape);
       c->set_output(4, vector_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -409,20 +409,24 @@ REGISTER_OP("Conv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_FusedConv2D")
     .Input("input: T")
     .Input("filter: T")
-    .Input("args: num_args * T")
+    .Input("args: TArgs")
+    .Input("host_args : num_host_args * float")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double, int8, qint8}")
+    .Attr("TArgs: list(type)")
     .Attr("num_args: int >= 0")
+    .Attr("num_host_args: int >= 0 =0")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetExplicitPaddingsAttrString())
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("data_format: { 'NHWC', 'NCHW', 'NCHW_VECT_C' } = 'NHWC'")
+    .Attr("filter_format: {'HWIO', 'OIHW', 'OIHW_VECT_I'} = 'HWIO'")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
@@ -544,7 +548,7 @@ Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {
   ShapeHandle output_shape = c->MakeShape(
       {batch_size_dim, output_rows, output_cols, output_depth_dim});
   c->set_output(0, output_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -577,7 +581,7 @@ REGISTER_OP("FusedResizeAndPadConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return CommonFusedConvCalculations(c, true /* has_resize */);
+      return CommonFusedConvCalculations(c, /*has_resize=*/true);
     });
 
 REGISTER_OP("FusedPadConv2D")
@@ -590,7 +594,7 @@ REGISTER_OP("FusedPadConv2D")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
-      return CommonFusedConvCalculations(c, false /* has_resize */);
+      return CommonFusedConvCalculations(c, /*has_resize=*/false);
     });
 
 // --------------------------------------------------------------------------
@@ -623,7 +627,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
@@ -642,7 +646,7 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("_FusedDepthwiseConv2dNative")
@@ -705,7 +709,7 @@ REGISTER_OP("Conv3DBackpropFilter")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 5, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Conv3DBackpropInputV2")
@@ -724,7 +728,7 @@ REGISTER_OP("Conv3DBackpropInputV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Conv3DBackpropFilterV2")
@@ -742,7 +746,7 @@ REGISTER_OP("Conv3DBackpropFilterV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -810,7 +814,7 @@ REGISTER_OP("MaxPool3DGradGrad")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
       // Validate 'orig_output' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -851,7 +855,7 @@ REGISTER_OP("LRNGrad")
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -881,7 +885,7 @@ REGISTER_OP("MaxPoolV2")
     .Output("output: T")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolV2Shape(c, 3));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MaxPoolGrad")
@@ -927,7 +931,7 @@ REGISTER_OP("MaxPoolGradGrad")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
       // Validate 'orig_output' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MaxPoolGradGradV2")
@@ -947,7 +951,7 @@ REGISTER_OP("MaxPoolGradGradV2")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(2), &unused));
       // Validate 'orig_output' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(1), c->output(0), &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MaxPoolWithArgmax")
@@ -963,7 +967,7 @@ REGISTER_OP("MaxPoolWithArgmax")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::MaxPoolShape(c));
       c->set_output(1, c->output(0));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MaxPoolGradWithArgmax")
@@ -999,7 +1003,7 @@ REGISTER_OP("MaxPoolGradGradWithArgmax")
       TF_RETURN_IF_ERROR(c->Merge(c->input(0), c->input(1), &unused));
       // Validate 'argmax' is same shape as 'output'
       TF_RETURN_IF_ERROR(c->Merge(c->input(2), c->output(0), &unused));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1055,7 +1059,7 @@ REGISTER_OP("Dilation2D")
             c->MakeShape({batch_size_dim, InferenceContext::kUnknownDim,
                           InferenceContext::kUnknownDim, output_depth_dim});
         c->set_output(0, output_shape);
-        return Status::OK();
+        return OkStatus();
       }
       DimensionHandle unused;
       TF_RETURN_IF_ERROR(
@@ -1083,7 +1087,7 @@ REGISTER_OP("Dilation2D")
       ShapeHandle output_shape = c->MakeShape(
           {batch_size_dim, output_rows, output_cols, output_depth_dim});
       c->set_output(0, output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Dilation2DBackpropInput")
@@ -1108,7 +1112,7 @@ REGISTER_OP("Dilation2DBackpropFilter")
     .Attr(GetPaddingAttrString())
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1236,12 +1240,12 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
-      if (c->WithRank(c->input(0), 2, &input) == Status::OK() &&
-          c->Merge(input, c->input(1), &input) == Status::OK()) {
+      if (c->WithRank(c->input(0), 2, &input) == OkStatus() &&
+          c->Merge(input, c->input(1), &input) == OkStatus()) {
         DimensionHandle batch_size = c->Dim(input, 0);
         c->set_output(0, c->Vector(batch_size));
         c->set_output(1, input);
-        return Status::OK();
+        return OkStatus();
       }
       TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFn(c, 1));
 
@@ -1257,7 +1261,7 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
       }
       DimensionHandle batch_size = c->Dim(c->output(1), 0);
       c->set_output(0, c->Vector(batch_size));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
@@ -1280,7 +1284,7 @@ REGISTER_OP("SparseSoftmaxCrossEntropyWithLogits")
 
       c->set_output(0, c->Vector(batch_size));
       c->set_output(1, features);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1300,7 +1304,7 @@ REGISTER_OP("InTopK")
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
       c->set_output(0, c->Vector(batch_size));
-      return Status::OK();
+      return OkStatus();
     });
 
 // This is the same as `InTopK`, but takes `k` as in input rather than an attr.
@@ -1319,7 +1323,7 @@ REGISTER_OP("InTopKV2")
       TF_RETURN_IF_ERROR(
           c->Merge(c->Dim(predictions, 0), c->Dim(targets, 0), &batch_size));
       c->set_output(0, c->Vector(batch_size));
-      return Status::OK();
+      return OkStatus();
     });
 
 namespace {
@@ -1355,7 +1359,7 @@ Status TopKShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(s, c->Vector(k_dim), &s));
   c->set_output(0, s);
   c->set_output(1, s);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Utility functions for ApproxTopKShape.
@@ -1436,7 +1440,7 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
                                    &output_shape));
   c->set_output(0, output_shape);
   c->set_output(1, output_shape);
-  return Status::OK();
+  return OkStatus();
 }
 // LINT.ThenChange(//tensorflow/compiler/xla/client/lib/approx_topk_shape.cc)
 
@@ -1504,7 +1508,7 @@ REGISTER_OP("NthElement")
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -1, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 // --------------------------------------------------------------------------
@@ -1568,7 +1572,7 @@ REGISTER_OP("FractionalAvgPoolGrad")
       } else {
         c->set_output(0, c->UnknownShapeOfRank(4));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedAvgPool")
@@ -1606,7 +1610,7 @@ REGISTER_OP("QuantizedBiasAdd")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedConv2D")
@@ -1645,7 +1649,7 @@ REGISTER_OP("QuantizedMaxPool")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedRelu")
@@ -1664,7 +1668,7 @@ REGISTER_OP("QuantizedRelu")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedRelu6")
@@ -1683,7 +1687,7 @@ REGISTER_OP("QuantizedRelu6")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedReluX")
@@ -1704,7 +1708,7 @@ REGISTER_OP("QuantizedReluX")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
@@ -1747,7 +1751,7 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
 
-      return Status::OK();
+      return OkStatus();
     });
 
 #ifdef INTEL_MKL
@@ -1936,7 +1940,7 @@ REGISTER_OP("_MklConv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -1963,7 +1967,7 @@ REGISTER_OP("_MklNativeConv2DBackpropFilter")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilter for Eager mode. Uses MKL DNN APIs
@@ -2002,7 +2006,7 @@ REGISTER_OP("__MklDummyConv2DBackpropFilterWithBias")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
       TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
       c->set_output(0, sh);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Dummy node that enables fusing Conv2DBackpropFilter and BiasAddGrad operator
@@ -2079,7 +2083,7 @@ REGISTER_OP("_MklConv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input. Uses MKL DNN APIs to compute the
@@ -2106,7 +2110,7 @@ REGISTER_OP("_MklNativeConv2DBackpropInput")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution2D backward input for Eager mode. Uses MKL DNN APIs
@@ -2159,7 +2163,7 @@ REGISTER_OP("_MklConv3DBackpropInputV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Convolution3D backward input. Uses MKL DNN APIs to compute the
@@ -2188,7 +2192,7 @@ REGISTER_OP("_MklConv3DBackpropFilterV2")
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
       TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of Conv3DBackpropFilter. Uses MKL DNN APIs to compute the
@@ -2600,7 +2604,7 @@ REGISTER_OP("_MklLRNGrad")
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(1), &s));     // input_image
       TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));     // output_image
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 MKL version of LRNGrad operator. Uses MKL DNN APIs to compute gradient for
@@ -2805,7 +2809,7 @@ REGISTER_OP("QuantizedConv2DAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Fusion of Quantized Conv2D and BiasAdd.
@@ -2837,7 +2841,7 @@ REGISTER_OP("QuantizedConv2DWithBias")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedConv2DWithBiasAndRequantize")
@@ -2873,7 +2877,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Fusion of Quantized Conv2D and Relu.
@@ -2903,7 +2907,7 @@ REGISTER_OP("QuantizedConv2DAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedConv2DAndReluAndRequantize")
@@ -2936,7 +2940,7 @@ REGISTER_OP("QuantizedConv2DAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Fusion of Quantized Conv2D, BiasAdd and Relu.
@@ -2968,7 +2972,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 // Fusion of Quantized Conv2D, BiasAdd, Relu, and Requantize.
@@ -3005,7 +3009,7 @@ REGISTER_OP("QuantizedConv2DWithBiasAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Fusion of Quantized Conv2D, BiasAdd, Sum, and Relu.
@@ -3038,7 +3042,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSumAndRelu")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedConv2DWithBiasSumAndReluAndRequantize")
@@ -3078,7 +3082,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
@@ -3120,7 +3124,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       // and `max_output` are scalars.
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 // Fusion of Quantized MatMul and BiasAdd.
@@ -3152,7 +3156,7 @@ REGISTER_OP("QuantizedMatMulWithBias")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedMatMulWithBiasAndRelu")
@@ -3182,7 +3186,7 @@ REGISTER_OP("QuantizedMatMulWithBiasAndRelu")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedMatMulWithBiasAndReluAndRequantize")
@@ -3217,7 +3221,7 @@ REGISTER_OP("QuantizedMatMulWithBiasAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedMatMulWithBiasAndDequantize")
@@ -3249,7 +3253,7 @@ REGISTER_OP("QuantizedMatMulWithBiasAndDequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
 
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedMatMulWithBiasAndRequantize")
@@ -3284,7 +3288,7 @@ REGISTER_OP("QuantizedMatMulWithBiasAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedConv2DPerChannel")
@@ -3312,7 +3316,7 @@ REGISTER_OP("QuantizedConv2DPerChannel")
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       c->set_output(1, channel);
       c->set_output(2, channel);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("QuantizedDepthwiseConv2D")
@@ -3404,7 +3408,7 @@ REGISTER_OP("IsotonicRegression")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* context) {
       context->set_output(0, context->input(0));
       context->set_output(1, context->input(0));
-      return tensorflow::Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow
