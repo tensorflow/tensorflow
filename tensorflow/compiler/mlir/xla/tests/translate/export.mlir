@@ -470,13 +470,14 @@ func.func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>,
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
   %0 = "mhlo.collective_permute"(%arg0) {
-    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+    source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
   } : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = f32[128,32] parameter(0)
-// CHECK:  ROOT [[RESULT:%.*]] = f32[128,32] collective-permute(f32[128,32] [[ARG]]), source_target_pairs={{\{\{}}0,1},{1,2},{2,3}}
+// CHECK:  ROOT [[RESULT:%.*]] = f32[128,32] collective-permute(f32[128,32] [[ARG]]), channel_id=1, source_target_pairs={{\{\{}}0,1},{1,2},{2,3}}
 
 // -----
 
@@ -1889,3 +1890,13 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> {
   %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
   func.return %0 : tensor<3x4xf32>
 }
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_thread = "test_thread"} {
+  %token = "mhlo.create_token"() : () -> !mhlo.token
+  %0 = "mhlo.add_dependency"(%arg, %token) : (tensor<3x4xf32>, !mhlo.token) -> tensor<3x4xf32>
+  func.return %0 : tensor<3x4xf32>
+}
+// CHECK-LITERAL: }, execution_thread="test_thread"

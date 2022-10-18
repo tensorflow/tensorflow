@@ -676,6 +676,12 @@ message ModelFile {
   optional int64 offset = 3;
   // Length of model in file descriptor.
   optional int64 length = 4;
+  optional ModelIdGroup model_id_group = 5;
+}
+
+message ModelIdGroup {
+  optional string model_namespace = 1;
+  optional string model_id = 2;
 }
 
 // Where to store mini-benchmark state.
@@ -716,4 +722,10 @@ message MinibenchmarkSettings {
   optional BenchmarkStoragePaths storage_paths = 3;
   // Validation test related settings.
   optional ValidationSettings validation_settings = 4;
+}
+
+// Schema used for cache Benchmark result.
+message BenchmarkEventStorage {
+  optional ModelIdGroup model_id_group = 1;
+  optional BenchmarkEvent benchmark_event = 2;
 }

@@ -17,13 +17,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <iterator>
 #include <memory>
 #include <vector>
 
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/blocking_validator_runner.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
@@ -33,6 +33,24 @@ namespace {
 
 using ::flatbuffers::FlatBufferBuilder;
 constexpr int kPerBenchmarkEventSize = 300;
+
+// ErrorReporter that invokes C-style error reporting functions.
+class CErrorReporter : public tflite::ErrorReporter {
+ public:
+  using ErrorReporterFunc = int(void* user_data, const char* format,
+                                va_list args);
+
+  CErrorReporter(void* user_data, ErrorReporterFunc* func)
+      : user_data_(user_data), error_reporter_func_(func) {}
+
+  int Report(const char* format, va_list args) override {
+    return error_reporter_func_(user_data_, format, args);
+  }
+
+ private:
+  void* user_data_;
+  ErrorReporterFunc* error_reporter_func_;
+};
 
 // Allocate memory in minibenchmark_result and serialize benchmark_events to it.
 void CreateData(
@@ -84,6 +102,13 @@ void TfLiteBlockingValidatorRunnerTriggerValidationImpl(
   tflite::acceleration::ValidatorRunnerOptions options =
       tflite::acceleration::CreateValidatorRunnerOptionsFrom(
           *minibenchmark_settings);
+
+  std::unique_ptr<CErrorReporter> error_reporter;
+  if (settings.error_reporter_func != nullptr) {
+    error_reporter = std::make_unique<CErrorReporter>(
+        settings.error_reporter_user_data, settings.error_reporter_func);
+    options.error_reporter = error_reporter.get();
+  }
   if (settings.custom_validation_info.buffer) {
     options.custom_input_batch_size =
         settings.custom_validation_info.batch_size;
@@ -115,6 +140,7 @@ TfLiteMiniBenchmarkResult* TfLiteBlockingValidatorRunnerTriggerValidation(
       settings->flatbuffer_data_size == 0) {
     return_value->init_status =
         tflite::acceleration::kMinibenchmarkPreconditionNotMet;
+    return return_value;
   }
   // Verify data is not corrupted.
   flatbuffers::Verifier verifier(settings->flatbuffer_data,
@@ -122,6 +148,7 @@ TfLiteMiniBenchmarkResult* TfLiteBlockingValidatorRunnerTriggerValidation(
   if (!verifier.VerifyBuffer<tflite::MinibenchmarkSettings>()) {
     return_value->init_status =
         tflite::acceleration::kMinibenchmarkCorruptSizePrefixedFlatbufferFile;
+    return return_value;
   }
 
   TfLiteBlockingValidatorRunnerTriggerValidationImpl(*settings, *return_value);

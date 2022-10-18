@@ -222,6 +222,10 @@ TfLiteStatus Interpreter::Invoke() {
   ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
 
+  // "Resets" cancellation flag so cancellation happens before this invoke will
+  // not take effect.
+  if (cancellation_enabled_) (void)continue_invocation_.test_and_set();
+
   // Denormal floating point numbers could cause significant slowdown on
   // platforms like x86, therefore, we suppress denormals here to prevent this
   // from happening.
@@ -414,9 +418,21 @@ TfLiteStatus Interpreter::RemoveAllDelegates() {
 TfLiteStatus Interpreter::SetMetadata(
     const std::map<std::string, std::string>& metadata) {
   metadata_ = metadata;
+  const auto maybe_model_control_dependencies =
+      metadata_.find(kModelControlDependenciesMetadataKey);
+  if (maybe_model_control_dependencies == metadata_.end() ||
+      !ParseModelControlDependencies(
+          maybe_model_control_dependencies->second.data(),
+          maybe_model_control_dependencies->second.size(),
+          &model_control_dependencies_)) {
+    model_control_dependencies_.clear();
+  }
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
+    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(
+        &metadata_, model_control_dependencies_.empty()
+                        ? nullptr
+                        : &model_control_dependencies_[subgraph_index]));
   }
   return kTfLiteOk;
 }
@@ -468,5 +484,15 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus Interpreter::EnableCancellation() {
+  cancellation_enabled_ = true;
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->EnableCancellation(&continue_invocation_));
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
 
 }  // namespace tflite

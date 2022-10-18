@@ -36,6 +36,12 @@ size_t ShardingHash(const pybind11::object& sharding) {
     return op_sharding->Hash();
   }
 
+  if (type.is(SingleDeviceSharding::type())) {
+    const auto* single_device_sharding =
+        py::cast<const SingleDeviceSharding*>(sharding);
+    return single_device_sharding->Hash();
+  }
+
   return py::hash(sharding);
 }
 
@@ -108,6 +114,8 @@ void RegisterSharding(py::module& m) {
   py::class_<OpShardingSharding, XLACompatibleSharding>(m, "OpShardingSharding",
                                                         py::dynamic_attr())
       .def(py::init<py::list, xla::OpSharding>(), py::arg("devices"),
+           py::arg("op_sharding"))
+      .def(py::init<py::tuple, xla::OpSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
       .def_property_readonly("_devices", &OpShardingSharding::devices)
       .def_property_readonly("_op_sharding", &OpShardingSharding::op_sharding);

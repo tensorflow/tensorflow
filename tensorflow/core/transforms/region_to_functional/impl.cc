@@ -268,7 +268,7 @@ struct ConvertWhileLikeRegionOpToExplicitCapture
 
   WhileLikeRegionOp RebuildWith(WhileLikeRegionOp op, ValueRange added,
                                 PatternRewriter &rewriter) const override {
-    ConditionOp cond_op = op.cond_condition();
+    ConditionOp cond_op = op.getCondCondition();
     rewriter.setInsertionPoint(cond_op);
     rewriter.replaceOpWithNewOp<ConditionOp>(
         cond_op, cond_op.getCond(),
@@ -276,7 +276,7 @@ struct ConvertWhileLikeRegionOpToExplicitCapture
                            cond_op.getArgs()),
         cond_op.getCtls());
 
-    YieldOp yield_op = op.body_yield();
+    YieldOp yield_op = op.getBodyYield();
     rewriter.setInsertionPoint(yield_op);
     rewriter.replaceOpWithNewOp<YieldOp>(
         yield_op,
@@ -305,7 +305,7 @@ struct ConvertForRegionOpToExplicitCapture
 
   ForRegionOp RebuildWith(ForRegionOp op, ValueRange added,
                           PatternRewriter &rewriter) const override {
-    YieldOp yield_op = op.body_yield();
+    YieldOp yield_op = op.getBodyYield();
     rewriter.setInsertionPoint(yield_op);
     // Get the iteration arguments excluding the for loop index argument.
     auto iter_args = GetLoopRegionDataArgs(op.getBodyRegion()).slice(1);
@@ -958,7 +958,7 @@ ConvertWhileLikeOp<WhileLikeRegionOp, WhileLikeOp>::matchAndRewrite(
   if (!body_ref || !cond_ref) {
     // Handle the condition region. Unlike other regions, the terminator is
     // special and the function only has one result.
-    ConditionOp cond_op = op.cond_condition();
+    ConditionOp cond_op = op.getCondCondition();
     // Create a name scope for the condition function.
     NameUniquer name_uniquer(this->ctx_);
     // Create the function.

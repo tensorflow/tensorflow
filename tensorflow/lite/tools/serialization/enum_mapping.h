@@ -70,6 +70,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT32;
     case kTfLiteUInt32:
       return TensorType_UINT32;
+    case kTfLiteInt4:
+      return TensorType_INT4;
     case kTfLiteUInt8:
       return TensorType_UINT8;
     case kTfLiteInt8:

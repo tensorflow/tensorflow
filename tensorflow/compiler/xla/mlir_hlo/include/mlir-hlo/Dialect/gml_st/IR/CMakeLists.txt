@@ -19,6 +19,8 @@ mlir_tablegen(gml_st_types.h.inc -gen-typedef-decls)
 mlir_tablegen(gml_st_types.cc.inc -gen-typedef-defs)
 mlir_tablegen(gml_st_dialect.h.inc -gen-dialect-decls)
 mlir_tablegen(gml_st_dialect.cc.inc -gen-dialect-defs)
+mlir_tablegen(gml_st_attrs.h.inc -gen-attrdef-decls)
+mlir_tablegen(gml_st_attrs.cc.inc -gen-attrdef-defs)
 
 add_public_tablegen_target(MLIRgml_st_opsIncGen)
 add_dependencies(mlir-headers MLIRgml_st_opsIncGen)

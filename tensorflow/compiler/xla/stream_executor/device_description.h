@@ -205,6 +205,10 @@ class DeviceDescription {
   // or an AMD Compute Unit.
   int core_count() const { return core_count_; }
 
+  // Number of floating point operations one core (SM, compute unit) can execute
+  // in parallel. Corresponds to the number of "CUDA cores" for NVIDIA devices.
+  int fpus_per_core() const { return fpus_per_core_; }
+
   // Returns the limit on the thread dimensionality values in each of the
   // respective dimensions. These limits affect what constitutes a legitimate
   // kernel launch request.
@@ -249,6 +253,9 @@ class DeviceDescription {
 
   // Returns the device memory size in bytes.
   int64_t device_memory_size() const { return device_memory_size_; }
+
+  // Returns the L2 cache size in bytes.
+  int64_t l2_cache_size() const { return l2_cache_size_; }
 
   // Returns the device's memory bandwidth in bytes/sec.  (This is for
   // reads/writes to/from the device's own memory, not for transfers between the
@@ -325,6 +332,7 @@ class DeviceDescription {
 
   int64_t device_address_bits_;
   int64_t device_memory_size_;
+  int64_t l2_cache_size_;
   int64_t memory_bandwidth_;
 
   // Shared memory limits on a given device.
@@ -341,6 +349,7 @@ class DeviceDescription {
 
   int numa_node_;
   int core_count_;
+  int fpus_per_core_;
   bool ecc_enabled_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(DeviceDescription);
@@ -406,6 +415,9 @@ class DeviceDescriptionBuilder {
   void set_device_memory_size(int64_t value) {
     device_description_->device_memory_size_ = value;
   }
+  void set_l2_cache_size(int64_t value) {
+    device_description_->l2_cache_size_ = value;
+  }
   void set_memory_bandwidth(int64_t value) {
     device_description_->memory_bandwidth_ = value;
   }
@@ -433,6 +445,9 @@ class DeviceDescriptionBuilder {
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }
   void set_core_count(int value) { device_description_->core_count_ = value; }
+  void set_fpus_per_core(int value) {
+    device_description_->fpus_per_core_ = value;
+  }
   void set_ecc_enabled(bool value) {
     device_description_->ecc_enabled_ = value;
   }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -53,6 +54,17 @@ void SafeCopyCustomData(const TfLiteNode& node, T* target) {
   const size_t safe_size =
       std::min(static_cast<size_t>(node.custom_initial_data_size), sizeof(T));
   std::memcpy(target, node.custom_initial_data, safe_size);
+}
+
+void CopyTensorDataInt32OrInt64(int64_t* dst, const TfLiteTensor& tensor,
+                                size_t n) {
+  if (tensor.type == kTfLiteInt32) {
+    const int32_t* data = GetTensorData<int32_t>(&tensor);
+    std::copy(data, data + n, dst);
+  } else if (tensor.type == kTfLiteInt64) {
+    const int64_t* data = GetTensorData<int64_t>(&tensor);
+    std::copy(data, data + n, dst);
+  }
 }
 
 xnn_datatype GetXNNPackDatatype(TfLiteContext* context,
@@ -469,9 +481,11 @@ class Subgraph {
         case kTfLiteBuiltinPad:
         case kTfLiteBuiltinReshape:
         case kTfLiteBuiltinResizeBilinear:
-          // Ignore the second input (axes, static padding, or new shape),
-          // because it is represented as parameters of the XNNPACK operator
-          // rather than extra input.
+        case kTfLiteBuiltinStridedSlice:
+        case kTfLiteBuiltinSlice:
+          // Ignore all but the first input (axes, static padding, new shape,
+          // begins/offsets, sizes), because other inputs are represented as
+          // parameters of the XNNPACK operator rather than extra input.
           {
             const int t = node->inputs->data[0];
             tensors[t] = t;
@@ -1538,6 +1552,36 @@ class Subgraph {
     return kTfLiteError;
   }
 
+  static TfLiteStatus CheckTensorInt32Type(TfLiteContext* context,
+                                           const TfLiteTensor& tensor,
+                                           int tensor_index, int node_index) {
+    switch (tensor.type) {
+      case kTfLiteInt32:
+        return kTfLiteOk;
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported type %s in tensor #%d in node #%d",
+            TfLiteTypeGetName(tensor.type), tensor_index, node_index);
+    }
+    return kTfLiteError;
+  }
+
+  static TfLiteStatus CheckTensorInt32OrInt64Type(TfLiteContext* context,
+                                                  const TfLiteTensor& tensor,
+                                                  int tensor_index,
+                                                  int node_index) {
+    switch (tensor.type) {
+      case kTfLiteInt32:
+      case kTfLiteInt64:
+        return kTfLiteOk;
+      default:
+        TF_LITE_MAYBE_KERNEL_LOG(
+            context, "unsupported type %s in tensor #%d in node #%d",
+            TfLiteTypeGetName(tensor.type), tensor_index, node_index);
+    }
+    return kTfLiteError;
+  }
+
   static TfLiteStatus CheckTensorShape(TfLiteContext* context,
                                        const TfLiteTensor& tensor,
                                        int min_num_dims, int max_num_dims,
@@ -2012,6 +2056,9 @@ class Subgraph {
       case kTfLiteBuiltinRound:
         return VisitRoundNode(subgraph, delegate, logging_context, node_index,
                               node, context->tensors, xnnpack_tensors);
+      case kTfLiteBuiltinSlice:
+        return VisitSliceNode(subgraph, delegate, logging_context, node_index,
+                              node, context->tensors, xnnpack_tensors);
       case kTfLiteBuiltinSoftmax: {
         const TfLiteSoftmaxParams* softmax_params =
             static_cast<const TfLiteSoftmaxParams*>(node->builtin_data);
@@ -2037,6 +2084,13 @@ class Subgraph {
         return VisitSquaredDifferenceNode(subgraph, delegate, logging_context,
                                           node_index, node, context->tensors,
                                           xnnpack_tensors);
+      case kTfLiteBuiltinStridedSlice: {
+        const auto* params =
+            static_cast<const TfLiteStridedSliceParams*>(node->builtin_data);
+        return VisitStridedSliceNode(subgraph, delegate, logging_context,
+                                     node_index, node, context->tensors, params,
+                                     xnnpack_tensors);
+      }
       case kTfLiteBuiltinSub: {
         const TfLiteSubParams* sub_params =
             static_cast<const TfLiteSubParams*>(node->builtin_data);
@@ -4261,6 +4315,137 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static TfLiteStatus VisitSliceNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    const int input_tensor_index = node->inputs->data[0];
+    const int begin_tensor_index = node->inputs->data[1];
+    const int size_tensor_index = node->inputs->data[2];
+    const int output_tensor_index = node->outputs->data[0];
+    const TfLiteTensor& input_tensor = tensors[input_tensor_index];
+    const TfLiteTensor& begin_tensor = tensors[begin_tensor_index];
+    const TfLiteTensor& size_tensor = tensors[size_tensor_index];
+    const TfLiteTensor& output_tensor = tensors[output_tensor_index];
+
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, begin_tensor, begin_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, begin_tensor, begin_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorInt32OrInt64Type(
+        logging_context, begin_tensor, begin_tensor_index, node_index));
+
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(logging_context, size_tensor,
+                                                size_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, size_tensor, size_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorInt32OrInt64Type(
+        logging_context, size_tensor, size_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorsDimensionMatch(
+        logging_context, begin_tensor, size_tensor, 0, node_index, "SLICE"));
+
+    const int num_dims = begin_tensor.dims->data[0];
+    if (num_dims > XNN_MAX_TENSOR_DIMS) {
+      TF_LITE_MAYBE_KERNEL_LOG(
+          logging_context,
+          "number of dimensions %d must be less than %d in SLICE node #%d",
+          num_dims, XNN_MAX_TENSOR_DIMS, node_index);
+    }
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       input_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor,
+                                           num_dims, input_tensor_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, input_tensor_index, node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       output_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
+                                           num_dims, output_tensor_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, output_tensor_index, node_index));
+
+    const auto input_shape = input_tensor.dims;
+    const auto output_shape = output_tensor.dims;
+    std::array<int64_t, XNN_MAX_TENSOR_DIMS> begin;
+    std::array<int64_t, XNN_MAX_TENSOR_DIMS> size;
+    CopyTensorDataInt32OrInt64(begin.data(), begin_tensor, num_dims);
+    CopyTensorDataInt32OrInt64(size.data(), size_tensor, num_dims);
+
+    for (size_t i = 0; i < num_dims; i++) {
+      if (begin[i] < 0) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "begin %" PRId64
+                                 " must be greater than 0 in SLICE node #%d",
+                                 begin[i], node_index);
+      }
+      if (begin[i] >= input_shape->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context,
+            "begin %" PRId64
+            " must be less than input dimension %d in SLICE node #%d",
+            begin[i], input_shape->data[i], node_index);
+      }
+      if (size[i] <= 0) {
+        if (size[i] != -1) {
+          TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                   "size %" PRId64
+                                   " must be positive or -1 in SLICE node #%d",
+                                   size[i], node_index);
+          return kTfLiteError;
+        }
+        size[i] = input_shape->data[i] - begin[i];
+      }
+      if (size[i] > input_shape->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "size %" PRId64
+                                 " must be less than or equals to input "
+                                 "dimension %d in SLICE node #%d",
+                                 size[i], input_shape->data[i], node_index);
+        return kTfLiteError;
+      }
+      if (size[i] != output_shape->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "size %" PRId64
+                                 " does not match output shape %d at "
+                                 "dimension %d in SLICE node #%d",
+                                 size[i], output_shape->data[i], i, node_index);
+        return kTfLiteError;
+      }
+      if (begin[i] + size[i] >= input_shape->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "begin + size (%" PRId64 " + %" PRId64
+                                 ") must be less input "
+                                 "dimension %d in SLICE node #%d",
+                                 begin[i], size[i], input_shape->data[i],
+                                 node_index);
+        return kTfLiteError;
+      }
+    }
+
+    if (subgraph != nullptr) {
+      // Convert to size_t.
+      std::array<size_t, XNN_MAX_TENSOR_DIMS> offsets;
+      std::copy(begin.begin(), begin.end(), offsets.begin());
+      std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
+      std::copy(size.begin(), size.end(), sizes.begin());
+
+      const xnn_status status = xnn_define_static_slice(
+          subgraph, num_dims, offsets.data(), sizes.data(),
+          xnnpack_tensors[node->inputs->data[0]],
+          xnnpack_tensors[node->outputs->data[0]], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_MAYBE_KERNEL_LOG(
+            logging_context, "failed to delegate SLICE node #%d", node_index);
+        return kTfLiteError;
+      }
+    }
+    return kTfLiteOk;
+  }
+
   static TfLiteStatus VisitSoftmaxNode(
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
@@ -4451,6 +4636,158 @@ class Subgraph {
       }
     }
 
+    return kTfLiteOk;
+  }
+
+  static TfLiteStatus VisitStridedSliceNode(
+      xnn_subgraph_t subgraph, const Delegate& delegate,
+      TfLiteContext* logging_context, int node_index, TfLiteNode* node,
+      const TfLiteTensor* tensors, const TfLiteStridedSliceParams* params,
+      const std::vector<uint32_t>& xnnpack_tensors) {
+    // Only support strided slice with no ellipsis mask, no new axis mask, and
+    // no shrink_axis-mask.
+    if (params->ellipsis_mask != 0 || params->new_axis_mask != 0 ||
+        params->shrink_axis_mask != 0) {
+      return kTfLiteError;
+    }
+
+    const int stride_tensor_index = node->inputs->data[3];
+    const TfLiteTensor& stride_tensor = tensors[stride_tensor_index];
+
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, stride_tensor, stride_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, stride_tensor, stride_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(
+        logging_context, stride_tensor, stride_tensor_index, node_index));
+
+    const int num_dims = stride_tensor.dims->data[0];
+    if (num_dims > XNN_MAX_TENSOR_DIMS) {
+      TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                               "number of dimensions %d must be less than %d "
+                               "in STRIDED_SLICE node #%d",
+                               num_dims, XNN_MAX_TENSOR_DIMS, node_index);
+    }
+
+    // Only support strides = 1.
+    auto stride_data = GetTensorData<int32_t>(&stride_tensor);
+    for (size_t i = 0; i < num_dims; i++) {
+      if (stride_data[i] != 1) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "stride at dimension %d, %d, must be 1"
+                                 "in STRIDED_SLICE node #%d",
+                                 i, stride_data[i], node_index);
+        return kTfLiteError;
+      }
+    }
+
+    const int input_tensor_index = node->inputs->data[0];
+    const int begin_tensor_index = node->inputs->data[1];
+    const int end_tensor_index = node->inputs->data[2];
+    const int output_tensor_index = node->outputs->data[0];
+    const TfLiteTensor& input_tensor = tensors[input_tensor_index];
+    const TfLiteTensor& begin_tensor = tensors[begin_tensor_index];
+    const TfLiteTensor& end_tensor = tensors[end_tensor_index];
+    const TfLiteTensor& output_tensor = tensors[output_tensor_index];
+
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(
+        logging_context, begin_tensor, begin_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, begin_tensor, begin_tensor_index, node_index));
+    // TODO(b/246969669): TFLite only supports int32 begin ends and strides,
+    // support int64 too when TFLite supports it as well.
+    TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(logging_context, begin_tensor,
+                                               begin_tensor_index, node_index));
+
+    TF_LITE_ENSURE_STATUS(CheckShapeTensorShape(logging_context, end_tensor,
+                                                end_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorStaticAllocation(
+        logging_context, end_tensor, end_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorInt32Type(logging_context, end_tensor,
+                                               end_tensor_index, node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorsDimensionMatch(logging_context, stride_tensor, begin_tensor,
+                                   0, node_index, "STRIDED_SLICE"));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorsDimensionMatch(logging_context, begin_tensor, end_tensor, 0,
+                                   node_index, "STRIDED_SLICE"));
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, input_tensor,
+                                       input_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, input_tensor,
+                                           num_dims, input_tensor_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, input_tensor, input_tensor_index, node_index));
+
+    TF_LITE_ENSURE_STATUS(
+        CheckTensorFloat32OrQUInt8Type(delegate, logging_context, output_tensor,
+                                       output_tensor_index, node_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorShape(logging_context, output_tensor,
+                                           num_dims, output_tensor_index));
+    TF_LITE_ENSURE_STATUS(CheckTensorNonDynamicAllocation(
+        logging_context, output_tensor, output_tensor_index, node_index));
+
+    auto begin_data = GetTensorData<int32_t>(&begin_tensor);
+    auto end_data = GetTensorData<int32_t>(&end_tensor);
+    auto input_shape = input_tensor.dims;
+    std::array<size_t, XNN_MAX_TENSOR_DIMS> begins;
+    std::array<size_t, XNN_MAX_TENSOR_DIMS> sizes;
+    std::array<size_t, XNN_MAX_TENSOR_DIMS> ends;
+    for (size_t i = 0; i < num_dims; i++) {
+      begins[i] = begin_data[i] < 0 ? input_shape->data[i] + begin_data[i]
+                                    : begin_data[i];
+      if ((params->begin_mask & (1 << i)) != 0) {
+        begins[i] = 0;
+      }
+
+      if (begins[i] >= input_shape->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "begin %zu must be less than input dimension "
+                                 "%d in STRIDED_SLICE node #%d",
+                                 begins[i], input_shape->data[i], node_index);
+      }
+
+      // If end is negative, we count from the back, -1 is the last element.
+      if (end_data[i] < 0) {
+        ends[i] = end_data[i] + input_shape->data[i];
+      } else {
+        ends[i] = end_data[i];
+      }
+
+      if ((params->end_mask & (1 << i)) != 0) {
+        ends[i] = input_shape->data[i];
+      }
+
+      if (ends[i] > input_shape->data[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "end %zu must be less than or equals to input "
+                                 "dimension %d in STRIDED_SLICE node #%d",
+                                 ends[i], input_shape->data[i], node_index);
+      }
+
+      if (begins[i] >= ends[i]) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "begin index %zu must be less than end index "
+                                 "%zu for STRIDED_SLICE node #%d",
+                                 begins[i], ends[i], node_index);
+      }
+
+      sizes[i] = ends[i] - begins[i];
+    }
+
+    if (subgraph != nullptr) {
+      const xnn_status status = xnn_define_static_slice(
+          subgraph, num_dims, begins.data(), sizes.data(),
+          xnnpack_tensors[input_tensor_index],
+          xnnpack_tensors[output_tensor_index], /*flags=*/0);
+      if (status != xnn_status_success) {
+        TF_LITE_MAYBE_KERNEL_LOG(logging_context,
+                                 "failed to delegate STRIDED_SLICE node #%d",
+                                 node_index);
+        return kTfLiteError;
+      }
+    }
     return kTfLiteOk;
   }
 

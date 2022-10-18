@@ -133,6 +133,7 @@ cc_test(
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",

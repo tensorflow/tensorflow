@@ -72,7 +72,6 @@ INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LocalResponseNormalizationOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(ExpOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(FloorOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(LogOp);
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(RoundOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(NegOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SinOp);
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(SqrtOp);
@@ -1803,7 +1802,8 @@ LogicalResult GetReshapeOutputType(Value input, Value shape,
   output_ty_shape.reserve(shape_attr.getNumElements());
   for (const auto &dim : llvm::enumerate(shape_attr.getValues<APInt>())) {
     const int64_t size = dim.value().getSExtValue();
-    if (size == tensorflow::kTFDynamicSize) {
+    if (size == tensorflow::kTFDynamicSize ||  // NOLINT
+        size == ShapedType::kDynamicSize) {    // NOLINT
       if (unknown_index != -1)
         return error_handler(llvm::formatv(
             "requires 'shape' to have at most one dynamic dimension, but got "

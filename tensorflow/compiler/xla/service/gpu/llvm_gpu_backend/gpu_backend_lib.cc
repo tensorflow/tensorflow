@@ -60,12 +60,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
@@ -676,9 +676,8 @@ StatusOr<std::vector<uint8_t>> EmitModuleToHsaco(
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
   bool keep_tempfiles = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
-                                             /*default_val=*/false,
-                                             &keep_tempfiles));
+  TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
+                                      /*default_val=*/false, &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
   std::string random_number = std::to_string(tsl::random::New64());

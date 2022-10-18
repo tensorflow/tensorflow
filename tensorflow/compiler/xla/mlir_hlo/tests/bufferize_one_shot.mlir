@@ -170,7 +170,7 @@ func.func @tiled_dot(%A: tensor<10xf32>, %B: tensor<10xf32>,
   %dot = gml_st.loop (%i) = (%c0) to (%c10) step (%c2)
        ins (%A_ = %A: tensor<10xf32>, %B_ = %B: tensor<10xf32>)
        outs (%C_ = %C: tensor<f32>)
-       iterators["reduction"] {
+       iterators[#gml_st.iterator_type<reduction>] {
     %A_sub = tensor.extract_slice %A_[%i] [%c2] [1]
       : tensor<10xf32> to tensor<?xf32>
     %B_sub = tensor.extract_slice %B_[%i] [%c2] [1]

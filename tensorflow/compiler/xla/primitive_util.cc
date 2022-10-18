@@ -94,48 +94,6 @@ bool IsIntegralType(PrimitiveType type) {
   return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
 }
 
-int BitWidth(PrimitiveType type) {
-  switch (type) {
-    case PRED:
-      return 1;
-
-    case S8:
-    case U8:
-      return 8;
-
-    case S16:
-    case U16:
-    case F16:
-    case BF16:
-      return 16;
-
-    case U32:
-    case S32:
-    case F32:
-      return 32;
-
-    case U64:
-    case S64:
-    case F64:
-    case C64:
-      return 64;
-
-    case C128:
-      return 128;
-
-    case TUPLE:
-      LOG(FATAL) << "TUPLE is an invalid type for BitWidth";
-
-    case OPAQUE_TYPE:
-      LOG(FATAL) << "OPAQUE_TYPE is an invalid type for BitWidth";
-
-    default:
-      LOG(FATAL) << "Unhandled primitive type " << type;
-  }
-}
-
-int ByteWidth(PrimitiveType type) { return CeilOfRatio(BitWidth(type), 8); }
-
 xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 8:

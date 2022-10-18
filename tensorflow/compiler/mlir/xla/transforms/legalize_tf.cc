@@ -50,16 +50,15 @@ limitations under the License.
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
@@ -341,7 +340,7 @@ static RankedTensorType GetStaticBroadcastType(
                                           shape_large.end());
 
   // Update according to the broadcast dimensions.
-  for (auto index_pair : llvm::enumerate(broadcast_dimensions)) {
+  for (auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
     auto old_value = out_shape[index_pair.value()];
     auto new_value = shape_small[index_pair.index()];
     out_shape[index_pair.value()] = std::max(old_value, new_value);
@@ -665,7 +664,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto it : llvm::enumerate(int_attr.getValues<APInt>())) {
+  for (auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -3339,7 +3338,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -3508,10 +3507,10 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     llvm::Optional<int> dynamic_dim_index;
     split_sizes.reserve(
         split_sizes_attr.getType().cast<ShapedType>().getNumElements());
-    for (auto dim : llvm::enumerate(split_sizes_attr)) {
+    for (auto &dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
-      if (dim_val == ShapedType::kDynamicSize) {
+      if (dim_val == -1) {
         // We cannot have more than one dynamic dimension.
         assert(!dynamic_dim_index && "invalid split sizes");
         dynamic_dim_index = dim.index();
@@ -3538,7 +3537,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -3671,17 +3670,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     ArrayRef<int64_t> input_shape = input_ty.getShape();
     int last_dim = std::max(static_cast<int>(input_shape.size()) - 1, 0);
 
-    // When begin/end values are dynamic, we can only support shrinking a major
-    // axis. For instance, if there are 4 dims, we can support a
-    // shrink_axis_mask of 0001 (1), 0011 (3), 0111 (7), or 1111 (15), but no
-    // other.
-    bool shrink_axis_mask_ok = llvm::isMask_64(op.shrink_axis_mask());
-    if (!shrink_axis_mask_ok)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that shrink_axis_mask, if set, refer to a major axis "
-          "dimension (when begin/end values are dynamic)");
-
     // When begin/end values are dynamic, the ellipsis mask, if set, must refer
     // to the last dimension.
     int ellipsis_mask = op.ellipsis_mask();
@@ -3690,13 +3678,6 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
           op,
           "requires that ellipsis_mask, if set, refer to the last dimension of "
           "input (when begin/end values are dynamic)");
-
-    uint64_t new_axis_mask = op.new_axis_mask();
-    if (new_axis_mask)
-      return rewriter.notifyMatchFailure(
-          op,
-          "requires that new_axis_mask is either set to 0 or not set when "
-          "begin/end values are dynamic");
 
     // In this case where the begin and end values are dynamic, we only support
     // cases where the number of output elements has to be equal to the number
@@ -5436,7 +5417,7 @@ class ConvertInfeedDequeueTupleOp
     }
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
-    for (auto idx_and_type : llvm::enumerate(result_types)) {
+    for (auto &idx_and_type : llvm::enumerate(result_types)) {
       results.push_back(data_and_token.getResult(idx_and_type.index()));
     }
     rewriter.replaceOp(op, ValueRange(results));
@@ -5967,8 +5948,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     Value swaped_indices = while_output[1];
 
     // Gather the data using the swapped indices as the shuffled order.
-    ArrayRef<int64_t> input_shape = input_type.getShape();
-    SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
+    auto slice_sizes = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(),

@@ -3611,18 +3611,6 @@ func.func @strided_slice_nonconstant_begin_end_invalid_elem_count(%input: tensor
 
 // -----
 
-// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_new_axis_mask
-func.func @strided_slice_nonconstant_begin_end_and_new_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
-  // New axis mask: When `begin` and `end` inputs are unknown at compile time,
-  // we can't support a new_axis mask.
-  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: tf.StridedSlice
-  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 15 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
-  func.return %result : tensor<1x97xi32>
-}
-
-// -----
-
 // CHECK-LABEL: strided_slice_nonconstant_begin_end_and_ellipsis_mask
 func.func @strided_slice_nonconstant_begin_end_and_ellipsis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
   // This ellipsis mask is not supported because it does not refer to the last
@@ -3657,20 +3645,6 @@ func.func @strided_slice_nonconstant_begin_end_and_valid_shrink_axis_mask(%input
   %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 7 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
   func.return %result : tensor<1x97xi32>
 }
-
-// -----
-
-// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_invalid_shrink_axis_mask
-func.func @strided_slice_nonconstant_begin_end_and_invalid_shrink_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
-  // This shrink_axis mask is unsupported because it does not refer to a major
-  // dimension.
-  // [0, 1, 0] = 2
-  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
-  // CHECK: tf.StridedSlice
-  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 2 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
-  func.return %result : tensor<1x97xi32>
-}
-
 
 //===----------------------------------------------------------------------===//
 // Reduction op legalizations.
@@ -5956,6 +5930,27 @@ func.func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<
   // CHECK-NOT: "tf.Qr"
   %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
   func.return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.UniformQuantizedDotHybrid legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @quantized_matmul_fn
+func.func @quantized_matmul_fn(%input: tensor<*xf32>) -> tensor<*xf32> {
+  %weight = "tf.Const"() { value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F51494E54382074656E736F725F7368617065207B2064696D207B2073697A653A2032207D2064696D207B2073697A653A2032207D207D2074656E736F725F636F6E74656E743A20225C3030315C3030325C3030335C30303422"> : tensor<2x2x!tf_type.qint8> } : () -> tensor<2x2x!tf_type.qint8>
+  %weight_scales = "tf.Const"() { value = dense<1.0> : tensor<f32> } : () -> tensor<f32>
+  %weight_zps = "tf.Const"() { value = dense<3> : tensor<i32> } : () -> tensor<i32>
+
+  // CHECK: %[[CONST:.*]] = mhlo.constant
+  // CHECK-SAME{LITERAL}: dense<[[1, 2], [3, 4]]> : tensor<2x2xi8>
+  // CHECK-SAME: tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>
+  // CHECK: %[[ADD:.*]] = chlo.broadcast_add
+  // CHECK: "mhlo.dot"(%[[ADD]], %[[CONST]]) : (tensor<*xf32>, tensor<2x2x!quant.uniform<i8:f32, 1.000000e+00:3>>) -> tensor<*xf32>
+
+  %0 = "tf.AddV2"(%input, %input) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  %1 = "tf.UniformQuantizedDotHybrid"(%0, %weight, %weight_scales, %weight_zps) {rhs_quantization_axis = -1 : i64, rhs_quantization_min_val = -128 : i64, rhs_quantization_max_val = 127 : i64} : (tensor<*xf32>, tensor<2x2x!tf_type.qint8>, tensor<f32>, tensor<i32>) -> tensor<*xf32>
+  func.return %1 : tensor<*xf32>
 }
 
 //===----------------------------------------------------------------------===//

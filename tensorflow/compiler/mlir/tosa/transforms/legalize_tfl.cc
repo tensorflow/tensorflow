@@ -129,6 +129,7 @@ DECL_CONVERT_OP(Mean);
 DECL_CONVERT_OP(ReduceProd);
 DECL_CONVERT_OP(Sum);
 DECL_CONVERT_OP(Conv2D);
+DECL_CONVERT_OP(Conv3D);
 DECL_CONVERT_OP(TransposeConv);
 DECL_CONVERT_OP(DepthwiseConv2D);
 DECL_CONVERT_OP(FullyConnected);
@@ -1191,6 +1192,85 @@ LogicalResult ConvertTFLConv2DOp::matchAndRewrite(
   }
 
   rewriter.replaceOp(op, {conv2d_output});
+
+  return success();
+}
+
+LogicalResult ConvertTFLConv3DOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_conv3d_op = cast<TFL::Conv3DOp>(op);
+  RankedTensorType input_type =
+      tfl_conv3d_op.input().getType().dyn_cast<RankedTensorType>();
+  RankedTensorType filter_type =
+      tfl_conv3d_op.filter().getType().dyn_cast<RankedTensorType>();
+  ShapedType output_type =
+      tfl_conv3d_op.getResult().getType().dyn_cast<ShapedType>();
+
+  if (!input_type | !filter_type || !output_type) {
+    return rewriter.notifyMatchFailure(
+        op, "input/filter/output are not all a ranked tensor");
+  }
+
+  bool input_is_qtype =
+      input_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool filter_is_qtype =
+      filter_type.getElementType().isa<mlir::quant::QuantizedType>();
+  bool output_is_qtype =
+      output_type.getElementType().isa<mlir::quant::QuantizedType>();
+
+  if ((input_is_qtype != filter_is_qtype) ||
+      (input_is_qtype != output_is_qtype)) {
+    return rewriter.notifyMatchFailure(op,
+                                       "input/filter/output tensor should be "
+                                       "all quantized or all floating-point");
+  }
+
+  Value unquantized_bias = tfl_conv3d_op.bias();
+  if (!unquantized_bias.getType().dyn_cast<RankedTensorType>()) {
+    // The bias may actually be typed "None" which has no value. TOSA requires
+    // bias to be an array of output_channel_count values, so create a constant
+    // of the appropriate number and type of zeros.
+    auto bias_dim = filter_type.getShape().back();
+    RankedTensorType bias_type =
+        RankedTensorType::get({bias_dim}, filter_type.getElementType());
+    auto bias_attr = rewriter.getZeroAttr(bias_type);
+    unquantized_bias = CreateOpAndInfer<tosa::ConstOp>(
+        rewriter, op->getLoc(), bias_type, bias_attr.cast<ElementsAttr>());
+  }
+
+  SmallVector<int64_t, 3> strides({tfl_conv3d_op.stride_d(),
+                                   tfl_conv3d_op.stride_h(),
+                                   tfl_conv3d_op.stride_w()});
+  SmallVector<int64_t, 3> dilations({tfl_conv3d_op.dilation_d_factor(),
+                                     tfl_conv3d_op.dilation_h_factor(),
+                                     tfl_conv3d_op.dilation_w_factor()});
+  Type bias_ety =
+      unquantized_bias.getType().cast<ShapedType>().getElementType();
+  llvm::Optional<Value> a1_conv3d_op = convertConv3DCommon(
+      rewriter, op, output_type.clone(bias_ety), tfl_conv3d_op.input(),
+      tfl_conv3d_op.filter(), unquantized_bias, strides, dilations,
+      tfl_conv3d_op.padding().str(), StringRef("NDHWC"));
+
+  if (!a1_conv3d_op) return failure();
+
+  Value conv3d_output =
+      input_is_qtype
+          ? buildRescaleOpConvOutput(rewriter, op, a1_conv3d_op.getValue(),
+                                     input_type, filter_type, output_type)
+          : a1_conv3d_op.getValue();
+
+  if (auto fused_activation_fn =
+          tfl_conv3d_op.fused_activation_functionAttr()) {
+    llvm::Optional<Value> fused_activation_val = convertFusedActivation(
+        rewriter, op, conv3d_output, fused_activation_fn);
+
+    if (!fused_activation_val) return failure();
+
+    rewriter.replaceOp(op, {fused_activation_val.value()});
+    return success();
+  }
+
+  rewriter.replaceOp(op, {conv3d_output});
 
   return success();
 }
@@ -3532,6 +3612,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLReduceProd);
   DEF_PATTERN_INSERT(TFLSum);
   DEF_PATTERN_INSERT(TFLConv2D);
+  DEF_PATTERN_INSERT(TFLConv3D);
   DEF_PATTERN_INSERT(TFLTransposeConv);
   DEF_PATTERN_INSERT(TFLDepthwiseConv2D);
   DEF_PATTERN_INSERT(TFLFullyConnected);

@@ -90,8 +90,7 @@ class MakeErrorStream {
 
   // Make an error with the given code.
   template <typename ERROR_CODE_TYPE>
-  MakeErrorStream(const char* file, int line, ERROR_CODE_TYPE code)
-      : impl_(new Impl(file, line, code, this, true)) {}
+  MakeErrorStream(const char* file, int line, ERROR_CODE_TYPE code);
 
   template <typename T>
   MakeErrorStreamWithOutput& operator<<(const T& value) {
@@ -107,10 +106,7 @@ class MakeErrorStream {
   }
 
   // Adds RET_CHECK failure text to error message.
-  MakeErrorStreamWithOutput& add_ret_check_failure(const char* condition) {
-    return *this << "RET_CHECK failure (" << impl_->file_ << ":" << impl_->line_
-                 << ") " << condition << " ";
-  }
+  MakeErrorStreamWithOutput& add_ret_check_failure(const char* condition);
 
  private:
   class Impl {
@@ -164,6 +160,12 @@ class MakeErrorStream {
   MakeErrorStream(const MakeErrorStream&) = delete;
   MakeErrorStream& operator=(const MakeErrorStream&) = delete;
 };
+
+template <typename ERROR_CODE_TYPE>
+TF_ATTRIBUTE_NOINLINE MakeErrorStream::MakeErrorStream(const char* file,
+                                                       int line,
+                                                       ERROR_CODE_TYPE code)
+    : impl_(new Impl(file, line, code, this, true)) {}
 
 // Provides a conversion to bool so that it can be used inside an if statement
 // that declares a variable.

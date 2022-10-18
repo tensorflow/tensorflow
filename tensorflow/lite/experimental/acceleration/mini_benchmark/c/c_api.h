@@ -18,6 +18,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <cstdarg>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -55,6 +57,10 @@ typedef struct TfLiteMiniBenchmarkSettings {
   size_t flatbuffer_data_size;
   // Custom validation related info.
   TfLiteMiniBenchmarkCustomValidationInfo custom_validation_info;
+  // Custom error reporter to log error to. If the function is provided, errors
+  // will be log with this function.
+  void* error_reporter_user_data;
+  int (*error_reporter_func)(void* user_data, const char* format, va_list args);
 } TfLiteMinibenchmarkSettings;
 
 // Trigger validation for `settings` and return the validation result.

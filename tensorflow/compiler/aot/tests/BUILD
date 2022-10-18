@@ -1,8 +1,4 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")

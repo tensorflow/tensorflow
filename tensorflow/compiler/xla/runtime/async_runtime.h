@@ -23,7 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/tsl/platform/threadpool.h"
-#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
+#include "tfrt/host_context/async_value.h"  // from @tf_runtime
 
 namespace mlir {
 namespace runtime {
@@ -211,16 +211,6 @@ template <typename F>
 /*static*/ void AsyncRuntime::AwaitGroup(Group* group, F&& f) {
   AsyncRuntime::GetAsyncValue(group)->AndThen(std::forward<F>(f));
 }
-
-// Runs async tasks by enqueing them into the host context work queue.
-class HostContextAsyncTaskRunner : public AsyncTaskRunner {
- public:
-  explicit HostContextAsyncTaskRunner(tfrt::HostContext* host) : host_(host) {}
-  void Schedule(Task task) override { EnqueueWork(host_, std::move(task)); }
-
- private:
-  tfrt::HostContext* host_;
-};
 
 //===-----------------------------------------------------------------------===/
 // AsyncTaskRunner implementation on top of the default ThreadPool.

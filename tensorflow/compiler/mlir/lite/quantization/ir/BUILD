@@ -77,7 +77,6 @@ cc_library(
         "ConvertConst.cc",
         "ConvertSimQuant.cc",
         "FakeQuantSupport.cc",
-        "PassDetail.h",
         "QuantOps.cc",
         "QuantizeUtils.cc",
         "UniformSupport.cc",

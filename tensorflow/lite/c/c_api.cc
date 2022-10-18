@@ -441,6 +441,10 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
         return nullptr;
       }
     }
+
+    if (optional_options->enable_cancellation) {
+      interpreter->EnableCancellation();
+    }
   }
 
   bool enable_delegate_fallback =

@@ -1,4 +1,5 @@
-// RUN: mlir-hlo-opt %s --gml-tiling-cwise="tile-sizes=4,8 distribute=true" \
+// RUN: mlir-hlo-opt %s \
+// RUN:     --gml-tiling-cwise="tile-sizes=4,8 distribute=true distribution-label=test" \
 // RUN:     --cse | \
 // RUN: FileCheck %s
 
@@ -42,9 +43,10 @@ func.func @cwise_expr(%a: tensor<?x1024x1024xf32>, %b: tensor<?x1024x1024xf32>,
 // CHECK-DAG:   %[[A_D0:.*]] = tensor.dim %[[A]], %[[C0]]
 // CHECK-DAG:   %[[INIT:.*]] = tensor.empty(%[[A_D0]])
 // CHECK:       %[[ABC:.*]] = gml_st.parallel 
-// CHECK-SAME:      (%[[I:.*]], %[[J:.*]], %[[K:.*]]) = (%[[C0]], %[[C0]], %[[C0]]) 
-// CHECK-SAME:      to (%[[A_D0]], %[[C1024]], %[[C1024]]) 
+// CHECK-SAME:      (%[[I:.*]], %[[J:.*]], %[[K:.*]]) = (%[[C0]], %[[C0]], %[[C0]])
+// CHECK-SAME:      to (%[[A_D0]], %[[C1024]], %[[C1024]])
 // CHECK-SAME:      step (%[[C1]], %[[C4]], %[[C8]])
+// CHECK-SAME:      distribution ("test")
 // CHECK-DAG:     %[[A_SPACE:.*]] = gml_st.space [%[[A_D0]], 1024, 1024]
 // CHECK-DAG:     %[[A_TILE:.*]] = gml_st.tile %[[A_SPACE]] [%[[I]], %[[J]], %[[K]]] [1, 4, 8] [1, 1, 1]
 // CHECK-DAG:     %[[A_SUB:.*]] = gml_st.materialize %[[A]][%[[A_TILE]]]

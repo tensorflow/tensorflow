@@ -96,6 +96,17 @@ class SingleDeviceSharding : public XLACompatibleSharding {
 
   const pybind11::object& device() const { return device_; }
 
+  size_t Hash() const {
+    // Use the pointer of device to calculate hash for performance as
+    // applications reuse devices in the common cases.
+    return absl::Hash<void*>()(device_.ptr());
+  }
+
+  static pybind11::handle type() {
+    static auto type = pybind11::type::handle_of<SingleDeviceSharding>();
+    return type;
+  }
+
  private:
   pybind11::object device_;
 };
@@ -105,8 +116,7 @@ class SingleDeviceSharding : public XLACompatibleSharding {
 class PmapSharding : public XLACompatibleSharding {
  public:
   PmapSharding(pybind11::array devices, ShardingSpec sharding_spec)
-      : XLACompatibleSharding(
-            /*num_devices=*/devices.size()),
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),
         sharding_spec_(std::move(sharding_spec)) {}
 
@@ -129,9 +139,13 @@ class PmapSharding : public XLACompatibleSharding {
 class OpShardingSharding : public XLACompatibleSharding {
  public:
   OpShardingSharding(pybind11::list devices, xla::OpSharding op_sharding)
-      : XLACompatibleSharding(
-            /*num_devices=*/devices.size()),
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
         devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
+        op_sharding_(std::move(op_sharding)) {}
+
+  OpShardingSharding(pybind11::tuple devices, xla::OpSharding op_sharding)
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+        devices_(std::move(devices)),
         op_sharding_(std::move(op_sharding)) {}
 
   const pybind11::tuple& devices() const { return devices_; }

@@ -28,10 +28,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
-#include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/random.h"
@@ -43,34 +40,22 @@ constexpr int kBarrierTimedOut = -1000;
 std::unique_ptr<tensorflow::CoordinationServiceInterface>
 EnableCoordinationService(
     const xla::DistributedRuntimeServiceImpl::Options& options) {
-  const std::string& job_name = "jax_worker";
-  // TODO(b/205307544): Remove TensorFlow server def references once it is no
-  // longer needed.
-  tensorflow::ServerDef server_def;
-  server_def.set_protocol("grpc");
-  server_def.set_job_name(job_name);
-  server_def.set_task_index(0);
-  auto job_def = server_def.mutable_cluster()->add_job();
-  job_def->set_name(job_name);
-  for (int32_t i = 0; i < options.num_nodes; ++i) {
-    job_def->mutable_tasks()->insert({i, "UNKNOWN_SERVER_ADDRESS"});
-  }
-
-  // Convert options to coordination service config.
-  auto coordination_config = server_def.mutable_default_session_config()
-                                 ->mutable_experimental()
-                                 ->mutable_coordination_config();
-  coordination_config->set_service_type("standalone");
-  coordination_config->set_service_leader(
-      absl::StrCat("/job:", job_name, "/task:0"));
-  coordination_config->set_cluster_register_timeout_in_ms(
+  const std::string job_name = "jax_worker";
+  tensorflow::CoordinationServiceConfig config;
+  config.set_service_type("standalone");
+  config.set_service_leader(absl::StrCat("/job:", job_name, "/task:0"));
+  config.set_cluster_register_timeout_in_ms(
       absl::ToInt64Milliseconds(options.enumerate_devices_timeout));
-  coordination_config->set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
+  config.set_heartbeat_timeout_in_ms(absl::ToInt64Milliseconds(
       options.heartbeat_interval * options.max_missing_heartbeats));
-  coordination_config->set_shutdown_barrier_timeout_in_ms(
+  config.set_shutdown_barrier_timeout_in_ms(
       absl::ToInt64Milliseconds(options.shutdown_timeout));
+  tensorflow::CoordinatedJob* job =
+      config.mutable_coordinated_job_list()->Add();
+  job->set_name(job_name);
+  job->set_num_tasks(options.num_nodes);
   return tensorflow::CoordinationServiceInterface::EnableCoordinationService(
-      "standalone", options.env, server_def, /*cache=*/nullptr);
+      options.env, config, /*cache=*/nullptr);
 }
 }  // namespace
 

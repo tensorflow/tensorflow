@@ -557,28 +557,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         self._dynamic_learning_rates)}
 
     for table in self._table_config:
-      table_descriptor = config_proto.table_descriptor.add()
-      table_descriptor.name = table.name
-
-      # For small tables, we pad to the number of hosts so that at least one
-      # id will be assigned to each host.
-      table_descriptor.vocabulary_size = max(table.vocabulary_size,
-                                             self._strategy.extended.num_hosts)
-      table_descriptor.dimension = table.dim
-
-      parameters = table_descriptor.optimization_parameters
-
-      # We handle the learning rate separately here and don't allow the
-      # optimization class to handle this, as it doesn't know about dynamic
-      # rates.
-      if callable(table.optimizer.learning_rate):
-        parameters.learning_rate.dynamic.tag = (
-            learning_rate_index[table.optimizer.learning_rate])
-      else:
-        parameters.learning_rate.constant = table.optimizer.learning_rate
-
-      # Use optimizer to handle the rest of the parameters.
-      table.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+      table._set_table_descriptor(  # pylint: disable=protected-access
+          config_proto.table_descriptor.add(),
+          self._strategy.extended.num_hosts,
+          learning_rate_index)
 
     table_to_id = {table: i for i, table in enumerate(self._table_config)}
 

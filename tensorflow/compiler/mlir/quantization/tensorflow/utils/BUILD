@@ -59,6 +59,8 @@ cc_library(
         "//tensorflow/compiler/mlir/quantization/tensorflow:pass_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/lite/kernels:padding",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings:str_format",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],

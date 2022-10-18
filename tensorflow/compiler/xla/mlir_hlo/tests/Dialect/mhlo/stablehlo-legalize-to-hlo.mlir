@@ -340,12 +340,14 @@ func.func @op_all_gather(%arg0: tensor<16x8xf32>) -> tensor<16x16xf32> {
   //               CHECK: "mhlo.all_gather"(%arg0) {
   //          CHECK-SAME:   all_gather_dim = 1 : i64,
   //          CHECK-SAME:   channel_handle = #mhlo.channel_handle<handle = 0, type = 0>,
-  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>
+  // CHECK-SAME{LITERAL}:   replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
+  //          CHECK-SAME:   use_global_device_ids
   //          CHECK-SAME: } : (tensor<16x8xf32>) -> tensor<16x16xf32>
   %0 = "stablehlo.all_gather"(%arg0) {
     all_gather_dim = 1 : i64,
     replica_groups = dense<[[0], [1]]> : tensor<2x1xi64>,
-    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>
+    channel_handle = #stablehlo.channel_handle<handle = 0, type = 0>,
+    use_global_device_ids
   } : (tensor<16x8xf32>) -> tensor<16x16xf32>
   func.return %0 : tensor<16x16xf32>
 }

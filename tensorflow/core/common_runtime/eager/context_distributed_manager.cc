@@ -725,6 +725,9 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
     }
 
     LOG_AND_RETURN_IF_ERROR(server->Start());
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        std::move(new_server), server->worker_env()->device_mgr,
+        server->worker_env()->collective_executor_mgr.get()));
 
     if (enable_coordination) {
       // Coordination agent: connect and wait for all tasks
@@ -747,12 +750,6 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
       }
       LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));
-    }
-
-    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
-        std::move(new_server), server->worker_env()->device_mgr,
-        server->worker_env()->collective_executor_mgr.get()));
-    if (enable_coordination) {
       // Update cluster_flr and remote device list
       eager::EagerClusterFunctionLibraryRuntime* cluster_flr =
           new eager::EagerClusterFunctionLibraryRuntime(

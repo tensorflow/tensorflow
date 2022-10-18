@@ -283,7 +283,9 @@ py_library(
     deps = [
         ":checkpoint_view",
         ":functional_saver",
+        ":save_util_v1",
         ":saveable_compat",
+        ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:io_ops",
@@ -357,6 +359,7 @@ cuda_py_test(
         ":functional_saver",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/trackable:trackable_utils",
     ],
 )
 

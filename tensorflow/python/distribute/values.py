@@ -492,7 +492,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
     for v in values:
-      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+      # ResourceVariable is a CompositeTensor. Attributes added to
+      # CompositeTensors will get lost through tf.nest packing and unpacking.
+      if isinstance(v, composite_tensor.CompositeTensor) and hasattr(
+          v, "handle"):
+        v.handle._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
+      else:
+        v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
 
     # Packed variable is used to reduce the overhead of function execution.
     # For a DistributedVariable, only one variable handle is captured into a

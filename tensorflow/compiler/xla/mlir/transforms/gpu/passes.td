@@ -148,4 +148,43 @@ def AddHloTraceAnnotationsPass :
   let constructor = "createAddHloTraceAnnotationsPass()";
 }
 
+//===----------------------------------------------------------------------===//
+// Experimental passes for Xla Gpu <-> Cuda Graphs integration.
+//===----------------------------------------------------------------------===//
+
+def ConvertLaunchFuncToCudaGraphPass :
+    Pass<"xla-gpu-launch-func-to-cuda-graphs", "mlir::ModuleOp"> {
+  let summary = "Capture sequence of Gpu function launches as cuda graphs";
+
+  let description = [{
+    Converts sequences of two or more `gpu.launch_func` operations to Cuda
+    Graph building functions, and replaces the original sequences with calls to
+    the Xla Cuda Graph runtime API.
+
+    Example:
+
+    ```mlir
+    gpu.launch_func @compute::foo args(%arg0: memref<?xf32>)
+    gpu.launch_func @compute::bar args(%arg1: memref<?xf32>)
+    ```
+
+    becomes:
+
+    ```mlir
+    // Export cuda graph builder function to Xla runtime.
+    rt.export @builder ordinal 1
+    func.func @builder(@arg0: memref<?xf32>, %arg1: memref<?xf32>) {
+      ... capture a graph corresponding to a sequence of `gpu.launch_func` ops
+    }
+
+    // Replace a sequence of graph launch operations with a call to runtime API.
+    call @xla.gpu.cuda.graph.execute(%arg0: memref<?xf32>,
+                                     %arg1: memref<?xf32>)
+      attributes { builder = @builder }
+    ```
+  }];
+
+  let constructor = "createConvertLaunchFuncToCudaGraphPass()";
+}
+
 #endif  // XLA_GPU_PASSES

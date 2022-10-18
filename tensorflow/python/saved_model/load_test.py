@@ -146,10 +146,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(imported.v1.name.startswith("foo/"))
       self.assertTrue(imported.v2.name.startswith("foo/"))
 
+  @test_util.disable_xla("This test never passed for XLA")
   def test_partially_defined_variable_shape(self, cycles):
-    # if test.is_built_with_xla() or test.is_built_with_gpu_support():
-    self.skipTest("Skipping flaky GPU test")
-
     class MakeVariable(module.Module):
 
       def __init__(self):

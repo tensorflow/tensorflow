@@ -1,9 +1,42 @@
+# Release 2.12.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+# Breaking Changes
+
+* <DOCUMENT BREAKING CHANGES HERE>
+* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+
+# Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+# Major Features and Improvements
+
+*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
+*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
 # Release 2.11.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
-  removed.
+* `StatusOr::ConsumeValueOrDie` and `StatusOr::ValueOrDie`, both deprecated in
+  TF 2.10 has been removed.
+
 
 ## Breaking Changes
 *   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and
@@ -16,7 +49,8 @@
         checkpoint saving/loading, but at the cost of breaking checkpoint
         backward compatibility in some cases. If you want to keep using an old
         checkpoint, please change your optimizer to
-        `tf.keras.optimizer.legacy.XXX` (e.g. `tf.keras.optimizer.legacy.Adam`).
+        `tf.keras.optimizers.legacy.XXX` (e.g.
+        `tf.keras.optimizers.legacy.Adam`).
     *   **TF1 compatibility.** The new optimizer does not support TF1 any more,
         so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`.
         We highly recommend to migrate your workflow to TF2 for stable

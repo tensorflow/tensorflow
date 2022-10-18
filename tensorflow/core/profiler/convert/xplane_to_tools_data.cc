@@ -213,6 +213,21 @@ StatusOr<std::string> ConvertMultiXSpacesToOpProfileViewer(
   return json_output;
 }
 
+StatusOr<std::string> PreprocessXSpace(
+    const SessionSnapshot& session_snapshot) {
+  if (session_snapshot.XSpaceSize() != 1) {
+    return errors::InvalidArgument(
+        "PreprocessXSpace tool expects only 1 XSpace path but gets ",
+        session_snapshot.XSpaceSize());
+  }
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
+                      session_snapshot.GetXSpace(0));
+  PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                             /*derived_timeline=*/true);
+  return xspace->SerializeAsString();
+}
+
 }  // namespace
 
 StatusOr<std::string> ConvertMultiXSpacesToToolData(
@@ -240,6 +255,8 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
+  } else if (tool_name == "_xplane.pb") {  // internal test only.
+    return PreprocessXSpace(session_snapshot);
   } else {
     return errors::InvalidArgument(
         "Can not find tool: ", tool_name,

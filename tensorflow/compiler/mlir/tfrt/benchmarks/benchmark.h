@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tfrt/jitrt/async_task_runner.h"  // from @tf_runtime
 #include "tfrt/jitrt/results.h"  // from @tf_runtime
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime

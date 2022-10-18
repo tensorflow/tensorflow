@@ -86,6 +86,11 @@ class CustomCall {
     llvm::ArrayRef<T> data;
   };
 
+  // An ordinal of a function exported from executable.
+  struct FunctionOrdinal {
+    unsigned ordinal;
+  };
+
   // Custom call handler can check arguments and attributes types and names
   // at runtime, however this comes at extra cost and can be optionally
   // disabled. If the version of the compiler that generated the XLA executable
@@ -910,20 +915,17 @@ class CustomCallHandler : public CustomCall {
     // arguments, attributes or results.
     internal::DecodingOffsets offsets;
 
-    // Check if all operands and results were decoded.
-    bool all_decoded = true;
-    auto check_all_decoded = [&](auto result) {
-      all_decoded &= succeeded(result);
-      return std::move(result);
-    };
-
     // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
-        check_all_decoded(internal::Decode<Ts, checks>::call(
-            offsets, args, rets, attrs_, attrs_idx_, attrs, values_,
-            user_data))...};
+        internal::Decode<Ts, checks>::call(offsets, args, rets, attrs_,
+                                           attrs_idx_, attrs, values_,
+                                           user_data)...};
+
+    // Check if all operands and results were decoded.
+    bool all_decoded = (succeeded(std::get<Is>(fn_args)) && ...);
+
     if (LLVM_UNLIKELY(!all_decoded))
       return diagnostic->EmitError(
           InvalidArgument("Failed to decode all custom call operands"));
@@ -1317,6 +1319,21 @@ struct CustomCallAttrDecoding<std::string_view, checks> {
 
     auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
     return std::string_view(encoded->data, encoded->size);
+  }
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<CustomCall::FunctionOrdinal, checks> {
+  using FunctionOrdinal = CustomCall::FunctionOrdinal;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<FunctionOrdinal> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    if (!CustomCall::Isa<FunctionOrdinal>(checks, type_id)) {
+      return failure();
+    }
+
+    unsigned ordinal = *reinterpret_cast<int32_t*>(value);
+    return FunctionOrdinal{ordinal};
   }
 };
 

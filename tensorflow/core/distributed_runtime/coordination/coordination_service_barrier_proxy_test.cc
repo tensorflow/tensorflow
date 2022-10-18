@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -48,7 +47,7 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
 
   // All the following member functions are not needed for testing.
   MOCK_METHOD4(Initialize,
-               Status(Env* env, const ServerDef& server_def,
+               Status(Env* env, const CoordinationServiceConfig& config,
                       std::unique_ptr<CoordinationClientCache> client_cache,
                       StatusCallback error_fn));
   MOCK_METHOD6(Initialize,

@@ -238,6 +238,7 @@ def DTensorEmbedding
     "::mlir::scf::SCFDialect",
     "::mlir::tensor::TensorDialect",
     "::mlir::sparse_tensor::SparseTensorDialect",
+    "::mlir::quant::QuantizationDialect",
   ];
 }
 

@@ -300,7 +300,8 @@ def : Pat<(TF_ConcatV2Op $inputs, (ConstantLikeMatcher OneElementAttr:$axis)),
 
 def : Pat<(TF_CollectivePermuteOp $input, (ConstantLikeMatcher ElementsAttr:$source_target_pairs)),
           (HLO_CollectivePermuteOp $input,
-            (CastElementsToI64Elements $source_target_pairs))>;
+            (CastElementsToI64Elements $source_target_pairs),
+            (NullChannelHandleAttr))>;
 
 //===----------------------------------------------------------------------===//
 // CrossReplicaSum op patterns.

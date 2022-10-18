@@ -236,7 +236,8 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
     //  Currently only Int8/Int16 is supported for per channel quantization.
     TF_LITE_ENSURE(context,
                    input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
-    TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteInt8);
+    TF_LITE_ENSURE(context,
+                   filter->type == kTfLiteInt8 || filter->type == kTfLiteInt4);
     TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, num_channels);
     TF_LITE_ENSURE_EQ(
         context, num_channels,

@@ -384,7 +384,9 @@ Status PyShardedBuffer::BlockHostUntilReady() {
   py::gil_scoped_release gil_release;
   Status status = OkStatus();
   for (const auto& buffer : buffers_) {
-    auto s = buffer->GetReadyFuture().Await();
+    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
+    // clients rely on it.
+    auto s = buffer->BlockHostUntilReady();
     if (!s.ok()) status = std::move(s);
   }
   return status;

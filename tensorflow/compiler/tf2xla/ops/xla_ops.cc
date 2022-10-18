@@ -997,7 +997,7 @@ Takes the packed uint32 input and unpacks the input to uint8 to do
 Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
-output: Output tensors whose types is bloat16. If transpose_output is true,
+output: Output tensors whose types is bfloat16. If transpose_output is true,
      output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
      is false, output shape is [d0,..., dn * 4].
 min_range: The minimum scalar value possibly produced for the input.

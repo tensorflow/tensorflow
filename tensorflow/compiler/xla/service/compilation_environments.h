@@ -48,32 +48,41 @@ class CompilationEnvironments {
   CompilationEnvironments& operator=(const CompilationEnvironments& rhs);
   ~CompilationEnvironments() = default;
 
+  // Whenever an environment is added to CompilationEnvironments, even when
+  // GetEnv() adds a lazily initialized one, it is passed to this method. The
+  // result of this method is the environment that is used by
+  // CompilationEnvironments. This allows environment authors to do things like
+  // populate missing fields in an added environment.
+  //
   // Users of CompilationEnvironments must specialize this method for each type
   // of CompilationEnvironment they wish to use in code.
   //
-  // Users are requested to call
-  // DefaultEnvCreated(T::descriptor()->full_name()); from their
-  // implementations, to track the number of calls to the default creator.
+  // The input env may be null.
   //
   // REQUIRES:
   // - T must be a type of proto message.
+  // - The output is *not* allowed to be null, even for null input.
   template <typename T>
-  static std::unique_ptr<T> CreateDefaultEnv() = delete;
+  static std::unique_ptr<T> ProcessNewEnv(std::unique_ptr<T> env) = delete;
 
   // Adds env to the list of CompilationEnvironments. If an environment with
   // std::type_index equal to env.GetTypeid() has already been added, env
   // will replace it.
-  void AddEnv(std::unique_ptr<tsl::protobuf::Message> env);
+  //
+  // All added environments are processed via ProcessNewEnv().
+  //
+  // AddEnv<T> will not compile for type T, unless ProcessNewEnv<T> is defined.
+  template <typename T>
+  void AddEnv(std::unique_ptr<T> env);
 
   // Returns the CompilationEnvironment corresponding to T. If such an
-  // environment has not been added, CreateDefaultEnv<T>() will be called to
-  // create one that is then added.
+  // environment has not been added, ProcessNewEnv<T>(nullptr) will be added
+  // and returned.
   //
   // GetEnv() is not const because it can perform lazy initialization, thereby
   // modifying the CompilationEnvironments's data members.
   //
-  // GetEnv<T> will not compile for type T, unless CreateDefaultEnv<T> is
-  // defined.
+  // GetEnv<T> will not compile for type T, unless ProcessNewEnv<T> is defined.
   template <typename T>
   const T& GetEnv();
 
@@ -81,12 +90,8 @@ class CompilationEnvironments {
   void Clear() { environments_.clear(); }
 
  private:
-  // Called by implementations of CreateDefaultEnv(), to globally track stats
-  // about default environment creation.
-  static void DefaultEnvCreated(std::string_view env_type);
-
-  // Called by GetEnv() when it calls CreateDefaultEnv(), to globally track
-  // stats about how many of the created default environments are created by
+  // Called by GetEnv() when it calls lazily creates a new environment, to
+  // globally track stats about how many such environments are created by
   // CompilationEnvironments.
   static void DefaultEnvCreatedByCompilationEnvironments(
       std::string_view env_type);
@@ -95,6 +100,9 @@ class CompilationEnvironments {
   // are added to CompilationEnvironments.
   static void EnvAdded(std::string_view env_type);
 
+  // Implements the part of AddEnv() after the ProcessNewEnv() call.
+  void AddProcessedEnv(std::unique_ptr<tsl::protobuf::Message> env);
+
   absl::flat_hash_map<const tsl::protobuf::Descriptor*,
                       std::unique_ptr<tsl::protobuf::Message>>
       environments_;
@@ -102,19 +110,24 @@ class CompilationEnvironments {
 
 // ----- Template implementation below -----
 
-// Make sure no one tries to specialize CreateDefaultEnv() for raw
+// Make sure no one tries to specialize ProcessNewEnv() for raw
 // tsl::protobuf::Message. Specialization should always be for a specific
 // type of proto message.
 template <>
-std::unique_ptr<tsl::protobuf::Message>
-CompilationEnvironments::CreateDefaultEnv() = delete;
+std::unique_ptr<tsl::protobuf::Message> CompilationEnvironments::ProcessNewEnv(
+    std::unique_ptr<tsl::protobuf::Message> env) = delete;
+
+template <typename T>
+void CompilationEnvironments::AddEnv(std::unique_ptr<T> env) {
+  AddProcessedEnv(ProcessNewEnv<T>(std::move(env)));
+}
 
 template <typename T>
 const T& CompilationEnvironments::GetEnv() {
   auto descriptor = T::descriptor();
   auto it = environments_.find(descriptor);
   if (it == environments_.end()) {
-    AddEnv(CreateDefaultEnv<T>());
+    AddEnv<T>(nullptr);
     DefaultEnvCreatedByCompilationEnvironments(descriptor->full_name());
     it = environments_.find(descriptor);
   }

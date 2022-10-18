@@ -16,17 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_HLO_XLA_RUNTIME_PIPELINE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_HLO_XLA_RUNTIME_PIPELINE_H_
 
-#include "mlir/IR/DialectRegistry.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Pass/PassOptions.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
 
 namespace xla {
 namespace cpu {
 
 // Creates a pipeline that lowers modules from HLO to Linalg on buffers.
-void CreateDefaultHloXlaRuntimePipeline(mlir::OpPassManager& pm);
+void CreateDefaultHloXlaRuntimePipeline(xla::runtime::PassManager& passes);
 
-void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& registry);
+void RegisterHloXlaRuntimePipelineDialects(
+    xla::runtime::DialectRegistry& dialects);
 }  // namespace cpu
 }  // namespace xla
 

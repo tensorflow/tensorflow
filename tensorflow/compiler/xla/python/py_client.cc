@@ -95,6 +95,9 @@ std::vector<py::object> PyClient::LiveBuffers() {
       }
     }
   }
+  for (py::object& array : LiveArrays()) {
+    buffers.push_back(std::move(array));
+  }
   return buffers;
 }
 

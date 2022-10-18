@@ -22,7 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_utils.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/mhlo_scatter_gather_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
@@ -255,7 +255,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
       mhlo::ReduceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto srcRank =
-        adaptor.operands()[0].getType().cast<RankedTensorType>().getRank();
+        adaptor.getInputs()[0].getType().cast<RankedTensorType>().getRank();
     auto reductionDims =
         llvm::to_vector(op.getDimensions().getValues<int64_t>());
     // mhlo.reduce doesn't specify the order of the reduction dimensions.
@@ -273,7 +273,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
 
     Location loc = op.getLoc();
     for (auto [operand, initValue, resultType] :
-         llvm::zip(adaptor.operands(), adaptor.getInitValues(), resultTypes)) {
+         llvm::zip(adaptor.getInputs(), adaptor.getInitValues(), resultTypes)) {
       auto initType = toRankedTensor(initValue);
       if (!initType)
         return rewriter.notifyMatchFailure(op,
@@ -297,7 +297,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
     }
 
     auto thloReduction = rewriter.create<thlo::ReductionOp>(
-        loc, resultTypes, adaptor.operands(), outputs,
+        loc, resultTypes, adaptor.getInputs(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
     Region& region = thloReduction.getCombiner();
     rewriter.inlineRegionBefore(op.getBody(), region, region.end());
@@ -336,7 +336,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
 bool isInBodyOfThloOp(Operation* op) {
   auto* parentOp = op->getParentRegion()->getParentOp();
   return isa<thlo::MapOp>(*parentOp) || isa<thlo::ReductionOp>(*parentOp) ||
-         isa<thlo::ScatterOp>(*parentOp);
+         isa<thlo::ScatterOp>(*parentOp) || isa<thlo::SortOp>(*parentOp);
 }
 
 // Rewrites a mhlo::ReturnOp inside a thlo::ReductionOp to thlo::YieldOp.
@@ -376,7 +376,7 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
         loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
-        adaptor.operands().front());
+        adaptor.getInputs().front());
 
     Region& region = thloScatter.getUpdateComputation();
     rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
@@ -411,10 +411,10 @@ struct TransposePattern : public OpConversionPattern<mhlo::TransposeOp> {
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     auto permutation = rewriter.getDenseI64ArrayAttr(
-        llvm::to_vector(op.permutation().getValues<int64_t>()));
+        llvm::to_vector(op.getPermutation().getValues<int64_t>()));
 
     rewriter.replaceOpWithNewOp<thlo::TransposeOp>(
-        op, op.getType(), op.operand(), emptyTensor, permutation);
+        op, op.getType(), op.getOperand(), emptyTensor, permutation);
 
     return success();
   }
@@ -427,7 +427,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
       mhlo::MapOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
-    assert(op.dimensions().size() == resultTy.getRank() &&
+    assert(op.getDimensions().size() == resultTy.getRank() &&
            "Expected a pointwise map");
 
     Location loc = op.getLoc();
@@ -435,9 +435,9 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     auto thloMap = rewriter.create<thlo::MapOp>(
-        loc, resultTy, adaptor.operands(), emptyTensor);
+        loc, resultTy, adaptor.getInputs(), emptyTensor);
     Region& region = thloMap.getMapper();
-    rewriter.inlineRegionBefore(op.computation(), region, region.end());
+    rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
 
     TypeConverter::SignatureConversion signatureConverter(
         thloMap.getNumInputs());
@@ -513,6 +513,72 @@ struct SelectPattern : public OpConversionPattern<mhlo::SelectOp> {
     }
 
     rewriter.replaceOp(op, thloMap.getResult());
+    return success();
+  }
+};
+
+struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
+  using OpConversionPattern<mhlo::SortOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SortOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+
+    SmallVector<Value> outputs;
+    SmallVector<RankedTensorType> operandTypes;
+    SmallVector<Type> resultTypes;
+    if (failed(typeConverter->convertTypes(op.getResultTypes(), resultTypes)))
+      return failure();
+
+    for (auto [operand, resultType] :
+         llvm::zip(adaptor.getInputs(), resultTypes)) {
+      RankedTensorType operandType =
+          operand.getType().dyn_cast<RankedTensorType>();
+      if (!operandType)
+        return rewriter.notifyMatchFailure(op, "expects known-rank operands");
+      operandTypes.push_back(operandType);
+      auto tensorResultType = resultType.cast<RankedTensorType>();
+
+      Value emptyTensor = rewriter.create<tensor::EmptyOp>(
+          loc, tensorResultType.getShape(), tensorResultType.getElementType());
+
+      outputs.push_back(emptyTensor);
+    }
+
+    int64_t dimension = op.getDimension();
+    // TODO(bchetioui): MHLO accepts dimensions in the range [-rank, rank),
+    // while THLO accepts only dimensions in the range [0, rank). Ideally, they
+    // should agree on the range of acceptable arguments, but while it is not
+    // the case, this is a (reliable) workaround.
+    if (dimension < 0) dimension = dimension + operandTypes.front().getRank();
+    bool isStable = op.getIsStable();
+
+    auto thloSort = rewriter.create<thlo::SortOp>(
+        loc, resultTypes, adaptor.getInputs(), outputs,
+        rewriter.getI64IntegerAttr(dimension), rewriter.getBoolAttr(isStable));
+
+    Region& region = thloSort.getComparator();
+    rewriter.inlineRegionBefore(op.getComparator(), region, region.end());
+
+    assert(thloSort.getNumInputs() == thloSort.getNumOutputs());
+
+    // Convert the signature of the comparator.
+    TypeConverter::SignatureConversion signatureConverter(
+        thloSort.getNumInputs() * 2);
+    for (const auto& [idx, val] : llvm::enumerate(operandTypes)) {
+      signatureConverter.addInputs(
+          /*origInputNo=*/2 * idx,
+          typeConverter->convertType(val.getElementType()));
+      signatureConverter.addInputs(
+          /*origInputNo=*/2 * idx + 1,
+          typeConverter->convertType(val.getElementType()));
+    }
+
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+
+    rewriter.replaceOp(op, thloSort.getResults());
     return success();
   }
 };
@@ -638,6 +704,7 @@ class LegalizeMHLOToTHLOPass
         DynamicBroadcastInDimOpPattern,
         GatherPattern,
         ScatterPattern,
+        SortPattern,
         ThloRegionReturnOpConversion>(*typeConverter, ctx);
     // clang-format on
 

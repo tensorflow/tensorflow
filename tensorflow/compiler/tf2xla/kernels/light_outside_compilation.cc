@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -291,7 +292,7 @@ class TfCallbackDevice : public DeviceBase {
       : DeviceBase(Env::Default()),
         stream_(stream),
         gpu_allocator_(GPUProcessState::singleton()->GetGPUAllocator(
-            TfDeviceId{stream_->parent()->device_ordinal()})),
+            tsl::TfDeviceId{stream_->parent()->device_ordinal()})),
         cpu_allocator_(
             ProcessState::singleton()->GetCPUAllocator(/*numa_node=*/0)) {
     for (int i = 0; i < callback_data.outputs_size(); ++i) {
@@ -327,7 +328,7 @@ class TfCallbackDevice : public DeviceBase {
     concrete_device->Reinitialize(
         context, gpu_stream,
         /*platform_device_id=*/
-        PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
+        tsl::PlatformDeviceId(stream_->parent()->device_ordinal()), allocator,
         // TODO(cheshire): Pass meaningful scratch
         // buffer.
         /*scratch=*/nullptr);

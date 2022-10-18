@@ -213,7 +213,31 @@ module {
     func.return %5 : tensor<*xi32>
   }
 
-  for main_op in ["conv2d", "depthwise_conv2d", "matmul"] {
+  // Conv3D with int32 accumulation.
+  func.func private @internal_conv3d_fn(
+                         %input : tensor<*xi8>, %filter : tensor<*xi8>,
+                         %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
+                         %filter_scale : tensor<*xf32>, %filter_zp : tensor<*xi32>) -> tensor<*xi32> {
+    %0 = "tf.Cast"(%input) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %1 = "tf.Sub"(%0, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    // Use identity op to avoid the filter being constant-folded.
+    %identity = "tf.Identity"(%filter) : (tensor<*xi8>) -> tensor<*xi8>
+    %2 = "tf.Cast"(%identity) {Truncate = false} : (tensor<*xi8>) -> tensor<*xi32>
+    %3 = "tf.Sub"(%2, %filter_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+
+    %cast_1_f32 = "tf.Cast"(%1) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+    %cast_3_f32 = "tf.Cast"(%3) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
+
+    %5 = "tf.Conv3D"(%cast_1_f32, %cast_3_f32) {
+      padding = "VALID", strides = [1, 1, 1, 1, 1],
+      attr_map = "strides:0,padding:1,dilations:2"
+    } : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %6 = "tf.Cast"(%5) : (tensor<*xf32>) -> tensor<*xi32>
+    func.return %6 : tensor<*xi32>
+  }
+
+  for main_op in ["conv2d", "depthwise_conv2d", "matmul", "conv3d"] {
     parameters[
       {"suffix": "with_bias_fn", "act_func": "internal_requantize_no_activation_fn", "output_type": "i8"},
       {"suffix": "with_bias_and_relu_fn", "act_func": "internal_requantize_and_relu_fn", "output_type": "i8"},

@@ -57,7 +57,15 @@ struct MatmulTilingPattern : public OpRewritePattern<MatmulOp> {
     if (hasTransformationAttr(linalg_op)) return failure();
 
     auto tiled_op = mlir::gml_st::tileLinalgOp(rewriter, linalg_op, options);
+
     if (failed(tiled_op)) return failure();
+
+    // If we did not tile (e.g. when all tile sizes are 0), just mark the matmul
+    // op as transformed and return.
+    if (tiled_op->loops.empty()) {
+      setTransformationAttr(rewriter, linalg_op);
+      return success();
+    }
 
     tiled_op->loops.front()->walk(
         [&](LinalgOp tOp) { setTransformationAttr(rewriter, tOp); });
@@ -80,20 +88,47 @@ struct TileMatmulPass : public impl::TileMatmulBase<TileMatmulPass> {
     auto func = getOperation();
     auto context = func.getContext();
 
-    assert(matmul_tile_sizes.size() == 2 &&
-           "Tiling sizes for 2D reductions should have two elements");
+    assert(matmul_tile_sizes.size() <= 3 &&
+           "Tiling sizes for MatMul should only have at most 3 elements");
 
-    auto patterns =
-        mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
-    patterns.add<MatmulTilingPattern>(
-        LinalgTilingOptions{}.setTileSizes(matmul_tile_sizes),
-        patterns.getContext());
-    if (failed(mlir::applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
-      return signalPassFailure();
+    // If we have at least two tile sizes, generate a parallel gml_st.loop for
+    // the parallel dimensions.
+    if (matmul_tile_sizes.size() & 0b10) {
+      llvm::SmallVector<int64_t, 3> parTileSizeVector(
+          matmul_tile_sizes.begin(), matmul_tile_sizes.begin() + 2);
+      parTileSizeVector.push_back(0);
+      auto parPatterns =
+          mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
+      parPatterns.add<MatmulTilingPattern>(
+          // LinalgTilingOptions{}.setTileSizes(matmul_tile_sizes),
+          LinalgTilingOptions{}.setTileSizes(parTileSizeVector),
+          parPatterns.getContext());
+      if (failed(mlir::applyPatternsAndFoldGreedily(func,
+                                                    std::move(parPatterns)))) {
+        return signalPassFailure();
+      }
+      // Ensure we drop the marker in the end.
+      func.walk([](LinalgOp op) { removeTransformationAttr(op); });
     }
 
-    // Ensure we drop the marker in the end.
-    func.walk([](LinalgOp op) { removeTransformationAttr(op); });
+    // If we have an odd number of tile sizes, generate a sequential gml_st.loop
+    // for the reduction dimension.
+    if (matmul_tile_sizes.size() & 0b1) {
+      llvm::SmallVector<int64_t, 3> seqTileSizeVector({0, 0});
+      seqTileSizeVector.push_back((*matmul_tile_sizes).back());
+      auto seqPatterns =
+          mlir::linalg::getLinalgTilingCanonicalizationPatterns(context);
+      seqPatterns.add<MatmulTilingPattern>(
+          LinalgTilingOptions{}.setTileSizes(seqTileSizeVector),
+          seqPatterns.getContext());
+      if (failed(mlir::applyPatternsAndFoldGreedily(func,
+                                                    std::move(seqPatterns)))) {
+        return signalPassFailure();
+      }
+
+      // Ensure we drop the marker in the end.
+      func.walk([](LinalgOp op) { removeTransformationAttr(op); });
+    }
   }
 };
 

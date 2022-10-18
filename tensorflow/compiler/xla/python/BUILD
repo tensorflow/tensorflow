@@ -1,6 +1,10 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library")
+load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -30,10 +34,7 @@ pytype_library(
     pytype_srcs = ["xla_client.pyi"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = [
-        ":xla_extension",
-        "@absl_py//absl/logging",
-    ],
+    deps = [":xla_extension"],
 )
 
 exports_files(["xla_client.pyi"])
@@ -376,7 +377,7 @@ cc_library(
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
-    visibility = ["//visibility:private"],
+    visibility = [":friends"],  # For the functions to access C++ flags/thread-local variables
     deps = [
         ":exceptions",
         ":py_client",
@@ -612,11 +613,12 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":types",
-        "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -790,6 +792,17 @@ config_setting(
     },
 )
 
+# We cannot nest select and if_cuda_is_configured so we introduce
+# a standalone cc_library target.
+cc_library(
+    name = "gpu_plugin_deps",
+    deps = [
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor:cuda_platform",
+    ]),
+)
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -866,7 +879,9 @@ pybind_extension(
         ],
         "//conditions:default": [],
     }) + select({
-        ":link_gpu_plugin": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        ":link_gpu_plugin": [
+            ":gpu_plugin_deps",
+        ],
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": [
@@ -879,5 +894,5 @@ pybind_extension(
             "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
         ],
         "//conditions:default": [],
-    }) + if_cuda(["//tensorflow/compiler/xla/stream_executor:cuda_platform"]),
+    }),
 )

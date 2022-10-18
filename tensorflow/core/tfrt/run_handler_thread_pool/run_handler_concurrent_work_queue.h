@@ -16,6 +16,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_RUN_HANDLER_THREAD_POOL_RUN_HANDLER_CONCURRENT_WORK_QUEUE_H_
 
 #include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/tfrt/run_handler_thread_pool/run_handler.h"
@@ -77,7 +80,7 @@ class RunHandlerThreadWorkQueue
   };
 
   explicit RunHandlerThreadWorkQueue(const Options& options);
-  ~RunHandlerThreadWorkQueue() override {}
+  ~RunHandlerThreadWorkQueue() override = default;
 
   std::string name() const override {
     return tensorflow::strings::StrCat(
@@ -130,6 +133,8 @@ class RunHandlerThreadWorkQueue
       blocking_work_queue_;
 };
 
+std::ostream& operator<<(std::ostream& strm,
+                         const RunHandlerThreadWorkQueue::Options& options);
 }  // namespace tf
 }  // namespace tfrt
 

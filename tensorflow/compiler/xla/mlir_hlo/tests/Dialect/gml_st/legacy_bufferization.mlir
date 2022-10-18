@@ -27,7 +27,7 @@ func.func @tiled_dot(%A: tensor<?xf32> {bufferization.writeable = false},
        ins (%arg4 = %A: tensor<?xf32>, %use = %effecting : memref<?xf32>,
             %arg5 = %B: tensor<?xf32>)
        outs (%arg6 = %c: tensor<f32>)
-       iterators["reduction"] {
+       iterators[#gml_st.iterator_type<reduction>] {
     // CHECK-NOT:   alloc
 
     %2 = tensor.dim %arg4, %c0 : tensor<?xf32>
@@ -75,7 +75,8 @@ func.func @tiled_fill(%A: tensor<?xf32> {bufferization.writeable = true}) -> ten
 
   //     CHECK: gml_st.loop {{.*}} to (%[[M]]) {{.*}} outs{{.*}}%[[A]]
   %1 = gml_st.loop (%arg3) = (%c0) to (%0) step (%c3)
-      outs (%arg1 = %A: tensor<?xf32>) iterators["parallel"] {
+      outs (%arg1 = %A: tensor<?xf32>)
+      iterators[#gml_st.iterator_type<parallel>] {
     // CHECK-NOT:   alloc
 
     %2 = tensor.dim %arg1, %c0 : tensor<?xf32>
@@ -117,7 +118,7 @@ func.func @tiled_loop_yield_out_of_place(
   //     CHECK: gml_st.loop {{.*}} to (%[[M]]) {{.*}} outs{{.*}}%[[A]]
   %1 = gml_st.loop (%arg3) = (%c0) to (%0) step (%c3)
       outs (%arg1 = %A: tensor<?xf32>)
-      iterators["parallel"]
+      iterators[#gml_st.iterator_type<parallel>]
   {
     // CHECK-NOT:   alloc
     //     CHECK:   memref.copy %[[B]], %[[A]]

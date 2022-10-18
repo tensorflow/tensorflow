@@ -79,8 +79,7 @@ def _deduplicate_indexed_slices(values, indices):
 def _var_key(var):
   """Returns slot key for `var`."""
   # pylint: disable=protected-access
-  if hasattr(var, "_distributed_container"):
-    var = var._distributed_container()
+  var = distribute_utils.value_container(var)
   if (distribute_utils.is_distributed_variable(var) and
       not ops.executing_eagerly_outside_functions()):
     return (var.graph, var._shared_name)
@@ -958,7 +957,7 @@ class Optimizer(
 
   def _get_non_slot_variable(self, name, graph=None):
     non_slot = self._non_slot_dict.get((name, graph), None)
-    if hasattr(non_slot, "_distributed_container"):
+    if distribute_utils.value_container(non_slot) is not non_slot:
       # This is a mirrored non-slot.  In order to enable code like `_finish`
       # to assign to a non-slot, return the current context replica.
       return non_slot.get()

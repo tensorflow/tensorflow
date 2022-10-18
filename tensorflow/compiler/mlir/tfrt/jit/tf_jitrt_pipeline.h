@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/PassOptions.h"
 #include "llvm/ADT/Hashing.h"
+#include "tensorflow/compiler/xla/runtime/compiler.h"
 
 namespace tensorflow {
 
@@ -49,11 +50,13 @@ struct TfJitRtPipelineOptions
 
   ListOption<int64_t> reduction_2d_tile_sizes{
       *this, "reduction-2d-tile-sizes",
-      llvm::cl::desc("Tile sizes for a 2D reduction."), llvm::cl::ZeroOrMore};
+      llvm::cl::desc("Tile sizes for a 2D reduction."),
+      llvm::cl::list_init<int64_t>({4, 4}), llvm::cl::ZeroOrMore};
 
   ListOption<int64_t> matmul_tile_sizes{
       *this, "matmul-tile-sizes",
-      llvm::cl::desc("Tile sizes for `linalg.matmul`."), llvm::cl::ZeroOrMore};
+      llvm::cl::desc("Tile sizes for `linalg.matmul`."),
+      llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
 
   Option<bool> legalize_i1_tensors{
       *this, "legalize-i1-tensors",
@@ -84,7 +87,7 @@ void CreateDefaultTfJitRtPipeline(mlir::OpPassManager& pm);
 // Creates a pipeline that runs on compiled module specialization. It runs the
 // Tensorflow shape inference and canonicalization, so that specialized function
 // always has ranked inputs and results to infer JitRt ABI requirements.
-void CreateJitRtSpecializationPipeline(mlir::OpPassManager& pm);
+void CreateJitRtSpecializationPipeline(xla::runtime::PassManager& passes);
 
 }  // namespace tensorflow
 

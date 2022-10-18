@@ -34,8 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -1021,11 +1023,12 @@ std::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
 }
 
 std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
-    const HloSharding& output_sharding, const HloInstruction& gather) {
+    const HloSharding& output_sharding, const HloInstruction& gather,
+    const CallGraph& call_graph) {
   if (output_sharding.IsTileMaximal()) {
     return output_sharding;
   }
-  auto parallel_dims = GetGatherParallelBatchDims(gather);
+  auto parallel_dims = GetGatherParallelBatchDims(gather, call_graph);
   if (parallel_dims) {
     auto output_parallel_dims =
         GetGatherParallelOutputDims(gather, *parallel_dims);
@@ -1118,7 +1121,8 @@ GatherOutputShardingFromOperandOperandPassthroughDimensions(
 }
 
 std::optional<HloSharding> GatherOperandShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction& hlo) {
+    const HloSharding& output_sharding, const HloInstruction& hlo,
+    const CallGraph& call_graph) {
   const auto& dnums = hlo.gather_dimension_numbers();
   std::vector<int64_t> collapsed_slice_dims(
       dnums.collapsed_slice_dims().begin(), dnums.collapsed_slice_dims().end());
@@ -1129,7 +1133,8 @@ std::optional<HloSharding> GatherOperandShardingFromOutput(
   // Prioritize parallel sharding first as this is how it is in
   // spmd_partitioner.
   std::optional<HloSharding> parallel_sharding =
-      GatherOperandShardingFromOutputParallelDimensions(output_sharding, hlo);
+      GatherOperandShardingFromOutputParallelDimensions(output_sharding, hlo,
+                                                        call_graph);
   std::optional<HloSharding> passthrough_sharding =
       PassthroughGatherOutputOrScatterUpdateToOperand(
           hlo.operand(0)->shape(), output_sharding, collapsed_slice_dims,
@@ -1190,12 +1195,12 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& per_output_sharding,
-    const HloScatterInstruction& scatter) {
+    const HloScatterInstruction& scatter, const CallGraph& call_graph) {
   // Prioritize parallel sharding first as this is how it is in
   // spmd_partitioner.
   std::optional<HloSharding> parallel_sharding =
       ScatterUpdateShardingFromOutputParallelDimensions(per_output_sharding,
-                                                        scatter);
+                                                        scatter, call_graph);
   std::optional<HloSharding> passthrough_sharding =
       ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
           per_output_sharding, scatter);
@@ -1254,11 +1259,12 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
 }
 
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter) {
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter,
+    const CallGraph& call_graph) {
   if (output_sharding.IsTileMaximal()) {
     return output_sharding;
   }
-  auto parallel_dims = GetScatterParallelBatchDims(scatter);
+  auto parallel_dims = GetScatterParallelBatchDims(scatter, call_graph);
   if (parallel_dims) {
     auto update_parallel_dims =
         GetScatterParallelUpdateDims(scatter, *parallel_dims);
@@ -1627,7 +1633,8 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
                                      source.metadata());
 }
 
-std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
+std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
+                                           const CallGraph& call_graph) {
   if (auto* iota = DynCast<HloIotaInstruction>(maybe_iota)) {
     return iota->iota_dimension();
   }
@@ -1654,12 +1661,62 @@ std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota) {
   }
 
   if (maybe_iota->opcode() == HloOpcode::kBroadcast) {
-    auto operand_dim = GetDimensionForIota(maybe_iota->operand(0));
+    auto operand_dim = GetDimensionForIota(maybe_iota->operand(0), call_graph);
     if (operand_dim) {
       return maybe_iota->dimensions(*operand_dim);
     }
     return std::nullopt;
   }
+
+  // Returns the iota dimension if maybe_iota is of the following pattern:
+  //
+  //                                                     Parameter
+  //        Op       Iota                                   |
+  //         |        |                               +-----+-----+
+  //         +--------+                               |           |
+  //             |                                   GTE         GTE(to_match)
+  //           Tuple                                  |           |
+  //             |     while_body/call_computation    .           |
+  //           While ------------------------------>  .           |
+  //                                                  .           |
+  //                                                  |           |
+  //                                                  +-----+-----+
+  //                                                        |
+  //                                                      Tuple
+  //
+  if (maybe_iota->opcode() == HloOpcode::kGetTupleElement &&
+      maybe_iota->operand(0)->opcode() == HloOpcode::kParameter) {
+    // If it traces back to the argument from a non-entry computation,
+    // check if the argument in the caller's computation could be a iota.
+    const HloComputation* called_computation = maybe_iota->parent();
+    const HloInstruction* gte = maybe_iota;
+    const int64_t gte_index = gte->tuple_index();
+    if (!called_computation->IsEntryComputation()) {
+      // Support tracing only caller that's either a conditional or while
+      // (other types of non-entry computations are not partitioned).
+      std::vector<HloInstruction*> callers =
+          call_graph.GetComputationCallers(called_computation);
+      HloInstruction* caller =
+          call_graph.GetComputationCallers(called_computation)[0];
+      if (caller->opcode() == HloOpcode::kWhile &&
+          caller->operand(0)->opcode() == HloOpcode::kTuple) {
+        // Check tuple parameter of the while body is invariant at tuple index
+        // position across 0th and remaining iterations.
+        HloInstruction* while_root = called_computation->root_instruction();
+        if (while_root->opcode() == HloOpcode::kTuple &&
+            while_root->operand(gte_index) == gte) {
+          return GetDimensionForIota(caller->operand(0)->operand(gte_index),
+                                     call_graph);
+        }
+      }
+      if (caller->opcode() == HloOpcode::kConditional) {
+        return GetDimensionForIota(caller->operand(0)->operand(gte_index),
+                                   call_graph);
+      }
+    }
+    return std::nullopt;
+  }
+
   return std::nullopt;
 }
 
@@ -1667,7 +1724,8 @@ static std::optional<GatherScatterParallelDims>
 GetGatherScatterBatchParallelDims(const HloInstruction* indices,
                                   absl::Span<const int64_t> slice_sizes,
                                   int64_t index_vector_dim,
-                                  absl::Span<const int64_t> index_map) {
+                                  absl::Span<const int64_t> index_map,
+                                  const CallGraph& call_graph) {
   // Try to identify if there's a dimension in the indices that is monotonically
   // increasing with a Iota across a certain dimension. This would mean that the
   // access in the relative dimension indexed by this index in the operand is
@@ -1691,7 +1749,8 @@ GetGatherScatterBatchParallelDims(const HloInstruction* indices,
           op->shape().dimensions_size() > index_vector_dim
               ? op->shape().dimensions(index_vector_dim)
               : 1;
-      if (std::optional<int64_t> maybe_iota_dim = GetDimensionForIota(op)) {
+      if (std::optional<int64_t> maybe_iota_dim =
+              GetDimensionForIota(op, call_graph)) {
         if (*maybe_iota_dim != index_vector_dim) {
           for (int j = 0; j < num_indices_from_element; ++j) {
             index_parallel_in_dim[concatenated_dims + j] = *maybe_iota_dim;
@@ -1701,7 +1760,7 @@ GetGatherScatterBatchParallelDims(const HloInstruction* indices,
       concatenated_dims += num_indices_from_element;
     }
   } else if (std::optional<int64_t> maybe_iota_dim =
-                 GetDimensionForIota(indices)) {
+                 GetDimensionForIota(indices, call_graph)) {
     if (*maybe_iota_dim != index_vector_dim) {
       // This is a case of a single iota with index_dim being out of bounds.
       const int64_t num_indices_from_element =
@@ -1742,19 +1801,19 @@ GetGatherScatterBatchParallelDims(const HloInstruction* indices,
 }
 
 std::optional<GatherScatterParallelDims> GetGatherParallelBatchDims(
-    const HloInstruction& hlo) {
+    const HloInstruction& hlo, const CallGraph& call_graph) {
   CHECK(DynCast<HloGatherInstruction>(&hlo));
   const HloInstruction* indices = hlo.operand(1);
   absl::Span<const int64_t> slice_sizes = hlo.gather_slice_sizes();
   const auto& dnums = hlo.gather_dimension_numbers();
   int64_t index_vector_dim = dnums.index_vector_dim();
   const auto& index_map = dnums.start_index_map();
-  return GetGatherScatterBatchParallelDims(indices, slice_sizes,
-                                           index_vector_dim, index_map);
+  return GetGatherScatterBatchParallelDims(
+      indices, slice_sizes, index_vector_dim, index_map, call_graph);
 }
 
 std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
-    const HloInstruction& hlo) {
+    const HloInstruction& hlo, const CallGraph& call_graph) {
   const HloScatterInstruction* scatter = DynCast<HloScatterInstruction>(&hlo);
   CHECK(scatter);
   const HloInstruction* indices = scatter->scatter_indices();
@@ -1764,8 +1823,8 @@ std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
                           scatter->scatter_updates()[0]->shape(), dnums);
   int64_t index_vector_dim = dnums.index_vector_dim();
   const auto& index_map = dnums.scatter_dims_to_operand_dims();
-  return GetGatherScatterBatchParallelDims(indices, slice_sizes,
-                                           index_vector_dim, index_map);
+  return GetGatherScatterBatchParallelDims(
+      indices, slice_sizes, index_vector_dim, index_map, call_graph);
 }
 
 static absl::InlinedVector<int64_t, 1>

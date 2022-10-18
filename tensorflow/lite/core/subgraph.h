@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdarg.h>
 #include <stddef.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
@@ -58,6 +59,7 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
   friend class Interpreter;
+  friend class SignatureRunner;
   friend class SingleOpModel;
   friend class internal::CommonOpaqueConversionUtil;
 
@@ -591,6 +593,18 @@ class Subgraph {
       TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegate* delegate);
 
+  // Helper method for PreviewDelegatePartitioning and
+  // ReplaceNodeSubsetsWithDelegateKernels. Creates node subsets whose members
+  // are either all present in or all absent from *nodes_to_replace.  The
+  // NodeSubsets and their members are in schedulable order, where
+  // schedulability considers data dependencies and, if present, *control_edges_
+  // between nodes.
+  // If control_edges_ == nullptr, PartitionGraph will preserve the original
+  // execuion order of nodes with OpMightHaveSideEffect() when finding
+  // schedulable orderings.
+  TfLiteStatus PartitionGraph(const TfLiteIntArray* nodes_to_replace,
+                              std::vector<NodeSubset>* node_subsets);
+
   // WARNING: This is an experimental interface that is subject to change.
   // Gets the internal pointer to a TensorFlow lite node by node_index.
   TfLiteStatus GetNodeAndRegistration(int node_index, TfLiteNode** node,
@@ -713,6 +727,18 @@ class Subgraph {
   // Ensures the memory required is planned and allocated.
   TfLiteStatus EnsureMemoryAllocations();
 
+  // Enables cancellation of in flight invocation with `Cancel` call.
+  // Should only be called by the interpreter when building the subgraph.
+  // `flag` should be nullptr otherwise cancellation is disabled.
+  TfLiteStatus EnableCancellation(std::atomic_flag* flag);
+
+  // Attempts to cancel in flight invocation if any.
+  // This will not affect `Invoke`s that happends after the cancellation.
+  // Non blocking. Thread safe.
+  // Returns kTfLiteError if cancellation is not enabled, otherwise returns
+  // kTfLiteOk.
+  TfLiteStatus Cancel();
+
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
@@ -732,7 +758,8 @@ class Subgraph {
   // Since the lifetime of the Interpreter exceeds the Subgraph, metadata
   // remains valid for the latter's lifetime.
   // Also sets relevant fields on context_ based on known metadata.
-  TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata);
+  TfLiteStatus SetMetadata(const std::map<std::string, std::string>* metadata,
+                           const ControlEdges* control_edges = nullptr);
 
   // Initializes the mapping between tensor index to the index of the
   // last operation that uses the tensor as input.
@@ -881,6 +908,13 @@ class Subgraph {
   // thrown by Invoke().
   bool (*check_cancelled_func_)(void*) = nullptr;
 
+  // Pointer to the cancellation flag owned by the interpreter.
+  // If null, it means cancellation is not enabled.
+  // If not null, in flight invocation will be cancelled if the flag is false.
+  // The flag will be reset to true in the beginning of every `Invoke` call
+  // so cancellation hapens before will not cancel subsequent invocations.
+  std::atomic_flag* continue_invocation_ = nullptr;
+
   // Reference to data used by the cancellation function in
   // `check_cancelled_func_`.
   void* cancellation_data_ = nullptr;
@@ -925,6 +959,13 @@ class Subgraph {
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;
+
+  // Control edges (i.e., dependencies between nodes in addition to their data
+  // dependencies); can be nullptr. Will be initialized from metadata associated
+  // with the owning interpreter; the pointee is owned by the owning
+  // interpreter. The owning interpreter will keep this consistent with
+  // metadata_ by appropriately parametrized SetMetadata method calls.
+  const ControlEdges* control_edges_ = nullptr;
 };
 
 }  // namespace tflite

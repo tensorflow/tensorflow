@@ -146,8 +146,9 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
     // The TRT IRNNv2Layer has been deprecated in favor of the loop API.
     ADD_LAYER(RNN)
 #endif
+    default:
+      return "UNKNOWN_LAYER";
   }
-  return "UNKNOWN_LAYER";
 }
 
 #undef ADD_LAYER

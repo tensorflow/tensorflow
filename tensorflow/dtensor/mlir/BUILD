@@ -266,6 +266,7 @@ cc_library(
     srcs = ["dtensor_send_recv.cc"],
     hdrs = ["dtensor_send_recv.h"],
     deps = [
+        ":collectives",
         ":device_utils",
         ":layout_parsing",
         ":op_utils",

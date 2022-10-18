@@ -120,7 +120,7 @@ func.func @loop_incorrent_iterator_types_count(%A: memref<192x192xf32>,
           : (memref<192x192xf32>, memref<192x192xf32>, memref<192x192xf32>)-> ()
       gml_st.yield %CT_ : tensor<192x192xf32>
     }) {
-      iterator_types = ["parallel"],
+      iterator_types = [#gml_st.iterator_type<parallel>],
       operand_segment_sizes = array<i32: 2, 2, 2, 2, 2>
     } : (index, index, index, index, index, index, memref<192x192xf32>,
       memref<192x192xf32>, tensor<192x192xf32>, memref<192x192xf32>
@@ -142,7 +142,7 @@ func.func @loop_incorrent_block_arg_type(%A: memref<192xf32>) {
       func.call @foo(%A_) : (memref<100xf32>)-> ()
       gml_st.yield
     }) {
-      iterator_types = ["parallel"],
+      iterator_types = [#gml_st.iterator_type<parallel>],
       operand_segment_sizes = array<i32: 1, 1, 1, 0, 1>
     } : (index, index, index, memref<192xf32>) -> ()
   func.return
@@ -251,33 +251,6 @@ func.func @tile_op_offset_out_of_bounds_considering_size_and_stride(%i: index) {
   // expected-error@+1 {{'gml_st.tile' op size = 9 stride = 4 causes access out of bounds for argument dimension size = 32}}
   %1 = gml_st.tile %0 [%i, %i] [8, 9] [8, 4] : !gml_st.tile<64x32> to !gml_st.tile<8x9>
   func.return %1 : !gml_st.tile<8x9>
-}
-
-// -----
-
-func.func @transpose_tile_op_permutation_out_of_bounds() {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.transpose_dims' op permutation[1] = 2 is outside of range [0, 1]}}
-  %1 = gml_st.transpose_dims %0, [0, 2] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
-  func.return
-}
-
-// -----
-
-func.func @transpose_tile_op_permutation_wrong_size() {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.transpose_dims' op expected result rank 2 to match the permutation size of 1}}
-  %1 = gml_st.transpose_dims %0, [0] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
-  func.return
-}
-
-// -----
-
-func.func @transpose_tile_op_permutation_duplicate_value() {
-  %0 = gml_st.space [64, 32] : !gml_st.tile<64x32>
-  // expected-error@+1 {{'gml_st.transpose_dims' op expected permutation attribute to contain no duplicate values, but got 0 at positions 0 and 1}}
-  %1 = gml_st.transpose_dims %0, [0, 0] : !gml_st.tile<64x32> to !gml_st.tile<64x32>
-  func.return
 }
 
 // -----

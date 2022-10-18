@@ -28,7 +28,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "tile_thlo_for_cpu.cc",
+        "transform_scatter_for_cpu.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
