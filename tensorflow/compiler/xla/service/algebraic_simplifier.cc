@@ -748,11 +748,12 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
   //
   // This is pattern is discovered in control flow V2 gradient update.
   if (Match(add,
-            m::Add(m::Op(&lhs),
-                   m::Op(&rhs)
-                       .WithOpcode(HloOpcode::kDynamicUpdateSlice)
-                       .WithOperand(
-                           0, m::Broadcast(m::ConstantEffectiveScalar(0)))))) {
+            m::AddAnyOrder(
+                m::Op(&lhs),
+                m::Op(&rhs)
+                    .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                    .WithOperand(
+                        0, m::Broadcast(m::ConstantEffectiveScalar(0)))))) {
     const Shape& partial_shape = rhs->operand(1)->shape();
     auto sliced_lhs = lhs->AddInstruction(HloInstruction::CreateDynamicSlice(
         partial_shape, lhs, absl::MakeSpan(rhs->operands()).subspan(2),
