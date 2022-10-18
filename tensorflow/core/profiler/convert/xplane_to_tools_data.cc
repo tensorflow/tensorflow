@@ -252,7 +252,8 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
   } else if (tool_name == "op_profile") {
     return ConvertMultiXSpacesToOpProfileViewer(session_snapshot);
   } else if (tool_name == "memory_viewer" || tool_name == "graph_viewer") {
-    return ConvertHloProtoToToolData(session_snapshot, tool_name, options);
+    return ConvertHloProtoToToolData(session_snapshot, tool_name,
+                                     ToolOptionsToHloToolOptions(options));
   } else if (tool_name == "tool_names") {
     return GetAvailableToolNames(session_snapshot);
   } else if (tool_name == "_xplane.pb") {  // internal test only.

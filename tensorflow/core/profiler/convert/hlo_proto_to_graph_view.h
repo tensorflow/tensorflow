@@ -43,7 +43,8 @@ struct GraphViewerParams {
 };
 
 // Parse tool options to get the parameters for graph viewer.
-StatusOr<GraphViewerParams> ParseGraphViewerParams(const ToolOptions& options);
+StatusOr<GraphViewerParams> ParseGraphViewerParams(
+    const HloToolOptions& options);
 
 // Get graph render format.
 xla::RenderedGraphFormat GetRenderFormat(const std::string& format_string);
