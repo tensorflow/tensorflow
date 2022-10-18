@@ -340,7 +340,7 @@ static RankedTensorType GetStaticBroadcastType(
                                           shape_large.end());
 
   // Update according to the broadcast dimensions.
-  for (auto index_pair : llvm::enumerate(broadcast_dimensions)) {
+  for (auto &index_pair : llvm::enumerate(broadcast_dimensions)) {
     auto old_value = out_shape[index_pair.value()];
     auto new_value = shape_small[index_pair.index()];
     out_shape[index_pair.value()] = std::max(old_value, new_value);
@@ -664,7 +664,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
   llvm::SmallVector<int64_t, 4> values;
   values.reserve(shaped_type.getNumElements() / shape[1]);
 
-  for (auto it : llvm::enumerate(int_attr.getValues<APInt>())) {
+  for (auto &it : llvm::enumerate(int_attr.getValues<APInt>())) {
     if (static_cast<int>(it.index() % shape[1]) == column) {
       values.push_back(it.value().getSExtValue());
     }
@@ -3338,7 +3338,7 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -3507,7 +3507,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
     llvm::Optional<int> dynamic_dim_index;
     split_sizes.reserve(
         split_sizes_attr.getType().cast<ShapedType>().getNumElements());
-    for (auto dim : llvm::enumerate(split_sizes_attr)) {
+    for (auto &dim : llvm::enumerate(split_sizes_attr)) {
       int64_t dim_val = dim.value().getSExtValue();
       split_sizes.push_back(dim_val);
       if (dim_val == -1) {
@@ -3537,7 +3537,7 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 
     // Parameters for constructing each slice.
     SmallVector<int64_t, 4> begin_indices(input_rank, 0);
-    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    auto end_indices = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     SmallVector<int64_t, 4> strides(input_rank, 1);
 
     // All HLO slice results used to replace the original tf.Split op.
@@ -5417,7 +5417,7 @@ class ConvertInfeedDequeueTupleOp
     }
     llvm::SmallVector<Value> results;
     results.reserve(result_types.size());
-    for (auto idx_and_type : llvm::enumerate(result_types)) {
+    for (auto &idx_and_type : llvm::enumerate(result_types)) {
       results.push_back(data_and_token.getResult(idx_and_type.index()));
     }
     rewriter.replaceOp(op, ValueRange(results));
@@ -5948,8 +5948,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     Value swaped_indices = while_output[1];
 
     // Gather the data using the swapped indices as the shuffled order.
-    ArrayRef<int64_t> input_shape = input_type.getShape();
-    SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
+    auto slice_sizes = tensorflow::ConvertMlirShapeToTF(input_type.getShape());
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbersAttr::get(
         rewriter.getContext(),

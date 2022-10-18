@@ -1649,7 +1649,7 @@ LogicalResult SplitVOp::verify() {
   for (auto dim : llvm::enumerate(split_sizes_attr)) {
     int64_t dim_val = dim.value().getSExtValue();
     split_sizes.push_back(dim_val);
-    if (ShapedType::isDynamic(dim_val)) {
+    if (dim_val == tensorflow::kTFDynamicSize) {
       // We cannot have more than one dynamic dimension.
       if (dynamic_dim_index)
         return op.emitOpError(
