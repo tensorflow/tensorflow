@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -38,6 +39,7 @@ constexpr const char HloCostAnalysis::kFlopsKey[];
 constexpr const char HloCostAnalysis::kTranscendentalsKey[];
 constexpr const char HloCostAnalysis::kBytesAccessedKey[];
 constexpr const char HloCostAnalysis::kOptimalSecondsKey[];
+constexpr const char HloCostAnalysis::kUtilizationKey[];
 
 HloCostAnalysis::HloCostAnalysis(const Options& options) : options_(options) {}
 HloCostAnalysis::HloCostAnalysis(ShapeSizeFunction shape_size,
@@ -60,6 +62,7 @@ Status HloCostAnalysis::Preprocess(const HloInstruction* hlo) {
     const HloInstruction* operand = hlo->operand(i);
     bytes_accessed += GetShapeSize(operand->shape());
     SetOperandBytesAccessed(i, GetShapeSize(operand->shape()));
+    SetOperandUtilization(i, 1.0);
   }
   current_properties_[kBytesAccessedKey] = bytes_accessed;
 
@@ -190,6 +193,17 @@ int64_t HloCostAnalysis::FusionParameterReadBytes(
   return size;
 }
 
+Status HloCostAnalysis::FusionCalculateUtilizations(
+    const HloInstruction* fusion) {
+  // Default trivial implementation: assume 100% utilization of every fusion
+  // instruction.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    hlo_properties_[instr][kUtilizationKey] = 1.0;
+  }
+  return OkStatus();
+}
+
 Status HloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
   return HandleElementwiseOp(hlo);
 }
@@ -252,6 +266,9 @@ Status HloCostAnalysis::HandleSlice(const HloInstruction* slice) {
   current_properties_[kBytesAccessedKey] = GetShapeSize(slice->shape()) * 2;
   SetOutputBytesAccessed(GetShapeSize(slice->shape()));
   SetOperandBytesAccessed(0, GetShapeSize(slice->shape()));
+  SetOperandUtilization(0,
+                        1.0 * ShapeUtil::ElementsIn(slice->shape()) /
+                            ShapeUtil::ElementsIn(slice->operand(0)->shape()));
   return OkStatus();
 }
 
@@ -263,6 +280,9 @@ Status HloCostAnalysis::HandleDynamicSlice(
   SetOutputBytesAccessed(GetShapeSize(dynamic_slice->shape()));
   SetOperandBytesAccessed(0, GetShapeSize(dynamic_slice->shape()));
   SetOperandBytesAccessed(1, GetShapeSize(dynamic_slice->operand(1)->shape()));
+  SetOperandUtilization(
+      0, 1.0 * ShapeUtil::ElementsIn(dynamic_slice->shape()) /
+             ShapeUtil::ElementsIn(dynamic_slice->operand(0)->shape()));
   return OkStatus();
 }
 
@@ -279,6 +299,14 @@ Status HloCostAnalysis::HandleDynamicUpdateSlice(
       1, GetShapeSize(dynamic_update_slice->operand(1)->shape()));
   SetOperandBytesAccessed(
       2, GetShapeSize(dynamic_update_slice->operand(2)->shape()));
+  // Part of operand 0 overwritten by operand 1 is not used by the users
+  // of the output of this operation.
+  SetOperandUtilization(
+      0,
+      1.0 *
+          (ShapeUtil::ElementsIn(dynamic_update_slice->shape()) -
+           ShapeUtil::ElementsIn(dynamic_update_slice->operand(1)->shape())) /
+          ShapeUtil::ElementsIn(dynamic_update_slice->shape()));
   return OkStatus();
 }
 
@@ -375,7 +403,8 @@ Status HloCostAnalysis::HandleMap(const HloInstruction* map) {
   // Compute the cost of all elements for this Map operation.
   const int64_t element_count = ShapeUtil::ElementsIn(map->shape());
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
+    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
+        !absl::StartsWith(property.first, kUtilizationKey)) {
       current_properties_[property.first] = property.second * element_count;
     }
   }
@@ -399,7 +428,8 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   int64_t reduction_count =
       ShapeUtil::ElementsIn(arg->shape()) - ShapeUtil::ElementsIn(output_shape);
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
+    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
+        !absl::StartsWith(property.first, kUtilizationKey)) {
       current_properties_[property.first] = property.second * reduction_count;
     }
   }
@@ -421,6 +451,8 @@ Status HloCostAnalysis::HandleReduceWindow(
     window_element_count *= dimension.size();
   }
 
+  const int64_t input_element_count =
+      ShapeUtil::ElementsIn(reduce_window->operand(0)->shape());
   const int64_t output_element_count =
       ShapeUtil::ElementsIn(reduce_window->shape().IsArray()
                                 ? reduce_window->shape()
@@ -469,9 +501,18 @@ Status HloCostAnalysis::HandleReduceWindow(
             << " reported for reduce-window:\n"
             << reduce_window->ToString();
   }
+  if (input_reuse_is_inefficient()) {
+    SetOperandUtilization(0, 1.0 * output_element_count * window_element_count /
+                                 input_element_count);
+    SetOperandBytesAccessed(
+        0, output_element_count * window_element_count *
+               ShapeUtil::ByteSizeOfPrimitiveType(
+                   reduce_window->operand(0)->shape().element_type()));
+  }
 
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
+    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
+        !absl::StartsWith(property.first, kUtilizationKey)) {
       current_properties_[property.first] = property.second * reduction_count;
     }
   }
@@ -499,12 +540,14 @@ Status HloCostAnalysis::HandleSelectAndScatter(
   const int64_t select_count =
       source_element_count * (window_element_count - 1);
   for (const auto& property : select_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
+    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
+        !absl::StartsWith(property.first, kUtilizationKey)) {
       current_properties_[property.first] += property.second * select_count;
     }
   }
   for (const auto& property : scatter_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
+    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
+        !absl::StartsWith(property.first, kUtilizationKey)) {
       current_properties_[property.first] +=
           property.second * source_element_count;
     }
@@ -521,7 +564,13 @@ Status HloCostAnalysis::HandleBitcast(const HloInstruction*) {
   return OkStatus();
 }
 
-Status HloCostAnalysis::HandleBroadcast(const HloInstruction*) {
+Status HloCostAnalysis::HandleBroadcast(const HloInstruction* broadcast) {
+  if (input_reuse_is_inefficient()) {
+    SetOperandBytesAccessed(0, ShapeUtil::ElementsIn(broadcast->shape()));
+    SetOperandUtilization(
+        0, 1.0 * ShapeUtil::ElementsIn(broadcast->shape()) /
+               ShapeUtil::ElementsIn(broadcast->operand(0)->shape()));
+  }
   return OkStatus();
 }
 
@@ -910,6 +959,9 @@ Status HloCostAnalysis::HandleRngGetAndUpdateState(
 }
 
 Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
+  VLOG(8) << "Processing fusion " << fusion->ToString();
+  const HloInstruction* root = fusion->fused_expression_root();
+
   if (fusion->IsCustomFusion()) {
     for (const HloInstruction* hlo :
          fusion->fused_instructions_computation()->instructions()) {
@@ -931,30 +983,28 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
   current_properties_[kBytesAccessedKey] = 0;
   ShapeUtil::ForEachSubshape(
       fusion->shape(),
-      [this, fusion](const Shape& subshape, const ShapeIndex& shape_index) {
+      [this, root](const Shape& subshape, const ShapeIndex& shape_index) {
         if (!subshape.IsArray()) {
           return;
         }
         if (shape_index.empty()) {
-          if (fusion->fused_expression_root()->opcode() ==
-              HloOpcode::kDynamicUpdateSlice) {
-            int64_t size = GetShapeSize(
-                fusion->fused_expression_root()->operand(1)->shape());
+          if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+            int64_t size = GetShapeSize(root->operand(1)->shape());
             current_properties_[kBytesAccessedKey] += size;
             SetOutputBytesAccessed(shape_index, size);
+            hlo_properties_[root][GetOperandUtilizationKey(0).c_str()] = 0;
             return;
           }
         } else if (shape_index.size() == 1) {
-          if (fusion->fused_expression_root()->opcode() == HloOpcode::kTuple &&
-              fusion->fused_expression_root()
-                      ->operand(shape_index[0])
-                      ->opcode() == HloOpcode::kDynamicUpdateSlice) {
-            int64_t size = GetShapeSize(fusion->fused_expression_root()
-                                            ->operand(shape_index[0])
-                                            ->operand(1)
-                                            ->shape());
+          if (root->opcode() == HloOpcode::kTuple &&
+              root->operand(shape_index[0])->opcode() ==
+                  HloOpcode::kDynamicUpdateSlice) {
+            int64_t size = GetShapeSize(
+                root->operand(shape_index[0])->operand(1)->shape());
             current_properties_[kBytesAccessedKey] += size;
             SetOutputBytesAccessed(shape_index, size);
+            hlo_properties_[root->operand(shape_index[0])]
+                           [GetOperandUtilizationKey(0).c_str()] = 0;
             return;
           }
         }
@@ -995,6 +1045,20 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     propagate_output_size_to_parent(fusion->shape(), {});
   }
 
+  TF_RETURN_IF_ERROR(FusionCalculateUtilizations(fusion));
+
+  // Count memory access to all large constants.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kConstant &&
+        ShapeUtil::ElementsIn(instr->shape()) >
+            immediate_constant_max_elements()) {
+      current_properties_[kBytesAccessedKey] +=
+          GetShapeSize(instr->shape()) *
+          hlo_properties_[instr][kUtilizationKey];
+    }
+  }
+
   for (int64_t i = 0; i < fusion->fused_parameters().size(); ++i) {
     const HloInstruction* operand = fusion->fused_parameter(i);
     int64_t operand_size = 0;
@@ -1022,6 +1086,7 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     }
     current_properties_[kBytesAccessedKey] += operand_size;
     SetOperandBytesAccessed(i, operand_size);
+    SetOperandUtilization(i, hlo_properties_[operand][kUtilizationKey]);
   }
 
   return OkStatus();
@@ -1111,6 +1176,9 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
       output_size * 2 + GetShapeSize(gather->operand(1)->shape());
   SetOperandBytesAccessed(0, output_size);
   SetOperandBytesAccessed(1, GetShapeSize(gather->operand(1)->shape()));
+  SetOperandUtilization(0,
+                        1.0 * ShapeUtil::ElementsIn(gather->shape()) /
+                            ShapeUtil::ElementsIn(gather->operand(0)->shape()));
   SetOutputBytesAccessed(output_size);
   // Gather does not issue any flops.
   return OkStatus();
@@ -1139,7 +1207,8 @@ Status HloCostAnalysis::HandleScatter(const HloInstruction* hlo) {
   TF_ASSIGN_OR_RETURN(const Properties sub_properties,
                       ProcessSubcomputation(scatter->to_apply()));
   for (const auto& property : sub_properties) {
-    if (!absl::StartsWith(property.first, kBytesAccessedKey)) {
+    if (!absl::StartsWith(property.first, kBytesAccessedKey) &&
+        !absl::StartsWith(property.first, kUtilizationKey)) {
       current_properties_[property.first] = property.second * element_count;
     }
   }
@@ -1192,6 +1261,13 @@ int64_t HloCostAnalysis::operand_bytes_accessed(const HloInstruction& hlo,
                                                 int64_t operand_num,
                                                 ShapeIndex index) const {
   return GetPropertyForHlo(hlo, GetOperandBytesAccessedKey(operand_num, index),
+                           hlo_properties_);
+}
+
+float HloCostAnalysis::operand_utilization(const HloInstruction& hlo,
+                                           int64_t operand_num,
+                                           ShapeIndex index) const {
+  return GetPropertyForHlo(hlo, GetOperandUtilizationKey(operand_num, index),
                            hlo_properties_);
 }
 
@@ -1268,6 +1344,16 @@ void HloCostAnalysis::SetOperandBytesAccessed(int64_t operand_num,
       value;
 }
 
+void HloCostAnalysis::SetOperandUtilization(int64_t operand_num, float value) {
+  current_properties_[GetOperandUtilizationKey(operand_num).c_str()] = value;
+}
+
+void HloCostAnalysis::SetOperandUtilization(int64_t operand_num,
+                                            ShapeIndex index, float value) {
+  current_properties_[GetOperandUtilizationKey(operand_num, index).c_str()] =
+      value;
+}
+
 void HloCostAnalysis::SetOutputBytesAccessed(float value) {
   current_properties_[GetOutputBytesAccessedKey()] = value;
 }
@@ -1279,6 +1365,12 @@ void HloCostAnalysis::SetOutputBytesAccessed(ShapeIndex index, float value) {
 /*static*/ std::string HloCostAnalysis::GetOperandBytesAccessedKey(
     int64_t operand_num, ShapeIndex index) {
   return absl::StrCat(kBytesAccessedKey, " operand ", operand_num, " ",
+                      index.ToString());
+}
+
+/*static*/ std::string HloCostAnalysis::GetOperandUtilizationKey(
+    int64_t operand_num, ShapeIndex index) {
+  return absl::StrCat(kUtilizationKey, " operand ", operand_num, " ",
                       index.ToString());
 }
 
