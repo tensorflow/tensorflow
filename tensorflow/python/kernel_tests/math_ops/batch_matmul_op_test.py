@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.client import session
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -57,7 +58,14 @@ class BatchMatmulOpTest(test.TestCase):
     x = x_in if not adjoint_a else x_in.reshape(x_t_shape)
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
     is_floating = x.dtype != np.int32
-    tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
+    # np.finfo doesn't support bfloat16. So, we manually compute the eps which
+    # defines the difference between 1.0 and the next smallest representable
+    # float larger than 1.0. For bfloat16, the difference is 1/128.
+    if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+      epsilon = 0.0078125
+    elif is_floating:
+      epsilon = np.finfo(x.dtype).eps
+    tol = 100 * epsilon if is_floating else 0
     with self.cached_session(use_gpu=is_floating) as sess:
       if static_shape:
         z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
@@ -155,7 +163,13 @@ class BatchMatmulGradientTest(test.TestCase):
     y_t_shape = y_in.shape[:-2] + (y_in.shape[-1], y_in.shape[-2])
     x = x_in if not adjoint_a else x_in.reshape(x_t_shape)
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
-    epsilon = np.finfo(x.dtype).eps
+    # np.finfo doesn't support bfloat16. So, we manually compute the eps which
+    # defines the difference between 1.0 and the next smallest representable
+    # float larger than 1.0. For bfloat16, the difference is 1/128.
+    if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+      epsilon = 0.0078125
+    else:
+      epsilon = np.finfo(x.dtype).eps
     # Since our gradient is linear, a larger delta decreases the error.
     delta = 10 * epsilon**(1.0 / 3.0)
 
@@ -185,7 +199,10 @@ def _GetBatchMatmulGradientTest(dtype, adjoint_a, adjoint_b):
       self._compare(a_shape, b_shape, dtype, adjoint_a, adjoint_b)
 
     CheckGradients(self, [1, 2, 3], [1, 3, 5])
-    CheckGradients(self, [3, 4, 7], [3, 7, 10])
+    # Gradient test cases with bfloat16 might encounter tolerance issues when
+    # the sizes are large. We will skip these cases for now.
+    if dtype != dtypes.bfloat16.as_numpy_dtype:
+      CheckGradients(self, [3, 4, 7], [3, 7, 10])
 
   return Test
 
@@ -199,10 +216,13 @@ def _GetBatchMatmulGradientWithBroadcastingTest(dtype, adjoint_a, adjoint_b):
     CheckGradients(self, [1, 5, 2, 3], [7, 1, 3, 2])
     CheckGradients(self, [2, 3], [1, 3, 5])
     CheckGradients(self, [2, 3], [5, 3, 5])
-    CheckGradients(self, [5, 2, 5], [5, 3])
-    CheckGradients(self, [5, 2, 2, 3], [3, 5])
-    CheckGradients(self, [4, 5, 1, 2, 3], [1, 1, 3, 5])
-    CheckGradients(self, [1, 2, 1, 4, 2, 1, 3, 4], [3, 2, 1, 1, 1, 2, 4, 2])
+    # Gradient test cases with bfloat16 might encounter tolerance issues when
+    # the sizes are large. We will skip these cases for now.
+    if dtype != dtypes.bfloat16.as_numpy_dtype:
+      CheckGradients(self, [5, 2, 5], [5, 3])
+      CheckGradients(self, [5, 2, 2, 3], [3, 5])
+      CheckGradients(self, [4, 5, 1, 2, 3], [1, 1, 3, 5])
+      CheckGradients(self, [1, 2, 1, 4, 2, 1, 3, 4], [3, 2, 1, 1, 1, 2, 4, 2])
 
   return Test
 
@@ -263,6 +283,11 @@ if __name__ == "__main__":
   dtypes_to_test = [
       np.float16, np.float32, np.float64, np.int32, np.complex64, np.complex128
   ]
+
+  if test_util.IsGpuBfloat16Enabled() and test_util.is_gpu_available(
+      cuda_only=True, min_cuda_compute_capability=(8, 0)):
+    dtypes_to_test.append(dtypes.bfloat16.as_numpy_dtype)
+
   for dtype_ in dtypes_to_test:
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:

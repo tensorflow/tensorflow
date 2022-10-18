@@ -158,7 +158,13 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
 
-    epsilon = np.finfo(a_np_.dtype).eps
+    # np.finfo doesn't support bfloat16. So, we manually compute the eps which
+    # defines the difference between 1.0 and the next smallest representable
+    # float larger than 1.0. For bfloat16, the difference is 1/128.
+    if a_np_.dtype == dtypes.bfloat16.as_numpy_dtype:
+      epsilon = 0.0078125
+    else:
+      epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
     with self.session():
@@ -267,6 +273,11 @@ if __name__ == "__main__":
       np.int32, np.int64, np.float16, np.float32, np.float64, np.complex64,
       np.complex128
   ]
+
+  if test_util.IsGpuBfloat16Enabled() and test_util.is_gpu_available(
+      cuda_only=True, min_cuda_compute_capability=(8, 0)):
+    dtypes_to_test.append(dtypes.bfloat16.as_numpy_dtype)
+
   # TF2 does not support placeholders under eager so we skip it
   for use_static_shape in set([True, tf2.enabled()]):
     for dtype in dtypes_to_test:
@@ -297,6 +308,14 @@ if __name__ == "__main__":
                              transpose_a=transpose_a,
                              adjoint_b=adjoint_b,
                              transpose_b=transpose_b))
+
+                # Gradient test cases with bfloat16 might encounter tolerance
+                # issues when the sizes are large. We will skip these cases for
+                # now.
+                if (dtype == dtypes.bfloat16.as_numpy_dtype and
+                    (m, n, k) == (5, 5, 5)):
+                  continue
+
                 _AddTest(MatMulGradientTest, "MatMulGradientTest", name,
                          _GetMatMulGradientTest(
                              a_np,

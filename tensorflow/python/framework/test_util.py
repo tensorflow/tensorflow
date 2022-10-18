@@ -356,6 +356,8 @@ def IsBuiltWithNvcc():
 def GpuSupportsHalfMatMulAndConv():
   return _pywrap_util_port.GpuSupportsHalfMatMulAndConv()
 
+def IsGpuBfloat16Enabled():
+  return (_pywrap_util_port.IsGpuBfloat16Enabled())
 
 def IsMklEnabled():
   return _pywrap_util_port.IsMklEnabled()

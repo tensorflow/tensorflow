@@ -30,6 +30,7 @@ tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
 tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
+tensorflow::IsGpuBfloat16Enabled
 tensorflow::IsMklEnabled
 
 [//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl] # stat_summarizer

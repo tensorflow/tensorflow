@@ -24,5 +24,6 @@ PYBIND11_MODULE(_pywrap_util_port, m) {
   m.def("IsBuiltWithNvcc", tensorflow::IsBuiltWithNvcc);
   m.def("GpuSupportsHalfMatMulAndConv",
         tensorflow::GpuSupportsHalfMatMulAndConv);
+  m.def("IsGpuBfloat16Enabled", tensorflow::IsGpuBfloat16Enabled);
   m.def("IsMklEnabled", tensorflow::IsMklEnabled);
 }

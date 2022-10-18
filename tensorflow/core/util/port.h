@@ -41,6 +41,9 @@ bool IsBuiltWithNvcc();
 //
 bool GpuSupportsHalfMatMulAndConv();
 
+// Returns true if TF_ENABLE_GPU_BFLOAT16 is defined
+bool IsGpuBfloat16Enabled();
+
 // Returns true if INTEL_MKL is defined
 bool IsMklEnabled();
 
