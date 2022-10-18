@@ -7,7 +7,7 @@ module attributes {tf_saved_model.semantics}  {
       %outputs_0, %control_0 = tf_executor.island wraps "tf.VarHandleOp"() {container = "", shared_name = ""} : () -> tensor<!tf_type.resource<tensor<501000x128xf32>>>
       %outputs_1, %control_1 = tf_executor.island wraps "tf.Cast"(%outputs_0) {Truncate = false} : (tensor<!tf_type.resource<tensor<501000x128xf32>>>) -> tensor<*x!tf_type.resource>
 
-      // CHECK: tfrt_fallback_async.batch_function([[ARG:%.*]]) @batched_func ([[BATCHED_FUNC_ARG:%.*]])
+      // CHECK: tfrt_fallback_async.batch_function device([[DEVICE:.*]]) @batched_func ([[BATCHED_FUNC_ARG:%.*]])
       // CHECK-SAME: Tcaptured = [!corert.resource]
       // CHECK-SAME: Tin = []
       // CHECK-SAME: Tout = [f32]
