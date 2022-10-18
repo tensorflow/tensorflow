@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tsl/util/tensor_bundle/byte_swap_array.h"
+#include "tensorflow/tsl/util/byte_swap_array.h"
 
 #include "tensorflow/tsl/platform/errors.h"
 

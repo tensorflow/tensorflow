@@ -856,7 +856,7 @@ tf_cuda_library(
         "//tensorflow/core/public:version",
         "//tensorflow/core/util:managed_stack_trace",
         "//tensorflow/tsl/framework:device_type",
-        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
+        "//tensorflow/tsl/util:byte_swap_array",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

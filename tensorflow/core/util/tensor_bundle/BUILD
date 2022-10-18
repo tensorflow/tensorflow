@@ -81,7 +81,7 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/util/tensor_bundle:byte_swap_array",
+        "//tensorflow/tsl/util:byte_swap_array",
     ],
 )
 
