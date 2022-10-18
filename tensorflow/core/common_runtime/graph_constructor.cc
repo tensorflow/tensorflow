@@ -95,6 +95,9 @@ class GraphConstructor {
     Options(const GraphConstructorOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
+          uniquify_names(false),
+          uniquify_prefix(false),
+          skip_mapped_nodes(false),
           importing(false),
           validate_nodes(in.validate_nodes),
           validate_colocation_constraints(false),
