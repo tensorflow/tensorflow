@@ -74,6 +74,8 @@ oss_tests = [
     "cast_test",
     "concatenation_test",
     "const_broadcast_test",
+    "const_inputs_test",
+    "control_deps_test",
     # "conv2d_test",  # b/198501457
     "data_dependent_shape_test",
     "dynamic_input_shapes_test",
