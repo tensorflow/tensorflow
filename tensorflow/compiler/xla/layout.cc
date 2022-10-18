@@ -64,27 +64,24 @@ Layout::Layout(absl::Span<const int64_t> minor_to_major)
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-               int64_t memory_space, std::unique_ptr<Shape> physical_shape)
+               absl::Span<const Tile> tiles, int64_t memory_space,
+               std::unique_ptr<Shape> physical_shape)
     : dim_level_types_(dim_level_types.begin(), dim_level_types.end()),
       minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
       tiles_(tiles.begin(), tiles.end()),
-      element_size_in_bits_(element_size_in_bits),
       memory_space_(memory_space),
       physical_shape_(std::move(physical_shape)) {}
 
 Layout::Layout(absl::Span<const int64_t> minor_to_major,
                absl::Span<const DimLevelType> dim_level_types,
-               absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-               int64_t memory_space)
-    : Layout(minor_to_major, dim_level_types, tiles, element_size_in_bits,
-             memory_space, /*physical_shape=*/nullptr) {}
+               absl::Span<const Tile> tiles, int64_t memory_space)
+    : Layout(minor_to_major, dim_level_types, tiles, memory_space,
+             /*physical_shape=*/nullptr) {}
 
 Layout::Layout(const Layout& other)
     : dim_level_types_(other.dim_level_types_),
       minor_to_major_(other.minor_to_major_),
       tiles_(other.tiles_),
-      element_size_in_bits_(other.element_size_in_bits_),
       memory_space_(other.memory_space_),
       physical_shape_(other.physical_shape_ != nullptr
                           ? std::make_unique<Shape>(*other.physical_shape_)
@@ -99,7 +96,6 @@ Layout& Layout::operator=(const Layout& other) {
     dim_level_types_ = other.dim_level_types_;
     minor_to_major_ = other.minor_to_major_;
     tiles_ = other.tiles_;
-    element_size_in_bits_ = other.element_size_in_bits_;
     memory_space_ = other.memory_space_;
     if (other.physical_shape_ != nullptr) {
       physical_shape_ = std::make_unique<Shape>(*other.physical_shape_);
@@ -124,7 +120,6 @@ Layout& Layout::operator=(Layout&& other) = default;
   for (const TileProto& tile_proto : proto.tiles()) {
     *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
-  layout.set_element_size_in_bits(proto.element_size_in_bits());
   layout.set_memory_space(proto.memory_space());
   if (proto.has_physical_shape()) {
     *layout.mutable_physical_shape() = Shape(proto.physical_shape());
@@ -144,7 +139,6 @@ LayoutProto Layout::ToProto() const {
   for (const Tile& tile : tiles()) {
     *proto.add_tiles() = tile.ToProto();
   }
-  proto.set_element_size_in_bits(element_size_in_bits());
   proto.set_memory_space(memory_space_);
   if (has_physical_shape()) {
     *proto.mutable_physical_shape() = physical_shape_->ToProto();
@@ -188,9 +182,6 @@ std::string Layout::ToString() const {
         ")");
   }
 
-  if (element_size_in_bits() != 0) {
-    absl::StrAppend(&colon_string, "E(", element_size_in_bits(), ")");
-  }
   if (memory_space() != 0) {
     absl::StrAppend(&colon_string, "S(", memory_space(), ")");
   }
@@ -214,10 +205,6 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
     return false;
   }
   if (!ignore_tiles_ && lhs.tiles() != rhs.tiles()) {
-    return false;
-  }
-  if (!ignore_element_size_ &&
-      lhs.element_size_in_bits() != rhs.element_size_in_bits()) {
     return false;
   }
   if (!ignore_memory_space_ && lhs.memory_space() != rhs.memory_space()) {

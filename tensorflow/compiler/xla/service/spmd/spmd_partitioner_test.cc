@@ -2535,7 +2535,7 @@ ge {
   p.0.lhs.1247 = f32[]{:T(256)} parameter(0), sharding={replicated}
   bitcast-convert = s32[]{:T(256)} bitcast-convert(p.0.lhs.1247), sharding={replicated}
   constant = s32[]{:T(256)} constant(0), sharding={replicated}
-  compare = pred[]{:T(256)E(32)} compare(bitcast-convert, constant), direction=LT, sharding={replicated}
+  compare = pred[]{:T(256)} compare(bitcast-convert, constant), direction=LT, sharding={replicated}
   constant.1 = u32[]{:T(256)} constant(2147483647), sharding={replicated}
   bitcast-convert.1 = u32[]{:T(256)} bitcast-convert(p.0.lhs.1247), sharding={replicated}
   subtract = u32[]{:T(256)} subtract(constant.1, bitcast-convert.1), sharding={replicated}
@@ -2543,18 +2543,18 @@ ge {
   select = s32[]{:T(256)} select(compare, bitcast-convert.2, bitcast-convert), sharding={replicated}
   p.0.rhs.1248 = f32[]{:T(256)} parameter(1), sharding={replicated}
   bitcast-convert.3 = s32[]{:T(256)} bitcast-convert(p.0.rhs.1248), sharding={replicated}
-  compare.1 = pred[]{:T(256)E(32)} compare(bitcast-convert.3, constant), direction=LT, sharding={replicated}
+  compare.1 = pred[]{:T(256)} compare(bitcast-convert.3, constant), direction=LT, sharding={replicated}
   bitcast-convert.4 = u32[]{:T(256)} bitcast-convert(p.0.rhs.1248), sharding={replicated}
   subtract.1 = u32[]{:T(256)} subtract(constant.1, bitcast-convert.4), sharding={replicated}
   bitcast-convert.5 = s32[]{:T(256)} bitcast-convert(subtract.1), sharding={replicated}
   select.1 = s32[]{:T(256)} select(compare.1, bitcast-convert.5, bitcast-convert.3), sharding={replicated}
-  compare.2 = pred[]{:T(256)E(32)} compare(select, select.1), direction=GT, sharding={replicated}
-  compare.258 = pred[]{:T(256)E(32)} compare(select.1, select), direction=GT, sharding={replicated}
-  compare.259 = pred[]{:T(256)E(32)} compare(compare.2, compare.258), direction=EQ, sharding={replicated}
+  compare.2 = pred[]{:T(256)} compare(select, select.1), direction=GT, sharding={replicated}
+  compare.258 = pred[]{:T(256)} compare(select.1, select), direction=GT, sharding={replicated}
+  compare.259 = pred[]{:T(256)} compare(compare.2, compare.258), direction=EQ, sharding={replicated}
   p.1.lhs.1249 = s32[]{:T(256)} parameter(2), sharding={replicated}
   p.1.rhs.1250 = s32[]{:T(256)} parameter(3), sharding={replicated}
-  compare.260 = pred[]{:T(256)E(32)} compare(p.1.lhs.1249, p.1.rhs.1250), direction=LT, sharding={replicated}
-  ROOT select.86 = pred[]{:T(256)E(32)} select(compare.259, compare.260, compare.2), sharding={replicated}
+  compare.260 = pred[]{:T(256)} compare(p.1.lhs.1249, p.1.rhs.1250), direction=LT, sharding={replicated}
+  ROOT select.86 = pred[]{:T(256)} select(compare.259, compare.260, compare.2), sharding={replicated}
 }
 
 ENTRY entry {

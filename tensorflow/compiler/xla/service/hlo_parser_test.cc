@@ -3749,24 +3749,6 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 
-  // Tile with element size in bits.
-  shape_string = "pred[123,456]{1,0:T(2,128)E(1)}";
-  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {},
-                                            {Tile({2, 128})}, 1);
-  EXPECT_EQ(expected, actual)
-      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
-      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
-
-  // Element size in bits without tile.
-  shape_string = "pred[123,456]{1,0:E(1)}";
-  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 1);
-  EXPECT_EQ(expected, actual)
-      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
-      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
-
   // Wrong minor_to_major.
   shape_string = "f32[123,456,789]{1:T(2, * , 128)}";
   auto result = ParseShape(shape_string);
@@ -3776,19 +3758,19 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
 
 TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
-  std::string shape_string = "pred[123,456]{1,0:T(2,128)E(1)S(3)}";
+  std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {},
-                                                  {Tile({2, 128})}, 1, 3);
+                                                  {Tile({2, 128})}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
 
   // Element size and memory space.
-  shape_string = "pred[123,456]{1,0:E(1)S(3)}";
+  shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 1, 3);
+      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3797,7 +3779,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 0, 3);
+      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);

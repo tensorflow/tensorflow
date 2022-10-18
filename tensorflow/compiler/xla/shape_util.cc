@@ -90,8 +90,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space, std::optional<Shape> physical_shape) {
+    absl::Span<const Tile> tiles, int64_t memory_space,
+    std::optional<Shape> physical_shape) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
@@ -103,14 +103,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
-  if (element_size_in_bits ==
-      ShapeUtil::ByteSizeOfPrimitiveType(element_type) * 8) {
-    // Only set element_size_in_bits if it's different from the default value.
-    element_size_in_bits = 0;
-  }
-  *shape.mutable_layout() = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, tiles, element_size_in_bits,
-      memory_space, std::move(physical_shape));
+  *shape.mutable_layout() =
+      LayoutUtil::MakeLayout(minor_to_major, dim_level_types, tiles,
+                             memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -303,11 +298,11 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space, std::optional<Shape> physical_shape) {
+    absl::Span<const Tile> tiles, int64_t memory_space,
+    std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, dim_level_types, tiles,
-      element_size_in_bits, memory_space, std::move(physical_shape));
+      memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }
@@ -362,8 +357,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   if (shape.has_layout()) {
     new_shape.mutable_layout()->mutable_tiles()->assign(
         shape.layout().tiles().begin(), shape.layout().tiles().end());
-    new_shape.mutable_layout()->set_element_size_in_bits(
-        shape.layout().element_size_in_bits());
   }
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     new_shape.set_dynamic_dimension(i, shape.is_dynamic_dimension(i));
@@ -1896,11 +1889,6 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     int64_t dim_size = shape_dimensions[minor_to_major[dim]];
     num_of_elements *= dim_size;
   }
-  if (shape.layout().element_size_in_bits() != 0) {
-    const int64_t kBitsPerByte = 8;
-    return CeilOfRatio(num_of_elements * shape.layout().element_size_in_bits(),
-                       static_cast<int64_t>(kBitsPerByte));
-  }
   return num_of_elements * ByteSizeOfPrimitiveType(shape.element_type());
 }
 
@@ -1911,11 +1899,6 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     indices.push_back(dim - 1);
   }
   int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
-  if (shape.layout().element_size_in_bits() != 0) {
-    const int64_t kBitsPerByte = 8;
-    return CeilOfRatio(size * shape.layout().element_size_in_bits(),
-                       static_cast<int64_t>(kBitsPerByte));
-  }
   return (size * ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()));
 }
 
