@@ -484,6 +484,7 @@ class ArrayImpl:
   shape: Tuple[int, ...]
   _arrays: Any
   _npy_value: Any
+  traceback: Traceback
 
 class Token:
   def block_until_ready(self): ...

@@ -373,6 +373,7 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
 
   return OkStatus();
