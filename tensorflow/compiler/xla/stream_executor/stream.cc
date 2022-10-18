@@ -123,6 +123,10 @@ std::string ToVlogString(const Eigen::half &h) {
   return absl::StrCat(static_cast<float>(h));
 }
 
+std::string ToVlogString(const Eigen::bfloat16 &bf) {
+  return absl::StrCat(static_cast<float>(bf));
+}
+
 std::string ToVlogString(int i) { return absl::StrCat(i); }
 
 std::string ToVlogString(uint32_t i) { return absl::StrCat(i); }
@@ -186,6 +190,8 @@ std::string ToVlogString(dnn::DataType data_type) {
       return "dnn::DataType::kInt8";
     case dnn::DataType::kInt32:
       return "dnn::DataType::kInt32";
+    case dnn::DataType::kBF16:
+      return "dnn::DataType::kBF16";
     default:
       return "unknown DataType";
   }
@@ -1726,6 +1732,33 @@ Stream &Stream::ThenBlasGemmBatchedWithScratch(
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
       int, float,
       const port::ArraySlice<DeviceMemory<Eigen::half> *> &,  // non-absl ok
+      int, int, ScratchAllocator *>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,
+              k, alpha, a, lda, b, ldb, beta, c, ldc, batch_count,
+              scratch_allocator);
+}
+
+Stream &Stream::ThenBlasGemmBatchedWithScratch(
+    blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
+    uint64_t k, float alpha,
+    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &a,  // non-absl ok
+    int lda,
+    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &b,  // non-absl ok
+    int ldb, float beta,
+    const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &c,  // non-absl ok
+    int ldc, int batch_count, ScratchAllocator *scratch_allocator) {
+  VLOG_CALL(PARAM(transa), PARAM(transb), PARAM(m), PARAM(n), PARAM(k),
+            PARAM(alpha), PARAM(a), PARAM(lda), PARAM(b), PARAM(ldb),
+            PARAM(beta), PARAM(c), PARAM(ldc), PARAM(batch_count));
+
+  ThenBlasImpl<
+      blas::Transpose, blas::Transpose, uint64_t, uint64_t, uint64, float,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
+      int,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
+      int, float,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &,  // non-absl ok
       int, int, ScratchAllocator *>
       impl;
   return impl(this, &blas::BlasSupport::DoBlasGemmBatched, transa, transb, m, n,

@@ -437,6 +437,15 @@ class BlasSupport {
   virtual bool DoBlasGemmBatched(
       Stream *stream, blas::Transpose transa, blas::Transpose transb,
       uint64_t m, uint64_t n, uint64 k, float alpha,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &a,  // non-absl ok
+      int lda,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &b,  // non-absl ok
+      int ldb, float beta,
+      const port::ArraySlice<DeviceMemory<Eigen::bfloat16> *> &c,  // non-absl ok
+      int ldc, int batch_count, ScratchAllocator *scratch_allocator) = 0;
+  virtual bool DoBlasGemmBatched(
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,
+      uint64_t m, uint64_t n, uint64 k, float alpha,
       const port::ArraySlice<DeviceMemory<float> *> &a, int lda,  // non-absl ok
       const port::ArraySlice<DeviceMemory<float> *> &b, int ldb,  // non-absl ok
       float beta,
@@ -700,6 +709,13 @@ class BlasSupport {
       const DeviceMemorySlice<Eigen::half> &a, int lda,                        \
       const DeviceMemorySlice<Eigen::half> &b, int ldb, float beta,            \
       const DeviceMemorySlice<Eigen::half> &c, int ldc, int batch_count,       \
+      ScratchAllocator *scratch_allocator) override;                           \
+  bool DoBlasGemmBatched(                                                      \
+      Stream *stream, blas::Transpose transa, blas::Transpose transb,          \
+      uint64_t m, uint64 n, uint64 k, float alpha,                             \
+      const DeviceMemorySlice<Eigen::bfloat16> &a, int lda,                    \
+      const DeviceMemorySlice<Eigen::bfloat16> &b, int ldb, float beta,        \
+      const DeviceMemorySlice<Eigen::bfloat16> &c, int ldc, int batch_count,   \
       ScratchAllocator *scratch_allocator) override;                           \
   bool DoBlasGemmBatched(                                                      \
       Stream *stream, blas::Transpose transa, blas::Transpose transb,          \

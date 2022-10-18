@@ -393,11 +393,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     bool is_full_broadcast =
         std::min(bcast.x_batch_size(), bcast.y_batch_size()) == 1;
 
-    // Use float as coefficient type for half precision inputs, otherwise use
-    // the input type.
-    typedef std::conditional_t<std::is_same_v<Scalar, Eigen::half>, float,
-                               Scalar>
-        Coefficient;
+    // Use float as coefficient type for half and bfloat16 precision inputs,
+    // otherwise use the input type.
+    constexpr bool is_16bit_input = std::is_same_v<Scalar, Eigen::half> ||
+                                    std::is_same_v<Scalar, Eigen::bfloat16>;
+    using Coefficient = std::conditional_t<is_16bit_input, float, Scalar>;
 
 #if GOOGLE_CUDA
     static const bool use_autotune = MatmulAutotuneEnable();
@@ -588,7 +588,8 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
         // overhead of the scratch allocator and the batch interface.
         // TODO(benbarsdell): Use fp16 Gemv if it becomes supported by CUBLAS
-        if constexpr (!std::is_same_v<Scalar, Eigen::half>) {
+        if constexpr (!std::is_same_v<Scalar, Eigen::half> &&
+                      !std::is_same_v<Scalar, Eigen::bfloat16>) {
           if (n == 1 &&
               blas_transpose_b != se::blas::Transpose::kConjugateTranspose &&
               blas_transpose_a != se::blas::Transpose::kConjugateTranspose) {
@@ -742,32 +743,39 @@ class BaseBatchMatMulOp : public OpKernel {
                 out_reshaped.CopyFrom(*out, TensorShape({batch_size, d0, d3})),
                 errors::Internal("Failed to reshape output from ",
                                  out->shape().DebugString()));
-    if (std::is_same<Ta, bfloat16>::value &&
-        std::is_same<Tb, bfloat16>::value) {
-      bool is_cpu = std::is_same<Device, CPUDevice>::value;
-      OP_REQUIRES(ctx, is_cpu,
-                  errors::Internal("bfloat16 matmul is not supported by GPU"));
-      Tensor in0_reshaped_float, in1_reshaped_float, out_reshaped_float;
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in0_reshaped.shape(),
-                                             &in0_reshaped_float));
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in1_reshaped.shape(),
-                                             &in1_reshaped_float));
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_reshaped.shape(),
-                                             &out_reshaped_float));
+    if (std::is_same_v<Ta, bfloat16> && std::is_same_v<Tb, bfloat16>) {
+      Tensor in0_tensor, in1_tensor, out_tensor;
+      constexpr bool is_cpu = std::is_same_v<Device, CPUDevice>;
+      if (is_cpu) {
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in0_reshaped.shape(),
+                                               &in0_tensor));
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, in1_reshaped.shape(),
+                                               &in1_tensor));
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, out_reshaped.shape(),
+                                               &out_tensor));
+        // TODO: Avoid extra copy to make bfloat16 matmul efficient on CPU.
+        BFloat16ToFloat(in0_reshaped.flat<bfloat16>().data(),
+                        in0_tensor.flat<float>().data(),
+                        in0_reshaped.NumElements());
+        BFloat16ToFloat(in1_reshaped.flat<bfloat16>().data(),
+                        in1_tensor.flat<float>().data(),
+                        in1_reshaped.NumElements());
+      } else {
+        in0_tensor = in0_reshaped;
+        in1_tensor = in1_reshaped;
+        out_tensor = out_reshaped;
+      }
 
-      // TODO: Avoid extra copy to make bfloat16 matmul efficient on CPU.
-      BFloat16ToFloat(in0_reshaped.flat<bfloat16>().data(),
-                      in0_reshaped_float.flat<float>().data(),
-                      in0_reshaped.NumElements());
-      BFloat16ToFloat(in1_reshaped.flat<bfloat16>().data(),
-                      in1_reshaped_float.flat<float>().data(),
-                      in1_reshaped.NumElements());
+      using U = typename std::conditional_t<is_cpu, float, Tout>;
+      LaunchBatchMatMul<Device, U>::Launch(
+          ctx, in0_tensor, in1_tensor, adj_x_, adj_y_, trans_x_, trans_y_,
+          bcast, &out_tensor);
 
-      LaunchBatchMatMul<Device, float>::Launch(
-          ctx, in0_reshaped_float, in1_reshaped_float, adj_x_, adj_y_, trans_x_,
-          trans_y_, bcast, &out_reshaped_float);
-      FloatToBFloat16(out_reshaped_float.flat<float>().data(),
-                      out_reshaped.flat<bfloat16>().data(), out->NumElements());
+      if (is_cpu) {
+        FloatToBFloat16(out_tensor.flat<float>().data(),
+                        out_reshaped.flat<bfloat16>().data(),
+                        out->NumElements());
+      }
     } else {
       // Cast tensor to desired type to reuse Eigen.
       // TODO(b/178749687): remove this cast if Eigen supports this natively.

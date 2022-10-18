@@ -321,6 +321,13 @@ struct CUDADataType<Eigen::half> {
   static constexpr cudaDataType_t type = SE_CUDA_DATA_HALF;
 };
 
+#if CUDA_VERSION >= 11000
+template <>
+struct CUDADataType<Eigen::bfloat16> {
+  static constexpr cudaDataType_t type = CUDA_R_16BF;
+};
+#endif  // CUDA_VERSION >= 11000
+
 template <>
 struct CUDADataType<std::complex<Eigen::half>> {
   static constexpr cudaDataType_t type = CUDA_C_16F;
@@ -1182,6 +1189,11 @@ struct HalfAsFloat<Eigen::half> {
   typedef float type;
 };
 
+template <>
+struct HalfAsFloat<Eigen::bfloat16> {
+  typedef float type;
+};
+
 namespace {
 // pass-through for non-complex types that don't need conversion to
 // cublas-specific type.
@@ -1264,6 +1276,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (stream->GetCudaComputeCapability().IsAtLeast(5)) {
     cublasMath_t math_type;
     cublasGemmAlgo_t algo;
+    bool is_16bit = false;
     if (data_type == CUDA_R_16F) {
 #if CUDA_VERSION < 11000
       math_type = CUBLAS_TENSOR_OP_MATH;
@@ -1271,6 +1284,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
       math_type = CUBLAS_DEFAULT_MATH;
 #endif
       algo = CUBLAS_GEMM_DFALT_TENSOR_OP;
+      is_16bit = true;
 #if CUBLAS_VER_MAJOR >= 11
     } else if (data_type == CUDA_R_32F) {
       // DoBlassInternalImpl will switch math_type back to CUBLAS_DEFAULT_MATH
@@ -1280,12 +1294,17 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
                  ? CUBLAS_GEMM_DFALT_TENSOR_OP
                  : CUBLAS_GEMM_DFALT;
 #endif
+#if CUDA_VERSION >= 11000
+    } else if (data_type == CUDA_R_16BF) {
+      math_type = CUBLAS_DEFAULT_MATH;
+      algo = CUBLAS_GEMM_DFALT_TENSOR_OP;
+      is_16bit = true;
+#endif  // CUDA_VERSION >= 11000
     } else {
       math_type = CUBLAS_DEFAULT_MATH;
       algo = CUBLAS_GEMM_DFALT;
     }
-    cudaDataType_t compute_type =
-        (data_type == CUDA_R_16F ? CUDA_R_32F : data_type);
+    cudaDataType_t compute_type = is_16bit ? CUDA_R_32F : data_type;
     const void **a_void_ptrs = reinterpret_cast<const void **>(
         const_cast<const CUDA_T **>(GpuMemory(a)));
     const void **b_void_ptrs = reinterpret_cast<const void **>(
@@ -1338,6 +1357,24 @@ bool CUDABlas::DoBlasGemmBatched(
     ScratchAllocator *scratch_allocator) {
   // Note: The func passed here (cublasSgemmBatched) is not actually called,
   // due to special handling of fp16 inside DoBlasGemmBatchedInternal.
+  port::Status status = DoBlasGemmBatchedInternal(
+      cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
+      b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return status.ok();
+}
+
+bool CUDABlas::DoBlasGemmBatched(
+    Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64_t m,
+    uint64_t n, uint64 k, float alpha,
+    const DeviceMemorySlice<Eigen::bfloat16> &a_array, int lda,
+    const DeviceMemorySlice<Eigen::bfloat16> &b_array, int ldb, float beta,
+    const DeviceMemorySlice<Eigen::bfloat16> &c_array, int ldc, int batch_count,
+    ScratchAllocator *scratch_allocator) {
+  // Note: The func passed here (cublasSgemmBatched) is not actually called,
+  // due to special handling of bf16 inside DoBlasGemmBatchedInternal.
   port::Status status = DoBlasGemmBatchedInternal(
       cublasSgemmBatched, stream, transa, transb, m, n, k, alpha, a_array, lda,
       b_array, ldb, beta, c_array, ldc, batch_count, scratch_allocator);
