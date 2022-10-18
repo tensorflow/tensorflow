@@ -55,6 +55,8 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   void method##Handler(CoordCall<method##Request, method##Response>* call) {   \
     tf_shared_lock l(shutdown_mu_);                                            \
     if (shutdown_) {                                                           \
+      call->SendResponse(ToGrpcStatus(                                         \
+          errors::Internal("Coordination service has been shut down.")));      \
       return;                                                                  \
     }                                                                          \
     compute_pool_.Schedule([this, call]() {                                    \

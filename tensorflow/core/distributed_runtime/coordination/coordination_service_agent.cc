@@ -299,6 +299,16 @@ Status CoordinationServiceAgentImpl::Connect() {
                                            n.Notify();
                                          });
           n.WaitForNotification();
+          {
+            mutex_lock l(heartbeat_thread_shutdown_mu_);
+            // Ignore heartbeat errors and exit thread if shutting down. For
+            // example, the agent may send a heartbeat right after Shutdown(),
+            // but before StopHeartbeat(). This results in an unexpected
+            // heartbeat error.
+            if (shutting_down_) {
+              return;
+            }
+          }
           if (!status.ok()) {
             SetError(status);
           } else if (response.leader_incarnation() != leader_incarnation_) {
