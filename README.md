@@ -76,14 +76,14 @@ commands.
 The popular package manager Anaconda / Conda also comes equipped with TensorFlow as one of its packages
 
 Full information on TensorFlow with Anaconda / Conda can be found 
-[here]("https://docs.anaconda.com/anaconda/user-guide/tasks/tensorflow/#:~:text=TensorFlow%20with%20conda%20is%20supported,and%20macOS%2010.10%20or%20later.").
+[here](https://docs.anaconda.com/anaconda/user-guide/tasks/tensorflow/#:~:text=TensorFlow%20with%20conda%20is%20supported,and%20macOS%2010.10%20or%20later.).
 
-*Download and install 
-[Anaconda]("https://www.anaconda.com/products/distribution") or the smaller 
-[Miniconda]("https://docs.conda.io/en/latest/miniconda.html").*
+Download and install 
+[Anaconda](https://www.anaconda.com/products/distribution) or the smaller 
+[Miniconda](https://docs.conda.io/en/latest/miniconda.html).
 
-*On Windows open the Start menu and open an Anaconda Command Prompt.
-On macOS or Linux open a terminal window. Use the default bash shell on macOS or Linux.*
+On Windows open the Start menu and open an Anaconda Command Prompt.
+On macOS or Linux open a terminal window. Use the default bash shell on macOS or Linux.
 
 Choose a name for your TensorFlow environment, such as “tf”.
 
