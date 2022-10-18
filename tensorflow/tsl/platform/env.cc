@@ -317,7 +317,6 @@ Status Env::Stat(const string& fname, FileStatistics* stat) {
 
 Status Env::IsDirectory(const string& fname) {
   FileSystem* fs;
-  LOG(INFO) << "Env::IsDirectory => " + fname;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->IsDirectory(fname);
 }

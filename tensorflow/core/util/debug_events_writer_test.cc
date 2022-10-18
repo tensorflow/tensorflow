@@ -55,8 +55,6 @@ class DebugEventsWriterTest : public ::testing::Test {
     }
 
     delete reader;
-    // debug_events_file.reset();
-    // debug_events_file = nullptr;
   }
 
   static bool ReadDebugEventProto(io::RecordReader* reader, uint64* offset,

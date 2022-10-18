@@ -316,27 +316,42 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 }  // namespace
 
-static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool isExisting = true) {
-  #define MAX_PATH_LONG 400
-  WCHAR path[MAX_PATH_LONG];
+#define MAX_LONGPATH_LENGTH 400
+
+static std::wstring GetUncPathName(const std::wstring& path) {
+  static WCHAR wcPath[MAX_LONGPATH_LENGTH];
 
   // boundary case check
-  if (linkPath.size() >= MAX_PATH_LONG) {
-    string context = "ERROR: GetSymbolicLinkTarget cannot handle path size >= " + std::to_string(MAX_PATH_LONG) + ", " + WideCharToUtf8(linkPath);
-    LOG(WARNING) << context;
-    return linkPath;
+  if (path.size() >= MAX_LONGPATH_LENGTH) {
+    string context = "ERROR: GetUncPathName cannot handle path size >= " + std::to_string(MAX_LONGPATH_LENGTH) + ", " + WideCharToUtf8(path);
+    LOG(ERROR) << context;
+    return std::wstring(path);
   }
 
-  auto rcode = GetFullPathNameW(linkPath.c_str(), MAX_PATH_LONG, path, NULL);
-  LOG(INFO) << "GetSymbolicLinkTarget GetFullPathNameW for " << WideCharToUtf8(linkPath) << " => rcode=" << rcode << " , " << WideCharToUtf8(std::wstring(path)) << "\n";
-  std::wstring path2(path);
-  std::wstring uncLinkPath;
-  if (path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\') {
-    uncLinkPath = path2;
+  auto rcode = GetFullPathNameW(path.c_str(), MAX_LONGPATH_LENGTH, wcPath, NULL);
+  LOG(INFO) << "GetUncPathName GetFullPathNameW for " << WideCharToUtf8(path) << " => rcode=" << rcode << " , " << WideCharToUtf8(std::wstring(wcPath));
+  std::wstring ws_final_path(wcPath);
+  std::wstring uncPath;
+  if (wcPath[0] == '\\' && wcPath[1] == '\\' && wcPath[2] == '?' && wcPath[3] == '\\') {
+    uncPath = ws_final_path;
   } else {
-    uncLinkPath = L"\\\\?\\" + path2;
+    uncPath = L"\\\\?\\" + ws_final_path;
   }
-  if(isExisting) {
+
+  return uncPath;
+}
+
+static std::wstring GetUncPathName(const std::string& path) {
+  return GetUncPathName(Utf8ToWideChar(path));
+}
+
+static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool checkExisting = true) {
+
+  WCHAR path[MAX_LONGPATH_LENGTH];
+
+  std::wstring uncLinkPath = GetUncPathName(linkPath);
+
+  if(checkExisting) {
     HANDLE hFile = ::CreateFileW( uncLinkPath.c_str(),
     // HANDLE hFile = ::CreateFileW( linkPath.c_str(),
       GENERIC_READ,
@@ -347,13 +362,10 @@ static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath, bool isE
       0);
 
     if (INVALID_HANDLE_VALUE != hFile) {
-      auto rcode = GetFinalPathNameByHandleW(hFile, path, MAX_PATH_LONG, FILE_NAME_NORMALIZED);
+      auto rcode = GetFinalPathNameByHandleW(hFile, path, MAX_LONGPATH_LENGTH, FILE_NAME_NORMALIZED);
       ::CloseHandle(hFile);
       if (rcode) {
-          // if (path[0] == '\\' && path[1] == '\\' && path[2] == '?' && path[3] == '\\')
-          //     return std::wstring(path + 4, path + rcode);
-          // else
-              return std::wstring(path, path + rcode);
+        return std::wstring(path, path + rcode);
       }
     } else {
       DWORD dwErr = GetLastError();
@@ -397,9 +409,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
 Status WindowsFileSystem::NewWritableFile(
     const string& fname, TransactionToken* token,
     std::unique_ptr<WritableFile>* result) {
-  string translated_fname = TranslateName(fname);
-  std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
-  std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, false);
+  std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   LOG(INFO) << "WindowsFileSystem::NewWritableFile => " << WideCharToUtf8(ws_final_fname).c_str() << "\n";
   result->reset();
 
@@ -413,7 +423,7 @@ Status WindowsFileSystem::NewWritableFile(
     return IOErrorFromWindowsError(context);
   }
 
-  result->reset(new WindowsWritableFile(translated_fname, hfile));
+  result->reset(new WindowsWritableFile(WideCharToUtf8(ws_final_fname), hfile));
   return OkStatus();
 }
 
@@ -539,9 +549,7 @@ Status WindowsFileSystem::FileExists(const string& fname,
 Status WindowsFileSystem::GetChildren(const string& dir,
                                       TransactionToken* token,
                                       std::vector<string>* result) {
-  string translated_dir = TranslateName(dir);
-  std::wstring ws_translated_dir = Utf8ToWideChar(translated_dir);
-  std::wstring ws_fname_final = GetSymbolicLinkTarget(ws_translated_dir, true);
+  std::wstring ws_fname_final = GetUncPathName(TranslateName(dir));
   result->clear();
 
   std::wstring pattern = ws_fname_final;
@@ -554,7 +562,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   WIN32_FIND_DATAW find_data;
   HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
   if (find_handle == INVALID_HANDLE_VALUE) {
-    string context = "FindFirstFile failed for: " + translated_dir;
+    string context = "FindFirstFile failed for: " + dir;
     return IOErrorFromWindowsError(context);
   }
 
@@ -567,7 +575,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   } while (::FindNextFileW(find_handle, &find_data));
 
   if (!::FindClose(find_handle)) {
-    string context = "FindClose failed for: " + translated_dir;
+    string context = "FindClose failed for: " + dir;
     return IOErrorFromWindowsError(context);
   }
 
@@ -577,8 +585,7 @@ Status WindowsFileSystem::GetChildren(const string& dir,
 Status WindowsFileSystem::DeleteFile(const string& fname,
                                      TransactionToken* token) {
   Status result;
-  std::wstring ws_fname = Utf8ToWideChar(fname);
-  std::wstring ws_fname_final = GetSymbolicLinkTarget(ws_fname, true);
+  std::wstring ws_fname_final = GetUncPathName(TranslateName(fname));
   LOG(INFO) << "WindowsFileSystem::DeleteFile => " << WideCharToUtf8(ws_fname_final).c_str() << "\n";
   if (_wunlink(ws_fname_final.c_str()) != 0) {
   //if (_wremove(file_name.c_str()) != 0) {
@@ -651,7 +658,7 @@ static bool _DeleteDirectory(LPCWSTR lpszDir, bool noRecycleBin = true)
 Status WindowsFileSystem::DeleteDir(const string& name,
                                     TransactionToken* token) {
   Status result;
-  std::wstring ws_name = Utf8ToWideChar(name);
+  // std::wstring ws_name = Utf8ToWideChar(name);
   // if (_wrmdir(ws_name.c_str()) != 0) {
   //   result = IOError("Failed to remove a directory: " + name, errno);
   // }
@@ -660,7 +667,7 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   // HANDLE hFind = FindFirstFileW(ws_name.c_str(), &ffd);
   LOG(INFO) << "WindowsFileSystem::DeleteDir => " << name.c_str() << "\n";
 
-  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, false);
+  std::wstring ws1 = GetUncPathName(TranslateName(name));
   std::string s2( ws1.begin(), ws1.end() );
   string cmd1 = std::string("dir ") + s2;
   LOG(INFO) << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n";
@@ -684,7 +691,7 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   // if (RemoveDirectoryW (ws1.c_str()) == 0) {
   // if (_DeleteDirectory (ws1.c_str()) == 0) {
     DWORD lastError = ::GetLastError();
-    LOG(ERROR) << "RemoveDirectoryW FAILED !!! " << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "lastError=" << lastError << "\n";
+    LOG(ERROR) << "RemoveDirectoryW FAILED !!! " << cmd1 << " -> " << windows_exec(cmd1.c_str()) << "\n" << "lastError=" << lastError << "\n"; 
     result = IOError("Failed to remove a directory: " + name, lastError);
   }
   return result;
@@ -857,11 +864,9 @@ Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
                                         int64_t* undeleted_files,
                                         int64_t* undeleted_dirs) {
   Status result;
-  std::wstring ws_name = Utf8ToWideChar(dirname);
-
   LOG(INFO) << "WindowsFileSystem::DeleteRecursively => " << dirname.c_str() << "\n";
 
-  std::wstring ws1 = GetSymbolicLinkTarget(ws_name, false);
+  std::wstring ws1 = GetUncPathName(TranslateName(dirname));
   // DEBUG
   // std::string s2( ws1.begin(), ws1.end() );
   // string cmd1 = std::string("dir ") + s2;
@@ -900,7 +905,7 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
   Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
-  LOG(INFO) << "WindowsFileSystem::GetFileSize 0 => " << ws_final_fname.c_str() << "\n";
+  LOG(INFO) << "WindowsFileSystem::GetFileSize 0 => " << WideCharToUtf8(ws_final_fname).c_str();
   // std::cout << "WindowsFileSystem::GetFileSize 1 => " << fname << "\n";
   if (TRUE == ::GetFileAttributesExW(ws_final_fname.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
@@ -908,9 +913,9 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
     file_size.HighPart = attrs.nFileSizeHigh;
     file_size.LowPart = attrs.nFileSizeLow;
     *size = file_size.QuadPart;
-    LOG(INFO) << "WindowsFileSystem::GetFileSize => GetFileAttributesExW H/L/Q => " << file_size.HighPart << 
-      " " << file_size.LowPart << " " << file_size.QuadPart << "\n";
+    LOG(INFO) << "WindowsFileSystem::GetFileSize 1 => " << (*size) << "\n";
   } else {
+    LOG(INFO) << "WindowsFileSystem::GetFileSize 2 FAILED !!!\n";
     string context = "Can not get size for: " + fname;
     result = IOErrorFromWindowsError(context);
   }
@@ -919,12 +924,10 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
 
 Status WindowsFileSystem::IsDirectory(const string& fname,
                                       TransactionToken* token) {
-  LOG(INFO) << "WindowsFileSystem::IsDirectory A => " + fname;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname, true);
   std::string str_final_fname( ws_final_fname.begin(), ws_final_fname.end() );
   TF_RETURN_IF_ERROR(FileExists(str_final_fname));
-  LOG(INFO) << "WindowsFileSystem::IsDirectory B => " + fname;
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return OkStatus();
   }
@@ -973,6 +976,7 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   // convert the pattern to use forward slashes exclusively. Note that this
   // is not ideal, since the API expects backslash as an escape character,
   // but no code appears to rely on this behavior.
+  LOG(INFO) << "GetMatchingPaths pattern=" << pattern;
   string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
   TF_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),

@@ -364,7 +364,6 @@ class FileSystem {
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual tsl::Status IsDirectory(const std::string& fname) {
-    LOG(INFO) << "IsDirectory virtual";
     return IsDirectory(fname, nullptr);
   }
 
