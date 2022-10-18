@@ -154,6 +154,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 config_setting(
     name = "ios",
     flag_values = if_google(
@@ -167,6 +168,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
 config_setting(
@@ -193,6 +195,18 @@ config_setting(
         ),
         cpu = "armeabi-v7a",
     ),
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    values = {"cpu": "aarch64"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_armhf",
+    values = {"cpu": "armhf"},
     visibility = ["//visibility:public"],
 )
 
@@ -242,5 +256,70 @@ config_setting(
         {"cpu": "fuchsia"},
         {},
     ),
+    visibility = ["//visibility:public"],
+)
+
+# TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
+config_setting(
+    name = "android_x86",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "android"},
+        {},
+    ),
+    values = dict(
+        if_oss(
+            {"crosstool_top": "//external:android/crosstool"},
+        ),
+        cpu = "x86",
+    ),
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm",
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "armeabi",
+    values = {"cpu": "armeabi"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "arm64-v8a",
+    values = {"cpu": "arm64-v8a"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "arm_any",
+    match_any = [
+        ":arm",
+        ":armeabi",
+        ":armeabi-v7a",
+        ":arm64-v8a",
+        ":linux_aarch64",
+        ":linux_armhf",
+    ],
+)
+
+# TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
+config_setting(
+    name = "fuchsia_x86_64",
+    flag_values = if_google(
+        {"//tools/cpp:cc_target_os": "fuchsia"},
+        {},
+    ),
+    values = {
+        "cpu": "x86_64",
+    },
     visibility = ["//visibility:public"],
 )

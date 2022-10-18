@@ -246,6 +246,101 @@ XlaOp XlaBuilderFriend::BuildAllGatherDone(XlaBuilder* builder,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildAllReduceStart(
+    XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id,
+    const std::optional<Shape>& layout,
+    const std::optional<bool> use_global_device_ids) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape,
+                        builder->GetShapePtr(operand));
+    std::vector<const Shape*> operand_shapes;
+    std::vector<XlaOp> operands;
+    if (operand_shape->IsTuple()) {
+      if (operand_shape->tuple_shapes_size() == 0) {
+        return Unimplemented("0 element tuple AllReduce is not supported");
+      }
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+        if (operand_shape->tuple_shapes(i).element_type() !=
+            operand_shape->tuple_shapes(0).element_type()) {
+          return Unimplemented(
+              "All the shapes of a tuple input of AllReduce must have the same "
+              "element type");
+        }
+        operand_shapes.push_back(&operand_shape->tuple_shapes(i));
+        operands.push_back(GetTupleElement(operand, i));
+      }
+    } else {
+      operand_shapes.push_back(operand_shape);
+      operands.push_back(operand);
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                        ShapeInference::InferAllReduceShape(operand_shapes));
+    if (layout) {
+      if (!LayoutUtil::HasLayout(*layout)) {
+        return InvalidArgument("shape_with_layout must have the layout set: %s",
+                               layout->ToString());
+      }
+      if (!ShapeUtil::Compatible(*layout, *operand_shape)) {
+        return InvalidArgument(
+            "Provided shape_with_layout must be compatible with the "
+            "operand shape: %s vs %s",
+            layout->ToString(), operand_shape->ToString());
+      }
+      instr.set_constrain_layout(true);
+      if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
+        // For a single-element tuple, take the tuple element shape.
+        TF_RET_CHECK(layout->tuple_shapes_size() == 1);
+        *instr.mutable_shape() = layout->tuple_shapes(0).ToProto();
+      } else {
+        *instr.mutable_shape() = layout->ToProto();
+      }
+    } else {
+      *instr.mutable_shape() = inferred_shape.ToProto();
+    }
+
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(*use_global_device_ids);
+    }
+
+    builder->AddCalledComputation(computation, &instr);
+
+    TF_ASSIGN_OR_RETURN(
+        auto all_reduce,
+        builder->AddInstruction(std::move(instr), HloOpcode::kAllReduceStart,
+                                operands));
+    if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
+      // For a single-element tuple, wrap the result into a tuple.
+      TF_RET_CHECK(operand_shapes.size() == 1);
+      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], inferred_shape));
+      return builder->Tuple({all_reduce});
+    }
+    return all_reduce;
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
+                                           const XlaOp operand,
+                                           const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAllReduceDone,
+                                   {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
                                      const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {

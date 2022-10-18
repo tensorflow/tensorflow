@@ -1716,7 +1716,7 @@ static LogicalResult Verify(OpT op) {
     return failure();
   }
 
-  int64_t input_channels = -1;
+  int64_t input_channels = ShapedType::kDynamicSize;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
     absl::string_view data_format(op.data_format().data(),
                                   op.data_format().size());
@@ -1727,7 +1727,7 @@ static LogicalResult Verify(OpT op) {
     input_channels = ty.getDimSize(idx);
   }
 
-  int64_t filter_channels = -1;
+  int64_t filter_channels = ShapedType::kDynamicSize;
   if (auto ty = op.filter().getType().template dyn_cast<RankedTensorType>()) {
     int idx = tensorflow::GetFilterTensorInputChannelsDimIndex(
         num_dims, tensorflow::FORMAT_HWIO);
@@ -1738,7 +1738,8 @@ static LogicalResult Verify(OpT op) {
       ShapedType::isDynamic(input_channels))
     return success();
 
-  if (input_channels != -1 && filter_channels != -1 &&
+  if (!ShapedType::isDynamic(input_channels) &&
+      !ShapedType::isDynamic(filter_channels) &&
       input_channels % filter_channels != 0)
     return op.emitOpError()
            << "requires the number of input channels to be divisible by the "

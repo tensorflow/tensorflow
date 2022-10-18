@@ -850,7 +850,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   SmallVector<int64_t> a2_shape(1 + block_rank * 2 + remaining_shape_rank);
 
   // First dimension is batch.
-  a2_shape[0] = input_type.getShape()[0];
+  a2_shape[0] = input_type.getDimSize(0);
   for (int i = 0; i < block_rank; i++) {
     int32_t block_shape_val =
         block_shape_elems.getValues<IntegerAttr>()[i].getInt();
@@ -872,7 +872,8 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a2_shape,
                                            result_type.getElementType()),
-      a1_pad_input_op.getResult(), rewriter.getI64ArrayAttr(a2_shape));
+      a1_pad_input_op.getResult(),
+      rewriter.getI64ArrayAttr(tensorflow::ConvertTFShapeToMlir(a2_shape)));
 
   // 3. Transpose dimensions to:
   //  block-shape +
@@ -2053,7 +2054,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
   assert(axis >= 0 && axis < input_type.getRank());
 
   Value slice_value = input_value;
-  bool is_dyn_split = input_type.getDimSize(axis) == -1;
+  bool is_dyn_split = input_type.isDynamicDim(axis);
   if (is_dyn_split) {
     SmallVector<int64_t> new_shape;
     for (int i = 0, s = input_type.getRank(); i < s; i++) {
@@ -2079,7 +2080,9 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
   SmallVector<int64_t> begin_vals, size_vals;
   for (int j = 0, s = slice_type.getRank(); j < s; j++) {
     begin_vals.push_back(0);
-    size_vals.push_back(slice_type.getDimSize(j));
+    int64_t dim = slice_type.getDimSize(j);
+    size_vals.push_back(ShapedType::isDynamic(dim) ? tensorflow::kTFDynamicSize
+                                                   : dim);
   }
   size_vals[axis] = size_vals[axis] / num_split;
 

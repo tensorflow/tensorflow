@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -655,6 +656,22 @@ TfLiteStatus Subgraph::EnsureTensorDataIsReadable(int tensor_index) {
     t->data_is_stale = false;
   }
   return status;
+}
+
+TfLiteStatus Subgraph::EnableCancellation(std::atomic_flag* flag) {
+  continue_invocation_ = flag;
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::Cancel() {
+  if (continue_invocation_) {
+    // Sets cancellation flag to false so cancellation check between nodes will
+    // cancel the invocation.
+    continue_invocation_->clear();
+    return kTfLiteOk;
+  }
+  // Cancellation is not enabled in the interpreter.
+  return kTfLiteError;
 }
 
 bool Subgraph::IsCancelled() {
@@ -1352,11 +1369,18 @@ TfLiteStatus Subgraph::Invoke() {
       return kTfLiteError;
     }
 
+    if (continue_invocation_ && !continue_invocation_->test_and_set()) {
+      // `Cancel` is called and cancellation flag is flipped.
+      ReportError("Client requested cancel during Invoke()");
+      return kTfLiteCancelled;
+    }
+
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
-    if (OpInvoke(registration, &node) != kTfLiteOk) {
-      return ReportOpError(&context_, node, registration, node_index,
-                           "failed to invoke");
+    if (auto s = OpInvoke(registration, &node); s != kTfLiteOk) {
+      auto err = ReportOpError(&context_, node, registration, node_index,
+                               "failed to invoke");
+      return s == kTfLiteCancelled ? s : err;
     }
 
     // Force execution prep for downstream ops if the latest op triggered the

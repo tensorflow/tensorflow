@@ -173,6 +173,25 @@ class SingleOpResolver : public OpResolver {
   TfLiteRegistration registration_;
 };
 
+class SingleOpModel;
+class AccelerationValidator {
+ public:
+  using Callback = std::function<void(const SingleOpModel& model)>;
+
+  // Returns a global AccelerationValidator instance.
+  static AccelerationValidator* Get();
+
+  // Adds a callback function that will be invoked at the end of a kernel test
+  // to validate acceleration.
+  void AddCallback(Callback callback);
+
+  // Performs acceleration validation with all registered callbacks.
+  void Validate(const SingleOpModel& model) const;
+
+ private:
+  std::vector<Callback> callbacks_;
+};
+
 class SingleOpModel {
  public:
   SingleOpModel() {}
@@ -666,6 +685,8 @@ class SingleOpModel {
   // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
+  int CountNumberOfDelegatedPartitions() const;
+  int GetNumberOfAppliedDelegates() const { return num_applied_delegates_; }
 
  protected:
   int32_t GetTensorSize(int index) const;

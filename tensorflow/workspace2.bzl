@@ -132,9 +132,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "7a16ab0d767d9f8819973dbea1dc45e4e08236f89ab702d96f389fdc78c5855c",
-        strip_prefix = "XNNPACK-e8f74a9763aa36559980a0c2f37f587794995622",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/e8f74a9763aa36559980a0c2f37f587794995622.zip"),
+        sha256 = "5a4636d6882f424b807c16335e8e6ac07d597affb7066073abe250e76951188d",
+        strip_prefix = "XNNPACK-93b9f902393b3a164d4bb44fcd210ca4d612e68f",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/93b9f902393b3a164d4bb44fcd210ca4d612e68f.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -482,6 +482,13 @@ def _tf_repositories():
         sha256 = "bc1cc26d1120f5a7e9eb450751c0b24160734e46a02823a573f3c6b6c0a574a7",
         strip_prefix = "googletest-e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b",
         urls = tf_mirror_urls("https://github.com/google/googletest/archive/e2c06aa2497e330bab1c1a03d02f7c5096eb5b0b.zip"),
+    )
+
+    tf_http_archive(
+        name = "com_google_fuzztest",
+        sha256 = "3fe79ede8e860ba7331987b2c1f84d3eeaf5bea00fd76398d6ff0006635586c6",
+        strip_prefix = "fuzztest-6d79ceb1dc2398e02a39efc23ce40d68baa16a42",
+        urls = tf_mirror_urls("https://github.com/google/fuzztest/archive/6d79ceb1dc2398e02a39efc23ce40d68baa16a42.zip"),
     )
 
     tf_http_archive(

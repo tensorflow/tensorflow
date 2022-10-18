@@ -35,7 +35,7 @@ class Env;
 }  // namespace tsl
 namespace tensorflow {
 using tsl::Env;
-class CoordinationServiceDeviceInfo;
+class DeviceInfo;
 
 // Static registration for coordination service implementations.
 #define REGISTER_COORDINATION_SERVICE(service_type_name, factory_fn)        \
@@ -107,6 +107,13 @@ class CoordinationServiceInterface {
     return *GetCoordinationServiceInstancePtr();
   }
 
+  // This function is invoked after each task's local devices are appended in a
+  // deterministic order during WaitForAllTasks(). This is useful to convert the
+  // result into another message, or set global device ids.
+  virtual void SetDeviceAggregationFunction(
+      std::function<DeviceInfo(const DeviceInfo& devices)>
+          post_aggregate_device_fn) = 0;
+
   // Register a task to the service.
   virtual Status RegisterTask(const CoordinatedTask& task,
                               uint64_t incarnation) = 0;
@@ -114,8 +121,10 @@ class CoordinationServiceInterface {
   // Wait for all tasks to be up and running, and register local device
   // info. The callback is invoked when all tasks are up and registered, or some
   // error occurs.
+  // Each task's local devices will be appended in a deterministic order, and
+  // post-processed by the callback in SetDeviceAggregationFunction() (if set).
   virtual void WaitForAllTasks(const CoordinatedTask& task,
-                               const CoordinationServiceDeviceInfo& devices,
+                               const DeviceInfo& devices,
                                StatusCallback done) = 0;
 
   // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
@@ -221,7 +230,7 @@ class CoordinationServiceInterface {
   friend class
       CoordinationServiceTest_ListClusterDevices_DevicesAreNotAddedTwice_Test;
 
-  virtual const CoordinationServiceDeviceInfo& ListClusterDevices() = 0;
+  virtual const DeviceInfo& ListClusterDevices() = 0;
   virtual uint64_t GetServiceIncarnation() = 0;
 
   static std::unordered_map<std::string, CoordinationServiceFactory>*

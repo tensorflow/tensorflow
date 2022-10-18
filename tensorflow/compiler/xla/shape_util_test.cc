@@ -875,7 +875,6 @@ TEST(ShapeUtilTest, B_251055887) {
           minor_to_major: 7
           minor_to_major: 6
           minor_to_major: 9
-          element_size_in_bits: 4
           physical_shape { element_type: -562 }
         })pb",
       &proto));

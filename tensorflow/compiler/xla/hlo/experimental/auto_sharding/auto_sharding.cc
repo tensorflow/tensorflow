@@ -860,14 +860,14 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
     const StrategyMap& strategy_map,
     const std::vector<HloInstruction*> instructions,
     const HloSharding& existing_sharding, const ClusterEnvironment& cluster_env,
-    StableHashMap<int64_t, std::vector<ShardingStrategy>>&
-        trimmed_strategy_map) {
+    StableHashMap<int64_t, std::vector<ShardingStrategy>>& trimmed_strategy_map,
+    const CallGraph& call_graph) {
   if (strategies->is_tuple) {
     for (size_t i = 0; i < strategies->childs.size(); ++i) {
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           output_shape.tuple_shapes(i), strategies->childs.at(i).get(),
           strategy_map, instructions, existing_sharding.tuple_elements().at(i),
-          cluster_env, trimmed_strategy_map);
+          cluster_env, trimmed_strategy_map, call_graph);
     }
   } else {
     if (ShardingIsComplete(existing_sharding,
@@ -893,12 +893,20 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
         VLOG(1) << "Generate a new strategy based on user sharding.";
         std::string name = ToStringSimple(existing_sharding);
         std::vector<std::vector<double>> resharding_costs;
+        std::vector<HloSharding> input_shardings;
         if (strategies->in_nodes.empty()) {
           resharding_costs = {};
         } else {
           for (size_t i = 0; i < strategies->in_nodes.size(); i++) {
             HloInstruction* operand =
                 instructions.at(strategies->in_nodes.at(i)->instruction_id);
+            HloInstruction* ins = instructions.at(strategies->instruction_id);
+            std::optional<HloSharding> input_sharding_or =
+                ShardingPropagation::GetShardingFromUser(*operand, *ins, 10,
+                                                         true, call_graph);
+            if (input_sharding_or.has_value()) {
+              input_shardings.push_back(input_sharding_or.value());
+            }
             // Set resharding cost to be 0 because there is only one choice and
             // the cost do not matter.
             resharding_costs.push_back(std::vector<double>(
@@ -911,13 +919,9 @@ void TrimOrGenerateStrategiesBasedOnExistingSharding(
           trimmed_strategy_map[strategies->id] = strategies->leaf_vector;
         }
         strategies->leaf_vector.clear();
-        strategies->leaf_vector.push_back(ShardingStrategy({name,
-                                                            existing_sharding,
-                                                            0,
-                                                            0,
-                                                            memory_cost,
-                                                            resharding_costs,
-                                                            {}}));
+        strategies->leaf_vector.push_back(
+            ShardingStrategy({name, existing_sharding, 0, 0, memory_cost,
+                              resharding_costs, input_shardings}));
       }
     } else {
       // If existing sharding is a partial sharding from previous iteration,
@@ -1688,7 +1692,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
       strategies->following = nullptr;
       TrimOrGenerateStrategiesBasedOnExistingSharding(
           ins->shape(), strategies.get(), strategy_map, instructions,
-          ins->sharding(), cluster_env, trimmed_strategy_map);
+          ins->sharding(), cluster_env, trimmed_strategy_map, call_graph);
     }
     if (!strategies->is_tuple && strategies->following) {
       if (!LeafVectorsAreConsistent(
@@ -2447,6 +2451,10 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
         // Allow duplicatd dot computation in this case to reduce
         // communication
       } else {
+        CHECK(stra.input_shardings.size() == 2)
+            << "Dot op requires both operands to have input shardings, "
+               "but get instruction: "
+            << inst->ToString() << ", strategy : " << stra.ToString();
         FixMixedMeshShapeResharding(inst, 0, stra.input_shardings[0],
                                     device_mesh, resharding_cache);
         FixMixedMeshShapeResharding(inst, 1, stra.input_shardings[1],

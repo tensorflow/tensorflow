@@ -438,14 +438,15 @@ def ExecuteOpSeq : FallbackAsync_Op<"executeop.seq",
   let hasCustomAssemblyFormat = 1;
 }
 
-def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeTrait]> {
+def BatchFunctionOp : FallbackAsync_Op<"batch_function",
+    [Pure, CoreRT_TypedAttributeTrait]> {
   let summary = "Fallback ExecuteOp specialized for tf.BatchFunction.";
   let description = [{
     This kernel executes a variant tf.BatchFunction kernel that supports having
     the `f` attribute as a BEF function.
 
     Example:
-      %op_ch_out, %res = tfrt_fallback_async.atch_function(%op_ch_in) @f (%input, %captured_input) {
+      %res = tfrt_fallback_async.batch_function device("/CPU:0") @f(%input, %captured_input)  {
           num_batch_threads = 1,
           max_batch_size = 4,
           allowed_batch_sizes = [2 , 4],
@@ -462,15 +463,14 @@ def BatchFunctionOp : FallbackAsync_Op<"batch_function", [CoreRT_TypedAttributeT
   }];
 
   let arguments = (ins
-                   TFRT_ChainType:$in_op_chain,
-    Variadic<CoreRT_TensorHandleType>:$args,
+    Variadic<TFTensorType>:$args,
+    StrAttr:$device,
     SymbolRefAttr:$f,
     ArrayAttr:$op_attrs
   );
 
   let results = (outs
-    TFRT_ChainType:$out_op_chain,
-    Variadic<CoreRT_TensorHandleType>:$results
+    Variadic<TFTensorType>:$results
   );
 
   let hasVerifier = 1;

@@ -1136,8 +1136,6 @@ class TrtGraphConverterV2(object):
        inputs with the same dimensions as the input it is created for. The GPU
        engine will be run with optimal performance with such inputs.
      * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
-     * `ImplicitBatchModeCompatible`: create the profiles that will produce the
-       same GPU engines as the implicit_batch_mode would produce.
   """
 
   def _verify_profile_strategy(self, strategy):
@@ -1146,6 +1144,11 @@ class TrtGraphConverterV2(object):
       raise ValueError(
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
+    if strategy == "ImplicitBatchModeCompatible":
+      logging.warn(
+          "ImplicitBatchModeCompatible strategy is deprecated, and"
+          " using it may result in errors during engine building. Please"
+          " consider using a different profile strategy.")
 
   @deprecation.deprecated_args(None,
                                "Use individual converter parameters instead",

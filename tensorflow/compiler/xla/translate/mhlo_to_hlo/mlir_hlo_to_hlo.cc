@@ -845,6 +845,27 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         Convert_use_global_device_ids(all_gather_op.getUseGlobalDeviceIds()));
     return success();
   }
+  auto all_reduce_op =
+      dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
+  if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
+    xla::XlaComputation computation;
+    if (failed(ctx.converter->LowerRegionAsComputation(
+            &all_reduce_op.getComputation(), &computation))) {
+      return failure();
+    }
+
+    xla::XlaOp operand;
+    if (failed(GetXlaOp(all_reduce_op.getOperand(), value_map, &operand,
+                        all_reduce_op)))
+      return failure();
+
+    value_map[result] = xla::AllReduce(
+        operand, computation,
+        Convert_replica_groups(all_reduce_op.getReplicaGroups()),
+        Convert_channel_handle(all_reduce_op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(all_reduce_op.getUseGlobalDeviceIds()));
+    return success();
+  }
 
   if (failed(ctx.converter->RunOnFunction(callee))) return failure();
   xla::XlaComputation& computation =
@@ -945,12 +966,21 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+
   auto all_gather_op =
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     value_map[all_gather_op.getResult()] =
         xla::internal::XlaBuilderFriend::BuildAllGatherDone(
             ctx.builder, operand, xla::TypeToShape(all_gather_op.getType()));
+    return success();
+  }
+  auto all_reduce_op =
+      dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
+  if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
+    value_map[all_reduce_op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllReduceDone(
+            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType()));
     return success();
   }
 

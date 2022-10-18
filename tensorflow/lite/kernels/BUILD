@@ -2928,6 +2928,7 @@ tflite_portable_test_suite_combined(
 tflite_combine_cc_tests(
     name = "combined_all_kernel_tests",
     deps_conditions = [":test_main"],
+    generate_cc_library = True,
 )
 
 # This test uses SimpleAllocator and works nicely with ASAN.

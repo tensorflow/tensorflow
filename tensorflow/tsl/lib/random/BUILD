@@ -2,7 +2,7 @@ load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tsl_cc_test",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(

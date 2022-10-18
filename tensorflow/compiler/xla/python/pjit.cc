@@ -61,10 +61,9 @@ class PjitFunction {
  public:
   PjitFunction(py::function fun, py::function cache_miss,
                std::vector<int> static_argnums)
-      : fun_(std::move(fun)),
-        cache_miss_(std::move(cache_miss)),
+      : cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)) {
-    function_name_ = py::str(py::getattr(fun_, "__name__", py::none()));
+    function_name_ = py::str(py::getattr(fun, "__name__", py::none()));
   }
 
   PjitFunction(const PjitFunction&) = delete;
@@ -83,7 +82,6 @@ class PjitFunction {
                           const CallSignature& signature,
                           const py::tuple& out_and_fastpath_data);
 
-  py::function fun_;
   std::string function_name_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;
@@ -112,10 +110,6 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
 
     xla::PyArray py_array = arg;
 
-    // Currently only committed PyArray inputs are allowed. This is checked
-    // previously in the entry point of PjitFunction::Call().
-    DCHECK(py_array.committed());
-
     const auto& sharding = py_array.sharding();
 
     if (sharding.get_type() == jax::PmapSharding::type()) {
@@ -129,6 +123,14 @@ xla::StatusOr<std::vector<std::vector<xla::PjRtBuffer*>>> PreparePjRtInputs(
       return xla::InvalidArgument(
           "Expected PyArray to have %d shards, but got %d", devices.size(),
           py_array.num_shards());
+    }
+
+    // Currently only committed PyArrays or uncommitted single device PyArrays
+    // are allowed.
+    if (!py_array.committed() && cpp_sharding->num_devices() > 1) {
+      return xla::InvalidArgument(
+          "Uncommitted PyArrays are only allowed for single device shardings "
+          "in C++ pjit");
     }
 
     if (cpp_sharding->num_devices() == 1) {
@@ -178,18 +180,6 @@ xla::StatusOr<py::object> PjitFunction::Call(py::args args, py::kwargs kwargs) {
     if (arg.get_type() != xla::PyArray::type()) {
       VLOG(2) << "Only PyArray arguments are supported in cpp pjit, but got: "
               << py::cast<std::string>(arg.get_type().str());
-      return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
-    }
-    xla::PyArray py_array = arg;
-
-    // Only allow committed PyArray in cpp pjit for now as the logic on handling
-    // sharding for uncommited PyArray is complicated and still under
-    // development.
-    //
-    // TODO(chky): Consider support uncommitted PyArray in cpp when the python
-    // side stablizes.
-    if (!py_array.committed()) {
-      VLOG(2) << "PyArray argument is not committed; fallback to python.";
       return py::object(py::cast<py::tuple>(cache_miss_(*args, **kwargs))[0]);
     }
   }

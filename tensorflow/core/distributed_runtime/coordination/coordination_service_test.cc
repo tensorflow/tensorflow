@@ -24,9 +24,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/distributed_runtime/coordination/test_device.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
@@ -239,18 +238,10 @@ class CoordinateTwoTasksTest : public ::testing::Test {
 };
 
 // Construct fake device protos.
-DeviceAttributes CreateTestTfDevice(absl::string_view name) {
-  DeviceAttributes device;
+TestDevice CreateTestDevice(absl::string_view name, int local_id = 0) {
+  TestDevice device;
   device.set_name(name);
-  device.set_device_type("CPU");
-  return device;
-}
-
-xla::DeviceProto CreateTestXlaDevice(absl::string_view name,
-                                     const int local_id) {
-  xla::DeviceProto device;
-  device.set_name(name);
-  device.set_local_device_ordinal(local_id);
+  device.set_local_id(local_id);
   return device;
 }
 
@@ -625,20 +616,20 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
           Env::Default(), config, std::move(client_cache));
   absl::Notification n;
   // Map fake devices to each task.
-  CoordinationServiceDeviceInfo local_devices_0;
-  CoordinationServiceDeviceInfo local_devices_1;
-  CoordinationServiceDeviceInfo local_devices_2;
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device0");
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device1");
-  *local_devices_1.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task1_device0");
-  *local_devices_2.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task2_device0");
+  DeviceInfo local_devices_0;
+  DeviceInfo local_devices_1;
+  DeviceInfo local_devices_2;
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device0"));
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device1"));
+  local_devices_1.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task1_device0"));
+  local_devices_2.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task2_device0"));
 
   // Each task sends its device info.
-  CoordinationServiceDeviceInfo cluster_devices;
+  DeviceInfo cluster_devices;
   coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
   coord_service->WaitForAllTasks(task_1, local_devices_1,
@@ -651,15 +642,14 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   });
   n.WaitForNotification();
 
-  CoordinationServiceDeviceInfo expected_cluster_devices;
-  auto expected_devices =
-      expected_cluster_devices.mutable_tf()->mutable_devices();
-  expected_devices->Add(local_devices_0.mutable_tf()->devices().begin(),
-                        local_devices_0.mutable_tf()->devices().end());
-  expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
-                        local_devices_1.mutable_tf()->devices().end());
-  expected_devices->Add(local_devices_2.mutable_tf()->devices().begin(),
-                        local_devices_2.mutable_tf()->devices().end());
+  DeviceInfo expected_cluster_devices;
+  auto expected_devices = expected_cluster_devices.mutable_device();
+  expected_devices->Add(local_devices_0.device().begin(),
+                        local_devices_0.device().end());
+  expected_devices->Add(local_devices_1.device().begin(),
+                        local_devices_1.device().end());
+  expected_devices->Add(local_devices_2.device().begin(),
+                        local_devices_2.device().end());
   EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
@@ -680,27 +670,39 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
           Env::Default(), config, std::move(client_cache));
+  coord_service->SetDeviceAggregationFunction(
+      [](const DeviceInfo& raw_global_devices) {
+        TestDeviceList global_device_list;
+        int global_id = 0;
+        // Unwrap result to local device proto.
+        for (const auto& device : raw_global_devices.device()) {
+          TestDevice local_device;
+          device.UnpackTo(&local_device);
+          // Set deterministic global ids.
+          local_device.set_global_id(global_id++);
+          *global_device_list.mutable_device()->Add() = local_device;
+        }
+        // Wrap result back in DeviceInfo proto.
+        DeviceInfo global_devices;
+        global_devices.mutable_device()->Add()->PackFrom(global_device_list);
+        return global_devices;
+      });
   absl::Notification n;
   // Map fake devices to each task.
-  CoordinationServiceDeviceInfo local_devices_0;
-  CoordinationServiceDeviceInfo local_devices_1;
-  CoordinationServiceDeviceInfo local_devices_2;
-  xla::LocalTopologyProto local_0;
-  xla::LocalTopologyProto local_1;
-  xla::LocalTopologyProto local_2;
-  local_0.set_node_id(0);
-  local_1.set_node_id(1);
-  local_2.set_node_id(2);
-  *local_0.add_devices() = CreateTestXlaDevice("task0_device0", 0);
-  *local_0.add_devices() = CreateTestXlaDevice("task0_device1", 1);
-  *local_1.add_devices() = CreateTestXlaDevice("task1_device0", 0);
-  *local_2.add_devices() = CreateTestXlaDevice("task2_device0", 0);
-  *local_devices_0.mutable_xla()->mutable_devices()->add_nodes() = local_0;
-  *local_devices_1.mutable_xla()->mutable_devices()->add_nodes() = local_1;
-  *local_devices_2.mutable_xla()->mutable_devices()->add_nodes() = local_2;
+  DeviceInfo local_devices_0;
+  DeviceInfo local_devices_1;
+  DeviceInfo local_devices_2;
+  TestDevice local_0 = CreateTestDevice("task0_device0", /*local_id=*/0);
+  TestDevice local_0_1 = CreateTestDevice("task0_device1", /*local_id=*/1);
+  TestDevice local_1 = CreateTestDevice("task1_device0", /*local_id=*/0);
+  TestDevice local_2 = CreateTestDevice("task2_device0", /*local_id=*/0);
+  local_devices_0.mutable_device()->Add()->PackFrom(local_0);
+  local_devices_0.mutable_device()->Add()->PackFrom(local_0_1);
+  local_devices_1.mutable_device()->Add()->PackFrom(local_1);
+  local_devices_2.mutable_device()->Add()->PackFrom(local_2);
 
   // Each task sends its device info.
-  CoordinationServiceDeviceInfo cluster_devices;
+  DeviceInfo cluster_devices;
   // Make sure that cluster device order is deterministic even if devices are
   // sent out of order.
   coord_service->WaitForAllTasks(task_1, local_devices_1,
@@ -715,17 +717,18 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   });
   n.WaitForNotification();
 
-  CoordinationServiceDeviceInfo expected_cluster_devices;
-  local_0.mutable_devices(0)->set_global_device_id(0);
-  local_0.mutable_devices(1)->set_global_device_id(1);
-  local_1.mutable_devices(0)->set_global_device_id(2);
-  local_2.mutable_devices(0)->set_global_device_id(3);
-  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
-      local_0;
-  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
-      local_1;
-  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
-      local_2;
+  DeviceInfo expected_cluster_devices;
+  TestDeviceList global_device_list;
+  local_0.set_global_id(0);
+  local_0_1.set_global_id(1);
+  local_1.set_global_id(2);
+  local_2.set_global_id(3);
+  *global_device_list.add_device() = local_0;
+  *global_device_list.add_device() = local_0_1;
+  *global_device_list.add_device() = local_1;
+  *global_device_list.add_device() = local_2;
+  expected_cluster_devices.mutable_device()->Add()->PackFrom(
+      global_device_list);
   EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
@@ -747,16 +750,16 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
           Env::Default(), config, std::move(client_cache));
   absl::Notification n;
   // Map fake devices to each task.
-  CoordinationServiceDeviceInfo local_devices_0;
-  CoordinationServiceDeviceInfo local_devices_1;
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device0");
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device1");
-  *local_devices_1.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task1_device0");
+  DeviceInfo local_devices_0;
+  DeviceInfo local_devices_1;
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device0"));
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device1"));
+  local_devices_1.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task1_device0"));
   // Task0 sends device info.
-  CoordinationServiceDeviceInfo cluster_devices;
+  DeviceInfo cluster_devices;
   coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [](Status s) { TF_ASSERT_OK(s); });
 
@@ -774,13 +777,12 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   n.WaitForNotification();
 
   // No duplicates found.
-  CoordinationServiceDeviceInfo expected_cluster_devices;
-  auto expected_devices =
-      expected_cluster_devices.mutable_tf()->mutable_devices();
-  expected_devices->Add(local_devices_0.mutable_tf()->devices().begin(),
-                        local_devices_0.mutable_tf()->devices().end());
-  expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
-                        local_devices_1.mutable_tf()->devices().end());
+  DeviceInfo expected_cluster_devices;
+  auto expected_devices = expected_cluster_devices.mutable_device();
+  expected_devices->Add(local_devices_0.device().begin(),
+                        local_devices_0.device().end());
+  expected_devices->Add(local_devices_1.device().begin(),
+                        local_devices_1.device().end());
   EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 

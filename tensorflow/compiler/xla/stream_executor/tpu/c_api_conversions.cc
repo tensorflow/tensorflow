@@ -291,7 +291,6 @@ void Destroy(XLA_Shape* c_shape) {
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
   CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
-  c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();
   CreateVector(layout.tiles(), &c_layout->tiles);
 }
@@ -314,7 +313,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
   return xla::Layout(minor_to_major, dim_level_types, tiles,
-                     c_layout->element_size_in_bits, c_layout->memory_space);
+                     c_layout->memory_space);
 }
 
 void Destroy(XLA_Layout* c_layout) {

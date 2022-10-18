@@ -236,7 +236,6 @@ typedef struct XLA_Layout {
   Int64List minor_to_major;
   IntList dim_level_types;
   TileList tiles;
-  int64_t element_size_in_bits;
   int64_t memory_space;
 } XLA_Layout;
 

@@ -286,3 +286,17 @@ check_deps = rule(
         ),
     },
 )
+
+def get_compatible_with_portable():
+    return []
+
+def filegroup(**kwargs):
+    native.filegroup(**kwargs)
+
+# Config setting selector used when building for products
+# which requires restricted licenses to be avoided.
+def if_not_mobile_or_arm_or_lgpl_restricted(a):
+    _ = (a,)  # buildifier: disable=unused-variable
+    return select({
+        "//conditions:default": [],
+    })

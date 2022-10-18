@@ -82,7 +82,7 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
     PyObject_ClearWeakRefs(self);
   }
 
-  GetPyArrayStorageFromObject(obj)->~Storage();
+  GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
 
   tp->tp_free(self);
   Py_DECREF(tp);
@@ -262,6 +262,38 @@ Status PyArray::BlockUntilReady() const {
     if (!s.ok()) status = std::move(s);
   }
   return status;
+}
+
+py::handle PyArray::Storage::AsHandle() {
+  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
+                                     offsetof(PyArrayObject, array_storage));
+}
+
+PyArray::Storage::~PyArray_Storage() {
+  CHECK(PyGILState_Check());
+  if (py_client->arrays_ == this) {
+    py_client->arrays_ = next;
+  }
+  if (prev) {
+    prev->next = next;
+  }
+  if (next) {
+    next->prev = prev;
+  }
+}
+
+std::vector<py::object> PyClient::LiveArrays() {
+  std::vector<py::object> result;
+  for (PyArray::Storage* array = arrays_; array; array = array->next) {
+    bool all_deleted = true;
+    for (auto& buffer : array->pjrt_buffers) {
+      all_deleted &= buffer->IsDeleted();
+    }
+    if (!all_deleted) {
+      result.push_back(py::reinterpret_borrow<py::object>(array->AsHandle()));
+    }
+  }
+  return result;
 }
 
 Status PyArray::SetUpType() {
