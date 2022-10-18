@@ -15,27 +15,32 @@ limitations under the License.
 
 #include <cstdint>
 #include <cstdlib>
+#include <string_view>
 
-#include "tensorflow/core/platform/base64.h"
-#include "tensorflow/core/platform/status.h"
+#include "testing/fuzzing/fuzztest.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-// This is a fuzzer for tensorflow::Base64Encode and tensorflow::Base64Decode.
+// This is a fuzzer for tensorflow::io::ParseURI.
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  std::string input(reinterpret_cast<const char *>(data), size);
-  std::string encoded_string;
-  std::string decoded_string;
-  tensorflow::Status s;
-  s = tensorflow::Base64Encode(input, &encoded_string);
-  assert(s.ok());
-  s = tensorflow::Base64Decode(encoded_string, &decoded_string);
-  assert(s.ok());
-  assert(input == decoded_string);
+void FuzzTest(std::string_view uri) {
+  tensorflow::StringPiece scheme, host, path;
+  tensorflow::io::ParseURI(uri, &scheme, &host, &path);
 
-  return 0;
+  // If a path is invalid.
+  if (path == uri) {
+    assert(host.empty());
+    assert(scheme.empty());
+  } else {
+    assert(absl::StrContains(uri, host));
+    assert(absl::StrContains(uri, scheme));
+    assert(absl::StrContains(uri, path));
+    assert(absl::StrContains(uri, "://"));
+  }
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest);
 
 }  // namespace

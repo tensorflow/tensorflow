@@ -15,7 +15,7 @@ limitations under the License.
 
 syntax = "proto3";
 
-package tensorflow;
+package tensorflow.testing;
 
 import "tensorflow/core/util/saved_tensor_slice.proto";
 

@@ -12,35 +12,34 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include <cstdint>
 #include <cstdlib>
+#include <string>
+#include <string_view>
 
-#include "absl/strings/match.h"
-#include "tensorflow/core/platform/path.h"
+#include "testing/fuzzing/fuzztest.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-// This is a fuzzer for tensorflow::io::ParseURI.
+// This is a fuzzer for tensorflow::str_util::ConsumeLeadingDigits
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  std::string uri(reinterpret_cast<const char *>(data), size);
-  tensorflow::StringPiece scheme, host, path;
-  tensorflow::io::ParseURI(uri, &scheme, &host, &path);
+void FuzzTest(std::string data) {
+  tensorflow::StringPiece sp(data);
+  tensorflow::uint64 val;
 
-  // If a path is invalid.
-  if (path == uri) {
-    assert(host == "");
-    assert(scheme == "");
-  } else {
-    assert(absl::StrContains(uri, host));
-    assert(absl::StrContains(uri, scheme));
-    assert(absl::StrContains(uri, path));
-    assert(absl::StrContains(uri, "://"));
+  const bool leading_digits =
+      tensorflow::str_util::ConsumeLeadingDigits(&sp, &val);
+  const char lead_char_consume_digits = *(sp.data());
+  if (leading_digits) {
+    if (lead_char_consume_digits >= '0') {
+      assert(lead_char_consume_digits > '9');
+    }
+    assert(val >= 0);
   }
-
-  return 0;
 }
-
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(
+        fuzztest::Arbitrary<std::string>().WithMaxSize(25));
 }  // namespace

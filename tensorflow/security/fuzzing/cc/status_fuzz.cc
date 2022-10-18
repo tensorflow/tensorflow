@@ -12,12 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
-
 #include <cstdint>
-#include <cstdlib>
+#include <string>
+#include <string_view>
 
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/security/fuzzing/cc/fuzz_helpers.h"
 
 // This is a fuzzer for `tensorflow::Status`. Since `Status` is used almost
 // everywhere, we need to ensure that the common functionality is safe. We don't
@@ -28,26 +29,8 @@ limitations under the License.
 
 namespace {
 
-tensorflow::error::Code BuildRandomErrorCode(uint32_t code) {
-  // We cannot build a `Status` with error_code of 0 and a message, so force
-  // error code to be non-zero.
-  if (code == 0) {
-    return tensorflow::error::UNKNOWN;
-  }
-
-  return static_cast<tensorflow::error::Code>(code);
-}
-
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  tensorflow::error::Code error_code;
-  std::string error_message;
-
-  FuzzedDataProvider fuzzed_data(data, size);
-
-  uint32_t code = fuzzed_data.ConsumeIntegral<uint32_t>();
-  error_code = BuildRandomErrorCode(code);
-
-  error_message = fuzzed_data.ConsumeRemainingBytesAsString();
+void FuzzTest(uint32_t code, std::string_view error_message) {
+  tensorflow::error::Code error_code = helper::BuildRandomErrorCode(code);
 
   tensorflow::Status s = tensorflow::Status(error_code, error_message);
   const std::string actual_message = s.ToString();
@@ -58,8 +41,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
   // In some build configurations `assert` is a no-op. This causes `pos` to be
   // unused and then produces an error if also compiling with `-Werror`.
   (void)pos;
-
-  return 0;
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest);
 
 }  // namespace

@@ -12,34 +12,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
 
 #include <cstdint>
 #include <cstdlib>
+#include <iostream>
+#include <regex>  // NOLINT
+#include <string>
+#include <string_view>
 
+#include "testing/fuzzing/fuzztest.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/platform/path.h"
 
-// This is a fuzzer for tensorflow::io::JoinPath.
+// This is a fuzzer for tensorflow::io::CleanPath.
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  FuzzedDataProvider fuzzed_data(data, size);
+void FuzzTest(std::string_view input_path) {
+  std::string clean_path = tensorflow::io::CleanPath(input_path);
 
-  // Choose random numbers here.
-  const int content_size = fuzzed_data.ConsumeIntegralInRange(10, 300);
-
-  std::string first = fuzzed_data.ConsumeRandomLengthString(content_size);
-  std::string second = fuzzed_data.ConsumeRemainingBytesAsString();
-
-  std::string path = tensorflow::io::JoinPath(first, second);
-
-  // Assert path contains strings
-  assert(absl::StrContains(path, first));
-  assert(absl::StrContains(path, second));
-
-  return 0;
+  // Assert there are no '/./' no directory changes.
+  assert(!absl::StrContains(clean_path, "/./"));
+  // Assert there are no duplicate '/'.
+  assert(!absl::StrContains(clean_path, "//"));
+  // Assert there are no higher up directories after entering a directory.
+  std::regex higher_up_directory("[^.]{1}/[.]{2}");
+  assert(!std::regex_match(clean_path, higher_up_directory));
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest);
 
 }  // namespace

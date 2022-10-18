@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
-
 #include <cstdint>
 #include <cstdlib>
+#include <string>
 
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
@@ -24,25 +24,19 @@ limitations under the License.
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  FuzzedDataProvider fuzzed_data(data, size);
-
-  if (size < 1) return 0;
-
-  bool all_flag = fuzzed_data.ConsumeBool();
-
-  std::string s = fuzzed_data.ConsumeRandomLengthString(10);
-  std::string oldsub = fuzzed_data.ConsumeRandomLengthString(5);
-  std::string newsub = fuzzed_data.ConsumeRemainingBytesAsString();
-
+void FuzzTest(bool all_flag, std::string s, std::string oldsub,
+              std::string newsub) {
   tensorflow::StringPiece sp(s);
   tensorflow::StringPiece oldsubp(oldsub);
   tensorflow::StringPiece newsubp(newsub);
 
   std::string subbed =
       tensorflow::str_util::StringReplace(sp, oldsubp, newsubp, all_flag);
-
-  return 0;
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(/*all_flag=*/fuzztest::Arbitrary<bool>(),
+                 /*s=*/fuzztest::Arbitrary<std::string>().WithSize(10),
+                 /*oldsub=*/fuzztest::Arbitrary<std::string>().WithSize(5),
+                 /*newsub=*/fuzztest::Arbitrary<std::string>());
 
 }  // namespace

@@ -12,29 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
-
 #include <cstdint>
 #include <cstdlib>
+#include <string>
+#include <vector>
 
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 // This is a fuzzer for tensorflow::strings::Printf
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  FuzzedDataProvider fuzzed_data(data, size);
-
-  const char split = fuzzed_data.ConsumeIntegral<char>();
-  const char split_a = split & 0x07;
-  const char split_b = (split >> 3) & 0x07;
-
-  const std::string ss[3] = {
-      fuzzed_data.ConsumeBytesAsString(split_a),
-      fuzzed_data.ConsumeBytesAsString(split_b),
-      fuzzed_data.ConsumeRemainingBytesAsString(),
-  };
+void FuzzTest(const std::vector<std::string> ss) {
   const std::string all = ss[0] + ss[1] + ss[2];
 
   int n[4] = {-1, -1, -1, -1};
@@ -51,11 +41,9 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 
   assert(n[3] >= 0);
   assert(n[3] <= size_so_far);
-  assert(n[3] <= all.size());
-  assert(n[3] <= size - 1);
   assert(ret.size() == n[3]);
-
-  return 0;
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+  .WithDomains(fuzztest::Arbitrary<std::vector<std::string>>().WithSize(3));
 
 }  // namespace

@@ -12,29 +12,31 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
 
 #include <cstdint>
 #include <cstdlib>
+#include <string>
+#include <string_view>
 
-#include "tensorflow/core/platform/tstring.h"
+#include "testing/fuzzing/fuzztest.h"
+#include "tensorflow/core/platform/base64.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
-// This is a fuzzer for tensorflow::tstring
+// This is a fuzzer for tensorflow::Base64Encode and tensorflow::Base64Decode.
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  FuzzedDataProvider fuzzed_data(data, size);
-
-  tensorflow::tstring base = fuzzed_data.ConsumeRandomLengthString(10);
-
-  while (fuzzed_data.remaining_bytes() > 0) {
-    tensorflow::tstring pair = fuzzed_data.ConsumeRandomLengthString(10);
-    base.append(pair);
-    assert(base.size() <= base.capacity());
-  }
-
-  return 0;
+void FuzzTest(std::string_view input) {
+  std::string encoded_string;
+  std::string decoded_string;
+  tensorflow::Status s;
+  s = tensorflow::Base64Encode(input, &encoded_string);
+  assert(s.ok());
+  s = tensorflow::Base64Decode(encoded_string, &decoded_string);
+  assert(s.ok());
+  assert(input == decoded_string);
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest);
 
 }  // namespace

@@ -12,12 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
-
 #include <cstdint>
 #include <cstdlib>
+#include <string>
 
-#include "absl/strings/match.h"
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 
@@ -40,7 +39,7 @@ void compareValues(T value, T value_2) {
   const tensorflow::AttrValue proto_same = createAttrValue(value);
   const tensorflow::AttrValue proto2 = createAttrValue(value_2);
 
-  // Assert that AreAttrValuesEqual are same with or without allow false
+  // Assert that AreAttrValuesEqual is true with or without allow false
   // negatives.
   assert(tensorflow::AreAttrValuesEqual(proto, proto_same,
                                         /*allow_false_negatives=*/false));
@@ -54,29 +53,17 @@ void compareValues(T value, T value_2) {
                                         /*allow_false_negatives=*/true));
 }
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  FuzzedDataProvider fuzzed_data(data, size);
-
-  // Choose random integers.
-  const int random_int = fuzzed_data.ConsumeIntegralInRange(1, 100);
-  const int random_int2 = fuzzed_data.ConsumeIntegralInRange(1, 1000);
-  compareValues(random_int, random_int2);
-
-  // Choose random floats.
-  const float random_float =
-      fuzzed_data.ConsumeFloatingPointInRange(1.0f, 1000.0f);
-  const float random_float2 =
-      fuzzed_data.ConsumeFloatingPointInRange(1.0f, 1000.0f);
-  compareValues(random_float, random_float2);
-
-  // Choose random strings.
-  const int content_size = fuzzed_data.ConsumeIntegralInRange(10, 300);
-  const std::string test_string =
-      fuzzed_data.ConsumeRandomLengthString(content_size);
-  const std::string test_string2 = fuzzed_data.ConsumeRemainingBytesAsString();
-  compareValues(test_string, test_string2);
-
-  return 0;
+void FuzzTest(const int i, const int j, const float u, const float v,
+              const std::string s1, const std::string s2) {
+  compareValues(i, j);
+  compareValues(u, v);
+  compareValues(s1, s2);
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(fuzztest::InRange(1, 100), fuzztest::InRange(1, 1000),
+                 fuzztest::InRange(1.0f, 1000.0f),
+                 fuzztest::InRange(1.0f, 1000.0f),
+                 fuzztest::Arbitrary<std::string>(),
+                 fuzztest::Arbitrary<std::string>());
 
 }  // namespace

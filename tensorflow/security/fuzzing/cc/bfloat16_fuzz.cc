@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
-
 #include <cstdint>
 #include <cstdlib>
+#include <vector>
 
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -25,30 +25,24 @@ limitations under the License.
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  FuzzedDataProvider fuzzed_data(data, size);
+void FuzzTest(const std::vector<float>& float_originals) {
+  const int32_t size = float_originals.size();
+  std::vector<tensorflow::bfloat16> bfloats(size);
+  std::vector<float> floats_converted(size);
 
-  const int array_size = 100;
+  tensorflow::FloatToBFloat16(float_originals.data(), bfloats.data(), size);
+  tensorflow::BFloat16ToFloat(bfloats.data(), floats_converted.data(), size);
 
-  float float_originals[array_size];
-  for (int i = 0; i < array_size; ++i) {
-    float_originals[i] = fuzzed_data.ConsumeFloatingPointInRange(1.0f, 1000.0f);
-  }
-  tensorflow::bfloat16 bfloats[array_size];
-  float floats_converted[array_size];
-
-  tensorflow::FloatToBFloat16(float_originals, bfloats, array_size);
-  tensorflow::BFloat16ToFloat(bfloats, floats_converted, array_size);
-
-  for (int i = 0; i < array_size; ++i) {
+  for (int i = 0; i < float_originals.size(); ++i) {
     // The relative error should be less than 1/(2^7) since bfloat16
     // has 7 bits mantissa.
     // Copied this logic from bfloat16_test.cc
     assert(fabs(floats_converted[i] - float_originals[i]) / float_originals[i] <
            1.0 / 128);
   }
-
-  return 0;
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(fuzztest::ContainerOf<std::vector<float>>(
+        fuzztest::InRange(1.0f, 1000.0f)));
 
 }  // namespace

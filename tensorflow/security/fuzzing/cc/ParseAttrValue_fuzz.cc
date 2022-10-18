@@ -12,12 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fuzzer/FuzzedDataProvider.h>
-
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 
@@ -26,28 +26,26 @@ limitations under the License.
 namespace {
 using tensorflow::StringPiece;
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
+void FuzzTest(std::string_view type, std::string_view text_string) {
   // ParseAttrValue converts text protos into the types of attr_value.proto,
   // which are string, int, float, bool, DataType, TensorShapeProto,
   // TensorProto, NameAttrList, and list of any previously mentioned data type.
 
   // This fuzzer tests the ParseAttrValue's ability to not crash.
-  FuzzedDataProvider fuzzed_data(data, size);
   tensorflow::AttrValue out;
 
-  std::string type = fuzzed_data.PickValueInArray(
-      {"string", "int", "float", "bool", "type", "shape", "tensor",
-       "list(string)", "list(int)", "list(float)", "list(bool)", "list(type)",
-       "list(shape)", "list(tensor)", "list(list(string))", "list(list(int))",
-       "list(list(float))", "list(list(bool))", "list(list(type))",
-       "list(list(shape))", "list(list(tensor))",
-       // Invalid values
-       "invalid", "123"});
-
-  std::string text_string = fuzzed_data.ConsumeRemainingBytesAsString();
   tensorflow::ParseAttrValue(type, text_string, &out);
-
-  return 0;
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithDomains(
+        fuzztest::ElementOf<std::string>(
+            {"string", "int", "float", "bool", "type", "shape", "tensor",
+             "list(string)", "list(int)", "list(float)", "list(bool)",
+             "list(type)", "list(shape)", "list(tensor)", "list(list(string))",
+             "list(list(int))", "list(list(float))", "list(list(bool))",
+             "list(list(type))", "list(list(shape))", "list(list(tensor))",
+             // Invalid values
+             "invalid", "123"}),
+        fuzztest::Arbitrary<std::string>());
 
 }  // namespace

@@ -18,7 +18,7 @@ limitations under the License.
 #include <set>
 #include <string>
 
-#include "src/libfuzzer/libfuzzer_macro.h"  // from @com_google_libprotobuf_mutator
+#include "testing/fuzzing/fuzztest.h"
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -32,11 +32,12 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
-#include "tensorflow/security/fuzzing/checkpoint_reader_fuzz_input.pb.h"
+#include "tensorflow/security/fuzzing/cc/checkpoint_reader_fuzz_input.pb.h"
 
 // This is a fuzzer for tensorflow::checkpoint::CheckpointReader. LevelDB
 // reading and proto parsing are already fuzz-tested, so there's no need to test
@@ -47,8 +48,9 @@ namespace {
 using ::tensorflow::checkpoint::EncodeTensorNameSlice;
 using ::tensorflow::checkpoint::kSavedTensorSlicesKey;
 
-void CreateCheckpoint(const std::string& filename,
-                      const tensorflow::CheckpointReaderFuzzInput& contents) {
+void CreateCheckpoint(
+    const std::string& filename,
+    const tensorflow::testing::CheckpointReaderFuzzInput& contents) {
   std::unique_ptr<tensorflow::WritableFile> writable_file;
   TF_CHECK_OK(
       tensorflow::Env::Default()->NewWritableFile(filename, &writable_file));
@@ -96,7 +98,8 @@ int GetDataTypeSize(tensorflow::DataType data_type) {
   }
 }
 
-DEFINE_PROTO_FUZZER(const tensorflow::CheckpointReaderFuzzInput& input) {
+static void FuzzTest(
+    const tensorflow::testing::CheckpointReaderFuzzInput& input) {
   // Using a ram file avoids disk I/O, speeding up the fuzzer.
   const std::string filename = "ram:///checkpoint";
   CreateCheckpoint(filename, input);
@@ -127,5 +130,10 @@ DEFINE_PROTO_FUZZER(const tensorflow::CheckpointReaderFuzzInput& input) {
     }
   }
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest)
+    .WithSeeds(fuzztest::ReadFilesFromDirectory<
+      tensorflow::testing::CheckpointReaderFuzzInput>(
+        tensorflow::GetDataDependencyFilepath(
+          "tensorflow/security/fuzzing/cc/checkpoint_reader_testdata")));
 
 }  // namespace

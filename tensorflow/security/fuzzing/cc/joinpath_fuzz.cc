@@ -14,30 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdint>
 #include <cstdlib>
+#include <string>
+#include <string_view>
 
-#include "tensorflow/core/platform/str_util.h"
-#include "tensorflow/core/platform/stringpiece.h"
+#include "testing/fuzzing/fuzztest.h"
+#include "absl/strings/match.h"
+#include "tensorflow/core/platform/path.h"
 
-// This is a fuzzer for tensorflow::str_util::ArgDefCase
+// This is a fuzzer for tensorflow::io::JoinPath.
 
 namespace {
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
-  uint8_t *byte_data = const_cast<uint8_t *>(data);
-  char *char_data = reinterpret_cast<char *>(byte_data);
+void FuzzTest(std::string_view first, std::string_view second) {
+  std::string path = tensorflow::io::JoinPath(first, second);
 
-  tensorflow::StringPiece sp(char_data, size);
-
-  std::string ns = tensorflow::str_util::ArgDefCase(sp);
-  for (const auto &c : ns) {
-    const bool is_letter = 'a' <= c && c <= 'z';
-    const bool is_digit = '0' <= c && c <= '9';
-    if (!is_letter && !is_digit) {
-      assert(c == '_');
-    }
-  }
-
-  return 0;
+  // Assert path contains strings
+  assert(absl::StrContains(path, first));
+  assert(absl::StrContains(path, second));
 }
+FUZZ_TEST(CC_FUZZING, FuzzTest);
 
 }  // namespace
