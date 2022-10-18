@@ -141,8 +141,6 @@ tf_proto_library(
     cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_service = True,
-    protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
-                tf_additional_all_protos(),
 )
 
 tf_proto_library(

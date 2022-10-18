@@ -6,6 +6,7 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = [
@@ -47,7 +48,6 @@ tf_cuda_library(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_error_util",
-        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:call_options",
@@ -64,6 +64,13 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
+tf_proto_library(
+    name = "test_device_proto",
+    testonly = 1,
+    srcs = ["test_device.proto"],
+    cc_api_version = 2,
+)
+
 tf_cc_test(
     name = "coordination_service_test",
     srcs = ["coordination_service_test.cc"],
@@ -75,13 +82,12 @@ tf_cc_test(
         ":coordination_client",
         ":coordination_service",
         ":coordination_service_impl",
-        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
+        ":test_device_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime:test_utils",
-        "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/strings",

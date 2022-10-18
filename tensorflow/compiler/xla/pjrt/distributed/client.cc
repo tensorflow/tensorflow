@@ -502,14 +502,20 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
 xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
     const LocalTopologyProto& local_topology,
     GlobalTopologyProto* global_topology) {
-  tensorflow::CoordinationServiceDeviceInfo devices;
-  LocalTopologyProto* device =
-      devices.mutable_xla()->mutable_devices()->add_nodes();
-  *device = local_topology;
-  device->set_node_id(task_id_);
+  LocalTopologyProto local_device = local_topology;
+  local_device.set_node_id(task_id_);
+  tensorflow::DeviceInfo devices;
+  devices.mutable_device()->Add()->PackFrom(local_device);
+  // Client sends LocalTopologyProto.
   Status s = coord_agent_->WaitForAllTasks(devices);
   if (!s.ok()) return s;
-  *global_topology = coord_agent_->GetClusterDeviceInfo().xla().devices();
+  // Server responds with GlobalTopologyProto (refer to service.cc for details).
+  tensorflow::DeviceInfo global_devices = coord_agent_->GetClusterDeviceInfo();
+  if (global_devices.device_size() != 1) {
+    return tsl::errors::Internal(
+        "Unexpected cluster device response from EnumerateDevices().");
+  }
+  global_devices.device().Get(0).UnpackTo(global_topology);
   return OkStatus();
 }
 

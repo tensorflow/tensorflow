@@ -54,8 +54,31 @@ EnableCoordinationService(
       config.mutable_coordinated_job_list()->Add();
   job->set_name(job_name);
   job->set_num_tasks(options.num_nodes);
-  return tensorflow::CoordinationServiceInterface::EnableCoordinationService(
-      options.env, config, /*cache=*/nullptr);
+  auto service =
+      tensorflow::CoordinationServiceInterface::EnableCoordinationService(
+          options.env, config, /*cache=*/nullptr);
+  // Convert list of local devices to global device message as EnumerateDevies()
+  // response.
+  service->SetDeviceAggregationFunction(
+      [](const tensorflow::DeviceInfo& raw_global_devices) {
+        xla::GlobalTopologyProto global_topology;
+        int global_device_id = 0;
+        // Unwrap result to local device proto.
+        for (const auto& device : raw_global_devices.device()) {
+          xla::LocalTopologyProto local_topology;
+          device.UnpackTo(&local_topology);
+          // Set deterministic global ids.
+          for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
+            device.set_global_device_id(global_device_id++);
+          }
+          *global_topology.mutable_nodes()->Add() = local_topology;
+        }
+        // Wrap result back in DeviceInfo proto.
+        tensorflow::DeviceInfo global_devices;
+        global_devices.mutable_device()->Add()->PackFrom(global_topology);
+        return global_devices;
+      });
+  return service;
 }
 }  // namespace
 
