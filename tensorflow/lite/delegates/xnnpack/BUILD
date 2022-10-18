@@ -770,6 +770,46 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "variable_ops_tester",
+    testonly = 1,
+    srcs = ["variable_ops_tester.cc"],
+    hdrs = ["variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate_test_mode",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
+# Same as variable_ops_tester above, but depends on xnnpack_delegate (no test
+# mode), used for variable_ops_multiple_subgraph_test. Why name this
+# no_test_mode instead of renaming the above to test_mode, because all testers
+# depend on test_mode by default, this keeps the name consistent.
+cc_library(
+    name = "variable_ops_tester_no_test_mode",
+    testonly = 1,
+    srcs = ["variable_ops_tester.cc"],
+    hdrs = ["variable_ops_tester.h"],
+    deps = [
+        ":xnnpack_delegate",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_conversion_utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@flatbuffers",
+    ],
+)
+
 ############################## Integration tests ###############################
 
 cc_library(
@@ -1244,6 +1284,39 @@ cc_test(
     deps = [
         ":quantize_tester",
         ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "variable_ops_multiple_subgraph_test",
+    srcs = ["variable_ops_multiple_subgraph_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        # Don't use xnnpack_delegate_test_mode because we use CALL_ONCE here,
+        # which XNNPACK does not yet support, and test mode enforces that there
+        # are no unsupported operations.
+        ":xnnpack_delegate",
+        ":variable_ops_tester_no_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "variable_ops_test",
+    srcs = ["variable_ops_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":test_main",
+        ":variable_ops_tester",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],
