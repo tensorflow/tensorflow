@@ -182,6 +182,12 @@ void TfLiteInterpreterOptionsAddRegistrationExternal(
   options->op_registrations.push_back(registration);
 }
 
+TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
+    TfLiteInterpreterOptions* options, bool enable) {
+  options->enable_cancellation = enable;
+  return kTfLiteOk;
+}
+
 static void InitTfLiteRegistration(
     TfLiteRegistration* registration,
     TfLiteRegistrationExternal* registration_external) {
@@ -243,6 +249,10 @@ int32_t TfLiteInterpreterGetOutputTensorCount(
 const TfLiteTensor* TfLiteInterpreterGetOutputTensor(
     const TfLiteInterpreter* interpreter, int32_t output_index) {
   return interpreter->impl->tensor(interpreter->impl->outputs()[output_index]);
+}
+
+TfLiteStatus TfLiteInterpreterCancel(const TfLiteInterpreter* interpreter) {
+  return interpreter->impl->Cancel();
 }
 
 TfLiteType TfLiteTensorType(const TfLiteTensor* tensor) { return tensor->type; }

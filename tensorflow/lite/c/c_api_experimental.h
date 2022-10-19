@@ -380,6 +380,18 @@ TFL_CAPI_EXPORT extern const char* TfLiteSignatureRunnerGetOutputName(
 TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteSignatureRunnerGetOutputTensor(
     const TfLiteSignatureRunner* signature_runner, const char* output_name);
 
+/// Attempts to cancel in flight invocation if any.
+/// This will not affect calls to `Invoke` that happend after this.
+/// Non blocking and thread safe.
+/// Returns kTfLiteError if cancellation is not enabled, otherwise returns
+/// kTfLiteOk.
+/// NOTE: Calling this function will cancel in-flight invocations
+/// in all SignatureRunners built from the same interpreter.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerCancel(
+    TfLiteSignatureRunner* signature_runner);
+
 /// Destroys the signature runner.
 ///
 /// WARNING: This is an experimental API and subject to change.

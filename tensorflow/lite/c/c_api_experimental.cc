@@ -192,6 +192,11 @@ const TfLiteTensor* TfLiteSignatureRunnerGetOutputTensor(
   return signature_runner->impl->output_tensor(output_name);
 }
 
+TfLiteStatus TfLiteSignatureRunnerCancel(
+    TfLiteSignatureRunner* signature_runner) {
+  return signature_runner->impl->Cancel();
+}
+
 void TfLiteSignatureRunnerDelete(TfLiteSignatureRunner* signature_runner) {
   delete signature_runner;
 }
