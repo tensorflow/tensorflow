@@ -93,7 +93,6 @@ load(
     "tf_portable_deps_no_runtime",
     "tf_portable_proto_lib",
     "tf_proto_library",
-    "tf_protos_all_impl",
     "tf_protos_grappler_impl",
     "tf_protos_profiler_impl",
     "tf_tpu_dependencies",
@@ -1457,7 +1456,14 @@ cc_library(
     ] + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": ["//tensorflow/core/platform:subprocess"],
-    }) + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
+    }) +
+    # The TF proto implementations that we will statically link here.
+    [
+        "//tensorflow/core/protobuf:autotuning_proto_cc_impl",
+        "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+        "//tensorflow/tsl/protobuf:protos_all_cc_impl",
+    ] + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
