@@ -501,6 +501,7 @@ cc_library(
     name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",

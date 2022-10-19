@@ -192,9 +192,15 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:replay_log_proto_cc",
-    ],
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:master_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+        ],
+    ),
 )
 
 tf_cuda_library(

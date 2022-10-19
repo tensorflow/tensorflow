@@ -3268,8 +3268,14 @@ pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
     dynamic_deps = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:macos": [
+            "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
+            "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
+        ],
+        "//conditions:default": [
+            "//tensorflow:libtensorflow_cc.so.%s" % VERSION,
+            "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
+        ],
         "//tensorflow:windows": [],
     }),
     exports_filter = [
