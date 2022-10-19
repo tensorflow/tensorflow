@@ -166,6 +166,16 @@ class CpuExecutable : public Executable {
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
 
+  // Returns an Executable that is loaded from an object file (XLA program
+  // compiled to a native function using the XLA Runtime stack).
+  static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
+      std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
+      absl::string_view mlir_module,
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      XlaFrameworkMapping xla_framework_mapping) {
+    return Unimplemented("LoadFromObjFile unimplemented");
+  }
+
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
 

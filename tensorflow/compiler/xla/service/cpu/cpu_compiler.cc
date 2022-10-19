@@ -310,6 +310,33 @@ CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
       xla_framework_mapping.ToProto();
 }
 
+StatusOr<std::unique_ptr<Executable>>
+CpuXlaRuntimeAotCompilationResult::LoadExecutable(
+    Compiler* compiler, se::StreamExecutor* executor) const {
+  XlaRuntimeExecutableProto xla_runtime_executable =
+      xla_runtime_cpu_executable_.xla_runtime_executable();
+  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          xla_runtime_executable.hlo_module_proto(),
+                          GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
+                                 hlo_module_config));
+
+  XlaFrameworkMapping xla_framework_mapping;
+  xla_framework_mapping.FromProto(
+      xla_runtime_cpu_executable_.xla_framework_mapping());
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                      compiler->AssignBuffers(hlo_module.get()));
+
+  return CpuExecutable::LoadFromObjFile(
+      std::move(hlo_module), xla_runtime_executable.obj_file(),
+      xla_runtime_executable.mlir_module(), std::move(buffer_assignment),
+      xla_framework_mapping);
+}
+
 CpuAotCompilationResult::CpuAotCompilationResult(
     ObjectFileData object_file_data, std::vector<BufferInfo> buffer_infos,
     int64_t result_buffer_index,
