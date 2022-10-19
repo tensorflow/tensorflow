@@ -34,7 +34,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LogicalResult.h"
-#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 #define GEN_PASS_DEF_GMLSTTOGPUPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
@@ -42,6 +42,9 @@ limitations under the License.
 using namespace mlir;
 using namespace mlir::gml_st;
 using mlir::gpu::LaunchOp;
+using mlir::memref::SubViewOp;
+using mlir::vector::TransferReadOp;
+using mlir::vector::TransferWriteOp;
 
 namespace {
 /// Converts a sequence of 3 nested gml_st.parallel ops into a gpu.launch op.
@@ -89,27 +92,41 @@ struct MultiDimReductionOpToWarpReductionPattern
                                 PatternRewriter& rewriter) const override;
 };
 
+struct EliminateMaterializeOfTransferReadPattern
+    : OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp materialize,
+                                PatternRewriter& rewriter) const override;
+};
+
+struct EliminateDistributeIntoTransferWritePattern
+    : OpRewritePattern<TransferWriteOp> {
+  using OpRewritePattern<TransferWriteOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TransferWriteOp transferWrite,
+                                PatternRewriter& rewriter) const override;
+};
+
 /// Implements the GmlStToGpuPass declared in
 /// include/mlir-hlo/Dialect/gml_st/transforms/passes.td.
 struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<ParallelOpToGpuPattern, GenericOpToWarpReductionPattern,
-                 MultiDimReductionOpToWarpReductionPattern>(&getContext());
-    ConversionTarget target(getContext());
-    target.addIllegalOp<ParallelOp>();
-    target.addIllegalOp<vector::MultiDimReductionOp>();
-    target.addDynamicallyLegalOp<linalg::GenericOp>([](linalg::GenericOp op) {
-      return llvm::none_of(op.getIteratorTypesArray(),
-                           linalg::isReductionIterator);
-    });
-    // We're producing new ops (clones of original ops in gml_st.parallel
-    // loops), so we have to mark them explicitly legal, otherwise the
-    // conversion fails even if doing partial conversion.
-    target.markUnknownOpDynamicallyLegal([](Operation*) { return true; });
-    if (failed(
-            applyFullConversion(getOperation(), target, std::move(patterns))))
+    patterns
+        .add<ParallelOpToGpuPattern, EliminateMaterializeOfTransferReadPattern,
+             EliminateDistributeIntoTransferWritePattern,
+             GenericOpToWarpReductionPattern,
+             MultiDimReductionOpToWarpReductionPattern>(&getContext());
+    func::FuncOp func = getOperation();
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
+    // Make sure there are no ParallelOps left.
+    WalkResult walk = func.walk([](ParallelOp op) {
+      op.emitOpError("failed to simtfy");
+      return WalkResult::interrupt();
+    });
+    if (walk.wasInterrupted()) signalPassFailure();
   }
 };
 }  // namespace
@@ -246,6 +263,9 @@ static Value matchLaunchSpaceToLoop(ParallelOp parallel,
 LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
     ParallelOp root, PatternRewriter& rewriter) const {
   Location loc = root.getLoc();
+
+  if (root->getParentOfType<ParallelOp>())
+    return rewriter.notifyMatchFailure(root, "should be the root parallel");
 
   Value defaultSize = rewriter.create<arith::ConstantIndexOp>(loc, 1);
   LaunchOp launch = createInitialGpuLaunchOp(loc, defaultSize, rewriter);
@@ -486,5 +506,124 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   lhs = createCombineOp(loc, lhs, acc, reductionOp.getKind(), rewriter);
   rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType, lhs);
 
+  return success();
+}
+
+template <typename TransferOp>
+static LogicalResult matchCannonicalTransferOp(TransferOp op,
+                                               PatternRewriter& rewriter) {
+  auto isZeroIndex = [](Value value) {
+    auto constIndex = value.getDefiningOp<arith::ConstantIndexOp>();
+    return constIndex && constIndex.value() == 0;
+  };
+  if (!llvm::all_of(op.getIndices(), isZeroIndex)) {
+    return rewriter.notifyMatchFailure(op, "should have all indices set to 0");
+  }
+  if (!op.getPermutationMap().isMinorIdentity()) {
+    return rewriter.notifyMatchFailure(op,
+                                       "expected cannonical permutation map");
+  }
+  if (op.getMask()) {
+    return rewriter.notifyMatchFailure(op, "should have no mask");
+  }
+  return success();
+}
+
+SubViewOp createSubView(Location loc, Value source, TileOp tile,
+                        PatternRewriter& rewriter) {
+  auto asIntArray = [](ArrayAttr array) {
+    return llvm::to_vector(llvm::map_range(array, [](Attribute attr) {
+      return attr.cast<IntegerAttr>().getInt();
+    }));
+  };
+  Type memRefType = SubViewOp::inferResultType(
+      source.getType().cast<MemRefType>(), asIntArray(tile.getStaticOffsets()),
+      asIntArray(tile.getStaticSizes()), asIntArray(tile.getStaticStrides()));
+  return rewriter.create<SubViewOp>(
+      loc, memRefType, source, tile.getOffsets(), tile.getSizes(),
+      tile.getStrides(), tile.getStaticOffsets(), tile.getStaticSizes(),
+      tile.getStaticStrides());
+}
+
+LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
+    MaterializeOp materialize, PatternRewriter& rewriter) const {
+  // Match the following pattern:
+  //  gml_st.materialize(
+  //  vector.transfer_read Memref:$src[(arith.constant 0)...]
+  //  gml_st.tile [$offsets] [$sizes] [$strides])
+  auto transferRead = materialize.getSource().getDefiningOp<TransferReadOp>();
+  if (!transferRead) {
+    return rewriter.notifyMatchFailure(
+        materialize, "expected vector.transfer_read as source");
+  }
+  Value source = transferRead.getSource();
+  if (!source.getType().isa<MemRefType>()) {
+    return rewriter.notifyMatchFailure(transferRead,
+                                       "expected memref as source");
+  }
+  if (failed(matchCannonicalTransferOp(transferRead, rewriter)))
+    return failure();
+
+  auto tile = materialize.getSet().getDefiningOp<TileOp>();
+  if (!tile) {
+    return rewriter.notifyMatchFailure(materialize,
+                                       "expected gml_st.tile as set");
+  }
+
+  // Rewrite the pattern as:
+  // vector.transfer_read
+  //   (memref.subview $src [$offsets] [$sizes] [$strides])
+  //   [(arith.constant 0)...]
+  // TODO(b/254271932): This might not be correct if there is someone writing
+  // to `source` in between `transferRead` and `materialize`. This won't happen
+  // for elementwise fusion and softmax, but might become a problem down the
+  // line.
+  auto subview = createSubView(materialize.getLoc(), source, tile, rewriter);
+  rewriter.replaceOpWithNewOp<TransferReadOp>(
+      materialize, materialize.getResult().getType().cast<VectorType>(),
+      subview, transferRead.getIndices(), transferRead.getPermutationMap(),
+      transferRead.getPadding(),
+      /*mask=*/nullptr, transferRead.getInBounds().value_or(nullptr));
+  return success();
+}
+
+LogicalResult EliminateDistributeIntoTransferWritePattern::matchAndRewrite(
+    TransferWriteOp transferWrite, PatternRewriter& rewriter) const {
+  // Match the following pattern:
+  //  vector.transfer_write
+  //    (gml_st.distribute $src into
+  //      [(gml_st.tile [$offsets] [$sizes] [$strides])])
+  //    Memref:$dst[(arith.constant 0)]
+  Value destination = transferWrite.getSource();
+  if (!destination.getType().isa<MemRefType>()) {
+    return rewriter.notifyMatchFailure(transferWrite,
+                                       "expected memref as destination");
+  }
+  if (failed(matchCannonicalTransferOp(transferWrite, rewriter)))
+    return failure();
+
+  auto distribute = transferWrite.getVector().getDefiningOp<DistributeOp>();
+  if (!distribute) {
+    return rewriter.notifyMatchFailure(transferWrite,
+                                       "expected distribute as source");
+  }
+  Value source = distribute.getSource();
+
+  auto tile = distribute.getSet().getDefiningOp<TileOp>();
+  if (!tile) {
+    return rewriter.notifyMatchFailure(distribute,
+                                       "expected gml_st.tile as set");
+  }
+
+  // Rewrite the pattern as:
+  // vector.transfer_write $src,
+  //   (memref.subview $dst [$offsets] [$sizes] [$strides])
+  //   [(arith.constant 0)...]
+  auto subview =
+      createSubView(transferWrite.getLoc(), destination, tile, rewriter);
+  rewriter.replaceOpWithNewOp<TransferWriteOp>(
+      transferWrite, /*resultType=*/llvm::None, source, subview,
+      transferWrite.getIndices(), transferWrite.getPermutationMap(),
+      /*mask=*/nullptr, transferWrite.getInBounds().value_or(nullptr));
   return success();
 }

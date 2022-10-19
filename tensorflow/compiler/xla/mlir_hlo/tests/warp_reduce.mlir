@@ -41,6 +41,7 @@ func.func @vector_reduce(%arg0 : memref<1xf32>) {
   %init = vector.broadcast %cst : f32 to vector<1xf32>
   %bcast = vector.broadcast %cst : f32 to vector<1x32xf32>
 
+  // CHECK: %[[CST:.*]] = arith.constant 1.0
   // CHECK: %[[LANE_ID:.*]] = gpu.lane_id
   // CHECK: %[[X0:.*]] = vector.extractelement {{.*}}%[[LANE_ID]]
   // CHECK: %[[Y0:.*]], %{{.*}} = gpu.shuffle xor %[[X0]], %c1
@@ -53,8 +54,7 @@ func.func @vector_reduce(%arg0 : memref<1xf32>) {
   // CHECK: %[[X4:.*]] = arith.addf %[[X3]], %[[Y3]]
   // CHECK: %[[Y4:.*]], %{{.*}} = gpu.shuffle xor %[[X4]], %c16
   // CHECK: %[[X5:.*]] = arith.addf %[[X4]], %[[Y4]]
-  // CHECK: %[[ACC:.*]] = vector.extract {{.*}}[0]
-  // CHECK: %[[Y5:.*]] = arith.addf %[[X5]], %[[ACC]]
+  // CHECK: %[[Y5:.*]] = arith.addf %[[X5]], %[[CST]]
   // CHECK: %[[SUM:.*]] = vector.broadcast %[[Y5]]
   %sum = vector.multi_reduction <add>, %bcast, %init [1] : vector<1x32xf32> to vector<1xf32>
   // CHECK: vector.transfer_write %[[SUM]], %arg0[%c0]
