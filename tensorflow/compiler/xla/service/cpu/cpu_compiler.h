@@ -90,7 +90,6 @@ class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
   CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
                                     const std::string& obj_file,
                                     const std::string& mlir_module,
-                                    const BufferAssignment& buffer_assignment,
                                     XlaFrameworkMapping xla_framework_mapping);
 
   explicit CpuXlaRuntimeAotCompilationResult(

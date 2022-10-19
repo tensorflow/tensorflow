@@ -298,19 +298,16 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 
 CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
     HloModuleProto hlo, const std::string& obj_file,
-    const std::string& mlir_module, const BufferAssignment& buffer_assignment,
-    XlaFrameworkMapping xla_framework_mapping) {
+    const std::string& mlir_module, XlaFrameworkMapping xla_framework_mapping) {
   XlaRuntimeExecutableProto xla_runtime_executable;
   *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
   xla_runtime_executable.set_obj_file(obj_file);
   xla_runtime_executable.set_mlir_module(mlir_module);
+
   *xla_runtime_cpu_executable_.mutable_xla_runtime_executable() =
       xla_runtime_executable;
-
   *xla_runtime_cpu_executable_.mutable_xla_framework_mapping() =
       xla_framework_mapping.ToProto();
-  *xla_runtime_cpu_executable_.mutable_buffer_assignment() =
-      buffer_assignment.ToProto();
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -1794,8 +1791,7 @@ StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
 
   std::unique_ptr<AotCompilationResult> result =
       std::make_unique<CpuXlaRuntimeAotCompilationResult>(
-          module_proto, obj_file, mlir_module,
-          cpu_executable->buffer_assignment(), xla_framework_mapping);
+          module_proto, obj_file, mlir_module, xla_framework_mapping);
   return result;
 }
 
