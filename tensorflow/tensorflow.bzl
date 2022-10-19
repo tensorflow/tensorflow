@@ -351,6 +351,15 @@ def lrt_if_needed():
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # "-DPLATFORM_WINDOWS",
+        # "-DEIGEN_HAS_C99_MATH",
+        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+        # "-DEIGEN_AVOID_STL_ARRAY",
+        # "-Iexternal/gemmlowp",
+        # "-Wno-sign-compare",
+        # "-DNOGDI",
+        # copybara:uncomment_end_and_comment_begin
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
@@ -367,11 +376,19 @@ def get_win_copts(is_external = False):
         "/DNOGDI",
         # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
         # where we set some other options globally.
+        # copybara:comment_end
     ]
+
     if is_external:
-        return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/UTF_COMPILE_LIBRARY",
+            "-UTF_COMPILE_LIBRARY",
+        )]
     else:
-        return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/DTF_COMPILE_LIBRARY",
+            "-DTF_COMPILE_LIBRARY",
+        )]
 
 def tf_copts(
         android_optimization_level_override = "-O2",

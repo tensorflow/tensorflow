@@ -105,8 +105,13 @@ EXTRA_EIGEN_COPTS = select({
         "-Wno-error=reorder",
     ],
     "//tensorflow:windows": [
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # "-DEIGEN_HAS_C99_MATH",
+        # "-DEIGEN_AVOID_STL_ARRAY",
+        # copybara:uncomment_end_and_comment_begin
         "/DEIGEN_HAS_C99_MATH",
         "/DEIGEN_AVOID_STL_ARRAY",
+        # copybara:comment_end
     ],
     "//conditions:default": ["-Wno-error=reorder"],
 })

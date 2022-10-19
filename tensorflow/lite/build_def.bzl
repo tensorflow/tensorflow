@@ -28,8 +28,13 @@ def tflite_copts():
         ],
         clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
         clean_dep("//tensorflow:windows"): [
+            # copybara:uncomment_begin(no MSVC flags in google)
+            # "-DTFL_COMPILE_LIBRARY",
+            # "-Wno-sign-compare",
+            # copybara:uncomment_end_and_comment_begin
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
+            # copybara:comment_end
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
