@@ -96,17 +96,6 @@ class SingleDeviceSharding : public XLACompatibleSharding {
 
   const pybind11::object& device() const { return device_; }
 
-  size_t Hash() const {
-    // Use the pointer of device to calculate hash for performance as
-    // applications reuse devices in the common cases.
-    return absl::Hash<void*>()(device_.ptr());
-  }
-
-  static pybind11::handle type() {
-    static auto type = pybind11::type::handle_of<SingleDeviceSharding>();
-    return type;
-  }
-
  private:
   pybind11::object device_;
 };
