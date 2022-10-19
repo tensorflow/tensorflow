@@ -14,15 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <stdint.h>
 
-#include "tensorflow/lite/c/c_api_types.h"
-
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-#include <array>
-#include <memory>
-
-#include "xnnpack.h"  // from @XNNPACK
-#endif
-
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -33,8 +24,6 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 namespace transpose {
-
-constexpr int kTransposeMaxDims = 5;
 
 // This file has two implementations of Transpose.
 enum KernelType {
@@ -83,10 +72,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TransposeContext op_context(context, node);
 
   // Ensure validity of input tensor.
-  TF_LITE_ENSURE_MSG(context,
-                     NumDimensions(op_context.input) <= kTransposeMaxDims,
+  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 5,
                      "Transpose op only supports 1D-5D input arrays.");
-
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
                           op_context.output->type);
 
@@ -110,24 +97,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int size = op_context.perm->dims->data[0];
   TransposeParams params;
   params.perm_count = size;
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  xnn_status status;
-  // TODO (cl/471101403) add threadpool implementation.
-  pthreadpool_t threadpool = nullptr;
-  std::array<size_t, kTransposeMaxDims> xnn_input_shape;
-  std::array<size_t, kTransposeMaxDims> xnn_perm;
-  TfLiteIntArray* input_shape = op_context.input->dims;
   for (int i = 0; i < size; ++i) {
     params.perm[i] = perm_data[i];
-    xnn_perm[i] = perm_data[i];
-    xnn_input_shape[i] = input_shape->data[i];
   }
 
-#else
-  for (int i = 0; i < size; ++i) {
-    params.perm[i] = perm_data[i];
-  }
-#endif
 #define TF_LITE_TRANSPOSE(type, scalar)                     \
   type::Transpose(params, GetTensorShape(op_context.input), \
                   GetTensorData<scalar>(op_context.input),  \
@@ -141,64 +114,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32:
     case kTfLiteInt32:
       if (kernel_type == kGenericOptimized) {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-        status = xnn_run_transpose_nd_x32(
-            GetTensorData<int32_t>(op_context.input),
-            GetTensorData<int32_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
-        if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
-        }
-#else
         TF_LITE_TRANSPOSE(optimized_ops, int32_t);
-#endif
       } else {
         TF_LITE_TRANSPOSE(reference_ops, int32_t);
       }
       break;
-    case kTfLiteBool:
-      if (sizeof(bool) != 1) {
-        TF_LITE_TRANSPOSE(reference_ops, bool);
-        break;
-      }
-      [[fallthrough]];
     case kTfLiteUInt8:
     case kTfLiteInt8:
       if (kernel_type == kGenericOptimized) {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-        status = xnn_run_transpose_nd_x8(
-            GetTensorData<int8_t>(op_context.input),
-            GetTensorData<int8_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
-        if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
-        }
-#else
         TF_LITE_TRANSPOSE(optimized_ops, int8_t);
-#endif
       } else {
         TF_LITE_TRANSPOSE(reference_ops, int8_t);
       }
       break;
     case kTfLiteInt16:
-      if (kernel_type == kGenericOptimized) {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-        status = xnn_run_transpose_nd_x16(
-            GetTensorData<int16_t>(op_context.input),
-            GetTensorData<int16_t>(op_context.output), size,
-            xnn_input_shape.data(), xnn_perm.data(), /*flags=*/0, threadpool);
-        if (status != xnn_status_success) {
-          TF_LITE_KERNEL_LOG(context, "Failed to run xnnpack transpose");
-        }
-#else
-        TF_LITE_TRANSPOSE(optimized_ops, int16_t);
-#endif
-      } else {
-        TF_LITE_TRANSPOSE(reference_ops, int16_t);
-      }
+      TF_LITE_TRANSPOSE(reference_ops, int16_t);
       break;
     case kTfLiteInt64:
       TF_LITE_TRANSPOSE(reference_ops, int64_t);
+      break;
+    case kTfLiteBool:
+      if (sizeof(bool) == 1) {
+        if (kernel_type == kGenericOptimized) {
+          TF_LITE_TRANSPOSE(optimized_ops, int8_t);
+        } else {
+          TF_LITE_TRANSPOSE(reference_ops, int8_t);
+        }
+      } else {
+        TF_LITE_TRANSPOSE(reference_ops, bool);
+      }
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
@@ -211,25 +155,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-struct OpData {};
-
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  xnn_status status = xnn_initialize(nullptr);
-  if (status != xnn_status_success) {
-    TF_LITE_KERNEL_LOG(context, "Failed to initialize xnnpack");
-  }
-#endif
-  return new OpData;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  xnn_deinitialize();
-#endif
-}
-
 }  // namespace transpose
 
 TfLiteRegistration* Register_TRANSPOSE_REF() {
@@ -239,8 +164,7 @@ TfLiteRegistration* Register_TRANSPOSE_REF() {
 }
 
 TfLiteRegistration* Register_TRANSPOSE_GENERIC_OPTIMIZED() {
-  static TfLiteRegistration r = {transpose::Init, transpose::Free,
-                                 transpose::Prepare,
+  static TfLiteRegistration r = {nullptr, nullptr, transpose::Prepare,
                                  transpose::Eval<transpose::kGenericOptimized>};
   return &r;
 }

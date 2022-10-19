@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 
-#include "xnnpack.h"  // from @XNNPACK
 #include "tensorflow/lite/c/c_api_types.h"
 #ifdef TF_LITE_TENSORFLOW_PROFILER
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
@@ -223,9 +222,6 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
     return;
   }
   // TODO(b/145340303): Tensor data should be aligned.
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  num_bytes += XNN_EXTRA_BYTES;
-#endif
   if (!tensor->data.data) {
     tensor->data.data = (char*)malloc(num_bytes);
 #ifdef TF_LITE_TENSORFLOW_PROFILER
@@ -247,9 +243,6 @@ void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
     tflite::OnTfLiteTensorAlloc(tensor, num_bytes);
 #endif
   }
-#ifdef TFLITE_KERNEL_USE_XNNPACK
-  num_bytes -= XNN_EXTRA_BYTES;
-#endif
   tensor->bytes = num_bytes;
 }
 
