@@ -467,7 +467,7 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        ":test_log_proto_cc",
+        ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
@@ -932,13 +932,15 @@ tf_cc_test(
 
 # Proto libraries.
 tf_proto_library(
-    name = "test_log_proto",
+    name = "test_log_proto_impl",
     srcs = ["test_log.proto"],
+    cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = ["//tensorflow/tsl/util:test_log_proto"],
     # Not to be used outside of tensorflow/core.
-    visibility = ["//tensorflow/core:__pkg__"],
-    exports = ["//tensorflow/tsl/util:test_log_proto"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/tsl/util:__pkg__",
+    ],
 )
 
 tf_proto_library(
