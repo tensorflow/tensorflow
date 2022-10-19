@@ -14,15 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include <string>
-#include <vector>
 
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
@@ -40,19 +42,19 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
  public:
   explicit RecvTPUEmbeddingActivationsOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    string config_string;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
 
     OP_REQUIRES(
-        ctx, tpu_embedding_config_.ParseFromString(config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        ctx, tpu_embedding_config_.ParseFromString(config_string),
+        xla::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                             "proto from config attr"));
   }
 
-  ~RecvTPUEmbeddingActivationsOp() override = default;
+  ~RecvTPUEmbeddingActivationsOp() override {}
 
   void Compile(XlaOpKernelContext* ctx) override {
     ResourceMgr* rm = GetTPUConfigResourceMgr();
-    OP_REQUIRES(ctx, rm, errors::Internal("No TPUConfigResourceMgr."));
 
     tensorflow::tpu::TpuMeshStateInterface* mesh_state;
     OP_REQUIRES_OK(
@@ -67,25 +69,24 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
 
     xla::XlaOp deduplication_data = ctx->Input("deduplication_data");
 
-    TpuEmbeddingEngine_RecvActivationsComputation_Params params;
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
-    StatusHelper status;
-    params.status = status.c_status;
-    params.tpu_mesh_state = mesh_state->data();
-    auto builder = ctx->builder();
-    OP_REQUIRES_VALUE(auto shape, ctx, builder->GetShape(deduplication_data));
+    TpuEmbeddingEngine_RecvActivationsComputation_Params recv_activation_params;
     TpuSerializedProto xla_computation_serialized;
     auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
       StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
     });
-    params.xla_computation = &xla_computation_serialized;
+    recv_activation_params.xla_computation = &xla_computation_serialized;
+    StatusHelper status;
+    recv_activation_params.status = status.c_status;
+    recv_activation_params.tpu_mesh_state = mesh_state->data();
+    auto builder = ctx->builder();
+    OP_REQUIRES_VALUE(auto shape, ctx, builder->GetShape(deduplication_data));
     XLA_Shape c_shape;
     ApiConverter::ToC(shape, &c_shape);
     auto c_shape_cleanup =
         absl::MakeCleanup([&c_shape] { ApiConverter::Destroy(&c_shape); });
-    params.deduplication_data_shape = &c_shape;
-    tpu::OpsApiFn()->TpuEmbeddingEngine_RecvActivationsComputationFn(&params);
+    recv_activation_params.deduplication_data_shape = &c_shape;
+    tpu::OpsApiFn()->TpuEmbeddingEngine_RecvActivationsComputationFn(
+        &recv_activation_params);
     OP_REQUIRES_OK(ctx, status.status());
     auto xla_computation =
         stream_executor::tpu::DeserializeProto<xla::HloModuleProto>(
@@ -93,15 +94,10 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
     auto final_activations =
         xla::Call(builder, xla_computation, {deduplication_data});
 
-    // Ensure that the number of outputs is the same as the number of user
-    // tables.
-    const int32 output_count =
-        (tpu_embedding_config_.feature_descriptor_size() == 0)
-            ? tpu_embedding_config_.table_descriptor_size()
-            : tpu_embedding_config_.feature_descriptor_size();
+    int32 output_count = tpu_embedding_config_.feature_descriptor_size();
     OP_REQUIRES(
         ctx, ctx->num_outputs() == output_count,
-        errors::InvalidArgument(
+        xla::InvalidArgument(
             "Kernel has %d outputs but configuration expects %d outputs.",
             ctx->num_outputs(), output_count));
 
@@ -113,7 +109,6 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
 
  private:
   tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
-  std::string config_string_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecvTPUEmbeddingActivationsOp);
 };
@@ -128,22 +123,20 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
  public:
   explicit RecvTPUEmbeddingDeduplicationDataOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    std::string config_string;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
     OP_REQUIRES(
-        ctx,
-        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
-            config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        ctx, tpu_embedding_config_.ParseFromString(config_string),
+        xla::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                             "proto from config attr"));
   }
 
-  ~RecvTPUEmbeddingDeduplicationDataOp() override = default;
+  ~RecvTPUEmbeddingDeduplicationDataOp() override {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    VLOG(1) << "Compile RecvTPUEmbeddingDeduplicationDataOp";
+    VLOG(1) << "Compile RecvTPUDeduplicationDataOp";
 
     ResourceMgr* rm = GetTPUConfigResourceMgr();
-    OP_REQUIRES(ctx, rm, errors::Internal("No TPUConfigResourceMgr."));
 
     tensorflow::tpu::TpuMeshStateInterface* mesh_state;
     OP_REQUIRES_OK(
@@ -153,22 +146,19 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
     core::ScopedUnref mesh_state_unref(mesh_state);
 
     TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputation_Params
-        params;
-
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
+        recv_deduplication_params;
     TpuSerializedProto xla_computation_serialized;
     auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
       StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
     });
-    params.xla_computation = &xla_computation_serialized;
+    recv_deduplication_params.xla_computation = &xla_computation_serialized;
     StatusHelper status;
-    params.status = status.c_status;
-    params.tpu_mesh_state = mesh_state->data();
+    recv_deduplication_params.status = status.c_status;
+    recv_deduplication_params.tpu_mesh_state = mesh_state->data();
 
     tpu::OpsApiFn()
         ->TpuEmbeddingEngine_RecvTPUEmbeddingDeduplicationDataComputationFn(
-            &params);
+            &recv_deduplication_params);
     OP_REQUIRES_OK(ctx, status.status());
 
     auto xla_computation =
@@ -180,7 +170,7 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
 
     // Ensure that the number of outputs is equal to 1 (for deduplication data).
     OP_REQUIRES(ctx, ctx->num_outputs() == 1,
-                errors::InvalidArgument(
+                xla::InvalidArgument(
                     "Kernel has %d outputs but configuration expects 1 output.",
                     ctx->num_outputs()));
 
@@ -189,8 +179,7 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
   }
 
  private:
-  // TPU Embedding config string.
-  std::string config_string_;
+  tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecvTPUEmbeddingDeduplicationDataOp);
 };
@@ -205,22 +194,21 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
  public:
   explicit SendTPUEmbeddingGradientsOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
+    string config_string;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
+
     OP_REQUIRES(
-        ctx,
-        tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
-            config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        ctx, tpu_embedding_config_.ParseFromString(config_string),
+        xla::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
+                             "proto from config attr"));
   }
 
-  ~SendTPUEmbeddingGradientsOp() override = default;
+  ~SendTPUEmbeddingGradientsOp() override {}
 
   void Compile(XlaOpKernelContext* ctx) override {
     VLOG(1) << "Compile SendTPUEmbeddingGradientsOp";
 
     ResourceMgr* rm = GetTPUConfigResourceMgr();
-    OP_REQUIRES(ctx, rm, errors::Internal("No TPUConfigResourceMgr."));
 
     tensorflow::tpu::TpuMeshStateInterface* mesh_state;
     OP_REQUIRES_OK(
@@ -252,29 +240,25 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
 
     xla::XlaOp deduplication_data = ctx->Input("deduplication_data");
 
-    TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params params;
-    params.tpu_embedding_config.bytes = config_string_.c_str();
-    params.tpu_embedding_config.size = config_string_.size();
+    TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params
+        send_gradients_params;
     TpuSerializedProto xla_computation_serialized;
     auto proto_cleanup = absl::MakeCleanup([&xla_computation_serialized] {
       StreamExecutor_Tpu_FreeSerializedProto(&xla_computation_serialized);
     });
-    params.xla_computation = &xla_computation_serialized;
+    send_gradients_params.xla_computation = &xla_computation_serialized;
     StatusHelper status;
-    params.status = status.c_status;
-    params.tpu_mesh_state = mesh_state->data();
+    send_gradients_params.status = status.c_status;
+    send_gradients_params.tpu_mesh_state = mesh_state->data();
     OP_REQUIRES_VALUE(auto deduplication_shape, ctx,
                       builder->GetShape(deduplication_data));
     XLA_Shape gradient_tuple_c_shape;
-    params.gradient_tuple_shape = &gradient_tuple_c_shape;
     ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(gradient_shapes),
                       &gradient_tuple_c_shape);
     XLA_Shape learning_rate_tuple_c_shape;
-    params.learning_rate_tuple_shape = &learning_rate_tuple_c_shape;
     ApiConverter::ToC(xla::ShapeUtil::MakeTupleShape(learning_rate_shapes),
                       &learning_rate_tuple_c_shape);
     XLA_Shape deduplication_c_shape;
-    params.deduplication_data_shape = &deduplication_c_shape;
     ApiConverter::ToC(deduplication_shape, &deduplication_c_shape);
 
     auto c_shape_cleanup = absl::MakeCleanup([&gradient_tuple_c_shape,
@@ -284,10 +268,10 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
       ApiConverter::Destroy(&learning_rate_tuple_c_shape);
       ApiConverter::Destroy(&deduplication_c_shape);
     });
-    params.num_inputs = ctx->num_inputs();
+    send_gradients_params.num_inputs = ctx->num_inputs();
 
     tpu::OpsApiFn()->TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputationFn(
-        &params);
+        &send_gradients_params);
     OP_REQUIRES_OK(ctx, status.status());
 
     auto xla_computation =
@@ -302,8 +286,7 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
   }
 
  private:
-  // TPU Embedding config string.
-  std::string config_string_;
+  tensorflow::tpu::TPUEmbeddingConfiguration tpu_embedding_config_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SendTPUEmbeddingGradientsOp);
 };

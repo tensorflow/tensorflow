@@ -18,7 +18,6 @@ limitations under the License.
 #include <stddef.h>
 
 #include <cstdint>
-#include <optional>
 
 #include "absl/types/optional.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -667,7 +666,7 @@ typedef struct TpuEmbeddingEngine_RecvActivationsComputation_Params {
   int32_t struct_size;
   void* priv;
 
-  TpuSerializedProto tpu_embedding_config;
+  size_t config_string_size;
   XLA_Shape* deduplication_data_shape;
   const XLA_TpuMeshState* tpu_mesh_state;
 
@@ -684,7 +683,6 @@ typedef struct
   int32_t struct_size;
   void* priv;
 
-  TpuSerializedProto tpu_embedding_config;
   const XLA_TpuMeshState* tpu_mesh_state;
   // out
   TpuSerializedProto* xla_computation;
@@ -701,7 +699,6 @@ typedef struct TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation_Params {
   void* priv;
 
   int32_t num_inputs;
-  TpuSerializedProto tpu_embedding_config;
   const XLA_TpuMeshState* tpu_mesh_state;
   XLA_Shape* learning_rate_tuple_shape;
   XLA_Shape* deduplication_data_shape;
