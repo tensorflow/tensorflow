@@ -347,6 +347,9 @@ static Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
 StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
     FunctionLibraryRuntime* lib, const string& device_name,
     bool allow_soft_placement, size_t num_inputs, size_t num_outputs) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ConstructFunctionHandle",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Constructing function handle";
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
@@ -391,6 +394,9 @@ StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
 
 Status TRTEngineOp::ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
                                           const string& device_name) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ImportSegmentGraphDef",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   TF_ASSIGN_OR_RETURN(FunctionLibraryRuntime::Handle func_handle,
                       ConstructFunctionHandle(lib, device_name));
   return FunctionDefToGraphDef(func_handle, lib, &segment_graph_def_);
@@ -398,6 +404,8 @@ Status TRTEngineOp::ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     : AsyncOpKernel(context) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::TRTEngineOp", tensorflow::profiler::TraceMeLevel::kInfo);
   // read serialized_engine
   OP_REQUIRES_OK(context,
                  context->GetAttr("serialized_segment", &serialized_segment_));
@@ -718,6 +726,9 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
 
 Status TRTEngineOp::VerifyInputShapes(
     const std::vector<TensorShape>& input_concrete_shapes) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::VerifyInputShapes",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   if (input_concrete_shapes.empty()) {
     return errors::InvalidArgument("Input shapes are empty, for ", name());
   }
@@ -1059,6 +1070,8 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
     const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
     bool use_calibration, TRTInt8Calibrator* calibrator,
     TRTEngineCacheResource* cache_resource, OpKernelContext* ctx) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::BuildEngine", tensorflow::profiler::TraceMeLevel::kInfo);
   TRT_ENSURE(cache_resource);
   TRT_ENSURE(ctx);
   // Use concrete shapes for implicit batch mode and partial shapes for
@@ -1104,9 +1117,9 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
 StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
-  static EngineContext empty_context;
   tensorflow::profiler::TraceMe activity(
       "TRTEngineOp::GetEngine", tensorflow::profiler::TraceMeLevel::kInfo);
+  static EngineContext empty_context;
   mutex_lock lock(engine_mutex_);
   // Using first input to get batch size is reliable - VerifyInputShapes()
   // guarantees that the first input is not a scalar. As such we can always use
@@ -1287,6 +1300,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
 // possible.
 Status TRTEngineOp::AllocateCalibrationResources(
     OpKernelContext* ctx, TRTEngineCacheResource* cache_res) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::AllocateCalibrationResources",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   cache_res->calib_ctx_ = std::make_unique<CalibrationContext>();
   auto* cres = cache_res->calib_ctx_.get();
 
