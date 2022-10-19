@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_layout_helper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
 #define DEBUG_TYPE "tf-layout-optimization"
@@ -67,10 +66,13 @@ TransposeOp ReuseExistingTranspose(const OpOperand* operand,
   return nullptr;
 }
 
+#define GEN_PASS_DEF_LAYOUTASSIGNMENTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
 class LayoutAssignmentPass
-    : public LayoutAssignmentPassBase<LayoutAssignmentPass> {
+    : public impl::LayoutAssignmentPassBase<LayoutAssignmentPass> {
  public:
   LayoutAssignmentPass() = default;
   explicit LayoutAssignmentPass(const std::string& force_data_format) {
@@ -82,10 +84,14 @@ class LayoutAssignmentPass
   void runOnOperation() final;
 };
 
+#define GEN_PASS_DEF_MOVETRANSPOSESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // MoveTransposesPass moves all Transpose ops to the beginning or to the end of
 // the basic block where they are defined. This will allow canonicalzer to
 // delete redundant transposes.
-class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
+class MoveTransposesPass
+    : public impl::MoveTransposesPassBase<MoveTransposesPass> {
  public:
   MoveTransposesPass() = default;
   explicit MoveTransposesPass(MoveTransposeDirection direction,
@@ -101,7 +107,7 @@ class MoveTransposesPass : public MoveTransposesPassBase<MoveTransposesPass> {
 using Permutation = SmallVector<int64_t, 4>;
 
 void LayoutAssignmentPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
@@ -433,7 +439,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
 }
 
 void MoveTransposesPass::runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   SmallVector<Operation*, 8> work_list;
 
@@ -487,7 +493,7 @@ void CreateLayoutOptimizationPipeline(
       MoveTransposeDirection::kEnd, !options.skip_fold_transpose_in_ops));
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLayoutAssignmentPass() {
   // This static is kind of hack, it hooks the pipeline registration for the
   // command line and piggy-back to the TableGen generated registration code.
   static mlir::PassPipelineRegistration<LayoutOptimizationPipelineOptions>
@@ -498,7 +504,7 @@ std::unique_ptr<OperationPass<FuncOp>> CreateLayoutAssignmentPass() {
   return std::make_unique<LayoutAssignmentPass>();
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateMoveTransposesPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateMoveTransposesPass() {
   return std::make_unique<MoveTransposesPass>();
 }
 

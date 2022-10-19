@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_BASE_H_
 
 #include <memory>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -49,6 +49,11 @@ class InterpreterExecutableBase : public Executable {
       absl::Span<const Literal> arg_literals) = 0;
 
  private:
+  StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
+      const Shape& shape, const HloInputOutputAliasConfig& alias_config,
+      se::DeviceMemoryAllocator* allocator,
+      std::vector<ExecutionInput>* arguments, stream_executor::Stream* stream);
+
   InterpreterExecutableBase(const InterpreterExecutableBase&) = delete;
   InterpreterExecutableBase& operator=(const InterpreterExecutableBase&) =
       delete;

@@ -15,19 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/kernel.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/kernel.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -35,11 +38,13 @@ namespace gpu {
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          absl::Span<const BufferAllocation* const> args,
                          const std::string& kernel_name,
-                         const LaunchDimensions& launch_dimensions)
+                         const LaunchDimensions& launch_dimensions,
+                         std::vector<mlir::Value> values)
     : Thunk(Kind::kKernel, thunk_info),
       args_(args.begin(), args.end()),
       kernel_name_(kernel_name),
-      launch_dimensions_(launch_dimensions) {}
+      launch_dimensions_(launch_dimensions),
+      values_(std::move(values)) {}
 
 std::string KernelThunk::ToStringExtra(int indent) const {
   return absl::StrFormat(", kernel = %s, launch dimensions = %s", kernel_name_,
@@ -65,14 +70,14 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     kernel_cache_.emplace(executor, std::move(kernel));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static void PrintBufferContents(
     se::Stream* stream, absl::Span<const se::DeviceMemoryBase> buffer_args) {
   int input_idx = 0;
   for (const se::DeviceMemoryBase& buf : buffer_args) {
-    auto host_buffer = absl::make_unique<char[]>(buf.size());
+    auto host_buffer = std::make_unique<char[]>(buf.size());
     CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
     CHECK(stream->BlockHostUntilDone().ok());
 

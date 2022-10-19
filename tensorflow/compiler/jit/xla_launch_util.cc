@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -61,7 +63,7 @@ se::Platform::Id XlaPlatformInfoFromDevice(DeviceBase* device_base) {
 
 VariableInfo::VariableInfo(
     int index, absl::string_view name, Var* var,
-    const absl::optional<ManagedStackTrace>& definition_stack_trace)
+    const std::optional<ManagedStackTrace>& definition_stack_trace)
     : index_(index),
       name_(name),
       var_(var),
@@ -114,21 +116,24 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
-      return errors::InvalidArgument("Trying to access resource ",
-                                     handle.name(), definition_location,
-                                     " located in device ", handle.device(),
-                                     " from device ", dev->attributes().name());
+      return errors::InvalidArgument(
+          "Trying to access resource ", handle.name(), definition_location,
+          " located in device ", handle.device(), " from device ",
+          dev->attributes().name(),
+          "\n Cf. "
+          "https://www.tensorflow.org/xla/"
+          "known_issues#tfvariable_on_a_different_device");
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
           // This var is uninitialized for now.
           *ptr = new Var(DT_INVALID);
-          return Status::OK();
+          return OkStatus();
         }));
     result->emplace_back(var_idx, handle.name(), variable,
                          handle.definition_stack_trace());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx) {
@@ -182,7 +187,7 @@ Status LockVariables(absl::Span<VariableInfo*> variables) {
     prev = mu;
   }
   VLOG(4) << "Finished acquiring variable locks.";
-  return Status::OK();
+  return OkStatus();
 }
 
 Status LockVariables(absl::Span<VariableInfo> variables) {
@@ -201,9 +206,32 @@ Status SnapshotResourceVariables(OpKernelContext* ctx,
   for (int i = 0, end = variable_indices.size(); i < end; i++) {
     Var* var = variable_infos[i].var();
     (*result)[variable_indices[i]] =
-        var ? absl::make_optional(*var->tensor()) : absl::nullopt;
+        var ? std::make_optional(*var->tensor()) : std::nullopt;
   }
-  return Status::OK();
+  return OkStatus();
+}
+
+StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+    OpKernelContext* ctx) {
+  std::vector<int> constant_input_indices;
+  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
+      &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
+  if (!absl::c_all_of(constant_input_indices, [&](int idx) {
+        return ctx->input_memory_type(idx) == HOST_MEMORY;
+      })) {
+    return errors::Internal("Unexpected device placement for a constant input");
+  }
+  return constant_input_indices;
+}
+
+std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
+  std::vector<int> out;
+  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+    if (ctx->input(i).dtype() == DT_RESOURCE) {
+      out.push_back(i);
+    }
+  }
+  return out;
 }
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
@@ -327,7 +355,7 @@ static StatusOr<Tensor> GetOrCreateTensorForOutput(
                                      ? xla::ShapeIndex({output_num})
                                      : xla::ShapeIndex({});
   CHECK(input_output_alias.shape().IsTuple() || output_num == 0);
-  if (absl::optional<xla::HloInputOutputAliasConfig::Alias> alias =
+  if (std::optional<xla::HloInputOutputAliasConfig::Alias> alias =
           input_output_alias.GetAliasedParameter(output_index)) {
     VLOG(3) << "Found alias: " << alias->ToString();
     int tf_param =
@@ -412,7 +440,7 @@ static Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 static StatusOr<Var*> GetOrCreateResourceVar(
@@ -422,7 +450,7 @@ static StatusOr<Var*> GetOrCreateResourceVar(
   TF_RETURN_IF_ERROR(
       LookupOrCreateResource<Var>(ctx, handle, &variable, [&write](Var** ptr) {
         *ptr = new Var(write.type);
-        return Status::OK();
+        return OkStatus();
       }));
   return variable;
 }
@@ -601,7 +629,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     *var->tensor() = output_tensor;
     ++output_num;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::vector<XlaCompiler::Argument>>

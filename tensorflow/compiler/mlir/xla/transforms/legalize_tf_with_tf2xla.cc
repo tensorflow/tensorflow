@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -39,21 +40,22 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
-#include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes_detail.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -68,12 +70,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace mlir {
 namespace mhlo {
@@ -260,17 +260,19 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::TopKWithUniqueOp>(),
     TypeID::get<TF::TransposeOp>(),
     TypeID::get<TF::TridiagonalSolveOp>(),
+    TypeID::get<TF::TridiagonalMatMulOp>(),
     TypeID::get<TF::TruncateDivOp>(),
     TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::TruncateModOp>(),
+    TypeID::get<TF::UniqueOp>(),
     TypeID::get<TF::UnpackOp>(),
     TypeID::get<TF::UpperBoundOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
-    TypeID::get<TF::XlaConvOp>(),
-    TypeID::get<TF::XlaConvV2Op>(),
+    TypeID::get<TF::XlaCustomCallV2Op>(),
     TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
     TypeID::get<TF::XlaKeyValueSortOp>(),
     TypeID::get<TF::XlaPadOp>(),
+    TypeID::get<TF::XlaSetDynamicDimensionSizeOp>(),
     TypeID::get<TF::XlaSvdOp>(),
   };
   // clang-format on
@@ -409,6 +411,17 @@ bool IsOpAllowedForTesting(Operation* op) {
   return ops->count(abstractOp->getTypeID());
 }
 
+// List of ops that require falling back to XlaOpKernel legalizations and also
+// require the ability to create functions.
+bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
+  static auto* ops = new llvm::SmallDenseSet<mlir::TypeID, 16>{
+      TypeID::get<TF::ApproxTopKOp>(),
+  };
+  auto abstractOp = op->getRegisteredInfo();
+  if (!abstractOp) return false;
+  return ops->count(abstractOp->getTypeID());
+}
+
 namespace {
 
 template <typename T, size_t N>
@@ -419,27 +432,28 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
   // Register compilation kernels for all registered XLA backends.
   tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
-  auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
+  auto device = std::make_unique<tensorflow::XlaCompilationDevice>(
       tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
-  return absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
+  return std::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
 class Tf2XlaRewriter {
  public:
   static LogicalResult RewriteOp(Operation* op, PatternRewriter& rewriter,
-                                 const std::string& device_type) {
-    Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type);
+                                 const std::string& device_type,
+                                 bool is_module_pass) {
+    Tf2XlaRewriter tf2xla_rewriter(op, rewriter, device_type, is_module_pass);
     return tf2xla_rewriter.LegalizeOp();
   }
 
  private:
   Tf2XlaRewriter(Operation* op, PatternRewriter& rewriter,
-                 const std::string& device_type)
+                 const std::string& device_type, bool is_module_pass)
       : op_(op),
         device_type_(device_type),
         rewriter_(rewriter),
         hlo_builder_(op->getName().getStringRef().str(), rewriter_,
-                     op->getLoc()),
+                     op->getLoc(), /*build_functions=*/is_module_pass),
         context_(nullptr) {}
 
   ~Tf2XlaRewriter() {
@@ -500,9 +514,9 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   auto cleanup = [](const std::string& name) {};
   // Use step_id zero as we only have a single context concurrently and
   // concurrently running each of the MLIR functions create a new device.
-  step_container_ = absl::make_unique<tensorflow::ScopedStepContainer>(
+  step_container_ = std::make_unique<tensorflow::ScopedStepContainer>(
       /*step_id=*/0, cleanup);
-  tensorflow::Status status = step_container_->Create(
+  tsl::Status status = step_container_->Create(
       device_->resource_manager(),
       tensorflow::XlaContext::kXlaContextResourceName, context_);
   if (!status.ok()) {
@@ -511,18 +525,17 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   }
   params_.step_container = step_container_.get();
 
-  tensorflow::StatusOr<int64_t> version_or =
-      tensorflow::GetTfGraphProducerVersion(
-          op_->getParentOfType<mlir::ModuleOp>());
+  tsl::StatusOr<int64_t> version_or = tensorflow::GetTfGraphProducerVersion(
+      op_->getParentOfType<mlir::ModuleOp>());
   if (!version_or.ok()) {
     return emitError(op_->getLoc()) << version_or.status().ToString();
   }
 
-  flib_def_ = absl::make_unique<tensorflow::FunctionLibraryDefinition>(
+  flib_def_ = std::make_unique<tensorflow::FunctionLibraryDefinition>(
       tensorflow::OpRegistry::Global(), tensorflow::FunctionDefLibrary());
-  pflr_ = absl::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
+  pflr_ = std::make_unique<tensorflow::ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), tensorflow::Env::Default(), /*config=*/nullptr,
-      version_or.ValueOrDie(), flib_def_.get(), tensorflow::OptimizerOptions());
+      version_or.value(), flib_def_.get(), tensorflow::OptimizerOptions());
   params_.function_library = pflr_->GetFLR(device_->name());
   return success();
 }
@@ -554,8 +567,8 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
   if (failed(PrepareParams())) return failure();
 
   std::shared_ptr<const tensorflow::NodeProperties> props;
-  tensorflow::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
-      *nodedef_or.ValueOrDie(),
+  tsl::Status status = tensorflow::NodeProperties::CreateFromNodeDef(
+      *nodedef_or.value(),
       params_.function_library->GetFunctionLibraryDefinition(), &props);
   if (!status.ok()) {
     return op_->emitRemark()
@@ -618,13 +631,13 @@ LogicalResult Tf2XlaRewriter::LegalizeOp() {
 
     tensors.emplace_back(
         device_->GetAllocator(tensorflow::AllocatorAttributes()), expr.dtype(),
-        shape_or.ValueOrDie());
+        shape_or.value());
     tensorflow::Tensor& tensor = tensors.back();
     tensorflow::XlaExpression::AssignExpressionToTensor(expr, &tensor);
     inputs.emplace_back(&tensor);
   }
 
-  params_.inputs = &inputs;
+  params_.inputs = inputs;
   params_.op_kernel = op_kernel.get();
   llvm::SmallVector<tensorflow::AllocatorAttributes, 4> output_attr(
       op_->getNumResults());
@@ -692,7 +705,7 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
                      << xla_op_or.status().ToString();
     return tensorflow::XlaExpression::Invalid();
   }
-  ::xla::XlaOp xla_op = xla_op_or.ValueOrDie();
+  ::xla::XlaOp xla_op = xla_op_or.value();
 
   tensorflow::DataType dtype;
   auto status = tensorflow::ConvertToDataType(operand.getType(), &dtype);
@@ -707,28 +720,45 @@ class Tf2XlaRewritePattern : public RewritePattern {
  public:
   explicit Tf2XlaRewritePattern(MLIRContext* ctx,
                                 const std::string& device_type,
-                                bool prefer_tf2xla, bool legalize_test_only_ops)
+                                bool prefer_tf2xla, bool legalize_test_only_ops,
+                                bool is_module_pass)
       : RewritePattern(MatchAnyOpTypeTag(), /*benefit=*/1, ctx),
         device_type_(device_type),
         prefer_tf2xla_(prefer_tf2xla),
-        legalize_test_only_ops_(legalize_test_only_ops) {}
+        legalize_test_only_ops_(legalize_test_only_ops),
+        is_module_pass_(is_module_pass) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (!(IsOpAllowedTf2XlaFallback(op) ||
-          (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
-          (legalize_test_only_ops_ && IsOpAllowedForTesting(op))))
+    if (is_module_pass_) {
+      // Module passes should only ever legalize ops that have been specifically
+      // whitelisted for legalization within a module pass. They will never
+      // legalize any ops whitelisted for legalization within a func pass.
+      if (!IsOpAllowedTf2XlaFallbackAndCreateFunctions(op)) {
+        return failure();
+      }
+    } else if (!(IsOpAllowedTf2XlaFallback(op) ||
+                 (prefer_tf2xla_ && IsOpAllowedTf2XlaPreferred(op)) ||
+                 (legalize_test_only_ops_ && IsOpAllowedForTesting(op)))) {
       return failure();
-    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
+    }
+    return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_,
+                                     is_module_pass_);
   }
 
  private:
   std::string device_type_;
   bool prefer_tf2xla_;
   bool legalize_test_only_ops_;
+  bool is_module_pass_;
 };
 
-class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
+// Include declaration for LegalizeTFWithTF2XLAOptions
+#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
+#define GEN_PASS_DEF_LEGALIZETFWITHTF2XLA
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
+
+class LegalizeTF : public impl::LegalizeTFWithTF2XLABase<LegalizeTF> {
  public:
   LegalizeTF() = default;
   explicit LegalizeTF(llvm::StringRef device_type, bool prefer_tf2xla) {
@@ -741,7 +771,8 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     patterns.add<Tf2XlaRewritePattern>(&getContext(), device_type_,
-                                       prefer_tf2xla_, legalize_test_only_ops_);
+                                       prefer_tf2xla_, legalize_test_only_ops_,
+                                       /*is_module_pass=*/false);
     if (failed(
             applyPatternsAndFoldGreedily(getOperation(), std::move(patterns))))
       signalPassFailure();
@@ -754,13 +785,14 @@ class LegalizeTF : public LegalizeTFPassBase<LegalizeTF> {
 
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
-                                          MLIRContext* ctx,
-                                          bool prefer_tf2xla) {
+                                          MLIRContext* ctx, bool prefer_tf2xla,
+                                          bool is_module_pass) {
   patterns.add<Tf2XlaRewritePattern>(ctx, device_type.str(), prefer_tf2xla,
-                                     /*legalize_test_only_ops=*/false);
+                                     /*legalize_test_only_ops=*/false,
+                                     is_module_pass);
 }
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTfWithTf2XlaPass(
     llvm::StringRef device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(device_type, prefer_tf2xla);
 }

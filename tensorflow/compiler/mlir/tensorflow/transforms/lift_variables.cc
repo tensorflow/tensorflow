@@ -134,7 +134,7 @@ LogicalResult LiftVariablesFromSession(
       return module.emitOpError()
              << "failed to convert tensor (name: " << name.str() << ")";
     }
-    ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
+    ElementsAttr tensor_attr = tensor_attr_or.value();
 
     builder.create<tf_saved_model::GlobalTensorOp>(
         NameLoc::get(builder.getStringAttr(name.str())),
@@ -154,7 +154,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
 
   SmallSet<StringRef, 4> resource_names;
 
-  for (FuncOp func : module.getOps<FuncOp>()) {
+  for (func::FuncOp func : module.getOps<func::FuncOp>()) {
     for (int i = 0, e = func.getNumArguments(); i < e; ++i) {
       auto resource_arg =
           func.getArgAttrOfType<StringAttr>(i, kResourceNameArgAttr);
@@ -182,7 +182,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
   // Now that we have all global tensors created, we set the corresponding
   // bound_inputs' types correctly.
   SymbolTable symbol_table(module);
-  for (auto func : module.getOps<FuncOp>()) {
+  for (auto func : module.getOps<func::FuncOp>()) {
     for (auto arg : func.getArguments()) {
       unsigned arg_number = arg.getArgNumber();
       auto global_tensor = LookupBoundInputOfType<GlobalTensorOp>(
@@ -197,7 +197,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
       // If the arg type already matches the global_tensor type, we don't need
       // to do anything.
       if (!underlying_type.empty() &&
-          underlying_type[0] == global_tensor.type()) {
+          underlying_type[0] == global_tensor.getType()) {
         assert(underlying_type.size() == 1);
         continue;
       }
@@ -206,7 +206,7 @@ LogicalResult LiftVariables(ModuleOp module, Session* session) {
       auto new_arg_type = mlir::RankedTensorType::get(
           /*shape=*/{},
           mlir::TF::ResourceType::get(
-              /*subtypes=*/{global_tensor.type().cast<TensorType>()},
+              /*subtypes=*/{global_tensor.getType().cast<TensorType>()},
               module.getContext()));
 
       arg.setType(new_arg_type);

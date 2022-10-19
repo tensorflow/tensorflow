@@ -71,7 +71,7 @@ class ScopedHandles {
     }
     handles_[index] = handle;
     handles_release_[index] = release;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a to-be-released tuple allocation at the given index.
@@ -87,7 +87,7 @@ class ScopedHandles {
       TF_RETURN_IF_ERROR(memory_manager_->Release(handles_[index]));
     }
     Release(index);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Releases the handle at the given index. The destructor will not use that
@@ -144,7 +144,7 @@ Status MakeOutput(const RefPtr<XRTTupleAllocation>& output, int64_t index,
                                           /*alias_parent_allocation=*/true));
     result->reset(tuple);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PopulateOpWorkingSet(xla::Backend* backend,
@@ -162,7 +162,7 @@ Status PopulateOpWorkingSet(xla::Backend* backend,
     TF_RETURN_IF_ERROR(working_set->LookupAndPin(
         backend, outputs[input.op_index()], allocator));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -247,7 +247,7 @@ bool InputShapeMatches(const xla::Shape& parameter_shape,
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   };
   return xla::ShapeUtil::ForEachSubshapeWithStatus(parameter_shape,
                                                    shape_checker)
@@ -371,7 +371,7 @@ Status CreateExecuteOutput(OpKernelContext* context,
     output_tensor->scalar<int64_t>()() =
         memory_manager->Register(std::move(output_tuple));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExecuteChained(OpKernelContext* context,
@@ -436,7 +436,7 @@ Status ExecuteChained(OpKernelContext* context,
   for (size_t i = 0; i < results.size(); ++i) {
     output_tensor->vec<int64_t>()(i) = results.Release(i);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

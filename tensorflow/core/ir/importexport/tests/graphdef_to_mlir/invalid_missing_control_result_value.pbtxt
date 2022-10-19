@@ -1,0 +1,44 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Control return missing was not found
+
+library {
+  function {
+    signature {
+      name: "test"
+      output_arg {
+        name: "output"
+        type: DT_INT32
+      }
+      control_output: "control_output"
+    }
+    node_def {
+      name: "const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+          }
+        }
+      }
+    }
+    ret {
+      key: "output"
+      value: "const"
+    }
+    control_ret {
+      key: "control_output"
+      value: "missing"
+    }
+  }
+}

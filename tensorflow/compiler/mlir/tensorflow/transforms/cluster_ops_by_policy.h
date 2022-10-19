@@ -272,7 +272,7 @@ void EmitValueConstraintsRemarks(const ValuesConstraintSet& constraints);
 
 // Emits constraints remarks for function inputs that are in the constraints
 // set (entry block arguments have constraints).
-void EmitInputsConstraintsRemarks(FuncOp func,
+void EmitInputsConstraintsRemarks(func::FuncOp func,
                                   const ValuesConstraintSet& constraints);
 
 // Infers constraints for the values in the function body from the function
@@ -285,7 +285,7 @@ void EmitInputsConstraintsRemarks(FuncOp func,
 //     return %v : tensor<?x?xf32>
 //   }
 LogicalResult InferFunctionBodyValuesConstraints(
-    FuncOp func, ValuesConstraintSet& constraints);
+    func::FuncOp func, ValuesConstraintSet& constraints);
 
 }  // namespace TFDevice
 }  // namespace mlir

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOCO_TFLITE_OPERATOR_H_
 #define TENSORFLOW_LITE_TOCO_TFLITE_OPERATOR_H_
 
+#include <string>
+
 #include "flatbuffers/flatbuffers.h"
 #include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/schema/schema_generated.h"

@@ -112,7 +112,7 @@ TEST_F(ExtractExampleParserConfigurationTest, Basic) {
       graph_def_, "ParseExample/ParseExample", session_.get(), &dense_vec,
       &sparse_vec);
 
-  EXPECT_EQ(Status::OK(), status);
+  EXPECT_EQ(OkStatus(), status);
   EXPECT_EQ(2, sparse_vec.size());
   EXPECT_EQ(3, dense_vec.size());
 

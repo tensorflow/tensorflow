@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "MapIncompleteSize"
   output_arg {
     name: "size"

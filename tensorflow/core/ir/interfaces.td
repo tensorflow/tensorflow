@@ -117,4 +117,6 @@ def PreservedAttributesInterface : OpInterface<"PreservedAttributesInterface"> {
   ];
 }
 
+def IntrinsicOperation : NativeOpTrait<"IntrinsicOperation">;
+
 #endif // TFG_INTERFACES

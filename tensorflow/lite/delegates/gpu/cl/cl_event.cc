@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
 
+#include <string>
+#include <utility>
+
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 
 namespace tflite {

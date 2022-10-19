@@ -58,7 +58,7 @@ Status SetTypeAttribute(absl::string_view name, ContainerT types,
   assert(result.second && "cannot have multiple attributes with the same name");
   (void)result;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets shape list attribute with the given `name` to the given `shapes`. If the
@@ -73,7 +73,7 @@ void SetShapeAttribute(absl::string_view name, ContainerT shapes,
   auto& shape_list = *value.mutable_list();
   for (const llvm::Optional<llvm::ArrayRef<int64_t>>& shape : shapes) {
     TensorShapeProto& tshape = *shape_list.add_shape();
-    if (shape.hasValue()) {
+    if (shape.has_value()) {
       for (int64_t dim : *shape) tshape.add_dim()->set_size(dim);
     } else {
       tshape.set_unknown_rank(true);
@@ -94,7 +94,7 @@ Status GetUnregisteredAttrs(
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
   if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
-    return Status::OK();
+    return OkStatus();
   }
 
   // Collect all the registered attributes.
@@ -111,7 +111,7 @@ Status GetUnregisteredAttrs(
           absl::string_view(attr.getName().data(), attr.getName().size()));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Collects all attribute names to ignore in an MLIR operation when exporting to
@@ -190,7 +190,7 @@ Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -230,7 +230,7 @@ Status GetAttrValuesFromOperation(
     value.mutable_func()->set_name("");
     (*attributes)[kShapeInferenceGraph] = value;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(

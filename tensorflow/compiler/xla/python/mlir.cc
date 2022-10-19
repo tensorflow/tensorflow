@@ -21,13 +21,14 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
 
 namespace py = pybind11;
 
@@ -49,7 +50,9 @@ StatusOr<std::string> PyXlaComputationToMlirModule(
                                          /*import_all_computations=*/true));
   std::string s;
   llvm::raw_string_ostream os(s);
-  module->print(os);
+  mlir::OpPrintingFlags flags;
+  flags.enableDebugInfo();
+  module->print(os, flags);
   return s;
 }
 
@@ -60,7 +63,7 @@ StatusOr<XlaComputation> PyMlirModuleToXlaComputation(std::string mlir_module,
   mlir::OwningOpRef<mlir::ModuleOp> module;
   context.loadDialect<mlir::func::FuncDialect>();
   context.loadDialect<mlir::mhlo::MhloDialect>();
-  context.loadDialect<mlir::chlo::HloClientDialect>();
+  context.loadDialect<mlir::chlo::ChloDialect>();
   mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(mlir_module.data(), mlir_module.size()), &context);

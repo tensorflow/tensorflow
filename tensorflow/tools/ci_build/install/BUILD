@@ -1,10 +1,7 @@
 """Description: BUILD file for shell script to install bazel using the installer.
 """
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 sh_binary(
     name = "install_bazel",

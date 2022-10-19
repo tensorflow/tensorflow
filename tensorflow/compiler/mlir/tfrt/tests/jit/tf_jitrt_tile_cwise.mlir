@@ -6,7 +6,7 @@ func.func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %c1 = arith.constant 1 : index
   %dim0 = tensor.dim %input, %c0 : tensor<?x?xf32>
   %dim1 = tensor.dim %input, %c1 : tensor<?x?xf32>
-  %init = linalg.init_tensor [%dim0, %dim1] : tensor<?x?xf32>
+  %init = tensor.empty(%dim0, %dim1) : tensor<?x?xf32>
   %1 = linalg.generic
     {indexing_maps = [#map, #map], iterator_types = ["parallel", "parallel"]}
     ins(%input : tensor<?x?xf32>)
@@ -27,7 +27,7 @@ func.func @tanh_2d(%input: tensor<?x?xf32>) -> tensor<?x?xf32> {
 // CHECK-NOT:       tensor.dim
 // CHECK-DAG:       %[[DIM0:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1:.*]] = tensor.dim %[[INPUT]], %[[C1]]
-// CHECK:           %[[INIT:.*]] = linalg.init_tensor {{\[}}%[[DIM0]], %[[DIM1]]]
+// CHECK:           %[[INIT:.*]] = tensor.empty(%[[DIM0]], %[[DIM1]])
 // CHECK-DAG:       %[[DIM0_OUT:.*]] = tensor.dim %[[INPUT]], %[[C0]]
 // CHECK-DAG:       %[[DIM1_OUT:.*]] = tensor.dim %[[INPUT]], %[[C1]]
 // CHECK:           %[[OUTPUT:.*]] = gml_st.loop

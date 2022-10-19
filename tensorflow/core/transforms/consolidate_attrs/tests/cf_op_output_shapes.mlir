@@ -40,3 +40,21 @@ tfg.graph #tf_type.version<producer = 1, min_consumer = 1> {
     parallel_iterations = 10 : i64
   } : (tensor<*xi32>) -> (tensor<*xi32>)
 }
+
+// -----
+
+// `output_shapes` is an optional attribute in TF. When imported to TFG, if the
+// attribute is not present on the NodeDef, it will be imported as `[]`. Check
+// that it is ignored.
+
+tfg.graph #tf_type.version<producer = 1, min_consumer = 1> {
+  %arg, %ctl = Args : () -> (tensor<*xi32>)
+  // CHECK: While
+  // CHECK-SAME: output_shapes = []
+  // CHECK-SAME: -> (tensor<*xi32>)
+  %While, %ctl_0 = While(%arg) {
+    T = [i32], output_shapes = [],
+    cond = #tf_type.func<@cond, {}>, body = #tf_type.func<@body, {}>,
+    parallel_iterations = 10 : i64
+  } : (tensor<*xi32>) -> (tensor<*xi32>)
+}

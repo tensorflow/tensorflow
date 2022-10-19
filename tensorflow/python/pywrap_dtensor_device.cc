@@ -20,6 +20,7 @@ limitations under the License.
 #include "pybind11/stl.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/dtensor/cc/dtensor_device.h"
+#include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -36,7 +37,9 @@ using tensorflow::dtensor::ExperimentalClearDefaultMesh;
 using tensorflow::dtensor::ExperimentalSetDefaultLayout;
 using tensorflow::dtensor::ExperimentalSetDefaultMesh;
 using tensorflow::dtensor::FetchLayout;
+using tensorflow::dtensor::GetFunctionCacheHitAndMissCount;
 using tensorflow::dtensor::IsSparseDTensor;
+using tensorflow::dtensor::Mesh;
 using tensorflow::dtensor::Pack;
 using tensorflow::dtensor::SetSameShapePolicy;
 using tensorflow::dtensor::SetTPUCoreIDs;
@@ -282,23 +285,23 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     }
     return tensorflow::PyoOrThrow(result);
   });
-  m.def("FetchLayout",
-        [](const py::handle& context, const py::handle& dtensor_handle,
-           const py::capsule& device_info) -> py::object {
-          std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-              TF_NewStatus(), TF_DeleteStatus);
+  m.def(
+      "FetchLayout",
+      [](const py::handle& context, const py::handle& dtensor_handle,
+         const py::capsule& device_info) -> py::object {
+        std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+            TF_NewStatus(), TF_DeleteStatus);
 
-          std::string layout_string =
-              FetchLayout(static_cast<TFE_Context*>(
-                              PyCapsule_GetPointer(context.ptr(), nullptr)),
-                          EagerTensor_Handle(dtensor_handle.ptr()), device_info,
-                          status.get());
-          if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(),
-                                                          nullptr))
-            return tensorflow::PyoOrThrow(nullptr);
-          return tensorflow::PyoOrThrow(
-              PyUnicode_FromString(layout_string.c_str()));
-        });
+        std::string layout_string =
+            FetchLayout(static_cast<TFE_Context*>(
+                            PyCapsule_GetPointer(context.ptr(), nullptr)),
+                        EagerTensor_Handle(dtensor_handle.ptr()), device_info,
+                        status.get());
+        if (tensorflow::MaybeRaiseExceptionFromTFStatus(status.get(), nullptr))
+          return tensorflow::PyoOrThrow(nullptr);
+        return tensorflow::PyoOrThrow(
+            PyUnicode_FromString(layout_string.c_str()));
+      });
   m.def("IsSparseDTensor", [](const py::handle& context,
                               const py::handle& dtensor_handle,
                               const py::capsule& device_info) {
@@ -316,4 +319,23 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
     }
     return is_sparse;
   });
+  m.def("GetFunctionCacheHitAndMissCount", [](const py::handle& context,
+                                              const py::capsule& device_info) {
+    std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+        TF_NewStatus(), TF_DeleteStatus);
+    return GetFunctionCacheHitAndMissCount(
+        static_cast<TFE_Context*>(PyCapsule_GetPointer(context.ptr(), nullptr)),
+        device_info, status.get());
+  });
+  py::class_<Mesh>(m, "Mesh")
+      .def(py::init(&Mesh::CreateMesh))
+      .def_property_readonly("name", &Mesh::name)
+      .def_property_readonly("dim_names", &Mesh::MeshDimNames)
+      .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
+      .def("to_string", &Mesh::ToString,
+           "Returns string representation of Mesh.")
+      .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
+           "Returns True if a Mesh contains the given dimension name.")
+      .def("device_type", &Mesh::device_type,
+           "Returns the device_type of a Mesh.");
 }

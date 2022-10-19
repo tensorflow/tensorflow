@@ -29,15 +29,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace tf_executor {
 namespace {
 
+#define GEN_PASS_DEF_EXECUTORGRAPHPRUNINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // This transformation pass prunes a TF graph eliminating dead-nodes.
 class GraphPruningPass
-    : public TF::ExecutorGraphPruningPassBase<GraphPruningPass> {
+    : public impl::ExecutorGraphPruningPassBase<GraphPruningPass> {
  public:
   GraphPruningPass() = default;
   explicit GraphPruningPass(llvm::ArrayRef<std::string> ops_to_preserve);
@@ -56,7 +58,7 @@ class GraphPruningPass
 // feeds/fetches/targets we should not attempt to prune. The best approximation
 // here is to check if the graph is of the "main" function and does not have the
 // "tf.entry_function" attribute defined.
-bool CanPruneGraph(FuncOp func) {
+bool CanPruneGraph(func::FuncOp func) {
   return func.getName() != "main" ||
          func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
 }
@@ -91,7 +93,7 @@ void VisitOp(GraphOp graph, Operation* op,
              llvm::SmallVectorImpl<Operation*>* ops_to_visit) {
   if (auto island = llvm::dyn_cast<IslandOp>(op)) {
     mlir::visitUsedValuesDefinedAbove(
-        island.body(), island.body(), [&](OpOperand* operand) {
+        island.getBody(), island.getBody(), [&](OpOperand* operand) {
           VisitOpOperand(graph, operand->get(), reachable_ops, ops_to_visit);
         });
   }
@@ -186,7 +188,7 @@ void GraphPruningPass::PruneGraph(GraphOp graph) {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFExecutorGraphPruningPass(
     llvm::ArrayRef<std::string> ops_to_preserve) {
   return std::make_unique<GraphPruningPass>(ops_to_preserve);
 }

@@ -1,9 +1,9 @@
 # Dockerfile to build a manylinux 2014/2014 compliant cross-compiler.
 #
-# Builds a devtoolset-7 enviroment with manylinux2014 compatible
+# Builds a devtoolset-7 environment with manylinux2014 compatible
 # glibc (2.12) and libstdc++ (4.4) in /dt7.
 #
-# Builds a devtoolset-9 enviroment with manylinux2014 compatible
+# Builds a devtoolset-9 environment with manylinux2014 compatible
 # glibc (2.17) and libstdc++ (4.8) in /dt9.
 #
 # To build a new version, run:

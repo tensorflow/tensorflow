@@ -20,6 +20,7 @@ limitations under the License.
 #include <functional>
 #include <list>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <utility>
@@ -27,9 +28,9 @@ limitations under the License.
 
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -41,8 +42,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -66,11 +67,8 @@ using LayoutCanonicalizationCallback =
 // attached to.
 class HloModule {
  public:
-  // Constructor without a versioned computation handle. This constructor should
-  // only be used for HloModules used outside of the XLA service (eg
-  // tests). The versioned handle is used by the service in the compilation
-  // cache. A default configuration is created for this module.
-  explicit HloModule(const std::string& name, HloModuleConfig config);
+  // Constructor.
+  HloModule(const std::string& name, HloModuleConfig config);
   virtual ~HloModule() {}
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -155,6 +153,14 @@ class HloModule {
     return config_.entry_computation_layout();
   }
 
+  void set_use_auto_spmd_partitioning(bool use) {
+    use_auto_spmd_partitioning_ = use;
+  }
+
+  bool use_auto_spmd_partitioning() const {
+    return use_auto_spmd_partitioning_;
+  }
+
   // Based on module's entry_computation sharded shapes,
   // layout_canonicalization_callback_ computes and
   // returns <argument_layouts, result_layout> for module's entry computation.
@@ -194,17 +200,38 @@ class HloModule {
   //
   //   for (HloComputation* c : module->computations()) { ... }
   //
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::const_iterator>>
   computations() const {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
   }
-  tensorflow::gtl::iterator_range<UnwrappingIterator<
+  tsl::gtl::iterator_range<UnwrappingIterator<
       std::vector<std::unique_ptr<HloComputation>>::iterator>>
   computations() {
     return {MakeUnwrappingIterator(computations_.begin()),
             MakeUnwrappingIterator(computations_.end())};
+  }
+
+  // Similar as above, but return a filtered view of computations for specified
+  // `execution_threads`. Empty `execution_threads` list means all execution
+  // threads are included.
+  tsl::gtl::iterator_range<FilteringUnwrappingIterator<
+      std::vector<std::unique_ptr<HloComputation>>::const_iterator,
+      std::function<bool(const HloComputation*)>>>
+  computations(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const {
+    // Pass execution_threads by value to the predicate to ensure it lives
+    // beyond this function.
+    std::function<bool(const HloComputation*)> pred =
+        [execution_threads](const HloComputation* computation) {
+          if (execution_threads.empty()) {
+            return true;
+          }
+          return execution_threads.contains(computation->execution_thread());
+        };
+    return MakeFilteringUnwrappingIteratorRange(computations_.begin(),
+                                                computations_.end(), pred);
   }
 
   // Returns the computation in this module that has the name `name`.  Returns
@@ -233,16 +260,31 @@ class HloModule {
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
-  std::vector<HloComputation*> MakeComputationPostOrder() const;
-
-  // Same as MakeComputationPostOrder() but only returns the computations
-  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder() const {
+    return MakeComputationPostOrder({});
+  }
+  // Similar as above but only returns computations with specified
+  // `execution_threads`. Empty `execution_threads` list means all execution
+  // threads are included.
   std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
+  // Same as MakeComputationPostOrder() but only returns the computations that
+  // are on specified `execution_threads` and are also found in the passed in
+  // allowList. Empty `execution_threads` list means all execution threads are
+  // included.
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<absl::string_view>& execution_threads,
       const absl::flat_hash_set<HloComputation*>& allow_list) const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
-  std::vector<HloComputation*> MakeComputationSorted() const;
+  std::vector<HloComputation*> MakeComputationSorted() const {
+    return MakeComputationSorted({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeComputationSorted(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -253,10 +295,22 @@ class HloModule {
   // of the module's non-fusion computations -- that is, it's OK to add or
   // remove computations from a module while iterating over
   // MakeNonfusionComputations().
-  std::vector<HloComputation*> MakeNonfusionComputations() const;
+  std::vector<HloComputation*> MakeNonfusionComputations() const {
+    return MakeNonfusionComputations({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputations(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   // Same as MakeNonfusionComputations() but sorting computations by content.
-  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted() const {
+    return MakeNonfusionComputationsSorted({});
+  }
+  // Same as above but only for specified `execution_threads`. Empty
+  // `execution_threads` list means all execution threads are included.
+  std::vector<HloComputation*> MakeNonfusionComputationsSorted(
+      const absl::flat_hash_set<absl::string_view>& execution_threads) const;
 
   HloModuleConfig& config() { return config_; }
   const HloModuleConfig& config() const { return config_; }
@@ -428,10 +482,10 @@ class HloModule {
     module->metadata_ = std::move(metadata_);
   }
 
-  uint64_t profile_handle() const { return profile_handle_; }
+  int64_t profile_version() const { return profile_version_; }
 
-  void set_profile_handle(uint64_t profile_handle) {
-    profile_handle_ = profile_handle;
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
   }
 
   void add_profile_info(const HloModuleProto::ProfileInfo& profile_info) {
@@ -459,7 +513,14 @@ class HloModule {
 
   absl::string_view autofdo_fingerprint() const { return autofdo_fingerprint_; }
 
+  CompilationEnvironments& comp_envs() const { return *comp_envs_; }
+
  private:
+  // This constructor is used in Clone() to copy the CompilationEnvironments.
+  // comp_envs may be null, in which case a clean one will be created.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs);
+
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
       bool uniquify_identifiers, bool preserve_entry_layouts);
@@ -485,12 +546,12 @@ class HloModule {
   // Used to keep track of the next unique module id that should be assigned.
   static std::atomic<int> next_unique_module_id_;
   // A unique id to label modules with.
-  int unique_id_;
+  const int unique_id_;
 
   // The HloSchedule of the module. The schedule if it exists contains a
   // sequential order of instructions for each non-fusion computation in the
   // module.
-  absl::optional<HloSchedule> schedule_;
+  std::optional<HloSchedule> schedule_;
 
   // alias_config indicates the alias information of input/output buffers that
   // are expected from the module.
@@ -501,11 +562,11 @@ class HloModule {
 
   // The HLO shardings of the entry computation's parameters for
   // SPMD-partitioned programs.
-  absl::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
+  std::optional<std::vector<HloSharding>> spmd_parameters_shardings_;
 
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
-  absl::optional<HloSharding> spmd_output_sharding_;
+  std::optional<HloSharding> spmd_output_sharding_;
 
   // Arguments to be prefetched across programs.
   std::vector<std::pair<int64_t, ShapeIndex>> cross_program_prefetches_;
@@ -517,7 +578,7 @@ class HloModule {
   bool is_dynamic_ = false;
 
   // Optional compilation profile handle.
-  uint64_t profile_handle_ = 0;
+  int64_t profile_version_ = 0;
 
   // An array of ProfileInfo specifying what optimization profiles this module
   // contains, along with the relative speedups.
@@ -529,9 +590,16 @@ class HloModule {
   // The unoptimized module fingerprint.
   std::string autofdo_fingerprint_;
 
+  bool use_auto_spmd_partitioning_ = false;
+
   // Layout canonicalization callback, used only when
   // use_auto_spmd_partitioning_ = true.
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
+
+  // Compilation environments (protos that carry command line flags and
+  // environment variables).
+  std::unique_ptr<CompilationEnvironments> comp_envs_ =
+      std::make_unique<CompilationEnvironments>();
 };
 
 }  // namespace xla

@@ -142,4 +142,4 @@ def warning(msg, *args, **kwargs):
   logging.warning(msg, *args, **kwargs)
   if echo_log_to_stdout:
     _output_to_stdout('WARNING: ' + msg, *args, **kwargs)
-  sys.stdout.flush()
+    sys.stdout.flush()

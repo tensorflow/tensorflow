@@ -41,8 +41,8 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     // Also only do this for degenerate dimension sizes as the additional
     // reshaping may not be worth the potential for CSE.
     HloInstruction* real_data = ag->mutable_operand(0);
-    while (std::get<0>(
-        real_data->ReshapeMerelyInsertsOrDeletes1SizedDimensions())) {
+    while (real_data->ReshapeMerelyInsertsOrDeletes1SizedDimensions()
+               .has_value()) {
       real_data = real_data->mutable_operand(0);
     }
 
@@ -75,9 +75,9 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     new_ag_shape.set_dimensions(
         new_ag_dim,
         all_gather_participants * new_ag_shape.dimensions(new_ag_dim));
-    absl::optional<int64_t> new_channel_id =
-        ag->channel_id() ? absl::make_optional(this->NextChannelId())
-                         : absl::nullopt;
+    std::optional<int64_t> new_channel_id =
+        ag->channel_id() ? std::make_optional(this->NextChannelId())
+                         : std::nullopt;
     HloInstruction* new_ag =
         comp->AddInstruction(HloInstruction::CreateAllGather(
             new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
@@ -92,10 +92,12 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
   return changed;
 }
 
-StatusOr<bool> CanonicalizeAllGatherForCSE::Run(HloModule* module) {
+StatusOr<bool> CanonicalizeAllGatherForCSE::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   next_channel_id_ = hlo_query::NextChannelId(*module);
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->computations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
     changed |= comp_changed;
   }

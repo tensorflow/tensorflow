@@ -16,28 +16,32 @@ func.func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 37 ],
   // CHECK-NEXT:      buffer: 2,
   // CHECK-NEXT:      name: "arg1",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 40 ],
   // CHECK-NEXT:      buffer: 3,
   // CHECK-NEXT:      name: "tfl.fully_connected",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 40 ],
   // CHECK-NEXT:      buffer: 4,
   // CHECK-NEXT:      name: "tfl.fully_connected:1",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:      }
+  // CHECK-NEXT:      },
+  // CHECK-NEXT:      has_rank: true
   // CHECK-NEXT:    } ],
   // CHECK-NEXT:    inputs: [ 0, 1 ],
   // CHECK-NEXT:    outputs: [ 2 ],

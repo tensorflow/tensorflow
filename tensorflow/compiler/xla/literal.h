@@ -17,20 +17,21 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_LITERAL_H_
 
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -43,10 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -66,7 +67,7 @@ class LiteralBase {
   bool operator!=(const LiteralBase& other) const { return !(*this == other); }
 
   // Returns the shape of the literal.
-  const Shape& shape() const { return root_piece().subshape(); }
+  const Shape& shape() const;
 
   // Serialize to proto.
   LiteralProto ToProto() const;
@@ -136,7 +137,7 @@ class LiteralBase {
   NativeT GetFirstElement() const;
 
   // As above but returns any integer type casted to an int64_t.
-  absl::optional<int64_t> GetFirstInteger() const;
+  std::optional<int64_t> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.
@@ -171,19 +172,19 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value into
   // int64_t.  This literal must be an array.
-  absl::optional<int64_t> GetIntegralAsS64(
+  std::optional<int64_t> GetIntegralAsS64(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // double. This literal must be an array.
-  absl::optional<double> GetAsDouble(
+  std::optional<double> GetAsDouble(
       absl::Span<const int64_t> multi_index) const;
 
   // As Get(), but determines the correct type, and converts the value into
   // complex128. All floating point types can be converted into complex128.
   //
   // This literal must be an array.
-  absl::optional<complex128> GetAsComplex128(
+  std::optional<complex128> GetAsComplex128(
       absl::Span<const int64_t> multi_index) const;
 
   // Invokes the "per cell" callback for each element in the provided
@@ -251,7 +252,7 @@ class LiteralBase {
   bool IsR1Iota() const;
 
   // Returns the stride if the literal is a strided iota.
-  absl::optional<int64_t> IsR1StridedIota() const;
+  std::optional<int64_t> IsR1StridedIota() const;
 
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
@@ -285,7 +286,7 @@ class LiteralBase {
             return;
           }
 
-          CHECK(LayoutUtil::IsDense(subshape.layout()));
+          CHECK(LayoutUtil::IsDenseArray(subshape));
           auto data = absl::MakeConstSpan(
               static_cast<const char*>(literal.untyped_data(index)),
               std::min(kByteLimit, literal.size_bytes(index)));
@@ -400,7 +401,7 @@ class LiteralBase {
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
   // initialization, then reinitialization. Consider if a call to
-  // absl::make_unique<Literal>(shape), followed by the call to
+  // std::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
 
@@ -429,7 +430,7 @@ class LiteralBase {
   // pointer to the memory allocated for the array data.
   class Piece {
    public:
-    ArrayValueState get_array_value_state();
+    ArrayValueState get_array_value_state() const;
     void set_array_value_state(ArrayValueState state);
     // Returns the buffer holding the array data for this piece as an array
     // slice. This piece must be array-shaped.
@@ -456,12 +457,37 @@ class LiteralBase {
     void AllocateBuffers();
     void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
-    char* buffer() const { return buffer_; }
-    void set_buffer(char* buffer) { buffer_ = buffer; }
+    const char* buffer() const;
+    char* buffer() {
+      return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
+    }
+    void set_buffer(char* buffer) {
+      CHECK(subshape_->IsArray());
+      auto* array_rep = std::holds_alternative<Uninitialized>(rep_)
+                            ? &rep_.emplace<ArrayRep>()
+                            : GetArrayRep();
+      DCHECK(array_rep);
+      array_rep->data = buffer;
+    }
+    void MoveDataFrom(Piece& from) {
+      DCHECK(!std::holds_alternative<ArrayRep>(rep_));
+      DCHECK(!std::holds_alternative<TupleRep>(rep_));
+      if (auto* array_rep = from.GetArrayRep()) {
+        rep_.emplace<ArrayRep>().data = array_rep->data;
+      } else if (auto* inlined_rep = from.GetInlinedRep()) {
+        std::memcpy(rep_.emplace<InlinedRep>().data, inlined_rep->data,
+                    from.total_bytes());
+      }
+      from.rep_.emplace<Uninitialized>();
+    }
 
     // Gets/sets the buffer holding dynamic sizes.
-    int32_t* dynamic_size_buffer() const {
-      return reinterpret_cast<int32_t*>(buffer_ + size_bytes());
+    const int32_t* dynamic_size_buffer() const {
+      return reinterpret_cast<const int32_t*>(buffer() + size_bytes());
+    }
+    int32_t* dynamic_size_buffer() {
+      return const_cast<int32_t*>(
+          const_cast<const Piece*>(this)->dynamic_size_buffer());
     }
 
     int64_t dynamic_size_buffer_bytes() const {
@@ -471,7 +497,14 @@ class LiteralBase {
     // Gets or sets the subshape of this piece. This reference points to a
     // subshape within the shape in the containing Literal (Literal::shape_).
     const Shape& subshape() const { return *subshape_; }
-    void set_subshape(const Shape* subshape) { subshape_ = subshape; }
+    void set_subshape(const Shape* subshape) {
+      subshape_ = subshape;
+      if (std::holds_alternative<Uninitialized>(rep_)) {
+        if (subshape_->IsTuple()) {
+          rep_.emplace<TupleRep>();
+        }
+      }
+    }
 
     // Returns the size in bytes of the buffer holding the array data.
     int64_t size_bytes() const { return ShapeUtil::ByteSizeOf(subshape()); }
@@ -489,15 +522,29 @@ class LiteralBase {
     int64_t element_count() const { return ShapeUtil::ElementsIn(subshape()); }
 
     // Returns the child piece at 'index' of this piece.
-    Piece& child(int64_t index) { return children_[index]; }
+    Piece& child(int64_t index) {
+      return const_cast<Piece&>(const_cast<const Piece*>(this)->child(index));
+    }
+    const Piece& child(int64_t index) const {
+      auto* tuple_rep = GetTupelRep();
+      DCHECK(tuple_rep);
+      return tuple_rep->children[index];
+    }
 
     // Adds a child piece to this piece's children.
     void emplace_back(Piece child_piece) {
-      children_.emplace_back(std::move(child_piece));
+      auto* tuple_rep = GetTupelRep();
+      DCHECK(tuple_rep);
+      tuple_rep->children.emplace_back(std::move(child_piece));
     }
 
     // Returns the size of children pieces of this piece.
-    int64_t children_size() { return children_.size(); }
+    int64_t children_size() {
+      if (auto* tuple_rep = GetTupelRep()) {
+        return tuple_rep->children.size();
+      }
+      return 0;
+    }
 
     // Visitor functions that recursively traverses the piece and calls the
     // given function at each child piece. The function has the type:
@@ -508,7 +555,7 @@ class LiteralBase {
       return ForEachHelper(
                  [&func](const ShapeIndex& index, const Piece& piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return OkStatus();
                  },
                  *this, &index)
           .IgnoreError();
@@ -537,7 +584,7 @@ class LiteralBase {
       return ForEachMutableHelper(
                  [&func](const ShapeIndex& index, Piece* piece) {
                    func(index, piece);
-                   return Status::OK();
+                   return OkStatus();
                  },
                  const_cast<xla::LiteralBase::Piece*>(this), &index)
           .IgnoreError();
@@ -588,6 +635,48 @@ class LiteralBase {
     bool IsKnown() const;
 
    private:
+    // Uninitialized state representation.
+    struct Uninitialized {};
+    // Out of line array storage.
+    union ArrayRep {
+      char* data;
+    };
+    struct TupleRep {
+      // Children pieces for tuple shaped pieces.
+      std::vector<Piece> children = {};
+    };
+
+    // Use just so many bytes that we don't increase the sizeof(Piece).
+    static inline constexpr size_t kMaxInlinedBytes =
+        std::max(sizeof(ArrayRep), sizeof(TupleRep));
+
+    // Inlined array storage.
+    struct InlinedRep {
+      char data[kMaxInlinedBytes];
+    };
+
+    // Helper visiter to access the buffer in the representation variant.
+    struct BufferVisitor {
+      char* operator()(Uninitialized&) { return nullptr; }
+      const char* operator()(const Uninitialized&) const { return nullptr; }
+      char* operator()(TupleRep&) { return nullptr; }
+      const char* operator()(const TupleRep&) const { return nullptr; }
+      char* operator()(InlinedRep& rep) { return rep.data; }
+      const char* operator()(const InlinedRep& rep) const { return rep.data; }
+      char* operator()(ArrayRep& rep) { return rep.data; }
+      const char* operator()(const ArrayRep& rep) const { return rep.data; }
+    };
+
+    const InlinedRep* GetInlinedRep() const {
+      return std::get_if<InlinedRep>(&rep_);
+    }
+    InlinedRep* GetInlinedRep() { return std::get_if<InlinedRep>(&rep_); }
+
+    const ArrayRep* GetArrayRep() const { return std::get_if<ArrayRep>(&rep_); }
+    ArrayRep* GetArrayRep() { return std::get_if<ArrayRep>(&rep_); }
+
+    const TupleRep* GetTupelRep() const { return std::get_if<TupleRep>(&rep_); }
+    TupleRep* GetTupelRep() { return std::get_if<TupleRep>(&rep_); }
     // Helpers for traversing the piece via ForEachSubpiece rooted at 'index'.
     // The first non-OK (or non-true) value is returned by the function.
     // The callable 'func' has the same signature as described above in
@@ -596,12 +685,15 @@ class LiteralBase {
     Status ForEachHelper(const Fn& func, const Piece& piece,
                          ShapeIndex* index) const {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      for (int64_t i = 0; i < piece.children_.size(); ++i) {
-        index->push_back(i);
-        TF_RETURN_IF_ERROR(ForEachHelper(func, piece.children_[i], index));
-        index->pop_back();
+      if (auto* tuple_rep = piece.GetTupelRep()) {
+        for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
+          index->push_back(i);
+          TF_RETURN_IF_ERROR(
+              ForEachHelper(func, tuple_rep->children[i], index));
+          index->pop_back();
+        }
       }
-      return Status::OK();
+      return OkStatus();
     }
     template <typename Fn>
     bool ForEachHelperBool(const Fn& func, const Piece& piece,
@@ -609,12 +701,14 @@ class LiteralBase {
       if (!func(*index, piece)) {
         return false;
       }
-      for (int64_t i = 0; i < piece.children_.size(); ++i) {
-        index->push_back(i);
-        if (!ForEachHelperBool(func, piece.children_[i], index)) {
-          return false;
+      if (auto* tuple_rep = piece.GetTupelRep()) {
+        for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
+          index->push_back(i);
+          if (!ForEachHelperBool(func, tuple_rep->children[i], index)) {
+            return false;
+          }
+          index->pop_back();
         }
-        index->pop_back();
       }
       return true;
     }
@@ -622,13 +716,15 @@ class LiteralBase {
     Status ForEachMutableHelper(const Fn& func, Piece* piece,
                                 ShapeIndex* index) {
       TF_RETURN_IF_ERROR(func(*index, piece));
-      for (int64_t i = 0; i < piece->children_.size(); ++i) {
-        index->push_back(i);
-        TF_RETURN_IF_ERROR(
-            ForEachMutableHelper(func, &piece->children_[i], index));
-        index->pop_back();
+      if (auto* tuple_rep = piece->GetTupelRep()) {
+        for (int64_t i = 0; i < tuple_rep->children.size(); ++i) {
+          index->push_back(i);
+          TF_RETURN_IF_ERROR(
+              ForEachMutableHelper(func, &tuple_rep->children[i], index));
+          index->pop_back();
+        }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Recursive helper for EqualElements.
@@ -640,28 +736,17 @@ class LiteralBase {
     template <typename NativeT>
     void CopyElementsWithDynamicBound(const LiteralBase::Piece& src);
 
-    // For array-shaped pieces, this is the buffer holding the literal data.
-    char* buffer_ = nullptr;
+    // Storage representation of this piece.
+    std::variant<Uninitialized, InlinedRep, ArrayRep, TupleRep> rep_;
 
     // The shape of piece. This points into the shape of the containing Literal
     // (Literal::shape_).
     const Shape* subshape_ = nullptr;
 
-    // Children pieces for tuple shaped pieces.
-    std::vector<Piece> children_ = {};
-
     ArrayValueState array_value_state_ = ArrayValueState::kKnown;
   };  // class Piece
 
-  const Piece& piece(const ShapeIndex& shape_index) const {
-    Piece* piece = &const_cast<Piece&>(root_piece());
-    for (const auto i : shape_index) {
-      DCHECK_GE(i, 0);
-      DCHECK_LT(i, piece->children_size());
-      piece = &piece->child(i);
-    }
-    return *piece;
-  }
+  const Piece& piece(const ShapeIndex& shape_index) const;
 
   // Returns the piece at the root of the shape.
   virtual const Piece& root_piece() const = 0;
@@ -680,7 +765,7 @@ class LiteralBase {
 // Abstract base class representing a mutable literal in XLA.
 class MutableLiteralBase : public LiteralBase {
  public:
-  virtual ~MutableLiteralBase() = 0;
+  ~MutableLiteralBase() override = 0;
 
   // Returns a Span view of the array for this literal for the
   // given NativeT (e.g., float). CHECKs if the subshape of the literal at the
@@ -693,7 +778,7 @@ class MutableLiteralBase : public LiteralBase {
 
   // TODO(b/67651157): Remove this accessor. Literal users should not be able to
   // mutate the shape as this can produce malformed Literals.
-  Shape* mutable_shape_do_not_use() { return shape_.get(); }
+  Shape* mutable_shape_do_not_use();
 
   // Set the dynamic size on dim_index in the literal at the given shape_index.
   void SetDynamicSize(int64_t dim_index, const ShapeIndex& shape_index,
@@ -774,7 +859,7 @@ class MutableLiteralBase : public LiteralBase {
   // array of S32.
   template <typename NativeT>
   void PopulateR1(absl::Span<const NativeT> values);
-  void PopulateR1(const tensorflow::core::Bitmap& values);
+  void PopulateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   void PopulateR2(std::initializer_list<std::initializer_list<NativeT>> values);
   template <typename NativeT>
@@ -793,14 +878,16 @@ class MutableLiteralBase : public LiteralBase {
   // NativeT(absl::Span<const int64_t> indexes) or compatible.
   //
   // This literal must have a dense layout.
-  template <typename NativeT, typename FnType>
-  Status Populate(const FnType& generator);
+  template <typename NativeT>
+  Status Populate(
+      const std::function<NativeT(absl::Span<const int64_t>)>& generator);
 
   // A parallel version of Populate(). This can be used if the generator is
   // thread-safe and the values for the shape's different elements are
   // independent.
-  template <typename NativeT, typename FnType>
-  Status PopulateParallel(const FnType& generator);
+  template <typename NativeT>
+  Status PopulateParallel(
+      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator);
 
   // Fills this literal with the given value.
   template <typename NativeT>
@@ -822,7 +909,7 @@ class MutableLiteralBase : public LiteralBase {
     return const_cast<Piece&>(LiteralBase::piece(shape_index));
   }
 
-  Piece& root_piece() const override { return *root_piece_; };
+  Piece& mutable_root_piece() { return const_cast<Piece&>(root_piece()); }
 
   // Internal template helper for the Literal::CopySliceFrom(), matching its
   // arguments one by one.
@@ -855,14 +942,107 @@ class MutableLiteralBase : public LiteralBase {
     int64_t minor_loop_size = 1;
   };
 
-  // Literal class always owns the shape. The parent class borrows this shape.
-  std::unique_ptr<Shape> shape_;
+  // A unique_ptr like class which may or may not have ownership of its pointer.
+  // The literal may or may not own the storage of the shape. Creating/copying a
+  // shape can incur significant overhead which in many case we'd like to avoid,
+  // esp. for small literals.
+  class MaybeOwningShapePtr {
+   public:
+    MaybeOwningShapePtr() = default;
+    explicit MaybeOwningShapePtr(std::unique_ptr<Shape> unique)
+        : ptr_and_owning_bit_(TakeUnique(std::move(unique))) {}
 
-  Piece* root_piece_ = nullptr;
+    explicit MaybeOwningShapePtr(const Shape* borrowed)
+        : ptr_and_owning_bit_(Borrow(borrowed)) {}
+
+    ~MaybeOwningShapePtr() { MaybeDeleteOwned(); }
+
+    const Shape* get() const {
+      return reinterpret_cast<const Shape*>(ptr_and_owning_bit_ & kPointerMask);
+    }
+    Shape* get_mutable(bool ensure_owned = false) {
+      const Shape* const_ptr = get();
+      // TODO(b/67651157): Remove this copy on write logic and combine get() and
+      // get_mutable() once we remove mutable_shape_do_not_use().
+      if (const_ptr && !OwnsPtr()) {
+        ptr_and_owning_bit_ = TakeUnique(std::make_unique<Shape>(*const_ptr));
+        const_ptr = get();
+      }
+      DCHECK(OwnsPtr());
+      return const_cast<Shape*>(const_ptr);
+    }
+    const Shape* operator->() const { return get(); }
+    const Shape& operator*() const { return *get(); }
+
+    MaybeOwningShapePtr& operator=(std::unique_ptr<Shape> unique) {
+      MaybeDeleteOwned();
+      ptr_and_owning_bit_ = TakeUnique(std::move(std::move(unique)));
+      return *this;
+    }
+
+    MaybeOwningShapePtr& operator=(const Shape* borrowed) {
+      MaybeDeleteOwned();
+      ptr_and_owning_bit_ = Borrow(borrowed);
+      return *this;
+    }
+
+    MaybeOwningShapePtr& operator=(MaybeOwningShapePtr&& other) {
+      using std::swap;
+      swap(ptr_and_owning_bit_, other.ptr_and_owning_bit_);
+      return *this;
+    }
+
+    MaybeOwningShapePtr(const MaybeOwningShapePtr&) = delete;
+    MaybeOwningShapePtr(MaybeOwningShapePtr&& other)
+        : ptr_and_owning_bit_(other.ptr_and_owning_bit_) {
+      other.ptr_and_owning_bit_ = 0;
+    }
+
+    MaybeOwningShapePtr Clone() const {
+      const Shape* ptr = get();
+      if (ptr && OwnsPtr()) {
+        return MaybeOwningShapePtr(std::make_unique<Shape>(*ptr));
+      }
+      return MaybeOwningShapePtr(ptr);
+    }
+
+   private:
+    enum : uint64_t {
+      kOwningBitMask = 1UL,
+      kPointerMask = ~kOwningBitMask,
+    };
+    static intptr_t TakeUnique(std::unique_ptr<Shape> unique) {
+      Shape* released = unique.release();
+      DCHECK_EQ(reinterpret_cast<intptr_t>(released) & kOwningBitMask, 0);
+      return reinterpret_cast<intptr_t>(released) | kOwningBitMask;
+    }
+
+    static intptr_t Borrow(const Shape* borrowed) {
+      DCHECK_EQ(reinterpret_cast<intptr_t>(borrowed) & kOwningBitMask, 0);
+      return reinterpret_cast<intptr_t>(borrowed);
+    }
+
+    bool OwnsPtr() const { return kOwningBitMask & ptr_and_owning_bit_; }
+
+    void MaybeDeleteOwned() {
+      if (OwnsPtr()) {
+        delete get();
+      }
+    }
+
+    intptr_t ptr_and_owning_bit_ = 0;
+  };
+
+  // The parent class borrows this shape.
+  MaybeOwningShapePtr shape_;
 
   // Implementation details shared between Populate() and PopulateParallel()
-  template <typename NativeT, typename FnType>
-  Status PopulateInternal(const FnType& generator, bool parallel);
+  //  template <typename NativeT, typename FnType>
+  //  Status PopulateInternal(const FnType& generator, bool parallel);
+  template <typename NativeT>
+  Status PopulateInternal(
+      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+      bool parallel);
 
   friend class LiteralBase;
   friend class MutableBorrowingLiteral;
@@ -872,12 +1052,12 @@ std::ostream& operator<<(std::ostream& out, const Literal& literal);
 // The underlying buffer and shape is always owned by this class.
 class Literal : public MutableLiteralBase {
  public:
-  Literal() : Literal(ShapeUtil::MakeNil()) {}
+  Literal();
 
   // Create a literal of the given shape. The literal is allocated sufficient
   // memory to hold the shape. Memory is uninitialized.
   explicit Literal(const Shape& shape);
-  virtual ~Literal();
+  ~Literal() override;
 
   // Literals are moveable, but not copyable. To copy a literal use
   // Literal::Clone or Literal::CloneToUnique. This prevents inadvertent copies
@@ -899,7 +1079,10 @@ class Literal : public MutableLiteralBase {
   // deallocated, and the respective buffers are replaced with those in
   // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
   virtual Status MoveFrom(Literal&& src_literal,
-                          const ShapeIndex& dest_shape_index = {});
+                          const ShapeIndex& dest_shape_index);
+  Status MoveFrom(Literal&& src_literal) {
+    return MoveFrom(std::move(src_literal), /*dest_shape_index=*/{});
+  }
 
   // Returns a vector containing the tuple elements of this Literal as separate
   // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
@@ -918,6 +1101,9 @@ class Literal : public MutableLiteralBase {
   Literal SubLiteral(ShapeIndexView shape_index);
 
  private:
+  friend class LiteralBase;
+  friend class MutableLiteralBase;
+  const Piece& root_piece() const override { return root_piece_; };
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();
 
@@ -927,13 +1113,14 @@ class Literal : public MutableLiteralBase {
   void SetPiece(
       const Shape& shape, Piece* piece, bool allocate_arrays,
       ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
+  Piece root_piece_;
 };
 
 // The underlying buffer is not owned by this class and is always owned by
 // others. The shape is not owned by this class and not mutable.
 class MutableBorrowingLiteral : public MutableLiteralBase {
  public:
-  virtual ~MutableBorrowingLiteral();
+  ~MutableBorrowingLiteral() override;
 
   MutableBorrowingLiteral() : MutableLiteralBase() {}
 
@@ -941,6 +1128,7 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   MutableBorrowingLiteral(MutableLiteralBase* literal);
   MutableBorrowingLiteral(MutableBorrowingLiteral literal,
                           const ShapeIndex& view_root);
@@ -951,11 +1139,13 @@ class MutableBorrowingLiteral : public MutableLiteralBase {
   MutableBorrowingLiteral(absl::Span<char*> src_buf_ptrs, const Shape& shape);
 
  private:
+  const Piece& root_piece() const override { return *root_piece_; };
   // Recursively copies the subtree from the `src_piece` at the given child
   // index to the `dest_piece`. For buffers only the pointers are copied, but
   // not the content.
-  void CopyPieceSubtree(const Shape& shape, Piece* src_piece,
+  void CopyPieceSubtree(const Shape& shape, const Piece* src_piece,
                         Piece* dest_piece);
+  Piece* root_piece_ = nullptr;
 };
 
 // A read-only view of a Literal. A LiteralSlice contains pointers to shape and
@@ -965,6 +1155,7 @@ class LiteralSlice : public LiteralBase {
   LiteralSlice() : LiteralBase() {}
 
   // Implicit conversion constructors.
+  // NOLINTNEXTLINE(google-explicit-constructor)
   LiteralSlice(const LiteralBase& literal);
   LiteralSlice(const LiteralBase& literal, const ShapeIndex& view_root);
 
@@ -1078,7 +1269,7 @@ inline void MutableLiteralBase::Set(absl::Span<const int64_t> multi_index,
 template <typename NativeT>
 inline void MutableLiteralBase::Set(absl::Span<const int64_t> multi_index,
                                     NativeT value) {
-  return root_piece().Set<NativeT>(multi_index, value);
+  return mutable_root_piece().Set<NativeT>(multi_index, value);
 }
 
 template <typename NativeT>
@@ -1087,7 +1278,7 @@ NativeT LiteralBase::GetFirstElement() const {
 }
 
 template <typename NativeT>
-void LiteralBase::EachCell(
+TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     std::function<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
@@ -1105,7 +1296,7 @@ void LiteralBase::EachCell(
 }
 
 template <typename NativeT>
-void MutableLiteralBase::MutableEachCell(
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
     std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
   if (ShapeUtil::IsZeroElementArray(shape())) {
@@ -1122,10 +1313,15 @@ void MutableLiteralBase::MutableEachCell(
 }
 
 template <typename NativeT>
-inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR1(
+    absl::Span<const NativeT> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
-  CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  if (shape().is_static()) {
+    CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
+  } else {
+    CHECK_EQ(GetDynamicSize(0), values.size());
+  }
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   auto data_span = data<NativeT>();
@@ -1133,17 +1329,24 @@ inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
 }
 
 template <typename NativeT>
-void MutableLiteralBase::PopulateR2(
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
-  const int64_t dim0_size = values.size();
-  const int64_t dim1_size = values.begin()->size();
-  CHECK_EQ(dim0_size, shape().dimensions(0));
-  CHECK_EQ(dim1_size, shape().dimensions(1));
+  const int64_t values_dim0_size = values.size();
+  const int64_t values_dim1_size = values.begin()->size();
+  const int64_t literal_dim0_size = shape().is_dynamic_dimension(0)
+                                        ? GetDynamicSize(0)
+                                        : shape().dimensions(0);
+  const int64_t literal_dim1_size = shape().is_dynamic_dimension(1)
+                                        ? GetDynamicSize(1)
+                                        : shape().dimensions(1);
+
+  CHECK_EQ(values_dim0_size, literal_dim0_size);
+  CHECK_EQ(values_dim1_size, literal_dim1_size);
 
   int64_t dim0 = 0;
   for (auto inner_list : values) {
@@ -1152,19 +1355,23 @@ void MutableLiteralBase::PopulateR2(
       Set({dim0, dim1}, value);
       ++dim1;
     }
-    CHECK_EQ(dim1_size, dim1);
+    CHECK_EQ(values_dim1_size, dim1);
     ++dim0;
   }
 }
 
 template <typename NativeT>
-void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateFromArray(
+    const Array<NativeT>& values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
-    CHECK_EQ(values.dim(dim), shape().dimensions(dim));
+    int64_t shape_size = shape().is_dynamic_dimension(dim)
+                             ? GetDynamicSize(dim)
+                             : shape().dimensions(dim);
+    CHECK_EQ(values.dim(dim), shape_size);
   }
   values.Each([this](absl::Span<const int64_t> indices, NativeT value) {
     this->Set(indices, value);
@@ -1186,9 +1393,10 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
-template <typename NativeT, typename FnType>
-Status MutableLiteralBase::PopulateInternal(const FnType& generator,
-                                            bool parallel) {
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
+    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+    bool parallel) {
   const Shape& this_shape = shape();
   const int64_t rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
@@ -1205,7 +1413,8 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](absl::Span<const int64_t> indexes, int thread_id) {
+    auto init_function = [&](absl::Span<const int64_t> indexes,
+                             int thread_id) -> StatusOr<bool> {
       DimensionVector minor_scan_indexes(rank, 0);
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
@@ -1214,6 +1423,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
         minor_scan_indexes[stride_config.minor_dimension] = i;
         literal_data.at(index + i) = generator(minor_scan_indexes, thread_id);
       }
+      return true;
     };
     if (parallel) {
       ShapeUtil::ForEachIndexParallel(this_shape, stride_config.base,
@@ -1223,8 +1433,9 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
       ShapeUtil::ForEachIndex(
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
-          [&init_function](absl::Span<const int64_t> indexes) {
-            init_function(indexes, /*thread_id=*/-1);
+          [&init_function](
+              absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+            auto result_ignored = init_function(indexes, /*thread_id=*/-1);
             return true;
           });
     }
@@ -1232,10 +1443,12 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     // For scalars.
     literal_data.at(0) = generator({}, /*thread_id=*/-1);
   }
-  return Status::OK();
+  return OkStatus();
 }
-template <typename NativeT, typename FnType>
-Status MutableLiteralBase::Populate(const FnType& generator) {
+
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
+    const std::function<NativeT(absl::Span<const int64_t>)>& generator) {
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return generator(indexes);
@@ -1243,8 +1456,9 @@ Status MutableLiteralBase::Populate(const FnType& generator) {
       /*parallel=*/false);
 }
 
-template <typename NativeT, typename FnType>
-Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
+    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator) {
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int thread_id) {
         return generator(indexes, thread_id);

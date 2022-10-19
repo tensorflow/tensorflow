@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -53,10 +53,10 @@ class VerifiedHloModule : public HloModule {
   // included in the failure message.
   void VerifyOrAddFailure(absl::string_view message);
 
- private:
   // Verifies the module using HloVerifier and returns the status.
   Status Verify();
 
+ private:
   HloVerifier verifier_;
 };
 

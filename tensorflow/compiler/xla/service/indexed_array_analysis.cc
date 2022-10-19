@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -26,7 +27,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -134,7 +134,7 @@ Status IndexedArrayAnalysis::TraverseAndPopulateCache(
     }
   } while (!stack.empty());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Analysis::Array*> IndexedArrayAnalysis::ComputeArrayFor(
@@ -976,15 +976,15 @@ namespace {
 
 // Returns the non-contracting non-batch dimension (as per `contracting_dims`
 // and `batch_dims`) if there is exactly one, otherwise returns nullopt.
-absl::optional<int64_t> GetOnlyNonContractingNonBatchDim(
+std::optional<int64_t> GetOnlyNonContractingNonBatchDim(
     int64_t rank, absl::Span<const int64_t> contracting_dims,
     absl::Span<const int64_t> batch_dims) {
-  absl::optional<int64_t> result;
+  std::optional<int64_t> result;
   for (int64_t dim = 0; dim < rank; dim++) {
     if (!absl::c_linear_search(contracting_dims, dim) &&
         !absl::c_linear_search(batch_dims, dim)) {
       if (result.has_value()) {
-        return absl::nullopt;
+        return std::nullopt;
       }
       result = dim;
     }
@@ -1004,7 +1004,7 @@ bool CanFoldDotIntoIndexedArray(
     absl::string_view tag, Analysis::ScalarIndexedConstantArray* indexed_array,
     absl::Span<const int64_t> contracting_dims,
     absl::Span<const int64_t> batch_dims) {
-  absl::optional<int64_t> non_contracting_non_batch_dim =
+  std::optional<int64_t> non_contracting_non_batch_dim =
       GetOnlyNonContractingNonBatchDim(indexed_array->shape().rank(),
                                        contracting_dims, batch_dims);
   if (!non_contracting_non_batch_dim.has_value()) {
@@ -1149,13 +1149,16 @@ absl::string_view IndexedArrayAnalysisPrinterPass::name() const {
   return "indexed-array-analysis-printer-pass";
 }
 
-StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(HloModule* module) {
+StatusOr<bool> IndexedArrayAnalysisPrinterPass::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (!VLOG_IS_ON(2)) {
     return false;
   }
 
   IndexedArrayAnalysis analysis;
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instr : computation->instructions()) {
       TF_ASSIGN_OR_RETURN(Analysis::Array * t, analysis.GetArrayFor(instr));
       if (!dynamic_cast<UnknownArray*>(t) && !dynamic_cast<ConstantArray*>(t)) {

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 // Implements the TensorRT API by forwarding to TensorRT loaded from the DSO.
@@ -28,7 +28,7 @@ void* GetDsoHandle() {
     auto handle_or =
         stream_executor::internal::DsoLoader::GetNvInferDsoHandle();
     if (!handle_or.ok()) return nullptr;
-    return handle_or.ValueOrDie();
+    return handle_or.value();
   }();
   return handle;
 #endif
@@ -52,16 +52,10 @@ void LogFatalSymbolNotFound(const char* symbol_name) {
 
 #if NV_TENSORRT_MAJOR < 7
 #error TensorRT version earlier than 7 is not supported.
-#elif NV_TENSORRT_MAJOR == 7 && NV_TENSORRT_MINOR == 0
-#include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_7_1_0.inc"
-#elif NV_TENSORRT_MAJOR == 7 && NV_TENSORRT_MINOR == 1
-#include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_7_1.inc"
-#elif NV_TENSORRT_MAJOR == 7 && NV_TENSORRT_MINOR == 2
-#include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_7_2.inc"
-#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 0
+#elif NV_TENSORRT_MAJOR == 7
+#include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_7_0.inc"
+#elif NV_TENSORRT_MAJOR == 8
 #include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_8_0.inc"
-#elif NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR == 2
-#include "tensorflow/compiler/tf2tensorrt/stub/NvInfer_8_2.inc"
 #else
 #error This version of TensorRT is not supported.
 #endif

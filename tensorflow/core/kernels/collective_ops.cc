@@ -176,6 +176,10 @@ class CollectiveGatherOpKernel : public CollectiveOpV1Kernel {
   void ComputeAsyncImpl(OpKernelContext* c, CollectiveExecutor* col_exec,
                         DoneCallback done) override {
     auto output_shape = c->input(0).shape();
+    OP_REQUIRES_ASYNC(c, output_shape.dims() > 0,
+                      errors::InvalidArgument("input should have rank > 0, ",
+                                              "recieved ", output_shape.dims()),
+                      done);
     output_shape.set_dim(
         0, output_shape.dim_size(0) * col_params_->group.group_size);
     col_params_->instance.shape = output_shape;
@@ -546,7 +550,7 @@ class CollectiveAssignGroupV2OpKernel : public OpKernel {
                   << " device_index = " << index
                   << " group_key = " << group_key->DebugString()
                   << " group_size = " << group_size->DebugString();
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
@@ -614,7 +618,7 @@ class CollectiveOpV2Kernel : public AsyncOpKernel {
     col_params->instance.data_type = data_type_;
     col_params->instance.impl_details.communication_hint = communication_hint_;
     col_params->instance.impl_details.timeout_seconds = timeout_seconds_;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this
@@ -965,7 +969,7 @@ class CollectiveInitializeCommunicatorOpKernel : public AsyncOpKernel {
       return errors::InvalidArgument(
           "group_size must be positive integer but got ", group_size);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
@@ -1088,7 +1092,7 @@ class CollectiveOpV3Kernel : public AsyncOpKernel {
     col_params->instance.impl_details.timeout_seconds =
         timeout_seconds_ > 0 ? resource->timeout_seconds() : timeout_seconds_;
     col_params->run_group_initialization = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Runs a collective. The output tensor must be allocated before calling this

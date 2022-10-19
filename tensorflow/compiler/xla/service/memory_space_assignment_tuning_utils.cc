@@ -21,7 +21,7 @@ namespace xla {
 namespace memory_space_assignment {
 
 void CustomizeSortedBufferInterval(
-    absl::optional<std::vector<uint64_t>> memory_space_assignment_config,
+    std::optional<std::vector<uint64_t>> memory_space_assignment_config,
     std::vector<BufferInterval>& sorted_buffer_intervals) {
   // A copy of the sorted buffer intervals to assist the creating of the
   // customized buffer intervals vector respecting the config.

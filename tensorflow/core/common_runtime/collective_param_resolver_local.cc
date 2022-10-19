@@ -123,7 +123,7 @@ Status CheckUserSpecifiedRanks(const std::vector<CollGroupMember> members) {
         "Duplicate ranks specified for group members. Received ranks: ",
         received_ranks);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -553,6 +553,21 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
   // Sort gp->member to avoid indeterminism.
   std::sort(gp->members.begin(), gp->members.end(),
             [](const CollGroupMember& lhs, const CollGroupMember& rhs) {
+              DeviceNameUtils::ParsedName lhs_device_name, rhs_device_name;
+              if (DeviceNameUtils::ParseFullName(lhs.device.name(),
+                                                 &lhs_device_name) &&
+                  DeviceNameUtils::ParseFullName(rhs.device.name(),
+                                                 &rhs_device_name)) {
+                if (lhs_device_name.job == rhs_device_name.job) {
+                  if (lhs_device_name.task == rhs_device_name.task) {
+                    return lhs_device_name.id < rhs_device_name.id;
+                  } else {
+                    return lhs_device_name.task < rhs_device_name.task;
+                  }
+                } else {
+                  return lhs_device_name.job < rhs_device_name.job;
+                }
+              }
               return lhs.device.name() < rhs.device.name();
             });
   // Establish an instance-specific default rank order for devices
@@ -638,7 +653,7 @@ Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
         group_rec->second->status.ToString());
   }
   *group = group_rec->second->group;
-  return Status::OK();
+  return OkStatus();
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(

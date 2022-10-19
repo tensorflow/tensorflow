@@ -30,9 +30,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -178,11 +178,11 @@ class ShapeTree {
     return const_leaf_iterator(*this, nodes_.end());
   }
   // range-based iterator for leaf_begin()/leaf_end().
-  tensorflow::gtl::iterator_range<leaf_iterator> leaves() {
-    return tensorflow::gtl::make_range(leaf_begin(), leaf_end());
+  tsl::gtl::iterator_range<leaf_iterator> leaves() {
+    return tsl::gtl::make_range(leaf_begin(), leaf_end());
   }
-  tensorflow::gtl::iterator_range<const_leaf_iterator> leaves() const {
-    return tensorflow::gtl::make_range(leaf_begin(), leaf_end());
+  tsl::gtl::iterator_range<const_leaf_iterator> leaves() const {
+    return tsl::gtl::make_range(leaf_begin(), leaf_end());
   }
 
   reverse_leaf_iterator leaf_rbegin() {
@@ -234,7 +234,7 @@ class ShapeTree {
     for (const Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, node.second));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ForEachMutableElementWithStatus(
@@ -242,7 +242,7 @@ class ShapeTree {
     for (Node& node : nodes_) {
       TF_RETURN_IF_ERROR(func(node.first, &node.second));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Maps each element to generate a new tree with the same shape.
@@ -355,9 +355,14 @@ class ShapeTree {
 // similar to std::map.
 template <typename T>
 template <typename Iterator, typename ValueType>
-class ShapeTree<T>::LeafIterator
-    : public std::iterator<std::bidirectional_iterator_tag, ValueType> {
+class ShapeTree<T>::LeafIterator {
  public:
+  using iterator_category = std::bidirectional_iterator_tag;
+  using value_type = ValueType;
+  using difference_type = ptrdiff_t;
+  using pointer = value_type*;
+  using reference = value_type&;
+
   LeafIterator(const ShapeTree& tree, Iterator it) : tree_(tree), it_(it) {
     while ((it_ != tree_.nodes_.end()) && !IsLeaf()) ++it_;
   }

@@ -20,14 +20,16 @@ import collections
 from absl.testing import parameterized
 
 import numpy as np
-import six
 
+from tensorflow.core.framework import full_type_pb2
+from tensorflow.core.function import trace_type
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -35,7 +37,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 
 
-class TwoTensors(object):
+class TwoTensors:
   """A simple value type to test TypeSpec.
 
   Contains two tensors (x, y) and a string (color).  The color value is a
@@ -105,7 +107,7 @@ type_spec.register_type_spec_from_value_converter(
     TwoTensors, TwoTensorsSpec.from_value)
 
 
-class TwoComposites(object):
+class TwoComposites:
   """A simple value type to test TypeSpec.
 
   Contains two composite tensorstensors (x, y) and a string (color).
@@ -163,7 +165,7 @@ type_spec.register_type_spec_from_value_converter(
     TwoComposites, TwoCompositesSpec.from_value)
 
 
-class NestOfTensors(object):
+class NestOfTensors:
   """CompositeTensor containing a nest of tensors."""
 
   def __init__(self, x):
@@ -192,9 +194,9 @@ class NestOfTensorsSpec(type_spec.TypeSpec):
   def __repr__(self):
     if hasattr(self.spec, "_fields") and isinstance(
         self.spec._fields, collections_abc.Sequence) and all(
-            isinstance(f, six.string_types) for f in self.spec._fields):
+            isinstance(f, str) for f in self.spec._fields):
       return "%s(%r)" % (type(self).__name__, self._serialize())
-    return super(type_spec.TypeSpec, self).__repr__()  # pylint: disable=bad-super-call
+    return super().__repr__()
 
   @classmethod
   def from_value(cls, value):
@@ -623,6 +625,16 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                      [tensor_spec.TensorSpec([5], dtypes.int32),
                       tensor_spec.TensorSpec([5, 8], dtypes.float32)])
 
+  def testFullTypesForFlatTensors(self):
+    spec = TwoTensorsSpec([5], dtypes.int32, [5, 8], dtypes.float32, "red")
+    full_type_list = fulltypes_for_flat_tensors(spec)
+    expect = [
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET),
+        full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_UNSET)
+    ]
+    self.assertEqual(len(spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
+
   def testRepr(self):
     spec = TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool)
     self.assertEqual(
@@ -710,6 +722,10 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError, "TypeSpec __main__.Foo has not been registered."):
       type_spec.get_name(Foo)
 
+  def testSerialization(self):
+    spec = TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool)
+    self.assertEqual(spec, trace_type.deserialize(trace_type.serialize(spec)))
+
 
 class BatchableTypeSpecTest(test_util.TensorFlowTestCase,
                             parameterized.TestCase):
@@ -775,6 +791,23 @@ class BatchableTypeSpecTest(test_util.TensorFlowTestCase,
         tensor_spec.TensorSpec(None, dtypes.variant),
         tensor_spec.TensorSpec(None, dtypes.variant)
     ])
+
+  def testFullTypesForFlatTensors(self):
+    a = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        ragged_factory_ops.constant([[5], [6, 7, 8]]))
+    a_spec = type_spec.type_spec_from_value(a)
+    full_type_list = fulltypes_for_flat_tensors(a_spec)
+    expect = [
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+        full_type_pb2.FullTypeDef(
+            type_id=full_type_pb2.TFT_RAGGED,
+            args=[full_type_pb2.FullTypeDef(type_id=full_type_pb2.TFT_INT32)]),
+    ]
+    self.assertEqual(len(a_spec._flat_tensor_specs), len(full_type_list))
+    self.assertEqual(expect, full_type_list)
 
   def testToTensorList(self):
     a = TwoComposites(

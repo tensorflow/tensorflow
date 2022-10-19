@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ScaleAndTranslate"
   input_arg {
     name: "images"

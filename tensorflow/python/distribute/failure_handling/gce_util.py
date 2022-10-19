@@ -15,6 +15,7 @@
 """Util of GCE specifics to ingegrate with WorkerPreemptionHandler."""
 import enum
 import os
+import sys
 
 import requests
 
@@ -25,7 +26,11 @@ from tensorflow.python.eager import context
 GCP_METADATA_HEADER = {'Metadata-Flavor': 'Google'}
 _GCE_METADATA_URL_ENV_VARIABLE = 'GCE_METADATA_IP'
 _RESTARTABLE_EXIT_CODE = 143
-GRACE_PERIOD_GCE = 0
+GRACE_PERIOD_GCE = 3600
+
+
+def gce_exit_fn():
+  sys.exit(_RESTARTABLE_EXIT_CODE)
 
 
 def request_compute_metadata(path):
@@ -68,7 +73,9 @@ def on_gcp():
 
 @enum.unique
 class PlatformDevice(enum.Enum):
-  INTERNAL = 'internal'
+  INTERNAL_CPU = 'internal_CPU'
+  INTERNAL_GPU = 'internal_GPU'
+  INTERNAL_TPU = 'internal_TPU'
   GCE_GPU = 'GCE_GPU'
   GCE_TPU = 'GCE_TPU'
   GCE_CPU = 'GCE_CPU'
@@ -86,4 +93,9 @@ def detect_platform():
       return PlatformDevice.GCE_CPU
 
   else:
-    return PlatformDevice.INTERNAL
+    if context.context().list_physical_devices('GPU'):
+      return PlatformDevice.INTERNAL_GPU
+    elif context.context().list_physical_devices('TPU'):
+      return PlatformDevice.INTERNAL_TPU
+    else:
+      return PlatformDevice.INTERNAL_CPU

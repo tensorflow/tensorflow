@@ -53,7 +53,7 @@ inline tensorflow::TensorShape GetTfShape(const tfrt::TensorShape& shape) {
   return tensorflow::TensorShape(dims);
 }
 
-// Retrives TFRT TensorMetadata from a tensorflow::Tensor.
+// Retrieves TFRT TensorMetadata from a tensorflow::Tensor.
 inline tfrt::TensorMetadata GetTensorMetadata(
     const tensorflow::Tensor& tf_tensor) {
   auto dtype = tfd::GetTfrtDtype(tf_tensor.dtype());

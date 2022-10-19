@@ -16,7 +16,6 @@
 import math
 
 import numpy as np
-import six
 
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
@@ -419,8 +418,8 @@ def get_run_short_description(run_call_count,
     if len(feed_dict) == 1:
       for key in feed_dict:
         description += "1 feed (%s)" % (
-            key if isinstance(key, six.string_types) or not hasattr(key, "name")
-            else key.name)
+            key
+            if isinstance(key, str) or not hasattr(key, "name") else key.name)
     else:
       description += "%d feeds" % len(feed_dict)
 

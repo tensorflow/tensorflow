@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <sys/mman.h>
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -32,7 +34,8 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   explicit SingleOpModelWithNNAPI(const NnApi* nnapi) {
     options_.disallow_nnapi_cpu = false;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options_));
+    stateful_delegate_ =
+        std::make_unique<StatefulNnApiDelegate>(nnapi, options_);
     this->SetDelegate(stateful_delegate_.get());
   }
 

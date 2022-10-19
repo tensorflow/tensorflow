@@ -57,7 +57,17 @@ def _get_ops_from_ops_list(input_file):
 def _get_ops_from_graphdef(graph_def):
   """Gets the ops and kernels needed from the tensorflow model."""
   ops = set()
-  for node_def in graph_def.node:
+  ops.update(_get_ops_from_nodedefs(graph_def.node))
+
+  for function in graph_def.library.function:
+    ops.update(_get_ops_from_nodedefs(function.node_def))
+  return ops
+
+
+def _get_ops_from_nodedefs(node_defs):
+  """Gets the ops and kernels needed from the list of NodeDef."""
+  ops = set()
+  for node_def in node_defs:
     if not node_def.device:
       node_def.device = '/cpu:0'
     kernel_class = _pywrap_kernel_registry.TryFindKernelClass(
@@ -68,7 +78,7 @@ def _get_ops_from_graphdef(graph_def):
                        if kernel_class else None)
       ops.add(op_and_kernel)
     else:
-      print('Warning: no kernel found for op %s' % node_def.op, file=sys.stderr)
+      tf_logging.warning('Warning: no kernel found for op %s', op)
   return ops
 
 

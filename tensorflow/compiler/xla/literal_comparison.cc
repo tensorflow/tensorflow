@@ -25,7 +25,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 using absl::StrAppend;
 using absl::StrAppendFormat;
@@ -182,13 +182,20 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
     if (mismatched) {
       mismatched->Set<bool>(multi_index, !result);
     }
-    return result ? Status::OK()
+    return result ? OkStatus()
                   : MakeErrorStatus<NativeT>(expected_value, actual_value,
                                              multi_index);
   }
 
   Status result;
-  for (int64_t i = 0; i < expected.shape().dimensions(dimension); ++i) {
+  int64_t upper_bound = expected.shape().dimensions(dimension);
+  if (expected.shape().is_dynamic_dimension(dimension)) {
+    // If the dimension is dynamic, we only want to check up until the actual
+    // dynamic size specified by the literal.
+    upper_bound = expected.GetDynamicSize(dimension);
+  }
+
+  for (int64_t i = 0; i < upper_bound; ++i) {
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
@@ -348,7 +355,7 @@ class NearComparator {
     CompareLiterals();
 
     if (num_mismatches_ == 0) {
-      return Status::OK();
+      return OkStatus();
     } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
       miscompare_callback_(
           expected_, actual_, mismatches_, shape_index_,
@@ -510,9 +517,11 @@ class NearComparator {
 
   // Compares the two literals elementwise.
   void CompareLiterals() {
-    // Fast path optimization for the case were layouts match.
+    // Fast path optimization for the case were layouts match and the shapes are
+    // static.
     if (LayoutUtil::Equal(actual_.shape().layout(),
-                          expected_.shape().layout())) {
+                          expected_.shape().layout()) &&
+        expected_.shape().is_static() && actual_.shape().is_static()) {
       absl::Span<const NativeT> expected_data = expected_.data<NativeT>();
       absl::Span<const NativeT> actual_data = actual_.data<NativeT>();
       const int64_t len = expected_data.size();
@@ -525,9 +534,9 @@ class NearComparator {
     CompareLiteralsSlow(0, &multi_index);
   }
 
-  // Slow path for CompareLiterals when 'actual' and 'expected' literals have
-  // different layouts. In this case, multidimensional indices are constructed
-  // and indexed for each element.
+  // Slow path for CompareLiterals when 'actual' and 'expected' literals are
+  // dynamic or have different layouts. In this case, multidimensional indices
+  // are constructed and indexed for each element.
   void CompareLiteralsSlow(int64_t dimension,
                            std::vector<int64_t>* multi_index) {
     if (dimension == multi_index->size()) {
@@ -536,7 +545,13 @@ class NearComparator {
                     IndexUtil::MultidimensionalIndexToLinearIndex(
                         actual_.shape(), *multi_index));
     } else {
-      for (int64_t i = 0; i < expected_.shape().dimensions(dimension); ++i) {
+      int64_t upper_bound = expected_.shape().dimensions(dimension);
+      if (expected_.shape().is_dynamic_dimension(dimension)) {
+        // If the dimension is dynamic, we only want to check up until the
+        // actual dynamic size specified by the literal.
+        upper_bound = expected_.GetDynamicSize(dimension);
+      }
+      for (int64_t i = 0; i < upper_bound; ++i) {
         (*multi_index)[dimension] = i;
         CompareLiteralsSlow(dimension + 1, multi_index);
       }
@@ -759,7 +774,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case TOKEN:
         // Tokens have no on-device representation and are trivially equal.
-        return Status::OK();
+        return OkStatus();
       default:
         LOG(FATAL) << "Unsupported primitive type: "
                    << PrimitiveType_Name(expected.shape().element_type());
@@ -779,7 +794,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 // currently being compared.
 Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ShapeIndex& shape_index, const ErrorSpec& error,
-                  absl::optional<bool> detailed_message,
+                  std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
 
@@ -912,7 +927,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
     }
   }
   // Non-array, non-tuple shapes are trivially equivalent.
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -942,7 +957,7 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, absl::optional<bool> detailed_message,
+            const ErrorSpec& error, std::optional<bool> detailed_message,
             const MiscompareCallback& miscompare_callback) {
   VLOG(1) << "Expected literal:";
   XLA_VLOG_LINES(1, expected.ToString());

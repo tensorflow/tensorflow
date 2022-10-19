@@ -38,7 +38,7 @@ static Status StatelessShapeV2(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 #define REGISTER_STATELESS_OP(name)                           \
@@ -95,6 +95,15 @@ REGISTER_OP("StatelessRandomUniformFullIntV2")
     .Attr("Tshape: {int32, int64} = DT_INT32")
     .SetShapeFn(StatelessShapeV2);
 
+REGISTER_OP("StatelessShuffle")
+    .Input("value: T")
+    .Input("key: uint64")
+    .Input("counter: uint64")
+    .Input("alg: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StatelessRandomGetKeyCounterAlg")
     .Input("seed: Tseed")
     .Output("key: uint64")
@@ -112,7 +121,7 @@ REGISTER_OP("StatelessRandomGetKeyCounterAlg")
       c->set_output(0, c->MakeShape({RNG_KEY_SIZE}));
       c->set_output(1, c->MakeShape({RNG_MAX_COUNTER_SIZE}));
       c->set_output(2, c->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StatelessRandomGetKeyCounter")
@@ -130,7 +139,7 @@ REGISTER_OP("StatelessRandomGetKeyCounter")
       // Set output shapes
       c->set_output(0, c->MakeShape({RNG_KEY_SIZE}));
       c->set_output(1, c->MakeShape({RNG_MAX_COUNTER_SIZE}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("StatelessRandomGetAlg")
@@ -138,7 +147,7 @@ REGISTER_OP("StatelessRandomGetAlg")
     .SetIsStateful()  // because outputs depend on device
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->MakeShape({}));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

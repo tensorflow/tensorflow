@@ -16,8 +16,6 @@
 # Description:
 #   Keras saving and loading files for SavedModel.
 
-# buildifier: disable=same-origin-load
-
 package(
     default_visibility = [
         "//tensorflow/python/keras/saving:__subpackages__",

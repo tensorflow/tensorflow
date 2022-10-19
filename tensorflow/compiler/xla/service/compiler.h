@@ -38,10 +38,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -98,6 +98,9 @@ class AotCompilationOptions {
     return {};
   }
   virtual bool deduplicate_hlo() const { return false; }
+  virtual PrecisionConfig::Precision matrix_unit_operand_precision() const {
+    return PrecisionConfig::DEFAULT;
+  }
 
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
@@ -140,11 +143,11 @@ class AotCompilationOptions {
   se::StreamExecutor* executor() const { return executor_; }
   void set_executor(se::StreamExecutor* executor) { executor_ = executor; }
 
-  // Optional profile_handle and cache key may be used to trigger recompilation
+  // Optional profile_version and cache key may be used to trigger recompilation
   // when a compilation cache is used.
-  uint64_t profile_handle() const { return profile_handle_; }
-  void set_profile_handle(uint64_t profile_handle) {
-    profile_handle_ = profile_handle;
+  int64_t profile_version() const { return profile_version_; }
+  void set_profile_version(int64_t profile_version) {
+    profile_version_ = profile_version;
   }
 
   absl::string_view cache_key() const { return cache_key_; }
@@ -177,12 +180,12 @@ class AotCompilationOptions {
   se::Platform::Id platform_id_;
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
-  absl::optional<DeviceAssignment> static_device_assignment_;
+  std::optional<DeviceAssignment> static_device_assignment_;
   std::vector<std::vector<bool>> fusion_config_;
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
   se::StreamExecutor* executor_ = nullptr;
-  uint64_t profile_handle_ = 0;
+  int64_t profile_version_ = 0;
   std::string cache_key_;
   bool run_backend_only_ = false;
   bool sanitize_dataflow_ = false;
@@ -227,7 +230,7 @@ class Compiler {
     se::DeviceMemoryAllocator* device_allocator = nullptr;
 
     // An optional thread pool for parallel compilation.
-    tensorflow::thread::ThreadPool* thread_pool = nullptr;
+    tsl::thread::ThreadPool* thread_pool = nullptr;
   };
 
   virtual ~Compiler() {}
@@ -305,7 +308,7 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
+  virtual std::vector<std::unique_ptr<tsl::protobuf::Message>>
   ComputeBackendConfigs(const HloInstruction& hlo,
                         se::StreamExecutor* executor) const;
 
@@ -315,9 +318,8 @@ class Compiler {
   //
   // The stream executor is passed in to provide information about the hardware
   // that the backend configurations would be targeting.
-  virtual std::unique_ptr<tensorflow::protobuf::Message>
-  ComputeDefaultBackendConfig(const HloInstruction& hlo,
-                              se::StreamExecutor* executor) const;
+  virtual std::unique_ptr<tsl::protobuf::Message> ComputeDefaultBackendConfig(
+      const HloInstruction& hlo, se::StreamExecutor* executor) const;
 
   // Compiles the HLO module group for ahead-of-time execution.  This is
   // intended for use in static compilation.
@@ -364,6 +366,12 @@ class Compiler {
 
   virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
+  }
+
+  // Returns an AotCompilationResult of the executable for serialization.
+  virtual StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const {
+    return Unimplemented("Export unimplemented");
   }
 
  private:

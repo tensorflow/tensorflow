@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_AUTO_SHARD_REWRITER_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_AUTO_SHARD_REWRITER_H_
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -41,8 +43,8 @@ class AutoShardRewriter {
   StatusOr<GraphDef> ApplyAutoShardRewrite(const GraphDef& graph_def);
 
  private:
-  AutoShardRewriter(AutoShardPolicy auto_shard_policy, int64 num_workers,
-                    int64 worker_index);
+  AutoShardRewriter(AutoShardPolicy auto_shard_policy, int64_t num_workers,
+                    int64_t worker_index);
 
   // Creates a rewrite config based on the auto-shard policy.
   tensorflow::RewriterConfig::CustomGraphOptimizer GetRewriteConfig() const;

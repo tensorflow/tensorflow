@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "absl/time/time.h"
@@ -22,13 +23,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/platform/blocking_counter.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
@@ -138,12 +135,11 @@ TEST(CAPI, MultiClientCoordinationService) {
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
     // Normal execution: all cluster members are online.
-    std::this_thread::sleep_for(std::chrono::seconds(5));
     TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
     TFE_ExecutorWaitForAllPendingNodes(executor, status);
     ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-    // Sleep for 10 seconds and run colletive ops on cluster except worker/1.
+    // Sleep for 10 seconds and run collective ops on cluster except worker/1.
     // Since worker/1 thread directly exits here, its heartbeat will expire,
     // leading to UnavailableError on leader and then propagate to all other
     // members in cluster.
@@ -462,6 +458,31 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
+  // Try to get value of a nonexistent key.
+  TFE_Op* get_op = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* get_key = TestScalarTensorHandle(ctx, tstring("test_key"));
+  TFE_OpAddInput(get_op, get_key, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  // This get op is non-blocking.
+  TFE_OpSetAttrBool(get_op, "blocking", false);
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  // Run get op from task2.
+  TFE_OpSetDevice(get_op, task2_name, status);
+  // Since we are using async executor, TFE_Execute only returns the enqueue
+  // status, and TFE_ExecutorWaitForAllPendingNodes will return the real error.
+  TFE_Execute(get_op, retvals, &num_retvals, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
+  TFE_ExecutorWaitForAllPendingNodes(executor, status);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(retvals[0]);
+  TFE_DeleteOp(get_op);
+  // Reset executor and status.
+  TFE_ExecutorClearError(executor);
+  TF_SetStatus(status, TF_OK, "");
+
   TFE_Op* set_op = TFE_NewOp(ctx, "TestSetConfigKeyValue", status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* set_key = TestScalarTensorHandle(ctx, tstring("test_key"));
@@ -473,24 +494,22 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   // Run set op from task1
   TFE_OpSetDevice(set_op, task1_name, status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  int num_retvals = 0;
+  num_retvals = 0;
   TFE_Execute(set_op, nullptr, &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteTensorHandle(set_key);
   TFE_DeleteTensorHandle(set_val);
   TFE_DeleteOp(set_op);
 
-  TFE_Op* get_op = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
+  TFE_Op* get_op2 = TFE_NewOp(ctx, "TestGetConfigKeyValue", status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_TensorHandle* get_key = TestScalarTensorHandle(ctx, tstring("test_key"));
-  TFE_OpAddInput(get_op, get_key, status);
+  TFE_OpAddInput(get_op2, get_key, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-  TFE_TensorHandle* retvals[1];
+  TFE_OpSetAttrBool(get_op2, "blocking", true);
   num_retvals = 1;
   // Run get op from task2
-  TFE_OpSetDevice(get_op, task2_name, status);
-  TFE_Execute(get_op, retvals, &num_retvals, status);
+  TFE_OpSetDevice(get_op2, task2_name, status);
+  TFE_Execute(get_op2, retvals, &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
@@ -501,7 +520,7 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
   TFE_DeleteTensorHandle(get_key);
   TFE_DeleteTensorHandle(retvals[0]);
   TF_DeleteTensor(t);
-  TFE_DeleteOp(get_op);
+  TFE_DeleteOp(get_op2);
 
   const string& set_fdef = SetConfigKeyValueFn();
   TFE_ContextAddFunctionDef(ctx, set_fdef.data(), set_fdef.size(), status);
@@ -552,7 +571,6 @@ TEST_P(SingleClientCoordinationServiceTest, TestSetGetConfigInOp) {
 
   // Since we created async executor, op status is eventually reported at
   // the sync barrier.
-  TFE_Executor* executor = TFE_ContextGetExecutorForThread(ctx);
   TFE_ExecutorWaitForAllPendingNodes(executor, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);

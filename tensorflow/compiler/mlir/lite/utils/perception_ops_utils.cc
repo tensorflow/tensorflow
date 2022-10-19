@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 
+#include <string>
+
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
@@ -33,16 +35,13 @@ constexpr char kTFImplements[] = "tf._implements";
 constexpr char kMaxUnpooling[] = "MaxUnpooling2D";
 constexpr char kImageWarping[] = "DenseImageWarp";
 
-inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
-                                       const std::string& content) {
-  ShapedType type = RankedTensorType::get(
-      {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
-                                 type,
-                                 StringRef(content.data(), content.size()));
+inline ConstBytesAttr CustomOption(OpBuilder* builder,
+                                   const std::string& content) {
+  return ConstBytesAttr::get(builder->getContext(),
+                             StringRef(content.data(), content.size()));
 }
 
-inline LogicalResult HasIntegerArrayWithSize(FuncOp* func,
+inline LogicalResult HasIntegerArrayWithSize(func::FuncOp* func,
                                              const DictionaryAttr& attrs,
                                              const std::string& attr_name,
                                              int N) {
@@ -64,8 +63,9 @@ inline LogicalResult HasIntegerArrayWithSize(FuncOp* func,
 }
 
 inline LogicalResult GetIntegerArraySafe(
-    FuncOp* func, const DictionaryAttr& attrs, const std::string& attr_name,
-    llvm::SmallVectorImpl<int32_t>* results, int N) {
+    func::FuncOp* func, const DictionaryAttr& attrs,
+    const std::string& attr_name, llvm::SmallVectorImpl<int32_t>* results,
+    int N) {
   ArrayAttr array_attr = attrs.get(attr_name).dyn_cast_or_null<ArrayAttr>();
   if (array_attr == nullptr || array_attr.size() != N) {
     return func->emitError()

@@ -34,8 +34,8 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace mlir {
 namespace tfg {
@@ -87,17 +87,13 @@ ElementsAttr ConvertBf16Tensor(const Tensor& input_tensor,
                                RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(input_tensor.data()),
                                    input_tensor.TotalBytes());
-  return DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 ElementsAttr ConvertHalfTensor(const Tensor& tensor, RankedTensorType type) {
   auto buffer = llvm::makeArrayRef(static_cast<char*>(tensor.data()),
                                    tensor.TotalBytes());
-  return DenseElementsAttr::getFromRawBuffer(
-      type, buffer,
-      /*isSplatBuffer=*/type.getNumElements() == 1);
+  return DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
@@ -115,8 +111,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertStringTensor(
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
-                                                 Builder builder,
-                                                 TFGraphDialect* tfgDialect) {
+                                                 Builder builder) {
   const auto& input_dtype = input_tensor.dtype();
   const auto& input_shape = input_tensor.shape();
   Type elt_type;
@@ -156,8 +151,8 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
-      return ElementsAttr(OpaqueElementsAttr::get(tfgDialect, type,
-                                                  MangleTensor(input_tensor)));
+      return ElementsAttr(
+          tf_type::TensorProtoAttr::get(type, MangleTensor(input_tensor)));
   }
 
 #undef CONVERT_FLAT
@@ -205,8 +200,7 @@ static int NumberOfMaterializedElements(const TensorProto& tensor) {
 }
 
 tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
-    const TensorProto& input_tensor, Builder builder,
-    TFGraphDialect* tfgDialect) {
+    const TensorProto& input_tensor, Builder builder) {
   // If there is only one actual element in the proto, but its shape would
   // indicate there are more values, then this is representing a splat tensor.
   // We can create an MLIR Attribute more efficiently in this case.
@@ -224,7 +218,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
     shape->add_dim()->set_size(1);
 
     TF_ASSIGN_OR_RETURN(ElementsAttr single_attr,
-                        ConvertTensorProto(tensor_copy, builder, tfgDialect));
+                        ConvertTensorProto(tensor_copy, builder));
 
     std::vector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
@@ -238,7 +232,7 @@ tensorflow::StatusOr<ElementsAttr> ConvertTensorProto(
     return InvalidArgument("Failed to parse input_tensor: ",
                            input_tensor.DebugString());
   }
-  return ConvertTensor(t, builder, tfgDialect);
+  return ConvertTensor(t, builder);
 }
 
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
@@ -284,8 +278,8 @@ tensorflow::StatusOr<ShapeAttr> ConvertTensorShapeProto(
     const TensorShapeProto& shape, MLIRContext* context) {
   if (shape.unknown_rank()) return ShapeAttr::get(context, llvm::None);
 
-  llvm::SmallVector<int64_t, 4> dims;
-  dims.reserve(shape.dim().size());
+  SmallVector<int64_t, 4> dims;
+  dims.reserve(shape.dim_size());
   for (const auto& dim : shape.dim()) {
     dims.push_back(dim.size());
   }
@@ -309,15 +303,12 @@ void ConvertComplexElementsAttr(const DenseElementsAttr attr,
   }
 }
 
-// Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
-Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
-                                 TensorProto* output_tensor) {
-  if (attr.isa<OpaqueElementsAttr>()) {
-    auto mangled_tensor = attr.cast<OpaqueElementsAttr>().getValue();
-    absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
-    return mangling_util::DemangleTensor(tensor_view, output_tensor);
-  }
-  return InvalidArgument("Unexpected elements attribute type from MLIR.");
+// Converts an Tensor proto attribute to a TensorFlow tensor proto.
+Status ConvertTensorProtoAttr(const mlir::tf_type::TensorProtoAttr attr,
+                              TensorProto* output_tensor) {
+  auto mangled_tensor = attr.getValue();
+  absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
+  return mangling_util::DemangleTensor(tensor_view, output_tensor);
 }
 
 template <typename T>
@@ -407,8 +398,8 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
   output->set_dtype(output_dtype);
   ConvertToTensorShapeProto(shape, output->mutable_tensor_shape());
 
-  if (attr.isa<OpaqueElementsAttr>())
-    return ConvertOpaqueElementsAttr(attr.cast<OpaqueElementsAttr>(), output);
+  if (auto tensor_attr = attr.dyn_cast<mlir::tf_type::TensorProtoAttr>())
+    return ConvertTensorProtoAttr(tensor_attr, output);
 
   auto dense_attr = attr.dyn_cast<DenseElementsAttr>();
   if (!dense_attr) return InvalidArgument("Unsupported elements attr");
@@ -483,7 +474,7 @@ Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
       return Unimplemented(absl::StrCat("Unimplemented data type ",
                                         DataTypeString(output_dtype)));
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
@@ -492,7 +483,7 @@ Status ConvertToTensor(const ElementsAttr attr, Tensor* output_tensor) {
   if (!output_tensor->FromProto(tensor_proto)) {
     return InvalidArgument("Couldn't convert tensor proto to tensor.");
   }
-  return Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace tfg

@@ -36,7 +36,7 @@ limitations under the License.
 #endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -163,7 +163,7 @@ Status PartitionedCallOp::FillOutputDevices(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
@@ -228,7 +228,7 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
 
   TF_RETURN_IF_ERROR(
       lib->Instantiate(func_->name(), AttrSlice(&func_->attr()), opts, handle));
-  return Status::OK();
+  return OkStatus();
 }
 
 void PartitionedCallOp::RunFunction(FunctionLibraryRuntime::Handle handle,

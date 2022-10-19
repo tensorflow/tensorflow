@@ -37,7 +37,8 @@ ARG LIBNVINFER_MAJOR_VERSION=7
 # Needed for string substitution
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub && \
+    apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         clang-format \
         cuda-command-line-tools-${CUDA/./-} \
@@ -126,7 +127,6 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
-    keras_preprocessing \
     tb-nightly \
     matplotlib \
     mock \

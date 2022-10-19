@@ -131,6 +131,37 @@ For example:
 >>> # 'VALID' means to use no padding in conv2d (we already padded inp)
 >>> output2 = tf.nn.conv2d(inp, filter, strides, padding='VALID')
 >>> tf.debugging.assert_equal(output, output2)
+
+### Difference between convolution and pooling layers
+How padding is used in convolution layers and pooling layers is different. For
+convolution layers, padding is filled with values of zero, and padding is
+multiplied with kernels. For pooling layers, padding is excluded from the
+computation. For example when applying average pooling to a 4x4 grid, how much
+padding is added will not impact the output. Here is an example that
+demonstrates the difference.
+
+>>> x_in = np.array([[
+...   [[2], [2]],
+...   [[1], [1]],
+...   [[1], [1]]]])
+>>> kernel_in = np.array([  # simulate the avg_pool with conv2d
+...  [ [[0.25]], [[0.25]] ],
+...  [ [[0.25]], [[0.25]] ]])
+>>> x = tf.constant(x_in, dtype=tf.float32)
+>>> kernel = tf.constant(kernel_in, dtype=tf.float32)
+>>> conv_out = tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='SAME')
+>>> pool_out = tf.nn.avg_pool(x, [2, 2], strides=[1, 1, 1, 1], padding='SAME')
+>>> print(conv_out.shape, pool_out.shape)
+(1, 3, 2, 1) (1, 3, 2, 1)
+>>> tf.reshape(conv_out, [3, 2]).numpy()  # conv2d takes account of padding
+array([[1.5 , 0.75],
+       [1.  , 0.5 ],
+       [0.5 , 0.25]], dtype=float32)
+>>> tf.reshape(pool_out, [3, 2]).numpy()  # avg_pool excludes padding
+array([[1.5, 1.5],
+       [1. , 1. ],
+       [1. , 1. ]], dtype=float32)
+
 """
 
 import functools
@@ -2267,7 +2298,7 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
   ...   [[0], [0], [3], [1], [2]], ]])
   >>> kernel_in = np.array([
   ...  [ [[2, 0.1]], [[3, 0.2]] ],
-  ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
+  ...  [ [[0, 0.3]], [[1, 0.4]] ], ])
   >>> x = tf.constant(x_in, dtype=tf.float32)
   >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
   >>> tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
@@ -5697,7 +5728,8 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
     # than or equal to `rate`.
     random_tensor = uniform_sampler(shape=noise_shape, dtype=x_dtype)
     keep_mask = random_tensor >= rate
-    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    zero_tensor = constant_op.constant(0, dtype=x_dtype)
+    ret = array_ops.where_v2(keep_mask, ret, zero_tensor)
     if not is_executing_eagerly:
       ret.set_shape(x.get_shape())
     return ret
@@ -5770,7 +5802,8 @@ def approx_max_k(operand,
                  name=None):
   """Returns max `k` values and their indices of the input `operand` in an approximate manner.
 
-  This op is only optimized on TPU currently.
+  See https://arxiv.org/abs/2206.14286 for the algorithm details. This op is
+  only optimized on TPU currently.
 
   Args:
     operand : Array to search for max-k. Must be a floating number type.
@@ -5832,7 +5865,8 @@ def approx_min_k(operand,
                  name=None):
   """Returns min `k` values and their indices of the input `operand` in an approximate manner.
 
-  This op is only optimized on TPU currently.
+  See https://arxiv.org/abs/2206.14286 for the algorithm details. This op is
+  only optimized on TPU currently.
 
   Args:
     operand : Array to search for min-k. Must be a floating number type.

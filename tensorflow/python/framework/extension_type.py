@@ -114,7 +114,7 @@ class ExtensionType(
   Python booleans      | `b: bool`
   Python None          | `n: None`
   Tensors              | `t: tf.Tensor`
-  Composite Tensors    | `rt: tf.RaggdTensor`
+  Composite Tensors    | `rt: tf.RaggedTensor`
   Extension Types      | `m: MyMaskedTensor`
   Tensor shapes        | `shape: tf.TensorShape`
   Tensor dtypes        | `dtype: tf.DType`
@@ -693,7 +693,7 @@ class BatchableExtensionType(ExtensionType):
   `BatchableExtensionType`s can be used with APIs that require batching or
   unbatching, including `Keras`, `tf.data.Dataset`, and `tf.map_fn`.  E.g.:
 
-  >>> class Vehicle(BatchableExtensionType):
+  >>> class Vehicle(tf.experimental.BatchableExtensionType):
   ...   top_speed: tf.Tensor
   ...   mpg: tf.Tensor
   >>> batch = Vehicle([120, 150, 80], [30, 40, 12])

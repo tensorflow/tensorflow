@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REDUCE_TEST_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_REDUCE_TEST_COMMON_H_
 
+#include <initializer_list>
+
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

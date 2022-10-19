@@ -57,7 +57,10 @@ class DotMerger : public HloModulePass {
       : max_size_to_merge_(max_size_to_merge) {}
 
   absl::string_view name() const override { return "dot-merger"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   int64_t max_size_to_merge_;

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Relu6"
   input_arg {
     name: "features"

@@ -22,7 +22,7 @@ GraphFunction::GraphFunction(FunctionDef fdef)
 GraphFunction::~GraphFunction() {}
 Status GraphFunction::GetFunctionDef(FunctionDef** fdef) {
   *fdef = &fdef_;
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace graph
 }  // namespace tracing

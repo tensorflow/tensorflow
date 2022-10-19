@@ -16,14 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_SERVICE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_SERVICE_H_
 
+#include <memory>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
+#include "grpcpp/security/server_credentials.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/key_value_store.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.grpc.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -36,7 +44,7 @@ class DistributedRuntimeServiceImpl final
     // Number of nodes in the job. Mandatory. Must be non-negative.
     int num_nodes = -1;
 
-    tensorflow::Env* env = tensorflow::Env::Default();
+    tsl::Env* env = tsl::Env::Default();
 
     // Interval at which the service should check for missed heartbeat RPCs
     // from the clients.
@@ -88,6 +96,10 @@ class DistributedRuntimeServiceImpl final
                              const KeyValueSetRequest* request,
                              KeyValueSetResponse* response) override;
 
+  ::grpc::Status WaitAtBarrier(::grpc::ServerContext* context,
+                               const WaitAtBarrierRequest* request,
+                               WaitAtBarrierResponse* response) override;
+
  private:
   // Entry point for the heartbeat checking thread.
   void HeartbeatLoop();
@@ -124,11 +136,15 @@ class DistributedRuntimeServiceImpl final
   // State for EnumerateDevices.
   int num_topologies_present_ ABSL_GUARDED_BY(mu_) = 0;
   std::vector<LocalTopologyProto> local_topologies_ ABSL_GUARDED_BY(mu_);
-  absl::optional<GlobalTopologyProto> topology_ ABSL_GUARDED_BY(mu_);
+  std::optional<GlobalTopologyProto> topology_ ABSL_GUARDED_BY(mu_);
 
   // State for Shutdown(). Counter of how many nodes are blocked at the
   // Shutdown() barrier.
   int num_nodes_shutting_down_ ABSL_GUARDED_BY(mu_) = 0;
+
+  // This dictionary tracks the number of nodes per barrier.
+  absl::flat_hash_map<std::string, int> barrier_id_to_num_nodes_
+      ABSL_GUARDED_BY(mu_);
 
   // Key-value store, used by distributed GPU code to share NCCL state.
   KeyValueStore key_value_store_;
@@ -137,7 +153,29 @@ class DistributedRuntimeServiceImpl final
   absl::Notification stop_heartbeat_thread_;
 
   // Thread that checks for missing hearbeats from the clients periodically.
-  std::unique_ptr<tensorflow::Thread> heartbeat_thread_;
+  std::unique_ptr<tsl::Thread> heartbeat_thread_;
+};
+
+class CoordinationServiceImpl {
+ public:
+  CoordinationServiceImpl(const DistributedRuntimeServiceImpl::Options& options,
+                          ::grpc::ServerBuilder* builder);
+  ~CoordinationServiceImpl();
+
+  // Must be called after gRPC server has started.
+  void StartRpcThread();
+
+  CoordinationServiceImpl(const CoordinationServiceImpl&) = delete;
+  CoordinationServiceImpl(CoordinationServiceImpl&&) = delete;
+  CoordinationServiceImpl& operator=(const CoordinationServiceImpl&) = delete;
+  CoordinationServiceImpl&& operator=(CoordinationServiceImpl&&) = delete;
+
+ private:
+  tsl::Env* env_ = nullptr;  // Not owned.
+  std::unique_ptr<tensorflow::CoordinationServiceInterface> coord_service_;
+  std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
+  std::unique_ptr<tensorflow::AsyncServiceInterface> coord_rpc_service_;
+  std::unique_ptr<tsl::Thread> coord_rpc_thread_;
 };
 
 class DistributedRuntimeService {
@@ -145,10 +183,12 @@ class DistributedRuntimeService {
   static xla::StatusOr<std::unique_ptr<DistributedRuntimeService>> Get(
       const std::string& address,
       std::shared_ptr<::grpc::ServerCredentials> credentials,
-      const DistributedRuntimeServiceImpl::Options& options);
+      const DistributedRuntimeServiceImpl::Options& options,
+      bool use_coordination_service);
 
   explicit DistributedRuntimeService(
-      const DistributedRuntimeServiceImpl::Options& options);
+      const DistributedRuntimeServiceImpl::Options& options,
+      ::grpc::ServerBuilder* builder, bool use_coordination_service);
   ~DistributedRuntimeService();
 
   DistributedRuntimeService(const DistributedRuntimeService&) = delete;
@@ -162,7 +202,8 @@ class DistributedRuntimeService {
   ::grpc::Server* server() const { return server_.get(); }
 
  private:
-  DistributedRuntimeServiceImpl impl_;
+  std::unique_ptr<DistributedRuntimeServiceImpl> impl_;
+  std::unique_ptr<CoordinationServiceImpl> coord_impl_;
   std::unique_ptr<::grpc::Server> server_;
 };
 

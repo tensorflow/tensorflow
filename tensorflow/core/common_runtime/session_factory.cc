@@ -46,7 +46,7 @@ void SessionFactory::Register(const string& runtime_type,
   mutex_lock l(*get_session_factory_lock());
   if (!session_factories()->insert({runtime_type, factory}).second) {
     LOG(ERROR) << "Two session factories are being registered "
-               << "under" << runtime_type;
+               << "under " << runtime_type;
   }
 }
 
@@ -83,7 +83,7 @@ Status SessionFactory::GetFactory(const SessionOptions& options,
 
   if (candidate_factories.size() == 1) {
     *out_factory = candidate_factories[0].second;
-    return Status::OK();
+    return OkStatus();
   } else if (candidate_factories.size() > 1) {
     // NOTE(mrry): This implementation assumes that the domains (in
     // terms of acceptable SessionOptions) of the registered

@@ -487,6 +487,14 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   def _composite_tensor_fields(self):
     return ("num_rows", "batch_shape", "dtype", "assert_proper_shapes")
 
+  def __getitem__(self, slices):
+    # Slice the batch shape and return a new LinearOperatorIdentity.
+    # Use a proxy shape and slice it. Use this as the new batch shape
+    new_batch_shape = array_ops.shape(
+        array_ops.ones(self._batch_shape_arg)[slices])
+    parameters = dict(self.parameters, batch_shape=new_batch_shape)
+    return LinearOperatorIdentity(**parameters)
+
 
 @tf_export("linalg.LinearOperatorScaledIdentity")
 @linear_operator.make_composite_tensor
@@ -782,3 +790,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   @property
   def _composite_tensor_fields(self):
     return ("num_rows", "multiplier", "assert_proper_shapes")
+
+  @property
+  def _experimental_parameter_ndims_to_matrix_ndims(self):
+    return {"multiplier": 0}

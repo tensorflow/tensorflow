@@ -94,7 +94,7 @@ Status DTensorMlirPassRunner::RunOnGraph(
             module_ref.status().error_message())
             .c_str());
 
-  mlir::ModuleOp module = module_ref.ValueOrDie().get();
+  mlir::ModuleOp module = module_ref.value().get();
 
   AddDevicesToOp(module, &device_set);
 
@@ -130,7 +130,7 @@ Status DTensorMlirPassRunner::RunOnGraph(
   Graph* output_graph = graph->get();
   VLOG(4) << DumpGraphToFile("dtensor_mlir_pass_after", *output_graph,
                              flib_def);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

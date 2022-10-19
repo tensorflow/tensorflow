@@ -24,13 +24,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -212,7 +211,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   Literal arg_literal = LiteralUtil::CreateR1<int64_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).ConsumeValueOrDie();
+      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, F32);
 
@@ -231,7 +230,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
   Literal arg_literal = LiteralUtil::CreateR1<uint32_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).ConsumeValueOrDie();
+      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, F32);
 
@@ -249,7 +248,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1U32) {
   Literal arg_literal = LiteralUtil::CreateR1<float>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).ConsumeValueOrDie();
+      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, U32);
 
@@ -266,7 +265,7 @@ XLA_TEST_F(ConvertTest, ConvertR1U32ToR1S64) {
   Literal arg_literal = LiteralUtil::CreateR1<uint32_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).ConsumeValueOrDie();
+      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S64);
 
@@ -283,7 +282,7 @@ XLA_TEST_F(ConvertTest, ConvertR1S32ToR1S64) {
   Literal arg_literal = LiteralUtil::CreateR1<int32_t>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).ConsumeValueOrDie();
+      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S64);
 
@@ -320,7 +319,7 @@ XLA_TEST_F(ConvertTest, ConvertR1F32ToR1S64) {
   Literal arg_literal = LiteralUtil::CreateR1<float>({arg});
   auto arg_param = Parameter(&builder, 0, arg_literal.shape(), "arg_param");
   std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(arg_literal).ConsumeValueOrDie();
+      client_->TransferToServer(arg_literal).value();
 
   ConvertElementType(arg_param, S64);
 

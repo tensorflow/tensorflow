@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
@@ -41,11 +47,6 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/stream_executor.h"
-#include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace tensorflow {
 
@@ -173,8 +174,8 @@ Status UpdateMetadata(se::Stream* stream, se::DeviceMemory<uint8>* buffer,
   TF_RETURN_IF_ERROR(transfer_manager->TransferArrayToDeviceAsync(
       stream, *metadata_literal, metadata_buffer));
   // Retain the literal until the end of the transfer.
-  stream->ThenDoHostCallback([metadata_literal]() { return Status::OK(); });
-  return Status::OK();
+  stream->ThenDoHostCallback([metadata_literal]() { return OkStatus(); });
+  return OkStatus();
 }
 
 // Given a static input buffer, convert it to dynamic form by expanding it to
@@ -218,7 +219,7 @@ Status UpdateDynamicInputs(
         [&](const xla::Shape& sub_shape,
             const xla::ShapeIndex& index) -> Status {
           if (sub_shape.IsTuple() || sub_shape.is_static()) {
-            return Status::OK();
+            return OkStatus();
           }
           TF_ASSIGN_OR_RETURN(
               const xla::Shape* runtime_shape,
@@ -245,7 +246,7 @@ Status UpdateDynamicInputs(
               index, xla::MaybeOwningDeviceMemory(std::move(dynamic_input)));
           execution_input->ClearUnownedIndex(index);
           element_modified = true;
-          return Status::OK();
+          return OkStatus();
         }));
     if (element_modified) {
       TF_RETURN_IF_ERROR(execution_input->SetDynamicShape(compile_time_shape));
@@ -261,7 +262,7 @@ Status UpdateDynamicInputs(
           transfer_manager->WriteTupleIndexTablesAsync(stream, shaped_buffer));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
@@ -325,11 +326,11 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
         &executable->executable()->module_config().static_device_assignment());
   }
   xla::gpu::GpuExecutableRunOptions gpu_options;
-  std::vector<xla::GlobalDeviceId> gpu_global_ids;
+  std::map<int, xla::GlobalDeviceId> gpu_global_ids;
   if (config.local_replica_mapping_size() > 0) {
-    gpu_global_ids.reserve(config.local_replica_mapping_size());
+    int i = 0;
     for (auto& gid : config.local_replica_mapping()) {
-      gpu_global_ids.emplace_back(xla::GlobalDeviceId(gid));
+      gpu_global_ids[i++] = xla::GlobalDeviceId(gid);
     }
     gpu_options.set_gpu_global_device_ids(gpu_global_ids);
   }

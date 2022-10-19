@@ -69,14 +69,14 @@ absl::string_view DefiningOpName(mlir::Value operand) {
 
 Status AssertReplicated(mlir::Value operand) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractLayoutFromOperand(operand));
-  if (!layout) return Status::OK();
+  if (!layout) return OkStatus();
 
   if (!layout->IsFullyReplicated()) {
     return errors::InvalidArgument(
         "Expected layout for ", DefiningOpName(operand),
         " to be fully replicated, but found ", layout->ToString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 absl::flat_hash_set<std::string> ReducedMeshDimensions(
@@ -95,7 +95,7 @@ template <typename OpType>
 Status ExtractDims(mlir::Operation* op,
                    llvm::SmallVector<int64_t, 4>* reduced_dims, bool* keep_dims,
                    bool* matched) {
-  if (!llvm::isa<OpType>(op)) return Status::OK();
+  if (!llvm::isa<OpType>(op)) return OkStatus();
   auto reduce_op = llvm::cast<OpType>(op);
   *keep_dims = reduce_op.keep_dims();
   TF_RETURN_IF_ERROR(
@@ -103,14 +103,14 @@ Status ExtractDims(mlir::Operation* op,
   TF_RETURN_IF_ERROR(AssertReplicated(reduce_op.reduction_indices()));
   *matched = true;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status ExtractDims<mlir::TF::BiasAddGradOp>(
     mlir::Operation* op, llvm::SmallVector<int64_t, 4>* reduced_dims,
     bool* keep_dims, bool* matched) {
-  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return Status::OK();
+  if (!llvm::isa<mlir::TF::BiasAddGradOp>(op)) return OkStatus();
   auto bias_add_grad_op = llvm::cast<mlir::TF::BiasAddGradOp>(op);
   auto data_format = bias_add_grad_op.data_format();
   // rank is at least 2 (required by BiasAddGrad).
@@ -130,7 +130,7 @@ Status ExtractDims<mlir::TF::BiasAddGradOp>(
   }
   *keep_dims = false;
   *matched = true;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExtractReductionParameters(mlir::Operation* op,
@@ -160,7 +160,7 @@ Status ExtractReductionParameters(mlir::Operation* op,
                                  " not yet implemented.");
 
   reduced_dims_set.insert(reduced_dims.begin(), reduced_dims.end());
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<Layout> ComputeResultLayout(mlir::Operation* op,

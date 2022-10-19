@@ -2,8 +2,8 @@
 
 # CHECK: tensor<*xf32>
 # CHECK: tensor<*x!tf_type.resource>
-# CHECK: tensor<*x!tf_type.resource<tensor<4xf32>>
-# CHECK: tensor<8xf32>
+# CHECK: tensor<*x!tf_type.resource>
+# CHECK: tensor<*xf32>
 # CHECK: tensor<*x!tf_type.resource>
 
 node {

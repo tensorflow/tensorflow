@@ -43,7 +43,7 @@ enum TfOpType {
 class FlexModelTest : public ::testing::Test {
  public:
   FlexModelTest() {}
-  ~FlexModelTest() {}
+  ~FlexModelTest() override {}
 
   bool Invoke();
 

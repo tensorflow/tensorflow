@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SerializeTensor"
   input_arg {
     name: "tensor"

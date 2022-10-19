@@ -42,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -61,22 +60,25 @@ struct BlockArgumentInfo {
   unsigned num_users;
 };
 
+#define GEN_PASS_DEF_TPUSPACETODEPTHPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // TODO(wangtao): add a pass to check if it is profitable to space to depth
 // transform and invoke the transform if it is needed.
 struct TPUSpaceToDepthPass
-    : public TF::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
+    : public impl::TPUSpaceToDepthPassBase<TPUSpaceToDepthPass> {
   void runOnOperation() override;
 };
 
 // Updates func argument type to have the updated input shape.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   auto arg_types = func.front().getArgumentTypes();
   auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(func.getContext(), arg_types, result_types));
 }
 
 void HandleFuncOp(Operation* op) {
-  auto func = llvm::cast<FuncOp>(op);
+  auto func = llvm::cast<func::FuncOp>(op);
   UpdateFuncType(func);
 }
 
@@ -409,7 +411,7 @@ bool HandleHostReplicatedInputs(int64_t index,
                                 tf_device::ReplicateOp replicate,
                                 int32_t block_size) {
   // We need to know the devices to copy to.
-  if (!replicate.devices()) return false;
+  if (!replicate.getDevices()) return false;
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(block_arg);
@@ -455,7 +457,7 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
       if (input.index() != arg_num) continue;
       auto input_op = input.value().getDefiningOp();
       if (maybe_replicate &&
-          maybe_replicate.body().isAncestor(input_op->getParentRegion())) {
+          maybe_replicate.getBody().isAncestor(input_op->getParentRegion())) {
         continue;
       }
       if (!IsSupportedHostInputOp(input_op)) continue;
@@ -498,7 +500,7 @@ Optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
 // PadOp and CastOp.
 Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
   auto block_arg_num = GetBlockArgNum(input);
-  if (block_arg_num.hasValue()) return block_arg_num;
+  if (block_arg_num.has_value()) return block_arg_num;
 
   Value next_input = input;
   auto pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
@@ -507,11 +509,11 @@ Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
   while (pad_op || cast_op) {
     if (pad_op) {
       auto block_arg_num = GetBlockArgNum(pad_op.input());
-      if (block_arg_num.hasValue()) return block_arg_num;
+      if (block_arg_num.has_value()) return block_arg_num;
       next_input = pad_op.input();
     } else {
       auto block_arg_num = GetBlockArgNum(cast_op.x());
-      if (block_arg_num.hasValue()) return block_arg_num;
+      if (block_arg_num.has_value()) return block_arg_num;
       next_input = cast_op.x();
     }
     pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
@@ -610,12 +612,12 @@ void TPUSpaceToDepthPass::runOnOperation() {
   });
 
   // Return if there is no tf_device::ClusterFuncOp in training loop.
-  if (!func_result.wasInterrupted() || !cluster_func.hasValue()) {
+  if (!func_result.wasInterrupted() || !cluster_func.has_value()) {
     return;
   }
 
   // Get the function on device.
-  auto device_func = cluster_func->getFunc();
+  auto device_func = cluster_func->getFuncOp();
   if (!device_func) return;
 
   TF::Conv2DOp first_conv;
@@ -629,7 +631,7 @@ void TPUSpaceToDepthPass::runOnOperation() {
   auto conv2d_result = device_func.walk([&](TF::Conv2DOp conv2d) {
     Optional<BlockArgumentInfo> arg_num_and_num_users =
         GetConv2DInputArgNum(conv2d);
-    if (arg_num_and_num_users.hasValue()) {
+    if (arg_num_and_num_users.has_value()) {
       // Get block size for the first convolution.
       int64_t block_size = GetConv2DBlockSize(conv2d);
       auto arg_num = arg_num_and_num_users.getValue().arg_num;

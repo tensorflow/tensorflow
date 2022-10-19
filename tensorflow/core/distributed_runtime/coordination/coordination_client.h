@@ -63,13 +63,26 @@ class CoordinationClient {
       const ReportErrorToServiceRequest* request,
       ReportErrorToServiceResponse* response, StatusCallback done) = 0;
 
+  virtual void GetTaskStateAsync(const GetTaskStateRequest* request,
+                                 GetTaskStateResponse* response,
+                                 StatusCallback done) = 0;
+
   virtual void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                                    InsertKeyValueResponse* response,
                                    StatusCallback done) = 0;
 
-  virtual void GetKeyValueAsync(const GetKeyValueRequest* request,
+  virtual void GetKeyValueAsync(CallOptions* call_opts,
+                                const GetKeyValueRequest* request,
                                 GetKeyValueResponse* response,
                                 StatusCallback done) = 0;
+
+  virtual void TryGetKeyValueAsync(const TryGetKeyValueRequest* request,
+                                   TryGetKeyValueResponse* response,
+                                   StatusCallback done) = 0;
+
+  virtual void GetKeyValueDirAsync(const GetKeyValueDirRequest* request,
+                                   GetKeyValueDirResponse* response,
+                                   StatusCallback done) = 0;
 
   virtual void DeleteKeyValueAsync(const DeleteKeyValueRequest* request,
                                    DeleteKeyValueResponse* response,

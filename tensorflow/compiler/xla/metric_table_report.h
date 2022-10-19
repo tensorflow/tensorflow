@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_METRIC_TABLE_REPORT_H_
 #define TENSORFLOW_COMPILER_XLA_METRIC_TABLE_REPORT_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 

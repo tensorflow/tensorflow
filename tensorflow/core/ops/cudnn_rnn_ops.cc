@@ -59,7 +59,7 @@ REGISTER_OP("CudnnRNNParamsSize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
 
       c->set_output(0, c->Vector(1));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNN")
@@ -107,7 +107,7 @@ REGISTER_OP("CudnnRNN")
       c->set_output(1, output_h_shape);
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNV2")
@@ -156,7 +156,7 @@ REGISTER_OP("CudnnRNNV2")
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNV3")
@@ -215,7 +215,7 @@ REGISTER_OP("CudnnRNNV3")
       c->set_output(2, output_c_shape);
       c->set_output(3, c->UnknownShape());
       c->set_output(4, c->UnknownShape());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNBackprop")
@@ -251,7 +251,7 @@ REGISTER_OP("CudnnRNNBackprop")
       c->set_output(1, input_h_shape);
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNBackpropV2")
@@ -288,7 +288,7 @@ REGISTER_OP("CudnnRNNBackpropV2")
       c->set_output(1, input_h_shape);
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNBackpropV3")
@@ -328,7 +328,7 @@ REGISTER_OP("CudnnRNNBackpropV3")
       c->set_output(1, input_h_shape);
       c->set_output(2, input_c_shape);
       c->set_output(3, params_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNParamsToCanonical")
@@ -360,7 +360,7 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       for (int i = 0; i < num_params; i++) {
         c->set_output(num_params + i, c->Vector(InferenceContext::kUnknownDim));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNParamsToCanonicalV2")
@@ -397,7 +397,7 @@ REGISTER_OP("CudnnRNNParamsToCanonicalV2")
         c->set_output(num_params_weights + i,
                       c->Vector(InferenceContext::kUnknownDim));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNCanonicalToParams")
@@ -417,7 +417,7 @@ REGISTER_OP("CudnnRNNCanonicalToParams")
     .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("CudnnRNNCanonicalToParamsV2")
@@ -439,7 +439,7 @@ REGISTER_OP("CudnnRNNCanonicalToParamsV2")
     .Attr("num_proj: int = 0")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

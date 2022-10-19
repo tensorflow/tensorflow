@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/compiler/xla/pjrt/distributed/protocol.proto";
-import "tensorflow/core/framework/device_attributes.proto";
+import "google/protobuf/any.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
@@ -11,6 +10,19 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 message CoordinatedTask {
   string job_name = 1;
   int32 task_id = 2;
+}
+
+// Represents the state of a remote worker
+enum CoordinatedTaskState {
+  // TASKSTATE_UNSPECIFIED is an invalid state such that indicates a bug.
+  TASKSTATE_UNSPECIFIED = 0;
+  // TASKSTATE_UNINITIALIZED is an agent-only state. While the agent is
+  // disconnected, the service has no way of knowing if the task is
+  // initialized/uninitialized.
+  TASKSTATE_UNINITIALIZED = 1;
+  TASKSTATE_DISCONNECTED = 2;
+  TASKSTATE_CONNECTED = 3;
+  TASKSTATE_ERROR = 4;
 }
 
 // Status payload for all coordination service errors.
@@ -27,18 +39,17 @@ message CoordinationServiceError {
   CoordinatedTask source_task = 4;
 }
 
-// Represent device information from different runtimes.
-message TfDeviceList {
-  repeated DeviceAttributes devices = 1;
+message CoordinatedTaskStateInfo {
+  CoordinatedTask task = 1;
+  CoordinatedTaskState state = 2;
+  int32 error_code = 3;
+  string error_message = 4;
+  CoordinationServiceError error_payload = 5;
 }
-message XlaDeviceList {
-  xla.GlobalTopologyProto devices = 1;
-}
-message CoordinationServiceDeviceInfo {
-  oneof type {
-    TfDeviceList tf = 1;
-    XlaDeviceList xla = 2;
-  }
+
+// Placeholder message to be extended by other runtimes' device representations.
+message DeviceInfo {
+  repeated google.protobuf.Any device = 1;
 }
 
 // Request and response messages for registering a task to the cluster leader.
@@ -78,18 +89,18 @@ message WaitForAllTasksRequest {
   // Removed fields which used to specify the remote task.
   reserved 1, 2;
   // Removed field that specifically used TF device info.
-  reserved 3;
-  // All local device attributes on the request sender.
-  CoordinationServiceDeviceInfo local_device_info = 4;
+  reserved 3, 4;
   CoordinatedTask source_task = 5;
+  // All local device attributes on the request sender;
+  DeviceInfo device_info = 6;
 }
 
 message WaitForAllTasksResponse {
   fixed64 leader_incarnation = 1;
   // Removed field that specifically used TF device info.
-  reserved 2;
+  reserved 2, 3;
   // All devices in the cluster.
-  CoordinationServiceDeviceInfo cluster_device_info = 3;
+  DeviceInfo device_info = 4;
 }
 
 // Request and response messages for disconnecting a task from the service.
@@ -128,6 +139,15 @@ message ReportErrorToServiceRequest {
 
 message ReportErrorToServiceResponse {}
 
+// Request and response messages for getting state of a remote task.
+message GetTaskStateRequest {
+  repeated CoordinatedTask source_task = 1;
+}
+
+message GetTaskStateResponse {
+  repeated CoordinatedTaskStateInfo task_state = 1;
+}
+
 // Message for configuration key value.
 // Key is structured like Unix file system, with multiple levels of directory
 // names separated by the slash ('/') characters.
@@ -150,6 +170,23 @@ message GetKeyValueRequest {
 
 message GetKeyValueResponse {
   KeyValueEntry kv = 1;
+}
+
+message TryGetKeyValueRequest {
+  string key = 1;
+}
+
+message TryGetKeyValueResponse {
+  KeyValueEntry kv = 1;
+}
+
+message GetKeyValueDirRequest {
+  string directory_key = 1;
+}
+
+message GetKeyValueDirResponse {
+  string directory_key = 1;
+  repeated KeyValueEntry kv = 2;
 }
 
 // Request and response messages for deleting configuration key-value data.
@@ -228,6 +265,11 @@ service CoordinationService {
   rpc ReportErrorToService(ReportErrorToServiceRequest)
       returns (ReportErrorToServiceResponse);
 
+  // Get the state of a remote task. Specifically, RPC returns a
+  // CoordinatedTaskState, and if the task is in an error status, returns a
+  // non-OK error code, non-empty error message and error payload.
+  rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
+
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The
   // coordination service key-value store should only be used for cluster
@@ -237,6 +279,14 @@ service CoordinationService {
   // Get configuration key-value. The request blocks until the key-value data
   // becomes available (i.e., set by a task in the cluster).
   rpc GetKeyValue(GetKeyValueRequest) returns (GetKeyValueResponse);
+
+  // Get configuration key-value. The request does not block, but returns an
+  // error if the requested key does not exist.
+  rpc TryGetKeyValue(TryGetKeyValueRequest) returns (TryGetKeyValueResponse);
+
+  // Same as GetKeyValue, but returns all values that have keys which are
+  // prefixed with the directory key.
+  rpc GetKeyValueDir(GetKeyValueDirRequest) returns (GetKeyValueDirResponse);
 
   // Delete configuration key-value. If is_directory is set in request,
   // recursively clean up all key-values under the path specified by `key`.
@@ -276,6 +326,5 @@ service CoordinationService {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  //   - NotFound: No barrier with the specified id is found.
   rpc CancelBarrier(CancelBarrierRequest) returns (CancelBarrierResponse);
 }

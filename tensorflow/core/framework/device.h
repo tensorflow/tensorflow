@@ -137,7 +137,7 @@ class Device : public DeviceBase {
   // 'graph' supplies the partition of the graph assigned to this
   // device.
   virtual Status MaybeRewriteGraph(std::unique_ptr<Graph>* /*graph*/) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Sets `out_context` a new DeviceContext* for executing a graph, or nullptr
@@ -148,7 +148,7 @@ class Device : public DeviceBase {
   // and should call Unref().
   virtual Status TryGetDeviceContext(DeviceContext** out_context) {
     *out_context = nullptr;
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns the op segment of this device.  The caller can reuse op

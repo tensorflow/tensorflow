@@ -65,7 +65,7 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
     *op_performance_data = tensorflow::grappler::CostGraphToOpPerformanceData(
         run_metadata.cost_graph(), item.graph);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 PYBIND11_MAKE_OPAQUE(tensorflow::grappler::Cluster);
@@ -124,7 +124,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
   m.def("TF_ShutdownCluster", [](tensorflow::grappler::Cluster* cluster) {
     // TODO(petebu): Do we need to hold the GIL here?
     py::gil_scoped_acquire acquire;
-    cluster->Shutdown();
+    (void)cluster->Shutdown();
   });
 
   m.def("TF_ListDevices",

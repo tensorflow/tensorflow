@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "StatsAggregatorHandleV2"
   output_arg {
     name: "handle"

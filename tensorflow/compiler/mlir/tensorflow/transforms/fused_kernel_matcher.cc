@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cstdio>
 #include <iostream>
+#include <string>
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -27,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -47,11 +47,14 @@ namespace {
 // TODO(b/158265178): Support GPU-specific fusions.
 // TODO(b/158266710): Support CPU MKL configurations.
 
+#define GEN_PASS_DEF_FUSEDKERNELMATCHERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Optimizes TF computations by fusing subgraphs/nodes onto more efficient
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
+    : public impl::FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
   void runOnOperation() override;
 };
 
@@ -105,6 +108,13 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     return true;
   }
 
+  // Class users should override this method if there are any op-specific
+  // compatibility requirements for devices.
+  virtual bool IsDeviceCompatible(SrcOpT contraction_op, BiasAddOp bias_add,
+                                  PatternRewriter &rewriter) const {
+    return true;
+  }
+
   LogicalResult matchAndRewrite(SrcOpT contraction,
                                 PatternRewriter &rewriter) const override {
     auto context = rewriter.getContext();
@@ -112,7 +122,7 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     // We do support fusion only if the contraction operation is inside one of
     // the expected operations with regions. Other operations can have semantics
     // that is not compatible with fusion (e.g. region compilation).
-    if (!isa<FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
+    if (!isa<func::FuncOp, IfOp, WhileOp>(contraction->getParentOp())) {
       return rewriter.notifyMatchFailure(
           contraction,
           "fused operation must be nested inside a function, If or While");
@@ -133,6 +143,13 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     if (!AreFuseCompatible(contraction, bias_add, rewriter)) {
       return rewriter.notifyMatchFailure(
           contraction, "cannot fuse with the subsequent BiasAdd op");
+    }
+
+    if (!IsDeviceCompatible(contraction, bias_add, rewriter)) {
+      return rewriter.notifyMatchFailure(
+          contraction,
+          "cannot fuse with the subsequent op as it's not supported by the "
+          "target device.");
     }
 
     SmallVector<Location, 3> locations{contraction.getLoc(), bias_add.getLoc()};
@@ -178,6 +195,32 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
+    if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
+      SmallVector<Attribute, 4> targs_values;
+      // Here TArgs types do not include types of the first two parameters,
+      // i.e. the convolution input and the filter. TArgs are parameters for
+      // the extras like the bias etc.
+      for (int i = 0; i < operands.size() - 2; ++i) {
+        targs_values.push_back(TypeAttr::get(contraction.T()));
+      }
+      ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
+
+      auto num_args_attr = IntegerAttr::get(IntegerType::get(context, 64), 1);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "num_args"), num_args_attr));
+
+      // Fused conv operands are input, filter, args and host args. Here, bias
+      // input of the BiasAdd op. Host args corresponds to conv_input_scale and
+      // side_input_scale and not relevant in this case.
+      auto sizes = mlir::DenseI32ArrayAttr::get(context, {1, 1, 1, 0});
+      auto attr_name =
+          StringAttr::get(context, mlir::OpTrait::AttrSizedOperandSegments<
+                                       void>::getOperandSegmentSizeAttr());
+      attrs.push_back(NamedAttribute(attr_name, sizes));
+    }
+
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
     // original operation has a single use, so this is safe to do.
@@ -191,6 +234,31 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     return success();
   }
 };
+
+const char kDeviceAttr[] = "device";
+const char kDeviceGpu[] = "GPU";
+
+llvm::Optional<std::string> GetDevice(mlir::Operation *op) {
+  mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
+  if (!device || device.getValue().empty()) {
+    return llvm::None;
+  }
+  const std::string device_name = device.str();
+  tensorflow::DeviceNameUtils::ParsedName parsed_name;
+  if (!tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
+    return llvm::None;
+  }
+  if (!parsed_name.has_type) {
+    return llvm::None;
+  }
+  return parsed_name.type;
+}
+
+bool IsGpuDevice(mlir::Operation *op) {
+  llvm::Optional<std::string> device = GetDevice(op);
+  if (!device) return false;
+  return *device == kDeviceGpu;
+}
 
 // Performs a fusion of the following pattern(s), if possible:
 //   Conv2D + BiasAdd + <Activation> -> _FusedConv2D
@@ -222,6 +290,22 @@ class FuseConv2DBiasAdd
     }
     return true;
   }
+
+  bool IsDeviceCompatible(Conv2DOp conv, BiasAddOp bias_add,
+                          PatternRewriter &rewriter) const override {
+    // Currently, GPU only supports Conv2D+BiasAdd+Relu fusion.
+    if (IsGpuDevice(conv)) {
+      auto activation = GetActivation(bias_add);
+      if (!activation || activation->getName().stripDialect() != "Relu" ||
+          !bias_add.output().hasOneUse()) {
+        (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+          diag << "GPU only supports Conv2D+BiasAdd+Relu fusion";
+        });
+        return false;
+      }
+    }
+    return true;
+  }
 };
 
 // Performs a fusion of the following pattern(s), if possible:
@@ -243,6 +327,17 @@ class FuseMatMulBiasAdd
     }
     return true;
   }
+
+  bool IsDeviceCompatible(MatMulOp matmul, BiasAddOp bias_add,
+                          PatternRewriter &rewriter) const override {
+    if (IsGpuDevice(matmul)) {
+      (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "_FusedMatMul is not supported by GPU";
+      });
+      return false;
+    }
+    return true;
+  }
 };
 
 void FusedKernelMatcherPass::runOnOperation() {
@@ -255,7 +350,7 @@ void FusedKernelMatcherPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateFusedKernelMatcherPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateFusedKernelMatcherPass() {
   return std::make_unique<FusedKernelMatcherPass>();
 }
 

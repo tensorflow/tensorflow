@@ -41,7 +41,10 @@ class BFloat16ConversionFolding : public HloModulePass {
 
   // Run BF16 conversion folding on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   const BFloat16Support* bfloat16_support_;

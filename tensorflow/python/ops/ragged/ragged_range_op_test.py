@@ -84,8 +84,7 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
          list(range(5, 15, 3))])
 
     # Broadcast all arguments.
-    self.assertAllEqual(
-        ragged_math_ops.range(0, 5, 1), [list(range(0, 5, 1))])
+    self.assertAllEqual(ragged_math_ops.range(0, 5, 1), [list(range(0, 5, 1))])
 
   def testEmptyRanges(self):
     rt1 = ragged_math_ops.range([0, 5, 3], [0, 3, 5])
@@ -107,6 +106,10 @@ class RaggedRangeOpTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 r'Requires delta != 0'):
       self.evaluate(ragged_math_ops.range(0, 0, 0))
+
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                r'Requires \(\(limit - start\) / delta\) <='):
+      self.evaluate(ragged_math_ops.range(0.1, 1e10, 1e-10))
 
   def testShape(self):
     self.assertAllEqual(

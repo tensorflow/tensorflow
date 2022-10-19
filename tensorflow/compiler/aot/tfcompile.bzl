@@ -20,15 +20,7 @@ load(
     "tf_cc_test",
     "tf_copts",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_target_cpu")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_enabled")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tfcompile_dfsan_abilists")
+load("//tensorflow:tensorflow.default.bzl", "tfcompile_dfsan_abilists", "tfcompile_dfsan_enabled", "tfcompile_target_cpu")
 
 def _tfcompile_model_library_rule_impl(ctx):
     header_file = ctx.outputs.header_out
@@ -60,7 +52,9 @@ def _tfcompile_model_library_rule_impl(ctx):
 
     dfsan_flags = []
     dfsan_deps = []
-    if ctx.attr.dfsan:
+
+    # DFSan is only supported on linux.
+    if ctx.attr.is_linux and ctx.attr.dfsan:
         dfsan_flags = [
             "--sanitize_dataflow",
             "--sanitize_abilists_dataflow=" + ",".join([f.path for f in ctx.files.dfsan_abilists]),
@@ -90,11 +84,9 @@ def _tfcompile_model_library_rule_impl(ctx):
         mnemonic = "TensorflowCompile",
     )
     out_files = [header_file, metadata_object_file, function_object_file, session_module_pb]
-    dep_files = [ctx.executable.tfcompile_tool]
     return [
         DefaultInfo(
             files = depset(out_files),
-            runfiles = ctx.runfiles(files = dep_files, transitive_files = depset(dep_files)),
         ),
         OutputGroupInfo(**output_dict),
     ]
@@ -121,6 +113,7 @@ _tfcompile_model_library = rule(
         "extra_flags": attr.string_list(),
         "dfsan": attr.bool(default = False),
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
+        "is_linux": attr.bool(),
     },
 )
 
@@ -323,6 +316,10 @@ def tf_library(
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
         dfsan = tfcompile_dfsan_enabled(),
         dfsan_abilists = tfcompile_dfsan_abilists(),
+        is_linux = select({
+            "//tensorflow:linux_x86_64": True,
+            "//conditions:default": False,
+        }),
         visibility = visibility,
         testonly = testonly,
         tags = tags,
@@ -370,7 +367,7 @@ def tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
-                "@llvm-project//mlir:mlir_c_runner_utils",
+                "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (deps or []),
         tags = tags,

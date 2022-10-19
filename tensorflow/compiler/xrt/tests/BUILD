@@ -6,10 +6,7 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow/compiler:__subpackages__",
-    ],
+    default_visibility = ["//learning/brain:__subpackages__"],
     licenses = ["notice"],
 )
 

@@ -3,7 +3,7 @@ load(
     "tf_cc_test",
     "tf_gen_options_header",
 )
-load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "tf_selective_registration_deps")
 
 package(
     default_visibility = [

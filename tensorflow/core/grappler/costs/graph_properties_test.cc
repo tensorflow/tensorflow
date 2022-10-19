@@ -300,7 +300,7 @@ REGISTER_OP("DetectInputValueInShapeInferenceOp")
       if (c->input_tensor(0)) {
         // 10x10 if input_tensor is given to the inference context.
         c->set_output(0, c->Matrix(10, 10));
-        return Status::OK();
+        return OkStatus();
       }
       // unknown rank if input_tensor is not provided.
       return shape_inference::UnknownShape(c);

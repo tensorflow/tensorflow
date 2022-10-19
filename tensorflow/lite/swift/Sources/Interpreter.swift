@@ -41,14 +41,36 @@ public final class Interpreter {
     return Int(TfLiteInterpreterGetOutputTensorCount(cInterpreter))
   }
 
+  /// An ordered list of SignatureDef exported method names available in the model.
+  public var signatureKeys: [String] {
+    guard let signatureKeys = _signatureKeys else {
+      let signatureCount = Int(TfLiteInterpreterGetSignatureCount(self.cInterpreter))
+      let keys: [String] = (0..<signatureCount).map {
+        guard
+          let signatureNameCString = TfLiteInterpreterGetSignatureKey(
+            self.cInterpreter, Int32($0))
+        else {
+          return ""
+        }
+        return String(cString: signatureNameCString)
+      }
+      _signatureKeys = keys
+      return keys
+    }
+    return signatureKeys
+  }
+
   /// The `TfLiteInterpreter` C pointer type represented as an `UnsafePointer<TfLiteInterpreter>`.
-  private typealias CInterpreter = OpaquePointer
+  internal typealias CInterpreter = OpaquePointer
 
   /// The underlying `TfLiteInterpreter` C pointer.
-  private var cInterpreter: CInterpreter?
+  internal var cInterpreter: CInterpreter?
 
   /// The underlying `TfLiteDelegate` C pointer for XNNPACK delegate.
   private var cXNNPackDelegate: Delegate.CDelegate?
+
+  /// An ordered list of SignatureDef exported method names available in the model.
+  private var _signatureKeys: [String]? = nil
 
   /// Creates a new instance with the given values.
   ///
@@ -278,6 +300,19 @@ public final class Interpreter {
     }
   }
 
+  /// Returns a new signature runner instance for the signature with the given key in the model.
+  ///
+  /// - Parameters:
+  ///   - key: The signature key.
+  /// - Throws: `SignatureRunnerError` if signature runner creation fails.
+  /// - Returns: A new signature runner instance for the signature with the given key.
+  public func signatureRunner(with key: String) throws -> SignatureRunner {
+    guard signatureKeys.contains(key) else {
+      throw SignatureRunnerError.failedToCreateSignatureRunner(signatureKey: key)
+    }
+    return try SignatureRunner.init(interpreter: self, signatureKey: key)
+  }
+
   // MARK: - Private
 
   private func configureXNNPack(options: Options, cInterpreterOptions: OpaquePointer) {
@@ -340,7 +375,7 @@ extension String {
   ///   - arguments: A C pointer to a `va_list` of arguments to substitute into `cFormat`.
   init?(cFormat: UnsafePointer<CChar>, arguments: CVaListPointer) {
     #if os(Linux)
-      let length = Int(vsnprintf(nil, 0, cFormat, arguments) + 1) // null terminator
+      let length = Int(vsnprintf(nil, 0, cFormat, arguments) + 1)  // null terminator
       guard length > 0 else { return nil }
       let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
       defer {

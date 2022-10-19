@@ -41,11 +41,11 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
       resource_manager->default_container(), resource_name);
   if (status.ok()) {
     VLOG(1) << "Removed existing resource " << resource_name;
-    return Status::OK();
+    return OkStatus();
   }
   if (status.code() == error::NOT_FOUND) {
     VLOG(1) << "No resource " << resource_name << " to remove";
-    return Status::OK();
+    return OkStatus();
   }
   VLOG(1) << "Error removing resource " << resource_name << " : " << status;
   return status;
@@ -63,7 +63,7 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
   TF_RETURN_IF_ERROR(server_builder.status());
 
   auto cache_service = absl::make_unique<TpuCompilationCacheService>(
-      server_builder.ValueOrDie().get(), compilation_cache);
+      server_builder.value().get(), compilation_cache);
   cache_service->SetMemoryQuota(1ul << 31);  // 2GB
   cache_service->Start();
   return cache_service;
@@ -93,7 +93,7 @@ Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
   *server_address =
       std::string(server_address_output, server_address_output_size);
   CHECK_NE(*serving_port, -1);
-  return Status::OK();
+  return OkStatus();
 }
 
 TpuPodState::TpuPodState(
@@ -129,7 +129,7 @@ Status GetTPUPodState(const ResourceMgr* rmgr, TpuPodState** pod_state) {
     return errors::FailedPrecondition(
         "The TPU system has not been initialized.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 bool HasTPUPodState(const ResourceMgr* rmgr) {

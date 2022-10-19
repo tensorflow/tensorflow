@@ -49,11 +49,11 @@ Status HandleDynamicStridedSliceInput(
     nvinfer1::Dims end_dims);
 
 Status ConvertStridedSliceHelper(
-    OpConverterParams* params, const TRT_TensorOrWeights& input,
+    const OpConverterParams* params, const TRT_TensorOrWeights& input,
     const PartialTensorShape& input_dims, const SliceDims& begin,
     const SliceDims& stride, const SliceDims& end,
-    absl::optional<nvinfer1::Dims> final_shape, absl::optional<int> op_instance,
-    absl::optional<StridedSliceShapeSpec> strided_slice_spec) {
+    std::optional<nvinfer1::Dims> final_shape, std::optional<int> op_instance,
+    std::optional<StridedSliceShapeSpec> strided_slice_spec) {
   const auto& node_def = params->node_def;
 
   auto begin_dims = DimsAdapter::Create(begin, params->use_implicit_batch);
@@ -86,10 +86,10 @@ Status ConvertStridedSliceHelper(
   }
 
   if (!dynamic_input_size_indices.empty()) {
-    if (strided_slice_spec == absl::nullopt) {
+    if (strided_slice_spec == std::nullopt) {
       return errors::InvalidArgument(
           "The argument `strided_slice_spec` is "
-          "`absl::nullopt` with `dynamic_input_size_indices` non empty.");
+          "`std::nullopt` with `dynamic_input_size_indices` non empty.");
     }
     if (params->use_implicit_batch) {
       return errors::InvalidArgument(
@@ -97,7 +97,7 @@ Status ConvertStridedSliceHelper(
     }
   }
 
-  if (params->validation_only) return Status::OK();
+  if (params->validation_only) return OkStatus();
 
   StatusOr<TRTNetworkBuilder> builder = TRTNetworkBuilder::Create(
       params->converter->network(), params->weight_store);
@@ -137,7 +137,7 @@ Status ConvertStridedSliceHelper(
         /*validation_only=*/false, &tensor, node_def, op_instance));
   }
   params->outputs->push_back(TRT_TensorOrWeights(tensor));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HandleDynamicStridedSliceInput(
@@ -241,7 +241,7 @@ Status HandleDynamicStridedSliceInput(
   slice_layer->setInput(2, *size_tensor);
   slice_layer->setInput(3, *(*stride_const)->getOutput(0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace convert

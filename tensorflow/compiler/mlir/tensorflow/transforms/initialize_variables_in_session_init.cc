@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
@@ -35,12 +35,12 @@ namespace tf_saved_model {
 namespace {
 
 void InitializeVariable(TF::VarHandleOp var_handle_op,
-                        tensorflow::Tensor* tensor, FuncOp session_init_func,
-                        OpBuilder builder) {
+                        tensorflow::Tensor* tensor,
+                        func::FuncOp session_init_func, OpBuilder builder) {
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
-  ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
+  ElementsAttr tensor_attr = tensor_attr_or.value();
 
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();
@@ -57,14 +57,14 @@ void InitializeVariable(TF::VarHandleOp var_handle_op,
 constexpr char kTfSavedModelExportedNameAttr[] =
     "tf_saved_model.exported_names";
 
-FuncOp CreateSessionInitFunc(ModuleOp module) {
+func::FuncOp CreateSessionInitFunc(ModuleOp module) {
   constexpr char kSessionInitFuncName[] = "SessionInitializerFunction";
 
   mlir::OpBuilder builder(module.getBodyRegion());
   auto func_type =
       FunctionType::get(module.getContext(), /*inputs=*/{}, /*results=*/{});
-  auto func =
-      builder.create<FuncOp>(module->getLoc(), kSessionInitFuncName, func_type);
+  auto func = builder.create<func::FuncOp>(module->getLoc(),
+                                           kSessionInitFuncName, func_type);
   func->setAttr(kTfSavedModelExportedNameAttr,
                 builder.getStrArrayAttr({kSessionInitFuncName}));
   func.setVisibility(mlir::func::FuncOp::Visibility::Public);
@@ -85,14 +85,16 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
   return func;
 }
 
-FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
+func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module);
   if (!session_init_op) return CreateSessionInitFunc(module);
 
   SymbolTable symbol_table(module);
-  if (!session_init_op.initializers().empty()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+  if (!session_init_op.getInitializers().empty()) {
+    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
+        session_init_op.getInitializers()[0]
+            .cast<FlatSymbolRefAttr>()
+            .getValue());
     return init_func_op;
   }
   return CreateSessionInitFunc(module);
@@ -113,7 +115,7 @@ LogicalResult InitializeVariablesInSessionInitializer(
   // Fetch all VarHandleOp.
   llvm::StringSet<> variable_names;
   llvm::SmallVector<TF::VarHandleOp, 4> var_ops;
-  for (auto func_op : module.getOps<FuncOp>()) {
+  for (auto func_op : module.getOps<func::FuncOp>()) {
     for (auto var_handle_op : func_op.getOps<TF::VarHandleOp>()) {
       auto variable_name = GetVariableName(var_handle_op);
       if (variable_names.count(variable_name)) continue;

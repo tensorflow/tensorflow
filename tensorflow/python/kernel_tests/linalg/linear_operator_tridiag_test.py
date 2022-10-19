@@ -127,6 +127,14 @@ class LinearOperatorTriDiagCompactTest(
         diag, diagonals_format='compact')
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    diag = variables_module.Variable([[3., 6., 2.], [2., 4., 2.], [5., 1., 2.]])
+    operator = linalg_lib.LinearOperatorTridiag(
+        diag, diagonals_format='compact')
+    with self.cached_session() as sess:
+      sess.run([diag.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 @test_util.with_eager_op_as_function
 @test_util.run_all_in_graph_and_eager_modes

@@ -20,7 +20,7 @@ func.func @customAggregator(%arg0: tensor<8x8x8x8xf32>) -> (tensor<8x8x8x8xf32>,
   func.return %0, %1 : tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>
 }
 // CHECK: func @customAggregator
-// CHECK-NEXT: %[[stats:.*]] = "quant.stats"(%arg0) {layerStats = dense<[-1.000000e-01, 2.000000e-01]> : tensor<2xf32>} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
+// CHECK-NEXT: %[[stats:.*]] = "quantfork.stats"(%arg0) {layerStats = dense<[-1.000000e-01, 2.000000e-01]> : tensor<2xf32>} : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xf32>
 // CHECK-NEXT: return %[[stats]], %arg0
 
 func.func @doNotHandleNoMinMaxCases(%arg0: tensor<8x8x8x8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>) {
@@ -30,4 +30,4 @@ func.func @doNotHandleNoMinMaxCases(%arg0: tensor<8x8x8x8xf32>) -> (tensor<8x8x8
   func.return %0, %1, %2 : tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>, tensor<8x8x8x8xf32>
 }
 // CHECK: func @doNotHandleNoMinMaxCases
-// CHECK-NOT: "quant.stats"
+// CHECK-NOT: "quantfork.stats"

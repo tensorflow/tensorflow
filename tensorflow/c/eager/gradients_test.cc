@@ -59,7 +59,7 @@ class CppGradients
 
 Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(RegisterNotDifferentiable(registry, "CheckNumerics"));
-  return Status::OK();
+  return OkStatus();
 }
 
 TEST_P(CppGradients, TestSetAttrString) {

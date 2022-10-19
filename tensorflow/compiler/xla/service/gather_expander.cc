@@ -335,12 +335,8 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     if (ShapeUtil::IsZeroElementArray(gather_instr->operand(0)->shape())) {
       return MakeScalarLike(gather_instr, 0);
     }
-    Shape broadcast_operand_shape = ShapeUtil::FilterDimensions(
-        [&](int64_t dim) {
-          return !absl::c_linear_search(
-              gather_instr->gather_dimension_numbers().collapsed_slice_dims(),
-              dim);
-        },
+    Shape broadcast_operand_shape = ShapeUtil::DeleteDimensions(
+        gather_instr->gather_dimension_numbers().collapsed_slice_dims(),
         gather_instr->operand(0)->shape());
     TF_ASSIGN_OR_RETURN(HloInstruction * broadcast_operand,
                         MakeReshapeHlo(broadcast_operand_shape,

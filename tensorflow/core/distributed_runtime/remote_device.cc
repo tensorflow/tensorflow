@@ -39,7 +39,7 @@ class RemoteDevice : public Device {
       : Device(env, da),
         local_dev_name_(DeviceNameUtils::LocalName(da.name())) {}
 
-  Status Sync() override { return Status::OK(); }
+  Status Sync() override { return OkStatus(); }
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
   ResourceMgr* resource_manager() override {

@@ -18,12 +18,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace xla {
 
@@ -62,10 +61,10 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
-  execute_thread_ = std::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                   "py_xla_execute");
-  callback_thread_ = std::make_unique<WorkerThread>(tensorflow::Env::Default(),
-                                                    "py_xla_callback");
+  execute_thread_ =
+      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_execute");
+  callback_thread_ =
+      std::make_unique<WorkerThread>(tsl::Env::Default(), "py_xla_callback");
 }
 
 LocalDeviceState::~LocalDeviceState() {
@@ -88,6 +87,9 @@ Status LocalDeviceState::SynchronizeAllActivity() {
       status.Update(callback_stream.second->BlockHostUntilDone());
     }
   }
+  for (auto& stream : device_to_host_streams_) {
+    status.Update(stream->BlockHostUntilDone());
+  }
   bool ok = compute_stream_->parent()->SynchronizeAllActivity();
   if (!ok) {
     status.Update(Unknown("SynchronizeAllActivity failed."));
@@ -102,12 +104,12 @@ Status LocalDeviceState::ThenMemcpyDeviceToDevice(
   // the buffer addresses identify the devices. This does not work
   // on all platforms; this method is virtual so it can be overridden.
   transfer_stream->ThenMemcpyD2D(&dst_buffer, src_buffer, dst_buffer.size());
-  return Status::OK();
+  return OkStatus();
 }
 
 void LocalDeviceState::ThenExecuteCallback(se::Stream* stream,
                                            std::function<void()> callback) {
-  tensorflow::profiler::TraceMe traceme("ThenExecuteCallback");
+  tsl::profiler::TraceMe traceme("ThenExecuteCallback");
   if (callback_stream_map_.has_value()) {
     // Prevent concurrent updates to the callback stream map.
     absl::MutexLock lock(&mu_);

@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Batching dataset transformations."""
+from tensorflow.python.data.ops import batch_op
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import convert
@@ -89,7 +90,7 @@ def dense_to_ragged_batch(batch_size,
 
   def _apply_fn(dataset):
     ragged_dataset = _DenseToRaggedDataset(dataset, row_splits_dtype)
-    return dataset_ops.BatchDataset(
+    return batch_op.BatchDataset(
         ragged_dataset, batch_size=batch_size, drop_remainder=drop_remainder)
 
   return _apply_fn

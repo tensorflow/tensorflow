@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_FISSION
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h.inc"
 
 struct FusedMatMulFission
@@ -80,7 +80,7 @@ struct FusedMatMulFission
 // -------------------------------------------------------------------------- //
 // Break Tensorflow _Fused{Op} operations into primitive ones.
 // -------------------------------------------------------------------------- //
-struct FissionPass : public FissionBase<FissionPass> {
+struct FissionPass : public impl::FissionBase<FissionPass> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();
     mlir::MLIRContext* ctx = function.getContext();

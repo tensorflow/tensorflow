@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 
 namespace mlir {
 namespace TF {
@@ -42,7 +43,7 @@ namespace collection_ops_util {
 
 Value CreateScalarConst(int32_t value, OpBuilder builder, Location loc) {
   auto attr = DenseIntElementsAttr::get(
-      RankedTensorType::get({}, builder.getI32Type()), value);
+      tensorflow::GetTypeFromTFTensorShape({}, builder.getI32Type()), value);
   return builder.create<TF::ConstOp>(loc, attr);
 }
 
@@ -52,7 +53,7 @@ Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
   int64_t rank = r1.size();
   values.reserve(rank);
   for (int i = 0; i < rank; ++i) values.push_back(APInt(bitwidth, r1[i]));
-  auto result_type = RankedTensorType::get(
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
       {rank}, IntegerType::get(builder.getContext(), bitwidth));
   return builder.create<TF::ConstOp>(
       loc, DenseElementsAttr::get(result_type, values));
@@ -67,7 +68,7 @@ Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
   auto zeros_tensor = GetR1Const(zeros, builder, loc);
   return builder.create<TF::ConcatV2Op>(
       loc,
-      ArrayRef<Type>{RankedTensorType::get(
+      ArrayRef<Type>{tensorflow::GetTypeFromTFTensorShape(
           {static_cast<int64_t>(buffer_type.getShape().size())},
           getElementTypeOrSelf(index.getType()))},
       ArrayRef<Value>{index, zeros_tensor, CreateScalarConst(0, builder, loc)});
@@ -82,15 +83,15 @@ Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
       llvm::to_vector<8>(buffer_type.getShape());
   slice_size[0] = 1;
   auto size_const = GetR1Const(slice_size, builder, loc);
-  auto slice_type =
-      RankedTensorType::get(slice_size, buffer_type.getElementType());
+  auto slice_type = tensorflow::GetTypeFromTFTensorShape(
+      slice_size, buffer_type.getElementType());
   auto slice = builder.create<TF::SliceOp>(
       loc, ArrayRef<Type>{slice_type},
       ArrayRef<Value>{buffer, GetIndicesForElement(index, buffer, builder, loc),
                       size_const});
   if (keep_slice_shape) return slice;
-  auto element_type = RankedTensorType::get(buffer_type.getShape().drop_front(),
-                                            buffer_type.getElementType());
+  auto element_type = tensorflow::GetTypeFromTFTensorShape(
+      buffer_type.getShape().drop_front(), buffer_type.getElementType());
   auto reshape = builder.create<TF::ReshapeOp>(
       loc, ArrayRef<Type>{element_type},
       ArrayRef<Value>{slice,
@@ -105,8 +106,8 @@ Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
   // not have that dimension, then perform a dynamic update slice.
   auto slice_shape = llvm::to_vector<8>(buffer_type.getShape());
   slice_shape[0] = 1;
-  auto slice_type =
-      RankedTensorType::get(slice_shape, buffer_type.getElementType());
+  auto slice_type = tensorflow::GetTypeFromTFTensorShape(
+      slice_shape, buffer_type.getElementType());
   auto update_slice = element;
   if (element.getType() != slice_type) {
     update_slice = builder.create<TF::ReshapeOp>(
@@ -122,7 +123,7 @@ Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
 }
 
 TensorType GetSizeType(OpBuilder builder) {
-  return RankedTensorType::get({1}, builder.getIntegerType(32));
+  return tensorflow::GetTypeFromTFTensorShape({1}, builder.getIntegerType(32));
 }
 
 Value ReshapeScalarToSizeType(OpBuilder builder, Value scalar, Location loc) {
@@ -158,10 +159,12 @@ LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
   auto zero = CreateScalarConst(0, builder, op->getLoc());
   if (getElementTypeOrSelf(zero.getType()) != element_dtype) {
     zero = builder.create<TF::CastOp>(
-        op->getLoc(), ArrayRef<Type>{RankedTensorType::get({}, element_dtype)},
+        op->getLoc(),
+        ArrayRef<Type>{tensorflow::GetTypeFromTFTensorShape({}, element_dtype)},
         ArrayRef<Value>{zero});
   }
-  auto buffer_type = RankedTensorType::get(buffer_shape, element_dtype);
+  auto buffer_type =
+      tensorflow::GetTypeFromTFTensorShape(buffer_shape, element_dtype);
   auto broadcast = builder.create<TF::BroadcastToOp>(
       op->getLoc(), ArrayRef<Type>{buffer_type},
       ArrayRef<Value>{zero, GetR1Const(buffer_shape, builder, op->getLoc())});
@@ -178,7 +181,7 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       assert(body);
       auto type_from_body = GetElementTypeFromAccess(
           body.getArgument(use.getOperandNumber()), module, infer_from_op);
-      if (type_from_body.hasValue()) return type_from_body;
+      if (type_from_body.has_value()) return type_from_body;
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(use.getOwner())) {
       auto then_branch = if_op.then_function();
       auto else_branch = if_op.else_function();
@@ -186,21 +189,21 @@ llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
       auto type_from_then = GetElementTypeFromAccess(
           then_branch.getArgument(use.getOperandNumber() - 1), module,
           infer_from_op);
-      if (type_from_then.hasValue()) return type_from_then;
+      if (type_from_then.has_value()) return type_from_then;
       auto type_from_else = GetElementTypeFromAccess(
           else_branch.getArgument(use.getOperandNumber() - 1), module,
           infer_from_op);
-      if (type_from_else.hasValue()) return type_from_else;
+      if (type_from_else.has_value()) return type_from_else;
     } else if (auto call = llvm::dyn_cast<CallOpInterface>(use.getOwner())) {
-      auto callee = dyn_cast<FuncOp>(call.resolveCallable());
+      auto callee = dyn_cast<func::FuncOp>(call.resolveCallable());
       auto type_from_callee = GetElementTypeFromAccess(
           callee.getArgument(use.getOperandNumber()), module, infer_from_op);
-      if (type_from_callee.hasValue()) return type_from_callee;
+      if (type_from_callee.has_value()) return type_from_callee;
     } else if (llvm::isa<TF::IdentityOp, TF::IdentityNOp>(use.getOwner())) {
       auto type_from_alias = GetElementTypeFromAccess(
           use.getOwner()->getResult(use.getOperandNumber()), module,
           infer_from_op);
-      if (type_from_alias.hasValue()) return type_from_alias;
+      if (type_from_alias.has_value()) return type_from_alias;
     } else if (auto type = infer_from_op(use.getOwner())) {
       if (!type) continue;
       auto elem_type = type->dyn_cast<RankedTensorType>();
@@ -272,15 +275,15 @@ Value GatherElements(Value indices, Value buffer, OpBuilder builder,
   if (maybe_contiguous_start >= 0) {
     llvm::SmallVector<int64_t, 8> slice_starts(result_shape.size(), 0);
     slice_starts[0] = maybe_contiguous_start;
-    auto slice_type =
-        RankedTensorType::get(result_shape, buffer_type.getElementType());
+    auto slice_type = tensorflow::GetTypeFromTFTensorShape(
+        result_shape, buffer_type.getElementType());
     return builder.create<TF::SliceOp>(
         loc, ArrayRef<Type>{slice_type},
         ArrayRef<Value>{buffer, GetR1Const(slice_starts, builder, loc),
                         GetR1Const(result_shape, builder, loc)});
   }
-  auto result_type =
-      RankedTensorType::get(result_shape, buffer_type.getElementType());
+  auto result_type = tensorflow::GetTypeFromTFTensorShape(
+      result_shape, buffer_type.getElementType());
   return builder.create<TF::GatherV2Op>(
       loc, ArrayRef<Type>{result_type},
       ArrayRef<Value>{buffer, indices, CreateScalarConst(0, builder, loc)});

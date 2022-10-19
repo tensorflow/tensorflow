@@ -43,7 +43,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(
       cast_result_to_fp16 = true;
       lhs = FPCast(lhs, b()->getFloatTy());
       rhs = FPCast(rhs, b()->getFloatTy());
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case F32:
       function_name = "atan2f";
       break;
@@ -78,7 +78,7 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
     case F16:
       cast_result_to_fp16 = true;
       value = FPCast(value, b()->getFloatTy());
-      ABSL_FALLTHROUGH_INTENDED;
+      [[fallthrough]];
     case F32:
       function_name = "tanhf";
       break;

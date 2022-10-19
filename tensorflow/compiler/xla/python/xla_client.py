@@ -43,10 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 63
+_version = 98
 
 # Version number for MLIR:Python components.
-mlir_api_version = 6
+mlir_api_version = 35
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -65,7 +65,8 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
     return _xla.get_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0):
+def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
+                    allowed_devices=None):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -91,11 +92,25 @@ def make_gpu_client(distributed_client=None, node_id=0):
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
-      node_id=node_id)
+      node_id=node_id,
+      platform_name=platform_name,
+      allowed_devices=allowed_devices)
+
+
+def make_tfrt_tpu_c_api_client():
+  return _xla.get_tfrt_tpu_c_api_client()
 
 
 def make_tpu_client():
   """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+  use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
+  if use_pjrt_c_api not in ('1', 'true', 'false'):
+    raise ValueError(
+        'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
+        f'got "{use_pjrt_c_api}"')
+  if use_pjrt_c_api in ('1', 'true'):
+    return make_tfrt_tpu_c_api_client()
+
   max_inflight_computations = os.getenv(
       'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
   try:
@@ -106,6 +121,18 @@ def make_tpu_client():
         f'got {max_inflight_computations}') from e
   return _xla.get_tpu_client(
       max_inflight_computations=max_inflight_computations)
+
+
+def make_plugin_device_client():
+  """Returns a plugin device client."""
+  try:
+    return _xla.get_plugin_device_client()
+  except AttributeError as e:
+    raise AttributeError(
+        'xla_extension has no attributes named get_plugin_device_client. '
+        'Compile TensorFlow with '
+        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
+        '(defaults to false) to enable this.') from e
 
 
 class OpMetadata:
@@ -320,7 +347,7 @@ def execute_with_python_values(executable, arguments, backend):
 
   arguments = [put(arg) for arg in arguments]
   outputs = executable.execute(arguments)
-  return [x.to_py() for x in outputs]
+  return [np.asarray(x) for x in outputs]
 
 
 def execute_with_python_values_replicated(executable, arguments, backend):
@@ -343,7 +370,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
 
   inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
   outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
+  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
@@ -388,9 +415,18 @@ XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+ShardedBuffer = _xla.ShardedBuffer
+ArrayImpl = _xla.ArrayImpl
 DeviceArrayBase = _xla.DeviceArrayBase
-Executable = _xla.Executable
+LoadedExecutable = _xla.LoadedExecutable
 OpSharding = _xla.OpSharding
+HloSharding = _xla.HloSharding
+Sharding = _xla.Sharding
+XLACompatibleSharding = _xla.XLACompatibleSharding
+MeshPspecSharding = _xla.MeshPspecSharding
+SingleDeviceSharding = _xla.SingleDeviceSharding
+PmapSharding = _xla.PmapSharding
+OpShardingSharding = _xla.OpShardingSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -409,6 +445,8 @@ def register_custom_call_target(name, fn, platform='cpu'):
 
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
+register_custom_call_partitioner = _xla.register_custom_call_partitioner
+hlo_sharding_util = _xla.hlo_sharding_util
 
 
 class PaddingConfigDimension:
@@ -661,6 +699,10 @@ def heap_profile(client: Client) -> bytes:
   return gzip.compress(client.heap_profile())
 
 
+XlaRuntimeError = _xla.XlaRuntimeError
+
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.
 atexit.register(_xla.collect_garbage)
+
+weakref_lru_cache = _xla.weakref_lru_cache

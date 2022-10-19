@@ -1,0 +1,67 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# Test that an error while a backedge is unresolved (and thus the placeholder
+# has uses) that causes the importer to exit does not trigger an assert.
+
+# CHECK: Unable to find OpDef for __UnknownOp
+
+node {
+  name: "merge"
+  op: "Merge"
+  # Both inputs are created as backedges.
+  input: "const1:0"
+  input: "const2:1"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "const1"
+  # Trigger a failure
+  op: "__UnknownOp"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "const2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+      }
+    }
+  }
+}

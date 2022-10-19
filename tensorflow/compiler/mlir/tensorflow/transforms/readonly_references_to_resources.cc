@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TF {
@@ -39,6 +38,9 @@ namespace {
 constexpr StringRef kClassAttr = "_class";
 constexpr StringRef kSharedNameAttr = "shared_name";
 constexpr StringRef kLocationPrefix = "loc:@";
+
+#define GEN_PASS_DEF_CONVERTREADONLYREFERENCEVARIABLESTORESOURCEVARIABLESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 // A pass that converts readonly reference variables to the corresponding
 // resource variables.
@@ -56,7 +58,7 @@ constexpr StringRef kLocationPrefix = "loc:@";
 // heuristic method that assumes that all the users of them is Identity op,
 // fed directly.
 class ConvertReadonlyReferenceVariablesToResourceVariablesPass
-    : public ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
+    : public impl::ConvertReadonlyReferenceVariablesToResourceVariablesPassBase<
           ConvertReadonlyReferenceVariablesToResourceVariablesPass> {
   void runOnOperation() override;
 };
@@ -111,7 +113,7 @@ StringRef GetNodeNameFromClassAttrOrSharedNameAttr(Operation *op) {
 
 void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
     runOnOperation() {
-  FuncOp func = getOperation();
+  func::FuncOp func = getOperation();
 
   OpBuilder builder(func.getContext());
   SmallVector<VariableV2Op, 4> variable_v2s_to_replace;
@@ -184,7 +186,7 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateConvertReadonlyReferenceVariablesToResourceVariablesPass() {
   return std::make_unique<
       ConvertReadonlyReferenceVariablesToResourceVariablesPass>();

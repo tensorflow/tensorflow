@@ -22,45 +22,46 @@ namespace memory {
 
 TEST(MemoryUsage, AddAndSub) {
   MemoryUsage mem1, mem2;
-  mem1.max_rss_kb = 5;
+  mem1.mem_footprint_kb = 5;
   mem1.total_allocated_bytes = 7000;
   mem1.in_use_allocated_bytes = 2000;
 
-  mem2.max_rss_kb = 3;
+  mem2.mem_footprint_kb = 3;
   mem2.total_allocated_bytes = 7000;
   mem2.in_use_allocated_bytes = 4000;
 
   const auto add_mem = mem1 + mem2;
-  EXPECT_EQ(8, add_mem.max_rss_kb);
+  EXPECT_EQ(8, add_mem.mem_footprint_kb);
   EXPECT_EQ(14000, add_mem.total_allocated_bytes);
   EXPECT_EQ(6000, add_mem.in_use_allocated_bytes);
 
   const auto sub_mem = mem1 - mem2;
-  EXPECT_EQ(2, sub_mem.max_rss_kb);
+  EXPECT_EQ(2, sub_mem.mem_footprint_kb);
   EXPECT_EQ(0, sub_mem.total_allocated_bytes);
   EXPECT_EQ(-2000, sub_mem.in_use_allocated_bytes);
 }
 
 TEST(MemoryUsage, GetMemoryUsage) {
   MemoryUsage result;
-  EXPECT_EQ(MemoryUsage::kValueNotSet, result.max_rss_kb);
+  EXPECT_EQ(MemoryUsage::kValueNotSet, result.mem_footprint_kb);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.in_use_allocated_bytes);
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
   // Just allocate some space in heap so that we could meaningful memory usage
   // report.
   std::unique_ptr<int[]> int_array(new int[1204]);
   for (int i = 0; i < 1024; ++i) int_array[i] = i;
   result = GetMemoryUsage();
 
-  // As the getrusage call may fail, we might not be able to get max_rss_kb.
+  // As the getrusage call may fail, we might not be able to get
+  // mem_footprint_kb.
   EXPECT_NE(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
 #endif
 }
 
 TEST(MemoryUsage, IsSupported) {
-#ifdef __linux__
+#if defined(__linux__) || defined(__APPLE__)
   EXPECT_TRUE(MemoryUsage::IsSupported());
 #else
   EXPECT_FALSE(MemoryUsage::IsSupported());

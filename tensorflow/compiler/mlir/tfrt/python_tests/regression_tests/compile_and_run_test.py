@@ -28,16 +28,19 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
-FLAGS = flags.FLAGS
-flags.DEFINE_boolean('compare_with_tensorflow', None,
-                     'Whether the results should be compared to Tensorflow')
-flags.DEFINE_integer('input_data_seed', None,
-                     'The random seed to be used for initializing.')
-flags.DEFINE_string(
+_COMPARE_WITH_TENSORFLOW = flags.DEFINE_boolean(
+    'compare_with_tensorflow', None,
+    'Whether the results should be compared to Tensorflow')
+_INPUT_DATA_SEED = flags.DEFINE_integer(
+    'input_data_seed', None, 'The random seed to be used for initializing.')
+_ONE_SHOT_BUFFERIZE = flags.DEFINE_boolean(
+    'one_shot_bufferize', None,
+    'Whether one-shot bufferization should be enabled')
+_TEST_FILE_NAME = flags.DEFINE_string(
     'test_file_name', None,
     'The filename of the file containing the MLIR IR that should be tested')
-flags.DEFINE_boolean('vectorize', None,
-                     'Whether vectorization should be enabled')
+_VECTORIZE = flags.DEFINE_boolean('vectorize', None,
+                                  'Whether vectorization should be enabled')
 
 jitrt = tf_jitrt.TfJitRtExecutor()
 
@@ -45,6 +48,7 @@ jitrt = tf_jitrt.TfJitRtExecutor()
 _STATIC_TYPE_ATTRIBUTE_NAME = 'python_test_attrs.static_type'
 _SHAPE_VALUE_ATTRIBUTE_NAME = 'python_test_attrs.shape_value'
 _ARG_ATTRIBUTES_NAME = 'arg_attrs'
+_FUNCTION_TYPE_NAME = 'function_type'
 
 
 class CompileAndRunTest(test.TestCase):
@@ -77,10 +81,15 @@ class CompileAndRunTest(test.TestCase):
       return np.float32
     if ir.F64Type.isinstance(mlir_type):
       return np.float64
+    if ir.ComplexType.isinstance(mlir_type):
+      if ir.F32Type.isinstance(ir.ComplexType(mlir_type).element_type):
+        return np.complex64
+      if ir.F64Type.isinstance(ir.ComplexType(mlir_type).element_type):
+        return np.complex128
     raise Exception(f'unknown scalar type: {mlir_type}')
 
   def test_compile_and_run(self):
-    filename = FLAGS.test_file_name
+    filename = _TEST_FILE_NAME.value
     if not os.path.isabs(filename):
       filename = os.path.join(resource_loader.get_data_files_path(), filename)
     with gfile.GFile(filename, mode='r') as f:
@@ -90,9 +99,12 @@ class CompileAndRunTest(test.TestCase):
         ctx.allow_unregistered_dialects = True
         module = ir.Module.parse(mlir_function)
         func = module.body.operations[0]
+        function_type = ir.FunctionType(
+            ir.TypeAttr(func.attributes[_FUNCTION_TYPE_NAME]).value)
         function_name = ir.StringAttr(func.attributes['sym_name']).value
         # If the function has arguments, we expect argument attributes.
-        if func.regions[0].blocks[0].arguments:
+        entry_block = func.regions[0].blocks[0]
+        if entry_block.arguments:
           self.assertIn(_ARG_ATTRIBUTES_NAME, func.attributes)
           arg_attrs = ir.ArrayAttr(func.attributes[_ARG_ATTRIBUTES_NAME])
       logging.info(f'processing {filename}')
@@ -101,10 +113,11 @@ class CompileAndRunTest(test.TestCase):
           mlir_function,
           function_name,
           tf_jitrt.Specialization.ENABLED,
-          vectorize=FLAGS.vectorize)
+          vectorize=_VECTORIZE.value,
+          one_shot_bufferize=_ONE_SHOT_BUFFERIZE.value)
       end = time.perf_counter()
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
-      np.random.seed(FLAGS.input_data_seed)
+      np.random.seed(_INPUT_DATA_SEED.value)
       args = []
       for arg_attr in arg_attrs:
         attr_dict = ir.DictAttr(arg_attr)
@@ -127,7 +140,7 @@ class CompileAndRunTest(test.TestCase):
       result = jitrt.execute(compiled, args)
       end = time.perf_counter()
       logging.info(f'executed {filename} in {end-start:0.4f} seconds')
-      if FLAGS.compare_with_tensorflow:
+      if _COMPARE_WITH_TENSORFLOW.value:
         start = time.perf_counter()
         expected = tfrt_fallback.run_tfrt_fallback(mlir_function, function_name,
                                                    args)
@@ -135,11 +148,20 @@ class CompileAndRunTest(test.TestCase):
         logging.info(
             f'executed {filename} via tfrt fallback in {end-start:0.4f} seconds'
         )
-        np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
+        if len(function_type.results) > 1:
+          # If there is more than one result, we need to iterate manually,
+          # otherwise np.testing.assert_allclose will complain if not all
+          # results have equal size.
+          self.assertEqual(len(result), len(expected))
+          for res, expect in zip(result, expected):
+            np.testing.assert_allclose(res, expect, rtol=1e-5, atol=1e-5)
+        else:
+          np.testing.assert_allclose(result, expected, rtol=1e-5, atol=1e-5)
 
 if __name__ == '__main__':
   flags.mark_flag_as_required('compare_with_tensorflow')
   flags.mark_flag_as_required('input_data_seed')
+  flags.mark_flag_as_required('one_shot_bufferize')
   flags.mark_flag_as_required('test_file_name')
   flags.mark_flag_as_required('vectorize')
   test.main()

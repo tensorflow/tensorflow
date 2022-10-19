@@ -46,6 +46,20 @@ class QuantizeTester {
 
   int32_t Size() const { return size_; }
 
+  inline QuantizeTester& InputZeroPoint(int32_t input_zero_point) {
+    input_zero_point_ = input_zero_point;
+    return *this;
+  }
+
+  inline int32_t InputZeroPoint() const { return input_zero_point_; }
+
+  inline QuantizeTester& InputScale(float input_scale) {
+    input_scale_ = input_scale;
+    return *this;
+  }
+
+  inline float InputScale() const { return input_scale_; }
+
   inline QuantizeTester& OutputZeroPoint(int32_t output_zero_point) {
     output_zero_point_ = output_zero_point;
     return *this;
@@ -68,18 +82,26 @@ class QuantizeTester {
   inline bool Unsigned() const { return unsigned_; }
 
   template <class T>
-  void Test(Interpreter* delegate_interpreter,
-            Interpreter* default_interpreter) const;
+  void PopulateInput(Interpreter* delegate_interpreter,
+                     Interpreter* default_interpreter) const;
 
-  void Test(TfLiteDelegate* delegate) const;
+  template <class T>
+  void InvokeAndCheckOutput(Interpreter* delegate_interpreter,
+                            Interpreter* default_interpreter) const;
+
+  void Test(TensorType input_type, TensorType output_type,
+            TfLiteDelegate* delegate) const;
 
  private:
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel(TensorType input_type,
+                                      TensorType output_type) const;
 
   static int32_t ComputeSize(const std::vector<int32_t>& shape);
 
   std::vector<int32_t> shape_;
   int32_t size_;
+  int32_t input_zero_point_ = 0;
+  float input_scale_ = 1.0f;
   int32_t output_zero_point_ = 0;
   float output_scale_ = 1.0f;
   bool unsigned_ = false;

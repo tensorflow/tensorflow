@@ -174,7 +174,7 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
 }
 
 bool IsSiblingFusionCandidate(const HloInstruction* instr) {
-  if (instr->IsDead()) {
+  if (instr->user_count() == 0) {
     return false;
   }
   if (!IsFusibleAsMultiOutputFusionRoot(*instr)) {
@@ -375,9 +375,12 @@ void GpuMultiOutputFusion::DumpFusionState(const HloInstruction& consumer,
   }
 }
 
-StatusOr<bool> GpuMultiOutputFusion::Run(HloModule* module) {
+StatusOr<bool> GpuMultiOutputFusion::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto* computation : module->MakeNonfusionComputations()) {
+  for (auto* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     computation_ = computation;
     TF_ASSIGN_OR_RETURN(bool fusion_changed, DoMultiOutputFusion());
     if (fusion_changed) {

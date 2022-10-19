@@ -17,27 +17,29 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/DenseSet.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
 namespace mhlo {
 namespace {
 
+#define GEN_PASS_DEF_LEGALIZETFNOFALLBACK
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 class LegalizeTFNoFallback
-    : public LegalizeTFNoFallbackBase<LegalizeTFNoFallback> {
+    : public impl::LegalizeTFNoFallbackBase<LegalizeTFNoFallback> {
  public:
   explicit LegalizeTFNoFallback(bool allow_partial_conversion) {
     allow_partial_conversion_ = allow_partial_conversion;
@@ -60,8 +62,8 @@ void LegalizeTFNoFallback::runOnOperation() {
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);
-  target.addLegalDialect<arith::ArithmeticDialect>();
-  target.addLegalDialect<chlo::HloClientDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addLegalDialect<chlo::ChloDialect>();
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<func::FuncDialect>();
   target.addLegalDialect<tensor::TensorDialect>();
@@ -72,7 +74,7 @@ void LegalizeTFNoFallback::runOnOperation() {
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &patterns);
   if (!allow_partial_conversion_) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::func::ReturnOp>();
+    target.addLegalOp<ModuleOp, func::FuncOp, ::mlir::func::ReturnOp>();
     llvm::DenseSet<Operation *> nonlegalized_ops;
     LogicalResult result = applyPartialConversion(
         op, target, std::move(patterns), &nonlegalized_ops);
@@ -88,7 +90,7 @@ void LegalizeTFNoFallback::runOnOperation() {
 
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFNoFallbackPass(
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFNoFallbackPass(
     bool allow_partial_conversion) {
   return std::make_unique<LegalizeTFNoFallback>(allow_partial_conversion);
 }

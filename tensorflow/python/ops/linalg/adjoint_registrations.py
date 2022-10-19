@@ -109,14 +109,14 @@ def _adjoint_kronecker(kronecker_operator):
 
 
 @linear_operator_algebra.RegisterAdjoint(
-    linear_operator_circulant.LinearOperatorCirculant)
+    linear_operator_circulant._BaseLinearOperatorCirculant)  # pylint: disable=protected-access
 def _adjoint_circulant(circulant_operator):
   spectrum = circulant_operator.spectrum
   if spectrum.dtype.is_complex:
     spectrum = math_ops.conj(spectrum)
 
   # Conjugating the spectrum is sufficient to get the adjoint.
-  return linear_operator_circulant.LinearOperatorCirculant(
+  return circulant_operator.__class__(
       spectrum=spectrum,
       is_non_singular=circulant_operator.is_non_singular,
       is_self_adjoint=circulant_operator.is_self_adjoint,
