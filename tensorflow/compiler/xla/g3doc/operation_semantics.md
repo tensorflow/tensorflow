@@ -2931,8 +2931,9 @@ tuple `([1, 3], [50, 42], [1.1, -3.0])`.
 
 If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
 there are elements which are considered to be equal by the comparator, the
-relative order of the equal values is preserved. By default, `is_stable` is set
-to false.
+relative order of the equal values is preserved. Two elements `e1` and `e2` are
+equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
+default, `is_stable` is set to false.
 
 ## Transpose
 
