@@ -32,7 +32,7 @@ Status CheckValidType(const DataType& dtype) {
     case DT_INT64:
     case DT_FLOAT:
     case DT_STRING:
-      return Status::OK();
+      return OkStatus();
     default:
       return errors::InvalidArgument("Received input dtype: ",
                                      DataTypeString(dtype));
@@ -55,7 +55,7 @@ Status CheckTypesMatch(const Feature& feature, const DataType& dtype,
       return errors::InvalidArgument("Invalid input dtype: ",
                                      DataTypeString(dtype));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FeatureDenseCopy(const std::size_t out_index, const string& name,
@@ -77,7 +77,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
       }
       auto out_p = out->flat<int64_t>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
-      return Status::OK();
+      return OkStatus();
     }
     case DT_FLOAT: {
       const FloatList& values = feature.float_list();
@@ -90,7 +90,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
       }
       auto out_p = out->flat<float>().data() + offset;
       std::copy_n(values.value().data(), num_elements, out_p);
-      return Status::OK();
+      return OkStatus();
     }
     case DT_STRING: {
       const BytesList& values = feature.bytes_list();
@@ -105,7 +105,7 @@ Status FeatureDenseCopy(const std::size_t out_index, const string& name,
       std::transform(values.value().data(),
                      values.value().data() + num_elements, out_p,
                      [](const string* s) { return *s; });
-      return Status::OK();
+      return OkStatus();
     }
     default:
       return errors::InvalidArgument("Invalid input dtype: ",
@@ -295,7 +295,7 @@ Status SingleExampleProtoToTensors(
           Tensor(dtype, TensorShape({0}));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
@@ -314,7 +314,7 @@ Status GetSparseTensorShapes(const VarLenFeature& var_len_feature,
   output_shapes->indices_shape.AddDim(2);
   output_shapes->values_shape.AddDim(total_num_features);
   output_shapes->max_num_features = max_num_features;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BatchExampleProtoToTensors(
@@ -402,7 +402,7 @@ Status BatchExampleProtoToTensors(
       offset += num_elements;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseExampleAttrs::FinishInit(int op_version) {
@@ -452,7 +452,7 @@ Status ParseExampleAttrs::FinishInit(int op_version) {
                                      DataTypeString(type));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseSingleExampleAttrs::FinishInit() {
@@ -471,7 +471,7 @@ Status ParseSingleExampleAttrs::FinishInit() {
   for (const DataType& type : sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
@@ -588,7 +588,7 @@ Status ParseSequenceExampleAttrs::FinishInit(int op_version) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ParseSingleSequenceExampleAttrs::FinishInit() {
@@ -627,7 +627,7 @@ Status ParseSingleSequenceExampleAttrs::FinishInit() {
   for (const DataType& type : feature_list_sparse_types) {
     TF_RETURN_IF_ERROR(CheckValidType(type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
@@ -664,7 +664,7 @@ Status GetDenseShapes(const std::vector<PartialTensorShape>& dense_shapes,
     }
     elements_per_stride->push_back(dense_shape.num_elements());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

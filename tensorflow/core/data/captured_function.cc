@@ -120,7 +120,7 @@ Status GetCapturedInput(const CapturedFunction* const func, int index,
         ". Num captured inputs: ", func->captured_inputs().size());
   }
   *out = &func->captured_inputs()[index];
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RunShortCircuit(const ShortCircuitInfo& info,
@@ -140,7 +140,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
       rets->push_back(*captured_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
@@ -163,7 +163,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
       rets->push_back(*captured_input);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
@@ -184,7 +184,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
   // If the function contains any stateful operations, we conservatively execute
   // the entire function.
   if (ctx->function_library()->IsStateful(func.name())) {
-    return Status::OK();
+    return OkStatus();
   }
 
   const FunctionBody* fn_body =
@@ -222,7 +222,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateFunctionLibraryDefinition(
@@ -234,7 +234,7 @@ Status CreateFunctionLibraryDefinition(
     return errors::FailedPrecondition(strings::StrCat(
         "Could not find required function definition ", func_name));
   }
-  *result = absl::make_unique<FunctionLibraryDefinition>(
+  *result = std::make_unique<FunctionLibraryDefinition>(
       lib_def->ReachableDefinitions(*fdef));
   return (*result)->CopyFunctionDefFrom(func_name, *lib_def);
 }
@@ -247,7 +247,7 @@ Status LookupFunction(const FunctionLibraryDefinition& lib_def,
         "Failed to find function ", name,
         " in function library: ", lib_def.ToProto().DebugString());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 class CallFrameBase : public CallFrameInterface {
@@ -266,7 +266,7 @@ class CallFrameBase : public CallFrameInterface {
       retvals->emplace_back(std::move(val.value()));
       ++i;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   size_t num_retvals() const override { return retvals_.size(); }
@@ -277,7 +277,7 @@ class CallFrameBase : public CallFrameInterface {
     if (index < retvals_size && val.dtype() == ret_types_[index] &&
         !retvals_[index]) {
       retvals_[index] = val;
-      return Status::OK();
+      return OkStatus();
     } else if (index >= retvals_size) {
       return errors::InvalidArgument("Return value ", index,
                                      " is out of range.");
@@ -317,10 +317,10 @@ class OwnedArgsCallFrame : public CallFrameBase {
     const int captured_inputs_size = captured_inputs_->size();
     if (index < args_size) {
       *val = &args_[index];
-      return Status::OK();
+      return OkStatus();
     } else if (index < args_size + captured_inputs_size) {
       *val = &(*captured_inputs_)[index - args_.size()];
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
@@ -361,10 +361,10 @@ class BorrowedArgsCallFrame : public CallFrameBase {
     const int captured_inputs_size = captured_inputs_->size();
     if (index < args_size) {
       *val = &args_[index];
-      return Status::OK();
+      return OkStatus();
     } else if (index < args_size + captured_inputs_size) {
       *val = &(*captured_inputs_)[index - args_size];
-      return Status::OK();
+      return OkStatus();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
     }
@@ -453,7 +453,7 @@ Status FunctionMetadata::Create(
     VLOG(1) << "Disabling multi-device execution for a function that uses the "
             << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
     (*out_metadata)->use_multi_device_function_ = false;
-    return Status::OK();
+    return OkStatus();
   }
   auto validate_arg = [](const OpDef::ArgDef& arg) {
     if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
@@ -466,16 +466,16 @@ Status FunctionMetadata::Create(
   for (const auto& arg : fdef->signature().input_arg()) {
     if (!validate_arg(arg)) {
       (*out_metadata)->use_multi_device_function_ = false;
-      return Status::OK();
+      return OkStatus();
     }
   }
   for (const auto& arg : fdef->signature().output_arg()) {
     if (!validate_arg(arg)) {
       (*out_metadata)->use_multi_device_function_ = false;
-      return Status::OK();
+      return OkStatus();
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /* static */
@@ -497,7 +497,7 @@ Status CapturedFunction::Create(
     std::unique_ptr<CapturedFunction>* out_function) {
   *out_function = absl::WrapUnique(
       new CapturedFunction(std::move(metadata), std::move(captured_inputs)));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CapturedFunction::AddToGraph(
@@ -520,7 +520,7 @@ Status CapturedFunction::AddToGraph(
   }
   TF_RETURN_IF_ERROR(
       b->AddFunction(ctx, metadata_->func().name(), *metadata_->lib_def()));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CapturedFunction::Instantiate(
@@ -676,7 +676,7 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function = absl::WrapUnique(
       new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
                                        *params.runner, this, is_multi_device));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CapturedFunction::CheckExternalState() const {
@@ -684,7 +684,7 @@ Status CapturedFunction::CheckExternalState() const {
     TF_RETURN_IF_ERROR(
         IsFunctionStateful(*lib_def(), *(lib_def()->Find(name))));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 CapturedFunction::CapturedFunction(
@@ -697,7 +697,7 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
                                        bool* is_multi_device) const {
   if (!metadata_->use_multi_device_function()) {
     *is_multi_device = false;
-    return Status::OK();
+    return OkStatus();
   }
 
   const FunctionDef* fdef;
@@ -729,7 +729,7 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
       if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
                                                   resource_device_name)) {
         *is_multi_device = true;
-        return Status::OK();
+        return OkStatus();
       }
     }
   }
@@ -742,7 +742,7 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
       // Check if the op has a kernel available for the current device.
       if (!KernelDefAvailable(current_device_type, node)) {
         *is_multi_device = true;
-        return Status::OK();
+        return OkStatus();
       }
       // If the op has a requested device, check if the requested device is
       // compatible with the current device.
@@ -755,14 +755,14 @@ Status CapturedFunction::IsMultiDevice(FunctionLibraryRuntime* flr,
         if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
                                                     node_device_name)) {
           *is_multi_device = true;
-          return Status::OK();
+          return OkStatus();
         }
       }
     }
   }
 
   *is_multi_device = false;
-  return Status::OK();
+  return OkStatus();
 }
 
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
@@ -964,7 +964,7 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.runner = ctx->runner();
   f_opts.create_rendezvous = ShouldCreateRendezvous();
   auto cancellation_manager =
-      absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+      std::make_unique<CancellationManager>(ctx->cancellation_manager());
   f_opts.cancellation_manager = cancellation_manager.get();
   f_opts.collective_executor = ctx->collective_executor();
 

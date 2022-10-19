@@ -17,6 +17,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <functional>
+#include <memory>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -86,7 +90,7 @@ absl::Status MakeGlTexture(const Object& object, const ObjectData& data,
       if (data.size() % 2 != 0) {
         return absl::InvalidArgumentError("Texture size is not aligned");
       }
-      return absl::visit(
+      return std::visit(
           TextureF16Maker{
               .data = absl::MakeConstSpan(
                   reinterpret_cast<const uint16_t*>(data.data()),
@@ -99,7 +103,7 @@ absl::Status MakeGlTexture(const Object& object, const ObjectData& data,
       if (data.size() % sizeof(float) != 0) {
         return absl::InvalidArgumentError("Texture size is not aligned");
       }
-      return absl::visit(
+      return std::visit(
           TextureF32Maker{
               .data = absl::MakeConstSpan(
                   reinterpret_cast<const float*>(data.data()),
@@ -130,8 +134,7 @@ struct TextureRefMaker {
 
 // Makes read-write gl texture
 absl::Status MakeGlTextureRef(const Object& object, GlTexture* gl_texture) {
-  return absl::visit(TextureRefMaker{object.data_type, gl_texture},
-                     object.size);
+  return std::visit(TextureRefMaker{object.data_type, gl_texture}, object.size);
 }
 
 absl::Status MakeGlBuffer(const Object& object, const ObjectData& data,
@@ -246,7 +249,7 @@ Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
       command_queue_(command_queue) {
   programs_.reserve(256);
   if (options_.bundle_readonly_objects) {
-    shared_readonly_buffer_ = absl::make_unique<SharedBufferData>();
+    shared_readonly_buffer_ = std::make_unique<SharedBufferData>();
   }
 }
 
@@ -478,8 +481,8 @@ absl::Status AddUsageRecord(CombinedUsageRecords* usage_records,
     return absl::OkStatus();
   }
   if (object.object_type == ObjectType::TEXTURE) {
-    absl::visit(AddUsageRecordForTextureFunc{usage_records, ref, program_id},
-                object.size);
+    std::visit(AddUsageRecordForTextureFunc{usage_records, ref, program_id},
+               object.size);
     return absl::OkStatus();
   }
   return absl::InternalError("Unexpected object type");
@@ -539,7 +542,7 @@ absl::Status ApplyTexturesAssignment(
     Object* object = global_ref_to_object_ptr[global_ref];
     if (usage_rec_id == kNotAssigned || object == nullptr ||
         object->object_type != ObjectType::TEXTURE ||
-        !absl::holds_alternative<ObjectSizeT>(object->size)) {
+        !std::holds_alternative<ObjectSizeT>(object->size)) {
       // Skip objects with other data type, non-textures and textures with wrong
       // number of dimensions.
       continue;

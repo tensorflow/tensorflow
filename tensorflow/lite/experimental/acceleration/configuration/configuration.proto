@@ -258,8 +258,22 @@ message HexagonSettings {
 //
 // See
 // https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h
+enum XNNPackFlags {
+  // These flags match the flags in xnnpack_delegate.h.
+  TFLITE_XNNPACK_DELEGATE_NO_FLAGS = 0;
+  // Enable fast signed integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8 = 1;
+  // Enable fast unsigned integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QU8 = 2;
+  // Enable both, signed and unsigned integer XNNpack kernels.
+  TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8 = 3;
+  // Force 16-bit floating point inference.
+  TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 = 4;
+}
+
 message XNNPackSettings {
   optional int32 num_threads = 1;
+  optional XNNPackFlags flags = 2 [default = TFLITE_XNNPACK_DELEGATE_NO_FLAGS];
 }
 
 // CoreML Delegate settings.
@@ -458,6 +472,9 @@ message TFLiteSettings {
 
   // Whether to automatically fall back to TFLite CPU path.
   optional FallbackSettings fallback_settings = 9;
+
+  // Whether to disable default delegates (XNNPack).
+  optional bool disable_default_delegates = 12;
 }
 
 // Whether to automatically fallback to TFLite CPU path on delegation errors.
@@ -659,11 +676,17 @@ message ModelFile {
   optional int64 offset = 3;
   // Length of model in file descriptor.
   optional int64 length = 4;
+  optional ModelIdGroup model_id_group = 5;
+}
+
+message ModelIdGroup {
+  optional string model_namespace = 1;
+  optional string model_id = 2;
 }
 
 // Where to store mini-benchmark state.
 message BenchmarkStoragePaths {
-  // Base path to the files used to to store benchmark results in. Two files
+  // Base path to the files used to store benchmark results in. Two files
   // will be generated: one with the given path and an extra file to store
   // events related to best acceleration results at path storage_file_path +
   // ".extra.fb". Must be specific to the model.
@@ -677,7 +700,16 @@ message BenchmarkStoragePaths {
   optional string data_directory_path = 2;
 }
 
+// Validation related settings.
+// Next ID: 2
+message ValidationSettings {
+  // Timeout for one settings under test. If test didn't finish within this
+  // timeout, this setting is considered hanging.
+  optional int64 per_test_timeout_ms = 1;
+}
+
 // How to run a minibenchmark.
+// Next ID: 5
 message MinibenchmarkSettings {
   // Which settings to test. This would typically be filled in from an
   // allowlist.
@@ -688,4 +720,12 @@ message MinibenchmarkSettings {
   // Where to store state. This would typically be set dynamically, as it
   // depends on the application folder.
   optional BenchmarkStoragePaths storage_paths = 3;
+  // Validation test related settings.
+  optional ValidationSettings validation_settings = 4;
+}
+
+// Schema used for cache Benchmark result.
+message BenchmarkEventStorage {
+  optional ModelIdGroup model_id_group = 1;
+  optional BenchmarkEvent benchmark_event = 2;
 }

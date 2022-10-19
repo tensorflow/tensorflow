@@ -120,11 +120,16 @@ func.func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
   func.return %1 : tensor<f32>
 }
 
-// CHECK-LABEL: func @case_test
-// CHECK-SAME: ([[chain:%.*]]: !tfrt.chain, [[idx:%.*]]: !corert.tensorhandle, [[arg:%.*]]: !corert.tensorhandle
+// CHECK-LABEL: func @case_test(
+// CHECK-SAME:                    arg0: !tfrt.chain,
+// CHECK-SAME:                    arg1: !corert.tensorhandle,
+// CHECK-SAME:                    arg2: !corert.tensorhandle,
+// CHECK-SAME:                    arg3: !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle) {
 func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>) -> tensor<f32> {
-  // CHECK: [[res_idx:%.*]] = corert.tensorhandle_to_int32 [[idx:%.*]]
-  // CHECK-NEXT: [[out_chain:%.*]], [[out:%.*]] = tfrt.case [[res_idx:%.*]] [@branch0, @branch1]([[arg:%.*]]
+  // CHECK:           %[[res_idx:[^ ]+]] = corert.tensorhandle_to_int32 %arg1
+  // CHECK:           %[[case_out:[^ ]+]]:2 = tfrt.case %[[res_idx]] [@branch0, @branch1](%arg0, %arg2, %arg3) : (!tfrt.chain, !corert.tensorhandle, !corert.tensorhandle) -> (!tfrt.chain, !corert.tensorhandle)
+  // CHECK:           %[[out_chain:[^ ]+]] = tfrt.merge.chains %[[case_out]]#0, %arg0 : !tfrt.chain, !tfrt.chain
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK:           tfrt.return %[[out_chain]], %[[case_out]]#1 : !tfrt.chain, !corert.tensorhandle
   func.return %0 : tensor<f32>
 }

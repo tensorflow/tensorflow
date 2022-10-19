@@ -37,7 +37,7 @@ REGISTER_OP("IsBoostedTreesEnsembleInitialized")
       shape_inference::ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
@@ -95,7 +95,7 @@ REGISTER_OP("BoostedTreesCalculateBestGainsPerFeature")
           c->set_output("left_node_contribs_list", output_shapes_contribs));
       TF_RETURN_IF_ERROR(
           c->set_output("right_node_contribs_list", output_shapes_contribs));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
@@ -138,7 +138,7 @@ REGISTER_OP("BoostedTreesCalculateBestFeatureSplit")
           c->MakeShape({c->UnknownDim(), logits_dimension});
       c->set_output(4, contribs_output_shape);
       c->set_output(5, contribs_output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesCalculateBestFeatureSplitV2")
@@ -206,7 +206,7 @@ REGISTER_OP("BoostedTreesCalculateBestFeatureSplitV2")
       c->set_output(5, contribs_output_shape);
       c->set_output(6, contribs_output_shape);
       c->set_output(7, rank_1_output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesSparseCalculateBestFeatureSplit")
@@ -256,7 +256,7 @@ REGISTER_OP("BoostedTreesSparseCalculateBestFeatureSplit")
           c->MakeShape({c->UnknownDim(), logits_dimension});
       c->set_output(4, contribs_output_shape);
       c->set_output(5, contribs_output_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesCreateEnsemble")
@@ -268,7 +268,7 @@ REGISTER_OP("BoostedTreesCreateEnsemble")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_input));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesDeserializeEnsemble")
@@ -280,7 +280,7 @@ REGISTER_OP("BoostedTreesDeserializeEnsemble")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_input));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesGetEnsembleStates")
@@ -298,7 +298,7 @@ REGISTER_OP("BoostedTreesGetEnsembleStates")
       c->set_output(2, c->Scalar());
       c->set_output(3, c->Scalar());
       c->set_output(4, c->Vector(2));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesMakeStatsSummary")
@@ -340,7 +340,7 @@ REGISTER_OP("BoostedTreesMakeStatsSummary")
       }
       c->set_output(0,
                     c->MakeShape({num_features, max_splits, num_buckets, 2}));
-      return Status::OK();
+      return OkStatus();
     });
 
 // V2 of BoostedTreesMakeStatsSummary. Supports multi-dim dense Tensor and
@@ -388,7 +388,7 @@ REGISTER_OP("BoostedTreesAggregateStats")
       c->set_output(0, c->MakeShape({max_splits, feature_dim,
                                      num_buckets + 1,  // +1 for missing bucket.
                                      stats_dim}));
-      return Status::OK();
+      return OkStatus();
     });
 
 // Sparse Version of BoostedTreesAggregatesStats.
@@ -447,7 +447,7 @@ REGISTER_OP("BoostedTreesSparseAggregateStats")
       c->set_output(0, c->MakeShape({c->UnknownDim(), 4}));
       c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       c->set_output(2, c->MakeShape({4}));
-      return Status::OK();
+      return OkStatus();
     });
 
 // TODO(nponomareva): when/if creating the new op for unbucketized data, rename
@@ -478,7 +478,7 @@ REGISTER_OP("BoostedTreesPredict")
           c->MakeShape({c->Dim(feature_shape, 0), logits_dimension});
       // Logits.
       c->set_output(0, logits_shape);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesExampleDebugOutputs")
@@ -504,7 +504,7 @@ REGISTER_OP("BoostedTreesExampleDebugOutputs")
       // Multi-class will be supported by modifying the proto.
       auto batch_size = c->MakeShape({c->Dim(feature_shape, 0)});
       c->set_output(0, batch_size);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesSerializeEnsemble")
@@ -516,7 +516,7 @@ REGISTER_OP("BoostedTreesSerializeEnsemble")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       c->set_output(0, c->Scalar());
       c->set_output(1, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesTrainingPredict")
@@ -560,7 +560,7 @@ REGISTER_OP("BoostedTreesTrainingPredict")
       c->set_output(1, c->MakeShape({c->Dim(feature_shape, 0)}));
       // Node ids.
       c->set_output(2, c->MakeShape({c->Dim(feature_shape, 0)}));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesUpdateEnsemble")
@@ -613,7 +613,7 @@ REGISTER_OP("BoostedTreesUpdateEnsemble")
         TF_RETURN_IF_ERROR(c->Merge(c->input(i + num_features * 4 + 2),
                                     shape_rank_2, &shape_handle));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesUpdateEnsembleV2")
@@ -695,7 +695,7 @@ REGISTER_OP("BoostedTreesUpdateEnsembleV2")
         TF_RETURN_IF_ERROR(c->Merge(c->input(offset + num_features * 7),
                                     shape_rank_1, &shape_handle));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesCenterBias")
@@ -718,7 +718,7 @@ REGISTER_OP("BoostedTreesCenterBias")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
 
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_RESOURCE_HANDLE_OP(BoostedTreesQuantileStreamResource);
@@ -730,7 +730,7 @@ REGISTER_OP("IsBoostedTreesQuantileStreamResourceInitialized")
       shape_inference::ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       c->set_output(0, c->Scalar());
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesCreateQuantileStreamResource")
@@ -743,7 +743,7 @@ REGISTER_OP("BoostedTreesCreateQuantileStreamResource")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_input));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesMakeQuantileSummaries")
@@ -768,7 +768,7 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
       ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(
           c->WithRank(c->input(num_features + 1), 0, &unused_input));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesFlushQuantileSummaries")
@@ -782,7 +782,7 @@ REGISTER_OP("BoostedTreesFlushQuantileSummaries")
         // the columns are value, weight, min_rank, max_rank.
         c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesQuantileStreamResourceAddSummaries")
@@ -799,7 +799,7 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceAddSummaries")
       for (int i = 1; i < num_features + 1; i++) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &unused_input));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesQuantileStreamResourceDeserialize")
@@ -810,7 +810,7 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceDeserialize")
       shape_inference::ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesQuantileStreamResourceFlush")
@@ -822,7 +822,7 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceFlush")
       shape_inference::ShapeHandle unused_input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesQuantileStreamResourceGetBucketBoundaries")
@@ -838,7 +838,7 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceGetBucketBoundaries")
       for (int i = 0; i < num_features; i++) {
         c->set_output(i, c->Vector(c->UnknownDim()));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("BoostedTreesBucketize")
@@ -860,7 +860,7 @@ REGISTER_OP("BoostedTreesBucketize")
       for (int i = 0; i < num_features; i++) {
         c->set_output(i, c->MakeShape({c->Dim(c->input(i), 0)}));
       }
-      return Status::OK();
+      return OkStatus();
     });
 
 }  // namespace tensorflow

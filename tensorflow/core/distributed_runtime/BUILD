@@ -11,9 +11,7 @@ load(
     "tf_copts",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_grpc_cc_dependencies")
 
 # For platform specific build config
 load(
@@ -151,9 +149,11 @@ cc_library(
         ":worker_cache_wrapper",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/core/activity_watcher",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
@@ -427,9 +427,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
-        ":worker_cache",
         ":worker_env",
-        ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -439,6 +437,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/hash",
     ],
 )
 
@@ -810,6 +809,7 @@ cc_library(
         ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

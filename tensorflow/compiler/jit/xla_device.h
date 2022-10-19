@@ -144,7 +144,7 @@ class XlaDevice : public LocalDevice {
     // Set of devices to use. This controls which of the devices on the given
     // platform will have resources allocated. For GPUs this will be
     // filled from visible_gpu_devices list from session configuration.
-    absl::optional<std::set<int>> allowed_devices;
+    std::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -281,7 +281,7 @@ class XlaDevice : public LocalDevice {
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be
   // filled from visible_gpu_devices list from session configuration.
-  absl::optional<std::set<int>> allowed_devices_;
+  std::optional<std::set<int>> allowed_devices_;
 
   const bool use_global_compute_stream_;
 
@@ -300,6 +300,11 @@ struct XlaDeviceOpRegistrations {
   std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
       op_kernel_registrars;
 };
+
+XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
+    const char* device, const char* jit_device,
+    OpKernel* (*factory)(OpKernelConstruction*), StringPiece kernel_class_name);
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
 

@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -604,7 +604,7 @@ class BufferAssigner {
           value->set_color(BufferValue::Color(0));
         }
       }
-      return Status::OK();
+      return OkStatus();
     };
   }
 
@@ -622,14 +622,14 @@ class BufferAssigner {
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allocate_buffers_for_constants = false,
       Colorer colorer = DefaultColorer(),
-      absl::optional<MustNotLiveOut> must_not_live_out = absl::nullopt,
+      std::optional<MustNotLiveOut> must_not_live_out = std::nullopt,
       HloDataflowAnalysis::CanShareBuffer can_share_buffer = nullptr,
       std::unique_ptr<memory_space_assignment::PresetAssignments>
           preset_assignments = {});
 
  private:
   BufferAssigner(bool allocate_buffers_for_constants, Colorer colorer,
-                 absl::optional<MustNotLiveOut> must_not_live_out,
+                 std::optional<MustNotLiveOut> must_not_live_out,
                  std::unique_ptr<memory_space_assignment::PresetAssignments>
                      preset_assignments)
       : allocate_buffers_for_constants_(allocate_buffers_for_constants),
@@ -712,7 +712,7 @@ class BufferAssigner {
 
   // An optional function that returns true if the given instruction can't live
   // out of a computation.
-  absl::optional<MustNotLiveOut> must_not_live_out_;
+  std::optional<MustNotLiveOut> must_not_live_out_;
 
   // Description of any buffer offsets that are already set by an earlier pass.
   std::unique_ptr<memory_space_assignment::PresetAssignments>

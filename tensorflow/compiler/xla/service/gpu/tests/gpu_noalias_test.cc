@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -24,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -52,7 +51,7 @@ TEST_F(GpuNoAliasTest, Concat) {
 
   CompileAndVerifyIr(
       std::move(hlo_module),
-      R"(CHECK: define{{.*}}void @{{[a-zA-Z0-9_]+}}(i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}))",
+      R"(CHECK: define{{.*}}void @{{[a-zA-Z0-9_]+}}(ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, ptr noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}))",
       /*match_optimized_ir=*/false);
 }
 

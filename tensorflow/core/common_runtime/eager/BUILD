@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -193,6 +193,7 @@ tf_cuda_library(
             "//tensorflow/core/distributed_runtime/coordination:coordination_service",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
             "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
+            "//tensorflow/core/distributed_runtime/preemption:preemption_notifier",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -536,6 +537,19 @@ cc_library(
 )
 
 tf_cc_test(
+    name = "execute_test",
+    srcs = ["execute_test.cc"],
+    deps = [
+        ":core",
+        ":execute",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/kernels:math",
+    ],
+)
+
+tf_cc_test(
     name = "execute_node_test",
     srcs = ["execute_node_test.cc"],
     deps = [
@@ -755,7 +769,6 @@ filegroup(
         "tensor_handle_data.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
         "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],

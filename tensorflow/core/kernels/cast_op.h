@@ -91,12 +91,7 @@ limitations under the License.
 // resize_bilinear_op.cc.
 #define CAST_FUNCTORS_SUBSET(devname)                                 \
   SPECIALIZE_CAST(devname, float, double)                             \
-  SPECIALIZE_CAST(devname, float, std::complex<double>)               \
-  SPECIALIZE_CAST(devname, std::complex<float>, std::complex<double>) \
-  SPECIALIZE_CAST(devname, std::complex<float>, double)               \
   SPECIALIZE_CAST(devname, Eigen::half, float)                        \
-  SPECIALIZE_CAST(devname, Eigen::half, std::complex<double>)         \
-  SPECIALIZE_CAST(devname, Eigen::half, std::complex<float>)          \
   SPECIALIZE_CAST(devname, bfloat16, float)                           \
   template <typename OUT_TYPE, typename IN_OUT>                       \
   struct CastFunctor<devname, OUT_TYPE, IN_OUT> {                     \
@@ -201,8 +196,6 @@ typename std::enable_if<sizeof(I) == 4, void>::type EIGEN_DEVICE_FUNC
 // Set n least significant bits to 0
 template <typename I, typename O>
 struct LSBZeroSetter {
-  EIGEN_EMPTY_STRUCT_CTOR(LSBZeroSetter)
-
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const I operator()(const I& a) const {
     constexpr int bits = MantissaWidth<I>() - MantissaWidth<O>();
     static_assert(
@@ -216,8 +209,6 @@ struct LSBZeroSetter {
 
 template <typename I, typename O>
 struct LSBZeroSetter<std::complex<I>, std::complex<O>> {
-  EIGEN_EMPTY_STRUCT_CTOR(LSBZeroSetter)
-
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const std::complex<I> operator()(
       const std::complex<I>& a) const {
     constexpr int bits = MantissaWidth<I>() - MantissaWidth<O>();
@@ -235,7 +226,6 @@ struct LSBZeroSetter<std::complex<I>, std::complex<O>> {
 
 template <typename I, typename O>
 struct LSBZeroSetter<std::complex<I>, O> {
-  EIGEN_EMPTY_STRUCT_CTOR(LSBZeroSetter)
   // Sets the 16 LSBits of the float to 0
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const std::complex<I> operator()(
       const std::complex<I>& a) const {

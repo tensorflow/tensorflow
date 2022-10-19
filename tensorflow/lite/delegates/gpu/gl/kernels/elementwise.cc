@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/elementwise.h"
 
+#include <any>
+#include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/substitute.h"
@@ -155,10 +159,10 @@ class ElementwiseTwoArguments : public NodeShader {
       argument1 = "$input_data_1[0, 0, gid.z]$";
     } else {  // Scalar of const vector case
       const auto& attr =
-          absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
+          std::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
       const auto* tensor =
-          absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-      const auto* scalar = absl::get_if<float>(&attr.param);
+          std::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+      const auto* scalar = std::get_if<float>(&attr.param);
       if (!tensor && !scalar) {
         return absl::InvalidArgumentError(
             "Couldn't read scalar of const vector data from the attributes.");
@@ -248,7 +252,7 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH:
-      return absl::make_unique<ElementwiseOneArgument>(operation_type);
+      return std::make_unique<ElementwiseOneArgument>(operation_type);
     case OperationType::DIV:
     case OperationType::FLOOR_DIV:
     case OperationType::FLOOR_MOD:
@@ -257,7 +261,7 @@ std::unique_ptr<NodeShader> NewElementwiseNodeShader(
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB:
-      return absl::make_unique<ElementwiseTwoArguments>(operation_type);
+      return std::make_unique<ElementwiseTwoArguments>(operation_type);
     default:
       return nullptr;
   }

@@ -185,8 +185,9 @@ class FlatBufferModel {
   /// `error_reporter`remains with the caller and must have lifetime at least
   /// as much as FlatBufferModel. This is to allow multiple models to use the
   /// same ErrorReporter instance.
-  FlatBufferModel(std::unique_ptr<Allocation> allocation,
-                  ErrorReporter* error_reporter = DefaultErrorReporter());
+  explicit FlatBufferModel(
+      std::unique_ptr<Allocation> allocation,
+      ErrorReporter* error_reporter = DefaultErrorReporter());
 
   /// Loads a model from Model flatbuffer. The `model` has to remain alive and
   /// unchanged until the end of this flatbuffermodel's lifetime.

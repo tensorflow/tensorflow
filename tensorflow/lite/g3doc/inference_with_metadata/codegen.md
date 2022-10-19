@@ -1,6 +1,6 @@
 # Generate model interfaces using metadata
 
-Using [TensorFlow Lite Metadata](../convert/metadata), developers can generate
+Using [TensorFlow Lite Metadata](../models/convert/metadata), developers can generate
 wrapper code to enable integration on Android. For most developers, the
 graphical interface of [Android Studio ML Model Binding](#mlbinding) is the
 easiest to use. If you require more customisation or are using command line
@@ -8,7 +8,7 @@ tooling, the [TensorFlow Lite Codegen](#codegen) is also available.
 
 ## Use Android Studio ML Model Binding {:#mlbinding}
 
-For TensorFlow Lite models enhanced with [metadata](../convert/metadata.md),
+For TensorFlow Lite models enhanced with [metadata](../models/convert/metadata.md),
 developers can use Android Studio ML Model Binding to automatically configure
 settings for the project and generate wrapper classes based on the model
 metadata. The wrapper code removes the need to interact directly with
@@ -119,7 +119,7 @@ delegate, if not run the model using multiple CPU threads:
 
 Note: TensorFlow Lite wrapper code generator currently only supports Android.
 
-For TensorFlow Lite model enhanced with [metadata](../convert/metadata.md),
+For TensorFlow Lite model enhanced with [metadata](../models/convert/metadata.md),
 developers can use the TensorFlow Lite Android wrapper code generator to create
 platform specific wrapper code. The wrapper code removes the need to interact
 directly with `ByteBuffer`. Instead, developers can interact with the TensorFlow

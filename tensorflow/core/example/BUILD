@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "@io_bazel_rules_closure//closure:defs.bzl",
@@ -51,8 +51,7 @@ cc_library(
         ":example_protos_cc",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )

@@ -18,14 +18,16 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
+#define GEN_PASS_DEF_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUReorderReplicateAndPartitionedInputsPass
-    : public TF::TPUReorderReplicateAndPartitionedInputsPassBase<
+    : public impl::TPUReorderReplicateAndPartitionedInputsPassBase<
           TPUReorderReplicateAndPartitionedInputsPass> {
   void runOnOperation() override;
 };
@@ -38,10 +40,6 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
       }))
     return replicated_input.emitOpError()
            << "expects all inputs from 'tf.TPUPartitionedInput' ops";
-
-  if (replicated_input.index() != -1)
-    return replicated_input->emitOpError()
-           << "unsupported index = " << replicated_input.index();
 
   auto first_partitioned_input = llvm::cast<TF::TPUPartitionedInputOp>(
       replicated_input.getOperand(0).getDefiningOp());
@@ -133,7 +131,7 @@ void TPUReorderReplicateAndPartitionedInputsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUReorderReplicateAndPartitionedInputsPass() {
   return std::make_unique<TPUReorderReplicateAndPartitionedInputsPass>();
 }

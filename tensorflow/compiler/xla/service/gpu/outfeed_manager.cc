@@ -15,14 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/xla_executor_state.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
@@ -49,9 +50,9 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
     const Shape& shape = ShapeUtil::GetSubshape(literal.shape(), leaf.first);
     CHECK(shape.IsArray()) << ShapeUtil::HumanStringWithLayout(shape);
     leaf.second =
-        absl::make_unique<gpu::OutfeedBuffer>(ShapeUtil::ByteSizeOf(shape));
+        std::make_unique<gpu::OutfeedBuffer>(ShapeUtil::ByteSizeOf(shape));
     leaf.second->set_destination(
-        absl::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
+        std::make_unique<MutableBorrowingLiteral>(literal, leaf.first));
   }
 
   // Give the tree of buffers to the outfeed manager. The device will fill it
@@ -67,7 +68,7 @@ Status OutfeedManager::TransferLiteralFromOutfeed(
     leaf.second->WaitUntilAvailable();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

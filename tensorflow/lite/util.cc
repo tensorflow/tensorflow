@@ -60,9 +60,9 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
                                       input.data());
 }
 
-TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {
-  TfLiteIntArray* output = TfLiteIntArrayCreate(rank);
-  for (size_t i = 0; i < rank; i++) {
+TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int ndims, const int* dims) {
+  TfLiteIntArray* output = TfLiteIntArrayCreate(ndims);
+  for (size_t i = 0; i < ndims; i++) {
     output->data[i] = dims[i];
   }
   return output;
@@ -134,6 +134,12 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       break;
     case kTfLiteFloat64:
       *bytes = sizeof(double);
+      break;
+    case kTfLiteInt4:
+      // TODO(b/246647008): Multiplying this value by the number of elements
+      // does not yield the size of a tensor when 4-bit values are packed
+      // 2 to a byte.
+      *bytes = sizeof(int8_t);
       break;
     default:
       if (context) {

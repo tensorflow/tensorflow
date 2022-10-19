@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -60,9 +60,9 @@ ENTRY entry {
     true_computation=true_branch, false_computation=false_branch
 }
 )")
-                    .ValueOrDie();
+                    .value();
   ConditionalCanonicalizer pass;
-  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(pass.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::GetTupleElement(op::Conditional()));
 }

@@ -16,10 +16,13 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/error_payloads.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
 
@@ -48,7 +51,7 @@ class RemoteMgrTest : public ::testing::Test {
     devices.push_back(
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
-    auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+    auto device_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
     ctx_ = new tensorflow::EagerContext(
@@ -149,6 +152,36 @@ TEST_F(RemoteMgrTest, SetRemoteShapeWithClusterUpdate) {
   TF_ASSERT_OK(handle->SetRemoteShape(TensorShape({0}), remote_device_,
                                       ctx_->GetContextViewId()));
   handle->Unref();
+}
+
+TEST_F(RemoteMgrTest, ErrorSourcesShouldExist) {
+  RemoteMgr remote_mgr(false, ctx_);
+
+  const uint64 op_id = 3;
+  const int output_num = 1;
+  TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
+      op_id, output_num, DT_FLOAT, remote_device_, /*is_ready=*/true, ctx_);
+  RemoteTensorHandle remote_handle;
+  remote_mgr.AddOperationOutput(handle, op_id, output_num);
+  TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
+      handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,
+      remote_device_->name()));
+  auto remote_handle_internal = RemoteTensorHandleInternal(remote_handle);
+  TF_ASSERT_OK(remote_mgr.DeleteTensorHandle(remote_handle_internal));
+
+  // Now that the tensor has been deleted, we cannot access the remote handle.
+  Status s = remote_mgr.DeleteTensorHandle(remote_handle_internal);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(s.GetPayload(kErrorSource).has_value());
+
+  TensorHandle* out;
+  s = remote_mgr.GetTensorHandle(remote_handle_internal, &out);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(s.GetPayload(kErrorSource).has_value());
+
+  s = remote_mgr.DeserializeRemoteTensorHandle(remote_handle, &out);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(s.GetPayload(kErrorSource).has_value());
 }
 
 }  // namespace

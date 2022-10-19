@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 
+#include <string>
+
 namespace tflite {
 namespace interpreter_wrapper {
 

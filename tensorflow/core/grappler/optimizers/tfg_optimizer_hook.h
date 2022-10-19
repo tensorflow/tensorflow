@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
-#define TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_OPTIMIZER_HOOK_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_OPTIMIZER_HOOK_H_
 
 #include <functional>
 #include <string>
@@ -26,9 +26,6 @@ class PassManager;
 
 namespace tfg {
 
-// Constructs the default TFG pass pipeline.
-void DefaultGrapplerPipeline(PassManager& mgr);
-
 // A function that builds the TFG pass pipeline.
 using TFGPassPipelineBuilder = std::function<void(PassManager& pm)>;
 
@@ -36,11 +33,11 @@ using TFGPassPipelineBuilder = std::function<void(PassManager& pm)>;
 // implemented with TFG.
 class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
  public:
-  // Constructs a TFG optimizer using the provided pipeline builder. If
-  // `num_tfg_threads` is non-zero, then TFG will use threading with the
-  // specified number of threads.
+  // Constructs a TFG optimizer using the provided pipeline builder. By default,
+  // the optimizer will not use multi-threading. If `num_tfg_threads` is
+  // non-zero, then TFG will use threading with the specified number of threads.
   explicit TFGGrapplerOptimizer(TFGPassPipelineBuilder builder,
-                                unsigned num_tfg_threads);
+                                unsigned num_tfg_threads = 0);
   // Explicit destructor to defer instantiation of Impl.
   ~TFGGrapplerOptimizer() override;
 
@@ -65,4 +62,4 @@ class TFGGrapplerOptimizer : public tensorflow::grappler::GraphOptimizer {
 }  // end namespace tfg
 }  // end namespace mlir
 
-#endif  // TENSORFLOW_CORE_MLIR_GRAPPLER_GRAPPLER_HOOK_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_TFG_OPTIMIZER_HOOK_H_

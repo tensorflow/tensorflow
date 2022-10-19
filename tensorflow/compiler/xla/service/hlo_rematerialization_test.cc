@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -112,10 +112,10 @@ TEST_F(HloRematerializationTest, SingleComputationNoWorthRemat) {
   ASSERT_THAT(slice, op::Slice(op::Concatenate(op::Broadcast(_), _)));
 
   // Set the minimum remat size to 14KiB, meaning no nodes should be remat.
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloRematerialization(
-                              /*memory_limit_bytes=*/14 * 1024, module.get(),
-                              /*min_remat_size=*/14 * 1024));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloRematerialization(
+                                            /*memory_limit_bytes=*/
+                                            14 * 1024, module.get(),
+                                            /*min_remat_size=*/14 * 1024));
   EXPECT_FALSE(changed);
 }
 
@@ -400,11 +400,11 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   EXPECT_EQ(add_4->operand(0), bcast);
 
   // Pick a memory limit some where between 24KB (initial peak memory including
-  // parameter and output) and 20KB (peak memory possible with
+  // parameter and output) and 19KB (peak memory possible with
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module.get()));
+                              /*memory_limit_bytes=*/19 * 1024, module.get()));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -538,11 +538,11 @@ TEST_P(IndirectUseTest, IndirectUseRematerialized) {
   EXPECT_EQ(entry_computation->instruction_count(), 8);
 
   // Pick a memory limit some where between 24KB (initial peak memory
-  // including parameter and output) and 20KB (peak memory possible with
+  // including parameter and output) and 19KB (peak memory possible with
   // rematerialization).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
-                              /*memory_limit_bytes=*/22 * 1024, module.get()));
+                              /*memory_limit_bytes=*/19 * 1024, module.get()));
   // Rematerialization should only occur if the rematerializable instruction
   // has no indirect uses.
   if (indirectly_used) {
@@ -582,6 +582,9 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   // Swap the layout of the two most-minor dimensions if the second-minor
   // dimension is bigger than the most-minor dimension.
   static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
+    if (shape.rank() != 2) {
+      return shape;
+    }
     Shape result = shape;
     Layout layout = result.layout();
     int64_t most_minor_index = layout.minor_to_major()[0];
@@ -695,6 +698,44 @@ ENTRY %entry {
       module->entry_computation()->GetInstructionWithName("reduce.1");
   EXPECT_THAT(reduce,
               op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
+
+// Test a pathological case where the peak memory is largely due to a single
+// tensor (broadcast.0) and compressing it would actually increase the peak
+// memory.
+TEST_F(CompressingRematerializationTest, AvoidPathologicalCompress) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[63,60]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %broadcast.1 = f32[16,64]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %reduce.0 = f32[] reduce(%broadcast.1, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(%broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/16 * 1024, module.get()));
+  EXPECT_FALSE(changed);
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+  HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce.1");
+  EXPECT_THAT(reduce, op::Reduce(broadcast, op::Constant()));
 }
 
 TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {

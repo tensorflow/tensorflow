@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
+#include <sstream>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -232,6 +234,17 @@ using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
 using TensorMatrix = std::vector<std::vector<Tensor>>;
 
+string GetTensorNamesAndShapesString(const OpKernelContext* context,
+                                     const OpInputList& tensors) {
+  std::stringstream out;
+  int i = 0;
+  for (const Tensor& tensor : tensors) {
+    out << " - " << context->op_kernel().requested_input(i++) << " has shape "
+        << tensor.shape().DebugString() << "\n";
+  }
+  return out.str();
+}
+
 Status BatchResourceBase::RegisterInput(
     int64_t guid, OpKernelContext* context, const string& batcher_queue_name,
     AsyncOpKernel::DoneCallback done_callback) {
@@ -246,32 +259,49 @@ Status BatchResourceBase::RegisterInput(
   for (const Tensor& tensor : tensors) {
     if (tensor.shape().dims() == 0) {
       return errors::InvalidArgument(
-          "Batching input tensors must have at least one dimension");
+          "Batching input tensors must have at least one dimension.\nBelow are "
+          "the input tensors: \n",
+          GetTensorNamesAndShapesString(context, tensors));
     }
     if (tensors.size() >= 2 &&
         tensor.shape().dim_size(0) != tensors[0].shape().dim_size(0)) {
       return errors::InvalidArgument(
           "Batching input tensors supplied in a given op invocation must "
-          "have equal 0th-dimension size");
+          "have equal 0th-dimension size.\nBelow are the input tensors: \n",
+          GetTensorNamesAndShapesString(context, tensors));
     }
     batch_components->inputs.push_back(tensor);
   }
   RecordInputBatchSize(tensors[0].shape().dim_size(0), GetModelName(context),
-                       context->op_kernel().name_view().data());
+                       context->op_kernel().name());
   RecordInputBatchSizeV2(tensors[0].shape().dim_size(0), GetModelName(context),
                          context->op_kernel().name());
-  RecordBatchParamBatchTimeoutMicros(
-      batcher_queue_options_.batch_timeout_micros, GetModelName(context),
-      context->op_kernel().name_view().data());
-  RecordBatchParamMaxBatchSize(batcher_queue_options_.max_execution_batch_size,
-                               GetModelName(context),
-                               context->op_kernel().name_view().data());
-  RecordBatchParamMaxEnqueuedBatches(
-      batcher_queue_options_.max_enqueued_batches, GetModelName(context),
-      context->op_kernel().name_view().data());
+  if (batcher_) {
+    RecordBatchParamBatchTimeoutMicros(
+        batcher_queue_options_.batch_timeout_micros, GetModelName(context),
+        context->op_kernel().name());
+    RecordBatchParamMaxBatchSize(
+        batcher_queue_options_.max_execution_batch_size, GetModelName(context),
+        context->op_kernel().name());
+    RecordBatchParamMaxEnqueuedBatches(
+        batcher_queue_options_.max_enqueued_batches, GetModelName(context),
+        context->op_kernel().name());
+  } else if (adaptive_batcher_) {
+    RecordBatchParamBatchTimeoutMicros(
+        adaptive_batcher_queue_options_.batch_timeout_micros,
+        GetModelName(context), context->op_kernel().name());
+    RecordBatchParamMaxBatchSize(adaptive_batcher_queue_options_.max_batch_size,
+                                 GetModelName(context),
+                                 context->op_kernel().name());
+    RecordBatchParamMaxEnqueuedBatches(
+        adaptive_batcher_queue_options_.max_enqueued_batches,
+        GetModelName(context), context->op_kernel().name());
+  } else {
+    return errors::Internal("No batcher defined.");
+  }
   RecordBatchParamAllowedBatchSizes(allowed_batch_sizes_str_,
                                     GetModelName(context),
-                                    context->op_kernel().name_view().data());
+                                    context->op_kernel().name());
 
   // Degenerate case where the input is empty. Just return an empty tensor.
   if (tensors[0].shape().dim_size(0) == 0) {
@@ -283,7 +313,7 @@ Status BatchResourceBase::RegisterInput(
                                                   &empty_output, cpu_alloc));
     }
     done_callback();
-    return Status::OK();
+    return OkStatus();
   }
   OpInputList captured_tensors;
   const auto captured_status =
@@ -383,7 +413,7 @@ BatchResourceBase::GetAdaptiveBatcherQueueOptions(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
@@ -419,15 +449,15 @@ Status BatchResourceBase::ConcatInputTensors(
                                {"padding_amount", padding_amount}});
   });
   RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size,
-                    context->op_kernel().name_view().data());
+                    context->op_kernel().name());
   RecordPaddingSizeV2(padding_amount, GetModelName(context), padded_batch_size,
                       context->op_kernel().name());
   RecordProcessedBatchSize(padded_batch_size, GetModelName(context),
-                           context->op_kernel().name_view().data());
+                           context->op_kernel().name());
   RecordProcessedBatchSizeV2(padded_batch_size, GetModelName(context),
-                             string(context->op_kernel().name_view()));
+                             context->op_kernel().name());
   RecordBatchSize(batch.size(), GetModelName(context),
-                  string(context->op_kernel().name_view()));
+                  context->op_kernel().name());
 
   // All tasks should have the same number of input edges.
   const int num_inputs = batch.task(0).inputs.size();
@@ -469,7 +499,7 @@ Status BatchResourceBase::ConcatInputTensors(
     TF_RETURN_IF_ERROR(concat_status);
     concatenated_tensors->push_back(concatenated_tensor);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ Status BatchResourceBase::SplitInputTask(
@@ -564,7 +594,7 @@ Status BatchResourceBase::ConcatInputTensors(
                 std::back_inserter(output_task.inputs));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BatchResourceBase::SplitOutputTensors(
@@ -637,7 +667,7 @@ Status BatchResourceBase::SplitOutputTensors(
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 void BatchResourceBase::ProcessFuncBatch(std::unique_ptr<BatchT> batch) const {
@@ -842,7 +872,7 @@ void BatchResourceBase::ProcessBatch(std::unique_ptr<BatchT> batch) const {
     index_flat(task_idx, 2) = offset + task.size();
     offset += task.size();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Looks up the batcher queue for 'queue_name'. If it did't previously exist,
@@ -854,7 +884,7 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   auto it = batcher_queues_.find(queue_name);
   if (it != batcher_queues_.end()) {
     *queue = it->second.get();
-    return Status::OK();
+    return OkStatus();
   }
 
   std::unique_ptr<BatcherQueueT> new_queue;
@@ -876,14 +906,14 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
   }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BatchResourceBase::CreateBatchTask(
     OpKernelContext* context,
     std::unique_ptr<BatchResourceBase::BatchTask>* output) const {
   *output = absl::make_unique<BatchResourceBase::BatchTask>();
-  return Status::OK();
+  return OkStatus();
 }
 
 void BatchResourceBase::SplitBatchCosts(

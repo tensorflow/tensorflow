@@ -6,7 +6,6 @@
 // CHECK: tfrt_fallback_async.createop(%arg0) key(0) device("/device:CPU:0") "tf.ParseExampleV2"()
 // CHECK-SAME: Tdense = [f32, f32], dense_shapes = [#corert.shape<>, #corert.shape<>]
 // CHECK-SAME: num_sparse = 2 : i64, ragged_split_types = [], ragged_value_types = []
-// CHECK-SAME: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
 // CHECK-SAME: sparse_types = [!corert.string, i64]}
 // CHECK-SAME: num_args(7)
 
@@ -35,13 +34,12 @@ func.func @main(%serialized: tensor<32x!tf_type.string>) -> (tensor<?x2xi64>) at
   // CHECK-SAME: num_sparse = 2 : i64
   // CHECK-SAME: ragged_split_types = []
   // CHECK-SAME: ragged_value_types = []
-  // CHECK-SAME: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
   // CHECK-SAME: sparse_types = [!corert.string, i64]
   %outputs:8 = "tf.ParseExampleV2"(%serialized, %names, %sparse_keys, %dense_keys, %ragged_keys, %dense_default_0, %dense_default_1)
     {
       Tdense = [f32, f32], dense_shapes = [#tf_type.shape<>, #tf_type.shape<>],
       device = "/device:CPU:0", num_sparse = 2 : i64, ragged_split_types = [], ragged_value_types = [],
-      result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>,
+      result_segment_sizes = array<i32: 2, 2, 2, 2, 0, 0>,
       sparse_types = [!tf_type.string, !tf_type.string]
     } : (tensor<32x!tf_type.string>, tensor<0x!tf_type.string>, tensor<2x!tf_type.string>, tensor<2x!tf_type.string>, tensor<0x!tf_type.string>, tensor<0xf32>, tensor<0xf32>)
     -> (tensor<?x2xi64>, tensor<?x2xi64>, tensor<?x!tf_type.string>, tensor<?xi64>, tensor<2xi64>, tensor<2xi64>, tensor<32xf32>, tensor<32xf32>)
@@ -118,4 +116,13 @@ func.func @tensor_array() -> (tensor<1x1x512xf32>) {
   %flow_1 = "tf.TensorArrayWriteV3"(%handle, %index, %value, %flow) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : (tensor<2x!tf_type.resource<tensor<1x512xf32>>>, tensor<i32>, tensor<1x512xf32>, tensor<f32>) -> tensor<f32>
   %result = "tf.TensorArrayGatherV3"(%handle, %indices, %flow_1) {device = "/job:localhost/replica:0/task:0/device:CPU:0", element_shape = #tf_type.shape<1x512>} : (tensor<2x!tf_type.resource<tensor<1x512xf32>>>, tensor<1xi32>, tensor<f32>) -> tensor<1x1x512xf32>
   func.return %result : tensor<1x1x512xf32>
+}
+
+// CHECK-LABEL: func @gpu_device_cost
+func.func @gpu_device_cost(%arg0: tensor<3x1xf32>, %arg1: tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<3x3xf32> {
+  // CHECK: tfrt_fallback_async.executeop.seq({{.*}}) key({{.*}}) cost({{1}}) device({{.*}}) "tf.ReadVariableOp"
+  // CHECK: tfrt_fallback_async.executeop key({{.*}}) cost({{1}}) device({{.*}}) "tf.MatMul"
+  %0 = "tf.ReadVariableOp"(%arg1) {device = "/job:localhost/replica:0/task:0/device:GPU:0", dtype = f32} : (tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
+  %1 = "tf.MatMul"(%arg0, %0) {T = f32, device = "/job:localhost/replica:0/task:0/device:GPU:0", transpose_a = false, transpose_b = false} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
+  func.return %1 : tensor<3x3xf32>
 }

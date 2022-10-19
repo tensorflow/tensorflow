@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -36,7 +37,7 @@ class TestDataTransferServer : public DataTransferServer {
   explicit TestDataTransferServer(bool* called) : called_(called) {}
   Status Start() override {
     *called_ = true;
-    return Status::OK();
+    return OkStatus();
   }
   int get_port() override { return 0; }
 
@@ -81,18 +82,20 @@ TEST(DataTransferTest, EstimateMemoryUsageBytes) {
 
 TEST(DataTransferTest, EstimateVariantMemoryUsageBytes) {
   const size_t data_size = 1000;
-  CompressedElement compressed;
-  compressed.set_data(std::string(data_size, 'a'));
+
+  std::unique_ptr<CompressedElement> compressed{
+      protobuf::Arena::CreateMessage<CompressedElement>(nullptr)};
+  compressed->set_data(std::string(data_size, 'a'));
 
   Tensor tensor(DT_VARIANT, TensorShape({}));
-  tensor.scalar<Variant>()() = compressed;
+  tensor.scalar<Variant>()() = *compressed;
 
   GetElementResult variant_result = MakeElementResult(tensor);
   EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(), data_size);
   EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
-            compressed.ByteSizeLong());
+            compressed->ByteSizeLong());
   EXPECT_GT(variant_result.EstimatedMemoryUsageBytes(),
-            compressed.SpaceUsedLong());
+            compressed->SpaceUsedLong());
 }
 
 TEST(DataTransferTest, CopyGetElementResult) {
@@ -107,6 +110,7 @@ TEST(DataTransferTest, CopyGetElementResult) {
   EXPECT_EQ(copy.EstimatedMemoryUsageBytes(),
             result.EstimatedMemoryUsageBytes());
 }
+
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

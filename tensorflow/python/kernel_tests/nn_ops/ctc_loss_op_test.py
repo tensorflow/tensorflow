@@ -26,6 +26,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
@@ -302,7 +303,7 @@ class CTCLossTest(test.TestCase):
         sess.run(_ctc_loss_v2(labels, inputs, sequence_lengths))
 
 
-class CTCLossTestV2(test.TestCase):
+class CTCLossTestV2(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCtcLossV2(self):
@@ -631,6 +632,57 @@ class CTCLossTestV2(test.TestCase):
               *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
               rtol=2e-06,
               atol=2e-06)
+
+  @parameterized.parameters((False, 0), (True, 0), (False, -1), (True, -1))
+  def testCtcLossDenseWithUndefinedStaticDimensions(self, unique, blank_index):
+    random_seed.set_random_seed(5)
+
+    # Trace without a batch size and number of frames
+    batch_size = None
+    num_labels = 6
+    label_length = 5
+    num_frames = None
+
+    @def_function.function
+    def func(labels, logits, label_lengths, logit_lengths):
+      unique_labels = ctc_ops.ctc_unique_labels(labels) if unique else None
+      return ctc_ops.ctc_loss_dense(
+          labels=labels,
+          logits=logits,
+          label_length=label_lengths,
+          logit_length=logit_lengths,
+          unique=unique_labels,
+          blank_index=blank_index)
+
+    labels_spec = tensor_spec.TensorSpec([batch_size, label_length],
+                                         dtypes.int64)
+    logits_spec = tensor_spec.TensorSpec([num_frames, batch_size, num_labels],
+                                         dtypes.float32)
+    label_lengths_spec = tensor_spec.TensorSpec([batch_size], dtypes.int64)
+    logit_lengths_spec = tensor_spec.TensorSpec([batch_size], dtypes.int64)
+
+    f = func.get_concrete_function(
+        labels_spec, logits_spec, label_lengths_spec, logit_lengths_spec)
+
+    # Execute with a defined batch size and number of frames
+    batch_size = 8
+    num_frames = 12
+
+    logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
+    labels = random_ops.random_uniform(
+        [batch_size, label_length], minval=1, maxval=num_labels,
+        dtype=dtypes.int64)
+
+    label_lengths = random_ops.random_uniform(
+        [batch_size], minval=2, maxval=label_length, dtype=dtypes.int64)
+    label_mask = array_ops.sequence_mask(
+        label_lengths, maxlen=label_length, dtype=label_lengths.dtype)
+    labels *= label_mask
+
+    logit_lengths = constant_op.constant(
+        [num_frames] * batch_size, dtype=dtypes.int64)
+
+    f(labels, logits, label_lengths, logit_lengths)
 
   def testCollapseRepeated(self):
     collapsed, new_seq_lengths = ctc_ops.collapse_repeated(

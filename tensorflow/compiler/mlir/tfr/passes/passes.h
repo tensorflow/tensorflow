@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_PASSES_H_
-#define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_PASSES_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_
 
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
@@ -28,10 +28,11 @@ namespace TFR {
 
 // Scans the func op and adds all the canonicalization patterns of the ops
 // except the tf ops, inside the function.
-void populateCanonicalizationPatterns(FuncOp func, RewritePatternSet &patterns);
+void populateCanonicalizationPatterns(func::FuncOp func,
+                                      RewritePatternSet &patterns);
 
 // Decompose ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateDecomposeTFOpsPass(
     llvm::Optional<ModuleOp> tfr_module = llvm::None);
 
 // Rewrites quantized operands and results with their storage types.
@@ -40,11 +41,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(
 std::unique_ptr<OperationPass<ModuleOp>> CreateRewriteQuantizedIOPass();
 
 // Raise to TF ops.
-std::unique_ptr<OperationPass<FuncOp>> CreateRaiseToTFOpsPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateRaiseToTFOpsPass(
     llvm::Optional<ModuleOp> tfr_module = llvm::None,
     bool materialize_derived_attrs = false);
 
 }  // namespace TFR
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_PASSES_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFR_PASSES_PASSES_H_

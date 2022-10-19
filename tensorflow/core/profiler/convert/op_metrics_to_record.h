@@ -27,6 +27,25 @@ namespace profiler {
 std::vector<const OpMetrics*> SortedOpMetricsDb(const OpMetricsDb& metrics_db,
                                                 int max_records = -1);
 
+inline double GigaFlopsPerSecondPerCore(const OpMetrics& metrics) {
+  // flops and time_ps are accumulated across all occurrences on all cores.
+  // time_ps is used instead of self_time_ps because flops for an op includes
+  // the flops executed by children (nested) ops.
+  return SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps()));
+}
+
+inline double GigaBytesPerSecondPerCore(const OpMetrics& metrics) {
+  // bytes_accessed and time_ps are accumulated across all occurrences on all
+  // cores.
+  // time_ps is used instead of self_time_ps because bytes_accessed for an op
+  // includes the bytes accessed by children (nested) ops.
+  return SafeDivide(metrics.bytes_accessed(), PicoToNano(metrics.time_ps()));
+}
+
+inline double GibiBytesPerSecondPerCore(const OpMetrics& metrics) {
+  return GigaToGibi(GigaBytesPerSecondPerCore(metrics));
+}
+
 template <typename Record>
 inline void SetExecutionTimes(const OpMetrics& metrics, Record* record) {
   record->set_occurrences(metrics.occurrences());
@@ -84,10 +103,8 @@ inline void SetRooflineMetrics(const OpMetrics& metrics,
                                double ridge_point_operational_intensity,
                                Record* record) {
   using ::tensorflow::profiler::PicoToNano;
-  record->set_measured_flop_rate(
-      SafeDivide(metrics.flops(), PicoToNano(metrics.time_ps())));
-  record->set_measured_memory_bw(
-      SafeDivide(metrics.bytes_accessed(), PicoToNano(metrics.time_ps())));
+  record->set_measured_flop_rate(GigaFlopsPerSecondPerCore(metrics));
+  record->set_measured_memory_bw(GigaBytesPerSecondPerCore(metrics));
   record->set_operational_intensity(
       SafeDivide(metrics.flops(), metrics.bytes_accessed()));
   record->set_bound_by((metrics.bytes_accessed() != 0)

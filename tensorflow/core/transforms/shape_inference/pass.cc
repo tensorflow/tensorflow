@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/core/transforms/shape_inference/pass.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/core/framework/shape_inference.h"
@@ -27,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
@@ -35,6 +36,9 @@ namespace tfg {
 using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
+
+#define GEN_PASS_DEF_SHAPEINFERENCE
+#include "tensorflow/core/transforms/passes.h.inc"
 
 // Only non-static shape or type with subtype can be refined.
 static bool CanBeRefined(Type type) {
@@ -58,7 +62,7 @@ static bool CanBeRefined(Operation *op) {
                       static_cast<bool (*)(Type)>(CanBeRefined));
 }
 
-class ShapeInference : public ShapeInferenceBase<ShapeInference> {
+class ShapeInference : public impl::ShapeInferenceBase<ShapeInference> {
  public:
   void runOnOperation() override;
 
@@ -133,8 +137,12 @@ void ShapeInference::TryToCacheResultsTensorValue(Operation *op) {
     cached_tensor_values_[op->getResult(0)] = tensor_value;
   } else if (op_name == "Shape" || op_name == "ShapeN") {
     for (OpOperand &operand : op->getOpOperands()) {
-      ShapedType operand_shape = operand.get().getType().cast<ShapedType>();
+      Type operand_type = operand.get().getType();
+      if (operand_type.isa<ControlType>()) break;
+
+      auto operand_shape = operand_type.cast<ShapedType>();
       if (!operand_shape.hasStaticShape()) continue;
+
       int idx = operand.getOperandNumber();
       ShapedType return_shape = op->getResultTypes()[idx];
       DenseElementsAttr tensor_value;
@@ -200,18 +208,22 @@ void ShapeInference::runOnOperation() {
       TensorType inferred_type;
       if (result.hasRank()) {
         inferred_type =
-            RankedTensorType::get(result.getDims(), result.getElementType());
+            GetTypeFromTFTensorShape(result.getDims(), result.getElementType());
       } else {
         inferred_type = UnrankedTensorType::get(result.getElementType());
       }
 
-      inferred_type = tf_type::GetCastCompatibleType(
-                          op_result.getType().cast<ShapedType>(), inferred_type)
-                          .cast<TensorType>();
+      Type refined_type = tf_type::GetCastCompatibleType(
+          op_result.getType().cast<ShapedType>(), inferred_type);
 
-      if (inferred_type == op_result.getType()) continue;
+      // Certain attributes like _output_shapes may have incorrect shape
+      // information. When it's incompatible, use the result of shape inference
+      // context
+      if (!refined_type) refined_type = inferred_type;
 
-      op_result.setType(inferred_type);
+      if (refined_type == op_result.getType()) continue;
+
+      op_result.setType(refined_type);
       updated = true;
     }
 
@@ -220,34 +232,58 @@ void ShapeInference::runOnOperation() {
     return updated;
   };
 
-  // Traverse all the operations and do the first time inference. We don't
+  // Reset the cached tensor value.
+  cached_tensor_values_.clear();
+
+  // Traverse all the operations and do the first round inference. We don't
   // record any operations that need to be updated because most of them may lack
   // shape information.
-  getOperation()->walk([&](Operation *op) {
-    if (isa<ModuleOp, GraphOp, GraphFuncOp>(op) || op->getNumResults() == 0)
-      return;
+  getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
+    if (auto func = dyn_cast<GraphFuncOp>(op)) {
+      // Don't infer the shape of ops in generic function, just skip it.
+      if (func.getGeneric()) return WalkResult::skip();
+      return WalkResult::advance();
+    }
+    if (isa<ModuleOp, GraphOp>(op) || op->getNumResults() == 0)
+      return WalkResult::advance();
+
     if (!CanBeRefined(op)) {
       TryToCacheResultsTensorValue(op);
-      return;
+      return WalkResult::advance();
     }
+
     (void)infer_and_update_shapes(op);
+    return WalkResult::advance();
   });
 
-  // It's possible that we enqueue the same operations multiple times because of
-  // every shape update of its operands. Given that the cases won't be too much
-  // in general, we don't optimize it for now.
-  SmallVector<Operation *> may_need_update;
+  // This is used to track the set of operations that may be able to infer their
+  // shape. When an operation infers its shape successfully, it'll add its user
+  // to this vector. Which implies that an operation may be added multiple
+  // times if it has multiple operands. Use SetVector to avoid keeping duplicate
+  // entry.
+  SetVector<Operation *> may_need_update;
 
   // Collect operations that have the chance to infer the more precise shape
   // information.
-  getOperation()->walk([&](Operation *op) {
-    if (isa<ModuleOp, tfg::GraphOp, tfg::GraphFuncOp>(op) ||
-        op->getNumResults() == 0)
-      return;
+  getOperation()->walk<WalkOrder::PreOrder>([&](Operation *op) {
+    if (auto func = dyn_cast<GraphFuncOp>(op)) {
+      // Don't infer the shape of ops in generic function, just skip it.
+      if (func.getGeneric()) return WalkResult::skip();
+      return WalkResult::advance();
+    }
+    if (isa<ModuleOp, tfg::GraphOp>(op) || op->getNumResults() == 0)
+      return WalkResult::advance();
+
+    // This op still needs to refine its shape, so there's no chance for its
+    // user to refine their shape as well.
+    if (CanBeRefined(op)) return WalkResult::advance();
+
     for (OpResult res : op->getResults().drop_back()) {
       for (Operation *user : res.getUsers())
-        if (CanBeRefined(user)) may_need_update.push_back(user);
+        if (CanBeRefined(user)) may_need_update.insert(user);
     }
+
+    return WalkResult::advance();
   });
 
   // TODO(chiahungduan): We may need to limit the iterations.
@@ -259,10 +295,32 @@ void ShapeInference::runOnOperation() {
     // The users may be able to refine their shapes.
     for (Value v : op->getResults().drop_back()) {
       for (Operation *user : v.getUsers()) {
-        if (CanBeRefined(user)) may_need_update.push_back(user);
+        if (CanBeRefined(user)) may_need_update.insert(user);
       }
     }
   }
+
+  // Update the function signature.
+  getOperation()->walk([&](GraphFuncOp func) {
+    FunctionType func_type = func.getFunctionType();
+    Operation *return_op = func.SingleBlock::getBody()->getTerminator();
+
+    bool types_updated = false;
+    for (auto &indexed_type : llvm::enumerate(func_type.getResults())) {
+      int res_num = indexed_type.index();
+      Type return_arg_type = return_op->getOperand(res_num).getType();
+      if (return_arg_type != indexed_type.value()) {
+        types_updated = true;
+        break;
+      }
+    }
+
+    if (!types_updated) return;
+
+    func.setFunctionTypeAttr(TypeAttr::get(
+        FunctionType::get(&getContext(), func_type.getInputs(),
+                          TFOp(return_op).getNonControlOperands().getTypes())));
+  });
 }
 
 std::unique_ptr<Pass> CreateShapeInferencePass() {

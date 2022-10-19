@@ -22,8 +22,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
-
 class ScatterTest : public HloTestBase {
  protected:
   void RunTest(const std::string& hlo_text, Literal* operand,
@@ -36,7 +34,7 @@ class ScatterTest : public HloTestBase {
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
-    EXPECT_TRUE(RunAndCompare(std::move(module), args, nullopt));
+    EXPECT_TRUE(RunAndCompare(std::move(module), args, std::nullopt));
   }
 };
 
@@ -405,6 +403,37 @@ ENTRY main {
                                       {{-7, 7}, {-8, 8}, {-9, 9}}});
   Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
   Literal updates = LiteralUtil::CreateR2<int32_t>({{-10, 10}, {-40, 40}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
+XLA_TEST_F(ScatterTest, TensorFlowScatterNdS64) {
+  constexpr char hlo_text[] = R"(
+HloModule S64Scatter
+
+update {
+  lhs = s64[] parameter(0)
+  ROOT rhs = s64[] parameter(1)
+}
+
+ENTRY main {
+  operand = s64[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s64[2,2] parameter(2)
+  ROOT scatter = s64[3,3,2] scatter(operand, indices, updates),
+      to_apply=update,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR3<int64_t>({{{-1, 1LL << 62}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6LL << 59}},  //
+                                      {{-7, 7}, {-8, 8LL << 49}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
+  Literal updates =
+      LiteralUtil::CreateR2<int64_t>({{-10, 10LL << 46}, {-(4LL << 38), 40}});
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
@@ -783,6 +812,48 @@ ENTRY main {
   Literal scatter_indices = LiteralUtil::CreateR1<int32_t>({});
   Literal updates = LiteralUtil::CreateR0<int32_t>(2);
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
+// TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
+XLA_TEST_F(ScatterTest, DISABLED_ON_GPU(Multioutput)) {
+  constexpr char hlo_text[] = R"(
+HloModule MultioutputScatter
+
+update {
+  lhs0 = s32[] parameter(0)
+  lhs1 = f32[] parameter(1)
+  rhs0 = s32[] parameter(2)
+  rhs1 = f32[] parameter(3)
+  ROOT tuple = (s32[], f32[]) tuple(rhs0, rhs1)
+}
+
+ENTRY main {
+  operand0 = s32[3,3,2] parameter(0)
+  operand1 = f32[3,3,2] parameter(1)
+  indices = s32[2,2] parameter(2)
+  updates0 = s32[2,2] parameter(3)
+  updates1 = f32[2,2] parameter(4)
+  ROOT scatter = (s32[3,3,2], f32[3,3,2]) scatter(operand0, operand1, indices, updates0, updates1),
+      to_apply=update,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  Literal operand0 =
+      LiteralUtil::CreateR3<int32_t>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                      {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                      {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal operand1 =
+      LiteralUtil::CreateR3<float>({{{-2, 2}, {-3, 3}, {-4, 4}},  //
+                                    {{-5, 5}, {-6, 6}, {-7, 7}},  //
+                                    {{-8, 8}, {-9, 9}, {-10, 10}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32_t>({{0, 0}, {1, 0}});
+  Literal updates0 = LiteralUtil::CreateR2<int32_t>({{-10, 10}, {-40, 40}});
+  Literal updates1 = LiteralUtil::CreateR2<float>({{-11, 11}, {-41, 41}});
+  RunTest(hlo_text,
+          {&operand0, &operand1, &scatter_indices, &updates0, &updates1});
 }
 
 }  // namespace

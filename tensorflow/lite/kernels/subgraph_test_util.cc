@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <random>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>

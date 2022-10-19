@@ -114,17 +114,18 @@ void RecordTFDataServiceWorkerCreated();
 
 // Records that a tf.data service job has been created.
 void RecordTFDataServiceJobsCreated(
-    const tensorflow::data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read);
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
 // Records tf.data service iterators created by clients.
 void RecordTFDataServiceClientIterators(
-    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
-    const tensorflow::data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read);
+    int64_t worker_uid, data::DeploymentMode deployment_mode,
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
-// Records tf.data service multi-trainer cache queries.
-void RecordTFDataServiceMultiTrainerCacheQuery(bool cache_hit);
+// Records tf.data service cross-trainer cache queries.
+void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
+
+// Records tf.data service cross-trainer cache memory usage in bytes.
+void RecordTFDataServiceCrossTrainerCacheSizeBytes(size_t bytes);
 
 // Records the file name read by a tf.data Dataset.
 //
@@ -189,14 +190,8 @@ void RecordUnusedOutput(const string& op_name);
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
 
-// Records the status of a graph passing through various states/stages of
-// TfMlirGraphOptimizationPass processing using
-// tf_metadata.tf_mlir_update_graph_optimization_pass_state_counter metric.
-// 'pass_state' identifies the state of the pass
-// (or "PassState" metric field) and 'processing_state' refers to the stage
-// in the process the graph is at (or "ProcessingState" metric field).
-void UpdateTfMlirGraphOptimizationPassStateCounter(
-    const std::string& pass_state, const std::string& processing_state);
+// Updates the metric stored for time spent optimizing function graphs.
+void UpdateFunctionGraphOptimizationTime(const uint64 running_time_usecs);
 
 // Records the activity of the first phase of the mlir bridge using the
 // tf_metadata.tf_mlir_bridge_first_phase_count metric.
@@ -208,6 +203,24 @@ void UpdateTfMlirBridgeFirstPhaseCounter(const std::string& device_type,
                                          const std::string& bridge_version,
                                          bool fallback_enabled,
                                          const std::string& result);
+
+// Records the activity per op using the
+// tf_metadata.tf_mlir_bridge_graph_analysis_per_op.
+// op_name: the name of op.
+// construction_context: eager, session, Not tracked.
+// is_single_core_inference_mode: true, false.
+// unsupported_reason: the reason why the graph is not supported in MLIR-based
+// bridge, like invalid graph, has unsupported ops, etc.
+// has_unsupported_features: true indicates MLIR-based bridge is disabled,
+// false indicates MLIR-based bridge is enabled.
+
+void UpdateTfMlirBridgeGraphAnalysisPerOp(
+    const std::string& op_name, const std::string& construction_context,
+    bool is_single_core_inference_mode, const std::string& num_replicas,
+    const std::string& num_cores_per_replica, const std::string& use_tpu,
+    const std::string& allow_soft_placement,
+    const std::string& use_spmd_for_xla_partitioning,
+    const std::string& unsupported_reason, bool has_unsupported_features);
 
 // Convenience class allowing RAII style of reporting for a monitoring::Counter.
 template <int NumLabels>
@@ -239,17 +252,17 @@ class ScopedCounter final {
 
   // Returns duration of the current interval in case the timer has started.
   // Returns nullopt otherwise.
-  absl::optional<uint64> DurationMicroSec() const {
-    return started_ ? absl::optional<uint64>(
-                          accumulated_time_ +
-                          tensorflow::Env::Default()->NowMicros() - start_time_)
-                    : absl::nullopt;
+  std::optional<uint64> DurationMicroSec() const {
+    return started_ ? std::optional<uint64>(accumulated_time_ +
+                                            Env::Default()->NowMicros() -
+                                            start_time_)
+                    : std::nullopt;
   }
 
   // Temporarily stop the timer, but keep accumulated time.
   void AccumulateAndStop() {
     if (started_) {
-      accumulated_time_ = tensorflow::Env::Default()->NowMicros() - start_time_;
+      accumulated_time_ = Env::Default()->NowMicros() - start_time_;
       started_ = false;
     }
   }
@@ -259,7 +272,7 @@ class ScopedCounter final {
     if (started_) return;
 
     // Keep previously accumulated time if any.
-    start_time_ = tensorflow::Env::Default()->NowMicros();
+    start_time_ = Env::Default()->NowMicros();
     started_ = true;
   }
 
@@ -268,8 +281,7 @@ class ScopedCounter final {
  private:
   template <std::size_t... S>
   void ReportInternal(std::index_sequence<S...>) {
-    uint64 time_interval =
-        tensorflow::Env::Default()->NowMicros() - start_time_;
+    uint64 time_interval = Env::Default()->NowMicros() - start_time_;
     time_interval += accumulated_time_;
     if (time_interval > 0) {
       counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
@@ -277,7 +289,7 @@ class ScopedCounter final {
   }
 
   void Init() {
-    start_time_ = tensorflow::Env::Default()->NowMicros();
+    start_time_ = Env::Default()->NowMicros();
     started_ = true;
     accumulated_time_ = 0;
   }
@@ -299,9 +311,6 @@ void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
 
-// Updates the metrics stored about time BFC allocator spents during delay.
-void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
-
 // Increments (by 1) a simple integer counter that is exposed for testing.
 void IncrementTestCounter(const string& name, const string& label);
 
@@ -321,6 +330,8 @@ class TestDelta {
   int64 last_value_;
 };
 void UpdateTpuErrorCounter(const string& op, const string& error_type);
+void UpdateEagerClientErrorCounter(const string& error_source,
+                                   const string& error_type);
 
 }  // namespace metrics
 }  // namespace tensorflow

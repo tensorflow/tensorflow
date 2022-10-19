@@ -33,14 +33,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifndef PLATFORM_GOOGLE
-namespace grpc {
-// Creating aliases here to make sure we can access services under namespace
-// "tensorflow::grpc" both in google internal and open source.
-using ::tensorflow::CoordinationService;
-}  // namespace grpc
-#endif  // PLATFORM_GOOGLE
-
 class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
  public:
   template <class RequestMessage, class ResponseMessage>
@@ -63,6 +55,8 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   void method##Handler(CoordCall<method##Request, method##Response>* call) {   \
     tf_shared_lock l(shutdown_mu_);                                            \
     if (shutdown_) {                                                           \
+      call->SendResponse(ToGrpcStatus(                                         \
+          errors::Internal("Coordination service has been shut down.")));      \
       return;                                                                  \
     }                                                                          \
     compute_pool_.Schedule([this, call]() {                                    \
@@ -87,8 +81,11 @@ class GrpcCoordinationServiceImpl : public AsyncServiceInterface {
   HANDLER(Heartbeat);
   HANDLER(ReportErrorToTask);
   HANDLER(ReportErrorToService);
+  HANDLER(GetTaskState);
   HANDLER(InsertKeyValue);
   HANDLER(GetKeyValue);
+  HANDLER(TryGetKeyValue);
+  HANDLER(GetKeyValueDir);
   HANDLER(DeleteKeyValue);
   HANDLER(Barrier);
   HANDLER(CancelBarrier);

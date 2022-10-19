@@ -111,7 +111,7 @@ Status ValidateAndAssignResourceInputLayout(mlir::tf_device::ClusterOp op,
     add_layout_as_attributes(mutable_input_layouts, mutable_input_indices,
                              resource_arg_index, layout_string);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

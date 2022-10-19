@@ -5,11 +5,11 @@
 // CHECK: func @main(%arg0: tensor<1xf32>) -> tensor<*xf32> attributes {tf.entry_function = {inputs = "arg0", outputs = "tfl.while"}} {
 // CHECK:   %0 = "tfl.while"(%arg0) ({
 // CHECK:   ^bb0(%arg1: tensor<*xf32>):
-// CHECK:     %[[RES0:.*]] = call @cond(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK:     %[[RES0:.*]] = func.call @cond(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
 // CHECK:     "tfl.yield"(%[[RES0]]) : (tensor<*xf32>) -> ()
 // CHECK:   },  {
 // CHECK:   ^bb0(%arg1: tensor<*xf32>):
-// CHECK:     %[[RES1:.*]] = call @body(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK:     %[[RES1:.*]] = func.call @body(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
 // CHECK:     "tfl.yield"(%[[RES1]]) : (tensor<*xf32>) -> ()
 // CHECK:   }) : (tensor<1xf32>) -> tensor<*xf32>
 // CHECK:   return %0 : tensor<*xf32>

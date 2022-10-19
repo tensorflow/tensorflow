@@ -17,8 +17,6 @@
 import os
 import unittest
 
-import six
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import step_stats_pb2
@@ -985,10 +983,12 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
         self.assertEqual(3, get_total())
         summary_ops.flush(writer=writer)
         self.assertEqual(4, get_total())
-        summary_ops.write('tag', 1, step=0)
-        self.assertEqual(4, get_total())
-        summary_ops.flush(writer=writer._resource)  # pylint:disable=protected-access
-        self.assertEqual(5, get_total())
+
+  # Regression test for b/228097117.
+  def testFlushFunction_disallowsInvalidWriterInput(self):
+    with context.eager_mode():
+      with self.assertRaisesRegex(ValueError, 'Invalid argument to flush'):
+        summary_ops.flush(writer=())
 
   @test_util.assert_no_new_tensors
   def testNoMemoryLeak_graphMode(self):
@@ -1222,7 +1222,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     summary_ops.trace_off()
-    super(SummaryOpsTest, self).tearDown()
+    super().tearDown()
 
   def exec_summary_op(self, summary_op_fn):
     assert context.executing_eagerly()
@@ -1438,8 +1438,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_v2_only
   def testTrace_cannotExportTraceWithoutTrace(self):
-    with six.assertRaisesRegex(self, ValueError,
-                               'Must enable trace before export.'):
+    with self.assertRaisesRegex(ValueError, 'Must enable trace before export.'):
       summary_ops.trace_export(name='foo', step=1)
 
   @test_util.run_v2_only

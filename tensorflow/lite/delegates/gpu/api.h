@@ -35,6 +35,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -229,8 +230,8 @@ bool IsValid(const TensorObjectDef& def);
 uint32_t NumElements(const TensorObjectDef& def);
 
 using TensorObject =
-    absl::variant<absl::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
-                  OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
+    std::variant<std::monostate, OpenGlBuffer, OpenGlTexture, CpuMemory,
+                 OpenClBuffer, OpenClTexture, VulkanBuffer, VulkanTexture>;
 
 // @return true if object is set and corresponding values are defined.
 bool IsValid(const TensorObjectDef& def, const TensorObject& object);

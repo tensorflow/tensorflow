@@ -41,7 +41,7 @@ Status ComputeEngineMetadataClient::GetMetadata(
     request->AddHeader("Metadata-Flavor", "Google");
     request->SetResultBuffer(response_buffer);
     TF_RETURN_IF_ERROR(request->Send());
-    return Status::OK();
+    return OkStatus();
   };
 
   return RetryingUtils::CallWithRetries(get_metadata_from_gce, retry_config_);

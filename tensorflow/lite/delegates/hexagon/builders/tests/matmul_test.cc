@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
-using testing::ElementsAre;
 using testing::ElementsAreArray;
 
 class FullyConnectedOpModel : public SingleOpModelWithHexagon {

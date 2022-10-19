@@ -15,18 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/transforms/utils.h"
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/hlo_utils.h"
 
 namespace mlir {
 namespace mhlo {
 
-ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
-                             OpBuilder* builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarOfType(ty, raw_value));
+ConstantOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
+                                OpBuilder* builder) {
+  return builder->create<ConstantOp>(loc, hlo::getScalarOfType(ty, raw_value));
 }
 
-ConstOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder) {
-  return builder->create<ConstOp>(loc, hlo::GetScalarNegZeroOfType(ty));
+ConstantOp GetScalarNegZeroOfType(Type ty, Location loc, OpBuilder* builder) {
+  return builder->create<ConstantOp>(loc, hlo::getScalarNegZeroOfType(ty));
 }
 
 DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {

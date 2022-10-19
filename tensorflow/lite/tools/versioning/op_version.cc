@@ -72,6 +72,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
       }
+      // If the op has signed int8 and int4 op_sig.inputs and op_sig.outputs,
+      // its version 7.
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 7;
+      }
       // If the op is a signed int8 hybrid operation, we need to return
       // version 2 or 5 if per channel.
       if (op_sig.inputs.at(0).type == kTfLiteFloat32 &&
@@ -232,6 +239,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_MUL:
+      // Version 6 supports complex32 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteComplex64) {
+        return 6;
+      }
       // Version 5 supports int64 inputs
       if (op_sig.inputs.at(0).type == kTfLiteInt64) {
         return 5;
@@ -376,6 +387,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 6;
+      }
       // Version 3 supports signed int16 input types.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
           op_sig.inputs.at(0).type == kTfLiteFloat16) {
@@ -390,6 +404,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_QUANTIZE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4 ||
+          op_sig.outputs.at(0).type == kTfLiteInt4) {
+        return 4;
+      }
       if (op_sig.ext_options.quantize.is_per_channel_quantized) {
         return 3;
       }
@@ -777,6 +795,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_SELECT: {
+      if (op_sig.inputs.at(0).dims.size() == 5 ||
+          op_sig.inputs.at(1).dims.size() == 5 ||
+          op_sig.inputs.at(2).dims.size() == 5)
+        return 3;
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
@@ -786,7 +814,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
-    case BuiltinOperator_SELECT:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:

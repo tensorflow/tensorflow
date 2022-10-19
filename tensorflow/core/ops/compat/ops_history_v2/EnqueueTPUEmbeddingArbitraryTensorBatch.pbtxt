@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "EnqueueTPUEmbeddingArbitraryTensorBatch"
   input_arg {
     name: "sample_indices_or_row_lengths"

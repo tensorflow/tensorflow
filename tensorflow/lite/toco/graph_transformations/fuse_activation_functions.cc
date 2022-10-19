@@ -35,20 +35,20 @@ namespace toco {
   if (ac_op->type != OperatorType::kRelu6 &&
       ac_op->type != OperatorType::kRelu1 &&
       ac_op->type != OperatorType::kRelu) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Find the op producing the array passed to this activation function
   Operator* op = GetOpWithOutput(*model, ac_op->inputs[0]);
 
-  if (!op) return ::tensorflow::Status::OK();
+  if (!op) return ::tensorflow::OkStatus();
 
   if (CountTrueOutputs(*model, *op) > 1) {
     AddMessageF(
         "Not fusing activation function %s into %s because it has more than "
         "one  consumed output",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(op->outputs[0], ac_op->inputs[0]);
@@ -60,7 +60,7 @@ namespace toco {
         "Not fusing activation function into %s because it is consumed by more "
         "than 1 other operator",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!IsDiscardableArray(*model, op->outputs[0])) {
@@ -68,7 +68,7 @@ namespace toco {
         "Not fusing activation function %s into %s because output %s it is not "
         "discardable",
         LogName(*ac_op), LogName(*op), op->outputs[0]);
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (op->fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -76,7 +76,7 @@ namespace toco {
         "Not fusing activation function %s into %s because it already has a "
         "fused activation function",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   if (!OperatorSupportsFusedActivation(op->type)) {
@@ -84,7 +84,7 @@ namespace toco {
         "Not fusing activation function %s because the %s op doesn't support "
         "it",
         LogName(*ac_op), LogName(*op));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   AddMessageF("Fusing activation function %s into the preceding %s",
@@ -101,7 +101,7 @@ namespace toco {
   op->outputs[0] = ac_op->outputs[0];
   DeleteOpAndArrays(model, ac_op);
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

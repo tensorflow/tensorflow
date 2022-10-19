@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -45,14 +44,17 @@ namespace {
 
 namespace cutil = TF::collection_ops_util;
 
+#define GEN_PASS_DEF_TENSORLISTOPSDECOMPOSITIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TensorListOpsDecompositionPass
-    : public TF::TensorListOpsDecompositionPassBase<
+    : public impl::TensorListOpsDecompositionPassBase<
           TensorListOpsDecompositionPass> {
   void runOnOperation() override;
 };
 
 // Updates func's type according to its current arguments and return values.
-void UpdateFuncType(FuncOp func) {
+void UpdateFuncType(func::FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
   func.setType(
@@ -70,7 +72,7 @@ struct SizeInfo {
 // Modifies a function's signature to rewrite tensor list arguments to buffers
 // and sizes.
 void ModifyFunctionSignature(
-    FuncOp func, Type size_type,
+    func::FuncOp func, Type size_type,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
     llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_buffer_type,
     llvm::function_ref<bool(int64_t)> arg_buffer_size_is_fixed) {
@@ -79,7 +81,7 @@ void ModifyFunctionSignature(
   Location loc = func.getLoc();
   for (int64_t i = 0; i < original_arg_count; ++i) {
     auto buffer_type = arg_to_buffer_type(i);
-    if (!buffer_type.hasValue()) continue;
+    if (!buffer_type.has_value()) continue;
     func.getArgument(i).setType(*buffer_type);
     new_input_types[i] = *buffer_type;
     auto size_arg = func.front().addArgument(size_type, loc);
@@ -96,7 +98,7 @@ void ModifyFunctionSignature(
 // PartitionedCall/StatefulPartitionedCall.
 struct PartitionedCallDecompositionInfo {
   bool signature_change;
-  FuncOp decomposed_callee;
+  func::FuncOp decomposed_callee;
   llvm::SmallDenseMap<int64_t, int64_t> buffer_arg_to_size_arg;
   // Each element is a tuple of (buffer_return_index, size_return_index,
   // fixed_size).
@@ -138,7 +140,8 @@ AddTensorListSizesToTerminator(
 // the added size indices, which is a list of tuples (buffer_return_index,
 // size_return_index, fixed_size).
 llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8> ModifyFunctionReturn(
-    FuncOp func, const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
+    func::FuncOp func,
+    const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
   auto output_buffer_to_size = AddTensorListSizesToTerminator<func::ReturnOp>(
       func.front(), buffer_to_size);
   UpdateFuncType(func);
@@ -206,7 +209,7 @@ LogicalResult HandleWhileOp(
 
 template <class CaseOrIfOp>
 LogicalResult HandleCaseOrIfOp(
-    CaseOrIfOp op, ArrayRef<FuncOp> branches, ModuleOp module,
+    CaseOrIfOp op, ArrayRef<func::FuncOp> branches, ModuleOp module,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
     llvm::StringMap<PartitionedCallDecompositionInfo>*
         decomposed_partitioned_call_callees) {
@@ -224,7 +227,7 @@ LogicalResult HandleCaseOrIfOp(
   };
   OpBuilder builder(op);
   for (const auto& pair : llvm::zip(branches, branch_maps)) {
-    FuncOp branch = std::get<0>(pair);
+    func::FuncOp branch = std::get<0>(pair);
     llvm::SmallDenseMap<Value, SizeInfo>& branch_map = std::get<1>(pair);
     ModifyFunctionSignature(branch, cutil::GetSizeType(builder), &branch_map,
                             find_arg_buffer_type, arg_buffer_size_is_fixed);
@@ -250,7 +253,7 @@ LogicalResult HandleCaseOrIfOp(
     if (it == buffer_to_size->end()) continue;
     new_operands.push_back(it->getSecond().size);
   }
-  FuncOp first_branch = branches.front();
+  func::FuncOp first_branch = branches.front();
   auto new_op = OpBuilder(op).create<CaseOrIfOp>(
       op.getLoc(), first_branch.getFunctionType().getResults(), new_operands,
       op->getAttrs());
@@ -418,7 +421,7 @@ LogicalResult HandleCaseRegionOp(
 
 template <typename CallOp>
 LogicalResult HandlePartitionedCallOp(
-    CallOp call, FuncOp callee, ModuleOp module,
+    CallOp call, func::FuncOp callee, ModuleOp module,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
     llvm::StringMap<PartitionedCallDecompositionInfo>*
         decomposed_partitioned_call_callees) {
@@ -446,7 +449,7 @@ LogicalResult HandlePartitionedCallOp(
     new_call->setAttr(
         "f", SymbolRefAttr::get(
                  builder.getContext(),
-                 const_cast<FuncOp&>(info.decomposed_callee).getName()));
+                 const_cast<func::FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.buffer_ret_to_size_ret) {
       (*buffer_to_size)[new_call.getResult(std::get<0>(entry))] = {
           new_call.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -463,7 +466,7 @@ LogicalResult HandlePartitionedCallOp(
   }
   // Rewrite the callee.
   llvm::SmallDenseMap<Value, SizeInfo> callee_map;
-  FuncOp lowered_callee = callee;
+  func::FuncOp lowered_callee = callee;
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
@@ -886,7 +889,7 @@ LogicalResult DecomposeTensorListOpsInternal(
         return failure();
       }
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
-      SmallVector<FuncOp, 2> branches;
+      SmallVector<func::FuncOp, 2> branches;
       case_op.get_branch_functions(branches);
       if (failed(HandleCaseOrIfOp(case_op, branches, module, buffer_to_size,
                                   decomposed_partitioned_call_callees))) {
@@ -940,7 +943,7 @@ LogicalResult DecomposeTensorListOps(Block* block, ModuleOp module) {
 
 void TensorListOpsDecompositionPass::runOnOperation() {
   auto module = getOperation();
-  auto main = module.lookupSymbol<FuncOp>("main");
+  auto main = module.lookupSymbol<func::FuncOp>("main");
   if (!main) return;
   if (failed(DecomposeTensorListOps(&main.front(), module))) {
     signalPassFailure();

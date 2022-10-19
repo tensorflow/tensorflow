@@ -16,19 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_PLATFORM_ID_H_
 #define TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_PLATFORM_ID_H_
 
-#include "tensorflow/stream_executor/platform.h"
-
-namespace stream_executor {
-namespace host {
-
-// Opaque and unique identifier for the host platform.
-// This is needed so that plugins can refer to/identify this platform without
-// instantiating a HostPlatform object.
-// This is broken out here to avoid a circular dependency between HostPlatform
-// and HostStreamExecutor.
-extern const Platform::Id kHostPlatformId;
-
-}  // namespace host
-}  // namespace stream_executor
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_PLATFORM_ID_H_

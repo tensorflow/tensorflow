@@ -65,7 +65,7 @@ bool SupportsMinMax(const Array& array) {
   }
 
   *modified = did_change;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 // Sets the min/max on the given array, adjusting the reference_minmax for the

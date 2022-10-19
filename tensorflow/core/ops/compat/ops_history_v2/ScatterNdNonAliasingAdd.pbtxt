@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ScatterNdNonAliasingAdd"
   input_arg {
     name: "input"

@@ -19,6 +19,8 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -28,9 +30,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_initializer_helper.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -73,7 +72,7 @@ Status TpuTracer::Start() {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuTracer::Stop() {
@@ -83,7 +82,7 @@ Status TpuTracer::Stop() {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuTracer::CollectData(XSpace* space) {
@@ -110,7 +109,7 @@ Status TpuTracer::CollectData(XSpace* space) {
     LOG(ERROR) << "TPU tracer failed to collect data.";
     return status.status();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -130,9 +129,7 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
 }
 
 auto register_tpu_tracer_factory = [] {
-  if (tensorflow::tpu::TryAcquireTpuLock()) {
-    RegisterProfilerFactory(&CreateTpuTracer);
-  }
+  RegisterProfilerFactory(&CreateTpuTracer);
   return 0;
 }();
 

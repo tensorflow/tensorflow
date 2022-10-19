@@ -8,18 +8,18 @@ detailed documentation for the topic or file a
 
 #### What formats are supported for conversion from TensorFlow to TensorFlow Lite?
 
-The supported formats are listed [here](../convert/index.md#python_api)
+The supported formats are listed [here](../models/convert/index#python_api)
 
 #### Why are some operations not implemented in TensorFlow Lite?
 
 In order to keep TFLite lightweight, only certain TF operators (listed in the
-[allowlist](op_select_allowlist.md)) are supported in TFLite.
+[allowlist](op_select_allowlist)) are supported in TFLite.
 
 #### Why doesn't my model convert?
 
 Since the number of TensorFlow Lite operations is smaller than TensorFlow's,
 some models may not be able to convert. Some common errors are listed
-[here](../convert/index.md#conversion-errors).
+[here](../models/convert/index#conversion-errors).
 
 For conversion issues not related to missing operations or control flow ops,
 search our
@@ -30,7 +30,7 @@ or file a [new one](https://github.com/tensorflow/tensorflow/issues).
 
 The best way to test is to compare the outputs of the TensorFlow and the
 TensorFlow Lite models for the same inputs (test data or random inputs) as shown
-[here](inference.md#load-and-run-a-model-in-python).
+[here](inference#load-and-run-a-model-in-python).
 
 #### How do I determine the inputs/outputs for GraphDef protocol buffer?
 
@@ -80,7 +80,7 @@ bazel run //tensorflow/lite/tools:visualize model.tflite visualized_model.html
 
 #### How do I reduce the size of my converted TensorFlow Lite model?
 
-[Post-training quantization](../performance/post_training_quantization.md) can
+[Post-training quantization](../performance/post_training_quantization) can
 be used during conversion to TensorFlow Lite to reduce the size of the model.
 Post-training quantization quantizes weights to 8-bits of precision from
 floating-point and dequantizes them during runtime to perform floating point
@@ -92,7 +92,7 @@ However, note that quantization-aware training is only available for a subset of
 convolutional neural network architectures.
 
 For a deeper understanding of different optimization methods, look at
-[Model optimization](../performance/model_optimization.md).
+[Model optimization](../performance/model_optimization).
 
 #### How do I optimize TensorFlow Lite performance for my machine learning task?
 
@@ -100,7 +100,8 @@ The high-level process to optimize TensorFlow Lite performance looks something
 like this:
 
 *   *Make sure that you have the right model for the task.* For image
-    classification, check out our [list of hosted models](hosted_models.md).
+    classification, check out the
+    [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification).
 *   *Tweak the number of threads.* Many TensorFlow Lite operators support
     multi-threaded kernels. You can use `SetNumThreads()` in the
     [C++ API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L345)
@@ -108,13 +109,13 @@ like this:
     depending on the environment.
 *   *Use Hardware Accelerators.* TensorFlow Lite supports model acceleration for
     specific hardware using delegates. See our
-    [Delegates](../performance/delegates.md) guide for information on what
+    [Delegates](../performance/delegates) guide for information on what
     accelerators are supported and how to use them with your model on-device.
 *   *(Advanced) Profile Model.* The Tensorflow Lite
     [benchmarking tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
     has a built-in profiler that can show per-operator statistics. If you know
     how you can optimize an operator’s performance for your specific platform,
-    you can implement a [custom operator](ops_custom.md).
+    you can implement a [custom operator](ops_custom).
 
 For a more in-depth discussion on how to optimize performance, take a look at
-[Best Practices](../performance/best_practices.md).
+[Best Practices](../performance/best_practices).

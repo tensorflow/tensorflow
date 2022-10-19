@@ -127,7 +127,7 @@ tensorflow::NodeFileWriter::GetNodeFileWriterIfEnabled(
 Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
                                            OpKernelContext* context) {
   if (kOpsToSkipWriting->count(op_kernel->type_string())) {
-    return Status::OK();
+    return OkStatus();
   }
   NodeDef def;
   def.set_name("NodeFileWriter");
@@ -140,7 +140,7 @@ Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
     if (!context->has_input(i) || context->input_is_ref(i)) {
       // Calling context->input(i) requires the input to exist and not be a ref,
       // so return immediately if that is not the case.
-      return Status::OK();
+      return OkStatus();
     }
     TensorShapeProto* shape_proto = input_shapes.mutable_list()->add_shape();
     const Tensor& input = context->input(i);
@@ -155,7 +155,7 @@ Status NodeFileWriter::RecordNodeExecution(OpKernel* op_kernel,
     } else if (!DataTypeIsFloating(input.dtype())) {
       // Skip ops with non-floating-point inputs, since these are not useful
       // when testing determinism.
-      return Status::OK();
+      return OkStatus();
     }
   }
   return MaybeWriteNodeDefToFile(def);
@@ -185,7 +185,7 @@ Status NodeFileWriter::MaybeWriteNodeDefToFile(const NodeDef& def) {
     // file is never closed.
     TF_RETURN_IF_ERROR(node_def_file_->Flush());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

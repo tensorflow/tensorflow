@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVER_TYPE_H_
-#define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVER_TYPE_H_
+#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_
+#define TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
 namespace tfg {
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
-tensorflow::Status ConvertDataType(tensorflow::DataType dtype, Builder builder,
+tensorflow::Status ConvertDataType(tensorflow::DataType dtype, Builder& builder,
                                    Type* type);
 
 // Converts a scalar MLIR type to a TensorFlow Datatype.
@@ -39,12 +39,12 @@ tensorflow::Status ConvertToDataType(Type type, tensorflow::DataType* dtype);
 
 // Converts an TensorFlow shape to the one used in MLIR.
 void ConvertToMlirShape(const tensorflow::TensorShape& input_shape,
-                        llvm::SmallVectorImpl<int64_t>* shape);
+                        SmallVectorImpl<int64_t>* shape);
 
 // Converts an TensorFlow shape proto to the one used in MLIR.
 tensorflow::Status ConvertToMlirShape(
     const tensorflow::TensorShapeProto& input_shape,
-    llvm::SmallVectorImpl<int64_t>* shape);
+    SmallVectorImpl<int64_t>* shape);
 
 // Given a tensor shape and dtype, get the corresponding MLIR tensor type.
 tensorflow::StatusOr<Type> ConvertToMlirTensorType(
@@ -54,4 +54,4 @@ tensorflow::StatusOr<Type> ConvertToMlirTensorType(
 }  // namespace tfg
 }  // namespace mlir
 
-#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVER_TYPE_H_
+#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_CONVERT_TYPES_H_

@@ -68,7 +68,7 @@ class RankTwoTest(trt_test.TfTrtIntegrationTestBase):
         ]
     }
     if not run_params.dynamic_shape:
-      # The two ops can't be in the same cluster as the ops in TRTEngineOp_0
+      # The two ops can't be in the same cluster as the ops in TRTEngineOp_000
       # due to trt_incompatible_op. They can't be in the same cluster as the
       # ops in TRTEngineOP_1 because their batch size belongs to a different
       # equivalent class.

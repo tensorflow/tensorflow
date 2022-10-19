@@ -61,7 +61,6 @@ build_flatbuffers(
 )
 
 set(DELEGATE_PROVIDERS_SUPP
-  ${TFLITE_SOURCE_DIR}/delegates/external/external_delegate.cc
   ${TFLITE_SOURCE_DIR}/nnapi/sl/SupportLibrary.cc
   ${TFLITE_SOURCE_DIR}/tools/delegates/delegate_provider.cc
   ${TFLITE_SOURCE_DIR}/tools/evaluation/utils.cc

@@ -20,11 +20,11 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -34,7 +34,7 @@ namespace tensorflow {
 class GPUDebugAllocator : public Allocator {
  public:
   explicit GPUDebugAllocator(Allocator* allocator,
-                             PlatformDeviceId platform_device_id);
+                             tsl::PlatformDeviceId platform_device_id);
   ~GPUDebugAllocator() override;
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
@@ -64,7 +64,7 @@ class GPUDebugAllocator : public Allocator {
 class GPUNanResetAllocator : public Allocator {
  public:
   explicit GPUNanResetAllocator(Allocator* allocator,
-                                PlatformDeviceId platform_device_id);
+                                tsl::PlatformDeviceId platform_device_id);
   ~GPUNanResetAllocator() override;
   string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;

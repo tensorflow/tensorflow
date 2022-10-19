@@ -1,7 +1,8 @@
 path: "tensorflow.experimental.dtensor.Mesh"
 tf_class {
   is_instance: "<class \'tensorflow.dtensor.python.layout.Mesh\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'tensorflow.python._pywrap_dtensor_device.Mesh\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member {
     name: "dim_names"
     mtype: "<type \'property\'>"
@@ -12,6 +13,10 @@ tf_class {
   }
   member {
     name: "size"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "strides"
     mtype: "<type \'property\'>"
   }
   member_method {
@@ -25,6 +30,10 @@ tf_class {
   member_method {
     name: "contains_dim"
     argspec: "args=[\'self\', \'dim_name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "coords"
+    argspec: "args=[\'self\', \'device_idx\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "device_type"

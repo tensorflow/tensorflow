@@ -63,7 +63,9 @@ class Conv3DTest(test.TestCase):
         # as we will be using its gradients as reference for fp16 gradients.
         return optional_float64 + [dtypes.float32, dtypes.float16]
     else:
-      return optional_float64 + [dtypes.float32, dtypes.float16]
+      return optional_float64 + [
+          dtypes.float32, dtypes.float16, dtypes.bfloat16
+      ]
 
   def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, stride,
                             padding, data_format, dtype, use_gpu):
@@ -114,11 +116,7 @@ class Conv3DTest(test.TestCase):
         for value in values:
           print("expected = ", expected)
           print("actual = ", value)
-          tol = 1e-6
-          if value.dtype == np.float16:
-            tol = 1e-3
-
-          self.assertAllClose(expected, value.flatten(), atol=tol, rtol=tol)
+          self.assertAllCloseAccordingToType(expected, value.flatten())
 
   def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
                                    stride, dilation, padding, data_format,
@@ -514,7 +512,9 @@ class Conv3DTest(test.TestCase):
       elif data_type == dtypes.float32:
         tolerance = 5e-3
       elif data_type == dtypes.float16:
-        tolerance = 1e-3
+        tolerance = 5e-3 if test.is_built_with_rocm() else 1e-3
+      elif data_type == dtypes.bfloat16:
+        tolerance = 1e-2
 
       with self.cached_session(use_gpu=use_gpu):
         orig_input_tensor = constant_op.constant(
@@ -549,12 +549,12 @@ class Conv3DTest(test.TestCase):
           jacob_t, jacob_n = gradient_checker.compute_gradient(
               filter_tensor, filter_shape, conv, output_shape)
 
-        if data_type != dtypes.float16:
+        if data_type != dtypes.float16 and data_type != dtypes.bfloat16:
           reference_jacob_t = jacob_t
           err = np.fabs(jacob_t - jacob_n).max()
         else:
-          # Compare fp16 theoretical gradients to fp32 theoretical gradients,
-          # since fp16 numerical gradients are too imprecise.
+          # Compare fp16/bf16 theoretical gradients to fp32 theoretical
+          # gradients, since fp16/bf16 numerical gradients are too imprecise.
           err = np.fabs(jacob_t - reference_jacob_t).max()
 
       print("conv3d gradient error = ", err)

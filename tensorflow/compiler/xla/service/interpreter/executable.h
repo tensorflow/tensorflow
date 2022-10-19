@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace interpreter {
@@ -43,7 +43,7 @@ class InterpreterExecutable : public InterpreterExecutableBase {
   InterpreterExecutable(
       std::unique_ptr<HloModule> hlo_module,
       std::unique_ptr<HloEvaluator> evaluator,
-      absl::optional<DynamicDimensionInference> dynamic_dymension_inference);
+      std::optional<DynamicDimensionInference> dynamic_dymension_inference);
 
   static int64_t ShapeSizeBytes(const Shape& shape);
 
@@ -58,7 +58,7 @@ class InterpreterExecutable : public InterpreterExecutableBase {
   mutable absl::Mutex evaluator_lock_;
 
  private:
-  absl::optional<DynamicDimensionInference> dynamic_dimension_inference_;
+  std::optional<DynamicDimensionInference> dynamic_dimension_inference_;
   InterpreterExecutable(const InterpreterExecutable&) = delete;
   InterpreterExecutable& operator=(const InterpreterExecutable&) = delete;
 };

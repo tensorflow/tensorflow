@@ -100,7 +100,7 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
           kOutputValuesOutput, TensorShape({0}), &output_values_t));
 
       // Exit early, nothing more to do.
-      return Status::OK();
+      return OkStatus();
     }
 
     bool rows_are_ordered = true;
@@ -192,7 +192,7 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -371,7 +371,7 @@ struct SparseFillEmptyRowsGrad<CPUDevice, T, Tindex> {
         d_default_value_scalar += grad_values(j);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

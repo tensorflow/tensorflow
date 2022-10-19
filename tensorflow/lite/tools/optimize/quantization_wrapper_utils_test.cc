@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
@@ -29,11 +33,11 @@ using ::testing::ElementsAreArray;
 
 TEST(LstmPreprocess, Add2Tensors) {
   // Create a model with 1 lstm layer.
-  auto model = absl::make_unique<ModelT>();
-  auto subgraph = absl::make_unique<tflite::SubGraphT>();
-  auto buffer = absl::make_unique<tflite::BufferT>();
-  auto lstm_op_code = absl::make_unique<OperatorCodeT>();
-  auto lstm_op = absl::make_unique<OperatorT>();
+  auto model = std::make_unique<ModelT>();
+  auto subgraph = std::make_unique<tflite::SubGraphT>();
+  auto buffer = std::make_unique<tflite::BufferT>();
+  auto lstm_op_code = std::make_unique<OperatorCodeT>();
+  auto lstm_op = std::make_unique<OperatorT>();
 
   lstm_op_code->builtin_code = BuiltinOperator_LSTM;
   lstm_op_code->deprecated_builtin_code =
@@ -50,7 +54,7 @@ TEST(LstmPreprocess, Add2Tensors) {
     if (index == -1) {
       continue;
     }
-    auto tensor = absl::make_unique<TensorT>();
+    auto tensor = std::make_unique<TensorT>();
     tensor->name = "lstm_tensor" + std::to_string(index);
     tensor->shape = {2, 3, 4};
     tensor->type = TensorType_FLOAT32;

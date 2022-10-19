@@ -28,6 +28,7 @@ namespace TF {
 using mlir::tf_type::FuncAttr;         // NOLINT
 using mlir::tf_type::PlaceholderAttr;  // NOLINT
 using mlir::tf_type::ShapeAttr;        // NOLINT
+using mlir::tf_type::TensorProtoAttr;  // NOLINT
 
 }  // end namespace TF
 }  // end namespace mlir

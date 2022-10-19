@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform.h"
 
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -205,7 +206,7 @@ struct RemoveUnusedQuant : public OpRewritePattern<TFL::QuantizeOp> {
   }
 };
 
-void OptimizeQuantizedOpToFloat(FuncOp func, MLIRContext* context) {
+void OptimizeQuantizedOpToFloat(func::FuncOp func, MLIRContext* context) {
   RewritePatternSet patterns(func.getContext());
   patterns
       .add<FoldQuantizedI32ToFloat, FoldQuantizeDequantize, RemoveUnusedQuant>(

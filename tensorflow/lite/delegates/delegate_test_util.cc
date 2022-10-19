@@ -363,20 +363,20 @@ std::unique_ptr<SimpleDelegate>
 SimpleDelegate::DelegateWithRuntimeShapePropagation(
     const std::vector<int>& nodes, int64_t delegate_flags,
     int min_ops_per_subset) {
-  return std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+  return std::make_unique<SimpleDelegate>(
       nodes, delegate_flags, false /**fail_node_prepare**/,
       min_ops_per_subset /**min_ops_per_subset**/, false /**fail_node_invoke**/,
-      true /**automatic_shape_propagation**/));
+      true /**automatic_shape_propagation**/);
 }
 
 std::unique_ptr<SimpleDelegate> SimpleDelegate::DelegateWithDynamicOutput(
     const std::vector<int>& nodes) {
   // All params default except nodes & set_output_tensor_dynamic.
-  return std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+  return std::make_unique<SimpleDelegate>(
       nodes, kTfLiteDelegateFlagsAllowDynamicTensors,
       false /**fail_node_prepare**/, 0 /**min_ops_per_subset**/,
       false /**fail_node_invoke**/, false /**automatic_shape_propagation**/,
-      true /**custom_op**/, true /**set_output_tensor_dynamic**/));
+      true /**custom_op**/, true /**set_output_tensor_dynamic**/);
 }
 
 void TestFP16Delegation::SetUp() {
@@ -558,6 +558,35 @@ TfLiteRegistration TestFP16Delegation::FP16Delegate::FakeFusedRegistration() {
   }
 
   return reg;
+}
+
+void TestDelegateWithControlEdges::SetUpSubgraph(Subgraph* subgraph) {
+  subgraph->AddTensors(5);
+  subgraph->SetInputs({0});
+  subgraph->SetOutputs({4});
+  std::vector<int> dims({3});
+  const TfLiteQuantization quant{kTfLiteNoQuantization, nullptr};
+  subgraph->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(1, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(2, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(3, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+  subgraph->SetTensorParametersReadWrite(4, kTfLiteFloat32, "", dims.size(),
+                                         dims.data(), quant, false);
+
+  TfLiteRegistration reg = AddOpRegistration();
+  int node_index_ignored;
+  subgraph->AddNodeWithParameters({0, 0}, {1}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({1, 1}, {2}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({1, 1}, {3}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
+  subgraph->AddNodeWithParameters({2, 3}, {4}, {}, nullptr, 0, nullptr, &reg,
+                                  &node_index_ignored);
 }
 
 }  // namespace test_utils

@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -11,15 +11,16 @@ package(
 
 cc_library(
     name = "Pass",
-    srcs = ["cf_sink.cc"],
-    hdrs = ["cf_sink.h"],
+    srcs = ["pass.cc"],
+    hdrs = ["pass.h"],
     deps = [
         "//tensorflow/core/ir:Dialect",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/transforms:PassDetail",
+        "//tensorflow/core/transforms:PassIncGen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ControlFlowInterfaces",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
     ],

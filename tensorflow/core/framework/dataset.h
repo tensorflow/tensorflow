@@ -45,8 +45,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/refcount.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
 // types. Use this macro to expand `m(T)` once for each primitive type
@@ -181,7 +184,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddScalar: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a Const node with vector value to the Graph.
@@ -200,7 +203,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status AddVector(const std::vector<string>& val, Node** output) {
@@ -213,7 +216,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddVector: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a `Const` node for the given tensor value to the graph.
@@ -226,7 +229,7 @@ class GraphDefBuilderWrapper {
     if (*output == nullptr) {
       return errors::Internal("AddTensor: Failed to build Const op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a `Placeholder` node for the given tensor value to the graph.
@@ -240,7 +243,7 @@ class GraphDefBuilderWrapper {
       return errors::Internal(
           "AddPlaceholder: Failed to build Placeholder op.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Adds a node for the given dataset to the `Graph`. The value of
@@ -328,7 +331,7 @@ class GraphDefBuilderWrapper {
         TF_RETURN_IF_ERROR(AddFunction(ctx, name_attr_list.name(), lib_def));
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   GraphDefBuilder* b_;
@@ -444,7 +447,7 @@ class IteratorContext {
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
 
     // The CancellationManager to be used to cancel execution of ops.
-    CancellationManager* cancellation_manager;
+    CancellationManager* cancellation_manager = nullptr;
 
     // Collective support.
     CollectiveExecutor* collective_executor = nullptr;
@@ -591,35 +594,24 @@ class IteratorContext {
 // Aggregates runtime support needed for dataset and iterator serialization.
 class SerializationContext {
  public:
-  // Enum describing what to do during serialization when external state is
-  // encountered.
-  enum class ExternalStatePolicy : int64 {
-    // Proceed with serialization, but log a warning about what state will be
-    // lost.
-    kWarn = 0,
-    // Proceed with serialization without logging any warning.
-    kIgnore = 1,
-    // Fail the serialization with an error.
-    kFail = 2,
-  };
-
-  // Handles the CheckExternalState status according to the external state
-  // policy.
+  // Handles the external state according to the external state policy.
   Status HandleCheckExternalStateStatus(Status s) {
     if (s.ok()) {
       return s;
     }
     switch (params_.external_state_policy) {
-      case ExternalStatePolicy::kWarn:
+      case ExternalStatePolicy::POLICY_WARN:
         LOG(WARNING) << s.ToString();
-        return Status::OK();
-      case ExternalStatePolicy::kIgnore:
+        return OkStatus();
+      case ExternalStatePolicy::POLICY_IGNORE:
         VLOG(2) << "Ignoring error status: " << s.ToString();
-        return Status::OK();
-      case ExternalStatePolicy::kFail:
+        return OkStatus();
+      case ExternalStatePolicy::POLICY_FAIL:
         return s;
+      default:
+        return errors::InvalidArgument("Unexpected value of external policy: ",
+                                       params_.external_state_policy);
     }
-    LOG(FATAL) << "Control should never reach here";
   }
 
   struct Params {
@@ -632,7 +624,8 @@ class SerializationContext {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
     // Indicates what to do if the dataset depends on external state.
-    ExternalStatePolicy external_state_policy = ExternalStatePolicy::kWarn;
+    ExternalStatePolicy external_state_policy =
+        ExternalStatePolicy::POLICY_WARN;
 
     // Indicates whether the serialization is for rewrites.
     //
@@ -703,14 +696,18 @@ class IteratorBase {
   // in `*end_of_sequence`, and `*out_tensors` will be empty.
   //
   // Implementations should never return `OutOfRange` error. If at end of
-  // sequence, set `*end_of_sequence = true` and return `Status::OK()`.
+  // sequence, set `*end_of_sequence = true` and return `OkStatus()`.
   // Internally raised `OutOfRange` errors that do not imply end of sequence
   // should be converted to a different error type before being propagated to
   // the caller.
   //
   // Implementations must explicitly set `*end_of_sequence = false` if an
-  // `Status::OK()` status is returned and the iterator is not at the end of the
+  // `OkStatus()` status is returned and the iterator is not at the end of the
   // sequence.
+  //
+  // `out_tensors` and `end_of_sequence` are output parameters; the values of
+  // `*out_tensors` and `*end_of_sequence` should be written only (not read) by
+  // implementations of GetNext.
   //
   // This method is thread-safe.
   //
@@ -728,7 +725,7 @@ class IteratorBase {
   // is traversing.
   //
   // If there are not enough outputs to skip, it will set
-  // `*end_of_sequence = true` and return `Status::OK()`. `*num_skipped` will
+  // `*end_of_sequence = true` and return `OkStatus()`. `*num_skipped` will
   // store the number of outputs that are skipped. When `*end_of_sequence` is
   // `false`, `*num_skipped` should equal to `num_to_skip`.
   virtual Status Skip(IteratorContext* ctx, int num_to_skip,
@@ -755,7 +752,7 @@ class IteratorBase {
 
   // Performs initialization that needs to happen outside of a constructor to
   // properly propagate errors.
-  virtual Status Initialize(IteratorContext* ctx) { return Status::OK(); }
+  virtual Status Initialize(IteratorContext* ctx) { return OkStatus(); }
 
   // Performs initialization of the base iterator.
   Status InitializeBase(IteratorContext* ctx, const IteratorBase* parent);
@@ -766,7 +763,7 @@ class IteratorBase {
     TF_RETURN_IF_ERROR(SaveInternal(ctx, writer));
     VLOG(1) << "Saved " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -780,7 +777,7 @@ class IteratorBase {
     TF_RETURN_IF_ERROR(RestoreInternal(ctx, reader));
     VLOG(1) << "Restored " << prefix() << " in "
             << (EnvTime::NowMicros() - start_us) << "us";
-    return Status::OK();
+    return OkStatus();
   }
 
   // This is needed so that sub-classes of IteratorBase can call
@@ -909,14 +906,14 @@ class DatasetBase : public core::RefCounted {
   // the graph.
   const string& node_name() const { return node_name_; }
 
-  // Initializes the dataset.
-  void Initialize(const Metadata& metadata);
-
   const Metadata& metadata() const { return metadata_; }
 
   const Options& options() const { return options_; }
 
   int64_t num_sources() const { return num_sources_; }
+
+  // Initializes the dataset using the given metadata.
+  void Initialize(const Metadata& metadata);
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -951,7 +948,7 @@ class DatasetBase : public core::RefCounted {
                                     /*parent=*/nullptr, output_prefix, &it));
     TF_RETURN_IF_ERROR(it->Restore(&restore_ctx, reader));
     *iterator = std::move(it);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status MakeIteratorFromCheckpoint(
@@ -1017,7 +1014,7 @@ class DatasetBase : public core::RefCounted {
   // Indicates whether the dataset depends on any external state which would
   // prevent it from being serializable. If so, the method returns
   // `errors::FailedPrecondition` with a message that identifies the external
-  // state. Otherwise, the method returns `Status::OK()`.
+  // state. Otherwise, the method returns `OkStatus()`.
   virtual Status CheckExternalState() const = 0;
 
   // Indicates whether the dataset is compatible with random access.
@@ -1211,7 +1208,6 @@ class DatasetBaseIterator : public IteratorBase {
                            const std::vector<Tensor>& element) {
     if (collect_resource_usage(ctx)) {
       node_->record_buffer_event(-GetAllocatedBytes(element), -1);
-
       DCHECK_GE(node_->buffered_elements(), 0);
     }
   }
@@ -1304,7 +1300,7 @@ Status ParseScalarArgument(OpKernelContext* ctx,
     return errors::InvalidArgument(argument_name, " must be a scalar");
   }
   *output = argument_t->scalar<T>()();
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename T>
@@ -1321,7 +1317,7 @@ Status ParseVectorArgument(OpKernelContext* ctx,
   for (int i = 0; i < size; ++i) {
     output->push_back(argument_t->vec<T>()(i));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Encapsulates the work required to plug a DatasetBase into the core TensorFlow

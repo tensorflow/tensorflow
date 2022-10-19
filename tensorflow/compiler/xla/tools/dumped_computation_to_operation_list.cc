@@ -18,6 +18,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -31,9 +32,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/init_main.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace tools {
@@ -52,7 +53,7 @@ class OperationDumper : public DfsHloVisitorWithDefault {
     std::cout << absl::StrFormat("%s :: (%s) -> %s :: %s\n",
                                  HloOpcodeString(hlo->opcode()), params,
                                  ShapeUtil::HumanString(hlo->shape()), path_);
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -65,18 +66,17 @@ void RealMain(absl::Span<char* const> args) {
       ClientLibrary::GetXlaService(client->platform());
   for (char* arg : args) {
     HloSnapshot snapshot;
-    TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg,
-                                            &snapshot));
+    TF_CHECK_OK(tsl::ReadBinaryProto(tsl::Env::Default(), arg, &snapshot));
     auto computation_status = client->LoadSnapshot(snapshot);
     if (!computation_status.ok()) {
       fprintf(stderr, "could not load snapshot for %s: %s\n", arg,
               computation_status.status().ToString().c_str());
       continue;
     }
-    XlaComputation computation = computation_status.ConsumeValueOrDie();
+    XlaComputation computation = std::move(computation_status).value();
 
     std::unique_ptr<ProgramShape> program_shape =
-        client->GetComputationShape(computation).ConsumeValueOrDie();
+        client->GetComputationShape(computation).value();
 
     std::vector<const Shape*> layouts;
     layouts.reserve(program_shape->parameters_size());
@@ -88,7 +88,7 @@ void RealMain(absl::Span<char* const> args) {
     build_options.set_result_layout(program_shape->result());
     auto executables =
         local_service->CompileExecutables(computation, layouts, build_options)
-            .ConsumeValueOrDie();
+            .value();
     CHECK_EQ(executables.size(), 1);
     const HloModule& module = executables[0]->module();
 
@@ -103,7 +103,7 @@ void RealMain(absl::Span<char* const> args) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  tensorflow::port::InitMain(argv[0], &argc, &argv);
+  tsl::port::InitMain(argv[0], &argc, &argv);
 
   absl::Span<char* const> args(argv, argc);
   args.remove_prefix(1);  // Pop off the binary name, argv[0]

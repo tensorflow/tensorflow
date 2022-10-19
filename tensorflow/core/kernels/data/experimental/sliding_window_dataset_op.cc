@@ -92,7 +92,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
+      return std::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Slide")});
     }
 
@@ -121,7 +121,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
     Status InputDatasets(
         std::vector<const DatasetBase*>* inputs) const override {
       inputs->push_back(input_);
-      return Status::OK();
+      return OkStatus();
     }
 
     Status CheckExternalState() const override {
@@ -148,7 +148,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddDataset(
           this, {input_graph_node, window_size, window_shift, window_stride},
           {std::make_pair(kDropRemainder, drop_remainder_attr)}, output));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:
@@ -193,7 +193,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
               (buffer_.size() < target_size && drop_remainder)) {
             DCHECK(input_impl_ == nullptr);
             *end_of_sequence = true;
-            return Status::OK();
+            return OkStatus();
           }
 
           for (size_t i = 0; i < buffer_.size(); i += window_stride) {
@@ -248,7 +248,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           }
         }
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
 
      protected:
@@ -278,7 +278,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                 strings::StrCat("buffer[", i, "][", j, "]"), buffer_[i][j]));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
       Status RestoreInternal(IteratorContext* ctx,
@@ -305,7 +305,7 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                 &buffer_[i][j]));
           }
         }
-        return Status::OK();
+        return OkStatus();
       }
 
      private:

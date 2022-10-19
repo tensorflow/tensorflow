@@ -74,7 +74,7 @@ Status CheckOpName(const DatasetBase& dataset, const NameAttrList& assertions) {
                                    assertions.name(), "', but found '",
                                    dataset.type_string(), "'.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Returns a NodeDef representation of `dataset`.
@@ -92,7 +92,7 @@ StatusOr<NodeDef> GetDatasetNode(const DatasetBase& dataset,
 // Checks `dataset`'s attrs against those in `assertions`.
 Status CheckAttributes(const DatasetBase& dataset,
                        const NameAttrList& assertions) {
-  if (assertions.attr().empty()) return Status::OK();
+  if (assertions.attr().empty()) return OkStatus();
   TF_ASSIGN_OR_RETURN(NodeDef node, GetDatasetNode(dataset, assertions.name()));
   std::vector<std::string> attrs_not_found;
   for (const auto& attr : assertions.attr()) {
@@ -116,7 +116,7 @@ Status CheckAttributes(const DatasetBase& dataset,
           attr.second.DebugString(), "', but found no such attribute defined.");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Checks `dataset`'s op name and attrs against those in `transformation`.
@@ -125,7 +125,7 @@ Status CheckTransformation(const DatasetBase& dataset,
   TF_ASSIGN_OR_RETURN(NameAttrList assertions, GetAssertions(transformation));
   TF_RETURN_IF_ERROR(CheckOpName(dataset, assertions));
   TF_RETURN_IF_ERROR(CheckAttributes(dataset, assertions));
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -148,7 +148,7 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -165,7 +165,7 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -182,7 +182,7 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddVector(transformations_, &transformations_node));
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, transformations_node}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -231,13 +231,13 @@ class AssertPrevDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(SerializationContext* ctx,
                         IteratorStateWriter* writer) override {
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
-      return Status::OK();
+      return OkStatus();
     }
 
    private:

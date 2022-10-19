@@ -25,6 +25,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -40,7 +41,6 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import server_lib

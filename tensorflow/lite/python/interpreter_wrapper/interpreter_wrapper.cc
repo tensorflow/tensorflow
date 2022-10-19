@@ -21,13 +21,14 @@ limitations under the License.
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
@@ -208,14 +209,13 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   std::unique_ptr<tflite::MutableOpResolver> resolver;
   switch (op_resolver_id) {
     case kBuiltinOpResolver:
-      resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
       break;
     case kBuiltinRefOpResolver:
-      resolver =
-          absl::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
+      resolver = std::make_unique<tflite::ops::builtin::BuiltinRefOpResolver>();
       break;
     case kBuiltinOpResolverWithoutDefaultDelegates:
-      resolver = absl::make_unique<
+      resolver = std::make_unique<
           tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();
       break;
     default:

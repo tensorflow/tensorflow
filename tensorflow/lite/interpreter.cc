@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
+#include "tensorflow/lite/interpreter_options.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/util.h"
@@ -109,7 +110,8 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
 
   // This operation is cheap because we allocate the CPU context resources (i.e.
   // threads) lazily.
-  own_external_cpu_backend_context_.reset(new ExternalCpuBackendContext());
+  own_external_cpu_backend_context_ =
+      std::make_unique<ExternalCpuBackendContext>();
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 }
@@ -190,9 +192,9 @@ void Interpreter::AddSubgraphs(int subgraphs_to_add,
 
   subgraphs_.reserve(base_index + subgraphs_to_add);
   for (int i = 0; i < subgraphs_to_add; ++i) {
-    Subgraph* subgraph =
-        new Subgraph(error_reporter_, external_contexts_, &subgraphs_,
-                     &resources_, &resource_ids_, &initialization_status_map_);
+    Subgraph* subgraph = new Subgraph(
+        error_reporter_, external_contexts_, &subgraphs_, &resources_,
+        &resource_ids_, &initialization_status_map_, subgraphs_.size());
     subgraphs_.emplace_back(subgraph);
   }
 }
@@ -217,8 +219,12 @@ TfLiteStatus Interpreter::ResizeInputTensorStrict(
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  ScopedRuntimeInstrumentationProfile scoped_runtime_event(installed_profiler_,
+  ScopedRuntimeInstrumentationProfile scoped_runtime_event(root_profiler_.get(),
                                                            "invoke");
+
+  // "Resets" cancellation flag so cancellation happens before this invoke will
+  // not take effect.
+  if (cancellation_enabled_) (void)continue_invocation_.test_and_set();
 
   // Denormal floating point numbers could cause significant slowdown on
   // platforms like x86, therefore, we suppress denormals here to prevent this
@@ -412,9 +418,21 @@ TfLiteStatus Interpreter::RemoveAllDelegates() {
 TfLiteStatus Interpreter::SetMetadata(
     const std::map<std::string, std::string>& metadata) {
   metadata_ = metadata;
+  const auto maybe_model_control_dependencies =
+      metadata_.find(kModelControlDependenciesMetadataKey);
+  if (maybe_model_control_dependencies == metadata_.end() ||
+      !ParseModelControlDependencies(
+          maybe_model_control_dependencies->second.data(),
+          maybe_model_control_dependencies->second.size(),
+          &model_control_dependencies_)) {
+    model_control_dependencies_.clear();
+  }
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(&metadata_));
+    TF_LITE_ENSURE_STATUS(subgraphs_[subgraph_index]->SetMetadata(
+        &metadata_, model_control_dependencies_.empty()
+                        ? nullptr
+                        : &model_control_dependencies_[subgraph_index]));
   }
   return kTfLiteOk;
 }
@@ -424,15 +442,24 @@ bool Interpreter::IsFullyDelegated() const {
 }
 
 void Interpreter::SetProfilerImpl(std::unique_ptr<Profiler> profiler) {
-  owned_profiler_ = std::move(profiler);
-  installed_profiler_ = owned_profiler_.get();
+  if (profiler == nullptr) {
+    root_profiler_ = nullptr;
+    return;
+  }
+  if (root_profiler_ == nullptr) {
+    root_profiler_ = std::make_unique<profiling::RootProfiler>();
+  } else {
+    // Removes all previously registered profilers.
+    root_profiler_->RemoveChildProfilers();
+  }
+  root_profiler_->AddProfiler(std::move(profiler));
   SetSubgraphProfiler();
 }
 
 void Interpreter::SetSubgraphProfiler() {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    subgraphs_[subgraph_index]->SetProfiler(installed_profiler_,
+    subgraphs_[subgraph_index]->SetProfiler(root_profiler_.get(),
                                             subgraph_index);
   }
 }
@@ -441,19 +468,11 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
   if (options == nullptr) {
     return kTfLiteOk;
   }
+  options_ = std::make_unique<InterpreterOptions>(*options);
 
-  // Handle `experimental_preserve_all_tensors_`.
-  if (options->GetPreserveAllTensors()) {
-    for (auto& subgraph : subgraphs_) {
-      subgraph->PreserveAllTensorsExperimental();
-    }
-  }
-
-  // Handle `experimental_ensure_dynamic_tensors_are_released_`.
-  if (options->GetEnsureDynamicTensorsAreReleased()) {
-    for (auto& subgraph : subgraphs_) {
-      subgraph->EnsureDynamicTensorsAreReleased();
-    }
+  // Set InterpreterOptions object to SubGraph.
+  for (auto& subgraph : subgraphs_) {
+    subgraph->SetOptions(options_.get());
   }
 
   // Handle `experimental_dynamic_allocation_for_large_tensors_`.
@@ -461,10 +480,19 @@ TfLiteStatus Interpreter::ApplyOptionsImpl(InterpreterOptions* options) {
     for (auto& subgraph : subgraphs_) {
       subgraph->OptimizeMemoryForLargeTensors(
           options->GetDynamicAllocationForLargeTensors());
-      subgraph->EnsureDynamicTensorsAreReleased();
     }
   }
   return kTfLiteOk;
 }
+
+TfLiteStatus Interpreter::EnableCancellation() {
+  cancellation_enabled_ = true;
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->EnableCancellation(&continue_invocation_));
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::Cancel() { return primary_subgraph().Cancel(); }
 
 }  // namespace tflite

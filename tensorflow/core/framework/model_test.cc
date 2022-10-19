@@ -15,17 +15,27 @@ limitations under the License.
 
 #include "tensorflow/core/framework/model.h"
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
 namespace model {
 namespace {
+
+using ::tensorflow::monitoring::testing::CellReader;
+using ::testing::AllOf;
+using ::testing::HasSubstr;
 
 int64_t CountParametersOnNode(const string& node_name,
                               const Model::ModelParameters& parameters) {
@@ -1135,6 +1145,7 @@ TEST(SaveModelTest, Model) {
               restored_current->TotalBufferedBytes());
     EXPECT_EQ(current->TotalMaximumBufferedBytes(),
               restored_current->TotalMaximumBufferedBytes());
+    EXPECT_EQ(current->Ratio(), restored_current->Ratio());
     EXPECT_NE(current.get(), restored_current.get());
 
     current = current->inputs().front();
@@ -1313,450 +1324,1211 @@ TEST(RecordTimeTest, RecordTimeTest) {
   EXPECT_FALSE(source->is_recording());
 }
 
+TEST(ModelTest, ModelMetrics) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  model::Model model;
+  std::shared_ptr<Node> root = model::MakeUnknownNode({0, "unknown0", nullptr});
+  model.AddNode([&root](model::Node::Args args) { return root; }, root->name(),
+                nullptr, &root);
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(&model));
+  EXPECT_THAT(cell_reader.Read(model_id),
+              AllOf(HasSubstr("key: 0"), HasSubstr("name: \"unknown0\""),
+                    HasSubstr("autotune: true")));
+}
+
+TEST(ModelTest, ModelCollectAndDestroyRaceCondition) {
+  CellReader<std::string> cell_reader("/tensorflow/data/model");
+  auto* model = new model::Model();
+  std::string model_id = strings::StrCat(reinterpret_cast<uintptr_t>(model));
+  thread::ThreadPool threads(Env::Default(), "collect_and_destroy_race", 2);
+  threads.Schedule([&]() { cell_reader.Read(model_id); });
+  threads.Schedule([&]() { delete model; });
+}
+
 class ModelTimingTest : public ::testing::Test {
  public:
-  void RecordNumElements(std::shared_ptr<Node> node, int num_elements) {
-    for (int i = 0; i < num_elements; ++i) {
-      node->record_element();
+  // Builds a Model from its text proto.
+  void BuildModelFromProto(const std::string& model_pbtxt) {
+    ModelProto model_proto;
+    protobuf::TextFormat::ParseFromString(model_pbtxt, &model_proto);
+    TF_CHECK_OK(Model::FromProto(model_proto, &model_));
+    auto nodes = model_->output()->CollectNodes(
+        TraversalOrder::BFS, [](const std::shared_ptr<Node>) { return true; });
+    node_map_.clear();
+    node_map_[model_->output()->id()] = model_->output().get();
+    for (const auto& node : nodes) {
+      node_map_[node->id()] = node.get();
     }
   }
+
+  // Computes the timing given a Model text proto.
+  void ComputeModelTiming(const std::string& model_pbtxt) {
+    BuildModelFromProto(model_pbtxt);
+    model_timing_ = std::make_unique<ModelTiming>(model_->output());
+  }
+
+  // Gets the timing information of a node given its id.
+  const ModelTiming::NodeTiming* GetNodeTiming(int64_t node_id) const {
+    return model_timing_->GetTiming(node_map_.at(node_id));
+  }
+
+  // Gets the node given its id.
+  const Node* GetNode(int64_t node_id) const { return node_map_.at(node_id); }
+  Node* MutableGetNode(int64_t node_id) const { return node_map_.at(node_id); }
+
+ protected:
+  std::unique_ptr<Model> model_;
+  std::unique_ptr<ModelTiming> model_timing_;
+  absl::flat_hash_map<int64_t, Node*> node_map_;
 };
 
 TEST_F(ModelTimingTest, Interleave) {
-  auto batch_1 = model::MakeKnownRatioNode(
-      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
-  auto interleave = model::MakeInterleaveManyNode(
-      {/*id=*/2, /*name=*/"Interleave", /*output=*/batch_1},
-      {model::MakeParameter("cycle_length", nullptr, /*min=*/2, /*max=*/2)});
-  auto batch_2 = model::MakeKnownRatioNode({
-                                               /*id=*/3,
-                                               /*name=*/"Batch",
-                                               /*output=*/interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_3 = model::MakeKnownRatioNode({
-                                               /*id=*/4,
-                                               /*name=*/"Batch",
-                                               /*output=*/interleave,
-                                           },
-                                           /*ratio=*/1);
-  RecordNumElements(batch_1, 100);
-  batch_1->add_processing_time(1000);
-  RecordNumElements(interleave, 100);
-  interleave->add_processing_time(1000);
-  RecordNumElements(batch_2, 60);
-  batch_2->add_processing_time(1200);
-  RecordNumElements(batch_3, 40);
-  batch_3->add_processing_time(800);
+  ComputeModelTiming(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Batch"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Interleave"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: INTERLEAVE_MANY
+        inputs: 3
+        inputs: 4
+        parameters: { name: "cycle_length" value: 2 tunable: false }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Batch"
+        autotune: true
+        num_elements: 60
+        processing_time: 1200
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Batch"
+        autotune: true
+        num_elements: 40
+        processing_time: 800
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
 
-  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
-  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
-                 "batch_1", nullptr, &batch_1);
-  model->AddNode([&interleave](model::Node::Args args) { return interleave; },
-                 "interleave", batch_1, &interleave);
-  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
-                 "batch_2", interleave, &batch_2);
-  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
-                 "batch_3", interleave, &batch_3);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
 
-  ModelTiming model_timing(model);
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(interleave.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5,
-                   model_timing.GetTiming(interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(1,
-                   model_timing.GetTiming(interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
-
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
-
-  EXPECT_DOUBLE_EQ(30, model_timing.GetTiming(batch_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
+  EXPECT_DOUBLE_EQ(40, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(30, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave) {
-  auto batch_1 = model::MakeKnownRatioNode(
-      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
-  auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
-      {/*id=*/2,
-       /*name=*/"ParallelInterleaveV4", /*output=*/batch_1},
-      {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(
-                                /*value=*/2, nullptr, nullptr),
-                            /*min=*/1, /*max=*/10),
-       model::MakeParameter(kCycleLength, nullptr,
-                            /*min=*/2,
-                            /*max=*/2)});
-  auto batch_2 = model::MakeKnownRatioNode({
-                                               /*id=*/3,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_3 = model::MakeKnownRatioNode({
-                                               /*id=*/4,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  RecordNumElements(batch_1, 100);
-  batch_1->add_processing_time(1000);
-  RecordNumElements(parallel_interleave, 100);
-  parallel_interleave->add_processing_time(2000);
-  RecordNumElements(batch_2, 60);
-  batch_2->add_processing_time(1200);
-  RecordNumElements(batch_3, 40);
-  batch_3->add_processing_time(800);
+class ParallelInterleaveTimingTest
+    : public ModelTimingTest,
+      public ::testing::WithParamInterface<
+          std::tuple<int32_t, int32_t, int32_t>> {};
 
-  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
-  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
-                 "batch_1", nullptr, &batch_1);
-  model->AddNode([&parallel_interleave](
-                     model::Node::Args args) { return parallel_interleave; },
-                 "parallel_interleave", batch_1, &parallel_interleave);
-  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
-                 "batch_2", parallel_interleave, &batch_2);
-  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
-                 "batch_3", parallel_interleave, &batch_3);
+TEST_P(ParallelInterleaveTimingTest, ScenarioTest) {
+  const int32_t parallelism = std::get<0>(GetParam());
+  const int32_t deterministic = std::get<1>(GetParam());
+  const int32_t cycle_length = std::get<2>(GetParam());
+  ComputeModelTiming(strings::Printf(
+      R"pb(
+        nodes: {
+          key: 1
+          value: {
+            id: 1
+            name: "Batch"
+            autotune: true
+            num_elements: 100
+            processing_time: 1000
+            node_class: KNOWN_RATIO
+            ratio: 1
+            inputs: 2
+          }
+        }
+        nodes: {
+          key: 2
+          value: {
+            id: 2
+            name: "ParallelInterleaveV4"
+            autotune: true
+            num_elements: 100
+            processing_time: 2000
+            node_class: ASYNC_INTERLEAVE_MANY
+            inputs: 3
+            inputs: 4
+            inputs: 5
+            inputs: 6
+            inputs: 7
+            parameters: {
+              name: "parallelism"
+              value: %d
+              min: 1
+              max: 10
+              tunable: true
+            }
+            parameters: { name: "deterministic" value: %d tunable: false }
+            parameters: { name: "cycle_length" value: %d tunable: false }
+          }
+        }
+        nodes: {
+          key: 3
+          value: {
+            id: 3
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 60
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 4
+          value: {
+            id: 4
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 1200
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 5
+          value: {
+            id: 5
+            name: "Batch"
+            autotune: true
+            num_elements: 40
+            processing_time: 1200
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 6
+          value: {
+            id: 6
+            name: "Batch"
+            autotune: true
+            num_elements: 60
+            processing_time: 2400
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        nodes: {
+          key: 7
+          value: {
+            id: 7
+            name: "Batch"
+            autotune: false  # Marked as an inactive input
+            num_elements: 40
+            processing_time: 2000
+            node_class: KNOWN_RATIO
+            ratio: 1
+          }
+        }
+        output: 1
+      )pb",
+      parallelism, deterministic, cycle_length));
 
-  ModelTiming model_timing(model);
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_interleave.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1.0 / cycle_length,
+                   GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
+  const double expected_self_time_1 = 1000.0 / 100.0;
+  const double expected_self_time_2 = 2000.0 / 100.0 / parallelism;
+  const double expected_self_time_3 = 60.0 / 60.0;
+  const double expected_self_time_4 = 1200.0 / 60.0;
+  const double expected_self_time_5 = 1200.0 / 40.0;
+  const double expected_self_time_6 = 2400.0 / 60.0;
+  const double expected_self_time_7 = 2000.0 / 40.0;
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_7,
+                   GetNodeTiming(/*node_id=*/7)->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
+  EXPECT_DOUBLE_EQ(expected_self_time_1,
+                   GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_3,
+                   GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_4,
+                   GetNodeTiming(/*node_id=*/4)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_5,
+                   GetNodeTiming(/*node_id=*/5)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(expected_self_time_6,
+                   GetNodeTiming(/*node_id=*/6)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(0, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
+  const double max_input_time = expected_self_time_6;
+  double input_throughput = 1.0 / expected_self_time_4 +
+                            1.0 / expected_self_time_5 +
+                            1.0 / expected_self_time_6;
+  const double active_inputs = 3.0;
+  double expected_input_time;
+  if (deterministic == 1) {
+    expected_input_time = max_input_time / std::min(parallelism, cycle_length);
+  } else {
+    if (std::min(parallelism, cycle_length) < active_inputs) {
+      input_throughput *= std::min(parallelism, cycle_length) / active_inputs;
+    }
+    expected_input_time = 1.0 / input_throughput;
+  }
+  EXPECT_DOUBLE_EQ(expected_input_time + expected_self_time_2,
+                   GetNodeTiming(/*node_id=*/2)->total_time_nsec);
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave_CycleLength) {
-  auto batch_1 = model::MakeKnownRatioNode(
-      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
-  auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
-      {/*id=*/2,
-       /*name=*/"ParallelInterleaveV4", /*output=*/batch_1},
-      {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(
-                                /*value=*/2, nullptr, nullptr),
-                            /*min=*/1, /*max=*/10),
-       model::MakeParameter("cycle_length",
-                            std::make_shared<SharedState>(
-                                /*value=*/1, nullptr, nullptr),
-                            /*min=*/1, /*max=*/1)});
-  auto batch_2 = model::MakeKnownRatioNode({
-                                               /*id=*/3,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_3 = model::MakeKnownRatioNode({
-                                               /*id=*/4,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  RecordNumElements(batch_1, 100);
-  batch_1->add_processing_time(1000);
-  RecordNumElements(parallel_interleave, 100);
-  parallel_interleave->add_processing_time(2000);
-  RecordNumElements(batch_2, 60);
-  batch_2->add_processing_time(1200);
-  RecordNumElements(batch_3, 40);
-  batch_3->add_processing_time(800);
+INSTANTIATE_TEST_SUITE_P(ParallelInterleaveTimingTest,
+                         ParallelInterleaveTimingTest,
+                         ::testing::Combine(::testing::Values(1, 2, 3),
+                                            ::testing::Values(0, 1),
+                                            ::testing::Values(1, 2, 3)));
 
-  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
-  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
-                 "batch_1", nullptr, &batch_1);
-  model->AddNode([&parallel_interleave](
-                     model::Node::Args args) { return parallel_interleave; },
-                 "parallel_interleave", batch_1, &parallel_interleave);
-  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
-                 "batch_2", parallel_interleave, &batch_2);
-  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
-                 "batch_3", parallel_interleave, &batch_3);
+TEST_F(ModelTimingTest, ParallelInterleave_Batch_ParallelMap) {
+  ComputeModelTiming(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Batch"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "ParallelInterleaveV4"
+        autotune: true
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_INTERLEAVE_MANY
+        inputs: 3
+        inputs: 4
+        inputs: 5
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 10
+          tunable: true
+        }
+        parameters: { name: "cycle_length" value: 2 tunable: false }
+        parameters: { name: "deterministic" value: 0 tunable: false }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Batch"
+        autotune: true
+        num_elements: 60
+        processing_time: 60
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Batch"
+        autotune: true
+        num_elements: 60
+        processing_time: 1200
+        node_class: KNOWN_RATIO
+        ratio: 2
+        inputs: 6
+      }
+    }
+    nodes: {
+      key: 5
+      value: {
+        id: 5
+        name: "Batch"
+        autotune: true
+        num_elements: 40
+        processing_time: 800
+        node_class: KNOWN_RATIO
+        ratio: 2
+        inputs: 7
+      }
+    }
+    nodes: {
+      key: 6
+      value: {
+        id: 6
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 120
+        processing_time: 2400
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 7
+      value: {
+        id: 7
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 120
+        processing_time: 2400
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
 
-  ModelTiming model_timing(model);
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_interleave.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/1)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/2)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/3)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/4)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(0.5, GetNodeTiming(/*node_id=*/5)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/6)->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/7)->pipeline_ratio);
 
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/2)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/6)->self_time_nsec);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/7)->self_time_nsec);
 
-  EXPECT_DOUBLE_EQ(1.0, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      1.0, model_timing.GetTiming(parallel_interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
-
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(20, model_timing.GetTiming(batch_3.get())->self_time);
-
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(
-      30, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(12, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(8, model_timing.GetTiming(batch_3.get())->total_time);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/1)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/2)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(1, GetNodeTiming(/*node_id=*/3)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/4)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(20, GetNodeTiming(/*node_id=*/5)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/6)->total_time_nsec);
+  EXPECT_DOUBLE_EQ(10, GetNodeTiming(/*node_id=*/7)->total_time_nsec);
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave_ParallelMap) {
-  auto batch_1 = model::MakeKnownRatioNode(
-      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
-  auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
-      {/*id=*/2,
-       /*name=*/"ParallelInterleaveV4", /*output=*/batch_1},
-      {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(
-                                /*value=*/2, nullptr, nullptr),
-                            /*min=*/1, /*max=*/10),
-       model::MakeParameter(kCycleLength, nullptr,
-                            /*min=*/2,
-                            /*max=*/2)});
-  auto batch_2 = model::MakeKnownRatioNode({
-                                               /*id=*/3,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/2);
-  auto batch_3 = model::MakeKnownRatioNode({
-                                               /*id=*/4,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/2);
-  std::shared_ptr<Node> parallel_map_1 = model::MakeAsyncKnownRatioNode(
-      {/*id=*/1, /*name=*/"ParallelMapV2", /*output=*/batch_2}, /*ratio=*/1,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(/*value=*/2, nullptr, nullptr),
-          /*min=*/1,
-          /*max=*/16)});
-  std::shared_ptr<Node> parallel_map_2 = model::MakeAsyncKnownRatioNode(
-      {/*id=*/1, /*name=*/"ParallelMapV2", /*output=*/batch_3}, /*ratio=*/1,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(/*value=*/2, nullptr, nullptr),
-          /*min=*/1,
-          /*max=*/16)});
-  RecordNumElements(batch_1, 100);
-  batch_1->add_processing_time(1000);
-  RecordNumElements(parallel_interleave, 100);
-  parallel_interleave->add_processing_time(2000);
-  RecordNumElements(batch_2, 60);
-  batch_2->add_processing_time(1200);
-  RecordNumElements(batch_3, 40);
-  batch_3->add_processing_time(800);
-  RecordNumElements(parallel_map_1, 120);
-  parallel_map_1->add_processing_time(2400);
-  RecordNumElements(parallel_map_2, 120);
-  parallel_map_2->add_processing_time(2400);
+class BufferSizeTest : public ::testing::Test {
+ public:
+  void ReadModel(const std::string& model_pbtxt) {
+    ModelProto model_proto;
+    protobuf::TextFormat::ParseFromString(model_pbtxt, &model_proto);
+    TF_CHECK_OK(Model::FromProto(model_proto, &model_));
+    auto nodes = model_->output()->CollectNodes(
+        TraversalOrder::BFS, [](const std::shared_ptr<Node>) { return true; });
+    node_map_.clear();
+    node_map_[model_->output()->id()] = model_->output();
+    for (const auto& node : nodes) {
+      node_map_[node->id()] = node;
+    }
+  }
 
-  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
-  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
-                 "batch_1", nullptr, &batch_1);
-  model->AddNode([&parallel_interleave](
-                     model::Node::Args args) { return parallel_interleave; },
-                 "parallel_interleave", batch_1, &parallel_interleave);
-  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
-                 "batch_2", parallel_interleave, &batch_2);
-  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
-                 "batch_3", parallel_interleave, &batch_3);
-  model->AddNode(
-      [&parallel_map_1](model::Node::Args args) { return parallel_map_1; },
-      "parallel_map_1", batch_2, &parallel_map_1);
-  model->AddNode(
-      [&parallel_map_2](model::Node::Args args) { return parallel_map_2; },
-      "parallel_map_2", batch_3, &parallel_map_2);
+  // Returns a node given its node id. If node id does not exist, it will fail.
+  std::shared_ptr<Node> GetNode(int64_t node_id) const {
+    return node_map_.at(node_id);
+  }
 
-  ModelTiming model_timing(model);
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_interleave.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_map_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_map_2.get()));
+ protected:
+  std::unique_ptr<Model> model_;
+  absl::flat_hash_map<int64_t, std::shared_ptr<Node>> node_map_;
+};
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      1, model_timing.GetTiming(parallel_map_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      1, model_timing.GetTiming(parallel_map_2.get())->pipeline_ratio);
+TEST_F(BufferSizeTest, OptimizeBuffers_PlentyOfMemory) {
+  ReadModel(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 2
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 3
+          state_value: 3
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 3
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 4
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 5
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 5
+      value: {
+        id: 5
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 8
+          state_value: 8
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      1, model_timing.GetTiming(parallel_interleave.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.6, model_timing.GetTiming(batch_2.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(0.4, model_timing.GetTiming(batch_3.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      0.6, model_timing.GetTiming(parallel_map_1.get())->pipeline_weight);
-  EXPECT_DOUBLE_EQ(
-      0.4, model_timing.GetTiming(parallel_map_2.get())->pipeline_weight);
+  std::shared_ptr<Node> node_1 = GetNode(1);
+  std::shared_ptr<Node> node_2 = GetNode(2);
+  std::shared_ptr<Node> node_3 = GetNode(3);
+  std::shared_ptr<Node> node_4 = GetNode(4);
+  std::shared_ptr<Node> node_5 = GetNode(5);
+  // Set node 1 low watermark to 1 and high watermark to 2. Expect that it is
+  // downsized to 2.
+  node_1->record_buffer_event(100, 1);
+  node_1->record_buffer_event(100, 1);
+  EXPECT_EQ(1, node_1->buffered_elements_low());
+  EXPECT_EQ(2, node_1->buffered_elements_high());
+  // Set node 2 low watermark to 1 and high watermark to 5. Expect that it is
+  // not changed.
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(400, 4);
+  node_2->record_buffer_event(-100, -1);
+  EXPECT_EQ(1, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  // Set node 3 low watermark to 0 and high watermark to 5. Expect that it is
+  // upsized to 10.
+  node_3->record_buffer_event(100, 1);
+  node_3->record_buffer_event(-100, -1);
+  node_3->record_buffer_event(500, 5);
+  node_3->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  // Set node 4 low watermark to 0 and high watermark to 5. Its max buffer size
+  // is set to 8. Expect that it is upsized to 8.
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(500, 5);
+  node_4->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_4->buffered_elements_low());
+  EXPECT_EQ(5, node_4->buffered_elements_high());
+  // Set node 5 low watermark to 1 and high watermark to 2. Its current buffer
+  // size is set to 8. Expect that it is downsized to 8/2 rather than (2 - 1 + 1
+  // = 3) because downsize is capped to half its size.
+  node_5->record_buffer_event(100, 1);
+  node_5->record_buffer_event(-100, 1);
+  EXPECT_EQ(1, node_5->buffered_elements_low());
+  EXPECT_EQ(2, node_5->buffered_elements_high());
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(parallel_map_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(parallel_map_2.get())->self_time);
+  model_->OptimizeBuffers(node_1->Snapshot(), 10000);
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(parallel_map_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(parallel_map_2.get())->total_time);
+  EXPECT_EQ(2, node_1->parameter_value(kBufferSize));
+  EXPECT_EQ(5, node_2->parameter_value(kBufferSize));
+  EXPECT_EQ(10, node_3->parameter_value(kBufferSize));
+  EXPECT_EQ(8, node_4->parameter_value(kBufferSize));
+  EXPECT_EQ(6, node_5->parameter_value(kBufferSize));
+  EXPECT_EQ(2, node_1->buffered_elements_low());
+  EXPECT_EQ(2, node_1->buffered_elements_high());
+  EXPECT_EQ(4, node_2->buffered_elements_low());
+  EXPECT_EQ(4, node_2->buffered_elements_high());
+  EXPECT_EQ(4, node_3->buffered_elements_low());
+  EXPECT_EQ(4, node_3->buffered_elements_high());
+  EXPECT_EQ(4, node_4->buffered_elements_low());
+  EXPECT_EQ(4, node_4->buffered_elements_high());
+  EXPECT_EQ(2, node_5->buffered_elements_low());
+  EXPECT_EQ(2, node_5->buffered_elements_high());
 }
 
-TEST_F(ModelTimingTest, ParallelInterleave_With_InactiveNodes) {
-  auto batch_1 = model::MakeKnownRatioNode(
-      {/*id=*/1, /*name=*/"Batch", /*output=*/nullptr}, /*ratio=*/1);
-  auto parallel_interleave = model::MakeAsyncInterleaveManyNode(
-      {/*id=*/2,
-       /*name=*/"ParallelInterleaveV4", /*output=*/batch_1},
-      {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(
-                                /*value=*/2, nullptr, nullptr),
-                            /*min=*/1, /*max=*/10),
-       model::MakeParameter(kCycleLength, nullptr,
-                            /*min=*/2,
-                            /*max=*/2)});
-  auto batch_2 = model::MakeKnownRatioNode({
-                                               /*id=*/3,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_3 = model::MakeKnownRatioNode({
-                                               /*id=*/4,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  auto batch_4 = model::MakeKnownRatioNode({
-                                               /*id=*/5,
-                                               /*name=*/"Batch",
-                                               /*output=*/parallel_interleave,
-                                           },
-                                           /*ratio=*/1);
-  // Set batch_4 to be inactive, which should make the total time of subtree
-  // rooted at it 0.
-  batch_4->set_autotune(false);
-  std::shared_ptr<Node> parallel_map_1 = model::MakeAsyncKnownRatioNode(
-      {/*id=*/1, /*name=*/"ParallelMapV2", /*output=*/batch_4}, /*ratio=*/1,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(/*value=*/2, nullptr, nullptr),
-          /*min=*/1,
-          /*max=*/16)});
-  RecordNumElements(batch_1, 100);
-  batch_1->add_processing_time(1000);
-  RecordNumElements(parallel_interleave, 100);
-  parallel_interleave->add_processing_time(2000);
-  RecordNumElements(batch_2, 60);
-  batch_2->add_processing_time(1200);
-  RecordNumElements(batch_3, 40);
-  batch_3->add_processing_time(800);
-  RecordNumElements(batch_4, 100);
-  batch_4->add_processing_time(2000);
-  RecordNumElements(parallel_map_1, 100);
-  parallel_map_1->add_processing_time(2000);
+TEST_F(BufferSizeTest, OptimizeBuffers_TightMemory) {
+  ReadModel(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 2
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 3
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        inputs: 4
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 10
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 4
+      value: {
+        id: 4
+        name: "Prefetch"
+        autotune: true
+        bytes_produced: 10000
+        num_elements: 100
+        processing_time: 2000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        parameters: {
+          name: "buffer_size"
+          value: 5
+          state_value: 5
+          min: 1
+          max: 8
+          tunable: true
+        }
+      }
+    }
+    output: 1
+  )pb");
 
-  std::shared_ptr<model::Model> model = std::make_shared<model::Model>();
-  model->AddNode([&batch_1](model::Node::Args args) { return batch_1; },
-                 "batch_1", nullptr, &batch_1);
-  model->AddNode([&parallel_interleave](
-                     model::Node::Args args) { return parallel_interleave; },
-                 "parallel_interleave", batch_1, &parallel_interleave);
-  model->AddNode([&batch_2](model::Node::Args args) { return batch_2; },
-                 "batch_2", parallel_interleave, &batch_2);
-  model->AddNode([&batch_3](model::Node::Args args) { return batch_3; },
-                 "batch_3", parallel_interleave, &batch_3);
-  model->AddNode([&batch_4](model::Node::Args args) { return batch_4; },
-                 "batch_4", parallel_interleave, &batch_4);
-  model->AddNode(
-      [&parallel_map_1](model::Node::Args args) { return parallel_map_1; },
-      "parallel_map_1", batch_4, &parallel_map_1);
+  std::shared_ptr<Node> node_1 = GetNode(1);
+  std::shared_ptr<Node> node_2 = GetNode(2);
+  std::shared_ptr<Node> node_3 = GetNode(3);
+  std::shared_ptr<Node> node_4 = GetNode(4);
+  // Set low watermark to 0 and high watermark to 5 for all nodes.
+  node_1->record_buffer_event(100, 1);
+  node_1->record_buffer_event(-100, -1);
+  node_1->record_buffer_event(500, 5);
+  EXPECT_EQ(0, node_1->buffered_elements_low());
+  EXPECT_EQ(5, node_1->buffered_elements_high());
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(100, 1);
+  node_2->record_buffer_event(-100, -1);
+  node_2->record_buffer_event(-100, -1);
+  node_2->record_buffer_event(400, 4);
+  node_2->record_buffer_event(100, 1);
+  EXPECT_EQ(0, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  node_3->record_buffer_event(100, 1);
+  node_3->record_buffer_event(-100, -1);
+  node_3->record_buffer_event(500, 5);
+  EXPECT_EQ(0, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(100, 1);
+  node_4->record_buffer_event(-100, -1);
+  node_4->record_buffer_event(500, 5);
+  node_4->record_buffer_event(-100, -1);
+  EXPECT_EQ(0, node_4->buffered_elements_low());
+  EXPECT_EQ(5, node_4->buffered_elements_high());
 
-  ModelTiming model_timing(model);
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_1.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_interleave.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_2.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_3.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(batch_4.get()));
-  EXPECT_NE(nullptr, model_timing.GetTiming(parallel_map_1.get()));
+  model_->OptimizeBuffers(node_1->Snapshot(), 3000);
 
-  EXPECT_DOUBLE_EQ(1, model_timing.GetTiming(batch_1.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_interleave.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_2.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_3.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(0.5, model_timing.GetTiming(batch_4.get())->pipeline_ratio);
-  EXPECT_DOUBLE_EQ(
-      0.5, model_timing.GetTiming(parallel_map_1.get())->pipeline_ratio);
+  EXPECT_DOUBLE_EQ(7.0, node_1->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_2->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_3->parameter_value(kBufferSize));
+  EXPECT_DOUBLE_EQ(7.0, node_4->parameter_value(kBufferSize));
+  EXPECT_EQ(5, node_1->buffered_elements_low());
+  EXPECT_EQ(5, node_1->buffered_elements_high());
+  EXPECT_EQ(5, node_2->buffered_elements_low());
+  EXPECT_EQ(5, node_2->buffered_elements_high());
+  EXPECT_EQ(5, node_3->buffered_elements_low());
+  EXPECT_EQ(5, node_3->buffered_elements_high());
+  EXPECT_EQ(4, node_4->buffered_elements_low());
+  EXPECT_EQ(4, node_4->buffered_elements_high());
+}
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->self_time);
-  EXPECT_DOUBLE_EQ(
-      10, model_timing.GetTiming(parallel_interleave.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_2.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_3.get())->self_time);
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_4.get())->self_time);
-  EXPECT_DOUBLE_EQ(5, model_timing.GetTiming(parallel_map_1.get())->self_time);
+TEST_F(ModelTimingTest, OptimizeStageBased_OneStage) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
 
-  EXPECT_DOUBLE_EQ(10, model_timing.GetTiming(batch_1.get())->total_time);
-  EXPECT_DOUBLE_EQ(
-      20, model_timing.GetTiming(parallel_interleave.get())->total_time);
-  EXPECT_DOUBLE_EQ(6, model_timing.GetTiming(batch_2.get())->total_time);
-  EXPECT_DOUBLE_EQ(4, model_timing.GetTiming(batch_3.get())->total_time);
-  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(batch_4.get())->total_time);
-  EXPECT_DOUBLE_EQ(0, model_timing.GetTiming(parallel_map_1.get())->total_time);
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_CappedByParameterMax) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: { name: "parallelism" value: 4 min: 1 max: 3 tunable: true }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 1000, 50,
+                   &cancellation_manager);
+
+  // The max value is set to 3. Otherwise, the expected parallelism value is 5.
+  EXPECT_EQ(3, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 25000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 5, 1000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(5, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(5, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_TwoStages_RamBudgetExceeded) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 25000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          state_value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+        parameters: {
+          name: "parallelism"
+          value: 4
+          state_value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  // Not enough RAM, the original `parallelism` should not change.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
+                   &cancellation_manager);
+  EXPECT_EQ(4, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(4, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  // Has enough RAM, the original `parallelism` should increase.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100000, 0,
+                   &cancellation_manager);
+  EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+  // Not enough RAM, the original `parallelism` should not change.
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 10, 100, 0,
+                   &cancellation_manager);
+  EXPECT_EQ(12, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+  EXPECT_EQ(16, GetNode(/*node_id=*/2)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, OptimizeStageBased_PipelineRatio) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelBatch"
+        autotune: true
+        num_elements: 100
+        processing_time: 5000
+        bytes_produced: 10000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 2
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 4
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "Map"
+        autotune: true
+        num_elements: 100
+        processing_time: 3000
+        node_class: KNOWN_RATIO
+        ratio: 1
+        inputs: 3
+      }
+    }
+    nodes: {
+      key: 3
+      value: {
+        id: 3
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 1000
+        node_class: KNOWN_RATIO
+        ratio: 2
+      }
+    }
+    output: 1
+  )pb");
+
+  CancellationManager cancellation_manager;
+  model_->Optimize(AutotuneAlgorithm::STAGE_BASED, 20, 10000, 50,
+                   &cancellation_manager);
+
+  EXPECT_EQ(16, GetNode(/*node_id=*/1)->parameter_value("parallelism"));
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime) {
+  model_ = std::make_unique<Model>();
+
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(1000);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(10, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_NoOutlier) {
+  model_ = std::make_unique<Model>();
+
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(10);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  model_->RecordIteratorGapTime(20);
+  // Gap times that are >= 10 seconds are always dropped.
+  model_->RecordIteratorGapTime(10000000);
+
+  EXPECT_DOUBLE_EQ(15.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, ComputeTargetTime_TestWindow) {
+  model_ = std::make_unique<Model>();
+
+  // The window size is 100. Only the last 100 gap times are used to compute the
+  // target time.
+  for (int i = 0; i < 100; ++i) {
+    model_->RecordIteratorGapTime(20);
+  }
+  for (int i = 0; i < 100; ++i) {
+    model_->RecordIteratorGapTime(10);
+  }
+
+  EXPECT_DOUBLE_EQ(10.0, model_->ComputeTargetTimeNsec() * 1e-3);
+}
+
+TEST_F(ModelTimingTest, SelfTime) {
+  BuildModelFromProto(R"pb(
+    nodes: {
+      key: 1
+      value: {
+        id: 1
+        name: "ParallelMapV2"
+        autotune: true
+        num_elements: 100
+        processing_time: 20000
+        node_class: ASYNC_KNOWN_RATIO
+        ratio: 1
+        inputs: 2
+        parameters: {
+          name: "parallelism"
+          value: 2
+          min: 1
+          max: 16
+          tunable: true
+        }
+      }
+    }
+    nodes: {
+      key: 2
+      value: {
+        id: 2
+        name: "SSTable"
+        autotune: true
+        num_elements: 100
+        processing_time: 100000
+        node_class: KNOWN_RATIO
+        ratio: 1
+      }
+    }
+    output: 1
+  )pb");
+
+  auto node_1 = MutableGetNode(/*node_id=*/1);
+  EXPECT_DOUBLE_EQ(100, node_1->ComputeSelfTime());
+  node_1->add_processing_time(400);
+  node_1->record_element();
+  EXPECT_DOUBLE_EQ(110, node_1->ComputeSelfTime());
+  auto node_2 = MutableGetNode(/*node_id=*/2);
+  EXPECT_DOUBLE_EQ(1000, node_2->ComputeSelfTime());
+  node_2->add_processing_time(100);
+  node_2->record_element();
+  EXPECT_DOUBLE_EQ(910, node_2->ComputeSelfTime());
 }
 
 }  // namespace

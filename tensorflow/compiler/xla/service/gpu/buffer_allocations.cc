@@ -15,18 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 
+#include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -78,11 +77,6 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   return se::DeviceMemoryBase(
       static_cast<char*>(base.opaque()) + buffer_slice.offset(),
       buffer_slice.size());
-}
-
-bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {
-  // LLVM can sometimes do interesting optimizations using scalar constants.
-  return ShapeUtil::IsScalar(literal.shape());
 }
 
 }  // namespace gpu

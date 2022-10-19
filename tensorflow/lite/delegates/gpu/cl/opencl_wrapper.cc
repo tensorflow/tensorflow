@@ -233,6 +233,15 @@ void LoadOpenCLFunctions(void* libopencl, bool use_wrapper) {
   LoadFunction(clEnqueueAcquireEGLObjectsKHR);
   LoadFunction(clEnqueueReleaseEGLObjectsKHR);
 
+  // cl_khr_command_buffer extension
+  LoadFunction(clCreateCommandBufferKHR);
+  LoadFunction(clRetainCommandBufferKHR);
+  LoadFunction(clReleaseCommandBufferKHR);
+  LoadFunction(clFinalizeCommandBufferKHR);
+  LoadFunction(clEnqueueCommandBufferKHR);
+  LoadFunction(clCommandNDRangeKernelKHR);
+  LoadFunction(clGetCommandBufferInfoKHR);
+
   LoadQcomExtensionFunctions();
 }
 
@@ -353,6 +362,15 @@ PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
 PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
 PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
 PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
+
+// cl_khr_command_buffer extension
+PFN_clCreateCommandBufferKHR clCreateCommandBufferKHR;
+PFN_clRetainCommandBufferKHR clRetainCommandBufferKHR;
+PFN_clReleaseCommandBufferKHR clReleaseCommandBufferKHR;
+PFN_clFinalizeCommandBufferKHR clFinalizeCommandBufferKHR;
+PFN_clEnqueueCommandBufferKHR clEnqueueCommandBufferKHR;
+PFN_clCommandNDRangeKernelKHR clCommandNDRangeKernelKHR;
+PFN_clGetCommandBufferInfoKHR clGetCommandBufferInfoKHR;
 
 DEFINE_QCOM_FUNCTION_PTRS
 

@@ -142,6 +142,28 @@ void DefineMetricsModule(py::module main_module) {
               "'/tensorflow/core/checkpoint/write/write_durations'."));
 
   m.def(
+      "AddAsyncCheckpointWriteDuration",
+      [](const char* api_label, double microseconds) {
+        metrics::AsyncCheckpointWriteDuration(api_label).Add(microseconds);
+      },
+      py::kw_only(), py::arg("api_label"), py::arg("microseconds"),
+      py::doc("Add `microseconds` to the cell `api_label` for "
+              "'/tensorflow/core/checkpoint/write/async_write_durations'."));
+
+  m.def(
+      "GetAsyncCheckpointWriteDurations",
+      [](const char* api_label) {
+        // This function is called sparingly, so protobuf (de)-serialization
+        // round trip is not an issue.
+        return py::bytes(metrics::AsyncCheckpointWriteDuration(api_label)
+                             .value()
+                             .SerializeAsString());
+      },
+      py::kw_only(), py::arg("api_label"),
+      py::doc("Get serialized HistogramProto of `api_label` cell for "
+              "'/tensorflow/core/checkpoint/write/async_write_durations'."));
+
+  m.def(
       "AddTrainingTimeSaved",
       [](const char* api_label, double microseconds) {
         metrics::TrainingTimeSaved(api_label).IncrementBy(microseconds);

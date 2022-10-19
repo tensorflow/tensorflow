@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_ID_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_ID_H_
 
-#include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 
 namespace stream_executor {
 namespace interpreter {

@@ -56,7 +56,7 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
       binary_op->type != OperatorType::kMul &&
       binary_op->type != OperatorType::kSub &&
       binary_op->type != OperatorType::kDiv) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK_EQ(binary_op->inputs.size(), 2);
@@ -69,12 +69,12 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
   };
   if (!is_input_constant[0] && !is_input_constant[1]) {
     // Neither input is constant, so nothing we can resolve here.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (is_input_constant[0] && is_input_constant[1]) {
     // Both inputs are constants. That's a job for constants
     // propagation, not for us to handle here.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const int index_of_constant_input = is_input_constant[0] ? 0 : 1;
   const int index_of_variable_input = is_input_constant[0] ? 1 : 0;
@@ -87,7 +87,7 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
   const auto& input_array_1 = model->GetArray(binary_op->inputs[1]);
   if (!input_array_0.has_shape() || !input_array_1.has_shape()) {
     // Both input shapes must be known.
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   if (input_array_0.shape().dimensions_count() ==
           input_array_1.shape().dimensions_count() &&
@@ -97,7 +97,7 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
         "(lhs %s, rhs %s)",
         LogName(*binary_op), ShapeToString(input_array_0.shape()),
         ShapeToString(input_array_1.shape()));
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Now check if the constant operand makes this binary
@@ -106,7 +106,7 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
       model->GetArray(binary_op->inputs[index_of_constant_input]);
   // For now, we only handle floats here.
   if (constant_input_array.data_type != ArrayDataType::kFloat) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto& constant_input_float_data =
       constant_input_array.GetBuffer<ArrayDataType::kFloat>().data;
@@ -127,13 +127,13 @@ bool AreAllBufferElementsEqualTo(const std::vector<Scalar>& buffer_data,
                                  FusedActivationFunctionType::kNone;
 
   if (!is_trivial) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   // Now we know that this node is trivial, so we can remove it.
   AddMessageF("Removing trivial %s", LogName(*binary_op));
   *modified = RemoveTrivialPassthroughOp(this, model, op_index);
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

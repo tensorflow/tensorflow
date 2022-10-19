@@ -1,12 +1,7 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_copts", "tf_cuda_cc_test")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_kernel_library")
 
 # Platform specific build config
 load(
@@ -589,6 +584,8 @@ cc_library(
         "//tensorflow/core/grappler/costs:virtual_placer",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -692,18 +689,26 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "tfg_optimizer_hook",
-    srcs = ["tfg_optimizer_hook.cc"],
-    hdrs = ["tfg_optimizer_hook.h"],
+    srcs = [
+        "tfg_optimizer_hook.cc",
+        "tfg_passes_builder.cc",
+    ],
+    hdrs = [
+        "tfg_optimizer_hook.h",
+        "tfg_passes_builder.h",
+    ],
     visibility = ["//visibility:private"],
     deps = [
         ":graph_optimizer",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/ir:Dialect",
-        "//tensorflow/core/ir/importexport:export",
-        "//tensorflow/core/ir/importexport:import",
+        "//tensorflow/core/ir:tf_op_registry",
+        "//tensorflow/core/ir/importexport:graphdef_export",
+        "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
@@ -1200,7 +1205,6 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
-        "//tensorflow/core/grappler/costs:virtual_placer",
         "//tensorflow/core/grappler/utils:frame",
         "//tensorflow/core/grappler/utils:graph_view",
         "@com_google_absl//absl/container:flat_hash_map",

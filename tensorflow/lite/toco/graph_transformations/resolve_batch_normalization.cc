@@ -31,7 +31,7 @@ namespace toco {
   *modified = false;
   auto bn_it = model->operators.begin() + op_index;
   if (bn_it->get()->type != OperatorType::kBatchNormalization) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
   const auto* bn_op =
       static_cast<const BatchNormalizationOperator*>(bn_it->get());
@@ -44,7 +44,7 @@ namespace toco {
   // we need to exit early if these buffers don't exist yet (i.e. if the params
   // haven't yet been resolved as constants) and will process it once they have.
   if (!mean_array.buffer || !multiplier_array.buffer || !offset_array.buffer) {
-    return ::tensorflow::Status::OK();
+    return ::tensorflow::OkStatus();
   }
 
   CHECK(IsConstantParameterArray(*model, bn_op->inputs[1]) &&
@@ -141,7 +141,7 @@ namespace toco {
   DeleteOpAndArrays(model, bn_op);
 
   *modified = true;
-  return ::tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 }  // namespace toco

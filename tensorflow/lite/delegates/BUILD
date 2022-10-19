@@ -14,7 +14,7 @@
 # ==============================================================================
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
@@ -118,7 +118,9 @@ cc_test(
     name = "delegate_test",
     size = "small",
     srcs = ["delegate_test.cc"],
-    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
+    data = ["//tensorflow/lite:testdata/add.bin"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs.
+    tags = ["nomsan"],  # TODO(b/246990697)
     deps = [
         ":delegate_test_util",
         ":interpreter_utils",
@@ -128,7 +130,10 @@ cc_test(
         "//tensorflow/lite:string",
         "//tensorflow/lite:util",
         "//tensorflow/lite:version",
+        "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/remat:metadata_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",

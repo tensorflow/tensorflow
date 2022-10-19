@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
@@ -71,7 +72,7 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
     return;
   }
   response->set_leader_incarnation(leader_incarnation);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
@@ -85,11 +86,10 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
     return;
   }
   service->WaitForAllTasks(
-      request->source_task(), request->local_device_info(),
+      request->source_task(), request->device_info(),
       [response, service, done = std::move(done)](Status s) {
         if (s.ok()) {
-          *response->mutable_cluster_device_info() =
-              service->ListClusterDevices();
+          *response->mutable_device_info() = service->ListClusterDevices();
         }
         done(s);
       });
@@ -139,7 +139,7 @@ void CoordinationServiceRpcHandler::ReportErrorToTaskAsync(
                                ": ", request->error_message()));
   error = MakeCoordinationError(error, error_payload);
   agent_->SetError(error);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
@@ -159,6 +159,23 @@ void CoordinationServiceRpcHandler::ReportErrorToServiceAsync(
                  request->error_message()},
           request->error_origin(),
           /*is_reported_error=*/true)));
+}
+
+void CoordinationServiceRpcHandler::GetTaskStateAsync(
+    const GetTaskStateRequest* request, GetTaskStateResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  auto result = service->GetTaskState(
+      {request->source_task().begin(), request->source_task().end()});
+  absl::c_move(result,
+               RepeatedFieldBackInserter(response->mutable_task_state()));
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::InsertKeyValueAsync(
@@ -189,10 +206,47 @@ void CoordinationServiceRpcHandler::GetKeyValueAsync(
       request->key(), [response, done = std::move(done)](
                           const StatusOr<std::string>& status_or_value) {
         if (status_or_value.ok()) {
-          response->mutable_kv()->set_value(status_or_value.ValueOrDie());
+          response->mutable_kv()->set_value(status_or_value.value());
         }
         done(status_or_value.status());
       });
+}
+
+void CoordinationServiceRpcHandler::TryGetKeyValueAsync(
+    const TryGetKeyValueRequest* request, TryGetKeyValueResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  auto result = service->TryGetKeyValue(request->key());
+  if (!result.ok()) {
+    done(MakeCoordinationError(result.status()));
+    return;
+  }
+  response->mutable_kv()->set_key(request->key());
+  response->mutable_kv()->set_value(result.value());
+  done(OkStatus());
+}
+
+void CoordinationServiceRpcHandler::GetKeyValueDirAsync(
+    const GetKeyValueDirRequest* request, GetKeyValueDirResponse* response,
+    StatusCallback done) {
+  CoordinationServiceInterface* service =
+      CoordinationServiceInterface::GetCoordinationServiceInstance();
+  if (service == nullptr) {
+    done(MakeCoordinationError(
+        errors::Internal("Coordination service is not enabled.")));
+    return;
+  }
+  std::vector<KeyValueEntry> results =
+      service->GetKeyValueDir(request->directory_key());
+  *response->mutable_kv() = {std::make_move_iterator(results.begin()),
+                             std::make_move_iterator(results.end())};
+  done(OkStatus());
 }
 
 void CoordinationServiceRpcHandler::DeleteKeyValueAsync(

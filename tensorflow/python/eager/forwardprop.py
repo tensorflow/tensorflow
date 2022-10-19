@@ -408,7 +408,7 @@ class ForwardAccumulator():
       pywrap_tfe.TFE_Py_ForwardAccumulatorWatch(self._accumulator, primal,
                                                 tangent)
 
-    nest.map_structure(_watch, primals, tangents, expand_composites=True)
+    nest.map_structure(_watch, primals, tangents)
 
   def jvp(self, primals, unconnected_gradients=UnconnectedGradients.NONE):
     """Fetches the Jacobian-vector product computed for `primals`.

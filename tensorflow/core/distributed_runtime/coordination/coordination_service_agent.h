@@ -17,18 +17,24 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <map>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/core/protobuf/coordination_service.pb.h"
 
+namespace tsl {
+class Env;
+}  // namespace tsl
 namespace tensorflow {
 class CoordinationServiceConfig;
 class CoordinatedTask;
-class Env;
 class ServerDef;
 
 // CoordinationServiceAgent defines the interface for tasks to communicate with
@@ -58,21 +64,21 @@ class CoordinationServiceAgent {
  public:
   using StatusOrValueCallback =
       std::function<void(const StatusOr<std::string>&)>;
+  // Collection of key-value pairs in the same directory.
+  using StatusOrValueDirCallback =
+      std::function<void(const StatusOr<std::vector<KeyValueEntry>>&)>;
   using ChangedKeyValuesCallback =
       std::function<void(const std::map<std::string, std::string>&)>;
 
   virtual ~CoordinationServiceAgent() {}
 
   // Initialize coordination service agent.
-  virtual Status Initialize(
-      Env* env, const ServerDef& server_def,
-      std::unique_ptr<CoordinationClientCache> client_cache,
-      StatusCallback error_fn) = 0;
-  virtual Status Initialize(Env* env, const std::string& job_name, int task_id,
+  virtual Status Initialize(tsl::Env* env, const std::string& job_name,
+                            int task_id,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
-  virtual Status Initialize(Env* env, const CoordinatedTask& task,
+  virtual Status Initialize(tsl::Env* env, const CoordinatedTask& task,
                             const CoordinationServiceConfig& configs,
                             std::unique_ptr<CoordinationClient> leader_client,
                             StatusCallback error_fn) = 0;
@@ -87,36 +93,34 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
   //   - InvalidArgument: Unexpected task registration
-  //   - Aborted: Duplicate task registration
+  //   - Aborted: Duplicate task registration (agent will retry connecting until
+  //              the configured timeout)
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
   // in the cluster are up, or some error occurs.
   // Possible service errors:
-  //   - FailedPrecondition: Agent is not in RUNNING state.
+  //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status WaitForAllTasks(
-      const CoordinationServiceDeviceInfo& local_devices) = 0;
+  virtual Status WaitForAllTasks(const DeviceInfo& local_devices) = 0;
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  virtual const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() = 0;
+  virtual const DeviceInfo& GetClusterDeviceInfo() = 0;
 
   // State transition in coordination service agent:
   //
-  //                 Init              Connect         SetError
-  //   UNINITIALIZED ---> DISCONNECTED ------> RUNNING -------> ERROR
+  //                 Init              Connect           SetError
+  //   UNINITIALIZED ---> DISCONNECTED ------> CONNECTED -------> ERROR
   //                           ^                                  |
   //                           |__________________________________|
   //                                         Reset
-  enum class TaskState {
-    UNINITIALIZED,
-    DISCONNECTED,
-    RUNNING,
-    ERROR,
-  };
+
+  // Get task associated with this agent.
+  virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<TaskState> GetTaskStatus(const CoordinatedTask& task) = 0;
+  virtual StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to
@@ -146,14 +150,36 @@ class CoordinationServiceAgent {
   virtual Status Reset() = 0;
 
   // Get config key-value from the service.
+  // If the key-value is not inserted yet, this is a blocking call that waits
+  // until the corresponding key is inserted.
   // Agent does not need to be connected to utilize the distributed key-value
   // store.
   //   - errors::DeadlineExceeded: timed out waiting for key.
   virtual StatusOr<std::string> GetKeyValue(const std::string& key) = 0;
   virtual StatusOr<std::string> GetKeyValue(const std::string& key,
                                             absl::Duration timeout) = 0;
-  virtual void GetKeyValueAsync(const std::string& key,
-                                StatusOrValueCallback done) = 0;
+  // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
+  // `call_opts->ClearCancelCallback()`.
+  virtual std::shared_ptr<CallOptions> GetKeyValueAsync(
+      const std::string& key, StatusOrValueCallback done) = 0;
+
+  // Get config key-value from the service.
+  // If the key-value does not exist, this call returns NotFound error.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  //   - errors::NotFound: the requested key does not exist.
+  virtual StatusOr<std::string> TryGetKeyValue(const std::string& key) = 0;
+
+  // Get all values under a directory (key).
+  // A value is considered to be in the directory if its key is prefixed with
+  // the directory.
+  // This is not a blocking call.
+  // Agent does not need to be connected to utilize the distributed key-value
+  // store.
+  virtual StatusOr<std::vector<KeyValueEntry>> GetKeyValueDir(
+      const std::string& key) = 0;
+  virtual void GetKeyValueDirAsync(const std::string& key,
+                                   StatusOrValueDirCallback done) = 0;
 
   // Insert config key-value to the service.
   //   - errors::AlreadyExists: key is already set.
@@ -176,9 +202,7 @@ class CoordinationServiceAgent {
   // Blocks until all (or a subset of) tasks are at the barrier or the barrier
   // fails.
   //
-  // `barrier_id` should be unique across barriers. Once the barrier has passed
-  // or failed, subsequent calls will not block, and immediately respond with
-  // the previous response.
+  // `barrier_id` should be unique across barriers.
   //
   // The first WaitAtBarrier() call received by the service for a particular
   // barrier_id is special in that it determines the barrier deadline based on
@@ -205,7 +229,8 @@ class CoordinationServiceAgent {
   //       for the same barrier, (2) one of the participating tasks is not in
   //       the cluster, or (3) task making the request is not included in the
   //       list of participating tasks.
-  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state.
+  //   - FailedPrecondition: Agent is in UNINITIALIZED or ERROR state. Or the
+  //       same barrier_id was already used previously.
   virtual Status WaitAtBarrier(const std::string& barrier_id,
                                absl::Duration timeout,
                                const std::vector<CoordinatedTask>& tasks) = 0;
@@ -220,8 +245,12 @@ class CoordinationServiceAgent {
   // CANCELLED error status.
   // Possible service errors:
   //   - FailedPrecondition: Barrier has already been passed.
-  //   - NotFound: No barrier with the specified id is found.
   virtual Status CancelBarrier(const std::string& barrier_id) = 0;
+  virtual void CancelBarrierAsync(const std::string& barrier_id,
+                                  StatusCallback done) = 0;
+
+  // Get unowned Env* that the agent was initialized with.
+  virtual StatusOr<tsl::Env*> GetEnv() = 0;
 
  protected:
   // Set the service agent to error status and invoke the error callback.

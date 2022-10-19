@@ -91,14 +91,17 @@ uint64 IdleTimePs(const OpMetricsDb& db) {
   return db.total_time_ps() - db.total_op_time_ps();
 }
 
+void SetIdleOp(uint64_t idle_time_ps, OpMetrics& metrics) {
+  metrics.set_name(std::string(kIdle));
+  metrics.set_category(std::string(kIdle));
+  metrics.set_occurrences(0);
+  metrics.set_time_ps(idle_time_ps);
+  metrics.set_self_time_ps(idle_time_ps);
+}
+
 void AddIdleOp(OpMetricsDb& db) {
   uint64 idle_time_ps = IdleTimePs(db);
-  OpMetrics* metrics = db.add_metrics_db();
-  metrics->set_name(std::string(kIdle));
-  metrics->set_category(std::string(kIdle));
-  metrics->set_occurrences(0);
-  metrics->set_time_ps(idle_time_ps);
-  metrics->set_self_time_ps(idle_time_ps);
+  SetIdleOp(idle_time_ps, *db.add_metrics_db());
 }
 
 absl::optional<double> HostInfeedEnqueueRatio(const OpMetricsDb& db) {

@@ -41,7 +41,7 @@ class TestHttpRequest : public HttpRequest {
   void SetDeleteRequest() override {}
 
   Status SetPutFromFile(const string& body_filepath, size_t offset) override {
-    return Status::OK();
+    return OkStatus();
   }
   void SetPutEmptyBody() override {}
   void SetPostFromBuffer(const char* buffer, size_t size) override {}
@@ -52,7 +52,7 @@ class TestHttpRequest : public HttpRequest {
 
   string GetResponseHeader(const string& name) const override { return ""; }
   uint64 GetResponseCode() const override { return 0; }
-  Status Send() override { return Status::OK(); }
+  Status Send() override { return OkStatus(); }
   string EscapeString(const string& str) override { return ""; }
 
   void SetTimeouts(uint32 connection, uint32 inactivity,

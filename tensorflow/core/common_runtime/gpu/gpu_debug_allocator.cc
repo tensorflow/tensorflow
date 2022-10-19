@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 #define MASK_WORDS 2
 #define MASK_BYTES (MASK_WORDS * sizeof(int64_t))
@@ -76,11 +76,11 @@ void InitMask(se::StreamExecutor* exec, void* ptr, int64_t* mask) {
 // GPUDebugAllocator
 // -----------------------------------------------------------------------------
 GPUDebugAllocator::GPUDebugAllocator(Allocator* allocator,
-                                     PlatformDeviceId platform_device_id)
+                                     tsl::PlatformDeviceId platform_device_id)
     : base_allocator_(allocator) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
 }
 
 GPUDebugAllocator::~GPUDebugAllocator() { delete base_allocator_; }
@@ -154,12 +154,12 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
 // -----------------------------------------------------------------------------
 // GPUNanResetAllocator
 // -----------------------------------------------------------------------------
-GPUNanResetAllocator::GPUNanResetAllocator(Allocator* allocator,
-                                           PlatformDeviceId platform_device_id)
+GPUNanResetAllocator::GPUNanResetAllocator(
+    Allocator* allocator, tsl::PlatformDeviceId platform_device_id)
     : base_allocator_(allocator) {
   stream_exec_ = DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
                                                            platform_device_id)
-                     .ValueOrDie();
+                     .value();
 }
 
 GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }

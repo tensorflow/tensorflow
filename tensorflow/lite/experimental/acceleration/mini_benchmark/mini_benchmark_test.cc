@@ -89,6 +89,15 @@ class MiniBenchmarkTest : public ::testing::Test {
       (void)unlink((paths->storage_file_path() + ".extra.fb").c_str());
     }
     paths->set_data_directory_path(::testing::TempDir());
+
+    if (delegate != proto::Delegate::NONE) {
+      // Some of the tests rely on XNNPack beating CPU - need to not apply
+      // XNNPack for the CPU variant for the tests to pass.
+      proto::TFLiteSettings* cpu_tflite_settings =
+          settings.add_settings_to_test();
+      cpu_tflite_settings->set_disable_default_delegates(false);
+    }
+
     settings_ = ConvertFromProto(settings, &settings_buffer_);
 
     mb_ = CreateMiniBenchmark(*settings_, ns_, model_id_);
@@ -159,14 +168,16 @@ TEST_F(MiniBenchmarkTest, RunSuccessfully) {
   mb_->MarkAndGetEventsToLog();
 
   const ComputeSettingsT acceleration1 = mb_->GetBestAcceleration();
-  EXPECT_NE(nullptr, acceleration1.tflite_settings);
 
   // The 2nd call should return the same acceleration settings.
   const ComputeSettingsT acceleration2 = mb_->GetBestAcceleration();
   EXPECT_EQ(acceleration1, acceleration2);
+#ifndef ADDRESS_SANITIZER  // XNNPack is slower under Asan.
   // As we choose mobilenet-v1 float model, XNNPACK delegate should be the best
   // on CPU.
+  ASSERT_NE(nullptr, acceleration1.tflite_settings);
   EXPECT_EQ(tflite::Delegate_XNNPACK, acceleration1.tflite_settings->delegate);
+#endif  // !ADDRESS_SANITIZER
 
   EXPECT_EQ(model_id_, acceleration1.model_identifier_for_statistics);
   EXPECT_EQ(ns_, acceleration1.model_namespace_for_statistics);
@@ -177,8 +188,10 @@ TEST_F(MiniBenchmarkTest, RunSuccessfully) {
   EXPECT_EQ(1, events.size());
   const auto& decision = events.front().best_acceleration_decision;
   EXPECT_NE(nullptr, decision);
+#ifndef ADDRESS_SANITIZER  // XNNPack is slower under Asan.
   EXPECT_EQ(tflite::Delegate_XNNPACK,
             decision->min_latency_event->tflite_settings->delegate);
+#endif  // !ADDRESS_SANITIZER
 }
 
 TEST_F(MiniBenchmarkTest, BestAccelerationEventIsMarkedLoggedAfterRestart) {
@@ -200,10 +213,14 @@ TEST_F(MiniBenchmarkTest, BestAccelerationEventIsMarkedLoggedAfterRestart) {
   // As all acceleration tests have completed before, we expect no remaining
   // tests to be performed.
   EXPECT_EQ(0, mb_->NumRemainingAccelerationTests());
+
   const ComputeSettingsT acceleration = mb_->GetBestAcceleration();
+#ifndef ADDRESS_SANITIZER  // XNNPack is slower under Asan.
+  ASSERT_NE(nullptr, acceleration.tflite_settings);
   // As we choose mobilenet-v1 float model, XNNPACK delegate should be the best
   // on CPU.
   EXPECT_EQ(tflite::Delegate_XNNPACK, acceleration.tflite_settings->delegate);
+#endif  // !ADDRESS_SANITIZER
   EXPECT_EQ(model_id_, acceleration.model_identifier_for_statistics);
   EXPECT_EQ(ns_, acceleration.model_namespace_for_statistics);
 
@@ -277,6 +294,7 @@ TEST_F(MiniBenchmarkTest, DelegatePluginNotSupported) {
   EXPECT_TRUE(is_found);
 }
 
+#ifdef __ANDROID__  // Loading shared libraries only works on Android.
 TEST_F(MiniBenchmarkTest, UseNnApiSl) {
   if (!should_perform_test_) return;
 
@@ -295,6 +313,7 @@ TEST_F(MiniBenchmarkTest, UseNnApiSl) {
 
   EXPECT_TRUE(tflite::acceleration::WasNnApiSlInvoked());
 }
+#endif  // __ANDROID__
 
 }  // namespace
 }  // namespace acceleration

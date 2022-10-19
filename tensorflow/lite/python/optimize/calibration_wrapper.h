@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PYTHON_OPTIMIZE_CALIBRATION_WRAPPER_H_
 #define TENSORFLOW_LITE_PYTHON_OPTIMIZE_CALIBRATION_WRAPPER_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,7 +27,7 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
@@ -64,14 +65,14 @@ class CalibrationWrapper {
   // Allocates the primary subgraph's tensors.
   PyObject* Prepare();
 
-  // Allocates the tensors of the the given signature, defined by the signature
+  // Allocates the tensors of the given signature, defined by the signature
   // key.
   PyObject* Prepare(std::string signature_key);
 
   // Allocates the primary subgraph's tensors with the given input shapes.
   PyObject* Prepare(PyObject* input_shapes);
 
-  // Allocates the tensors of the the given signature with the given input
+  // Allocates the tensors of the given signature with the given input
   // shapes, defined by the signature key.
   PyObject* Prepare(PyObject* input_shapes, std::string signature_key);
 

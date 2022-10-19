@@ -1,12 +1,7 @@
 # Utilities for signature_defs in TFLite
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "replace_with_portable_tf_lib_when_required")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "replace_with_portable_tf_lib_when_required")
 
 package(
     default_visibility = [
@@ -65,7 +60,6 @@ pybind_extension(
     srcs = [
         "signature_def_util_wrapper_pybind11.cc",
     ],
-    module_name = "_pywrap_signature_def_util_wrapper",
     deps = [
         ":signature_def_util",
         "//tensorflow/lite:framework_lib",

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -99,7 +100,7 @@ Status AddRemoteDevicesToMgr(const std::vector<string>& added_remote_workers,
   }
 
   TF_RETURN_IF_ERROR(remote_device_mgr->AddDevices(std::move(remote_devices)));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetAllRemoteDevices(const std::vector<string>& remote_workers,
@@ -109,7 +110,7 @@ Status GetAllRemoteDevices(const std::vector<string>& remote_workers,
   TF_RETURN_IF_ERROR(AddRemoteDevicesToMgr(remote_workers, worker_cache,
                                            remote_device_mgr.get()));
   *device_mgr = std::move(remote_device_mgr);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status RemoveRemoteDevicesFromMgr(
@@ -127,7 +128,7 @@ Status RemoveRemoteDevicesFromMgr(
     }
   }
   TF_RETURN_IF_ERROR(remote_device_mgr->RemoveDevices(devices_to_remove));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
@@ -136,7 +137,7 @@ Status ListRemoteWorkers(ServerInterface* server, const string& local_worker,
   remote_workers->erase(
       std::remove(remote_workers->begin(), remote_workers->end(), local_worker),
       remote_workers->end());
-  return Status::OK();
+  return OkStatus();
 }
 
 void DifferentiateWorkerLists(const std::vector<string>* current_list,
@@ -207,7 +208,7 @@ Status GetReplacedFromExistingWorkers(
       replaced_workers->emplace_back(existing_workers->at(i));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status CreateRemoteContexts(EagerContext* context,
@@ -387,7 +388,7 @@ Status UpdateRemoteContexts(EagerContext* context,
   for (int i = 0; i < num_remote_workers; i++) {
     TF_RETURN_IF_ERROR(statuses[i]);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status UpdateContextWithServerDef(EagerContext* context,
@@ -638,7 +639,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
   }
 #undef LOG_AND_RETURN_IF_ERROR
 
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 
@@ -725,34 +726,33 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
     }
 
     LOG_AND_RETURN_IF_ERROR(server->Start());
+    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
+        std::move(new_server), server->worker_env()->device_mgr,
+        server->worker_env()->collective_executor_mgr.get()));
 
     if (enable_coordination) {
       // Coordination agent: connect and wait for all tasks
       std::vector<DeviceAttributes> local_devices;
       server->worker_env()->device_mgr->ListDeviceAttributes(&local_devices);
-      CoordinationServiceDeviceInfo devices;
-      *devices.mutable_tf()->mutable_devices() = {
-          std::make_move_iterator(local_devices.begin()),
-          std::make_move_iterator(local_devices.end())};
+      DeviceInfo devices;
+      for (auto& local_device : local_devices) {
+        devices.mutable_device()->Add()->PackFrom(local_device);
+      }
       LOG_AND_RETURN_IF_ERROR(coordination_service_agent_->Connect());
       LOG_AND_RETURN_IF_ERROR(
           coordination_service_agent_->WaitForAllTasks(devices));
 
       // Add remote devices to eager context.
       std::vector<std::unique_ptr<Device>> remote_devices;
-      for (const auto& d :
-           coordination_service_agent_->GetClusterDeviceInfo().tf().devices()) {
+      for (const auto& device :
+           coordination_service_agent_->GetClusterDeviceInfo().device()) {
         // Treat all devices as remote so that EagerContext::remote_device_mgr
         // maintains all the devices, including both local and remote.
+        DeviceAttributes d;
+        device.UnpackTo(&d);
         remote_devices.emplace_back(NewRemoteDevice(context_->TFEnv(), d));
       }
       LOG_AND_RETURN_IF_ERROR(context_->AddDevices(std::move(remote_devices)));
-    }
-
-    LOG_AND_RETURN_IF_ERROR(context_->StoreCollectiveOpsServer(
-        std::move(new_server), server->worker_env()->device_mgr,
-        server->worker_env()->collective_executor_mgr.get()));
-    if (enable_coordination) {
       // Update cluster_flr and remote device list
       eager::EagerClusterFunctionLibraryRuntime* cluster_flr =
           new eager::EagerClusterFunctionLibraryRuntime(
@@ -767,7 +767,7 @@ Status EagerContextDistributedManager::EnableCollectiveOps(
         server->worker_env()->collective_executor_mgr.get()));
   }
 #undef LOG_AND_RETURN_IF_ERROR
-  return Status::OK();
+  return OkStatus();
 }
 
 
@@ -800,7 +800,7 @@ Status EagerContextDistributedManager::CheckRemoteAlive(
     LOG(INFO) << "Remote worker " << remote_task_name
               << " is not alive: " << remote_status.error_message();
   }
-  return Status::OK();
+  return OkStatus();
 }
 #endif  // !IS_MOBILE_PLATFORM
 }  // namespace tensorflow

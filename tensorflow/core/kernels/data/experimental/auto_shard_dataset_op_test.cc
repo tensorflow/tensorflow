@@ -13,7 +13,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/common_runtime/forward_type_inference.h"
+#include "tensorflow/core/common_runtime/type_inference.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
@@ -40,7 +40,7 @@ class AutoShardDatasetParams : public DatasetParams {
         num_replicas_(num_replicas),
         index_(index),
         auto_shard_policy_(auto_shard_policy) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -55,7 +55,7 @@ class AutoShardDatasetParams : public DatasetParams {
     input_names->emplace_back(AutoShardDatasetOp::kInputDataset);
     input_names->emplace_back(AutoShardDatasetOp::kNumWorkers);
     input_names->emplace_back(AutoShardDatasetOp::kIndex);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
@@ -66,7 +66,7 @@ class AutoShardDatasetParams : public DatasetParams {
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputTypes, output_dtypes_);
     attr_vector->emplace_back(AutoShardDatasetOp::kOutputShapes,
                               output_shapes_);
-    return Status::OK();
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -221,7 +221,7 @@ static Status type_inference(Graph& graph) {
   graph_ptr->Copy(graph);
   opt_options.graph = &graph_ptr;
   opt_options.flib_def = graph.mutable_flib_def();
-  ForwardTypeInferencePass pass;
+  TypeInferencePass pass;
   return pass.Run(opt_options);
 }
 

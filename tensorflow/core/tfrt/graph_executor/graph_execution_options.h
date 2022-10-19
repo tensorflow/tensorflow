@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTION_OPTIONS_H_
 
+#include <ostream>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -39,6 +41,9 @@ struct GraphExecutionOptions {
   // optimizations like function inlining will be applied.
   bool enable_grappler_function_optimizer = false;
 
+  // Whether to enable TFRT GPU.
+  bool enable_tfrt_gpu = false;
+
   // Runtime configuration. Refer to tensorflow::tfrt_stub::Runtime class for
   // more details. It must not be nullptr;
   const tensorflow::tfrt_stub::Runtime* runtime = nullptr;
@@ -48,6 +53,9 @@ struct GraphExecutionOptions {
 
   tensorflow::TfrtCompileOptions compile_options;
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const GraphExecutionOptions& options);
 
 // Per-request options for graph execution.
 struct GraphExecutionRunOptions {
@@ -60,9 +68,17 @@ struct GraphExecutionRunOptions {
   // will be raised upon mismatch.
   bool validate_input_specs = false;
 
+  // TODO(b/239749833) Remove after b/239749833 is fixed.
+  // If true, the input specs will be checked before running, and an error
+  // will be logged upon mismatch.
+  bool validate_input_specs_dry_run = false;
+
   // The thread pool used for this run. If it is nullptr, a default one set
   // in the tensorflow::tfrt_stub::Runtime will be used.
   tensorflow::tfrt_stub::WorkQueueInterface* work_queue = nullptr;
+
+  // If true, the cost of the op will be measured at the execution time.
+  bool enable_cost_measurement = false;
 };
 
 // Creates the default `SessionOptions` from a `GraphExecutionOptions`.

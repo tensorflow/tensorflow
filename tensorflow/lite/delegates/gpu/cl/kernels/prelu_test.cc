@@ -32,11 +32,6 @@ TEST_F(OpenCLOperationTest, PReLUAlpha) {
   ASSERT_TRUE(status.ok()) << status.error_message();
 }
 
-TEST_F(OpenCLOperationTest, PReLUAlphaClip) {
-  auto status = PReLUAlphaClipTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
-}
-
 TEST_F(OpenCLOperationTest, PReLUHWCAlpha) {
   auto status = PReLUHWCAlphaTest(&exec_env_);
   ASSERT_TRUE(status.ok()) << status.error_message();

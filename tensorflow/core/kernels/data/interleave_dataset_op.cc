@@ -73,7 +73,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -89,7 +89,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -120,7 +120,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         this, {{0, input_node}, {2, cycle_length_node}, {3, block_length_node}},
         {{1, other_arguments}},
         {{kFunc, f}, {kTarguments, other_arguments_types_attr}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -165,7 +165,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
             // Produce the subelement as output.
             AdvancePosition();
             *end_of_sequence = false;
-            return Status::OK();
+            return OkStatus();
           }
           // We have reached the end of the current element, so move
           // on to the next element in the cycle.
@@ -191,7 +191,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       }
 
       *end_of_sequence = true;
-      return Status::OK();
+      return OkStatus();
     }
 
     Status SkipInternal(IteratorContext* ctx, int num_to_skip,
@@ -226,7 +226,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           if (num_to_skip == *num_skipped) {
             *end_of_sequence = false;
-            return Status::OK();
+            return OkStatus();
           }
         } else {
           TF_RETURN_IF_ERROR(MoveToNextElement(ctx));
@@ -234,17 +234,15 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       }
 
       *end_of_sequence = true;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
       return model::MakeInterleaveManyNode(
-          std::move(args),
-          {model::MakeParameter(kCycleLength, nullptr,
-                                /*min=*/dataset()->cycle_length_,
-                                /*max=*/dataset()->cycle_length_)});
+          std::move(args), {model::MakeNonTunableParameter(
+                               kCycleLength, dataset()->cycle_length_)});
     }
 
     Status SaveInternal(SerializationContext* ctx,
@@ -262,7 +260,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumOpen), num_open_));
       TF_RETURN_IF_ERROR(SaveCurrentElements(ctx, writer));
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -280,7 +278,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumOpen), &num_open));
       num_open_ = size_t(num_open);
       TF_RETURN_IF_ERROR(RestoreCurrentElements(ctx, reader));
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -304,7 +302,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreCurrentElements(IteratorContext* ctx,
@@ -333,7 +331,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           current_elements_[idx].reset();
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status MoveToNextElement(IteratorContext* ctx)
@@ -353,7 +351,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       } else {
         AdvanceToNextInCycle();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     mutex mu_;

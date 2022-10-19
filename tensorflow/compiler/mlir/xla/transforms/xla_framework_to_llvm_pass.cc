@@ -36,9 +36,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 
 namespace mlir {
 namespace mhlo {
@@ -66,7 +64,7 @@ struct XLABufferToMemOpConversion
         typeConverter->convertType(mem_ref_type.getElementType()),
         mem_ref_type.getMemorySpaceAsInt());
     Value ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.buffer());
+        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.getBuffer());
 
     Value result = this->createMemRefDescriptor(loc, mem_ref_type, ptr, ptr,
                                                 sizes, strides, rewriter);
@@ -77,8 +75,8 @@ struct XLABufferToMemOpConversion
 
 // Convert to the expected function signature and offer unwrapping for each of
 // the original arguments.
-struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
-  using ConvertOpToLLVMPattern<FuncOp>::ConvertOpToLLVMPattern;
+struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
+  using ConvertOpToLLVMPattern<func::FuncOp>::ConvertOpToLLVMPattern;
 
   Value LoadValue(ConversionPatternRewriter &rewriter, Location loc,
                   Value pointer, Value index) const {
@@ -91,7 +89,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
   }
 
   mlir::func::FuncOp convertFuncOpToLLVMFuncOp(
-      FuncOp funcOp, ConversionPatternRewriter &rewriter) const {
+      func::FuncOp funcOp, ConversionPatternRewriter &rewriter) const {
     auto loc = funcOp.getLoc();
 
     // This signature is predetermined by
@@ -204,7 +202,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
   }
 
   LogicalResult matchAndRewrite(
-      FuncOp funcOp, OpAdaptor,
+      func::FuncOp funcOp, OpAdaptor,
       ConversionPatternRewriter &rewriter) const override {
     // Only outline functions that are globally available.
     if (!funcOp->hasAttr("xla_entry")) return failure();
@@ -218,8 +216,12 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<FuncOp> {
   }
 };
 
+#define GEN_PASS_DEF_LEGALIZEXLAFRAMEWORKTOLLVM
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+
 class LegalizeXLAFrameworkToLLVMPass
-    : public LegalizeXLAFrameworkToLLVMBase<LegalizeXLAFrameworkToLLVMPass> {
+    : public impl::LegalizeXLAFrameworkToLLVMBase<
+          LegalizeXLAFrameworkToLLVMPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<func::FuncDialect, LLVM::LLVMDialect,
                     xla_framework::XLAFrameworkDialect>();

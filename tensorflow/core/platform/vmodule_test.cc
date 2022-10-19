@@ -41,8 +41,9 @@ int RealMain(const char* argv0, bool do_vlog) {
     // Also, we call this internal API to simulate what would happen if
     // differently-named translation units attempted to VLOG, so we don't need
     // to create dummy translation unit files.
-    bool ok = internal::LogMessage::VmoduleActivated("vmodule_test.cc", 7) &&
-              internal::LogMessage::VmoduleActivated("shoobadooba.h", 3);
+    bool ok =
+        tsl::internal::LogMessage::VmoduleActivated("vmodule_test.cc", 7) &&
+        tsl::internal::LogMessage::VmoduleActivated("shoobadooba.h", 3);
     if (!ok) {
       fprintf(stderr, "vmodule activated levels not as expected.\n");
       return EXIT_FAILURE;

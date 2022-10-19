@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/gen_op_registration.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 

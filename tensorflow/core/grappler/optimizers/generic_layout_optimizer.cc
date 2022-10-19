@@ -80,8 +80,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     if (!IsConv2D(*node_def) && !IsConv3D(*node_def)) {
       continue;
     }
-    const string& device_name =
-        GetDeviceName(context.virtual_placer.get(), *node_def);
+    const string& device_name = GetDeviceName(*node_def);
     string device_type;
     string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
@@ -144,7 +143,7 @@ Status ExpandLayoutSensitiveOp(TransposeContext* context,
       TF_RETURN_IF_ERROR(transposer->TransposeNode(context, node_view));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ExpandLayoutAgnosticOp(TransposeContext* context,
@@ -165,7 +164,7 @@ Status ExpandLayoutAgnosticOp(TransposeContext* context,
       TF_RETURN_IF_ERROR(transposer->TransposeNode(context, node_view));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 inline bool IsCancellableConstPermTransposeNodePair(
@@ -399,7 +398,7 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
     mutation->RemoveNodeAttr(node, kAttrOutputShape);
     TF_RETURN_IF_ERROR(mutation->Apply());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -455,7 +454,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
       default:
         *output = item.graph;
         VLOG(2) << "No layout conversion will take place for CPU.";
-        return Status::OK();
+        return OkStatus();
     }
   }
 
@@ -473,7 +472,7 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   TF_RETURN_IF_ERROR(EraseOutputShapeAttrs(&context));
 
   *output = context.graph;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace grappler

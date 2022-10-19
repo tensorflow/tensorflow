@@ -24,6 +24,10 @@ namespace gpu {
 
 absl::Status CastTests(TestExecutionEnvironment* env);
 
+absl::Status CastToBoolTests(TestExecutionEnvironment* env);
+
+absl::Status CastFromBoolTests(TestExecutionEnvironment* env);
+
 }  // namespace gpu
 }  // namespace tflite
 

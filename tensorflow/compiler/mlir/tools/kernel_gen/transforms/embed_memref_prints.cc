@@ -16,48 +16,49 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 
 namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
 
-constexpr StringRef kPrintStringFuncName = "print_c_string";
+constexpr StringRef kPrintStringFuncName = "printCString";
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_EMBEDMEMREFPRINTSPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 Operation* EmitMemRefPrint(Location loc, Type element_type, Value arg,
                            OpBuilder* b) {
   StringRef func_name;
   if (element_type.isF32()) {
-    func_name = "print_memref_f32";
+    func_name = "printMemrefF32";
   }
   if (element_type.isF64()) {
-    func_name = "print_memref_f64";
+    func_name = "printMemrefF64";
   }
   if (element_type.isInteger(32)) {
-    func_name = "print_memref_i32";
+    func_name = "printMemrefI32";
   }
   if (element_type.isInteger(64) || element_type.isIndex()) {
-    func_name = "print_memref_i64";
+    func_name = "printMemrefI64";
   }
   assert(!func_name.empty() &&
          "Did not find a print function for the element type");
 
   auto caller_func =
-      b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
+      b->getInsertionBlock()->getParent()->getParentOfType<func::FuncOp>();
   auto func_name_attr = b->getStringAttr(func_name);
 
-  auto callee_func =
-      SymbolTable::lookupNearestSymbolFrom<FuncOp>(caller_func, func_name_attr);
+  auto callee_func = SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(
+      caller_func, func_name_attr);
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
@@ -65,7 +66,8 @@ Operation* EmitMemRefPrint(Location loc, Type element_type, Value arg,
     b->setInsertionPointToStart(module.getBody());
     auto func_type = FunctionType::get(b->getContext(), arg.getType(),
                                        /*results=*/llvm::None);
-    callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
+    callee_func =
+        b->create<func::FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
   return b->create<func::CallOp>(loc, callee_func, arg);
@@ -111,16 +113,16 @@ SmallVector<Value> ExtractValuesToPrint(Operation* op) {
     return {op->getResult(0)};
   }
   if (auto linalg = dyn_cast<linalg::LinalgOp>(op)) {
-    return linalg.getOutputBufferOperands();
+    return linalg.getOutputOperands();
   }
   if (auto loop = dyn_cast<gml_st::LoopOp>(op)) {
-    return loop.outputs();
+    return loop.getOutputs();
   }
   if (auto loop = dyn_cast<scf::ForOp>(op)) {
     return loop.getIterOperands();
   }
   if (auto copy = dyn_cast<memref::CopyOp>(op)) {
-    return {copy.target()};
+    return {copy.getTarget()};
   }
   return {};
 }
@@ -150,10 +152,10 @@ void EmitOperationPrint(Operation* op, OpBuilder* b) {
 
 // The pass inserts printing on every mutation of memrefs.
 struct EmbedMemRefPrintsPass
-    : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
+    : public impl::EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
   void runOnOperation() override {
     ModuleOp module = getOperation();
-    module.walk([&](FuncOp func) {
+    module.walk([&](func::FuncOp func) {
       if (func.isDeclaration()) return;
       Block* body = &func.getBody().front();
 

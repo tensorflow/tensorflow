@@ -83,7 +83,6 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
-    keras_preprocessing \
     tb-nightly \
     matplotlib \
     mock \
@@ -93,7 +92,8 @@ RUN python3 -m pip --no-cache-dir install \
     pandas \
     future \
     portpicker \
-    enum34
+    enum34 \
+    'protobuf < 4'
 
 # Installs bazelisk
 RUN mkdir /bazel && \

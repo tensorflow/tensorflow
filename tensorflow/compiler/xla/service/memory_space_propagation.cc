@@ -17,7 +17,9 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
+StatusOr<bool> MemorySpacePropagation::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
   // Configure bitcasts to define values. Otherwise, if there is only a bitcast
   // between a fusion input and output and these two values are in different
@@ -28,7 +30,8 @@ StatusOr<bool> MemorySpacePropagation::Run(HloModule* module) {
                                                /*bitcast_defines_value=*/true));
   dataflow_analysis_ = std::move(dataflow_analysis);
 
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+  for (HloComputation* computation :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kFusion) {
         // Propagate the operand subshapes.

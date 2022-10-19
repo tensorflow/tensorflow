@@ -154,6 +154,18 @@ struct GPUResources {
   }
 };
 
+struct GenericGPUResourcesWithValue {
+  std::vector<std::pair<std::string, int>> ints;
+  std::vector<std::pair<std::string, float>> floats;
+
+  void AddFloat(const std::string& name, float value) {
+    floats.push_back({name, value});
+  }
+  void AddInt(const std::string& name, int value) {
+    ints.push_back({name, value});
+  }
+};
+
 class GPUObjectDescriptor {
  public:
   GPUObjectDescriptor() = default;

@@ -83,6 +83,10 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     ResultElementTypeFn result_element_type_fn,
     SmallVectorImpl<ShapedTypeComponents>& inferred_return_shapes);
 
+mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
+                                                mlir::Type elementType,
+                                                mlir::Attribute encoding = {});
+
 }  // namespace tfg
 }  // namespace mlir
 

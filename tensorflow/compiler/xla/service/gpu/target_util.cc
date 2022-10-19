@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/IR/MDBuilder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -37,8 +37,8 @@ using absl::StrCat;
 // those device functions.
 struct TargetIntrinsics {
   llvm::Intrinsic::ID nvptx_intrinsic;
-  absl::variant<llvm::Intrinsic::ID,
-                std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
+  std::variant<llvm::Intrinsic::ID,
+               std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>
       amdgpu_intrinsic_or_function;
 };
 
@@ -97,6 +97,10 @@ struct TargetIntrinsics GetIntrinsic(TargetIntrinsicID intrin) {
                                               {b_->getInt32(2)}, {U32}, U64, {},
                                               b_);
               }};
+    }
+    case TargetIntrinsicID::kGroupBarrierId: {
+      return {llvm::Intrinsic::nvvm_bar_warp_sync,
+              llvm::Intrinsic::amdgcn_wave_barrier};
     }
   }
 }
@@ -232,13 +236,13 @@ llvm::CallInst* EmitCallToTargetIntrinsic(
     llvm_intrinsic_id = gpu_intrinsic_id.nvptx_intrinsic;
   } else if (target_triple.getArch() == llvm::Triple::amdgcn) {
     llvm::Intrinsic::ID* llvm_intrinsic_id_ptr =
-        absl::get_if<llvm::Intrinsic::ID>(
+        std::get_if<llvm::Intrinsic::ID>(
             &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
     if (llvm_intrinsic_id_ptr) {
       llvm_intrinsic_id = *llvm_intrinsic_id_ptr;
     } else {
       std::function<llvm::CallInst*(llvm::IRBuilder<>*)>* builder_func =
-          absl::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
+          std::get_if<std::function<llvm::CallInst*(llvm::IRBuilder<>*)>>(
               &gpu_intrinsic_id.amdgpu_intrinsic_or_function);
       return (*builder_func)(b);
     }

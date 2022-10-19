@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/toco/types.pb.h"
 #include "tensorflow/lite/tools/optimize/reduced_precision_support.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 using stream_executor::port::StatusOr;
 
@@ -186,10 +186,10 @@ Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
     tensorflow::OpRegistry::Global()->Register(
         [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
           *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
+          return OkStatus();
         });
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -309,7 +309,7 @@ Status PopulateQuantizationSpecs(
   if (toco_flags.enable_mlir_dynamic_range_quantizer()) {
     quant_specs->enable_mlir_dynamic_range_quantizer = true;
   }
-  return ::tensorflow::Status::OK();
+  return OkStatus();
 }
 
 // Dumps the op graph of the `module` to `filename` in DOT format.
@@ -325,7 +325,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
     return errors::Unknown("Failed to dump Op Graph from MLIR module.");
   }
   output->keep();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ConvertMLIRToTFLiteFlatBuffer(

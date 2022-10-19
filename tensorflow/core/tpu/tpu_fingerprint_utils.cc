@@ -33,7 +33,7 @@ Status FingerprintFunctionLibrary(const FunctionLibraryDefinition& library,
   }
   TF_RET_CHECK(SerializeToStringDeterministic(library_proto, &serialized));
   *fingerprint = TpuCompileInterface::Get()->FingerprintString(serialized);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

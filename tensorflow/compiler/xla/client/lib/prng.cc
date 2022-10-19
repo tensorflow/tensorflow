@@ -18,9 +18,7 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 

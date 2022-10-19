@@ -49,7 +49,7 @@ class DensifyOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_DENSIFY, BuiltinOptions_DensifyOptions,
                  CreateDensifyOptions(builder_).Union());
 
-    resolver_ = absl::make_unique<SingleOpResolver>(
+    resolver_ = std::make_unique<SingleOpResolver>(
         BuiltinOperator_DENSIFY, ops::builtin::Register_DENSIFY(), version);
 
     BuildInterpreter({input.shape}, /*num_threads=*/-1,
