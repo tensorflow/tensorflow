@@ -340,15 +340,15 @@ def _log_sample_num_for_calibration(
     total_num_samples = str(num_samples)
     logging.info('Using representative dataset of size: %s', total_num_samples)
 
-  sample_num = 1
+  sample_num = 0
   for sample in representative_dataset:
+    sample_num += 1
+
     # Log the sample number for every 5 iterations.
     logging.log_every_n(
         logging.DEBUG, 'Running representative sample for calibration: %d / %s',
         5, sample_num, total_num_samples)
     yield sample
-
-    sample_num += 1
 
   logging.info('Running representative samples complete: %d / %s', sample_num,
                total_num_samples)
