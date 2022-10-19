@@ -3049,7 +3049,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                        int& border) {
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
-      n = 0;
+      n = 1;
       d = 1;
       offset = 0;
       border = output - 1;
