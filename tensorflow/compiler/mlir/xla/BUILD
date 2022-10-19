@@ -412,6 +412,19 @@ cc_library(
 )
 
 cc_library(
+    name = "translate_cl_registration",
+    testonly = True,
+    srcs = ["xla_mlir_translate_registration.cc"],
+    deps = [
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
+        "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "location_metadata",
     srcs = ["location_metadata.cc"],
     hdrs = ["location_metadata.h"],
