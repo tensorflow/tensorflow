@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 
+#include <memory>
 #include <utility>
 
 #include "absl/strings/escaping.h"
@@ -1183,12 +1184,10 @@ void PrintOneDimV2(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
 }
 
 template <typename T>
-string SummarizeArray(int64_t limit, int64_t num_elts,
-                      const TensorShape& tensor_shape, const char* data,
-                      const bool print_v2) {
+string SummarizeArrayInternal(int64_t limit, int64_t num_elts,
+                              const TensorShape& tensor_shape, const T* array,
+                              const bool print_v2) {
   string ret;
-  const T* array = reinterpret_cast<const T*>(data);
-
   const gtl::InlinedVector<int64_t, 4> shape = tensor_shape.dim_sizes();
   if (shape.empty()) {
     for (int64_t i = 0; i < limit; ++i) {
@@ -1210,6 +1209,29 @@ string SummarizeArray(int64_t limit, int64_t num_elts,
   }
 
   return ret;
+}
+
+template <typename T>
+string SummarizeArray(int64_t limit, int64_t num_elts,
+                      const TensorShape& tensor_shape, const char* data,
+                      const bool print_v2) {
+  const T* array = reinterpret_cast<const T*>(data);
+  return SummarizeArrayInternal<T>(limit, num_elts, tensor_shape, array,
+                                   print_v2);
+}
+
+template <>
+string SummarizeArray<bool>(int64_t limit, int64_t num_elts,
+                            const TensorShape& tensor_shape, const char* data,
+                            const bool print_v2) {
+  // We first convert all chars to be 0/1 to not get InvalidEnumValue sanitizer
+  // error
+  auto mutable_data = std::unique_ptr<char[]>(new char[num_elts]);
+  for (int64_t i = 0; i < num_elts; ++i)
+    mutable_data.get()[i] = data[i] ? 1 : 0;
+  bool* array = reinterpret_cast<bool*>(mutable_data.get());
+  return SummarizeArrayInternal<bool>(limit, num_elts, tensor_shape, array,
+                                      print_v2);
 }
 }  // namespace
 
