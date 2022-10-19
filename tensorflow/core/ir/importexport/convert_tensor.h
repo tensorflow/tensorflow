@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -59,7 +60,8 @@ void SetTensorShapeProto(ShapeContainerT shape,
                          tensorflow::TensorShapeProto* proto) {
   if (shape.hasRank()) {
     for (int64_t dim : shape.getShape()) {
-      proto->add_dim()->set_size(dim);
+      proto->add_dim()->set_size(
+          mlir::ShapedType::isDynamic(dim) ? tensorflow::kTFDynamicSize : dim);
     }
   } else {
     proto->set_unknown_rank(true);
