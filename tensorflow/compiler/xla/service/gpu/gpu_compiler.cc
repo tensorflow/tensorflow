@@ -92,6 +92,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -748,7 +749,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     });
     pipeline.AddPass<HloPassFix<MoveCopyToUsers>>();
     if (hlo_module->config().debug_options().xla_gpu_normalize_layouts()) {
-      pipeline.AddPass<LayoutNormalization>();
+      pipeline.AddPass<LayoutNormalization>(
+          &NormalizeLayoutForCustomCallConvolution);
     }
     pipeline.AddPass<BroadcastCanonicalizer>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
@@ -763,7 +765,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
                      .VerifyBroadcastDimensionsOrder()
                      .VerifyReshapeIsBitcast(),
                  /*debug_only=*/true);
-
 
   pipeline.AddPass<ReductionDegenerateDimRemover>();
   pipeline.AddPass<ReductionLayoutNormalizer>();
@@ -834,6 +835,18 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   // Clean up new_tuple described above.
   pipeline.AddPass<TupleSimplifier>();
+
+  {
+    // The LayoutAssignment pass may leave behind kCopy instructions which are
+    // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    options.set_enable_conv_operand_swap(false);
+    // "slow" minmax means we propagate nan.
+    options.set_minmax_propagate_nan(
+        !hlo_module->config().debug_options().xla_gpu_enable_fast_min_max());
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+  }
 
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -49,6 +50,9 @@ namespace {
 // unnested reductions only.
 class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
  public:
+  explicit LayoutNormalizationVisitor(
+      const CustomCallTransformer& custom_call_transformer = nullptr)
+      : custom_call_transformer_(custom_call_transformer) {}
   // Default action: ensure local postcondition that any input is always a
   // bitcast from canonical layout for any rewrites of the HLO users.
   //
@@ -200,11 +204,11 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto operand = hlo->mutable_operand(0);
     TF_ASSIGN_OR_RETURN(auto normalized_input, GetNormalizedInput(operand));
     auto normalized_shape = Normalize(s);
-    auto orig_br_dimensions =
+    std::vector<int64_t> orig_br_dimensions =
         NoDegenerateDims(hlo->dimensions(), operand->shape(), s);
-    auto layout_as_permutation = ToTransposeDimensions(
+    std::vector<int64_t> layout_as_permutation = ToTransposeDimensions(
         ShapeUtil::DropDegenerateDimensions(operand->shape()).layout());
-    auto orig_output_layout_as_permutation =
+    std::vector<int64_t> orig_output_layout_as_permutation =
         ToTransposeDimensions(ShapeUtil::DropDegenerateDimensions(s).layout());
     std::vector<int64_t> br_dimensions;
     if (!hlo->dimensions().empty()) {
@@ -479,6 +483,19 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  Status HandleCustomCall(HloInstruction* hlo) override {
+    if (custom_call_transformer_) {
+      TF_ASSIGN_OR_RETURN(
+          std::optional<HloInstruction*> transformed_custom_call,
+          custom_call_transformer_(Cast<HloCustomCallInstruction>(hlo)));
+      if (transformed_custom_call) {
+        TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, *transformed_custom_call));
+        return OkStatus();
+      }
+    }
+    return DefaultAction(hlo);
+  }
+
  private:
   bool IsZeroPadding(const PaddingConfig::PaddingConfigDimension& c) {
     return c.edge_padding_high() == 0 && c.edge_padding_low() == 0 &&
@@ -567,6 +584,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return ShapeUtil::DropDegenerateDimensions(
         ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(s));
   }
+
+  CustomCallTransformer custom_call_transformer_;
 };
 
 }  // end namespace
@@ -574,7 +593,8 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 StatusOr<bool> LayoutNormalization::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  return LayoutNormalizationVisitor{}.RunOnModule(module, execution_threads);
+  return LayoutNormalizationVisitor{custom_call_transformer_}.RunOnModule(
+      module, execution_threads);
 }
 
 }  // end namespace xla
