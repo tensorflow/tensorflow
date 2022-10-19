@@ -1660,8 +1660,28 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
               src_strategies, ins->shape(), instruction_id,
               /* have_memory_cost= */ true, leaf_strategies, cluster_env,
               trimmed_strategy_map);
+        } else if (ins->has_sharding()) {
+          strategies = CreateLeafStrategyVector(instruction_id, ins,
+                                                strategy_map, leaf_strategies);
+        } else if (OutputInputSameShapes(ins)) {
+          auto* partitioner =
+              GetCustomCallPartitioner(ins->custom_call_target());
+          if (partitioner && partitioner->IsCustomCallShardable(ins)) {
+            // Follows operand 0's strategies if this custom-call op is
+            // shardable and has the same input and output sizes.
+            const HloInstruction* operand = ins->operand(0);
+            const StrategyVector* src_strategies =
+                strategy_map.at(operand).get();
+            strategies = MaybeFollowInsStrategyVector(
+                src_strategies, ins->shape(), instruction_id,
+                /* have_memory_cost= */ true, leaf_strategies, cluster_env,
+                trimmed_strategy_map);
+          }
         } else {
-          LOG(FATAL) << "Unknown CustomCall instruction: " + ins->name();
+          strategies = CreateLeafStrategyVector(instruction_id, ins,
+                                                strategy_map, leaf_strategies);
+          AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
+                                strategies, replicated_penalty);
         }
         break;
       }

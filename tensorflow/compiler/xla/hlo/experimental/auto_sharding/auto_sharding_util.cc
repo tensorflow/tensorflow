@@ -933,6 +933,7 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
       RemoveDuplicatedStrategy(child);
     }
   } else if (!strategies->following) {
+    if (strategies->leaf_vector.empty()) return;
     std::vector<ShardingStrategy> new_vector;
     std::vector<ShardingStrategy> deduped_replicated_strategies;
     absl::flat_hash_set<std::string> added;
@@ -2691,6 +2692,15 @@ std::vector<std::vector<int64_t>> DecomposeMeshShapes(
     partial_mesh_shapes.push_back(partial_mesh_shape);
   }
   return partial_mesh_shapes;
+}
+
+bool OutputInputSameShapes(const HloInstruction* ins) {
+  for (auto op : ins->operands()) {
+    if (ins->shape() != op->shape()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace spmd
