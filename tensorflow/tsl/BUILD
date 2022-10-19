@@ -1,6 +1,6 @@
 load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_setting")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # Config setting to use in select()s to distinguish open source build from
@@ -45,6 +45,38 @@ config_setting(
     name = "framework_shared_object",
     define_values = {"framework_shared_object": "true"},
     visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_x86_64_with_framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64_with_framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "macos_with_framework_shared_object",
+    match_any = [
+        ":macos_x86_64_with_framework_shared_object",
+        ":macos_arm64_with_framework_shared_object",
+    ],
 )
 
 # This should be removed after Tensorflow moves to cc_shared_library
@@ -218,6 +250,18 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_s390x",
+    values = {"cpu": "s390x"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios_x86_64",
     flag_values = if_google(
         {"//tools/cpp:cc_target_os": "apple"},
@@ -322,6 +366,33 @@ config_setting(
     values = {
         "cpu": "x86_64",
     },
+    visibility = ["//visibility:public"],
+)
+
+# This flag enables experimental TPU support
+bool_flag(
+    name = "enable_tpu_support",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "with_tpu_support_define",
+    define_values = {"with_tpu_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_tpu_support_flag",
+    flag_values = {":enable_tpu_support": "True"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "with_tpu_support",
+    match_any = [
+        ":with_tpu_support_define",
+        ":with_tpu_support_flag",
+    ],
     visibility = ["//visibility:public"],
 )
 

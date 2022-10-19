@@ -6,7 +6,6 @@ load(
     _if_llvm_system_z_available = "if_llvm_system_z_available",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
-    _tf_additional_binary_deps = "tf_additional_binary_deps",
     _tf_additional_core_deps = "tf_additional_core_deps",
     _tf_additional_device_tracer_srcs = "tf_additional_device_tracer_srcs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
@@ -15,7 +14,6 @@ load(
     _tf_additional_tensor_coding_deps = "tf_additional_tensor_coding_deps",
     _tf_additional_test_deps = "tf_additional_test_deps",
     _tf_cuda_libdevice_path_deps = "tf_cuda_libdevice_path_deps",
-    _tf_dtensor_tpu_dependencies = "tf_dtensor_tpu_dependencies",
     _tf_fingerprint_deps = "tf_fingerprint_deps",
     _tf_google_mobile_srcs_no_runtime = "tf_google_mobile_srcs_no_runtime",
     _tf_google_mobile_srcs_only_runtime = "tf_google_mobile_srcs_only_runtime",
@@ -42,8 +40,13 @@ load(
     _tf_resource_deps = "tf_resource_deps",
     _tf_stream_executor_deps = "tf_stream_executor_deps",
     _tf_testing_deps = "tf_testing_deps",
-    _tf_tpu_dependencies = "tf_tpu_dependencies",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
+)
+load(
+    "//tensorflow/core/platform:build_config.default.bzl",
+    _tf_additional_binary_deps = "tf_additional_binary_deps",
+    _tf_dtensor_tpu_dependencies = "tf_dtensor_tpu_dependencies",
+    _tf_tpu_dependencies = "tf_tpu_dependencies",
 )
 
 if_llvm_aarch64_available = _if_llvm_aarch64_available
