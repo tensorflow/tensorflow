@@ -1860,7 +1860,6 @@ cc_library(
     hdrs = ["utils/convert_tensor.h"],
     deps = [
         ":convert_type",
-        ":dynamic_shape_utils",
         ":mangling_util",
         ":tensorflow_attributes",
         ":tensorflow_types",

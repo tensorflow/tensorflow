@@ -164,8 +164,7 @@ void ConvertToMlirShape(const TensorShape& input_shape,
                         llvm::SmallVectorImpl<int64_t>* shape) {
   shape->reserve(input_shape.dims());
   for (const auto& d : input_shape) {
-    shape->push_back(d.size == kTFDynamicSize ? ShapedType::kDynamicSize
-                                              : d.size);
+    shape->push_back(d.size);
   }
 }
 
@@ -177,8 +176,7 @@ Status ConvertToMlirShape(const TensorShapeProto& input_shape,
     if (d.size() > std::numeric_limits<int64_t>::max()) {
       return errors::InvalidArgument("Shape element overflows");
     }
-    shape->push_back(d.size() == kTFDynamicSize ? ShapedType::kDynamicSize
-                                                : d.size());
+    shape->push_back(d.size());
   }
   return OkStatus();
 }

@@ -27,13 +27,11 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -238,8 +236,7 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
 void ConvertToTensorShapeProto(ArrayRef<int64_t> shape,
                                TensorShapeProto* output_shape) {
   for (auto d : shape) {
-    output_shape->add_dim()->set_size(ShapedType::isDynamic(d) ? kTFDynamicSize
-                                                               : d);
+    output_shape->add_dim()->set_size(d);
   }
 }
 
@@ -266,12 +263,7 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   }
 
   if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
-    llvm::SmallVector<int64_t, 4> shape;
-    for (int64_t d : tensor_type.getShape()) {
-      shape.push_back(ShapedType::isDynamic(d) ? kTFDynamicSize : d);
-    }
-    return mlir::TF::ShapeAttr::get(type.getContext(),
-                                    llvm::makeArrayRef(shape));
+    return mlir::TF::ShapeAttr::get(type.getContext(), tensor_type.getShape());
   }
 
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
@@ -288,8 +280,7 @@ StatusOr<mlir::Attribute> ConvertTensorShapeProto(const TensorShapeProto& shape,
   llvm::SmallVector<int64_t, 4> dims;
   dims.reserve(shape.dim().size());
   for (const auto& dim : shape.dim()) {
-    dims.push_back(dim.size() == kTFDynamicSize ? ShapedType::kDynamicSize
-                                                : dim.size());
+    dims.push_back(dim.size());
   }
   return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(dims));
 }

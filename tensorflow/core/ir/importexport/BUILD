@@ -86,7 +86,6 @@ cc_library(
     deps = [
         ":convert_types",
         ":mangling",
-        "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_proto_parsing",
