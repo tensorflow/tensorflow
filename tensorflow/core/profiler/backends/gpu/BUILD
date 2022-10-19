@@ -228,6 +228,7 @@ tf_cuda_library(
     copts = tf_profiler_copts() + tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/xla/stream_executor/rocm:roctracer_wrapper",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
         "//tensorflow/core/profiler/utils:time_utils",
