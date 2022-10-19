@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 
 namespace mlir {
 namespace gml_st {
@@ -35,7 +36,7 @@ struct ExternalLinalgOpTilingInterface
           ExternalLinalgOpTilingInterface<LinalgOpTy>, LinalgOpTy> {
   /// Return the destination operands.
   SmallVector<Value> getDestinationOperands(Operation *op, OpBuilder &) const {
-    return cast<linalg::DestinationStyleOpInterface>(op).getOutputOperands();
+    return cast<DestinationStyleOpInterface>(op).getOutputOperands();
   }
 
   /// Return the loop iterator type.

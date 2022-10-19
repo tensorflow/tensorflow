@@ -39,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 
 namespace mlir {
 namespace {
@@ -48,7 +49,7 @@ namespace {
 //===----------------------------------------------------------------------===//
 
 LogicalResult verifyDestinationStyleOp(Operation *op) {
-  auto dstStyleOp = cast<linalg::DestinationStyleOpInterface>(*op);
+  auto dstStyleOp = cast<DestinationStyleOpInterface>(*op);
   if (dstStyleOp.hasBufferSemantics()) return success(op->getNumResults() == 0);
 
   if (!dstStyleOp.hasTensorSemantics())
@@ -799,8 +800,7 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   Value init = this->getInit();
   Value initSlice = getFullSpace(b, loc, init);
 
-  auto dpsInterface =
-      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
   return dpsInterface.clone(b, loc, TypeRange{initSlice.getType()},
                             ValueRange{indicesSlice, updateSlice, initSlice});
 }
@@ -1461,8 +1461,7 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
         b.create<gml_st::MaterializeOp>(loc, init, tile));
   }
 
-  auto dpsInterface =
-      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
   return dpsInterface.clone(b, loc, tiledResultTypes, tiledInputsAndInits);
 }
 
