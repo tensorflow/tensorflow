@@ -1664,7 +1664,6 @@ filegroup(
         "png.h",
         "protobuf_internal.h",
         "random.h",
-        "subprocess.h",
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",

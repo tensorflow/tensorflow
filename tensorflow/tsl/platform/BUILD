@@ -552,7 +552,6 @@ filegroup(
         "png.h",
         "random.cc",
         "random.h",
-        "subprocess.h",
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
