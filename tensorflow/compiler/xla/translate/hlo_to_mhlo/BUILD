@@ -95,7 +95,7 @@ tf_cc_test(
         ":hlo_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
