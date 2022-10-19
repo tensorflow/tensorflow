@@ -1905,13 +1905,6 @@ func.func @testRelu6WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 
 
 // -----
 
-func.func @testRelu0To1WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>> {
-  %0 = "tfl.relu_0_to_1"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 1.0>>
-  func.return %0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
-}
-
-// -----
-
 func.func @testReluWithDifferentScales(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 4.0>> {
   %0 = "tfl.relu"(%arg0) : (tensor<10x!quant.uniform<u8:f32, 1.0>>) -> tensor<10x!quant.uniform<u8:f32, 2.0>>
   %1 = "tfl.relu_n1_to_1"(%0) : (tensor<10x!quant.uniform<u8:f32, 2.0>>) -> tensor<10x!quant.uniform<u8:f32, 3.0>>
