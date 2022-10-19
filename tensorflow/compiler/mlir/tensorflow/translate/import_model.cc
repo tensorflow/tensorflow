@@ -145,6 +145,9 @@ using mlir::NamedAttrList;
 using mlir::TensorType;
 using mlir::tf_saved_model::AssetOp;
 using mlir::tf_saved_model::GlobalTensorOp;
+using mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
+using mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
 using mlir::tf_saved_model::SessionInitializerOp;
 using stream_executor::port::StatusOr;
 
@@ -3737,9 +3740,13 @@ class SavedModelSignatureDefImporterLite {
     mlir::tf_saved_model::AssetOp op;
   };
   StatusOr<std::vector<AssetInfo>> ConvertAssets();
+
   // Converts the initialization graph in the SavedModel to an MLIR function.
+  // Attaches `tf_saved_model.initializer_type` attribute with value
+  // `initializer_type` to the created function.
   Status ConvertInitializer(const std::string& target_node_name,
-                            const std::vector<AssetInfo>& assets);
+                            const std::vector<AssetInfo>& assets,
+                            llvm::StringRef initializer_type);
 
   // Converts a graph with feeds and fetches to an MLIR function.
   StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraph(
@@ -3841,7 +3848,8 @@ Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
 }
 
 Status SavedModelSignatureDefImporterLite::ConvertInitializer(
-    const std::string& target_node_name, const std::vector<AssetInfo>& assets) {
+    const std::string& target_node_name, const std::vector<AssetInfo>& assets,
+    llvm::StringRef initializer_type) {
   std::vector<std::pair<std::string, TensorInfo>> inputs;
   inputs.reserve(assets.size());
   for (const auto& asset : assets) {
@@ -3880,6 +3888,8 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
       "tf_saved_model.exported_names",
       builder.getStrArrayAttr({absl::StrCat(
           "__tf_saved_model_session_initializer_", target_node_name)}));
+  init_func_op->setAttr(kTfSavedModelInitializerTypeAttr,
+                        builder.getStringAttr(initializer_type));
 
   // Move the converted functions to top level MLIR module.
   return MoveConvertedFunctionsToModule(target_node_name, *sub_module,
@@ -4073,8 +4083,8 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
 
     const auto& restore_op_name =
         input_.meta_graph_def().saver_def().restore_op_name();
-    TF_RETURN_IF_ERROR(
-        ConvertInitializer(restore_op_name, variable_and_assets));
+    TF_RETURN_IF_ERROR(ConvertInitializer(restore_op_name, variable_and_assets,
+                                          kTfSavedModelInitializerRestoreType));
     init_sym_refs.push_back(
         mlir::SymbolRefAttr::get(builder.getContext(), restore_op_name));
   }
@@ -4083,7 +4093,8 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
   TF_RETURN_IF_ERROR(
       internal::GetInitOp("", input_.meta_graph_def(), &init_op_name));
   if (!init_op_name.empty()) {
-    TF_RETURN_IF_ERROR(ConvertInitializer(init_op_name, assets));
+    TF_RETURN_IF_ERROR(ConvertInitializer(init_op_name, assets,
+                                          kTfSavedModelInitializerInitType));
     init_sym_refs.push_back(
         mlir::SymbolRefAttr::get(builder.getContext(), init_op_name));
   }
