@@ -123,6 +123,9 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
     ADD_LAYER(REDUCE)
     ADD_LAYER(TOPK)
     ADD_LAYER(GATHER)
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    ADD_LAYER(GRID_SAMPLE)
+#endif
     ADD_LAYER(MATRIX_MULTIPLY)
     ADD_LAYER(RAGGED_SOFTMAX)
     ADD_LAYER(CONSTANT)
@@ -142,7 +145,24 @@ const char* LayerTypeToString(nvinfer1::LayerType layer_type) {
 #if IS_TRT_VERSION_GE(8, 0, 0, 0)
     ADD_LAYER(QUANTIZE)
     ADD_LAYER(DEQUANTIZE)
-#else
+#endif
+#if IS_TRT_VERSION_GE(8, 2, 0, 0)
+    ADD_LAYER(CONDITION)
+    ADD_LAYER(CONDITIONAL_INPUT)
+    ADD_LAYER(CONDITIONAL_OUTPUT)
+    ADD_LAYER(SCATTER)
+    ADD_LAYER(EINSUM)
+    ADD_LAYER(ASSERTION)
+#endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    ADD_LAYER(ONE_HOT)
+    ADD_LAYER(NON_ZERO)
+    ADD_LAYER(NMS)
+#endif
+#if IS_TRT_VERSION_GE(8, 6, 0, 0)
+    ADD_LAYER(REVERSE_SEQUENCE)
+#endif
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
     // The TRT IRNNv2Layer has been deprecated in favor of the loop API.
     ADD_LAYER(RNN)
 #endif

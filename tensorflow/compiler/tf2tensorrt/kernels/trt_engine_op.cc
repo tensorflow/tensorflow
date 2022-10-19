@@ -290,6 +290,9 @@ void* GetTensorAddress(const Tensor* tensor_ptr) {
 #if IS_TRT_VERSION_GE(8, 2, 0, 0)
     TYPECASE(DT_BOOL, tensor_ptr);
 #endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    TYPECASE(DT_UINT8, tensor_ptr);
+#endif
     default: {
       LOG(ERROR) << "Unsupported Data type " << DataTypeString(tensor_type);
       return nullptr;
@@ -1304,8 +1307,9 @@ Status TRTEngineOp::AllocateCalibrationResources(
 
     void* device_address = GetTensorAddress(input);
     if (device_address == nullptr) {
-      return errors::InvalidArgument(
-          "Unsupported data type encountered in input ", i);
+      return errors::InvalidArgument("Unsupported data type [",
+                                     DebugString(t.dtype()),
+                                     "] encountered in input ", i);
     }
     cres->device_buffers_.emplace(
         StrCat(IONamePrefixes::kInputPHName, i),

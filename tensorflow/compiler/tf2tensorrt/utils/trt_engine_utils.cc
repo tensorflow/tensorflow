@@ -104,6 +104,11 @@ Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
       buffers[binding_index] = const_cast<bool*>(tensor.flat<bool>().data());
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      buffers[binding_index] = const_cast<uint8*>(tensor.flat<uint8>().data());
+      break;
+#endif
     default:
       return errors::Internal("Unknown TRT data type: ",
                               static_cast<int>(dtype));
