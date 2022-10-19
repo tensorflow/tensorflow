@@ -50,7 +50,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 

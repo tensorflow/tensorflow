@@ -424,18 +424,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "location_metadata",
-    srcs = ["location_metadata.cc"],
-    hdrs = ["location_metadata.h"],
-    deps = [
-        "//tensorflow/compiler/mlir:name_utils",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 tf_cc_binary(
     name = "xla-opt",
     testonly = True,
