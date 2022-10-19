@@ -59,16 +59,19 @@ def TFL_AFEnum_Relu1 : I32EnumAttrCase<"RELU_N1_TO_1", 2>;
 def TFL_AFEnum_Relu6 : I32EnumAttrCase<"RELU6", 3>;
 def TFL_AFEnum_Tanh  : I32EnumAttrCase<"TANH", 4>;
 def TFL_AFEnum_Sign  : I32EnumAttrCase<"SIGN_BIT", 5>;
+def TFL_AFEnum_Relu0To1 : I32EnumAttrCase<"RELU_0_TO_1", 6>;
 
 def TFL_AFAttr : TFL_AnyStrAttrOf<[
       TFL_AFEnum_None.symbol,  TFL_AFEnum_Relu.symbol, TFL_AFEnum_Relu1.symbol,
-      TFL_AFEnum_Relu6.symbol, TFL_AFEnum_Tanh.symbol, TFL_AFEnum_Sign.symbol
+      TFL_AFEnum_Relu6.symbol, TFL_AFEnum_Tanh.symbol, TFL_AFEnum_Sign.symbol,
+      TFL_AFEnum_Relu0To1.symbol
     ]>;
 
 // Predefined constant attributes of activation function
 def TFL_AF_None  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_None.symbol>;
 def TFL_AF_Relu  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu.symbol>;
 def TFL_AF_Relu1 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu1.symbol>;
+def TFL_AF_Relu0To1 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu0To1.symbol>;
 def TFL_AF_Relu6 : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Relu6.symbol>;
 def TFL_AF_Tanh  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Tanh.symbol>;
 def TFL_AF_Sign  : ConstantStrAttr<TFL_AFAttr, TFL_AFEnum_Sign.symbol>;
