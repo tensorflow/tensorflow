@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <optional>
+#include <regex>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -494,8 +495,10 @@ class FusedConv2DOpTest : public OpsTestBase {
       const Tensor& scale_data, const Tensor& offset_data,
       const Tensor& mean_data, const Tensor& variance_data, Tensor* out)>;
 
-  // Checks if it is a GPU test not a CPU test
-  static bool HasGpuDevice() {
+  // Checks if there is a GPU and if all GPUs support a minimum compute
+  // capability
+  static bool HasGpuDevice(
+      const std::pair<int, int>& min_cuda_compute_capability = {0, 0}) {
     tensorflow::SessionOptions session_options;
     std::unique_ptr<tensorflow::Session> session(
         tensorflow::NewSession(session_options));
@@ -509,7 +512,30 @@ class FusedConv2DOpTest : public OpsTestBase {
           return device.device_type() == DEVICE_GPU;
         });
 
-    return has_gpu_device;
+    if (!has_gpu_device) return false;  // No GPU
+    if (min_cuda_compute_capability.first == 0 &&
+        min_cuda_compute_capability.second == 0)
+      return true;  // No Need to check further
+
+    std::regex compute_regex(".*compute capability: ([0-9]+)\\.([0-9]+)");
+    // Check GPUs for compute capabilities
+    for (const auto& dev_attr : available_devices) {
+      if (dev_attr.device_type() == DEVICE_GPU) {
+        std::smatch compute_match;
+        std::string s = dev_attr.physical_device_desc();
+        if (std::regex_match(s, compute_match, compute_regex)) {
+          int major_ver = std::stoi(compute_match[1].str());
+          int minor_ver = std::stoi(compute_match[2].str());
+          if ((major_ver < min_cuda_compute_capability.first) ||
+              (major_ver == min_cuda_compute_capability.first &&
+               minor_ver < min_cuda_compute_capability.second))
+            return false;  // At least one GPU does not satisfy min compute
+                           // capability
+        } else
+          return false;  // Can't get the GPU's capability
+      }
+    }
+    return true;  // All GPUs satisfy min compute capabilty
   }
 
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
@@ -547,7 +573,10 @@ class FusedConv2DOpTest : public OpsTestBase {
         tensorflow::NewSession(session_options));
 
     // Check if there is an available GPU device.
-    const bool has_gpu_device = HasGpuDevice();
+    // Only CUDA devices with compute capability 6.1 or greater support
+    // fused convolution for int8, so use CPU in these cases also.
+    const bool has_gpu_device =
+        kIsInt8 ? HasGpuDevice({6, 1}) : HasGpuDevice({0, 0});
 
     // Some of the `FusedConv2D` fusion types are implemented only for CPU, and
     // in this test we don't want to compare GPU vs CPU numbers, so place all
@@ -727,7 +756,11 @@ class FusedConv2DOpTest : public OpsTestBase {
     DataType dtype = DataTypeToEnum<T>::v();
 
     // Check if there is an available GPU device.
-    const bool has_gpu_device = HasGpuDevice();
+    // Only CUDA devices with compute capability greater than 6.1 support
+    // fused convolution for int8, so use CPU in these cases also.
+    const bool has_gpu_device =
+        kIsInt8 ? HasGpuDevice({6, 1}) : HasGpuDevice({0, 0});
+
     const bool has_extra_parameters = kIsInt8;
     const bool has_float_bias = kIsInt8;
 
