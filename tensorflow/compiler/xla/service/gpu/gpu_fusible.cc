@@ -167,18 +167,9 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
               IsReductionFromOrToContiguousDimensions(*hero1))) {
     return "MOF-fusion of a transpose and a reduction";
   }
-
-  const Shape& l1 = get_loop_shape(hero1);
-  const Shape& l2 = get_loop_shape(hero2);
-
-  // We accept different shapes provided one element is reduction and the shapes
-  // are trivially reshapable.
-  bool accept_unequal_shape =
-      !l1.IsTuple() && !l2.IsTuple() &&
-      (IsReductionFromOrToContiguousDimensions(*hero1) ||
-       IsReductionFromOrToContiguousDimensions(*hero2));
-  if (!ShapeUtil::EqualIgnoringElementType(l1, l2) &&
-      (!accept_unequal_shape || !ShapeUtil::ReshapeIsBitcast(l1, l2))) {
+  // The elementwise output shapes must be the same (including layout).
+  if (!ShapeUtil::EqualIgnoringElementType(get_loop_shape(hero1),
+                                           get_loop_shape(hero2))) {
     return "different loop shapes";
   }
   return {};
