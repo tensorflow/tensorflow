@@ -2315,7 +2315,7 @@ void CheckHloSharding(const HloInstructionSequence& sequence,
         LOG(INFO) << "Instruction is not fully sharded: (" << size << " GB) "
                   << ins->ToString();
       }
-    } else {
+    } else if (!ins->has_sharding()) {
       LOG(INFO) << "Instruction does not have sharding: " << ins->name();
     }
       for (const auto& op : ins->operands()) {
@@ -2744,7 +2744,11 @@ absl::flat_hash_map<std::string, std::vector<HloSharding>> SaveUserShardings(
     LOG(INFO) << "User shardings that need to be kept (printing only the 1st "
                  "elemenet of tuples): ";
     for (const auto& tmp : preserve_shardings) {
-      LOG(INFO) << tmp.first << ": " << tmp.second.at(0).ToString();
+      std::string sharding;
+      for (const auto& s : tmp.second) {
+        sharding += s.ToString() + ",";
+      }
+      LOG(INFO) << tmp.first << ": " << sharding;
     }
   }
   return preserve_shardings;
@@ -2757,33 +2761,25 @@ void CheckUserShardingPreservation(
         preserve_shardings) {
   for (const auto computation : module->computations()) {
     for (const auto inst : computation->instructions()) {
-      if (preserve_shardings.find(inst->name()) != preserve_shardings.end()) {
+      if (preserve_shardings.find(inst->name()) == preserve_shardings.end()) {
+        continue;
+      }
         if (!inst->has_sharding()) {
           LOG(FATAL) << "User sharding is not preserved! Instruction with name "
                      << inst->name() << " should be: "
                      << preserve_shardings.at(inst->name())[0].ToString()
                      << "\nbut it's empty.";
-        } else if (preserve_shardings.at(inst->name())[0].ToString() !=
-                   inst->sharding().ToString()) {
+        } else if (!inst->sharding().IsTuple() &&
+                   preserve_shardings.at(inst->name())[0].ToString() !=
+                       inst->sharding().ToString()) {
           LOG(FATAL) << "User sharding is not preserved! Instruction with name "
                      << inst->name() << " should be: "
                      << preserve_shardings.at(inst->name())[0].ToString()
                      << "\nbut it's: " << inst->sharding().ToString();
-        }
-      } else if (inst->shape().IsTuple()) {
-        const std::vector<HloSharding>* preserve_shardings_tuple;
-        if (preserve_shardings.find(inst->name()) != preserve_shardings.end()) {
-          preserve_shardings_tuple = &preserve_shardings.at(inst->name());
-        } else {
-          continue;
-        }
-        if (!inst->has_sharding()) {
-          LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
-                        "with name "
-                     << inst->name() << " should be have shardings,"
-                     << " but it's empty.";
-        }
-        for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
+        } else if (inst->sharding().IsTuple()) {
+          const std::vector<HloSharding>* preserve_shardings_tuple =
+              &preserve_shardings.at(inst->name());
+          for (size_t i = 0; i < inst->shape().tuple_shapes_size(); i++) {
           if (preserve_shardings_tuple->at(i).ToString() !=
               inst->sharding().tuple_elements().at(i).ToString()) {
             LOG(FATAL) << "Tuple sharding is not preserved! Instruction "
@@ -2794,8 +2790,8 @@ void CheckUserShardingPreservation(
                        << "\nbut it's: "
                        << inst->sharding().tuple_elements().at(i).ToString();
           }
+          }
         }
-      }
     }
   }
 }
