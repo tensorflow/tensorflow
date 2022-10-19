@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_SECURITY_FUZZING_CC_OPS_FUZZ_SESSION_H_
-#define TENSORFLOW_SECURITY_FUZZING_CC_OPS_FUZZ_SESSION_H_
+#ifndef TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_SESSION_H_
+#define TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_SESSION_H_
 
 #include <cstdint>
 #include <cstdlib>
@@ -171,4 +171,4 @@ class FuzzSession {
 }  // end namespace fuzzing
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_SECURITY_FUZZING_CC_OPS_FUZZ_SESSION_H_
+#endif  // TENSORFLOW_SECURITY_FUZZING_CC_FUZZ_SESSION_H_

@@ -218,3 +218,23 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "fuzz_session",
+    testonly = 1,
+    hdrs = ["fuzz_session.h"],
+    tags = ["no_oss"],
+    visibility = [
+        "//tensorflow/cc/framework/fuzzing:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/platform:status",
+        "@com_google_fuzztest//fuzztest",
+    ],
+)

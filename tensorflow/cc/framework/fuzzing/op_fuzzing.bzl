@@ -112,7 +112,7 @@ def tf_gen_op_wrappers_fuzz(
         srcs = fuzzsrcs,
         deps = deps +
                [
-                   "//tensorflow/security/fuzzing/cc/ops:fuzz_session",
+                   "//tensorflow/security/fuzzing/cc:fuzz_session",
                    "@com_google_googletest//:gtest_main",
                    "@com_google_fuzztest//fuzztest",
                ],

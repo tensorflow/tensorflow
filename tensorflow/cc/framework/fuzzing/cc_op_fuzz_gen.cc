@@ -193,7 +193,7 @@ namespace fuzzing {
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/security/fuzzing/cc/ops/fuzz_session.h"
+#include "tensorflow/security/fuzzing/cc/fuzz_session.h"
 )include",
       fuzz_namespace_begin);
 
