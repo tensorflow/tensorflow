@@ -236,6 +236,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/translate:translate_cl_registration",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:translate_registration",
+        "//tensorflow/compiler/xla/translate/mhlo_to_hlo:translate_registration",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

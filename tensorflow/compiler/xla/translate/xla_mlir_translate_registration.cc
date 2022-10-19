@@ -13,93 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/translate.h"
-#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/translate.h"
 
 namespace {
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> emit_use_tuple_arg(
-    "emit-use-tuple-args",
-    llvm::cl::desc(
-        "Emit HLO modules using tuples as args for the entry computation"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> emit_return_tuple(
-    "emit-return-tuple",
-    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
-    llvm::cl::init(false));
-
 // NOLINTNEXTLINE
 llvm::cl::opt<bool> optimize_xla_hlo(
     "optimize-xla-hlo",
     llvm::cl::desc("Enable optimizations when translating XLA HLO -> LHLO"),
     llvm::cl::init(true));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> legalize_node_names(
-    "legalize-node-names",
-    llvm::cl::desc("Legalize nodes names when translating MHLO->XLA HLO"),
-    llvm::cl::init(true));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> with_layouts(
-    "with-layouts",
-    llvm::cl::desc("Propagate layouts when translating MHLO->XLA HLO"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> print_layouts(
-    "print-layouts", llvm::cl::desc("Print layouts in the generated HLO text"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> via_builder(
-    "via-builder", llvm::cl::desc("Translate MHLO->XLA HLO via XLA Builder"),
-    llvm::cl::init(false));
 }  // namespace
 
 //----------------------------------------------------------------------------//
 // Hooks for tf-mlir-translate
 //----------------------------------------------------------------------------/
-
-static mlir::LogicalResult MlirHloToHloTranslate(mlir::ModuleOp module,
-                                                 llvm::raw_ostream& output) {
-  return xla::MlirHloToHloTranslateFunction(module, output, emit_return_tuple,
-                                            emit_use_tuple_arg);
-}
-
-static mlir::LogicalResult MlirHloToHloTextTranslate(
-    mlir::ModuleOp module, llvm::raw_ostream& output) {
-  return xla::MlirHloToHloTextTranslateFunction(
-      module, output, emit_return_tuple, emit_use_tuple_arg,
-      legalize_node_names, print_layouts, via_builder, with_layouts);
-}
-
-static void RegisterInputDialects(mlir::DialectRegistry& registry) {
-  mlir::mhlo::registerAllMhloDialects(registry);
-  registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
-                  mlir::tensor::TensorDialect>();
-}
-
-static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslateRegistration(
-    "mlir-hlo-to-hlo", "mlir-hlo-to-hlo", MlirHloToHloTranslate,
-    RegisterInputDialects);
-
-static mlir::TranslateFromMLIRRegistration
-    MlirHloToHloTextTranslateRegistration("mlir-hlo-to-hlo-text",
-                                          "mlir-hlo-to-hlo-text",
-                                          MlirHloToHloTextTranslate,
-                                          RegisterInputDialects);
 
 // MHLO doesn't support explicit layouts, while XLA service does.
 // TODO(timshen): remove it once MHLO supports explicit layouts.

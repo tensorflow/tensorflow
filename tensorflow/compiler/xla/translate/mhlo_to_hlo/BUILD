@@ -123,6 +123,22 @@ cc_library(
 )
 
 cc_library(
+    name = "translate_registration",
+    testonly = True,
+    srcs = ["translate_registration.cc"],
+    deps = [
+        ":translate",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "type_to_shape",
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
