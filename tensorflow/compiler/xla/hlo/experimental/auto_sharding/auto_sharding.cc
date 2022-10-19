@@ -1173,18 +1173,18 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
             if (!input_spec.has_value()) {  // invalid reshape
               continue;
             }
-            std::vector<double> resharding_cost = ReshardingCostVector(
-                strategy_map.at(indices).get(), indices->shape(), *input_spec,
-                cluster_env);
-            std::vector<std::vector<double>> resharding_costs{resharding_cost,
-                                                              resharding_cost};
+            std::vector<std::vector<double>> resharding_cost =
+                GenerateReshardingCostsForAllOperands(
+                    ins, output_spec, strategy_map, cluster_env, call_graph,
+                    {input_spec, std::nullopt});
+
             strategies->leaf_vector.push_back(
                 ShardingStrategy({name,
                                   output_spec,
                                   compute_cost,
                                   communication_cost,
                                   memory_cost,
-                                  std::move(resharding_costs),
+                                  std::move(resharding_cost),
                                   {*input_spec}}));
           }
         }
