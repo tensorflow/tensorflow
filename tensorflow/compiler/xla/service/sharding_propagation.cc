@@ -2386,6 +2386,24 @@ bool ShardingPropagation::InferShardingFromOperands(
   return false;
 }  // NOLINT(readability/fn_size)
 
+Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
+  if (!allow_spmd_sharding_propagation_to_output_) {
+    return Status::OK();
+  }
+  if (!module->layout_canonicalization_callback()) {
+    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return Status::OK();
+  }
+  TF_ASSIGN_OR_RETURN(auto layouts,
+                      module->layout_canonicalization_callback()(*module));
+  Shape& result_shape = layouts.second;
+  TF_RETURN_IF_ERROR(module->config()
+                         .mutable_entry_computation_layout()
+                         ->mutable_result_layout()
+                         ->CopyLayoutFromShape(result_shape));
+  return Status::OK();
+}
+
 StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -2730,6 +2748,8 @@ StatusOr<bool> ShardingPropagation::Run(
       }
     }
   }
+
+  TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";
