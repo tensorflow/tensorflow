@@ -447,7 +447,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
       {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   ::testing::HasSubstr(
                       "layout has tiles, but the shape is a sparse array")));
   shape.mutable_layout()->clear_tiles();
@@ -462,7 +462,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));
   shape.mutable_layout()->mutable_physical_shape()->clear_layout();
@@ -470,7 +470,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));
 }

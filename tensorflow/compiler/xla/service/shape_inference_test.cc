@@ -1343,8 +1343,7 @@ TEST_F(ShapeInferenceTest, InferInvalidStride) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {127, 0}, {129, 2}, {0, 1});
   ASSERT_FALSE(inferred_status.ok());
-  ASSERT_EQ(tensorflow::error::INVALID_ARGUMENT,
-            inferred_status.status().code());
+  ASSERT_EQ(tsl::error::INVALID_ARGUMENT, inferred_status.status().code());
 }
 
 TEST_F(ShapeInferenceTest, InferOobSliceShapeRank2) {
@@ -1352,8 +1351,7 @@ TEST_F(ShapeInferenceTest, InferOobSliceShapeRank2) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {127, 0}, {129, 2}, {1, 1});
   ASSERT_FALSE(inferred_status.ok());
-  ASSERT_EQ(tensorflow::error::INVALID_ARGUMENT,
-            inferred_status.status().code());
+  ASSERT_EQ(tsl::error::INVALID_ARGUMENT, inferred_status.status().code());
 }
 
 TEST_F(ShapeInferenceTest, InferSliceShapeRank1) {

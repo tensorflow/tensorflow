@@ -59,6 +59,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
     ],
     alwayslink = True,  # Contains compiler registration
@@ -122,6 +123,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:mutex",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",

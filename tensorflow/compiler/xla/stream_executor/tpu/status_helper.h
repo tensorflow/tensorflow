@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 class StatusHelper {
  public:
@@ -35,7 +36,7 @@ class StatusHelper {
       return ::tsl::OkStatus();
     } else {
       return tsl::Status(  // TENSORFLOW_STATUS_OK
-          tensorflow::error::Code(
+          tsl::error::Code(
               tensorflow::tpu::ExecutorApiFn()->TpuStatus_CodeFn(c_status)),
           tensorflow::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
     }

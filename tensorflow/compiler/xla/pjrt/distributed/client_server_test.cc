@@ -345,7 +345,7 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
       EXPECT_TRUE(tsl::errors::IsInternal(statuses[i]) ||
                   tsl::errors::IsFailedPrecondition(statuses[i]));
     } else {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::ABORTED);
+      EXPECT_EQ(statuses[i].code(), tsl::error::ABORTED);
     }
   }
 }
@@ -435,9 +435,9 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
   }
   for (int i = 0; i < num_nodes; ++i) {
     if (GetParam().use_coordination_service) {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION);
+      EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION);
     } else {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+      EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
           << statuses[i];
     }
   }
@@ -513,7 +513,7 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     }
   }
   for (int i = 0; i < num_nodes - 1; ++i) {
-    EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED);
+    EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED);
   }
 }
 
@@ -581,15 +581,15 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
     if (GetParam().use_coordination_service) {
       // Co-ordination service returns the status of the previous barrier
       // failure without waiting for the thread to time out.
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+      EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
           << " node id: " << i;
     } else {
       if (i == 0) {
-        EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+        EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
             << " node id: " << i;
       }
       if (i == 1) {
-        EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+        EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
             << " node id: " << i;
       }
     }
@@ -625,7 +625,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+    EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
         << " node id: " << i;
   }
 }
@@ -654,7 +654,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+    EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
         << " node id: " << i;
   }
 }

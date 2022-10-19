@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace spmd {
@@ -978,7 +979,7 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
 
   if (shape.dimensions(batch_dim) % device_mesh.dim(mesh_dim) != 0) {
-    return tensorflow::errors::InvalidArgument(
+    return tsl::errors::InvalidArgument(
         "The length of batch dimension is "
         "not divisible by the number of devices");
   }
@@ -1797,7 +1798,7 @@ void RemoveCustomCallMarker(HloModule* module) {
 StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
                                                     int dim) {
   if (dim >= array.num_dimensions()) {
-    return tensorflow::errors::OutOfRange(absl::StrCat(
+    return tsl::errors::OutOfRange(absl::StrCat(
         "Input dim (", dim,
         ") should be smaller than the number of dimensions of array (",
         array.num_dimensions(), ")."));
@@ -1814,13 +1815,13 @@ StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
 // Check whether a sequence is an arithmetic sequence.
 StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence) {
   if (sequence.size() < 2) {
-    return tensorflow::errors::OutOfRange(
+    return tsl::errors::OutOfRange(
         "Invalid device id assignment: sequence.size() < 2");
   }
   int64_t delta = sequence[1] - sequence[0];
   for (int i = 2; i < sequence.size(); ++i) {
     if (sequence[i] - sequence[i - 1] != delta) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           "Invalid device id assignment: sequence[i] - sequence[i - 1] != "
           "delta");
     }

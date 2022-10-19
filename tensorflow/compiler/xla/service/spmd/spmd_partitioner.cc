@@ -75,10 +75,9 @@ std::string SpmdLogger::MakeReport() {
             });
   for (int64_t i = 0;
        i < std::min<int64_t>(report_instruction_count_, entries_.size()); ++i) {
-    absl::StrAppend(
-        &report, "\n  ",
-        tensorflow::strings::HumanReadableNumBytes(entries_[i].first), " : ",
-        entries_[i].second, "\n");
+    absl::StrAppend(&report, "\n  ",
+                    tsl::strings::HumanReadableNumBytes(entries_[i].first),
+                    " : ", entries_[i].second, "\n");
   }
 
   return report;
@@ -166,7 +165,7 @@ template <typename F>
     for (int64_t i = 0;
          i < std::min<int64_t>(report_instruction_count, insts->size()); ++i) {
       absl::StrAppend(&report, "  ",
-                      tensorflow::strings::HumanReadableNumBytes(
+                      tsl::strings::HumanReadableNumBytes(
                           ShapeSizeInBytes((*insts)[i]->shape())),
                       " : ", (*insts)[i]->ToString(), "\n");
     }

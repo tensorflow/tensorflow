@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
@@ -33,7 +34,7 @@ TpuOpExecutable::TpuOpExecutable(const XLA_TpuProgram* core_program,
       core_program_(core_program),
       host_command_handler_(std::move(host_command_handler)) {}
 
-Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
+xla::Status TpuOpExecutable::LoadProgramAndEnqueueToStream(
     const xla::ServiceExecutableRunOptions& run_options,
     absl::Span<const se::DeviceMemoryBase> arguments,
     se::DeviceMemoryBase result,

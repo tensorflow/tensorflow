@@ -106,6 +106,7 @@ cc_library(
         ":tpu_executor_c_api_hdrs",
         "//tensorflow/core/tpu:tpu_api",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -162,6 +163,7 @@ cc_library(
         ":tpu_executor_interface",
         ":tpu_platform_interface",
         ":tpu_stream_interface",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -245,6 +247,7 @@ cc_library(
         ":tpu_stream_interface",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/core/tpu:tpu_api",
@@ -320,6 +323,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/cleanup",
     ],

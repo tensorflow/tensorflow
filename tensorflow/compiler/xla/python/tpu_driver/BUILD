@@ -129,6 +129,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:semaphore",
         "//tensorflow/compiler/xla/pjrt:worker_thread",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core:protos_all_cc",
     ] + tf_grpc_cc_dependencies() + external_deps(),

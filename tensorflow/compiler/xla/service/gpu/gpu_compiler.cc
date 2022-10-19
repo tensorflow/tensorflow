@@ -1276,7 +1276,7 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   // Test whether LinkModules is supported.
   if (this->LinkModules(stream_exec, {}).status().code() ==
-      tensorflow::error::Code::UNIMPLEMENTED) {
+      tsl::error::Code::UNIMPLEMENTED) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
@@ -1413,7 +1413,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     GpuHloCostAnalysis cost_analysis(options);
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     VLOG(1) << "HLO memory read+written: "
-            << tensorflow::strings::HumanReadableNumBytes(
+            << tsl::strings::HumanReadableNumBytes(
                    cost_analysis.bytes_accessed());
     if (module->config().hlo_profiling_enabled()) {
       LOG(ERROR) << "--xla_hlo_profile for GPU is unsupported.";

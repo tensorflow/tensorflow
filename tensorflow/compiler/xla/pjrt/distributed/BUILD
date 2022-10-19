@@ -99,6 +99,7 @@ cc_library(
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",

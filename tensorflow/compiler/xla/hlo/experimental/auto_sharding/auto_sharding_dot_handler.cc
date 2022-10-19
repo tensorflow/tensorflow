@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "tensorflow/compiler/xla/hlo/experimental/auto_sharding/auto_sharding_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace spmd {
@@ -859,7 +860,7 @@ class ConvHandler {
 
   Status RegisterStrategies() {
     if (device_mesh_.num_dimensions() > 2) {
-      return tensorflow::errors::Internal(
+      return tsl::errors::Internal(
           "This function does not support 3D mesh shape with convolution ops "
           "yet.");
     }

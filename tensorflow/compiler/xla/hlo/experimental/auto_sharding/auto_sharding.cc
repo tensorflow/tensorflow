@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/sharding_propagation.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "ortools/linear_solver/linear_solver.h"
 #include "ortools/linear_solver/linear_solver.pb.h"
@@ -2095,11 +2095,11 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     }
     */
 
-    return tensorflow::errors::Internal(
+    return tsl::errors::Internal(
         "MPSolver could not find any feasible solution.");
   }
   if (status != operations_research::MPSolver::OPTIMAL) {
-    return tensorflow::errors::Internal("Solver errors.");
+    return tsl::errors::Internal("Solver errors.");
   }
 
   LOG(INFO) << "Solver Status: " << status

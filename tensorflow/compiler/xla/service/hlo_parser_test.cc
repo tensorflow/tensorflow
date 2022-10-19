@@ -4061,7 +4061,7 @@ ENTRY test {
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   HasSubstr("expected a DimLevelType abbreviation")));
 }
 
@@ -4074,7 +4074,7 @@ ENTRY test {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           HasSubstr("Dimensions size is 2, but dim level types size is 1")));
 }
 
@@ -4086,7 +4086,7 @@ ENTRY test {
 })";
   EXPECT_THAT(ParseAndReturnUnverifiedModule(original).status(),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   HasSubstr("Layout has tiles, but is for a sparse array")));
 }
 
@@ -4099,7 +4099,7 @@ ENTRY test {
   EXPECT_THAT(
       ParseAndReturnUnverifiedModule(original).status(),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           HasSubstr(
               "Layout has physical shape, but is not for a sparse array")));
 }

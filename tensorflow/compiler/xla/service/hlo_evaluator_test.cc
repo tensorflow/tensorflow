@@ -4515,7 +4515,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_NoHandler) {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   auto args = MakeFakeArguments(m_.get()).value();
   EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&args[0]}).status().code(),
-            ::tensorflow::error::UNIMPLEMENTED);
+            ::tsl::error::UNIMPLEMENTED);
 }
 
 // Tests when a custom_call handler returns an error.
@@ -4537,7 +4537,7 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
         return InternalError("Test error");
       });
   EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
-            ::tensorflow::error::INTERNAL);
+            ::tsl::error::INTERNAL);
 }
 
 // Tests the custom_call handler on calls with many inputs.

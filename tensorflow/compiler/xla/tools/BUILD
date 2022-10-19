@@ -91,6 +91,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/tsl/lib/io:record_reader",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:tstring",
         "//tensorflow/tsl/util:command_line_flags",
         "//third_party/eigen3",
         "@com_google_absl//absl/types:span",

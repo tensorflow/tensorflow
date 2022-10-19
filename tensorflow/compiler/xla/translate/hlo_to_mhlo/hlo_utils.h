@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/utils/convert_op_folder.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
@@ -88,7 +89,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
     auto layout = xla_ty.layout();
     if (LayoutUtil::IsSparse(layout)) {
       if (is_dynamic)
-        return tensorflow::errors::Unimplemented(
+        return Unimplemented(
             "MHLO doesn't support bounded dynamic shapes for sparse tensors");
       llvm::SmallVector<mlir::sparse_tensor::DimLevelType> dlts;
       for (auto dlt : layout.dim_level_types()) {
@@ -103,8 +104,7 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
             dlts.push_back(mlir::sparse_tensor::DimLevelType::Singleton);
             break;
           default:
-            return tensorflow::errors::InvalidArgument(
-                "Unknown DimLevelType from HLO");
+            return InvalidArgument("Unknown DimLevelType from HLO");
         }
       }
       auto ordering = layout.minor_to_major();

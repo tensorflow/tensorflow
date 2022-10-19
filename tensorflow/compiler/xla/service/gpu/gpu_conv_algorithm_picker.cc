@@ -213,8 +213,8 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
 }
 
 std::string NumBytesToString(int64_t bytes) {
-  return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
-                      bytes, "B)");
+  return absl::StrCat(tsl::strings::HumanReadableNumBytes(bytes), " (", bytes,
+                      "B)");
 }
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
@@ -602,8 +602,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                  << (*reference_result)->algorithm.ToString() << " against "
                  << alg.ToString() << " for " << instr->ToString() << ": "
                  << compare_result.status();
-      if (compare_result.status().code() ==
-          tensorflow::error::RESOURCE_EXHAUSTED) {
+      if (compare_result.status().code() == tsl::error::RESOURCE_EXHAUSTED) {
         // Possibly OOM. Propagate the error.
         return compare_result.status();
       }

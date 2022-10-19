@@ -77,6 +77,7 @@ cc_library(
     includes = ["include"],
     deps = [
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:convert_op_folder",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",

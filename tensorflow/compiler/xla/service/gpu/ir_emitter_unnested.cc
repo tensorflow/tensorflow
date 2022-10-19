@@ -1740,7 +1740,7 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
       // The emitter doesn't support all cases. If it's not supported, fallback
       // to ElementalIrEmitter.
       auto status = EmitInputFusibleNonStridedSlices(op);
-      if (status.code() == tensorflow::error::FAILED_PRECONDITION) {
+      if (status.code() == tsl::error::FAILED_PRECONDITION) {
         return EmitLoopFusion(op);
       }
       return status;

@@ -261,7 +261,7 @@ XLA_TEST_F(CustomCallTest, ReportsFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 42.0"));
 }
 
@@ -285,7 +285,7 @@ XLA_TEST_F(CustomCallTest, ReportsFirstFailure) {
   module->AddEntryComputation(builder.Build());
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), ::testing::HasSubstr("Failed: 1.0"));
 }
 
@@ -308,7 +308,7 @@ XLA_TEST_F(CustomCallTest, TransitiveCustomCallReportsFirstFailure) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(), HasSubstr("Failed: 1.0"));
 }
 
@@ -327,7 +327,7 @@ XLA_TEST_F(CustomCallTest, FillStatusMsgWithBackendConfigStr) {
                           ParseAndReturnVerifiedModule(kModuleStr));
 
   auto status = Execute(std::move(module), {}).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::INTERNAL);
+  EXPECT_EQ(status.code(), tsl::error::Code::INTERNAL);
   EXPECT_THAT(status.error_message(),
               HasSubstr("Fail with raw backend config str: foo"));
 }

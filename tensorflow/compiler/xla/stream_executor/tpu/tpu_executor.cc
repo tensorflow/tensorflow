@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
@@ -31,7 +32,7 @@ namespace tensorflow {
 namespace tpu {
 
 namespace {
-using ::stream_executor::port::Status;
+using xla::Status;
 }  // namespace
 
 TpuExecutor::~TpuExecutor() {
@@ -107,11 +108,11 @@ bool TpuExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
       get_stream(other->implementation()));
 }
 
-Status TpuExecutor::AllocateEvent(Event* event) { return OkStatus(); }
+Status TpuExecutor::AllocateEvent(Event* event) { return tsl::OkStatus(); }
 
 Status TpuExecutor::DeallocateEvent(Event* event) {
   tpu_platform().EraseEvent(event->implementation());
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 // AllocateTimer/DeallocateTimer have no specialization.
