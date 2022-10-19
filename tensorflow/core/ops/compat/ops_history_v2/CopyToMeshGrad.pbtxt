@@ -1,7 +1,11 @@
 op 	 {
-  name: "CopyToMesh"
+  name: "CopyToMeshGrad"
   input_arg {
     name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "forward_input"
     type_attr: "T"
   }
   output_arg {
@@ -9,8 +13,11 @@ op 	 {
     type_attr: "T"
   }
   attr {
-    name: "layout"
+    name: "reference_layout"
     type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "T"
