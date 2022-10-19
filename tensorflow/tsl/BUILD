@@ -1,6 +1,7 @@
 load("tsl.bzl", "if_google", "if_oss")
 load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_setting")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # Config setting to use in select()s to distinguish open source build from
 # google internal build on configurable attributes.
@@ -26,7 +27,7 @@ alias(
     name = "is_cuda_enabled",
     actual = if_oss(
         "@local_config_cuda//:is_cuda_enabled",
-        "//third_party/gpus/cuda:using_clang",
+        "@local_config_cuda//cuda:using_clang",
     ),
 )
 
@@ -322,4 +323,19 @@ config_setting(
         "cpu": "x86_64",
     },
     visibility = ["//visibility:public"],
+)
+
+bzl_library(
+    name = "tsl_bzl",
+    srcs = ["tsl.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//third_party/compute_library:build_defs_bzl",
+        "//third_party/mkl:build_defs_bzl",
+        "//third_party/mkl_dnn:build_defs_bzl",
+        "@bazel_skylib//lib:new_sets",
+        "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_tensorrt//:build_defs_bzl",
+    ],
 )
