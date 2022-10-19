@@ -119,7 +119,10 @@ package(
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
     ],
-    features = if_google(["-parse_headers"]),
+    features = if_google([
+        "-layering_check",
+        "-parse_headers",
+    ]),
     licenses = ["notice"],
 )
 
