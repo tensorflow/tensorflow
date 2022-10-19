@@ -422,6 +422,12 @@ bool IsOpAllowedTf2XlaFallbackAndCreateFunctions(Operation* op) {
   return ops->count(abstractOp->getTypeID());
 }
 
+bool HasTf2XlaFallback(Operation* op) {
+  return IsOpAllowedTf2XlaFallback(op) ||
+         IsOpAllowedTf2XlaFallbackAndCreateFunctions(op) ||
+         IsOpAllowedTf2XlaPreferred(op);
+}
+
 namespace {
 
 template <typename T, size_t N>
