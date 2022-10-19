@@ -28,18 +28,23 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "lmhlo_to_cpu_runtime.cc",
         "transform_scatter_for_cpu.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:thlo",
         "//tensorflow/compiler/xla/mlir_hlo:tiling_interface_impl",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",

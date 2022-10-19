@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
@@ -135,6 +136,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/mlir_layout_resolution.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -1423,10 +1425,12 @@ StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
   opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
   opts.compiler.register_dialects =
       [](xla::runtime::DialectRegistry& dialects) {
-        dialects->insert<mlir::mhlo::MhloDialect>();
+        dialects->insert<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect>();
         runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
         RegisterHloXlaRuntimePipelineDialects(dialects);
       };
+  opts.compiler.symbols_binding =
+      runtime::ToSymbolsBinding(PopulateXlaCpuCustomCall);
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
         CreateDefaultHloXlaRuntimePipeline(passes);

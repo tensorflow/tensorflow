@@ -218,6 +218,8 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMToLLVMIRTranslation",
         "@llvm-project//mlir:ToLLVMIRTranslation",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/compiler/xla/mlir/transforms/cpu:passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",

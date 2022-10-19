@@ -33,4 +33,15 @@ def TransformScatterForCpuPass :
   let constructor = "createTransformScatterForCpuPass()";
 }
 
+def ConvertLmhloToCpuRuntimePass :
+    Pass<"xla-lmhlo-to-cpu-runtime", "mlir::ModuleOp"> {
+  let summary = "Converts lmhlo operations to XLA Cpu runtime custom calls";
+
+  let description = [{
+      Converts lmhlo dialect operations to XLA Cpu runtime custom calls.
+  }];
+
+  let constructor = "createConvertLmhloToCpuRuntimePass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_
