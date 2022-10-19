@@ -178,7 +178,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api",
-        ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
@@ -186,6 +185,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
@@ -227,13 +227,7 @@ cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
-    deps = [":tpu_executor_init_fns"],
-)
-
-cc_library(
-    name = "tpu_executor_init_fns",
-    hdrs = ["tpu_executor_init_fns.inc"],
-    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns"],
 )
 
 cc_library(
@@ -374,13 +368,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_api",
-        ":tpu_executor_init_fns",
         ":tpu_initializer_helper",
         ":tpu_library_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
     ],

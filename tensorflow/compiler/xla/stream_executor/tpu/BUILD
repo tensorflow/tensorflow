@@ -177,6 +177,12 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_executor_init_fns",
+    hdrs = ["tpu_executor_init_fns.inc"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "tpu_platform_hdr",
     hdrs = ["tpu_platform.h"],
     deps = [
