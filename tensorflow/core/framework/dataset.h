@@ -705,9 +705,9 @@ class IteratorBase {
   // `OkStatus()` status is returned and the iterator is not at the end of the
   // sequence.
   //
-  // `out_tensors` and `end_of_sequence` are output parameters; the values of
-  // `*out_tensors` and `*end_of_sequence` should be written only (not read) by
-  // implementations of GetNext.
+  // `out_tensors` and `end_of_sequence` are output parameters. `*out_tensors`
+  // and `*end_of_sequence` should not be read by implementations of `GetNext`
+  // before they are assigned.
   //
   // This method is thread-safe.
   //
