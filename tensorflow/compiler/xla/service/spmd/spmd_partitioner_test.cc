@@ -6978,6 +6978,28 @@ ENTRY entry {
                           op::Shape("f32[8,2,2]")));
 }
 
+TEST_F(SpmdPartitioningTest, IndexAndOperandPassthroughGather) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[7,12] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[16,2] parameter(1),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %gather = f32[16,1,12] gather(%input, %indices),
+    offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0,1},
+    index_vector_dim=1, slice_sizes={1,12},
+    sharding={devices=[2,1,2]0,2,1,3}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Gather(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("f32[8,1,6]")));
+}
+
 TEST_F(SpmdPartitioningTest, IndexPassthroughGatherPartitionedIndexVectorDim) {
   absl::string_view hlo_string = R"(
 HloModule module
