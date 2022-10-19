@@ -5845,6 +5845,7 @@ cc_library(
     srcs = ["hlo_runner_pjrt.cc"],
     hdrs = ["hlo_runner_pjrt.h"],
     deps = [
+        ":executable",
         ":hlo",
         ":hlo_runner_interface",
         "//tensorflow/compiler/xla:statusor",
@@ -5853,6 +5854,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:pjrt_future",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
