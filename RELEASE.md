@@ -27,6 +27,9 @@
     The old Keras optimizer will never be deleted, but will not see any new feature additions. New optimizers (for example,
     `tf.keras.optimizers.Adafactor`) will only be implemented based on `tf.keras.optimizers.Optimizer`, the new base class.
 
+*   `tensorflow/python/keras` code is a legacy copy of Keras since 2.7 release, and will be deleted in 2.12 release. Please remove any import of 
+    `tensorflow.python.keras` and use public API with `from tensorflow import keras` or `import tensorflow as tf; tf.keras`.
+
 ## Major Features and Improvements
 
 *   `tf.lite`:
