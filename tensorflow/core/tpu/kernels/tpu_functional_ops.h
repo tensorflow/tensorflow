@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_ordinal_selector.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 #include "absl/container/flat_hash_map.h"
 

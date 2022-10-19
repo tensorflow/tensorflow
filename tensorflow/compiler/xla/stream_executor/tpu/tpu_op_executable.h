@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 

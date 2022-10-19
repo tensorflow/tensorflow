@@ -126,6 +126,23 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_ops_c_api_hdrs",
+    srcs = [],
+    hdrs = [
+        "tpu_ops_c_api.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/c:tf_tstring",
+        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
+        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
+        "@com_google_absl//absl/types:optional",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "tpu_executor",
     srcs = [
         "tpu_platform_registration.cc",
@@ -319,6 +336,7 @@ cc_library(
         ":tpu_executable_interface",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_ops_c_api_hdrs",
         ":tpu_platform_interface",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -328,7 +346,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/core/tpu:tpu_api",
-        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/tsl/platform:casts",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",

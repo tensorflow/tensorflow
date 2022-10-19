@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/pjrt_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"

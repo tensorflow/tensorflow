@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/framework/collective.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 
