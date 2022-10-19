@@ -34,7 +34,7 @@ cc_library(
     deps = [
         ":attribute_importer",
         ":hlo_utils",
-        "//tensorflow/compiler/mlir/xla:location_metadata",
+        ":location_importer",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -95,7 +95,7 @@ tf_cc_test(
         ":hlo_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -123,6 +123,16 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "location_importer",
+    srcs = ["location_importer.cc"],
+    hdrs = ["location_importer.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -22,4 +22,5 @@ add_mlir_library(ThloBufferizableOpInterface
   LINK_LIBS PUBLIC
   THLODialect
   MLIRBufferizationDialect
+  MLIRDestinationStyleOpInterface
 )

@@ -39,6 +39,7 @@ add_mlir_library(GmlStTilingInterfaceImpl
   GmlStTilingInterface
   MLIRArithDialect
   MLIRAffineDialect
+  MLIRDestinationStyleOpInterface
   MLIRLinalgDialect
   MLIRLinalgTransforms
   MLIRLinalgUtils
@@ -66,6 +67,7 @@ add_mlir_library(GmlStBufferizableOpInterface
   GmlStDialect
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
+  MLIRDestinationStyleOpInterface
   MLIRIR
   MLIRSupport
 )
@@ -93,6 +95,7 @@ add_mlir_library(GmlStPasses
   GmlStComposeSetInterface
   GmlStTilingInterface
   GmlStTilingInterfaceImpl
+  MLIRDestinationStyleOpInterface
   MhloDialect
   MLIRDialectUtils
   MLIRAffineDialect

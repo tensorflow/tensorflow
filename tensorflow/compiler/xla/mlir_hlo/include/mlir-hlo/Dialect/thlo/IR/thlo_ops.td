@@ -20,6 +20,7 @@ include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.td"
 include "mlir/Dialect/Linalg/IR/LinalgInterfaces.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/DestinationStyleOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 
 def TensorOrMemref :
@@ -309,7 +310,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
 
 
   let extraClassDeclaration = [{
-    linalg::OpOperandVector getOpOperandsMatchingBBargs() {
+    mlir::OpOperandVector getOpOperandsMatchingBBargs() {
       return getInputOperands();
     }
 

@@ -13,23 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_LOCATION_METADATA_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_LOCATION_METADATA_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_LOCATION_EXPORTER_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_LOCATION_EXPORTER_H_
 
 #include <string>
 
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace mhlo {
-
-// Returns an MLIR Location generated from HLO Instruction. Uses instruction
-// metadata if present or instruction name.
-mlir::Location GenerateInstructionLocation(
-    const xla::HloInstruction* instruction, mlir::MLIRContext* context);
 
 // Returns a OpMetadata proto based on the location of the op. If the location
 // is unknown, an empty proto is returned. `op_name` are populated with the op
@@ -46,4 +40,4 @@ std::string GetDebugNameFromLocation(mlir::Location location);
 }  // namespace mhlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_LOCATION_METADATA_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_MHLO_TO_HLO_LOCATION_EXPORTER_H_
