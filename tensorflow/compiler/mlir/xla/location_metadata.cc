@@ -24,27 +24,6 @@ limitations under the License.
 namespace mlir {
 namespace mhlo {
 
-// TODO(herhut): Refactor the format.
-mlir::Location GenerateInstructionLocation(
-    const xla::HloInstruction* instruction, mlir::MLIRContext* context) {
-  mlir::Builder b(context);
-  const std::string& op_name = instruction->metadata().op_name();
-  if (op_name.empty()) {
-    return mlir::NameLoc::get(b.getStringAttr(instruction->name()));
-  }
-
-  mlir::Location op_name_loc = mlir::NameLoc::get(b.getStringAttr(op_name));
-  const std::string& source_file = instruction->metadata().source_file();
-  if (source_file.empty()) {
-    return op_name_loc;
-  }
-
-  return b.getFusedLoc(
-      {op_name_loc,
-       mlir::FileLineColLoc::get(b.getContext(), source_file,
-                                 instruction->metadata().source_line(), 0)});
-}
-
 static std::string GetNameFromLocImpl(Location loc) {
   llvm::SmallVector<llvm::StringRef, 8> loc_names;
   llvm::SmallVector<Location, 8> locs;

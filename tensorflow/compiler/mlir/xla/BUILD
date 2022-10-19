@@ -431,7 +431,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/service:hlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
