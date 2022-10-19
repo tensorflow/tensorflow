@@ -109,6 +109,20 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "translate",
+    srcs = ["translate.cc"],
+    hdrs = ["translate.h"],
+    deps = [
+        ":mlir_hlo_to_hlo",
+        ":type_to_shape",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "type_to_shape",
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
