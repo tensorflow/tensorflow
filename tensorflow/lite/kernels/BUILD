@@ -698,6 +698,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite:string_util",
     "//tensorflow/lite/core:subgraph",
     "//tensorflow/lite:util",
+    "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
     "//tensorflow/lite/c:common",
     "//tensorflow/lite/kernels/internal:audio_utils",
     "//tensorflow/lite/kernels/internal:common",
@@ -711,6 +712,7 @@ BUILTIN_KERNEL_DEPS = [
     "//tensorflow/lite/kernels/internal:tensor",
     "//tensorflow/lite/kernels/internal:tensor_utils",
     "//tensorflow/lite/kernels/internal:types",
+    "@XNNPACK//:xnnpack_for_tflite",
 ] + select({
     ":tflite_with_ruy_explicit_true": [],
     # Eigen multi-therading optimizations are only used when ruy is disabled.
