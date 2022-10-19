@@ -4681,6 +4681,7 @@ Status IrEmitterUnnested::EmitIRForReduction(
     const ReductionCodegenInfo& reduction_info, const Shape& input_shape) {
   std::vector<const HloReduceInstruction*> reductions;
   ExtraOutputGensMap extra_output_gens;
+
   for (const HloInstruction* hlo : instr_index_group) {
     if (IsReductionFromOrToContiguousDimensions(*hlo)) {
       reductions.push_back(Cast<HloReduceInstruction>(hlo));
@@ -4798,15 +4799,15 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
   // TODO(b/249976438): we currently do not treat properly
   // aliasing between inputs and outputs of the fusion, so for now put all
   // non-reduction roots into one group to avoid read-after-write conflicts.
-  HloInstruction* FirstNonReductionRoot = nullptr;
+  HloInstruction* first_non_reduction_root = nullptr;
 
   for (HloInstruction* root : roots) {
     disjoint_sets[root].Get() = root;
-    if (root->opcode() != HloOpcode::kReduce) {
-      if (!FirstNonReductionRoot) {
-        FirstNonReductionRoot = root;
+    if (!IsReductionFromOrToContiguousDimensions(*root)) {
+      if (!first_non_reduction_root) {
+        first_non_reduction_root = root;
       } else {
-        disjoint_sets[FirstNonReductionRoot].Merge(&disjoint_sets[root]);
+        disjoint_sets[first_non_reduction_root].Merge(&disjoint_sets[root]);
       }
     }
   }
@@ -4817,7 +4818,7 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
     std::vector<HloInstruction*> reached_output_ids;
     bool added_to_reduce = false;
     for (HloInstruction* output : roots) {
-      if (HloOpcode::kReduce == output->opcode() &&
+      if (IsReductionFromOrToContiguousDimensions(*output) &&
           (IsBroadcastedConstantOrScalar(*instr))) {
         if (added_to_reduce) {
           // Do not group more than one output reduce instructions through
@@ -4833,7 +4834,7 @@ std::vector<std::vector<HloInstruction*>> GroupDisjointReductions(
         VLOG(3) << "Reaching " << output->ToString() << " from "
                 << instr->ToString();
         reached_output_ids.push_back(output);
-        if (HloOpcode::kReduce == output->opcode()) {
+        if (IsReductionFromOrToContiguousDimensions(*output)) {
           added_to_reduce = true;
         }
       }

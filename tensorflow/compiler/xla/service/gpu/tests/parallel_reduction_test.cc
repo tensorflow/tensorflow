@@ -112,6 +112,80 @@ CHECK-NOT: reduce-group-2
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+TEST_F(ParallelReductionTest, UnnestedReductionWithLoopReduction) {
+  const char* hlo_text = R"(
+HloModule module
+
+region_1.1 {
+    a = f32[] parameter(0)
+    b = f32[] parameter(1)
+    ROOT c = f32[] add(a, b)
+}
+
+region_1.19 {
+    a = f64[] parameter(0)
+    b = f64[] parameter(1)
+    ROOT c = f64[] add(a, b)
+}
+
+region_2.39 {
+    a = pred[] parameter(0)
+    b = pred[] parameter(1)
+    ROOT c = pred[] and(a, b)
+}
+
+%fused_computation {
+  %Arg_1.2 = f64[6,7]{1,0} parameter(1)
+  %Arg_2.3 = s64[] parameter(2)
+  %region_0_45_constant_5 = s64[] constant(0)
+  %compare.6 = pred[] compare(s64[] %Arg_2.3, s64[] %region_0_45_constant_5), direction=LT
+  %region_0_45_constant_7 = s64[] constant(6)
+  %add.8 = s64[] add(s64[] %Arg_2.3, s64[] %region_0_45_constant_7)
+  %select.9 = s64[] select(pred[] %compare.6, s64[] %add.8, s64[] %Arg_2.3)
+  %convert.10 = s32[] convert(s64[] %select.9)
+  %region_0_45_constant_11 = s32[] constant(0)
+  %dynamic-slice.12 = f64[1,7]{1,0} dynamic-slice(f64[6,7]{1,0} %Arg_1.2, s32[] %convert.10, s32[] %region_0_45_constant_11), dynamic_slice_sizes={1,7}
+  %bitcast.13 = f64[7]{0} bitcast(f64[1,7]{1,0} %dynamic-slice.12)
+  %broadcast.14 = f64[2,7]{0,1} broadcast(f64[7]{0} %bitcast.13), dimensions={1}
+  %Arg_0.1 = f64[7,2]{1,0} parameter(0)
+  %transpose.15 = f64[2,7]{0,1} transpose(f64[7,2]{1,0} %Arg_0.1), dimensions={1,0}
+  %multiply.16 = f64[2,7]{0,1} multiply(f64[2,7]{0,1} %broadcast.14, f64[2,7]{0,1} %transpose.15)
+  %transpose.17 = f64[7,2]{1,0} transpose(f64[2,7]{0,1} %multiply.16), dimensions={1,0}
+  %region_0_45_constant_18 = f64[] constant(0)
+  %reduce.23 = f64[2]{0} reduce(f64[7,2]{1,0} %transpose.17, f64[] %region_0_45_constant_18), dimensions={0}, to_apply=%region_1.19
+  %broadcast.24 = s32[2]{0} broadcast(s32[] %region_0_45_constant_11), dimensions={}
+  %region_0_45_constant_25 = s64[] constant(1)
+  %add.26 = s64[] add(s64[] %Arg_2.3, s64[] %region_0_45_constant_25)
+  %compare.27 = pred[] compare(s64[] %add.26, s64[] %region_0_45_constant_5), direction=LT
+  %region_0_45_constant_28 = s64[] constant(8)
+  %add.29 = s64[] add(s64[] %Arg_2.3, s64[] %region_0_45_constant_28)
+  %select.30 = s64[] select(pred[] %compare.27, s64[] %add.29, s64[] %add.26)
+  %convert.31 = s32[] convert(s64[] %select.30)
+  %bitcast.32 = s32[1]{0} bitcast(s32[] %convert.31)
+  %region_0_45_constant_33 = s32[1]{0} constant({0})
+  %concatenate.34 = s32[2]{0} concatenate(s32[1]{0} %bitcast.32, s32[1]{0} %region_0_45_constant_33), dimensions={0}
+  %compare.35 = pred[2]{0} compare(s32[2]{0} %broadcast.24, s32[2]{0} %concatenate.34), direction=LE
+  %Arg_3.4 = s32[2]{0} parameter(3)
+  %compare.36 = pred[2]{0} compare(s32[2]{0} %Arg_3.4, s32[2]{0} %concatenate.34), direction=GE
+  %and.37 = pred[2]{0} and(pred[2]{0} %compare.35, pred[2]{0} %compare.36)
+  %region_0_45_constant_38 = pred[] constant(true)
+  %reduce.43 = pred[] reduce(pred[2]{0} %and.37, pred[] %region_0_45_constant_38), dimensions={0}, to_apply=%region_2.39
+  ROOT %tuple.44 = (f64[2]{0}, pred[]) tuple(f64[2]{0} %reduce.23, pred[] %reduce.43)
+}
+
+ENTRY computation {
+  %Arg_0.1 = f64[7,2]{1,0} parameter(0)
+  %Arg_1.2 = f64[6,7]{1,0} parameter(1)
+  %Arg_2.3 = s64[] parameter(2)
+  %Arg_3.4 = s32[2]{0} parameter(3)
+  ROOT %fusion = (f64[2]{0}, pred[])
+      fusion(%Arg_0.1, %Arg_1.2, %Arg_2.3, %Arg_3.4), kind=kInput, calls=%fused_computation
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 TEST_F(ParallelReductionTest, ManyParallelReductions) {
   std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
   // Simply use a number not too large to avoid long compilation time
