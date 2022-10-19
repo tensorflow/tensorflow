@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-print-debuginfo  -hlo-text-to-mlir-hlo %s  2>&1 | FileCheck %s
+// RUN: xla-translate -mlir-print-debuginfo  -hlo-text-to-mlir-hlo %s  2>&1 | FileCheck %s
 
 HloModule Test
 

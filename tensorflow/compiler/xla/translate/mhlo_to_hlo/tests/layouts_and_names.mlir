@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text --with-layouts=true --print-layouts=true %s | FileCheck %s
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text --with-layouts=true --print-layouts=true %s | FileCheck %s
 
 // Checks exporting layouts
 

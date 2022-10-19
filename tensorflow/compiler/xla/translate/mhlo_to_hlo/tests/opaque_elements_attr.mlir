@@ -1,4 +1,4 @@
-// RUN: not tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s 2>&1 | FileCheck %s
+// RUN: not xla-translate -split-input-file -mlir-hlo-to-hlo-text %s 2>&1 | FileCheck %s
 
 // CHECK: Only dense elements attr are supported
 func.func @main() {

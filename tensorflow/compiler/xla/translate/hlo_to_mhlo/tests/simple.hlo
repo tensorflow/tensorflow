@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
+# RUN: xla-translate -hlo-to-mlir-hlo %s -o - | FileCheck %s
 
 name: "foo.5"
 entry_computation_name: "foo.5"

@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: xla-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
 
 // CHECK: %[[REGION0:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> f32[]
 // CHECK: %[[REGION1:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> (f32[], f32[])

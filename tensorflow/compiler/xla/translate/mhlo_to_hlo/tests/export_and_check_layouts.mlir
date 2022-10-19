@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text --print-layouts=true %s | FileCheck %s
+// RUN: xla-translate -mlir-hlo-to-hlo-text --print-layouts=true %s | FileCheck %s
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> {

@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: xla-translate -mlir-hlo-to-hlo %s | FileCheck %s
 
 module @foobar {
 func.func @main(tensor<4xf32>, tensor<4xf32>) -> tensor<f32> {

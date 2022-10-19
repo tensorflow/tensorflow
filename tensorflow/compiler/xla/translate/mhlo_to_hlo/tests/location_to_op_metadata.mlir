@@ -1,5 +1,5 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text --legalize-node-names=false %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,NOLNN
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,LNN
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text --legalize-node-names=false %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,NOLNN
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s --dump-input=always --check-prefixes=CHECK,LNN
 
 // CHECK-LABEL: %main
 func.func @main(%arg0: !mhlo.token) -> !mhlo.token {

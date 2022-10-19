@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: xla-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
 
 // CHECK-LABEL: ENTRY %main.{{.*}} () -> u64[2]
 // CHECK-NEXT: ROOT %rng-get-and-update-state.1 = u64[2] rng-get-and-update-state(), delta=1

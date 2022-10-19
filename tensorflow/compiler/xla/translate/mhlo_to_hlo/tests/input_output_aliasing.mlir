@@ -1,6 +1,6 @@
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-return-tuple %s | FileCheck %s
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-use-tuple-args -emit-return-tuple %s | FileCheck %s --check-prefix=TUPLE-ARG
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text  %s | FileCheck %s --check-prefix=NO-RETURN-TUPLE
+// RUN: xla-translate -mlir-hlo-to-hlo-text -emit-return-tuple %s | FileCheck %s
+// RUN: xla-translate -mlir-hlo-to-hlo-text -emit-use-tuple-args -emit-return-tuple %s | FileCheck %s --check-prefix=TUPLE-ARG
+// RUN: xla-translate -mlir-hlo-to-hlo-text  %s | FileCheck %s --check-prefix=NO-RETURN-TUPLE
 
 // CHECK-LABEL: ENTRY %main
 // CHECK: // OutputIndex {0} aliases with input 0 at {}

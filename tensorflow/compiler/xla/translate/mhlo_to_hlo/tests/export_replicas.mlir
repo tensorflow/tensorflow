@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
 
 // Tests that the exported HLO module keeps parameter replication annotation.
 

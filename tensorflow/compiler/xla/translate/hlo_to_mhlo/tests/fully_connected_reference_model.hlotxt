@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
+// RUN: xla-translate -hlo-text-to-mlir-hlo %s -o - | FileCheck %s
 
 // This test comes from a fully connected reference model.
 
