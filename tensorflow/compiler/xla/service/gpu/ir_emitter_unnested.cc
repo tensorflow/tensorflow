@@ -1791,23 +1791,37 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
 }
 
 Status IrEmitterUnnested::EmitExtraOutputsForReduce(
+    const Shape& reduction_operand_shape,
     const ReductionOutputMap& result_ir_arrays, const IrArray::Index& index,
     const ReductionCodegenInfo& reduction_info,
     const ExtraOutputGensMap& extra_output_gens) {
+  if (extra_output_gens.empty()) {
+    return OkStatus();
+  }
+
   // Compute all extra output values before writing them. This avoids
   // overwriting aliased input/output buffers before all reads occurred.
   absl::flat_hash_map<const HloInstruction*, llvm::Value*>
       extra_output_ir_values;
-  for (const auto& p : extra_output_gens) {
+
+  auto get_index = [&](const HloInstruction* instr) {
+    const Shape& s = instr->shape();
+    return ShapeUtil::EqualIgnoringElementType(reduction_operand_shape, s)
+               ? index
+               : index.SourceIndexOfReshape(reduction_operand_shape, s, &b_);
+  };
+
+  for (const auto& [instr, generator] : extra_output_gens) {
     TF_ASSIGN_OR_RETURN(llvm::Value* const extra_output_ir_value,
-                        p.second(index));
-    extra_output_ir_values[p.first] = extra_output_ir_value;
+                        generator(get_index(instr)));
+    extra_output_ir_values[instr] = extra_output_ir_value;
   }
-  for (const auto& p : extra_output_ir_values) {
-    absl::Span<llvm_ir::IrArray const> result_ir = result_ir_arrays.at(p.first);
+
+  for (const auto& [instr, generator] : extra_output_ir_values) {
+    absl::Span<llvm_ir::IrArray const> result_ir = result_ir_arrays.at(instr);
     CHECK_EQ(result_ir.size(), 1);
     result_ir[0].EmitWriteArrayElement(
-        index, p.second, &b_, /*use_linear_index=*/
+        get_index(instr), generator, &b_, /*use_linear_index=*/
         reduction_info.GetNumPartialResults() == 1);
   }
   return OkStatus();
@@ -4729,8 +4743,9 @@ Status IrEmitterUnnested::EmitIRForReduction(
 
         // Emit code to generate the output for the non-reduction instructions
         // in the fusion, if any.
-        TF_CHECK_OK(EmitExtraOutputsForReduce(
-            result_ir_arrays, input_index, reduction_info, extra_output_gens));
+        TF_CHECK_OK(EmitExtraOutputsForReduce(input_shape, result_ir_arrays,
+                                              input_index, reduction_info,
+                                              extra_output_gens));
       };
 
   TF_ASSIGN_OR_RETURN(
