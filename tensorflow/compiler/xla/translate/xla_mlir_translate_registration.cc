@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
-#include "tensorflow/compiler/xla/translate/xla_mlir_translate.h"
 namespace {
 // NOLINTNEXTLINE
 llvm::cl::opt<bool> emit_use_tuple_arg(
@@ -67,11 +66,6 @@ llvm::cl::opt<bool> print_layouts(
 llvm::cl::opt<bool> via_builder(
     "via-builder", llvm::cl::desc("Translate MHLO->XLA HLO via XLA Builder"),
     llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-llvm::cl::opt<bool> import_all_computations(
-    "hlo-import-all-computations",
-    llvm::cl::desc("Enable importing unreachable computations."));
 }  // namespace
 
 namespace xla {
@@ -188,18 +182,6 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 // Hooks for tf-mlir-translate
 //----------------------------------------------------------------------------/
 
-static mlir::OwningOpRef<mlir::ModuleOp> HloToMlirHloTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
-  return xla::HloToMlirHloTranslateFunction(input, context,
-                                            import_all_computations);
-}
-
-static mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslate(
-    llvm::StringRef input, mlir::MLIRContext* context) {
-  return xla::HloTextToMlirHloTranslateFunction(input, context,
-                                                import_all_computations);
-}
-
 static void RegisterInputDialects(mlir::DialectRegistry& registry) {
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
@@ -213,12 +195,6 @@ static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTextTranslate(
     "mlir-hlo-to-hlo-text", "mlir-hlo-to-hlo-text",
     xla::MlirHloToHloTextTranslateFunction, RegisterInputDialects);
-
-static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
-    "hlo-to-mlir-hlo", "hlo-to-mlir-hlo", HloToMlirHloTranslate);
-
-static mlir::TranslateToMLIRRegistration HloTextToHloMlirTranslate(
-    "hlo-text-to-mlir-hlo", "hlo-text-to-mlir-hlo", HloTextToMlirHloTranslate);
 
 // MHLO doesn't support explicit layouts, while XLA service does.
 // TODO(timshen): remove it once MHLO supports explicit layouts.

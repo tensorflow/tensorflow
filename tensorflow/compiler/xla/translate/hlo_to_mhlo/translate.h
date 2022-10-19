@@ -13,12 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_XLA_MLIR_TRANSLATE_H_
-#define TENSORFLOW_COMPILER_XLA_TRANSLATE_XLA_MLIR_TRANSLATE_H_
-
-#include <memory>
-
-#include "tensorflow/compiler/xla/statusor.h"
+#ifndef TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_TRANSLATE_H_
+#define TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_TRANSLATE_H_
 
 namespace llvm {
 class StringRef;
@@ -52,4 +48,4 @@ mlir::OwningOpRef<mlir::ModuleOp> HloTextToMlirHloTranslateFunction(
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_XLA_MLIR_TRANSLATE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TRANSLATE_HLO_TO_MHLO_TRANSLATE_H_
