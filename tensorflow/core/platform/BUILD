@@ -39,6 +39,10 @@ load(
     "tf_cuda_library",
 )
 load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
@@ -1046,9 +1050,9 @@ cc_binary(
 cc_library(
     name = "private_static_dep",
     visibility = ["//visibility:private"],
-    deps = if_static(
+    deps = if_cuda_is_configured(if_static(
         ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
-    ),
+    )),
 )
 
 tf_cuda_library(
