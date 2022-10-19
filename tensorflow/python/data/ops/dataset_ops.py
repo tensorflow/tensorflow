@@ -1757,7 +1757,7 @@ class DatasetV2(
       sharding strategy within a complete pipeline:
 
     ```python
-    d = Dataset.list_files(pattern)
+    d = Dataset.list_files(pattern, shuffle=False)
     d = d.shard(num_workers, worker_index)
     d = d.repeat(num_epochs)
     d = d.shuffle(shuffle_buffer_size)
