@@ -308,7 +308,7 @@ StreamExecutorGpuDevice::StreamExecutorGpuDevice(
       "StreamExecutorGpuDevice(id=%i, process_index=%i)", id, process_index());
 }
 
-absl::string_view StreamExecutorGpuDevice::device_vendor() {
+absl::string_view StreamExecutorGpuDevice::device_vendor() const {
   return device_vendor_;
 }
 
