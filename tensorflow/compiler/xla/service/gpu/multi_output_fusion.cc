@@ -25,10 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -53,19 +50,8 @@ bool IsProfitableOperand(HloInstruction* instr) {
 
 FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
                            FusionInfoCache* fusion_info_cache) {
-  // If we're fusing fusions only do it if the fusion kind matches. Loop fusions
-  // merge into bigger loop fusions and input (reduce) fusions become fusions
-  // with multiple reduce outputs. We could fuse reduce and loop fusions
-  // together too (the result being an input fusion) if we find cases where this
-  // improves things. Also disable fusing standalone input-fusible reduces into
-  // loop fusions.
   CHECK(instr1->opcode() == HloOpcode::kFusion);
-  if ((instr2->opcode() == HloOpcode::kFusion &&
-       instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (IsReductionFromOrToContiguousDimensions(*instr2) &&
-       instr1->IsLoopFusion())) {
-    return "can't merge fusions of two different types";
-  }
+
   // The emitter only supports in-place DUS for fusions with a single DUS at the
   // root. Don't sibling fuse DUS for now.
   // TODO(b/119178699): Multi-output fusing DUS can improve performance if we
@@ -298,6 +284,9 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
 
       if (fused->opcode() == HloOpcode::kFusion) {
         remaining->MergeFusionInstructionIntoMultiOutput(fused);
+        if (fused->IsInputFusion()) {
+          remaining->set_fusion_kind(HloInstruction::FusionKind::kInput);
+        }
       } else {
         remaining->FuseInstructionIntoMultiOutput(fused);
         CHECK_EQ(0, fused->user_count());
