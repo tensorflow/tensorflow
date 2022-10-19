@@ -130,8 +130,8 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
   return fused_expression_root->operands()[0];
 }
 
-bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
-                                          const HloInstruction& instr2) {
+FusionDecision ShapesCompatibleForMultiOutputFusion(
+    const HloInstruction& instr1, const HloInstruction& instr2) {
   // Multi-output fusion kernels share a common parallel loop. The loop
   // dimensions are determined by instruction shapes.
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
@@ -148,29 +148,31 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // root ops should have equal output shapes. An exception are
   // reduction-to-vector ops. Here the input shapes of the reduction (first
   // operand shape) and the reduction dimensions need to match.
-  auto* instr_1 = GetRealHeroForMultiOutputFusion(instr1);
-  auto* instr_2 = GetRealHeroForMultiOutputFusion(instr2);
-  if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
-      IsReductionFromOrToContiguousDimensions(*instr_2) &&
-      !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
-    return false;
-  } else if (FindAnyTiledTranspose(*instr_1) &&
-             FindAnyTiledTranspose(*instr_2) &&
-             (!ShapeUtil::EqualIgnoringElementType(instr_1->shape(),
-                                                   instr_2->shape()) ||
+  const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
+  const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
+
+  if (IsReductionFromOrToContiguousDimensions(*hero1) &&
+      IsReductionFromOrToContiguousDimensions(*hero2) &&
+      !AreFusedReductionOutputsConsistent({hero1, hero2}, hero1)) {
+    return "tiled reductions with different shapes";
+  } else if (FindAnyTiledTranspose(*hero1) && FindAnyTiledTranspose(*hero2) &&
+             (!ShapeUtil::EqualIgnoringElementType(hero1->shape(),
+                                                   hero2->shape()) ||
               !ShapeUtil::EqualIgnoringElementType(
-                  instr_1->operand(0)->shape(),
-                  instr_2->operand(0)->shape()))) {
-    return false;
-  } else if ((FindAnyTiledTranspose(*instr_1) &&
-              IsReductionFromOrToContiguousDimensions(*instr_2)) ||
-             (FindAnyTiledTranspose(*instr_2) &&
-              IsReductionFromOrToContiguousDimensions(*instr_1))) {
-    return false;
+                  hero1->operand(0)->shape(), hero2->operand(0)->shape()))) {
+    return "tiled transposes with different shapes";
+  } else if ((FindAnyTiledTranspose(*hero1) &&
+              IsReductionFromOrToContiguousDimensions(*hero2)) ||
+             (FindAnyTiledTranspose(*hero2) &&
+              IsReductionFromOrToContiguousDimensions(*hero1))) {
+    return "MOF-fusion of a transpose and a reduction";
   }
   // The elementwise output shapes must be the same (including layout).
-  return ShapeUtil::EqualIgnoringElementType(get_loop_shape(instr_1),
-                                             get_loop_shape(instr_2));
+  if (!ShapeUtil::EqualIgnoringElementType(get_loop_shape(hero1),
+                                           get_loop_shape(hero2))) {
+    return "different loop shapes";
+  }
+  return {};
 }
 
 bool IsInputFusibleScatter(const HloInstruction& instr) {
@@ -261,11 +263,11 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
   return InstructionFusion::ShouldFuseInPlaceOp(&producer, &consumer);
 }
 
-bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
-                                          const HloInstruction& consumer) {
+FusionDecision IsProducerConsumerMultiOutputFusible(
+    const HloInstruction& producer, const HloInstruction& consumer) {
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
-    return false;
+    return "Producer is not a multi-output fusion";
   }
 
   // Allowing multi-output fusions that contain in-place operations makes code
@@ -293,21 +295,23 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   // contract that describes what multi-output fusion scenarios are supported by
   // codegen and then changing this check to allow exactly those fusions).
   if (!HloDataflowAnalysis::GetInPlaceInputOutputPairs(&producer).empty()) {
-    return false;
+    return "In-place operations are present";
   }
-  if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
-    return false;
+
+  if (!IsLoopFusible(producer)) {
+    return "producer is not loop-fusible";
+  } else if (!IsFusibleAsMultiOutputFusionRoot(consumer)) {
+    return "consumer is not fusible as multi-output-fusion-root";
+  } else if (CreatesHeavyComputation(producer, consumer)) {
+    return "fusion creates heavy computation";
+  } else if (NoFusionPossible fusible =
+                 !ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
+    return !fusible;
+  } else if (IsPhysicallyTransposing(producer)) {
+    return "producer is physically transposing";
   }
-  if (CreatesHeavyComputation(producer, consumer)) {
-    return false;
-  }
-  if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
-    return false;
-  }
-  if (IsPhysicallyTransposing(producer)) {
-    return false;
-  }
-  return true;
+
+  return {};
 }
 
 // Returns shared memory usage for a given instruction in bytes.

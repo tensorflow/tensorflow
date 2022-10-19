@@ -64,7 +64,7 @@ FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
        instr1->fusion_kind() != instr2->fusion_kind()) ||
       (IsReductionFromOrToContiguousDimensions(*instr2) &&
        instr1->IsLoopFusion())) {
-    return "Can't merge fusions of two different types";
+    return "can't merge fusions of two different types";
   }
   // The emitter only supports in-place DUS for fusions with a single DUS at the
   // root. Don't sibling fuse DUS for now.
@@ -75,7 +75,7 @@ FusionDecision LegalToFuse(HloInstruction* instr1, HloInstruction* instr2,
       (instr2->opcode() == HloOpcode::kFusion &&
        instr2->fused_expression_root()->opcode() ==
            HloOpcode::kDynamicUpdateSlice)) {
-    return "Can't fuse multiple DUSs";
+    return "can't fuse multiple DUSs";
   }
 
   // Do this check last, as it may be expensive.
@@ -112,6 +112,11 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     const HloInstruction* producer, const HloReachabilityMap& reachability,
     FusionInfoCache* fusion_info_cache) {
   std::vector<HloInstruction*> fusion_candidates;
+  const HloComputation* computation = producer->parent();
+  const HloModule* module = computation->parent();
+  bool dump_fusion =
+      module->config().debug_options().xla_dump_fusion_visualization();
+
   // If there is only one user, and it is not a multi-output fusion node, this
   // fusion possibility was already considered and rejected by the FusionMerger
   // pass. No need to try again!
@@ -120,16 +125,30 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     return fusion_candidates;
   }
   for (HloInstruction* consumer : producer->users()) {
+    auto dump_negative_explanation = [&](const FusionDecision& decision) {
+      if (dump_fusion && !decision.CanFuse()) {
+        RegisterFusionState(
+            *computation,
+            (FusionDecision{} << "Not considering fusion betwen producer |"
+                              << "|" << producer->name() << "| into consumer |"
+                              << consumer->name()
+                              << "| due to: " << decision.Explain())
+                .Explain(),
+            *consumer, producer);
+      }
+    };
+
     VLOG(3) << "Looking at producer " << producer->name()
             << " and its consumer " << consumer->name();
     if (!IsFusibleAsMultiOutputFusionRoot(*consumer)) {
-      VLOG(3) << "Consumer " << consumer->name()
-              << " is not eligible as multi-output fusion root.";
+      dump_negative_explanation(
+          FusionDecision{}
+          << "consumer not eligible as multi-output fusion root.");
       continue;
     }
-    if (!IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
-      VLOG(3) << producer->name() << " and " << consumer->name()
-              << " are not fusible.";
+    if (NoFusionPossible fusible =
+            !IsProducerConsumerMultiOutputFusible(*producer, *consumer)) {
+      dump_negative_explanation(!fusible);
       continue;
     }
     // Do not fuse a producer if the other operands of the fusion are
@@ -147,15 +166,19 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
              "happen.";
       return producer != operand && reachability.IsReachable(producer, operand);
     };
+
     if (absl::c_any_of(consumer->operands(), operand_reachable_from_producer)) {
-      VLOG(3) << producer->name() << " would introduce a cycle when fused.";
+      dump_negative_explanation(FusionDecision{}
+                                << producer->name()
+                                << " would introduce a cycle when fused.");
       continue;
     }
     if (!FusionFitsInBudget(*producer, *consumer,
                             /*is_consumer_producer_fusion=*/false,
                             fusion_info_cache)) {
-      VLOG(3) << producer->name() << " and " << consumer->name()
-              << " would be too large of a fusion.";
+      dump_negative_explanation(
+          FusionDecision{} << producer->name() << " and " << consumer->name()
+                           << " would be too large of a fusion.");
       continue;
     }
     // Make sure the emitter can codegen the fusion op efficiently. We currently
@@ -163,9 +186,10 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
     // ops, in which case we don't want to fuse.
     // TODO(b/119692968): Remove this once fixed in the emitter.
     if (FusedIrEmitter::IsFusedIrEmitterInefficient(*consumer, *producer)) {
-      VLOG(3) << "Fusion of " << producer->name() << " into "
-              << consumer->name()
-              << " would result in overly large code duplication.";
+      dump_negative_explanation(
+          FusionDecision{}
+          << "Fusion of " << producer->name() << " into " << consumer->name()
+          << " would result in overly large code duplication.");
       continue;
     }
     fusion_candidates.push_back(consumer);
@@ -173,24 +197,24 @@ std::vector<HloInstruction*> GetProducerConsumerMultiOutputFusionCandidates(
   return fusion_candidates;
 }
 
-bool IsSiblingFusionCandidate(const HloInstruction* instr) {
+FusionDecision IsSiblingFusionCandidate(const HloInstruction* instr) {
   if (instr->user_count() == 0) {
-    return false;
+    return "user count is zero";
   }
   if (!IsFusibleAsMultiOutputFusionRoot(*instr)) {
-    return false;
+    return "not fusible as MOF root";
   }
   // Check if the users of multioutput fusion is not a get-tuple-element.
   // If this is the case, we bail out because the transformation assumes
   // the users are get-tuple-element.
   if (instr->IsMultiOutputFusion()) {
-    for (auto user : instr->users()) {
+    for (HloInstruction* user : instr->users()) {
       if (user->opcode() != HloOpcode::kGetTupleElement) {
-        return false;
+        return "there exists a non-GTE user";
       }
     }
   }
-  return true;
+  return {};
 }
 
 }  // namespace
@@ -201,6 +225,11 @@ void GpuMultiOutputFusion::RecomputeReachability() {
 
 bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
                                         FusionInfoCache* fusion_info_cache) {
+  const HloComputation* computation = parent->parent();
+  const HloModule* module = computation->parent();
+  bool dump_fusion =
+      module->config().debug_options().xla_dump_fusion_visualization();
+
   if (!IsProfitableOperand(parent)) {
     VLOG(3) << "Operand " << parent->ToShortString() << " is not profitable";
     return false;
@@ -219,10 +248,32 @@ bool GpuMultiOutputFusion::FuseSiblings(HloInstruction* parent,
       continue;
     }
     for (auto j = i + 1; j != siblings.end();) {
+      auto is_disconnected = [&](const HloInstruction* a,
+                                 const HloInstruction* b) -> FusionDecision {
+        if (reachability_->IsConnected(a, b)) {
+          return FusionDecision{} << a->name() << " and " << b->name()
+                                  << " are connected";
+        }
+        return {};
+      };
+
       VLOG(3) << "Considering " << (*i)->name() << " and " << (*j)->name();
-      if (!IsSiblingFusionCandidate(*j) || reachability_->IsConnected(*i, *j) ||
-          !ShapesCompatibleForMultiOutputFusion(*(*i), *(*j)) ||
-          !LegalToFuse(*i, *j, fusion_info_cache)) {
+
+      if (NoFusionPossible sibling_fusible =
+              (!IsSiblingFusionCandidate(*j) || !is_disconnected(*i, *j) ||
+               !ShapesCompatibleForMultiOutputFusion(*(*i), *(*j)) ||
+               !LegalToFuse(*i, *j, fusion_info_cache))) {
+        // We pick `j` arbitrarily as a consumer.
+        if (dump_fusion) {
+          RegisterFusionState(
+              *computation,
+              absl::StrCat("Not fusing siblings |", (**i).name(), "| and |",
+                           (**j).name(),
+                           "| due to: ", (!sibling_fusible).Explain()),
+              // Randomly pick one consumer.
+              /*consumer=*/**i,
+              /*producer=*/parent);
+        }
         ++j;
         continue;
       }
