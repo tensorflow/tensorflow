@@ -2447,13 +2447,42 @@ TEST_F(ShapeInferenceTest, SortManyValues) {
 
 TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {
   const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
-  const Shape random = ShapeUtil::MakeShape(S32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(U32, {4, 3});
   const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
 
   auto inferred_sr_shape =
       ShapeInference::InferStochasticConvertShape(operand, random, S8);
   EXPECT_TRUE(inferred_sr_shape.ok());
   EXPECT_TRUE(ShapeUtil::Equal(inferred_sr_shape.value(), expected_shape));
+}
+
+TEST_F(ShapeInferenceTest, InvalidStochasticConvert_MismatchRandomElementType) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(U16, {4, 3});
+  const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
+
+  auto status_or =
+      ShapeInference::InferStochasticConvertShape(operand, random, S8);
+  ASSERT_FALSE(status_or.ok());
+  EXPECT_THAT(
+      status_or.status().error_message(),
+      HasSubstr(
+          "The random number is required to have same bits as the operand."));
+}
+
+TEST_F(ShapeInferenceTest,
+       InvalidStochasticConvert_DisallowedRandomElementType) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(S32, {4, 3});
+  const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
+
+  auto status_or =
+      ShapeInference::InferStochasticConvertShape(operand, random, S8);
+  ASSERT_FALSE(status_or.ok());
+  EXPECT_THAT(
+      status_or.status().error_message(),
+      HasSubstr(
+          "Random numbers for stochastic convert must be unsigned integers"));
 }
 
 class GatherShapeInferenceTest : public ShapeInferenceTest {

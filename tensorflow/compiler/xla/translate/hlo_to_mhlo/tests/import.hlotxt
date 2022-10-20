@@ -359,13 +359,13 @@ add {
   ROOT %add.5 = f64[4] add(f64[4] %convert.3, f64[4] %convert.4)
 }
 
-// CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xi32>) -> tensor<4x3xi8>
-%test_stochastic_convert (Arg_0.1: f32[4,3], Arg_1.2: s32[4,3]) -> s8[4,3] {
+// CHECK-LABEL:  func private @test_stochastic_convert(%arg0: tensor<4x3xf32>, %arg1: tensor<4x3xui32>) -> tensor<4x3xi8>
+%test_stochastic_convert (Arg_0.1: f32[4,3], Arg_1.2: u32[4,3]) -> s8[4,3] {
   %Arg_0.1 = f32[4,3] parameter(0)
-  %Arg_1.2 = s32[4,3] parameter(1)
+  %Arg_1.2 = u32[4,3] parameter(1)
 
-  // CHECK-NEXT:  "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<4x3xf32>, tensor<4x3xi32>) -> tensor<4x3xi8>
-  ROOT %stochastic-convert.0 = s8[4,3] stochastic-convert(f32[4,3] %Arg_0.1, s32[4,3] %Arg_1.2)
+  // CHECK-NEXT:  "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<4x3xf32>, tensor<4x3xui32>) -> tensor<4x3xi8>
+  ROOT %stochastic-convert.0 = s8[4,3] stochastic-convert(f32[4,3] %Arg_0.1, u32[4,3] %Arg_1.2)
 }
 
 // CHECK-LABEL:  func private @test_cosine(%arg0: tensor<1x16x16x3xf32>) -> tensor<1x16x16x3xf32>

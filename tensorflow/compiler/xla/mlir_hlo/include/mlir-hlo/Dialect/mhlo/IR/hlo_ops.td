@@ -685,9 +685,10 @@ def HLO_StochasticConvertOp : HLO_Op<"stochastic_convert",
     one with stochastic rounding using the random number passed in.
   }];
 
-  let arguments = (ins HLO_FpTensor:$operand, HLO_IntTensor:$random);
+  let arguments = (ins HLO_FpTensor:$operand, TensorOf<[HLO_UInt]>:$random);
   let results = (outs HLO_Tensor:$result);
   let hasCustomHLOConverter = 1;
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

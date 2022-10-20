@@ -2649,6 +2649,29 @@ func.func @invalid_bitcast_convert_shape_mismatch(%arg: tensor<2x4xf32>) -> tens
 
 // -----
 
+func.func @stochastic_convert(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xui32>) -> tensor<2x4xi8> {
+  %0 = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2x4xui32>) -> tensor<2x4xi8>
+  return %0 : tensor<2x4xi8>
+}
+
+// -----
+
+func.func @invalid_stochastic_convert_disallowed_random_type(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xi32>) -> tensor<2x4xi8> {
+  // expected-error@+1 {{must be tensor of 4/8/16/32/64-bit unsigned integer values, but got 'tensor<2x4xi32>'}}
+  %0 = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2x4xi32>) -> tensor<2x4xi8>
+  return %0 : tensor<2x4xi8>
+}
+
+// -----
+
+func.func @invalid_stochastic_convert_mismatched_input_bitwidths(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xui16>) -> tensor<2x4xi8> {
+  // expected-error@+1 {{requires the random's bitwidth to match the operand's, but got: 16 and 32}}
+  %0 = "mhlo.stochastic_convert"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2x4xui16>) -> tensor<2x4xi8>
+  return %0 : tensor<2x4xi8>
+}
+
+// -----
+
 func.func @reduce_precision(%arg: tensor<2x4xf32>) -> tensor<2x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg) {exponent_bits=2 : i32, mantissa_bits=3 : i32} : (tensor<2x4xf32>) -> tensor<2x4xf32>
   func.return %0 : tensor<2x4xf32>

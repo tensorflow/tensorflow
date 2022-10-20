@@ -2971,6 +2971,24 @@ void ConvertOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// StochasticConvertOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult StochasticConvertOp::verify() {
+  DataLayout dataLayout = DataLayout::closest(*this);
+  unsigned operandElementSize =
+      dataLayout.getTypeSizeInBits(getOperand().getType().getElementType());
+  unsigned randomElementSize =
+      dataLayout.getTypeSizeInBits(getRandom().getType().getElementType());
+  if (operandElementSize != randomElementSize) {
+    return emitOpError() << "requires the random's bitwidth to match the "
+                            "operand's, but got: "
+                         << randomElementSize << " and " << operandElementSize;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 

@@ -509,9 +509,10 @@ StatusOr<PrimitiveType> MaybeUpcast(
   TF_RETURN_IF_ERROR(
       ExpectArray(random_shape, "rhs of stochastic convert operation"));
 
-  if (!ShapeUtil::ElementIsIntegral(random_shape)) {
+  if (!primitive_util::IsUnsignedIntegralType(random_shape.element_type())) {
     return InvalidArgument(
-        "Random numbers for stochastic convert must be integers, but got: %s",
+        "Random numbers for stochastic convert must be unsigned integers, but "
+        "got: %s",
         random_shape.ToString());
   }
 
@@ -520,6 +521,15 @@ StatusOr<PrimitiveType> MaybeUpcast(
         "Stochastic convert supports only floating point operand conversion, "
         "but got: %s",
         random_shape.ToString());
+  }
+
+  int operand_bits = primitive_util::BitWidth(operand_shape.element_type());
+  int random_bits = primitive_util::BitWidth(random_shape.element_type());
+  if (operand_bits != random_bits) {
+    return InvalidArgument(
+        "The random number is required to have same bits as the operand. But "
+        "got random bits: %d, operand bits: %d",
+        operand_bits, random_bits);
   }
 
   if (!ShapeUtil::EqualIgnoringElementType(operand_shape, random_shape)) {
