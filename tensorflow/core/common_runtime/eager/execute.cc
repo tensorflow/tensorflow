@@ -321,7 +321,6 @@ bool IsHostMemoryArg(const EagerOperation& op, const NodeDef* node_def,
 Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
                          const bool is_host_memory_arg,
                          TensorHandle* tensor_handle, Device** result) {
->>>>>>> f5381e0e10b (Fix OOB error when op input sizes do not match.)
   Device* cpu_device = ctx.HostCPU();
   string device_name;
   if (tensor_handle->Type() != TensorHandle::LOCAL) {
