@@ -521,6 +521,11 @@ bzl_library(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = ["rules_cc.bzl"],
+)
+
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "additional_mobile_srcs_no_runtime",

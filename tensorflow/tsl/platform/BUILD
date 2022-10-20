@@ -16,6 +16,7 @@ load(
     "tf_fingerprint_deps",
     "tf_google_mobile_srcs_no_runtime",
     "tf_logging_deps",
+    "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
@@ -27,6 +28,10 @@ load(
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
+)
+load(
+    "@bazel_skylib//:bzl_library.bzl",
+    "bzl_library",
 )
 
 package(
@@ -1659,4 +1664,10 @@ tsl_cc_test(
         ":test",
         ":test_main",
     ],
+)
+
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = ["rules_cc.bzl"],
+    deps = tf_platform_alias("rules_cc_bzl"),
 )
