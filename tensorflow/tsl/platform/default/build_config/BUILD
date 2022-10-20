@@ -4,8 +4,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 
-# TODO(jakeharmon): Determine if this will fail in TSL's github
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tsl:internal"])
 
 licenses(["notice"])  # Apache 2.0
 

@@ -396,6 +396,33 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+# DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
+# Instead, please use public APIs or public build rules TF provides.
+# If you need functionality that is not exposed, we will work with you to expand our public APIs.
+# TODO(b/173549186): Move Google-internal TF code out of learning/brain
+# TODO(jakeharmon): Prune this for use in TSL
+package_group(
+    name = "internal",
+    packages = [
+        "//devtools/python/indexer/...",
+        "//learning/brain/keras/...",
+        "//learning/brain/mlir/...",
+        "//learning/brain/tfrt/...",
+        "//learning/lib/ami/simple_ml/...",
+        "//learning/pathways/...",
+        "//smartass/brain/configure/...",
+        "//tensorflow/...",
+        "//tensorflow_decision_forests/...",
+        "//tensorflow_federated/...",
+        "//third_party/cloud_tpu/convergence_tools/sdc_monitoring/...",
+        "//third_party/cloud_tpu/inference_converter/...",
+        "//third_party/py/cloud_ml_autoflow/...",
+        "//third_party/py/envlogger/...",
+        "//third_party/py/keras/...",
+        "//third_party/yggdrasil_decision_forests/...",
+    ],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],

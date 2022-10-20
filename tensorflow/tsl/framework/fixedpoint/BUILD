@@ -48,7 +48,7 @@ filegroup(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow:__subpackages__",
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
 )
 

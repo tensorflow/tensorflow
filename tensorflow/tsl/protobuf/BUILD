@@ -9,8 +9,8 @@ load(
 
 package(
     default_visibility = [
-        "//tensorflow:internal",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/tsl:internal",
         "//tensorflow_models:__subpackages__",
     ],
     features = if_google(["-parse_headers"]),
