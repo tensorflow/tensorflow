@@ -20,6 +20,7 @@ package(
         "//tensorflow/core/lib/monitoring:__subpackages__",
         "//tensorflow/compiler/xla/service:__subpackages__",
         "//tensorflow/tsl/framework:__subpackages__",
+        "//tensorflow/tsl/lib/monitoring/python:__pkg__",
     ],
     licenses = ["notice"],
 )
