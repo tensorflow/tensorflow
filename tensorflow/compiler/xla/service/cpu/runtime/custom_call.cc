@@ -57,7 +57,7 @@ static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
 
 namespace {
 struct XlaCustomCall {
-  absl::Status operator()(CustomCall::RemainingArgs args,
+  absl::Status operator()(CustomCall::RemainingArgs args, int32_t num_results,
                           StringRef call_target_name,
                           int32_t api_version) const;
   static XlaCustomCall Handler() { return XlaCustomCall(); }
@@ -65,6 +65,7 @@ struct XlaCustomCall {
 }  // namespace
 
 absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
+                                       int32_t num_results,
                                        StringRef call_target_name,
                                        int32_t api_version) const {
   // Find the Xla custom call handler.
@@ -95,12 +96,17 @@ absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
         "Failed to get arguments as (strided) memref view");
   }
 
+  // Multiple result buffers are passed as a tuple, which is represented as a
+  // buffer of pointers.
+  void* result_buffer =
+      num_results <= 1 ? buffers.back() : buffers.end() - num_results;
+
   // Original custom call API version that doesn't support returning status.
   if (api_version == CustomCallApiVersion::API_VERSION_ORIGINAL) {
     using XlaCustomCallType = void (*)(void* /*result*/, void** /*args*/);
     auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
 
-    xla_call_target(buffers.back(), buffers.data());
+    xla_call_target(result_buffer, buffers.data());
 
     return absl::OkStatus();
   }
@@ -112,7 +118,7 @@ absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
     auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
 
     XlaCustomCallStatus custom_call_status;
-    xla_call_target(buffers.back(), buffers.data(), &custom_call_status);
+    xla_call_target(result_buffer, buffers.data(), &custom_call_status);
 
     if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
       return absl::InternalError(message.value());
@@ -128,6 +134,7 @@ static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
                        void** attrs, void** rets) {
   static auto* handler = CustomCall::Bind("xla.cpu.custom_call")
                              .Arg<CustomCall::RemainingArgs>()  // args
+                             .Attr<int32_t>("num_results")
                              .Attr<std::string_view>("call_target_name")
                              .Attr<int32_t>("api_version")
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())

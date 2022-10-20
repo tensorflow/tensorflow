@@ -74,12 +74,16 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
     // By default all operands passed to the custom call handler.
     llvm::SmallVector<Value> operands = op.getOperands();
 
+    // Get the number of outputs from operand_segment_sizes.
+    int64_t num_results = op->getAttrOfType<DenseI32ArrayAttr>(
+        op.getOperandSegmentSizesAttrName())[1];
+
     // If custom call has target arguments mapping, then we need to pass empty
     // memrefs in place of holes.
     if (op.getTargetArgMapping().has_value()) {
       auto mapping = *op.getTargetArgMapping();
       int64_t num_args = mapping.getNumArgs();
-      int64_t num_results = mapping.getNumResults();
+      num_results = mapping.getNumResults();
 
       // Always create an `alloca` in the parent function entry block.
       // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
@@ -109,6 +113,8 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
         b, kCustomCallTarget, TypeRange(ValueRange(operands)), TypeRange());
 
     llvm::SmallVector<NamedAttribute> custom_call_attrs = {
+        {b.getStringAttr("num_results"),
+         b.getI32IntegerAttr(static_cast<int32_t>(num_results))},
         {b.getStringAttr("api_version"), op.getApiVersionAttr()},
         {b.getStringAttr("call_target_name"), op.getCallTargetNameAttr()}};
 
