@@ -688,13 +688,18 @@ ENTRY main {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  auto expected_ir = R"(
-; CHECK-LABEL: define void @fusion
+  std::string expected_ir = R"(
+; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: load <4 x i16>
-; CHECK-COUNT-4: load float
+; CHECK-COUNT-4: load PLATFORM_SPECIFIC_TYPE
 ; CHECK-NOT: load
 ; CHECK: }
 )";
+
+  expected_ir = absl::StrReplaceAll(
+      expected_ir,
+      {{"PLATFORM_SPECIFIC_TYPE", is_built_with_rocm_ ? "i32" : "float"}});
+
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
