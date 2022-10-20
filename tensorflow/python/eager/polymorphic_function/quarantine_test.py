@@ -30,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.eager.polymorphic_function import quarantine
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -407,55 +408,6 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with ops.device('cpu:0'):
       has_device.f()
     self.assertIn('CPU', has_device.v.device)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testMultipleDeviceCheck(self):
-
-    def f():
-      with ops.device('cpu'):
-        return test_ops.device_placement_op()
-
-    func = quarantine.defun(f)
-    with ops.device('cpu:0'):
-      output = self.evaluate(func())
-      self.assertIn(compat.as_bytes('CPU:0'), output)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDeviceAnnotationsRespected(self):
-
-    def multi_device_fn():
-      with ops.device('/cpu:0'):
-        s0 = test_ops.device_placement_op()
-      with ops.device('/cpu:1'):
-        s1 = test_ops.device_placement_op()
-      with ops.device('/cpu:2'):
-        s2 = test_ops.device_placement_op()
-      s3 = test_ops.device_placement_op()
-      return s0, s1, s2, s3
-
-    defined = quarantine.defun(multi_device_fn)
-    outputs = self.evaluate(defined())
-    self.assertLen(total_function_cache(defined), 1)
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-
-    with ops.device('/cpu:3'):
-      outputs = self.evaluate(defined())
-    # All function definitions are agnostic to call site devices.
-    self.assertLen(total_function_cache(defined), 1)
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-    self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
-
-    with ops.device('/cpu:0'):
-      outputs = self.evaluate(defined())
-    self.assertLen(total_function_cache(defined), 1)
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
-    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
-    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
-    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
 
   def testCacheObjectHashCollisions(self):
 
@@ -2325,3 +2277,68 @@ class DefunArgumentNamingTest(test.TestCase, parameterized.TestCase):
         [b'x', b'y', b'args_1', b'z'],
         [inp.op.get_attr('_user_specified_name')
          for inp in variadic_op.inputs])
+
+
+class DevicePlacementTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMultipleDeviceCheck(self):
+
+    def f():
+      with ops.device('cpu'):
+        return test_ops.device_placement_op()
+
+    func = quarantine.defun(f)
+    with ops.device('cpu:0'):
+      output = self.evaluate(func())
+      self.assertIn(compat.as_bytes('CPU:0'), output)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testDeviceAnnotationsRespected(self):
+
+    def multi_device_fn():
+      with ops.device('/cpu:0'):
+        s0 = test_ops.device_placement_op()
+      with ops.device('/cpu:1'):
+        s1 = test_ops.device_placement_op()
+      with ops.device('/cpu:2'):
+        s2 = test_ops.device_placement_op()
+      s3 = test_ops.device_placement_op()
+      return s0, s1, s2, s3
+
+    defined = quarantine.defun(multi_device_fn)
+    outputs = self.evaluate(defined())
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+
+    with ops.device('/cpu:3'):
+      outputs = self.evaluate(defined())
+    # All function definitions are agnostic to call site devices.
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:3'), outputs[3])
+
+    with ops.device('/cpu:0'):
+      outputs = self.evaluate(defined())
+    self.assertLen(total_function_cache(defined), 1)
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
+    self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
+    self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
+    self.assertIn(compat.as_bytes('CPU:0'), outputs[3])
+
+
+if __name__ == '__main__':
+  ops.enable_eager_execution()
+  cpus = config.list_physical_devices('CPU')
+  # Set 4 virtual CPUs
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration()
+  ])
+  test.main()
