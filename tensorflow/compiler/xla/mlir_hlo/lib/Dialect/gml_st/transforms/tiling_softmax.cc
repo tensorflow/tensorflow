@@ -339,7 +339,6 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
 
   LogicalResult matchAndRewrite(MaterializeOp op,
                                 PatternRewriter &rewriter) const override {
-    auto loc = op.getLoc();
     Value source = op.getSource();
     Operation *def = source.getDefiningOp();
     if (!def) return failure();
@@ -362,21 +361,14 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
           auto tile = op.getSet().getDefiningOp<TileOp>();
           if (!tile) return failure();
 
+          // Fuse.
           SmallVector<OpFoldResult> offsets = tile.getMixedOffsets();
           SmallVector<OpFoldResult> sizes = tile.getMixedSizes();
-
-          // Fuse.
           FailureOr<Value> result =
               iface.generateResultTileValue(rewriter, 0, offsets, sizes);
           if (failed(result)) return failure();
 
-          // Insert cast if needed.
-          Value fused = *result;
-          if (fused.getType() != op.getType()) {
-            fused = rewriter.create<tensor::CastOp>(loc, op.getType(), fused);
-          }
-
-          rewriter.replaceOp(op, fused);
+          rewriter.replaceOp(op, *result);
           return result->getDefiningOp();
         });
   }
