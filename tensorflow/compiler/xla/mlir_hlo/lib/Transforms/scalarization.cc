@@ -241,6 +241,75 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
   }
 };
 
+// Replace `thlo.concatenate` that has only one element in total in all the
+// inputs with `tensor.extract/insert`.
+struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(thlo::ConcatenateOp concatenateOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = concatenateOp.getLoc();
+    int64_t concatDim = concatenateOp.getDimension();
+
+    auto initTensor = concatenateOp.getInit();
+    auto initType = initTensor.getType();
+    int64_t rank = initTensor.getType().getRank();
+
+    // Only scalarize an op that has 1-element tensor output.
+    if (!hasSingleElement(initType)) {
+      return failure();
+    }
+
+    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    SmallVector<Value> indices(rank, zero);
+
+    // All inputs have only one element in total. Only one input has the concat
+    // dimension equal to 1, other inputs have 0.
+    Value element = extractElementFromInputs(
+        rewriter, loc, concatenateOp.getInputs(), indices,
+        initType.getElementType(), concatDim, zero);
+
+    Value res = rewriter.create<InsertOp>(loc, element, initTensor, indices);
+
+    rewriter.replaceOp(concatenateOp, res);
+
+    return success();
+  }
+
+ private:
+  Value tensorHasElement(OpBuilder &b, Location loc, Value input,
+                         int64_t concatDim, Value zero) const {
+    Value concatDimSize = b.create<tensor::DimOp>(loc, input, concatDim);
+    return b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne, concatDimSize,
+                                   zero);
+  }
+
+  Value extractElementFromInputs(OpBuilder &b, Location loc, ValueRange inputs,
+                                 ArrayRef<Value> indices, Type resultType,
+                                 int64_t concatDim, Value zero) const {
+    if (inputs.size() == 1) {
+      return b.create<ExtractOp>(loc, inputs.front(), indices);
+    }
+
+    return b
+        .create<scf::IfOp>(
+            loc, resultType,
+            tensorHasElement(b, loc, inputs.front(), concatDim, zero),
+            [&](OpBuilder &thenBuilder, Location thenLoc) {
+              Value el = thenBuilder.create<ExtractOp>(thenLoc, inputs.front(),
+                                                       indices);
+              b.create<scf::YieldOp>(loc, el);
+            },
+            [&](OpBuilder &elseBuilder, Location elseLoc) {
+              b.create<scf::YieldOp>(
+                  loc, extractElementFromInputs(elseBuilder, elseLoc,
+                                                inputs.drop_front(), indices,
+                                                resultType, concatDim, zero));
+            })
+        .getResult(0);
+  }
+};
+
 // Fold `tensor.extract(gml_st.materialize -> tensor<1x1xf32>)` into
 //      `gml_st.materialize -> f32` for single-element tensors.
 struct FoldTensorExtractIntoMaterialize : public OpRewritePattern<ExtractOp> {
@@ -306,7 +375,13 @@ struct ScalarizationPass
     auto *context = &getContext();
 
     RewritePatternSet patterns(context);
-    patterns.add<ScalarizeGenericOp, ScalarizeScatterOp>(context);
+    // clang-format off
+    patterns.add<
+        ScalarizeConcatenateOp,
+        ScalarizeGenericOp,
+        ScalarizeScatterOp
+    >(context);
+    // clang-format on
     populateTensorInsertExtractFoldingPatterns(&patterns);
     FromElementsOp::getCanonicalizationPatterns(patterns, context);
     gml_st::ForOp::getCanonicalizationPatterns(patterns, context);

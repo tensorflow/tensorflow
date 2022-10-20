@@ -269,7 +269,7 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 // CHECK-SAME:     into %[[INIT_]][%[[INIT_SPACE]]]
 // CHECK-SAME:     : tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
 // CHECK-NEXT:  } : tensor<?x?xf32>
-// CHECK-NEXT:  return %[[SCATTER:.*]] : tensor<?x?xf32>
+// CHECK-NEXT:  return %[[SCATTER]] : tensor<?x?xf32>
 
 // -----
 
@@ -336,6 +336,7 @@ func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
 // CHECK-SAME:       into tensor<3x3x4xi64>[!gml_st.tile<3x3x4>]
 // CHECK:       } : tensor<3x3x4xi64>
 
+// -----
 
 func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
     %out: tensor<8x2xf32>) -> tensor<8x2xf32>  {
@@ -369,3 +370,55 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
 
 // CHECK-NEXT:  gml_st.set_yield %[[ELEM]]
 // CHECK-SAME:    : f32 into tensor<8x2xf32>[!gml_st.tile<1x1>]
+
+// -----
+
+func.func @concatenate(%arg0: tensor<?x?xf32>,
+                       %arg1: tensor<?x?xf32>,
+                       %arg2: tensor<?x?xf32>,
+                       %init: tensor<1x1xf32>) -> tensor<1x1xf32> {
+  %cat = thlo.concatenate
+    ins(%arg0: tensor<?x?xf32>,
+        %arg1: tensor<?x?xf32>,
+        %arg2: tensor<?x?xf32>)
+    outs(%init: tensor<1x1xf32>)
+    { dimension = 1 : i64 }
+  func.return %cat : tensor<1x1xf32>
+}
+
+// CHECK-LABEL: func @concatenate(
+// CHECK-SAME:      %[[ARG_0:[0-9a-zA-Z]*]]: tensor<?x?xf32>,
+// CHECK-SAME:      %[[ARG_1:[0-9a-zA-Z]*]]: tensor<?x?xf32>,
+// CHECK-SAME:      %[[ARG_2:[0-9a-zA-Z]*]]: tensor<?x?xf32>,
+// CHECK-SAME:      %[[INIT:[0-9a-zA-Z]*]]: tensor<1x1xf32>)
+
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0
+// CHECK-DAG:   %[[C1:.*]] = arith.constant 1
+
+// Extract element from arg0 is it's not empty.
+// CHECK-NEXT:  %[[DIM_0:.*]] = tensor.dim %[[ARG_0]], %[[C1]]
+// CHECK-NEXT:  %[[CMP_0:.*]] = arith.cmpi ne, %[[DIM_0]], %[[C0]]
+// CHECK:       %[[RESULT:.*]] = scf.if %[[CMP_0]]
+// CHECK:         %[[EXT_0:.*]] = tensor.extract %[[ARG_0]]
+// CHECK-NEXT:    scf.yield %[[EXT_0]]
+// CHECK-NEXT:  } else {
+
+// Otherwise check arg1 and extract element if it's not empty.
+// CHECK-NEXT:    %[[DIM_1:.*]] = tensor.dim %[[ARG_1]], %[[C1]]
+// CHECK-NEXT:    %[[CMP_1:.*]] = arith.cmpi ne, %[[DIM_1]], %[[C0]]
+// CHECK-NEXT:    %[[RESULT_1:.*]] = scf.if %[[CMP_1]]
+// CHECK-NEXT:      %[[EXT_1:.*]] = tensor.extract %[[ARG_1]]
+// CHECK-NEXT:      scf.yield %[[EXT_1]]
+// CHECK-NEXT:    } else {
+
+// Extract element from arg2, because arg0 and arg1 are empty.
+// CHECK-NEXT:      %[[EXT_2:.*]] = tensor.extract %[[ARG_2]]
+// CHECK-NEXT:      scf.yield %[[EXT_1]]
+// CHECK-NEXT:    }
+// CHECK-NEXT:    scf.yield %[[RESULT_1]]
+// CHECK-NEXT:  }
+
+// Insert the element into init.
+// CHECK-NEXT:  %[[INSERTED:.*]] = tensor.insert %[[RESULT]]
+// CHECK-SAME:                    into %[[INIT]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:  return %[[INSERTED]] : tensor<1x1xf32>
