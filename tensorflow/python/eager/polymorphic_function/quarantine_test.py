@@ -1042,8 +1042,13 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        quarantine.register(defun_matmul, t, t)
-        quarantine.register(add, t, t)
+        concrete_func_matmul = defun_matmul.get_concrete_function(t, t)
+        concrete_func_matmul.add_to_graph()
+        concrete_func_matmul.add_gradient_functions_to_graph()
+
+        concrete_func_add = add.get_concrete_function(t, t)
+        concrete_func_add.add_to_graph()
+        concrete_func_add.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
@@ -1183,14 +1188,18 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
-        quarantine.register(defun_matmul, t, t)
+        concrete_func = defun_matmul.get_concrete_function(t, t)
+        concrete_func.add_to_graph()
+        concrete_func.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # pylint: disable=protected-access
         self.assertLen(graph._functions, 3)
 
         # Test register function with cache, note inputs are ignored.
-        quarantine.register(defun_matmul)
+        concrete_func = defun_matmul.get_concrete_function()
+        concrete_func.add_to_graph()
+        concrete_func.add_gradient_functions_to_graph()
         graph = ops.get_default_graph()
         self.assertLen(graph._functions, 3)
 
@@ -1205,8 +1214,13 @@ class DefunTest(test.TestCase, parameterized.TestCase):
       with ops.get_default_graph().as_default():
         t = constant_op.constant([[1.0, 2.0], [3.0, 4.0]])
         t2 = constant_op.constant([[2.0, 3.0], [4.0, 5.0]])
-        quarantine.register(defun_matmul, t, t)
-        quarantine.register(defun_matmul, t2, t2)
+        concrete_func_t = defun_matmul.get_concrete_function(t, t)
+        concrete_func_t.add_to_graph()
+        concrete_func_t.add_gradient_functions_to_graph()
+
+        concrete_func_t2 = defun_matmul.get_concrete_function(t2, t2)
+        concrete_func_t2.add_to_graph()
+        concrete_func_t2.add_gradient_functions_to_graph()
 
         graph = ops.get_default_graph()
         # Only one function is registered since the input param are in same type
@@ -1278,7 +1292,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
       x = constant_op.constant(1.0)
 
-      quarantine.register(cpu_boost, x)
+      concrete_func = cpu_boost.get_concrete_function(x)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
       y = gpu_boost(x)
       y_value = self.evaluate(y)
 
@@ -1320,7 +1336,9 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     @quarantine.defun
     def run_on_cpu(t):
-      quarantine.register(on_cpu, t)
+      concrete_func = on_cpu.get_concrete_function(t)
+      concrete_func.add_to_graph()
+      concrete_func.add_gradient_functions_to_graph()
       with ops.device('CPU:0'):
         return on_gpu(t)
 
