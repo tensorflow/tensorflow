@@ -377,9 +377,10 @@ TEST(TransposeTest, 5DDividedIntoTwo2DsThird) {
 }
 
 #ifdef GTEST_HAS_DEATH_TEST
-TEST(TransposeTest, Test6DInputTensor) {
-  EXPECT_DEATH(TransposeOpConstModel({1, 2, 3, 4, 5, 6}, {5}, {0, 1, 2, 3, 4}),
-               "Transpose op only supports 1D-5D input arrays.");
+TEST(TransposeTest, Test7DInputTensor) {
+  EXPECT_DEATH(
+      TransposeOpConstModel({1, 2, 3, 4, 5, 6, 7}, {6}, {0, 1, 2, 3, 4, 5}),
+      "Transpose op only supports 1D-6D input arrays.");
 }
 #endif
 
