@@ -38,6 +38,12 @@ namespace {
 
 struct TransformMatmulForCpuPass
     : public impl::TransformMatmulForCpuPassBase<TransformMatmulForCpuPass> {
+  TransformMatmulForCpuPass() = default;
+  explicit TransformMatmulForCpuPass(
+      llvm::ArrayRef<int64_t> matmul_tile_sizes) {
+    tile_sizes = matmul_tile_sizes;
+  }
+
   void getDependentDialects(DialectRegistry &registry) const final {
     registry.insert<mlir::gml_st::GmlStDialect, arith::ArithDialect,
                     linalg::LinalgDialect, tensor::TensorDialect>();
@@ -50,18 +56,20 @@ struct TransformMatmulForCpuPass
 
     mlir::gml_st::TilingOptions opts;
 
-    ///////////////////////////////
-    // Tiling parallel dimensions
-    opts.tileSizeComputationFn = [](OpBuilder &b, Operation *op) {
-      // TODO(vuson): add parameter for tile size vectors
-      auto zero = b.create<arith::ConstantIndexOp>(op->getLoc(), 0);
-      auto two = b.create<arith::ConstantIndexOp>(op->getLoc(), 2);
-      return SmallVector<Value>{two, two, zero};
-    };
+    if ((*tile_sizes).empty()) {
+      tile_sizes = {2, 2, 2};
+    }
+
+    assert(tile_sizes.size() == 3 &&
+           "Tiling sizes for MatMul should have 3 elements");
 
     auto filter_fn = [&](Operation *op) {
       return success(isa<mlir::linalg::MatmulOp>(op));
     };
+
+    ///////////////////////////////
+    // Tiling parallel dimensions
+    opts.setTileSizeComputationFn({(*tile_sizes)[0], (*tile_sizes)[1], 0});
 
     RewritePatternSet patterns(ctx);
     populateTilingPatterns(ctx, filter_fn, opts, &patterns);
@@ -75,12 +83,7 @@ struct TransformMatmulForCpuPass
 
     ///////////////////////////////
     // Tiling reduction dimension
-    opts.tileSizeComputationFn = [](OpBuilder &b, Operation *op) {
-      // TODO(vuson): add parameter for tile size vectors
-      auto zero = b.create<arith::ConstantIndexOp>(op->getLoc(), 0);
-      auto two = b.create<arith::ConstantIndexOp>(op->getLoc(), 2);
-      return SmallVector<Value>{zero, zero, two};
-    };
+    opts.setTileSizeComputationFn({0, 0, (*tile_sizes).back()});
     opts.distribute = false;
 
     RewritePatternSet newpatterns(ctx);
@@ -103,6 +106,12 @@ namespace xla::cpu {
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformMatmulForCpuPass() {
   return std::make_unique<mlir::cpu::TransformMatmulForCpuPass>();
+}
+
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmul_tile_sizes) {
+  return std::make_unique<mlir::cpu::TransformMatmulForCpuPass>(
+      matmul_tile_sizes);
 }
 
 }  // namespace xla::cpu

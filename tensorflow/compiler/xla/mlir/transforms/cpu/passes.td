@@ -53,6 +53,11 @@ def TransformMatmulForCpuPass :
   }];
 
   let constructor = "createTransformMatmulForCpuPass()";
+
+  let options = [
+    ListOption<"tile_sizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.matmul`">,
+  ];
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

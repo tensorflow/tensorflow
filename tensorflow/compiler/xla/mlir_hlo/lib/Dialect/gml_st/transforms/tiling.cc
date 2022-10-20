@@ -41,6 +41,17 @@ limitations under the License.
 
 namespace mlir {
 namespace gml_st {
+
+void TilingOptions::setTileSizeComputationFn(ArrayRef<int64_t> ts) {
+  SmallVector<int64_t, 4> tileSizes(ts.begin(), ts.end());
+  tileSizeComputationFn = [tileSizes](OpBuilder &b, Operation *op) {
+    return llvm::to_vector<4>(map_range(tileSizes, [&](int64_t s) {
+      Value v = b.create<arith::ConstantIndexOp>(op->getLoc(), s);
+      return v;
+    }));
+  };
+}
+
 namespace {
 
 #define GEN_PASS_DEF_TILINGPASS

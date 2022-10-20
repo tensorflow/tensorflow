@@ -22,6 +22,9 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 
+#define GEN_PASS_DECL_TRANSFORMMATMULFORCPUPASS
+#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h.inc"
+
 namespace xla {
 namespace cpu {
 
