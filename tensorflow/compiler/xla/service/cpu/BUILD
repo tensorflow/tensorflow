@@ -8,7 +8,7 @@ load(
     "mkl_deps",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
-load("//tensorflow/tsl:tsl.bzl", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 load(
     "//third_party/compute_library:build_defs.bzl",
     "acl_deps",
@@ -955,7 +955,7 @@ cc_library(
     name = "runtime_matmul_acl",
     srcs = ["runtime_matmul_acl.cc"],
     hdrs = ["runtime_matmul_acl.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
@@ -974,7 +974,7 @@ cc_library(
         "runtime_conv2d_acl.cc",
     ],
     hdrs = ["runtime_conv2d_acl.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_conv2d",

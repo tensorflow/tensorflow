@@ -1,7 +1,7 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
-load("//tensorflow/tsl:tsl.bzl", "if_not_windows", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_not_windows", "tsl_copts")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -297,7 +297,7 @@ cc_library(
         "//tensorflow/tsl/platform:snappy.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
         # TF Additional NUMA defines
         "//tensorflow/tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],

@@ -11,7 +11,7 @@ load(
 load(
     "//tensorflow/tsl:tsl.bzl",
     "check_deps",
-    "tf_copts",
+    "tsl_copts",
 )
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable")
 load(
@@ -116,7 +116,7 @@ cc_library(
     name = "determinism",
     srcs = ["determinism.cc"],
     hdrs = ["determinism.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":env_var",

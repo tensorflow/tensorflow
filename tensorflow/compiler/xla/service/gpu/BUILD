@@ -15,7 +15,7 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -2156,7 +2156,7 @@ cc_library(
     name = "stream_executor_util",
     srcs = ["stream_executor_util.cc"],
     hdrs = ["stream_executor_util.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         ":cublas_cudnn",
         ":launch_dimensions",
@@ -2190,7 +2190,7 @@ cc_library(
     name = "gpu_asm_opts_util",
     srcs = ["gpu_asm_opts_util.cc"],
     hdrs = ["gpu_asm_opts_util.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     deps = [
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",

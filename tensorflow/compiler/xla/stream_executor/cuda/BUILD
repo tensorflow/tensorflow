@@ -2,7 +2,7 @@
 #   CUDA-platform specific StreamExecutor support code.
 
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_cuda_cc_test")
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -708,7 +708,7 @@ tf_cc_test(
 
 cc_library(
     name = "all_runtime",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":cublas_plugin",

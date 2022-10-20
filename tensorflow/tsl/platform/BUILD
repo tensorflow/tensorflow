@@ -8,7 +8,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl:tsl.bzl",
-    "tf_copts",
+    "tsl_copts",
 )
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
@@ -1163,7 +1163,7 @@ cc_library(
     name = "tensor_float_32_utils",
     srcs = ["tensor_float_32_utils.cc"],
     hdrs = ["tensor_float_32_utils.h"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     alwayslink = 1,
 )
 
@@ -1253,7 +1253,7 @@ cc_library(
     name = "test_main",
     testonly = 1,
     srcs = ["test_main.cc"],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     linkopts = select({
         "//tensorflow/tsl:windows": [],
         "//conditions:default": ["-lm"],

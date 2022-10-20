@@ -146,7 +146,7 @@ def get_win_copts(is_external = False):
     else:
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
 
-def tf_copts(
+def tsl_copts(
         android_optimization_level_override = "-O2",
         is_external = False,
         allow_exceptions = False):
