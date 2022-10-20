@@ -41,6 +41,9 @@ using namespace mlir;
 using namespace mlir::gml_st;
 using mlir::gpu::LaunchOp;
 using mlir::memref::SubViewOp;
+using mlir::vector::CombiningKind;
+using mlir::vector::ExtractOp;
+using mlir::vector::MultiDimReductionOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
 
@@ -76,10 +79,10 @@ struct ParallelOpToGpuPattern : public OpRewritePattern<ParallelOp> {
 };
 
 struct MultiDimReductionOpToWarpReductionPattern
-    : OpRewritePattern<vector::MultiDimReductionOp> {
-  using OpRewritePattern<vector::MultiDimReductionOp>::OpRewritePattern;
+    : OpRewritePattern<MultiDimReductionOp> {
+  using OpRewritePattern<MultiDimReductionOp>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(vector::MultiDimReductionOp reductionOp,
+  LogicalResult matchAndRewrite(MultiDimReductionOp reductionOp,
                                 PatternRewriter& rewriter) const override;
 };
 
@@ -111,10 +114,13 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
     func::FuncOp func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
-    // Make sure there are no ParallelOps left.
-    WalkResult walk = func.walk([](ParallelOp op) {
-      op.emitOpError("failed to simtfy");
-      return WalkResult::interrupt();
+    // Make sure there are no GmlSt ops left.
+    WalkResult walk = func.walk([](Operation* op) {
+      if (isa<GmlStDialect>(op->getDialect())) {
+        op->emitOpError("failed to simtfy");
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
     });
     if (walk.wasInterrupted()) signalPassFailure();
   }
@@ -351,33 +357,32 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
 }
 
 static Value createCombineOp(Location loc, Value lhs, Value rhs,
-                             vector::CombiningKind kind,
-                             PatternRewriter& rewriter) {
+                             CombiningKind kind, PatternRewriter& rewriter) {
   auto helper = [&](auto dummy) {
     return rewriter.create<decltype(dummy)>(loc, lhs, rhs);
   };
   switch (kind) {
-    case vector::CombiningKind::ADD:
+    case CombiningKind::ADD:
       return helper(arith::AddFOp());
-    case vector::CombiningKind::MUL:
+    case CombiningKind::MUL:
       return helper(arith::MulFOp());
-    case vector::CombiningKind::MINUI:
+    case CombiningKind::MINUI:
       return helper(arith::MinUIOp());
-    case vector::CombiningKind::MINSI:
+    case CombiningKind::MINSI:
       return helper(arith::MinSIOp());
-    case vector::CombiningKind::MINF:
+    case CombiningKind::MINF:
       return helper(arith::MinFOp());
-    case vector::CombiningKind::MAXUI:
+    case CombiningKind::MAXUI:
       return helper(arith::MaxUIOp());
-    case vector::CombiningKind::MAXSI:
+    case CombiningKind::MAXSI:
       return helper(arith::MaxSIOp());
-    case vector::CombiningKind::MAXF:
+    case CombiningKind::MAXF:
       return helper(arith::MaxFOp());
-    case vector::CombiningKind::AND:
+    case CombiningKind::AND:
       return helper(arith::AndIOp());
-    case vector::CombiningKind::OR:
+    case CombiningKind::OR:
       return helper(arith::OrIOp());
-    case vector::CombiningKind::XOR:
+    case CombiningKind::XOR:
       return helper(arith::XOrIOp());
     default:
       llvm_unreachable("unhandled");
@@ -385,44 +390,52 @@ static Value createCombineOp(Location loc, Value lhs, Value rhs,
 }
 
 LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
-    vector::MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
+    MultiDimReductionOp reductionOp, PatternRewriter& rewriter) const {
   auto inType = reductionOp.getSourceVectorType();
   auto outType = reductionOp.getDestType().dyn_cast<VectorType>();
   auto isNumElementsEqual = [](auto type, int64_t size) {
     return type && type.getNumElements() == size;
   };
   if (!isNumElementsEqual(inType, 32)) {
-    return rewriter.notifyMatchFailure(reductionOp, "Expected 32-vector input");
+    return rewriter.notifyMatchFailure(reductionOp, "expected 32-vector input");
   }
   if (!isNumElementsEqual(outType, 1)) {
-    return rewriter.notifyMatchFailure(reductionOp, "Expected 1-vector output");
+    return rewriter.notifyMatchFailure(reductionOp, "expected 1-vector output");
+  }
+  auto distribute = reductionOp.getSource().getDefiningOp<DistributeOp>();
+  if (!distribute) {
+    return rewriter.notifyMatchFailure(
+        reductionOp, "source not defined by gml_st.distribute");
+  }
+  // Even if this value was not written into the tile corresponding to the
+  // current thread's lane id, this is fine, since it doesn't matter which
+  // thread processes which element within a reduction.
+  TypedValue<VectorType> lhsVector = distribute.getSource();
+  if (!isNumElementsEqual(lhsVector.getType(), 1)) {
+    return rewriter.notifyMatchFailure(distribute, "expected 1-vector input");
   }
 
-  // Preamble: extract lane id element from input.
+  // Preamble: extract element from input
   Location loc = reductionOp->getLoc();
-  Value laneId = rewriter.create<gpu::LaneIdOp>(loc);
-  Value cast = rewriter.create<vector::ShapeCastOp>(
-      loc, VectorType::get(inType.getNumElements(), inType.getElementType()),
-      reductionOp.getSource());
-  Value lhs = rewriter.create<vector::ExtractElementOp>(loc, cast, laneId);
+  Value lhs = rewriter.create<ExtractOp>(
+      loc, lhsVector, SmallVector<int64_t>(lhsVector.getType().getRank(), 0));
 
-  auto getI32Attr = [&](int32_t value) {
-    return rewriter.getI32IntegerAttr(value);
+  auto createConstant = [&](int32_t value) {
+    return rewriter.create<arith::ConstantOp>(
+        loc, rewriter.getI32IntegerAttr(value));
   };
-  Value width = rewriter.create<arith::ConstantOp>(loc, getI32Attr(32));
-
+  Value width = createConstant(32);
   // Create warp shuffles of increasing offset and interleave with a clone of
   // the accumulate block.
   for (int i = 1; i < 32; i *= 2) {
-    Value offset = rewriter.create<arith::ConstantOp>(loc, getI32Attr(i));
-    auto shuffleOp = rewriter.create<gpu::ShuffleOp>(loc, lhs, offset, width,
-                                                     gpu::ShuffleMode::XOR);
+    auto shuffleOp = rewriter.create<gpu::ShuffleOp>(
+        loc, lhs, createConstant(i), width, gpu::ShuffleMode::XOR);
     lhs = createCombineOp(loc, lhs, shuffleOp.getShuffleResult(),
                           reductionOp.getKind(), rewriter);
   }
 
   // Combine with init element and broadcast result back to vector.
-  Value acc = rewriter.create<vector::ExtractOp>(loc, reductionOp.getAcc(), 0);
+  Value acc = rewriter.create<ExtractOp>(loc, reductionOp.getAcc(), 0);
   lhs = createCombineOp(loc, lhs, acc, reductionOp.getKind(), rewriter);
   rewriter.replaceOpWithNewOp<vector::BroadcastOp>(reductionOp, outType, lhs);
 
