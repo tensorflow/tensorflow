@@ -557,9 +557,11 @@ class SingleOpModel {
   // `apply_delegate` is ignored.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
-                        bool apply_delegate, bool allocate_and_delegate = true);
+                        bool apply_delegate, bool allocate_and_delegate = true,
+                        bool use_simple_allocator = false);
 
-  void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
+  void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        bool use_simple_allocator = false);
 
   // Executes inference and return status code.
   TfLiteStatus Invoke();
