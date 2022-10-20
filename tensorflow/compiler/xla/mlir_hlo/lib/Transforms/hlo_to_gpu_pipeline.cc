@@ -42,9 +42,7 @@ using ::mlir::gpu::GPUModuleOp;
 // the unified kernel generator + autofusion + XLA Next pipeline once we have
 // it, and once this code stabilizes.
 void mlir::createHloToGpuPipeline(OpPassManager& pm,
-                                  ArrayRef<int64_t> blockTileDim,
-                                  ArrayRef<int64_t> warpTileDim,
-                                  ArrayRef<int64_t> threadTileDim) {
+                                  const HloToGpuPipelineOptions& options) {
   pm.addNestedPass<FuncOp>(hlo::createUnbufferizePass());
 
   // HLO -> Linalg
@@ -56,11 +54,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
   // Tiling
   pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, SmallVector<int64_t>(blockTileDim)));
+      /*distribute=*/true, options.blockTileDim));
   pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, SmallVector<int64_t>(warpTileDim)));
+      /*distribute=*/true, options.warpTileDim));
   pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, SmallVector<int64_t>(threadTileDim)));
+      /*distribute=*/true, options.threadTileDim));
   pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
   pm.addNestedPass<FuncOp>(createScalarizationPass());
 
