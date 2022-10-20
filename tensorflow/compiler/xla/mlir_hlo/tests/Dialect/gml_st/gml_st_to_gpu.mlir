@@ -240,9 +240,7 @@ func.func @vectorized_tiling(%arg0: memref<2048xf32>) -> memref<2048xf32> {
       %1 = vector.transfer_read %subview_2[%c0], %cst {in_bounds = [true]}
         : memref<128xf32, #layout>, vector<128xf32>
       %2 = gml_st.parallel (%arg3) = (%c0) to (%c128) step (%c4) {
-        %3 = gml_st.space [128] : !gml_st.tile<128>
-        %4 = gml_st.tile %3 [%arg3] [4] [1]
-          : !gml_st.tile<128> to !gml_st.tile<4>
+        %4 = gml_st.tile [%arg3] [4] [1] : !gml_st.tile<4>
         %5 = gml_st.materialize %0[%4]
           : vector<128xf32>[!gml_st.tile<4>] to vector<4xf32>
         %6 = math.absf %5 : vector<4xf32>

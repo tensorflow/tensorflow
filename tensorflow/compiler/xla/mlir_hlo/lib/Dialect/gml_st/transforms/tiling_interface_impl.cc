@@ -84,14 +84,17 @@ struct ExternalLinalgOpTilingInterface
       auto valueToTileTy = valueToTile.getType().cast<RankedTensorType>();
       const Optional<linalg::SliceParameters> &sliceParams = std::get<1>(item);
 
-      SmallVector<Value> dynamicSizes =
-          tensor::createDynamicDimValues(b, loc, valueToTile);
-      auto staticSizes = b.getI64ArrayAttr(valueToTileTy.getShape());
-      Value set = b.create<SpaceOp>(loc, dynamicSizes, staticSizes);
-      if (sliceParams.has_value()) {
-        set = b.create<TileOp>(loc, set, sliceParams->offsets,
-                               sliceParams->sizes, sliceParams->strides);
-      }
+      int64_t rank = valueToTileTy.getRank();
+      SmallVector<OpFoldResult> valueToTileSizes{
+          tensor::getMixedSizes(b, loc, valueToTile)};
+      SmallVector<OpFoldResult> zeros(rank, b.getI64IntegerAttr(0));
+      SmallVector<OpFoldResult> ones(rank, b.getI64IntegerAttr(1));
+      Value set =
+          sliceParams.has_value()
+              ? b.create<TileOp>(loc, sliceParams->offsets, sliceParams->sizes,
+                                 sliceParams->strides)
+              : b.create<TileOp>(loc, zeros, valueToTileSizes, ones);
+
       Value materializedTile = b.create<MaterializeOp>(loc, valueToTile, set);
       tiledOperands.push_back(materializedTile);
     }

@@ -66,7 +66,6 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addNestedPass<FuncOp>(gml_st::createComposeSetOpsPass());
 
   // Bufferization-related passes.
   pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());

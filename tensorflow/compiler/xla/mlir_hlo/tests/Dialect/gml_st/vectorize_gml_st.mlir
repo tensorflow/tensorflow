@@ -12,19 +12,18 @@ func.func @vectorize_gml_st_parallel_op(
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
   %c32 = arith.constant 32 : index
-  %space = gml_st.space [32] : !gml_st.tile<32>
+  %tile32 = gml_st.tile [0][32][1] : !gml_st.tile<32>
   // We need this outer trivial loop to make sure the inner loop has a parent
   // with the correct distribution label.
   %2 = gml_st.parallel (%unused) = (%c0) to (%c1) step (%c1)
           distribution ("test") {
-    %arg0tile = gml_st.materialize %arg0[%space]
+    %arg0tile = gml_st.materialize %arg0[%tile32]
       : tensor<32xf32>[!gml_st.tile<32>] to tensor<32xf32>
-    %arg1tile = gml_st.materialize %arg1[%space]
+    %arg1tile = gml_st.materialize %arg1[%tile32]
       : tensor<32xf32>[!gml_st.tile<32>] to tensor<32xf32>
     %3 = gml_st.parallel (%i) = (%c0) to (%c32) step (%c4)
           distribution ("test") {
-      %tile = gml_st.tile %space [%i] [4] [1]
-        : !gml_st.tile<32> to !gml_st.tile<4>
+      %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
       %6 = gml_st.materialize %arg0tile[%tile]
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
       %7 = gml_st.materialize %arg1tile[%tile]
@@ -40,7 +39,7 @@ func.func @vectorize_gml_st_parallel_op(
       gml_st.set_yield %9 into %arg1tile[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
     } : tensor<32xf32>
-    gml_st.set_yield %3 into %arg1[%space]
+    gml_st.set_yield %3 into %arg1[%tile32]
       : tensor<32xf32> into tensor<32xf32>[!gml_st.tile<32>]
   } : tensor<32xf32>
   func.return %2 : tensor<32xf32>
@@ -67,13 +66,12 @@ func.func @skip_vectorization_with_wrong_label(
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
   %c32 = arith.constant 32 : index
-  %space = gml_st.space [32] : !gml_st.tile<32>
+  %tile32 = gml_st.tile [0][32][1] : !gml_st.tile<32>
   %2 = gml_st.parallel (%unused) = (%c0) to (%c1) step (%c1)
           distribution ("no_vec") {
     %3 = gml_st.parallel (%i) = (%c0) to (%c32) step (%c4)
             distribution ("no_vec") {
-      %tile = gml_st.tile %space [%i] [4] [1]
-        : !gml_st.tile<32> to !gml_st.tile<4>
+      %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
       %6 = gml_st.materialize %arg0[%tile]
         : tensor<32xf32>[!gml_st.tile<4>] to tensor<4xf32>
       %7 = gml_st.materialize %arg1[%tile]
@@ -89,7 +87,7 @@ func.func @skip_vectorization_with_wrong_label(
       gml_st.set_yield %9 into %arg1[%tile]
         : tensor<4xf32> into tensor<32xf32>[!gml_st.tile<4>]
     } : tensor<32xf32>
-    gml_st.set_yield %3 into %arg1[%space]
+    gml_st.set_yield %3 into %arg1[%tile32]
       : tensor<32xf32> into tensor<32xf32>[!gml_st.tile<32>]
   } : tensor<32xf32>
   func.return %2 : tensor<32xf32>

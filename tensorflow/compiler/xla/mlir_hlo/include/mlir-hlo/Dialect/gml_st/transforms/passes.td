@@ -74,19 +74,10 @@ def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
   ];
 }
 
-def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
-  let summary = "Compose set operations.";
-  let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
-}
-
 def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
     "mlir::func::FuncOp"> {
   let summary = "Collapse (or uncollapse) materialize operations.";
   let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
-  let options = [
-    Option<"reverse_", "reverse", "bool", /*default=*/"false", "Whether to "
-        "revert collapsing of materialize operations.">,
-  ];
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {

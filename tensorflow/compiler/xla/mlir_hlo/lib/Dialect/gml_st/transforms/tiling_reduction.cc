@@ -87,15 +87,15 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
   Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
   Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, kWarpSize);
   Value reductionDim = rewriter.create<tensor::DimOp>(loc, input, c1);
+  OpFoldResult zeroAttr = rewriter.getIndexAttr(0);
   OpFoldResult oneAttr = rewriter.getIndexAttr(1);
   auto warpDist = rewriter.getStringAttr("warp");
 
   // Create warp-sized partial reduction result tensor.
   Value partial = rewriter.create<tensor::EmptyOp>(loc, kWarpSize,
                                                    outType.getElementType());
-  Value outPoint = rewriter.create<gml_st::SpaceOp>(loc, oneAttr);
-  Value partSpace = rewriter.create<gml_st::SpaceOp>(
-      loc, OpFoldResult(rewriter.getIndexAttr(kWarpSize)));
+  Value outPoint =
+      rewriter.create<gml_st::TileOp>(loc, zeroAttr, oneAttr, oneAttr);
 
   auto getResult = [](Operation* op) { return op->getResult(0); };
 
@@ -104,8 +104,8 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
       loc, partial.getType(), c0, cWarpSize, c1, warpDist,
       [&](OpBuilder& builder, Location loc, ValueRange ivs) {
         OpFoldResult laneIdx = ivs.front();
-        Value partPoint = builder.create<gml_st::TileOp>(
-            loc, partSpace, laneIdx, oneAttr, oneAttr);
+        Value partPoint =
+            builder.create<gml_st::TileOp>(loc, laneIdx, oneAttr, oneAttr);
         builder.create<gml_st::SetYieldOp>(loc, output, partial, partPoint);
       }));
 
@@ -115,7 +115,7 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
       [&](OpBuilder& builder, Location loc, ValueRange ivs) {
         Value laneIdx = ivs.front();
         Value partPoint = builder.create<gml_st::TileOp>(
-            loc, partSpace, OpFoldResult(laneIdx), oneAttr, oneAttr);
+            loc, OpFoldResult(laneIdx), oneAttr, oneAttr);
         Value initVal =
             builder.create<gml_st::MaterializeOp>(loc, partial, partPoint);
         // Create gml_st.for sequentially reducing parts of the row.
@@ -126,10 +126,8 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
               Value colIdx = ivs.front();
               Value partElement = outputs.front();
               using OFRs = ArrayRef<OpFoldResult>;
-              Value inSpace = builder.create<gml_st::SpaceOp>(
-                  loc, OFRs{oneAttr, reductionDim});
               Value inPoint = builder.create<gml_st::TileOp>(
-                  loc, inSpace, OFRs{rewriter.getIndexAttr(0), colIdx},
+                  loc, OFRs{rewriter.getIndexAttr(0), colIdx},
                   OFRs{oneAttr, oneAttr}, OFRs{oneAttr, oneAttr});
               Value inElement =
                   builder.create<gml_st::MaterializeOp>(loc, input, inPoint);

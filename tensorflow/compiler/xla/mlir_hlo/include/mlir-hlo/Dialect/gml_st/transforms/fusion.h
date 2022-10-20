@@ -23,8 +23,7 @@ namespace gml_st {
 
 // Create fused operation based on the specificed subset. The result is
 // equivalent to the given `materialize` op.
-FailureOr<Value> createFusedOp(OpBuilder &b, Location loc,
-                               MaterializeOp materializeOp);
+FailureOr<Value> createFusedOp(OpBuilder &b, MaterializeOp materializeOp);
 
 /// Populate fusion patterns.
 void populateFusionPatterns(MLIRContext *ctx,

@@ -83,9 +83,8 @@ func.func @parallel_on_tensor(
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
   %0 = tensor.dim %arg0, %c0 : tensor<?xf32>
-  %space = gml_st.space [%0] : !gml_st.tile<?>
   %2 = gml_st.parallel (%i) = (%c0) to (%0) step (%c4) {
-    %tile = gml_st.tile %space [%i] [4] [1] : !gml_st.tile<?> to !gml_st.tile<4>
+    %tile = gml_st.tile [%i] [4] [1] : !gml_st.tile<4>
     %6 = gml_st.materialize %arg0[%tile]
       : tensor<?xf32>[!gml_st.tile<4>] to tensor<4xf32>
     %7 = gml_st.materialize %arg1[%tile]

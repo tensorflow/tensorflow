@@ -101,8 +101,7 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
 };
 
 // Extracts a point using gml_st.materialize and gml_st.tile with 1 element.
-Value getPoint(OpBuilder &b, Location loc, Value tensor, Value space,
-               ValueRange indices) {
+Value getPoint(OpBuilder &b, Location loc, Value tensor, ValueRange indices) {
   IntegerAttr oneAttr = b.getIndexAttr(1);
 
   auto tensorType = tensor.getType().cast<RankedTensorType>();
@@ -112,7 +111,7 @@ Value getPoint(OpBuilder &b, Location loc, Value tensor, Value space,
   SmallVector<OpFoldResult> sizes(tensorRank, oneAttr);
   SmallVector<OpFoldResult> strides(tensorRank, oneAttr);
 
-  Value tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, strides);
+  Value tile = b.create<gml_st::TileOp>(loc, offsets, sizes, strides);
   return b.create<gml_st::MaterializeOp>(loc, tensorType.getElementType(),
                                          tensor, tile);
 }
@@ -136,17 +135,21 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
         tensor::getMixedSizes(b, loc, updates);
     auto updatesDimValues =
         getValueOrCreateConstantIndexOp(b, loc, updatesDimSizes);
-    Value updatesSpace = b.create<gml_st::SpaceOp>(updatesDimSizes);
 
     Value indices = scatterOp.getIndices();
 
     Value init = scatterOp.getInit();
     auto initType = init.getType().dyn_cast<RankedTensorType>();
+    int64_t initRank = initType.getRank();
 
     SmallVector<OpFoldResult> initDimSizes =
         tensor::getMixedSizes(b, loc, init);
     auto initDimValues = getValueOrCreateConstantIndexOp(b, loc, initDimSizes);
-    Value initSpace = b.create<gml_st::SpaceOp>(initDimSizes);
+
+    Value initTile = b.create<gml_st::TileOp>(
+        loc, SmallVector<OpFoldResult>(initRank, b.getI64IntegerAttr(0)),
+        initDimSizes,
+        SmallVector<OpFoldResult>(initRank, b.getI64IntegerAttr(1)));
 
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
@@ -186,11 +189,10 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                   .create<scf::IfOp>(
                       loc, initType, indexIsInBounds,
                       [&](OpBuilder &thenBuilder, Location thenLoc) {
-                        Value updateValue = getPoint(thenBuilder, loc, updates,
-                                                     updatesSpace, updateIndex);
+                        Value updateValue =
+                            getPoint(thenBuilder, loc, updates, updateIndex);
                         Value currentValue =
-                            getPoint(thenBuilder, loc, initBlockArg, initSpace,
-                                     initIndex);
+                            getPoint(thenBuilder, loc, initBlockArg, initIndex);
 
                         // Combine update with the value in the output.
                         Block *body = scatterOp.getBody();
@@ -215,7 +217,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
                   .getResult(0);
 
           nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, maybeUpdatedInit,
-                                                   initBlockArg, initSpace);
+                                                   initBlockArg, initTile);
         });
     rewriter.replaceOp(scatterOp, loop.getResults());
     return success();

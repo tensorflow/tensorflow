@@ -191,10 +191,10 @@ bool isSimpleBcastReduction(Operation *op, int64_t &dim,
   return true;
 }
 
-Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Location loc,
-                                 Operation *op, int64_t i) {
+Operation *fuseIthOperandInPlace(PatternRewriter &rewriter, Operation *op,
+                                 int64_t i) {
   auto matOp = llvm::cast<MaterializeOp>(op->getOperand(i).getDefiningOp());
-  FailureOr<Value> fused = createFusedOp(rewriter, loc, matOp);
+  FailureOr<Value> fused = createFusedOp(rewriter, matOp);
   assert(succeeded(fused) && "expect success after matching");
   rewriter.replaceOp(matOp, *fused);
   return fused->getDefiningOp();
@@ -204,8 +204,6 @@ LogicalResult tilePartialSoftmax(
     TilingInterface op, PatternRewriter &rewriter,
     llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
         tileOperationFn) {
-  Location loc = op.getLoc();
-
   // Match cwise root op.
   int64_t arity;
   if (!isCwiseGenericOp(op, arity)) return failure();
@@ -256,9 +254,9 @@ LogicalResult tilePartialSoftmax(
     if (!simpleBcastReductions[i]) continue;
 
     // Fuse.
-    Operation *tiledBcast = fuseIthOperandInPlace(rewriter, loc, *tiledOp, i);
+    Operation *tiledBcast = fuseIthOperandInPlace(rewriter, *tiledOp, i);
     Operation *tiledReduction =
-        fuseIthOperandInPlace(rewriter, loc, tiledBcast, /*i=*/0);
+        fuseIthOperandInPlace(rewriter, tiledBcast, /*i=*/0);
 
     // Use common tiled source value.
     if (commonTiledSource) {
@@ -361,17 +359,11 @@ struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
           // unnested tiles.
 
           // Extract tile offsets and sizes.
-          SmallVector<OpFoldResult> offsets;
-          SmallVector<OpFoldResult> sizes;
-          Value tile = op.getSet();
-          int64_t rank = tile.getType().cast<TileType>().getRank();
-          for (int64_t i = 0; i < rank; i++) {
-            Value iCst = rewriter.create<arith::ConstantIndexOp>(loc, i);
-            offsets.push_back(
-                rewriter.create<OffsetOp>(loc, tile, iCst).getResult());
-            sizes.push_back(
-                rewriter.create<SizeOp>(loc, tile, iCst).getResult());
-          }
+          auto tile = op.getSet().getDefiningOp<TileOp>();
+          if (!tile) return failure();
+
+          SmallVector<OpFoldResult> offsets = tile.getMixedOffsets();
+          SmallVector<OpFoldResult> sizes = tile.getMixedSizes();
 
           // Fuse.
           FailureOr<Value> result =
@@ -400,8 +392,7 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<MaterializeOp> {
     if (!isUnaryCwiseGenericOp(source)) return failure();
 
     // Fuse.
-    Location loc = op.getLoc();
-    FailureOr<Value> fused = createFusedOp(rewriter, loc, op);
+    FailureOr<Value> fused = createFusedOp(rewriter, op);
     if (failed(fused)) return failure();
 
     rewriter.replaceOp(op, *fused);

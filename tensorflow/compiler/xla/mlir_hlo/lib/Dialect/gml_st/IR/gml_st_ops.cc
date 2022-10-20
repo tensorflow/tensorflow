@@ -260,6 +260,7 @@ LogicalResult verifyCompatibleExtractedSubset(Operation *op,
 }
 
 LogicalResult MaterializeOp::verify() {
+  // TODO(pifon): Add verification that was removed from TileOp::verify.
   return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
                                          getType(), getSet().getType());
 }
@@ -1377,61 +1378,10 @@ LogicalResult YieldOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// SpaceOp
-//===----------------------------------------------------------------------===//
-
-void SpaceOp::build(OpBuilder &builder, OperationState &result,
-                    ArrayRef<OpFoldResult> sizes,
-                    ArrayRef<NamedAttribute> attrs) {
-  SmallVector<Value> dynamicSizes;
-  SmallVector<int64_t> staticSizes;
-  for (OpFoldResult size : sizes)
-    dispatchIndexOpFoldResult(size, dynamicSizes, staticSizes,
-                              ShapedType::kDynamicSize);
-  build(builder, result, TileType::get(builder.getContext(), staticSizes),
-        dynamicSizes, builder.getI64ArrayAttr(staticSizes));
-  result.addAttributes(attrs);
-}
-
-LogicalResult SpaceOp::inferReturnTypes(
-    MLIRContext *ctx, Optional<Location> /*loc*/, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  SpaceOp::Adaptor adaptor(operands, attributes, regions);
-  SmallVector<int64_t> shape = llvm::to_vector(
-      llvm::map_range(adaptor.getStaticSizes(), [&](const Attribute &val) {
-        return val.cast<IntegerAttr>().getValue().getSExtValue();
-      }));
-  auto resultTy = TileType::get(ctx, shape);
-  inferredReturnTypes.push_back(resultTy);
-  return success();
-}
-
-LogicalResult SpaceOp::verify() {
-  auto resultTy = getType().cast<TileType>();
-  return mlir::verifyListOfOperandsOrIntegers(
-      getOperation(), "size", resultTy.getShape().size(), getStaticSizes(),
-      getDynamicSizes(), ShapedType::isDynamic);
-}
-
-unsigned SpaceOp::getNumDynamicEntriesUpToIdx(unsigned idx) {
-  return std::count_if(getStaticSizes().begin(), getStaticSizes().begin() + idx,
-                       [&](const mlir::Attribute size) {
-                         return mlir::ShapedType::isDynamic(
-                             size.cast<mlir::IntegerAttr>().getInt());
-                       });
-}
-
-mlir::Value SpaceOp::getDynamicSize(unsigned idx) {
-  auto numDynamic = getNumDynamicEntriesUpToIdx(idx);
-  return getDynamicSizes()[numDynamic];
-}
-
-//===----------------------------------------------------------------------===//
 // TileOp
 //===----------------------------------------------------------------------===//
 
-void TileOp::build(OpBuilder &b, OperationState &result, Value superset,
+void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
                    ArrayRef<OpFoldResult> strides,
                    ArrayRef<NamedAttribute> attrs) {
@@ -1444,9 +1394,9 @@ void TileOp::build(OpBuilder &b, OperationState &result, Value superset,
   dispatchIndexOpFoldResults(strides, dynamicStrides, staticStrides,
                              ShapedType::kDynamicStrideOrOffset);
   auto tileType = TileType::get(b.getContext(), staticSizes);
-  build(b, result, tileType, superset, dynamicOffsets, dynamicSizes,
-        dynamicStrides, b.getI64ArrayAttr(staticOffsets),
-        b.getI64ArrayAttr(staticSizes), b.getI64ArrayAttr(staticStrides));
+  build(b, result, tileType, dynamicOffsets, dynamicSizes, dynamicStrides,
+        b.getI64ArrayAttr(staticOffsets), b.getI64ArrayAttr(staticSizes),
+        b.getI64ArrayAttr(staticStrides));
   result.addAttributes(attrs);
 }
 
@@ -1469,8 +1419,8 @@ LogicalResult TileOp::inferReturnTypes(
 }
 
 LogicalResult TileOp::verify() {
-  auto supersetTy = getSuperset().getType().cast<TileType>();
-  auto rank = supersetTy.getShape().size();
+  auto resultType = getType();
+  auto rank = resultType.getRank();
   if (failed(mlir::verifyListOfOperandsOrIntegers(getOperation(), "size", rank,
                                                   getStaticSizes(), getSizes(),
                                                   ShapedType::isDynamic))) {
@@ -1486,7 +1436,7 @@ LogicalResult TileOp::verify() {
           ShapedType::isDynamicStrideOrOffset))) {
     return failure();
   }
-  for (auto it : llvm::zip(supersetTy.getShape(), getStaticOffsets(),
+  for (auto it : llvm::zip(resultType.getShape(), getStaticOffsets(),
                            getStaticSizes(), getStaticStrides())) {
     auto offset =
         std::get<1>(it).dyn_cast<mlir::IntegerAttr>().getValue().getSExtValue();
@@ -1505,29 +1455,10 @@ LogicalResult TileOp::verify() {
       return emitOpError("expected stride = ")
              << stride << " to be non-negative";
     }
-    auto argSize = std::get<0>(it);
-    // If the argument tile has a dynamic dimension, no additional verification
-    // is possible.
-    if (argSize == ShapedType::kDynamicSize) continue;
-    if (offset >= 0) {
-      if (stride >= 0 && size > 0) {
-        int64_t largestIndex = offset + stride * (size - 1);
-        if (largestIndex >= argSize) {
-          return emitOpError("offset = ")
-                 << offset << " size = " << size << " stride = " << stride
-                 << " causes access out of bounds at " << largestIndex
-                 << " for argument dimension size = " << argSize;
-        }
-      } else if (offset >= argSize) {
-        return emitOpError("offset = ")
-               << offset
-               << " is out of bounds for argument dimension size = " << argSize;
-      }
-    } else if (stride > 0 && size > 0 && stride * (size - 1) >= argSize) {
-      return emitOpError("size = ")
-             << size << " stride = " << stride
-             << " causes access out of bounds for argument dimension size = "
-             << argSize;
+    auto tileSize = std::get<0>(it);
+    if (tileSize != size) {
+      return emitOpError("size arg = ")
+             << size << " does not match tile size = " << tileSize;
     }
   }
   return success();
@@ -1620,27 +1551,6 @@ SmallVector<OpFoldResult> composeStrides(
 }
 
 }  // namespace
-
-Value TileOp::compose(OpBuilder &builder) {
-  auto supersetOp =
-      llvm::dyn_cast_or_null<TileOp>(getSuperset().getDefiningOp());
-  if (!supersetOp) return {};
-
-  // Compose offsets with newOffset = supersetOffset + supersetStride *
-  // offset.
-  auto loc = getLoc();
-  auto composedOffsets =
-      composeOffsets(supersetOp.getMixedOffsets(), supersetOp.getMixedStrides(),
-                     getMixedOffsets(), loc, builder);
-
-  // Compose strides with newStride = supersetStride * stride.
-  auto composedStrides = composeStrides(
-      builder, loc, supersetOp.getMixedStrides(), getMixedStrides());
-
-  // Build the composed tile op.
-  return builder.create<TileOp>(loc, supersetOp.getSuperset(), composedOffsets,
-                                getMixedSizes(), composedStrides);
-}
 
 //===----------------------------------------------------------------------===//
 // SetYieldOp
@@ -1836,94 +1746,6 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
   result.addAttribute(SetYieldOp::getAccumulatorFlagsAttrName(result.name),
                       parser.getBuilder().getBoolArrayAttr(accumulatorFlags));
   return success();
-}
-
-//===----------------------------------------------------------------------===//
-// OffsetOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult OffsetOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-  int64_t idx = idxAttr.getInt();
-
-  // Case: offset(tile(space))
-  Operation *subsetDef = getSubset().getDefiningOp();
-  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
-    Operation *supersetDef = tileOp.getSuperset().getDefiningOp();
-
-    // Can only fold locally if the superset is the root space. Otherwise, rely
-    // on subset composition.
-    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
-
-    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
-        tileOp.getStaticOffsets(), tileOp.getOffsets())[idx]);
-  }
-
-  // Case: offset(space)
-  if (llvm::isa_and_nonnull<SpaceOp>(subsetDef)) {
-    Builder b(getContext());
-    return b.getIndexAttr(0);
-  }
-
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
-// SizeOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-  int64_t idx = idxAttr.getInt();
-
-  // Case: size(tile(...))
-  // Note that sizes can also be folded in the presence of nested tiling. There
-  // is no need to check for an immediate root space here.
-  Operation *tileDef = getTile().getDefiningOp();
-  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(tileDef)) {
-    return ensureIndexTypeForAttribute(tileOp.getMixedSizes()[idx]);
-  }
-
-  // Case: size(space)
-  if (auto spaceOp = llvm::dyn_cast_or_null<SpaceOp>(tileDef)) {
-    return ensureIndexTypeForAttribute(mlir::getMixedSizes(
-        spaceOp.getStaticSizes(), spaceOp.getDynamicSizes())[idx]);
-  }
-
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
-// StrideOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult StrideOp::fold(ArrayRef<Attribute> operands) {
-  auto idxAttr = operands[1].dyn_cast_or_null<IntegerAttr>();
-  if (!idxAttr) return {};
-  int64_t idx = idxAttr.getInt();
-
-  // Case: offset(tile(space))
-  Operation *subsetDef = getTile().getDefiningOp();
-  if (auto tileOp = llvm::dyn_cast_or_null<TileOp>(subsetDef)) {
-    Operation *supersetDef = tileOp.getSuperset().getDefiningOp();
-
-    // Can only fold locally if the superset is the root space. Otherwise, rely
-    // on subset composition.
-    if (!llvm::isa_and_nonnull<SpaceOp>(supersetDef)) return {};
-
-    return ensureIndexTypeForAttribute(mlir::getMixedStridesOrOffsets(
-        tileOp.getStaticStrides(), tileOp.getStrides())[idx]);
-  }
-
-  // Case: offset(space)
-  if (llvm::isa_and_nonnull<SpaceOp>(subsetDef)) {
-    Builder b(getContext());
-    return b.getIndexAttr(1);
-  }
-
-  return {};
 }
 
 }  // namespace gml_st

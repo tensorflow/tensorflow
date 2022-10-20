@@ -206,13 +206,9 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 
 // CHECK-NEXT:  %[[UPDATES_DIM_1:.*]] = tensor.dim %[[UPDATES]], %[[C1]]
 // CHECK-NEXT:  %[[UPDATES_DIM_2:.*]] = tensor.dim %[[UPDATES]], %[[C2]]
-// CHECK-NEXT:  %[[UPDATES_SPACE:.*]] = gml_st.space [1, %[[UPDATES_DIM_1]],
-// CHECK-SAME:   %[[UPDATES_DIM_2]]] : !gml_st.tile<1x?x?>
-
 // CHECK-NEXT:  %[[INIT_DIM_0:.*]] = tensor.dim %[[INIT]], %[[C0]]
-// CHECK-NEXT:  %[[INID_DIM_C1:.*]] = tensor.dim %[[INIT]], %[[C1]]
-// CHECK-NEXT:  %[[INIT_SPACE:.*]] = gml_st.space [%[[INIT_DIM_0]],
-// CHECK-SAME:   %[[INID_DIM_C1]]] : !gml_st.tile<?x?>
+// CHECK-NEXT:  %[[INIT_DIM_1:.*]] = tensor.dim %[[INIT]], %[[C1]]
+// CHECK-NEXT:  %[[INIT_TILE:.*]] = gml_st.tile [0, 0] [%[[INIT_DIM_0]], %[[INIT_DIM_1]]
 
 // Extract scattr indices from `indices` arg.
 // CHECK-NEXT:  %[[INDEX_0_INT:.*]] = tensor.extract %[[INDICES]][%[[C0]],
@@ -235,24 +231,24 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 // CHECK-NEXT:    arith.cmpi slt, %[[I_PLUS_INDEX_0]], %[[INIT_DIM_0]]
 // CHECK-NEXT:    arith.andi
 // CHECK-NEXT:    arith.cmpi sge, %[[J_PLUS_INDEX_1]], %[[C0]]
-// CHECK-NEXT:    arith.cmpi slt, %[[J_PLUS_INDEX_1]], %[[INID_DIM_C1]]
+// CHECK-NEXT:    arith.cmpi slt, %[[J_PLUS_INDEX_1]], %[[INIT_DIM_1]]
 // CHECK-NEXT:    arith.andi
 // CHECK-NEXT:    %[[VALID_ACCESS:.*]] = arith.andi
 
 // Extracts elements of `updates` and `init` tensors and combine.
 // CHECK-NEXT:    %[[INIT_AFTER_INSERTION:.*]] = scf.if %[[VALID_ACCESS]]
-// CHECK-NEXT:      %[[UPDATES_TILE:.*]] = gml_st.tile %[[UPDATES_SPACE]]
+// CHECK-NEXT:      %[[UPDATES_ELEM_TILE:.*]] = gml_st.tile
 // CHECK-SAME:       [%[[C0]], %[[I]], %[[J]]] [1, 1, 1] [1, 1, 1]
-// CHECK-SAME:       : !gml_st.tile<1x?x?> to !gml_st.tile<1x1x1>
+// CHECK-SAME:       : !gml_st.tile<1x1x1>
 // CHECK-NEXT:      %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
-// CHECK-SAME:       [%[[UPDATES_TILE]]]
+// CHECK-SAME:       [%[[UPDATES_ELEM_TILE]]]
 // CHECK-SAME:       : tensor<1x?x?xf32>[!gml_st.tile<1x1x1>] to f32
 
-// CHECK-NEXT:      %[[INIT_TILE:.*]] = gml_st.tile %[[INIT_SPACE]]
+// CHECK-NEXT:      %[[INIT_ELEM_TILE:.*]] = gml_st.tile
 // CHECK-SAME:       [%[[I_PLUS_INDEX_0]], %[[J_PLUS_INDEX_1]]] [1, 1] [1, 1]
-// CHECK-SAME:       : !gml_st.tile<?x?> to !gml_st.tile<1x1>
+// CHECK-SAME:       : !gml_st.tile<1x1>
 // CHECK-NEXT:      %[[INIT_ELEM:.*]] = gml_st.materialize %[[INIT_]]
-// CHECK-SAME:      [%[[INIT_TILE]]] : tensor<?x?xf32>[!gml_st.tile<1x1>] to f32
+// CHECK-SAME:      [%[[INIT_ELEM_TILE]]] : tensor<?x?xf32>[!gml_st.tile<1x1>] to f32
 
 // CHECK-NEXT:      %[[COMBINED_ELEMS:.*]] = arith.addf %[[UPDATES_ELEM]],
 // CHECK-SAME:       %[[INIT_ELEM]] : f32
@@ -266,7 +262,7 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 // CHECK-NEXT:    }
 
 // CHECK-NEXT:    gml_st.set_yield %[[INIT_AFTER_INSERTION]]
-// CHECK-SAME:     into %[[INIT_]][%[[INIT_SPACE]]]
+// CHECK-SAME:     into %[[INIT_]][%[[INIT_TILE]]]
 // CHECK-SAME:     : tensor<?x?xf32> into tensor<?x?xf32>[!gml_st.tile<?x?>]
 // CHECK-NEXT:  } : tensor<?x?xf32>
 // CHECK-NEXT:  return %[[SCATTER]] : tensor<?x?xf32>
@@ -294,8 +290,7 @@ func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
 // CHECK-DAG:   %[[C3:.*]] = arith.constant 3 : index
 // CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
 
-// CHECK:       %[[UPDATES_SPACE:.*]] = gml_st.space [1, 1, 3, 4]
-// CHECK:       %[[INIT_SPACE:.*]] = gml_st.space [3, 3, 4]
+// CHECK:       %[[INIT_TILE:.*]] = gml_st.tile [0, 0, 0] [3, 3, 4]
 
 // CHECK:       %[[INDEX_0_INT:.*]] = tensor.extract %[[INDICES]]
 // CHECK-SAME:    [%[[C0]], %[[C0]]] : tensor<1x1xi32>
@@ -317,10 +312,10 @@ func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
 // CHECK:         %[[VALID_ACCESS:.*]] = arith.andi
 
 // CHECK:         %[[INIT_AFTER_INSERTION:.*]] = scf.if %[[VALID_ACCESS]]
-// CHECK:           %[[UPDATES_TILE:.*]] = gml_st.tile %[[UPDATES_SPACE]]
+// CHECK:           %[[UPDATES_TILE:.*]] = gml_st.tile
 // CHECK-SAME:        [%[[C0]], %[[C0]], %[[I]], %[[J]]]
 // CHECK-SAME:        [1, 1, 1, 1] [1, 1, 1, 1]
-// CHECK-SAME:        : !gml_st.tile<1x1x3x4> to !gml_st.tile<1x1x1x1>
+// CHECK-SAME:        : !gml_st.tile<1x1x1x1>
 // CHECK:           %[[UPDATES_ELEM:.*]] = gml_st.materialize %[[UPDATES]]
 // CHECK-SAME:        [%[[UPDATES_TILE]]] : tensor<1x1x3x4xi64>[{{.*}}] to i64
 
@@ -332,7 +327,7 @@ func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
 // CHECK:           scf.yield %[[INIT_]] : tensor<3x3x4xi64>
 // CHECK:         }
 // CHECK:         gml_st.set_yield %[[INIT_AFTER_INSERTION:.*]] into %[[INIT_]]
-// CHECK-SAME:       [%[[INIT_SPACE]]] : tensor<3x3x4xi64>
+// CHECK-SAME:       [%[[INIT_TILE]]] : tensor<3x3x4xi64>
 // CHECK-SAME:       into tensor<3x3x4xi64>[!gml_st.tile<3x3x4>]
 // CHECK:       } : tensor<3x3x4xi64>
 
@@ -345,10 +340,8 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
   %c2 = arith.constant 2 : index
   %c8 = arith.constant 8 : index
 
-  %space = gml_st.space [8, 2] : !gml_st.tile<8x2>
   %copy = gml_st.parallel (%i, %j) = (%c0, %c0) to (%c8, %c2) step (%c1, %c1) {
-    %tile = gml_st.tile %space [%i, %j] [1, 1] [1, 1]
-      : !gml_st.tile<8x2> to !gml_st.tile<1x1>
+    %tile = gml_st.tile [%i, %j] [1, 1] [1, 1] : !gml_st.tile<1x1>
 
     %in_sub = gml_st.materialize %in[%tile]
       : tensor<8x2xf32>[!gml_st.tile<1x1>] to tensor<1x1xf32>

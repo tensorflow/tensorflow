@@ -998,7 +998,6 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
 
   // Transform scatter ops.
   pm.addNestedPass<mlir::func::FuncOp>(createTransformScatterForCpuPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createComposeSetOpsPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
