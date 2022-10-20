@@ -314,3 +314,32 @@ func.func @yield_with_accumulator_mismatched_type(
   } : tensor<f32>
   func.return %sum : tensor<f32>
 }
+
+// -----
+
+func.func @for_loop_wrong_yield_operands(
+    %arg: tensor<8xf32>, %output: tensor<f32>) -> tensor<f32> {
+  %c0 = arith.constant 0 : index
+  %c4 = arith.constant 4 : index
+  %c8 = arith.constant 8 : index
+  %space = gml_st.space [8] : !gml_st.tile<8>
+  %space_0 = gml_st.space [] : !gml_st.tile<>
+
+  %sum = gml_st.for (%i) = (%c0) to (%c8) step (%c4)
+      outs(%out_ = %output : tensor<f32>) {
+    %tile = gml_st.tile %space [%i] [4] [1]
+      : !gml_st.tile<8> to !gml_st.tile<4>
+    %arg_sub = gml_st.materialize %arg[%tile]
+      : tensor<8xf32>[!gml_st.tile<4>] to tensor<4xf32>
+    %out_sub = gml_st.materialize %out_[%space_0]
+      : tensor<f32>[!gml_st.tile<>] to tensor<f32>
+
+    %result_sub = linalg.dot
+        ins(%arg_sub, %arg_sub : tensor<4xf32>, tensor<4xf32>)
+        outs(%out_sub : tensor<f32>) -> tensor<f32>
+
+    // expected-error@+1 {{'gml_st.set_yield' op expected to have at least 1 destination operand (currently 0)}}
+    gml_st.set_yield
+  } : tensor<f32>
+  func.return %sum : tensor<f32>
+}

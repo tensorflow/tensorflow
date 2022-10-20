@@ -338,6 +338,8 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
       return operand.getOperandNumber() >= getNumUpdates() &&
              operand.getOperandNumber() < getNumUpdates() * 2;
     }
+
+    unsigned getNumDstOperands() { return getNumOperands() - getNumUpdates(); }
   }];
 }
 

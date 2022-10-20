@@ -747,8 +747,17 @@ LogicalResult ForOp::verify() {
              << " to match region arg " << index + getNumLoops()
              << " type = " << outputRegionArg.getType();
     }
-    if (getTerminator().getDstOperand(index)->get() != outputRegionArg) {
-      return getTerminator().emitOpError("expected output block argument ")
+    auto terminator = getTerminator();
+    auto numDstOperands = terminator.getNumDstOperands();
+    if (index >= numDstOperands) {
+      const auto *s = index ? "s" : "";
+      return terminator.emitOpError("expected to have at least ")
+             << index + 1 << " destination operand" << s << " (currently "
+             << numDstOperands << ")";
+    }
+
+    if (terminator.getDstOperand(index)->get() != outputRegionArg) {
+      return terminator.emitOpError("expected output block argument ")
              << index << " to match set_yield destination";
     }
   }
