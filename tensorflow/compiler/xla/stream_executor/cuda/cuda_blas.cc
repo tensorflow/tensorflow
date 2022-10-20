@@ -909,7 +909,12 @@ bool CUDABlas::DoBlasGemmWithProfilingImpl(
   return result;
 }
 
-static bool UsesTensorOps(blas::AlgorithmType algo) {
+static bool UsesTensorOps(const CudaComputeCapability &cc,
+                          blas::AlgorithmType algo) {
+  if (cc.IsAtLeast(CudaComputeCapability::AMPERE)) {
+    // On Ampere, the algorithm choice does not actually do anything.
+    return true;
+  }
 #if CUDA_VERSION >= 9000
   cublasGemmAlgo_t cublas_algo = static_cast<cublasGemmAlgo_t>(algo);
   return cublas_algo >= CUBLAS_GEMM_DEFAULT_TENSOR_OP;
@@ -932,7 +937,7 @@ static port::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
         "sm_", cc.major, " does not support explicit gemm algorithms."));
   }
 
-  bool algo_uses_tensor_ops = UsesTensorOps(algorithm);
+  bool algo_uses_tensor_ops = UsesTensorOps(cc, algorithm);
   cublasMath_t math_type = CUBLAS_DEFAULT_MATH;
   if (algo_uses_tensor_ops) {
     if (cc.major < 7) {
