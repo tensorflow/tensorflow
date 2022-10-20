@@ -1067,7 +1067,6 @@ cc_library(
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core/util:managed_stack_trace",
-#         "//tensorflow/core/platform:resource",
 #         "//tensorflow/tsl/framework/fixedpoint",
 #         "//tensorflow/core/util:stats_calculator_portable",
 #         "//tensorflow/core:mobile_additional_lib_deps",
