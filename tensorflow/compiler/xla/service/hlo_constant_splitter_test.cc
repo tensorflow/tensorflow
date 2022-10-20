@@ -78,5 +78,38 @@ TEST_F(HloConstantSplitterTest, PreservingConstantsWithZeroUsers) {
   EXPECT_FALSE(status_or.value());
 }
 
+TEST_F(HloConstantSplitterTest, SplittingExpressions) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    ENTRY entry_computation {
+      gte0 = f32[1024] parameter(0)
+      gte1 = f32[1024] parameter(1)
+      constant1 = f32[1024] iota(), iota_dimension=0
+      constant2 = f32[] constant(9.1934)
+      constant3 = f32[] constant(0.0)
+      constant4 = f32[] constant(1.0)
+      b = f32[1024] broadcast(constant2), dimensions={}
+      b2 = f32[1024] broadcast(constant3), dimensions={}
+      b3 = f32[1024] broadcast(constant4), dimensions={}
+      cmp = pred[1024] compare(constant1, b), direction=LT
+      %s = f32[1024] select(cmp, b2, b3)
+      a1 = f32[1024] add(s, gte0)
+      a2 = f32[1024] add(s, gte1)
+      ROOT root = (f32[1024], f32[1024]) tuple(a1, a2)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(module_str));
+  HloConstantSplitter pass = HloConstantSplitter(/*split_expressions=*/true);
+  const auto status_or = HloTestBase::RunHloPass(&pass, module.get());
+  TF_ASSERT_OK(status_or.status());
+  // Verify that the changed flag returned is correct.
+  EXPECT_TRUE(status_or.value());
+  XLA_VLOG_LINES(1, module->entry_computation()->ToString());
+  EXPECT_EQ(module->entry_computation()->instruction_count(), 23);
+}
+
 }  // namespace
 }  // namespace xla
