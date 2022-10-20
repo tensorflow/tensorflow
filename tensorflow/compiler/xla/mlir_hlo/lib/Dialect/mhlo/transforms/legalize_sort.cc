@@ -471,10 +471,20 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     SmallVector<Value> scratchMemrefs;
 
     Value firstOperand = op.getOperands().front();
+    auto firstOperandType = firstOperand.getType().cast<ShapedType>();
+    int64_t inputRank = firstOperandType.getRank();
+
     Value sortDimSize = b.createOrFold<tensor::DimOp>(
         firstOperand, b.create<arith::ConstantIndexOp>(op.getDimension()));
-    int64_t staticSortDimSize =
-        firstOperand.getType().cast<ShapedType>().getShape()[op.getDimension()];
+    int64_t staticSortDimSize = firstOperandType.getDimSize(op.getDimension());
+
+    SmallVector<Value> dynamicDims;
+    for (int i = 0; i < inputRank; ++i) {
+      if (!firstOperandType.isDynamicDim(i)) continue;
+      Value index = b.create<arith::ConstantIndexOp>(i);
+      Value dimOp = b.create<tensor::DimOp>(firstOperand, index);
+      dynamicDims.push_back(dimOp);
+    }
 
     // Allocate output and scratch memrefs. If the size of the sort dimension is
     // statically known to be <= kInsertionSortSize, `scratchMemrefs` are unused
@@ -484,11 +494,11 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
       auto memRefType =
           MemRefType::get(inputType.getShape(), inputType.getElementType());
 
-      outputMemrefs.push_back(b.create<memref::AllocOp>(memRefType));
-      scratchMemrefs.push_back(b.create<memref::AllocOp>(memRefType));
+      outputMemrefs.push_back(
+          b.create<memref::AllocOp>(memRefType, dynamicDims));
+      scratchMemrefs.push_back(
+          b.create<memref::AllocOp>(memRefType, dynamicDims));
     }
-
-    int64_t inputRank = firstOperand.getType().cast<ShapedType>().getRank();
 
     b.setInsertionPoint(op);
     Value zero = b.create<arith::ConstantIndexOp>(0);
