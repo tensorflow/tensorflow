@@ -986,3 +986,81 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK-NEXT:    %[[RESULT:.*]] = tensor.from_elements %[[CMPRESULT]] : tensor<i1>
 // CHECK-NEXT:    %[[EXTRACTED_RESULT:.*]] = tensor.extract %[[RESULT]][] : tensor<i1>
 // CHECK-NEXT:    thlo.yield %[[EXTRACTED_RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: @softmax
+// CHECK-SAME:  %[[ARG:.*]]: tensor<2x3xf32>
+func.func @softmax(%ARG: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  // CHECK-DAG:  %[[CONSTANT:.*]] = mhlo.constant dense<-1>
+  // CHECK-DAG:  %[[CONSTANT_0:.*]] = mhlo.constant dense<0xFF800000>
+  // CHECK-DAG:  %[[CST:.*]] = arith.constant 0xFF800000
+  // CHECK-DAG:  %[[INIT:.*]] = tensor.empty() : tensor<2xf32>
+  // CHECK:      %[[FILL:.*]] = linalg.fill
+  // CHECK-SAME:     ins(%[[CST]] : f32)
+  // CHECK-SAME:     outs(%[[INIT]] : tensor<2xf32>)
+  // CHECK:      %[[REDUCTION:.*]] = thlo.reduction
+  // CHECK-SAME:     ins(%[[ARG]] : tensor<2x3xf32>)
+  // CHECK-SAME:     outs(%[[FILL]] : tensor<2xf32>)
+  // CHECK-SAME:     dimensions = [1] (%[[ARG1:.*]]: f32, %[[ARG2:.*]]: f32)
+  // CHECK:        %[[FROM:.*]] = tensor.from_elements %[[ARG2]]
+  // CHECK:        %[[FROM_0:.*]] = tensor.from_elements %[[ARG1]]
+  // CHECK:        %[[EXTRACT:.*]] = tensor.extract %[[FROM]][]
+  // CHECK:        %[[EXTRACT_0:.*]] = tensor.extract %[[FROM_0]][]
+  // CHECK:        %[[MAXF:.*]] = arith.maxf %[[EXTRACT]], %[[EXTRACT_0]]
+  // CHECK:        %[[FROM_1:.*]] = tensor.from_elements %[[MAXF]]
+  // CHECK:        %[[EXTRACT_1:.*]] = tensor.extract %[[FROM_1]][]
+  // CHECK:        thlo.yield %[[EXTRACT_1]]
+  // CHECK:      %[[CST_0:.*]] = arith.constant dense<1>
+  // CHECK:      %[[RESHAPE:.*]] = mhlo.reshape %[[REDUCTION]]
+  // CHECK:      %[[BROADCAST:.*]] = chlo.broadcast_subtract %[[ARG]], %[[RESHAPE]]
+  // CHECK:      %[[INIT_0:.*]] = tensor.empty() : tensor<2x3xf32>
+  // CHECK:      %[[MAP:.*]] = thlo.map
+  // CHECK-SAME:     ins(%[[BROADCAST]] : tensor<2x3xf32>)
+  // CHECK-SAME:     outs(%[[INIT_0]] : tensor<2x3xf32>)(%[[ARG1]]: f32) {
+  // CHECK:        %[[EXP:.*]] = math.exp %[[ARG1]]
+  // CHECK:        thlo.yield %[[EXP]]
+  // CHECK:      %[[CONSTANT_1:.*]] = mhlo.constant dense<-0.000000e+00>
+  // CHECK:      %[[CST_1:.*]] = arith.constant -0.000000e+00
+  // CHECK:      %[[INIT_1:.*]] = tensor.empty() : tensor<2xf32>
+  // CHECK:      %[[FILL_0:.*]] = linalg.fill
+  // CHECK-SAME:     ins(%[[CST_1]] : f32)
+  // CHECK-SAME:     outs(%[[INIT_1]] : tensor<2xf32>)
+  // CHECK:      %[[REDUCTION_0:.*]] = thlo.reduction
+  // CHECK-SAME:     ins(%[[MAP]] : tensor<2x3xf32>)
+  // CHECK-SAME:     outs(%[[FILL_0]] : tensor<2xf32>)
+  // CHECK-SAME:     dimensions = [1] (%[[ARG1]]: f32, %[[ARG2]]: f32)
+  // CHECK:        %[[FROM_2:.*]] = tensor.from_elements %[[ARG2]]
+  // CHECK:        %[[FROM_3:.*]] = tensor.from_elements %[[ARG1]]
+  // CHECK:        %[[EXTRACT_2:.*]] = tensor.extract %[[FROM_2]][]
+  // CHECK:        %[[EXTRACT_3:.*]] = tensor.extract %[[FROM_3]][]
+  // CHECK:        %[[ADDF:.*]] = arith.addf %[[EXTRACT_2]], %[[EXTRACT_3]]
+  // CHECK:        %[[FROM_4:.*]] = tensor.from_elements %[[ADDF]]
+  // CHECK:        %[[EXTRACT_4:.*]] = tensor.extract %[[FROM_4]][]
+  // CHECK:        thlo.yield %[[EXTRACT_4]]
+  // CHECK:      %[[CST_2:.*]] = arith.constant dense<1>
+  // CHECK:      %[[RESHAPE_0:.*]] = mhlo.reshape %[[REDUCTION_0]]
+  // CHECK:      %[[BROADCAST_0:.*]] = chlo.broadcast_divide %[[MAP]], %[[RESHAPE_0]]
+  // CHECK:      return %[[BROADCAST_0]]
+  %0 = mhlo.constant dense<-1> : tensor<1xi64>
+  %1 = mhlo.convert %ARG : tensor<2x3xf32>
+  %2 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %3 = mhlo.reduce(%1 init: %2) applies mhlo.maximum across dimensions = [1]
+      : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+  %4 = mhlo.convert %3 : tensor<2xf32>
+  %cst = arith.constant dense<1> : tensor<1xi32>
+  %5 = mhlo.reshape %4 : (tensor<2xf32>) -> tensor<2x1xf32>
+  %6 = chlo.broadcast_subtract %ARG, %5
+      : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+  %7 = mhlo.exponential %6 : tensor<2x3xf32>
+  %8 = mhlo.convert %7 : tensor<2x3xf32>
+  %9 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %10 = mhlo.reduce(%8 init: %9) applies mhlo.add across dimensions = [1]
+      : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+  %11 = mhlo.convert %10 : tensor<2xf32>
+  %cst_0 = arith.constant dense<1> : tensor<1xi32>
+  %12 = mhlo.reshape %11 : (tensor<2xf32>) -> tensor<2x1xf32>
+  %13 = chlo.broadcast_divide %7, %12
+      : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+  return %13 : tensor<2x3xf32>
+}
