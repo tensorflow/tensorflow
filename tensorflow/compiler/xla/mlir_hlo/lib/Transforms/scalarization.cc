@@ -102,7 +102,7 @@ struct ScalarizeGenericOp : public OpRewritePattern<GenericOp> {
 
 // Extracts a point using gml_st.materialize and gml_st.tile with 1 element.
 Value getPoint(OpBuilder &b, Location loc, Value tensor, Value space,
-               ArrayRef<Value> indices) {
+               ValueRange indices) {
   IntegerAttr oneAttr = b.getIndexAttr(1);
 
   auto tensorType = tensor.getType().cast<RankedTensorType>();
@@ -164,28 +164,16 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     }
 
     // Create a loop that spans the dimensions of the update slice.
-    SmallVector<Value> lbs, ubs, steps;
-    SmallVector<int64_t> loopIds;
-    for (int i = 1; i < updatesRank; ++i) {
-      if (updatesType.getDimSize(i) == 1) continue;
-      lbs.push_back(zero);
-      ubs.push_back(updatesDimValues[i]);
-      steps.push_back(one);
-      loopIds.push_back(i);
-    }
+    SmallVector<Value> lbs(updatesRank, zero);
+    SmallVector<Value> steps(updatesRank, one);
 
     auto loop = b.create<gml_st::ForOp>(
-        TypeRange(ValueRange{init}), lbs, ubs, steps, init,
-        [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
+        TypeRange(ValueRange{init}), lbs, updatesDimValues, steps, init,
+        [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange updateIndex,
             ValueRange loopInits) {
           Value initBlockArg = loopInits.front();
 
-          SmallVector<Value> updateIndex(updatesRank, zero);
-          for (const auto &en : llvm::enumerate(loopIds))
-            updateIndex[en.value()] = ivs[en.index()];
-
-          SmallVector<Value> initIndex =
-              to_vector(makeArrayRef(updateIndex).drop_front());
+          auto initIndex = llvm::to_vector(updateIndex.drop_front());
           for (const auto &en : llvm::enumerate(scatterIndices)) {
             initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
                 bodyLoc, initIndex[en.index()], en.value());
@@ -237,7 +225,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
   // Return i1 value after checking that 0 <= indices < dims(tensor).
   Value isValidIndex(OpBuilder &b, Location loc, ArrayRef<Value> indices,
                      ArrayRef<Value> tensorDims, Value zero) const {
-    auto i1Type = b.getIntegerType(1);
+    auto i1Type = b.getI1Type();
     Value isValid = b.create<arith::ConstantOp>(
         loc, i1Type, IntegerAttr::get(i1Type, APInt(1, 1)));
 
@@ -321,6 +309,7 @@ struct ScalarizationPass
     patterns.add<ScalarizeGenericOp, ScalarizeScatterOp>(context);
     populateTensorInsertExtractFoldingPatterns(&patterns);
     FromElementsOp::getCanonicalizationPatterns(patterns, context);
+    gml_st::ForOp::getCanonicalizationPatterns(patterns, context);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
       signalPassFailure();
   }

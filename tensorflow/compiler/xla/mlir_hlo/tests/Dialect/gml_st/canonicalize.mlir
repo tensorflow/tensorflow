@@ -287,7 +287,7 @@ func.func @fold_size(%i : index, %j : index, %a : index, %b : index)
   %space = gml_st.space [%a, %b, 128, 256] : !gml_st.tile<?x?x128x256>
   %tile = gml_st.tile %space [%i, %j, 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
       : !gml_st.tile<?x?x128x256> to !gml_st.tile<16x32x64x128>
-  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1] 
+  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1]
       : !gml_st.tile<16x32x64x128> to !gml_st.tile<2x4x8x16>
 
   // Foldable case: size(tile(space))
@@ -298,7 +298,7 @@ func.func @fold_size(%i : index, %j : index, %a : index, %b : index)
   %b_ = gml_st.size %space [%c1] : !gml_st.tile<?x?x128x256>
 
   // Foldable case: size(tile(tile(space)))
-  %c4_ = gml_st.size %nested_tile [%c1] 
+  %c4_ = gml_st.size %nested_tile [%c1]
       : !gml_st.tile<2x4x8x16>
 
   return %c32_, %c64_, %b_, %c4_ : index, index, index, index
@@ -321,7 +321,7 @@ func.func @fold_stride(%i : index, %j : index, %a : index, %b : index)
   %space = gml_st.space [%a, %b, 128, 256] : !gml_st.tile<?x?x128x256>
   %tile = gml_st.tile %space [%i, %j, 16, 32] [16, 32, 64, 128] [1, 1, 1, 1]
       : !gml_st.tile<?x?x128x256> to !gml_st.tile<16x32x64x128>
-  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1] 
+  %nested_tile = gml_st.tile %tile [%i, %j, 0, 8] [2, 4, 8, 16] [1, 1, 1, 1]
       : !gml_st.tile<16x32x64x128> to !gml_st.tile<2x4x8x16>
 
   // Foldable case: stride(tile(space))
@@ -332,8 +332,36 @@ func.func @fold_stride(%i : index, %j : index, %a : index, %b : index)
   %c1___ = gml_st.stride %space [%c1] : !gml_st.tile<?x?x128x256>
 
   // Unfoldable case: stride(tile(tile(space)))
-  %nested_tile_stride = gml_st.stride %nested_tile [%c1] 
+  %nested_tile_stride = gml_st.stride %nested_tile [%c1]
       : !gml_st.tile<2x4x8x16>
 
   return %c1_, %c1__, %c1___, %nested_tile_stride : index, index, index, index
+}
+
+// -----
+
+// CHECK-LABEL: @fold_unit_dim
+func.func @fold_unit_dim() -> tensor<8x10xf32> {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK-DAG: %[[C4:.*]] = arith.constant 4
+  %c0 = arith.constant 0 : index
+  %c1 = arith.constant 1 : index
+  %c4 = arith.constant 4 : index
+  %c5 = arith.constant 5 : index
+  %c8 = arith.constant 8 : index
+  %space = gml_st.space [8, 10] : !gml_st.tile<8x10>
+  %init = tensor.empty() : tensor<8x10xf32>
+  // CHECK: gml_st.for (%[[I:.*]]) = (%[[C0]]) to (%[[C4]]) step (%[[C1]])
+  %out = gml_st.for (%i, %j) = (%c0, %c4) to (%c4, %c5) step (%c1, %c1)
+      outs(%out_ = %init : tensor<8x10xf32>) {
+    // CHECK: gml_st.tile {{.*}} [%[[I]], %[[C4]]]
+     %tile = gml_st.tile %space [%i, %j] [4, 1] [1, 1]
+      : !gml_st.tile<8x10> to !gml_st.tile<4x1>
+
+     %val = tensor.empty() : tensor<4x1xf32>
+     gml_st.set_yield %val into %out_[%tile]
+      : tensor<4x1xf32> into tensor<8x10xf32>[!gml_st.tile<4x1>]
+  } : tensor<8x10xf32>
+  func.return %out : tensor<8x10xf32>
 }

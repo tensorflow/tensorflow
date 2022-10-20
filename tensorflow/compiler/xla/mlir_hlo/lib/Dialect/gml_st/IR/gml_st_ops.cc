@@ -142,6 +142,62 @@ Operation *GmlStDialect::materializeConstant(OpBuilder &builder, Attribute attr,
   return {};
 }
 
+namespace {
+// Collapse loop dimensions that perform a single iteration.
+// This is a partial copy of the corresponding pattern from SCF.
+struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
+  using OpRewritePattern<ForOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ForOp op,
+                                PatternRewriter &rewriter) const override {
+    BlockAndValueMapping mapping;
+    // Compute new loop bounds that omit all single-iteration loop dimensions.
+    SmallVector<Value> newLowerBounds, newUpperBounds, newSteps;
+    newLowerBounds.reserve(op.getLowerBound().size());
+    newUpperBounds.reserve(op.getUpperBound().size());
+    newSteps.reserve(op.getStep().size());
+    auto getConstant = [](Value v) -> Optional<int64_t> {
+      auto constant =
+          dyn_cast_or_null<arith::ConstantIndexOp>(v.getDefiningOp());
+      if (constant) return constant.value();
+      return None;
+    };
+    for (auto [lowerBound, upperBound, step, iv] :
+         llvm::zip(op.getLowerBound(), op.getUpperBound(), op.getStep(),
+                   op.getInductionVars())) {
+      // Collect the statically known loop bounds.
+      auto lowerBoundConstant = getConstant(lowerBound);
+      auto upperBoundConstant = getConstant(upperBound);
+      auto stepConstant = getConstant(step);
+      // Replace the loop induction variable by the lower bound if the loop
+      // performs a single iteration. Otherwise, copy the loop bounds.
+      if (lowerBoundConstant && upperBoundConstant && stepConstant &&
+          (*upperBoundConstant - *lowerBoundConstant) > 0 &&
+          (*upperBoundConstant - *lowerBoundConstant) <= *stepConstant) {
+        mapping.map(iv, lowerBound);
+      } else {
+        newLowerBounds.push_back(lowerBound);
+        newUpperBounds.push_back(upperBound);
+        newSteps.push_back(step);
+      }
+    }
+    // Exit if none of the loop dimensions perform a single iteration.
+    if (newLowerBounds.size() == op.getLowerBound().size()) return failure();
+
+    // Replace the parallel loop by lower-dimensional parallel loop.
+    auto newOp = rewriter.create<ForOp>(op.getLoc(), op.getResultTypes(),
+                                        newLowerBounds, newUpperBounds,
+                                        newSteps, op.getOutputs(), nullptr);
+    // Clone the loop body and remap the block arguments of the collapsed loops
+    // (inlining does not support a cancellable block argument mapping).
+    rewriter.cloneRegionBefore(op.getRegion(), newOp.getRegion(),
+                               newOp.getRegion().begin(), mapping);
+    rewriter.replaceOp(op, newOp.getResults());
+    return success();
+  }
+};
+}  // namespace
+
 //===----------------------------------------------------------------------===//
 // MaterializeOp
 //===----------------------------------------------------------------------===//
@@ -765,6 +821,11 @@ void ForOp::print(OpAsmPrinter &p) {
 
 ParseResult ForOp::parse(OpAsmParser &parser, OperationState &result) {
   return parseLoopLikeOp<ForOp>(parser, result);
+}
+
+void ForOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                        MLIRContext *context) {
+  results.add<CollapseSingleIterationLoops>(context);
 }
 
 namespace {

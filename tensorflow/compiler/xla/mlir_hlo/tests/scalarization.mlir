@@ -239,7 +239,7 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 // CHECK-NEXT:    arith.andi
 // CHECK-NEXT:    %[[VALID_ACCESS:.*]] = arith.andi
 
-// Extracts elemnts of `updates` and `init` tensors and combine.
+// Extracts elements of `updates` and `init` tensors and combine.
 // CHECK-NEXT:    %[[INIT_AFTER_INSERTION:.*]] = scf.if %[[VALID_ACCESS]]
 // CHECK-NEXT:      %[[UPDATES_TILE:.*]] = gml_st.tile %[[UPDATES_SPACE]]
 // CHECK-SAME:       [%[[C0]], %[[I]], %[[J]]] [1, 1, 1] [1, 1, 1]

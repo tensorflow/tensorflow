@@ -273,6 +273,8 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
         getNumControlOperands() + opResult.getResultNumber());
     }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
