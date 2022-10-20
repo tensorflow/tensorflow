@@ -8,6 +8,15 @@ package(
 )
 
 cc_library(
+    name = "gpu_common_wrapper",
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lm",
+        ],
+    }),
+)
+
+cc_library(
     name = "convert",
     srcs = ["convert.cc"],
     hdrs = ["convert.h"],
@@ -119,6 +128,7 @@ cc_test(
     name = "data_type_test",
     srcs = ["data_type_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":data_type",
         "@com_google_googletest//:gtest_main",
     ],
@@ -185,6 +195,7 @@ cc_test(
     name = "model_test",
     srcs = ["model_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":model",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
@@ -397,6 +408,7 @@ cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":shape",
         "@com_google_googletest//:gtest_main",
     ],
@@ -440,6 +452,7 @@ cc_test(
     name = "memory_management_test",
     srcs = ["memory_management_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":memory_management",
         ":shape",
         ":types",
@@ -452,6 +465,7 @@ cc_test(
     name = "memory_management_internal_test",
     srcs = ["memory_management/internal_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":memory_management",
         "@com_google_googletest//:gtest_main",
     ],
@@ -461,6 +475,7 @@ cc_test(
     name = "memory_management_types_test",
     srcs = ["memory_management/types_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":memory_management",
         "@com_google_googletest//:gtest_main",
     ],
@@ -498,6 +513,7 @@ cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":util",
         "@com_google_googletest//:gtest_main",
     ],
@@ -508,6 +524,7 @@ cc_library(
     srcs = ["winograd_util.cc"],
     hdrs = ["winograd_util.h"],
     deps = [
+        ":gpu_common_wrapper",
         ":data_type",
         ":operations",
         ":shape",
@@ -519,6 +536,7 @@ cc_test(
     name = "winograd_util_test",
     srcs = ["winograd_util_test.cc"],
     deps = [
+        ":gpu_common_wrapper",
         ":winograd_util",
         "@com_google_googletest//:gtest_main",
     ],

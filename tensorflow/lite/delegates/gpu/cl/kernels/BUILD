@@ -40,8 +40,14 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "@com_google_googletest//:gtest_main",
+        ],
+        "//conditions:default": [
+            "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
+        ],
+    })
 )
 
 cc_library(
@@ -56,8 +62,14 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
-        "@com_google_googletest//:gtest",
-    ],
+        ] + select({
+            "//tensorflow:android": [
+                "@com_google_googletest//:gtest_main",
+            ],
+            "//conditions:default": [
+                "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
+            ],
+        }),
 )
 
 cc_test(
@@ -74,8 +86,14 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
-        "@com_google_googletest//:gtest_main",
-    ],
+        ] + select({
+            "//tensorflow:android": [
+                "@com_google_googletest//:gtest_main",
+            ],
+            "//conditions:default": [
+                "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
+            ],
+        }),
 )
 
 cc_test(
@@ -92,8 +110,14 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "@com_google_googletest//:gtest_main",
+        ],
+        "//conditions:default": [
+            "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
+        ],
+    })
 )
 
 cc_test(
@@ -207,8 +231,14 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+        ] + select({
+            "//tensorflow:android": [
+                "@com_google_googletest//:gtest_main",
+            ],
+            "//conditions:default": [
+                "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
+            ],
+        })
 )
 
 cc_test(
@@ -243,8 +273,14 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin_test_util",
-        "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
-    ],
+        ] + select({
+            "//tensorflow:android": [
+                "@com_google_googletest//:gtest_main",
+            ],
+            "//conditions:default": [
+                "@com_google_googletest//:gtest_main_no_heapcheck",  # constant buffers leak on nvidia
+            ],
+        })
 )
 
 cc_test(

@@ -212,7 +212,12 @@ cc_test(
     linkopts = [
         "-lEGL",
         "-lGLESv2",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "-ldl",
+            "-lm",
+        ],
+    }),
     tags = tf_gpu_tests_tags() + [
         "local",
         "nobuilder",
@@ -445,6 +450,11 @@ cc_library(
 cc_test(
     name = "serialization_test",
     srcs = ["serialization_test.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lm",
+        ],
+    }),
     tags = [
         "local",
         "nobuilder",
