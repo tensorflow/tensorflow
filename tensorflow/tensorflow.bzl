@@ -413,7 +413,7 @@ def tf_copts(
             "-ftemplate-depth=900",
         ]) +
         (if_not_windows(["-fno-exceptions"]) if not allow_exceptions else []) +
-        if_cuda(["-DGOOGLE_CUDA=1", "-DTF_ENABLE_GPU_BFLOAT16"]) +
+        if_cuda(["-DGOOGLE_CUDA=1"]) +
         if_nvcc(["-DTENSORFLOW_USE_NVCC=1"]) +
         if_libtpu(["-DLIBTPU_ON_GCE"], []) +
         if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) +

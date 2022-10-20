@@ -284,8 +284,8 @@ if __name__ == "__main__":
       np.float16, np.float32, np.float64, np.int32, np.complex64, np.complex128
   ]
 
-  if test_util.IsGpuBfloat16Enabled() and test_util.is_gpu_available(
-      cuda_only=True, min_cuda_compute_capability=(8, 0)):
+  if test_util.is_gpu_available(cuda_only=True,
+                                min_cuda_compute_capability=(8, 0)):
     dtypes_to_test.append(dtypes.bfloat16.as_numpy_dtype)
 
   for dtype_ in dtypes_to_test:

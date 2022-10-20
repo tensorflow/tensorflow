@@ -62,14 +62,6 @@ bool GpuSupportsHalfMatMulAndConv() {
 #endif
 }
 
-bool IsGpuBfloat16Enabled() {
-#if TF_ENABLE_GPU_BFLOAT16
-  return true;
-#else
-  return false;
-#endif  // TF_ENABLE_GPU_BFLOAT16
-}
-
 bool IsMklEnabled() {
 #ifndef INTEL_MKL
   return false;

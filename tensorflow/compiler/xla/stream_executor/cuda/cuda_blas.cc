@@ -1276,15 +1276,20 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   if (stream->GetCudaComputeCapability().IsAtLeast(5)) {
     cublasMath_t math_type;
     cublasGemmAlgo_t algo;
-    bool is_16bit = false;
-    if (data_type == CUDA_R_16F) {
+
+#if CUDA_VERSION >= 11000
+    bool is_16bit = data_type == CUDA_R_16F || data_type == CUDA_R_16BF;
+#else
+    bool is_16bit = data_type == CUDA_R_16F;
+#endif  // CUDA_VERSION >= 11000
+
+    if (is_16bit) {
 #if CUDA_VERSION < 11000
       math_type = CUBLAS_TENSOR_OP_MATH;
 #else
       math_type = CUBLAS_DEFAULT_MATH;
 #endif
       algo = CUBLAS_GEMM_DFALT_TENSOR_OP;
-      is_16bit = true;
 #if CUBLAS_VER_MAJOR >= 11
     } else if (data_type == CUDA_R_32F) {
       // DoBlassInternalImpl will switch math_type back to CUBLAS_DEFAULT_MATH
@@ -1294,12 +1299,6 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
                  ? CUBLAS_GEMM_DFALT_TENSOR_OP
                  : CUBLAS_GEMM_DFALT;
 #endif
-#if CUDA_VERSION >= 11000
-    } else if (data_type == CUDA_R_16BF) {
-      math_type = CUBLAS_DEFAULT_MATH;
-      algo = CUBLAS_GEMM_DFALT_TENSOR_OP;
-      is_16bit = true;
-#endif  // CUDA_VERSION >= 11000
     } else {
       math_type = CUBLAS_DEFAULT_MATH;
       algo = CUBLAS_GEMM_DFALT;
