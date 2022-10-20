@@ -24,8 +24,6 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
-#include "mlir/Dialect/Linalg/IR/Linalg.h"
-#include "mlir/Dialect/Linalg/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -77,13 +75,6 @@ struct ParallelOpToGpuPattern : public OpRewritePattern<ParallelOp> {
                                 PatternRewriter& rewriter) const override;
 };
 
-struct GenericOpToWarpReductionPattern : OpRewritePattern<linalg::GenericOp> {
-  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
-                                PatternRewriter& rewriter) const override;
-};
-
 struct MultiDimReductionOpToWarpReductionPattern
     : OpRewritePattern<vector::MultiDimReductionOp> {
   using OpRewritePattern<vector::MultiDimReductionOp>::OpRewritePattern;
@@ -116,7 +107,6 @@ struct GmlStToGpuPass : public ::impl::GmlStToGpuPassBase<GmlStToGpuPass> {
     patterns
         .add<ParallelOpToGpuPattern, EliminateMaterializeOfTransferReadPattern,
              EliminateDistributeIntoTransferWritePattern,
-             GenericOpToWarpReductionPattern,
              MultiDimReductionOpToWarpReductionPattern>(&getContext());
     func::FuncOp func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
@@ -357,76 +347,6 @@ LogicalResult ParallelOpToGpuPattern::matchAndRewrite(
   }
 
   rewriter.eraseOp(root);
-  return success();
-}
-
-LogicalResult GenericOpToWarpReductionPattern::matchAndRewrite(
-    linalg::GenericOp genericOp, PatternRewriter& rewriter) const {
-  // Match only if it's a linalg.generic vector<32xf32> -> memref<1xf32> with
-  // iterator_types = ["parallel", "reduction"].
-  auto itTypes = llvm::to_vector(
-      genericOp.getIteratorTypes().getAsValueRange<StringAttr>());
-  if (itTypes.size() != 2 || itTypes[0] != getParallelIteratorTypeName() ||
-      itTypes[1] != getReductionIteratorTypeName()) {
-    return rewriter.notifyMatchFailure(genericOp,
-                                       "Expected ['parallel', 'reduction']");
-  }
-  if (genericOp.getNumInputs() != 1 || genericOp.getNumOutputs() != 1) {
-    return rewriter.notifyMatchFailure(genericOp,
-                                       "Expected single input and output");
-  }
-  auto input = genericOp.getInputs().front();
-  auto output = genericOp.getOutputs().front();
-  auto inType = input.getType().dyn_cast<VectorType>();
-  auto outType = output.getType().dyn_cast<MemRefType>();
-  auto isNumElementsEqual = [](auto type, int64_t size) {
-    return type && type.hasStaticShape() && type.getNumElements() == size;
-  };
-  if (!isNumElementsEqual(inType, 32)) {
-    return rewriter.notifyMatchFailure(genericOp, "Expected 32-vector input");
-  }
-  if (!isNumElementsEqual(outType, 1)) {
-    return rewriter.notifyMatchFailure(genericOp, "Expected 1-element output");
-  }
-
-  // Split block before linalg.generic in order to clone its accumulate block.
-  Block* prologue = genericOp->getBlock();
-  Block* epilogue = rewriter.splitBlock(prologue, genericOp->getIterator());
-  rewriter.setInsertionPointToEnd(prologue);
-
-  // Preamble: extract lane id element from input.
-  Location loc = genericOp->getLoc();
-  Value laneId = rewriter.create<gpu::LaneIdOp>(loc);
-  Value cast = rewriter.create<vector::ShapeCastOp>(
-      loc, VectorType::get(inType.getNumElements(), inType.getElementType()),
-      input);
-  Value lhs = rewriter.create<vector::ExtractElementOp>(loc, cast, laneId);
-  auto getI32Attr = [&](int32_t value) {
-    return rewriter.getI32IntegerAttr(value);
-  };
-  Value width = rewriter.create<arith::ConstantOp>(loc, getI32Attr(32));
-
-  // Create warp shuffles of increasing offset and interleave with a clone of
-  // the accumulate block.
-  for (int i = 1; i < 32; i *= 2) {
-    Value offset = rewriter.create<arith::ConstantOp>(loc, getI32Attr(i));
-    auto shuffleOp = rewriter.create<gpu::ShuffleOp>(loc, lhs, offset, width,
-                                                     gpu::ShuffleMode::XOR);
-    // Clone accumulate block, then merge with prologue and erase terminator.
-    rewriter.cloneRegionBefore(genericOp.getRegion(), epilogue);
-    rewriter.mergeBlocks(prologue->getNextNode(), prologue,
-                         {lhs, shuffleOp.getShuffleResult()});
-    lhs = prologue->getTerminator()->getOperand(0);
-    rewriter.eraseOp(prologue->getTerminator());
-  }
-  // Store the result into output.
-  Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-  rewriter.create<memref::StoreOp>(loc, lhs, output, zero);
-  rewriter.mergeBlocks(epilogue, prologue, llvm::None);
-
-  // Erase linalg.generic op.
-  rewriter.eraseOp(genericOp);
-
   return success();
 }
 
