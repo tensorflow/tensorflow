@@ -13,6 +13,7 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
@@ -22,7 +23,6 @@ cc_library(
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
-        "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,

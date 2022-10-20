@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_event.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_timer.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 using stream_executor::DeviceMemoryBase;
 

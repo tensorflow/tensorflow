@@ -41,13 +41,13 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #if !defined(PLATFORM_GOOGLE)
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #elif defined(LIBTPU_STATIC)
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #endif  // PLATFORM_GOOGLE
 
 namespace tensorflow {

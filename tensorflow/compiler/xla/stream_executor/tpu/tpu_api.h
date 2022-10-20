@@ -13,20 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_api.h"
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_H_
+
+#include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {
 
-TfTpu_BaseFn* InitializeApiFn() {
-  static TfTpu_BaseFn base_fn;
-  return &base_fn;
-}
+TfTpu_BaseFn* InitializeApiFn();
 
-const TfTpu_OpsApiFn* OpsApiFn() {
-  static TfTpu_OpsApiFn ops_api_fn;
-  return &ops_api_fn;
-}
+const TfTpu_OpsApiFn* OpsApiFn();
 
 }  // namespace tpu
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_H_

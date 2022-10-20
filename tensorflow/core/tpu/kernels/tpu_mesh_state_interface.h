@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 
