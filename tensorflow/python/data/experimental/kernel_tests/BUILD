@@ -115,18 +115,6 @@ cuda_py_test(
 )
 
 tf_py_test(
-    name = "counter_test",
-    size = "small",
-    srcs = ["counter_test.py"],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python/data/experimental/ops:counter",
-        "//tensorflow/python/data/kernel_tests:test_base",
-    ],
-)
-
-tf_py_test(
     name = "csv_dataset_test",
     size = "medium",
     srcs = ["csv_dataset_test.py"],
