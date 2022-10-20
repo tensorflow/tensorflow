@@ -67,6 +67,7 @@ add_mlir_library(GmlStPasses
   fusion.cc
   gml_st_to_scf.cc
   gml_st_to_gpu.cc
+  linalg_utils.cc
   tiling.cc
   tiling_cwise.cc
   tiling_reduction.cc

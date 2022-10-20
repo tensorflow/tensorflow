@@ -1303,6 +1303,7 @@ cc_library(
         "lib/Dialect/gml_st/transforms/fusion.cc",
         "lib/Dialect/gml_st/transforms/gml_st_to_gpu.cc",
         "lib/Dialect/gml_st/transforms/gml_st_to_scf.cc",
+        "lib/Dialect/gml_st/transforms/linalg_utils.cc",
         "lib/Dialect/gml_st/transforms/tiling.cc",
         "lib/Dialect/gml_st/transforms/tiling_cwise.cc",
         "lib/Dialect/gml_st/transforms/tiling_reduction.cc",
@@ -1311,6 +1312,7 @@ cc_library(
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/linalg_utils.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/tiling.h",
