@@ -1,10 +1,7 @@
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 tf_py_test(
     name = "assert_cardinality_test",
