@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.dense_to_ragged_batch`."""
+"""Tests for `tf.data.Dataset.ragged_batch`."""
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -118,8 +117,7 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
             for _ in range(nrows)]
 
     # Batch the dataset, and check that batches match slices from `rows`.
-    batched_dataset = dataset.apply(
-        batching.dense_to_ragged_batch(batch_size, drop_remainder))
+    batched_dataset = dataset.ragged_batch(batch_size, drop_remainder)
     get_next = self.getNext(batched_dataset)
     for start_row in range(0, nrows, batch_size):
       end_row = start_row + batch_size
@@ -155,7 +153,7 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_tensor_slices(np.arange(nrows))
     dataset = dataset.map(make_structure)
-    dataset = dataset.apply(batching.dense_to_ragged_batch(batch_size))
+    dataset = dataset.ragged_batch(batch_size)
     get_next = self.getNext(dataset)
 
     for i in range(0, nrows, batch_size):

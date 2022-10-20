@@ -53,6 +53,7 @@ py_library(
         ":iterator_ops",
         ":load_ops",
         ":options",
+        ":ragged_batch_op",
         ":rebatch_op",
         ":save_ops",
         ":structured_function",
@@ -134,6 +135,23 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform",
         "//tensorflow/python/util",
+    ],
+)
+
+py_library(
+    name = "ragged_batch_op",
+    srcs = ["ragged_batch_op.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:structure",
     ],
 )
 

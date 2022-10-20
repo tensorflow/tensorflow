@@ -141,6 +141,10 @@ This release contains contributions from many people at Google, as well as:
         file is a protobuf containing the "fingerprint" of the SavedModel. See
         the [RFC](https://github.com/tensorflow/community/pull/415) for more
         details regarding its design and properties.
+  
+*   `tf.data`:
+    *   Graduated experimental APIs:
+        * [`tf.data.Dataset.ragged_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ragged_batch), which batches elements of `tf.data.Dataset`s into `tf.RaggedTensor`s.
 
 ## Bug Fixes and Other Changes
 
