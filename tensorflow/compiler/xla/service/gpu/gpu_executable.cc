@@ -785,9 +785,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       MaybeOwningDeviceMemory* maybe_owning_memory =
           [&]() -> xla::MaybeOwningDeviceMemory* {
         // ScopedBuffer is never an owned buffer.
-        if (auto* unowned_shapedbuffers =
-                std::get_if<absl::Span<const ShapedBuffer* const>>(
-                    &arguments)) {
+        if (std::holds_alternative<absl::Span<const ShapedBuffer* const>>(
+                arguments)) {
           return nullptr;
         } else {
           auto unowned_execution_input =
