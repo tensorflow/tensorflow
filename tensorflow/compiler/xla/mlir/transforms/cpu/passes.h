@@ -34,6 +34,9 @@ createTransformScatterForCpuPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToCpuRuntimePass();
 
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformMatmulForCpuPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION

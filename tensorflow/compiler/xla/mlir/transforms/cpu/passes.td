@@ -44,4 +44,15 @@ def ConvertLmhloToCpuRuntimePass :
   let constructor = "createConvertLmhloToCpuRuntimePass()";
 }
 
+def TransformMatmulForCpuPass :
+    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform matmul ops for running on CPU";
+
+  let description = [{
+    Transform matmul ops with the preferred parameters for the CPU backend.
+  }];
+
+  let constructor = "createTransformMatmulForCpuPass()";
+}
+
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_
