@@ -170,6 +170,8 @@ class PyArray : public pybind11::object {
 
   Status BlockUntilReady() const;
 
+  bool IsDeleted() const;
+
  private:
   void CheckAndRearrange();
 

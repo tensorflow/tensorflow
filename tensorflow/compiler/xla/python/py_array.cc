@@ -264,6 +264,17 @@ Status PyArray::BlockUntilReady() const {
   return status;
 }
 
+bool PyArray::IsDeleted() const {
+  if (pjrt_buffers().empty()) {
+    return true;
+  }
+
+  for (const auto& pjrt_buffer : pjrt_buffers()) {
+    if (pjrt_buffer->IsDeleted()) return true;
+  }
+  return false;
+}
+
 py::handle PyArray::Storage::AsHandle() {
   return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
                                      offsetof(PyArrayObject, array_storage));
@@ -373,6 +384,8 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("is_deleted") =
+      py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
   type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
 
