@@ -39,6 +39,10 @@ load(
     "tf_cuda_library",
 )
 load(
+    "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
+    "if_cuda_is_configured",
+)
+load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
@@ -1041,13 +1045,23 @@ cc_binary(
     ] + if_not_android([":rocm_rocdl_path"]),
 )
 
+cc_library(
+    name = "gpu_all_runtime",
+    visibility = ["//visibility:private"],
+    deps = if_cuda_is_configured(
+        ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
+    ) + if_rocm_is_configured(
+        ["//tensorflow/compiler/xla/stream_executor/rocm:all_runtime"],
+    ),
+)
+
 # This do-nothing lib should only be used as a dep in cuda_deps in :stream_executor cuda lib because
 # the "+" operator doesn't work for bazel in stream_executor cuda_deps.
 cc_library(
     name = "private_static_dep",
     visibility = ["//visibility:private"],
     deps = if_static(
-        ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
+        [":gpu_all_runtime"],
     ),
 )
 
