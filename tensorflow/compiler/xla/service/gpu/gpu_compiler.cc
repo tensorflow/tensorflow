@@ -94,7 +94,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/fusion_bitcast_lift.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
@@ -642,9 +641,6 @@ Status GpuCompiler::OptimizeHloModule(
     HloPassFix<HloPassPipeline> horizontal_fusion("horizontal fusion");
     horizontal_fusion.AddPass<GpuHorizontalLoopFusion>();
     horizontal_fusion.AddPass<GpuHorizontalInputFusion>();
-    // FusionBitcastLift must be after InstructionFusion, as it undoes
-    // part of it.
-    horizontal_fusion.AddPass<FusionBitcastLift>();
     horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                                       /*only_fusion_computations=*/true);
     horizontal_fusion.AddPass<HloDCE>();

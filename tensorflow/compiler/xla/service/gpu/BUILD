@@ -1277,36 +1277,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "fusion_bitcast_lift",
-    srcs = ["fusion_bitcast_lift.cc"],
-    hdrs = ["fusion_bitcast_lift.h"],
-    deps = [
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_dce",
-        "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/tsl/platform:errors",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "fusion_bitcast_lift_test",
-    srcs = ["fusion_bitcast_lift_test.cc"],
-    tags = ["no_pip"],
-    deps = [
-        ":fusion_bitcast_lift",
-        "//tensorflow/compiler/xla/service:hlo_dce",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/tests:filecheck",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
     name = "fusion_merger",
     srcs = ["fusion_merger.cc"],
     hdrs = ["fusion_merger.h"],
@@ -1635,7 +1605,6 @@ cc_library(
         ":all_reduce_blueconnect",
         ":conv_layout_normalization",
         ":executable_proto_cc",
-        ":fusion_bitcast_lift",
         ":fusion_merger",
         ":gemm_broadcast_folding_rewriter",
         ":gemm_rewriter",
