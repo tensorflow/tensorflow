@@ -1737,6 +1737,9 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     deps = deps + if_cuda_or_rocm(cuda_deps)
+    if "default_copts" in kwargs:
+        copts = kwargs["default_copts"] + copts
+        kwargs.pop("default_copts", None)
     cc_library(
         deps = deps + if_cuda([
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
