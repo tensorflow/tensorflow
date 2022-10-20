@@ -46,6 +46,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 /// Pass to tile a linalg.generic reduction.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingReductionPass();
 
+/// Pass to tile a linalg.generic reduction for GPU on the warp level.
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwiseGPUWarpsPass();
+
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
     bool distribute, ArrayRef<int64_t> tileSizes);
