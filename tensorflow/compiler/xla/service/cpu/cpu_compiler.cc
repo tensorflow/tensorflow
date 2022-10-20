@@ -997,7 +997,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
   // Transform scatter ops.
-  pm.addNestedPass<mlir::func::FuncOp>(createTransformScatterForCpuPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createTransformScatterForCpuPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).

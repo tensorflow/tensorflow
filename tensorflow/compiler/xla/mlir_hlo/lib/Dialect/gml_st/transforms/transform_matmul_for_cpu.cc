@@ -16,32 +16,31 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "llvm/Support/Debug.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/tiling.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/transforms.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir::cpu {
+namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TRANSFORMMATMULFORCPUPASS
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h.inc"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 struct TransformMatmulForCpuPass
     : public impl::TransformMatmulForCpuPassBase<TransformMatmulForCpuPass> {
   TransformMatmulForCpuPass() = default;
   explicit TransformMatmulForCpuPass(
-      llvm::ArrayRef<int64_t> matmul_tile_sizes) {
-    tile_sizes = matmul_tile_sizes;
+      llvm::ArrayRef<int64_t> matmulTileSizes) {
+    tileSizes = matmulTileSizes;
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -56,11 +55,11 @@ struct TransformMatmulForCpuPass
 
     mlir::gml_st::TilingOptions opts;
 
-    if ((*tile_sizes).empty()) {
-      tile_sizes = {2, 2, 2};
+    if ((*tileSizes).empty()) {
+      tileSizes = {2, 2, 2};
     }
 
-    assert(tile_sizes.size() == 3 &&
+    assert(tileSizes.size() == 3 &&
            "Tiling sizes for MatMul should have 3 elements");
 
     auto filter_fn = [&](Operation *op) {
@@ -69,7 +68,7 @@ struct TransformMatmulForCpuPass
 
     ///////////////////////////////
     // Tiling parallel dimensions
-    opts.setTileSizeComputationFn({(*tile_sizes)[0], (*tile_sizes)[1], 0});
+    opts.setTileSizeComputationFn({(*tileSizes)[0], (*tileSizes)[1], 0});
 
     RewritePatternSet patterns(ctx);
     populateTilingPatterns(ctx, filter_fn, opts, &patterns);
@@ -83,7 +82,7 @@ struct TransformMatmulForCpuPass
 
     ///////////////////////////////
     // Tiling reduction dimension
-    opts.setTileSizeComputationFn({0, 0, (*tile_sizes).back()});
+    opts.setTileSizeComputationFn({0, 0, (*tileSizes).back()});
     opts.distribute = false;
 
     RewritePatternSet newpatterns(ctx);
@@ -99,19 +98,19 @@ struct TransformMatmulForCpuPass
 };
 
 }  // namespace
-}  // namespace mlir::cpu
+}  // namespace mlir::gml_st
 
-namespace xla::cpu {
+namespace mlir::gml_st {
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformMatmulForCpuPass() {
-  return std::make_unique<mlir::cpu::TransformMatmulForCpuPass>();
+  return std::make_unique<mlir::gml_st::TransformMatmulForCpuPass>();
 }
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmul_tile_sizes) {
-  return std::make_unique<mlir::cpu::TransformMatmulForCpuPass>(
-      matmul_tile_sizes);
+createTransformMatmulForCpuPass(llvm::ArrayRef<int64_t> matmulTileSizes) {
+  return std::make_unique<mlir::gml_st::TransformMatmulForCpuPass>(
+      matmulTileSizes);
 }
 
-}  // namespace xla::cpu
+}  // namespace mlir::gml_st

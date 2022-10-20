@@ -16,21 +16,22 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/tiling.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
+#include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-namespace mlir::cpu {
+namespace mlir::gml_st {
 namespace {
 
 #define GEN_PASS_DEF_TRANSFORMSCATTERFORCPUPASS
-#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h.inc"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 struct TransformScatterForCpuPass
     : public impl::TransformScatterForCpuPassBase<TransformScatterForCpuPass> {
@@ -74,13 +75,13 @@ struct TransformScatterForCpuPass
 };
 
 }  // namespace
-}  // namespace mlir::cpu
+}  // namespace mlir::gml_st
 
-namespace xla::cpu {
+namespace mlir::gml_st {
 
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createTransformScatterForCpuPass() {
-  return std::make_unique<mlir::cpu::TransformScatterForCpuPass>();
+  return std::make_unique<mlir::gml_st::TransformScatterForCpuPass>();
 }
 
-}  // namespace xla::cpu
+}  // namespace mlir::gml_st

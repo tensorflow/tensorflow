@@ -22,17 +22,6 @@ include "mlir/Pass/PassBase.td"
 // Auxiliary passes for lowering to XLA Cpu runtime.
 //===----------------------------------------------------------------------===//
 
-def TransformScatterForCpuPass :
-    Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
-  let summary = "Transform scatter ops for running on CPU";
-
-  let description = [{
-    Transform scatter ops with the preferred parameters for the CPU backend.
-  }];
-
-  let constructor = "createTransformScatterForCpuPass()";
-}
-
 def ConvertLmhloToCpuRuntimePass :
     Pass<"xla-lmhlo-to-cpu-runtime", "mlir::ModuleOp"> {
   let summary = "Converts lmhlo operations to XLA Cpu runtime custom calls";
@@ -42,22 +31,6 @@ def ConvertLmhloToCpuRuntimePass :
   }];
 
   let constructor = "createConvertLmhloToCpuRuntimePass()";
-}
-
-def TransformMatmulForCpuPass :
-    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
-  let summary = "Transform matmul ops for running on CPU";
-
-  let description = [{
-    Transform matmul ops with the preferred parameters for the CPU backend.
-  }];
-
-  let constructor = "createTransformMatmulForCpuPass()";
-
-  let options = [
-    ListOption<"tile_sizes", "tile-sizes", "int64_t",
-               "Tile sizes for a `linalg.matmul`">,
-  ];
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

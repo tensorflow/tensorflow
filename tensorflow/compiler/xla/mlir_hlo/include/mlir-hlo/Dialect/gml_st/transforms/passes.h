@@ -71,6 +71,13 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(
     bool vectorizeGmlStOps = false,
     ArrayRef<StringRef> distributionLabels = {});
 
+/// Pass to transform a thlo.scatter op for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
+
+/// Pass to transform a linalg.matmul op for CPU backend.
+std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
+    ArrayRef<int64_t> tileSizes = llvm::None);
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 

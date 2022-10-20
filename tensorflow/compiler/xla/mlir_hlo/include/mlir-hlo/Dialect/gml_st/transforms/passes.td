@@ -124,3 +124,22 @@ def VectorizeGmlStLoopsPass :
   ];
   let dependentDialects = ["::mlir::vector::VectorDialect"];
 }
+
+def TransformScatterForCpuPass :
+    Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
+  let summary = "Transform scatter ops for running on CPU";
+
+  let constructor = "createTransformScatterForCpuPass()";
+}
+
+def TransformMatmulForCpuPass :
+    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform matmul ops for running on CPU";
+
+  let constructor = "createTransformMatmulForCpuPass()";
+
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.matmul`">,
+  ];
+}
