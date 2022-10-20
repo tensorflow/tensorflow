@@ -1,7 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 # Import third party config rules.
-load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
+load("@bazel_skylib//lib:versions.bzl", "versions")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
@@ -945,7 +945,7 @@ def _tf_repositories():
 def workspace():
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
-    check_bazel_version_at_least("1.0.0")
+    versions.check("1.0.0")
 
     # Initialize toolchains and platforms.
     _tf_toolchains()
