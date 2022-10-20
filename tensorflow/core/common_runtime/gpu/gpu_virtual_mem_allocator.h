@@ -18,9 +18,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_VIRTUAL_MEM_ALLOCATOR_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
 
 #if GOOGLE_CUDA
@@ -38,7 +41,7 @@ namespace tensorflow {
 // physical memory pages to this virtual address range as requested.
 //
 // This class is not thread-safe.
-class GpuVirtualMemAllocator : public SubAllocator {
+class GpuVirtualMemAllocator : public tsl::SubAllocator {
  public:
   static stream_executor::port::StatusOr<
       std::unique_ptr<GpuVirtualMemAllocator>>

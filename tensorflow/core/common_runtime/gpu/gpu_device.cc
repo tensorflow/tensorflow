@@ -30,6 +30,7 @@ limitations under the License.
 #include <algorithm>
 #include <list>
 #include <map>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -1593,7 +1594,7 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
                             tf_device_id.value(), " with ", memory_limit,
                             " bytes of memory.");
   }
-  absl::optional<AllocatorStats> stats = gpu_allocator->GetStats();
+  std::optional<AllocatorStats> stats = gpu_allocator->GetStats();
   if (!stats) {
     return errors::Internal("No allocator statistics");
   }
