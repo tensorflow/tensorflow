@@ -360,6 +360,22 @@ func.func @fold_extract_from_elements_into_gml_st(%in: tensor<8x2xf32>,
 
 // -----
 
+func.func @dynamic_broadcast_in_dim(%arg : tensor<1x1xf32>,
+                                    %init: tensor<1x1x1xf32>)
+                                    -> tensor<1x1x1xf32>  {
+  %0 = thlo.dynamic_broadcast_in_dim ins(%arg : tensor<1x1xf32>)
+                                     outs(%init : tensor<1x1x1xf32>)
+                                     broadcast_dimensions = [0, 2]
+  func.return %0 : tensor<1x1x1xf32>
+}
+// CHECK-LABEL: @dynamic_broadcast_in_dim(
+// CHECK-SAME:      %[[ARG:.*]]: tensor<1x1xf32>, %[[INIT:.*]]: tensor<1x1x1xf32>)
+// CHECK:                 %[[C0:.*]] = arith.constant 0 : index
+// CHECK-NEXT:      %[[ELEM:.*]] = tensor.extract %[[ARG]][%[[C0]], %[[C0]]]
+// CHECK-NEXT:      %[[UPDATED:.*]] = tensor.insert %[[ELEM]] into %[[INIT]][%[[C0]], %[[C0]], %[[C0]]]
+
+// -----
+
 func.func @concatenate(%arg0: tensor<?x?xf32>,
                        %arg1: tensor<?x?xf32>,
                        %arg2: tensor<?x?xf32>,

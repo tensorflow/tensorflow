@@ -129,6 +129,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     // Create the loop nest that spans window dimensions of `updates`.
     Value updates = scatterOp.getUpdates();
     auto updatesType = updates.getType().dyn_cast<RankedTensorType>();
+    if (!updatesType) return failure();
     int64_t updatesRank = updatesType.getRank();
 
     SmallVector<OpFoldResult> updatesDimSizes =
@@ -140,6 +141,8 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
 
     Value init = scatterOp.getInit();
     auto initType = init.getType().dyn_cast<RankedTensorType>();
+    if (!initType) return failure();
+
     int64_t initRank = initType.getRank();
 
     SmallVector<OpFoldResult> initDimSizes =
@@ -309,6 +312,38 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   }
 };
 
+struct ScalarizeDynamicBroadcastInDimOp
+    : public OpRewritePattern<thlo::DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(thlo::DynamicBroadcastInDimOp broadcastOp,
+                                PatternRewriter &rewriter) const override {
+    Location loc = broadcastOp.getLoc();
+    ImplicitLocOpBuilder b(loc, rewriter);
+
+    auto output = broadcastOp.getInit();
+    auto outputType = output.getType().dyn_cast<RankedTensorType>();
+    if (!outputType) return failure();
+
+    if (!hasSingleElement(outputType)) return failure();
+
+    auto input = broadcastOp.getOperand();
+    auto inputType = input.getType().dyn_cast<RankedTensorType>();
+    if (!inputType) return failure();
+
+    Value zero = b.create<arith::ConstantIndexOp>(0);
+    llvm::SmallVector<Value> indicesInput(inputType.getRank(), zero);
+    llvm::SmallVector<Value> indicesOutput(outputType.getRank(), zero);
+
+    Value extractedValue = b.create<ExtractOp>(input, indicesInput);
+    Value result =
+        b.create<tensor::InsertOp>(extractedValue, output, indicesOutput);
+
+    rewriter.replaceOp(broadcastOp, result);
+    return success();
+  }
+};
+
 // Fold `tensor.extract(gml_st.materialize -> tensor<1x1xf32>)` into
 //      `gml_st.materialize -> f32` for single-element tensors.
 struct FoldTensorExtractIntoMaterialize : public OpRewritePattern<ExtractOp> {
@@ -376,6 +411,7 @@ struct ScalarizationPass
     RewritePatternSet patterns(context);
     // clang-format off
     patterns.add<
+        ScalarizeDynamicBroadcastInDimOp,
         ScalarizeConcatenateOp,
         ScalarizeGenericOp,
         ScalarizeScatterOp
