@@ -61,7 +61,8 @@ func.func @rewrite_convert(%arg0: tensor<10x10xf64>) -> tensor<10x10xf64, #CSR> 
 
 // CHECK-LABEL: func @rewrite_convert_nop(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #sparse_tensor.encoding<{{{.*}}}>>) -> tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>
-// CHECK-NEXT:    return %[[ARG0:.*]] : tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>
+// CHECK-NEXT:    %[[RES:.*]] = sparse_tensor.convert %[[ARG0]]
+// CHECK-NEXT:    return %[[RES]] : tensor<10x10xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>
 func.func @rewrite_convert_nop(%arg0: tensor<10x10xf64, #CSR>) -> tensor<10x10xf64, #CSR> {
   %0 = sparse_tensor.convert %arg0 : tensor<10x10xf64, #CSR> to tensor<10x10xf64, #DCSR>
   %1 = sparse_tensor.convert %0 : tensor<10x10xf64, #DCSR> to tensor<10x10xf64, #CSR>
