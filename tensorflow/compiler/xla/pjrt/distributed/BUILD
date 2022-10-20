@@ -98,12 +98,13 @@ cc_library(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_error_util",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core/protobuf:coordination_config_proto_cc",
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/core/distributed_runtime/coordination:coordination_client",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
+        "//tensorflow/tsl/platform:random",
     ] + tf_grpc_cc_dependencies(),
 )
 

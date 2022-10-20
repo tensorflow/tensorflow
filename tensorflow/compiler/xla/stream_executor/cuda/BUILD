@@ -271,7 +271,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:errors"],
 )
 
 cc_library(
@@ -351,7 +351,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:errors"],
 )
 
 cc_library(
@@ -395,7 +395,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:errors"],
     alwayslink = True,
 )
 
@@ -464,7 +464,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:temporary_device_memory",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
-    ]) + tf_additional_cudnn_plugin_deps() + ["@com_google_absl//absl/synchronization"],
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/tsl/util:env_var",
+    ]) + tf_additional_cudnn_plugin_deps() + [
+        "@com_google_absl//absl/synchronization",
+    ],
     alwayslink = True,
 )
 
