@@ -185,9 +185,9 @@ func.func @extra_argument(%arg0: tensor<4xf64>, %arg2: tensor<i1>) -> tensor<f64
 
 // -----
 
-func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
+func.func @scatter_f32(%indices: tensor<1x2xindex>,
     %updates: tensor<1x?x?xf32>, %init: tensor<?x?xf32>) -> tensor<?x?xf32> {
-  %0 = thlo.scatter ins(%indices: tensor<1x2xi32>, %updates: tensor<1x?x?xf32>)
+  %0 = thlo.scatter ins(%indices: tensor<1x2xindex>, %updates: tensor<1x?x?xf32>)
                     outs(%init: tensor<?x?xf32>)
     (%in: f32, %out: f32) {
       %1 = arith.addf %in, %out: f32
@@ -195,8 +195,8 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
     }
   return %0: tensor<?x?xf32>
 }
-// CHECK-LABEL: func.func @scatter_i32_f32(
-// CHECK-SAME:      %[[INDICES:.*]]: tensor<1x2xi32>,
+// CHECK-LABEL: func.func @scatter_f32(
+// CHECK-SAME:      %[[INDICES:.*]]: tensor<1x2xindex>,
 // CHECK-SAME:      %[[UPDATES:.*]]: tensor<1x?x?xf32>,
 // CHECK-SAME:      %[[INIT:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32> {
 
@@ -211,12 +211,8 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 // CHECK-NEXT:  %[[INIT_TILE:.*]] = gml_st.tile [0, 0] [%[[INIT_DIM_0]], %[[INIT_DIM_1]]
 
 // Extract scattr indices from `indices` arg.
-// CHECK-NEXT:  %[[INDEX_0_INT:.*]] = tensor.extract %[[INDICES]][%[[C0]],
-// CHECK-SAME:    %[[C0]]] : tensor<1x2xi32>
-// CHECK-NEXT:  %[[INDEX_0:.*]] = arith.index_cast %[[INDEX_0_INT]]
-// CHECK-NEXT:  %[[INDEX_1_INT:.*]] = tensor.extract %[[INDICES]][%[[C0]],
-// CHECK-SAME:   %[[C1]]] : tensor<1x2xi32>
-// CHECK-NEXT:  %[[INDEX_1:.*]] = arith.index_cast %[[INDEX_1_INT]]
+// CHECK-NEXT:  %[[INDEX_0:.*]] = tensor.extract %[[INDICES]][%[[C0]],
+// CHECK-NEXT:  %[[INDEX_1:.*]] = tensor.extract %[[INDICES]][%[[C0]],
 
 // Iterate over indow dimensions..
 // CHECK-NEXT:  %[[SCATTER:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]],
@@ -269,10 +265,10 @@ func.func @scatter_i32_f32(%indices: tensor<1x2xi32>,
 
 // -----
 
-func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
+func.func @scatter_i64(%indices: tensor<1x1xindex>,
                            %updates: tensor<1x1x3x4xi64>,
                            %init: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
- %0 = thlo.scatter ins(%indices : tensor<1x1xi32>,
+ %0 = thlo.scatter ins(%indices : tensor<1x1xindex>,
                        %updates : tensor<1x1x3x4xi64>)
                    outs(%init : tensor<3x3x4xi64>)
    (%arg5: i64, %arg6: i64) {
@@ -280,8 +276,8 @@ func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
  }
  func.return %0 : tensor<3x3x4xi64>
 }
-// CHECK-LABEL: func.func @scatter_i32_i64(
-// CHECK-SAME:      %[[INDICES:.*]]: tensor<1x1xi32>,
+// CHECK-LABEL: func.func @scatter_i64(
+// CHECK-SAME:      %[[INDICES:.*]]: tensor<1x1xindex>,
 // CHECK-SAME:      %[[UPDATES:.*]]: tensor<1x1x3x4xi64>,
 // CHECK-SAME:      %[[INIT:.*]]: tensor<3x3x4xi64>) -> tensor<3x3x4xi64> {
 
@@ -292,9 +288,7 @@ func.func @scatter_i32_i64(%indices: tensor<1x1xi32>,
 
 // CHECK:       %[[INIT_TILE:.*]] = gml_st.tile [0, 0, 0] [3, 3, 4]
 
-// CHECK:       %[[INDEX_0_INT:.*]] = tensor.extract %[[INDICES]]
-// CHECK-SAME:    [%[[C0]], %[[C0]]] : tensor<1x1xi32>
-// CHECK:       %[[INDEX_0:.*]] = arith.index_cast %[[INDEX_0_INT]]
+// CHECK:       %[[INDEX_0:.*]] = tensor.extract %[[INDICES]]
 
 // CHECK:       gml_st.for (%[[I:.*]], %[[J:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-SAME:       to (%[[C3]], %[[C4]]) step (%[[C1]], %[[C1]])

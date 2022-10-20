@@ -116,7 +116,7 @@ def THLO_GatherOp : THLO_DstStyleOp<"gather", [
   let arguments = (ins
     // Input args
     TensorOrMemref:$operand,
-    TensorOrMemrefOf<[I64]>:$start_indices,
+    TensorOrMemrefOf<[Index]>:$start_indices,
     // Output arg
     TensorOrMemref:$init
   );
@@ -147,7 +147,7 @@ def THLO_ScatterOp : THLO_DstStyleOp<"scatter", [
   }];
   let arguments = (ins
     // Input args
-    TensorOrMemrefOf<[I32, I64]>:$indices,
+    TensorOrMemrefOf<[Index]>:$indices,
     TensorOrMemref:$updates,
     // Output arg
     TensorOrMemref:$init

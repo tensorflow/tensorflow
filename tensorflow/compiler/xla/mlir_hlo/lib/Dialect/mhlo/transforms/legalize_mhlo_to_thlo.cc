@@ -56,6 +56,17 @@ bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
   return true;
 }
 
+Value castToIndex(OpBuilder& b, Location loc, TensorType originalType,
+                  Value value) {
+  Type elementTy = originalType.getElementType();
+  if (elementTy.isIndex()) return value;
+
+  Type ty = RankedTensorType::get(originalType.getShape(), b.getIndexType());
+  return elementTy.isUnsignedInteger()
+             ? b.create<arith::IndexCastUIOp>(loc, ty, value).getResult()
+             : b.create<arith::IndexCastOp>(loc, ty, value).getResult();
+}
+
 struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
   using OpConversionPattern<mhlo::ConcatenateOp>::OpConversionPattern;
 
@@ -216,7 +227,9 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
         op.getLoc(), sizes, resultType.getElementType());
     rewriter.replaceOpWithNewOp<thlo::GatherOp>(
-        op, resultType, adaptor.getOperand(), adaptor.getStartIndices(),
+        op, resultType, adaptor.getOperand(),
+        castToIndex(rewriter, op.getLoc(), op.getStartIndices().getType(),
+                    adaptor.getStartIndices()),
         emptyTensor);
     return success();
   }
@@ -365,8 +378,10 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
-        loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
-        adaptor.getInputs().front());
+        loc, opType,
+        castToIndex(rewriter, loc, op.getScatterIndices().getType(),
+                    adaptor.getScatterIndices()),
+        adaptor.getUpdates().front(), adaptor.getInputs().front());
 
     Region& region = thloScatter.getUpdateComputation();
     rewriter.inlineRegionBefore(op.getRegion(), region, region.end());

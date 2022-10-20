@@ -155,15 +155,12 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     Value one = b.create<arith::ConstantIndexOp>(1);
 
     // Extract scatter indices.
-    Type indexType = rewriter.getIndexType();
     SmallVector<Value> scatterIndices;
     SmallVector<Value> currentIndexInIndicesTensor(2, zero);
     for (int64_t i = 0, e = scatterOp.getIndexVectorDimSize(); i < e; ++i) {
       currentIndexInIndicesTensor.back() = b.create<arith::ConstantIndexOp>(i);
-      Value index = b.create<ExtractOp>(indices, currentIndexInIndicesTensor);
-      if (index.getType() != indexType)
-        index = b.create<arith::IndexCastOp>(indexType, index);
-      scatterIndices.push_back(index);
+      scatterIndices.push_back(
+          b.create<ExtractOp>(indices, currentIndexInIndicesTensor));
     }
 
     // Create a loop that spans the dimensions of the update slice.

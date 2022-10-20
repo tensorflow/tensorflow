@@ -115,14 +115,15 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 }
 
 // CHECK-LABEL: @simple_gather
-//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
+//   CHECK-DAG: %[[CAST:.*]] = arith.index_cast {{.*}} : tensor<3x2xi64> to tensor<3x2xindex>
+//   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
-//  CHECK-SAME:   ins(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x2xi64>)
+//  CHECK-SAME:   ins(%{{.*}} : tensor<3x3xf32>, %[[CAST]] : tensor<3x2xindex>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xf32>)
 //       CHECK: return %[[GATHER]]
 
 func.func @simple_gather_unsigned(
-    %operand : tensor<3x3xui32>, %indices: tensor<3x2xi64>) -> tensor<3x1x1xui32> {
+    %operand : tensor<3x3xui32>, %indices: tensor<3x2xui64>) -> tensor<3x1x1xui32> {
   %0 = "mhlo.gather"(%operand, %indices) {
     dimension_numbers = #mhlo.gather<
       collapsed_slice_dims = [],
@@ -132,14 +133,15 @@ func.func @simple_gather_unsigned(
     >,
     indices_are_sorted = false,
     slice_sizes = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<3x3xui32>, tensor<3x2xi64>) -> tensor<3x1x1xui32>
+  } : (tensor<3x3xui32>, tensor<3x2xui64>) -> tensor<3x1x1xui32>
   func.return %0 : tensor<3x1x1xui32>
 }
 // CHECK-LABEL: @simple_gather_unsigned
-//       CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xui32> to tensor<3x3xi32>
-//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xi32>
+//   CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast {{.*}} : tensor<3x3xui32> to tensor<3x3xi32>
+//   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xi32>
+//   CHECK-DAG: %[[INDEX_CAST:.*]] = arith.index_castui {{.*}} to tensor<3x2xindex>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
-//  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %arg1 : tensor<3x2xi64>)
+//  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %[[INDEX_CAST]] : tensor<3x2xindex>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xi32>)
 //       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3x1x1xi32> to tensor<3x1x1xui32>
 //       CHECK: return %[[CAST2]]
@@ -224,17 +226,18 @@ func.func @simple_scatter(%dst: tensor<3x3xf32>, %indices: tensor<2x2xi32>,
 // CHECK-LABEL: @simple_scatter
 // CHECK-SAME: (%[[DST:.*]]: tensor<3x3xf32>, %[[INDICES:.*]]: tensor<2x2xi32>,
 // CHECK-SAME:  %[[UPDATE:.*]]: tensor<2x1x3xf32>)
-//       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<2x2xi32>,
-//  CHECK-SAME:                    %[[UPDATE]] : tensor<2x1x3xf32>)
-//  CHECK-SAME:                outs(%[[DST]] : tensor<3x3xf32>)
-//  CHECK-SAME:                (%[[UPD:.*]]: f32, %[[CUR:.*]]: f32) {
-//  CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<f32>
-//  CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<f32>
-//  CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<f32>
-//  CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<f32>
-//  CHECK-NEXT:    arith.addf %[[CUR]], %[[UPD]] : f32
-//  CHECK-NEXT:    tensor.from_elements
-//  CHECK-NEXT:    tensor.extract
+//      CHECK:   %[[CAST:.*]] = arith.index_cast %[[INDICES]] {{.*}} to tensor<2x2xindex>
+//      CHECK:   thlo.scatter ins(%[[CAST]] : tensor<2x2xindex>,
+// CHECK-SAME:                    %[[UPDATE]] : tensor<2x1x3xf32>)
+// CHECK-SAME:                outs(%[[DST]] : tensor<3x3xf32>)
+// CHECK-SAME:                (%[[UPD:.*]]: f32, %[[CUR:.*]]: f32) {
+// CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<f32>
+// CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<f32>
+// CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<f32>
+// CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<f32>
+// CHECK-NEXT:    arith.addf %[[CUR]], %[[UPD]] : f32
+// CHECK-NEXT:    tensor.from_elements
+// CHECK-NEXT:    tensor.extract
 
 
 // CHECK-LABEL: @reduce_add(

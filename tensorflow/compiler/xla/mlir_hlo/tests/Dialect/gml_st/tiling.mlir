@@ -391,10 +391,10 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 
 // -----
 
-func.func @scatter_i32_i64(%indices: tensor<?x2xi32>,
+func.func @scatter_i64(%indices: tensor<?x2xindex>,
     %updates: tensor<?x?x?xi64>, %init: tensor<?x?xi64>) -> tensor<?x?xi64> {
   %result = thlo.scatter
-    ins (%indices: tensor<?x2xi32>, %updates: tensor<?x?x?xi64>)
+    ins (%indices: tensor<?x2xindex>, %updates: tensor<?x?x?xi64>)
     outs (%init: tensor<?x?xi64>) { op_label = "tile-1d-point" }
     (%in: i64, %out: i64) {
       %0 = arith.addi %in, %out: i64
@@ -403,8 +403,8 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>,
   return %result : tensor<?x?xi64>
 }
 
-// CHECK-FOR-LABEL: func.func @scatter_i32_i64(
-// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x2xi32>,
+// CHECK-FOR-LABEL: func.func @scatter_i64(
+// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x2xindex>,
 // CHECK-FOR-SAME:    %[[UPDATES:.*]]: tensor<?x?x?xi64>,
 // CHECK-FOR-SAME:    %[[INIT:.*]]: tensor<?x?xi64>
 
@@ -418,12 +418,12 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>,
 // CHECK-FOR:       %[[UPDATE_SUB:.*]] = gml_st.materialize %[[UPDATES]]
 // CHECK-FOR-SAME:    : tensor<?x?x?xi64>[!gml_st.tile<1x?x?>]
 // CHECK-FOR:       %[[INDICES_SUB:.*]] = gml_st.materialize %[[INDICES]]
-// CHECK-FOR-SAME:    : tensor<?x2xi32>[!gml_st.tile<1x2>]
+// CHECK-FOR-SAME:    : tensor<?x2xindex>[!gml_st.tile<1x2>]
 // CHECK-FOR:       %[[INIT_SUB:.*]] = gml_st.materialize
 // CHECK-FOR-SAME:    : tensor<?x?xi64>[!gml_st.tile<?x?>]
 
 // CHECK-FOR:       %[[SCATTER:.*]] = thlo.scatter
-// CHECK-FOR-SAME:    ins(%[[INDICES_SUB]] : tensor<1x2xi32>,
+// CHECK-FOR-SAME:    ins(%[[INDICES_SUB]] : tensor<1x2xindex>,
 // CHECK-FOR-SAME:        %[[UPDATE_SUB]] : tensor<1x?x?xi64>)
 // CHECK-FOR-SAME:    outs(%[[INIT_SUB]] : tensor<?x?xi64>)
 // CHECK-FOR:           arith.addi
@@ -432,17 +432,17 @@ func.func @scatter_i32_i64(%indices: tensor<?x2xi32>,
 
 // -----
 
-func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>,
+func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xindex>,
     %init: tensor<?x?xf64>) -> tensor<?x?xf64> {
   %result = thlo.gather
-    ins (%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>)
+    ins (%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xindex>)
     outs (%init: tensor<?x?xf64>) { op_label = "tile-2d" }
   return %result : tensor<?x?xf64>
 }
 
 // CHECK-FOR-LABEL: @gather
 // CHECK-FOR-SAME:    %[[OPERAND:.*]]: tensor<?x?x?x?xf64>
-// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x?x4xi64>
+// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x?x4xindex>
 // CHECK-FOR-SAME:    %[[INIT:.*]]:
 // CHECK-FOR-DAG:   %[[ZERO:.*]] = arith.constant 0
 // CHECK-FOR-DAG:   %[[ONE:.*]] = arith.constant 1
@@ -460,7 +460,7 @@ func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xi64>,
 // CHECK-FOR:         %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT_]][%[[INIT_TILE]]]
 // CHECK-FOR:         %[[GATHER_SLICE:.*]] = thlo.gather
 // CHECK-FOR-SAME:       ins(%[[OPERAND]] : tensor<?x?x?x?xf64>,
-// CHECK-FOR-SAME:           %[[INDEX_SLICE]] : tensor<?x?x4xi64>)
+// CHECK-FOR-SAME:           %[[INDEX_SLICE]] : tensor<?x?x4xindex>)
 // CHECK-FOR-SAME:       outs(%[[INIT_SLICE]] : tensor<?x?xf64>)
 // CHECK-FOR:         gml_st.set_yield %[[GATHER_SLICE]]
 
