@@ -1088,6 +1088,29 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "transpose_test_utils",
+    hdrs = ["transpose_test_utils.h"],
+    deps = [
+        "//tensorflow/lite/kernels/internal:reference",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_test(
+    name = "transpose_test_utils_test",
+    srcs = ["transpose_test_utils_test.cc"],
+    deps = [
+        ":test_main",
+        ":transpose_test_utils",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_test(
     name = "transpose_test",
     size = "small",
@@ -1096,6 +1119,7 @@ cc_test(
     deps = [
         ":test_main",
         ":test_util",
+        ":transpose_test_utils",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/kernels/internal:reference_base",
