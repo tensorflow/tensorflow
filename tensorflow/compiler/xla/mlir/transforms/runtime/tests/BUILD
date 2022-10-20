@@ -22,7 +22,7 @@ filegroup(
 
 cc_library(
     name = "testlib_pipeline",
-    testonly = 1,
+    testonly = True,
     srcs = ["testlib_pipeline.cc"],
     hdrs = ["testlib_pipeline.h"],
     visibility = ["//tensorflow/compiler/xla:runtime"],
