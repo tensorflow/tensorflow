@@ -57,10 +57,6 @@ limitations under the License.
 // PLATFORM_GOOGLE needs to be defined by default to get the right header
 // files.
 #define PLATFORM_GOOGLE
-// TensorFlow refers to a group of non-Google platforms as "mobile" for
-// legacy reasons. We include Fuchsia in this group and define
-// IS_MOBILE_PLATFORM here.
-#define IS_MOBILE_PLATFORM
 
 #else
 // If no platform specified, use:
