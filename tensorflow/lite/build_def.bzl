@@ -1,16 +1,13 @@
 """Build macros for TF Lite."""
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "clean_dep",
-    "if_oss",
-    "tf_binary_additional_srcs",
-    "tf_cc_shared_object",
-)
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+
+def register_extension_info(**kwargs):
+    pass
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -844,3 +841,8 @@ def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
         name = name + "_self_contained_c_build_tests",
         tests = build_tests,
     )
+
+register_extension_info(
+    extension = tflite_cc_library_with_c_headers_test,
+    label_regex_for_dep = "{extension_name}",
+)
