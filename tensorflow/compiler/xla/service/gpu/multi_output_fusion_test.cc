@@ -1561,5 +1561,82 @@ ENTRY computation {
   )");
 }
 
+TEST_F(ReduceMultiOutputFusionTest, ReduceAndLoopDifferentShapeDifferentType) {
+  const char* hlo = R"(
+HloModule module, entry_computation_layout={(f16[100,200]{1,0},f32[],f32[])->(f16[100,200]{1,0}, f32[])}
+
+max {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] maximum(a, b)
+}
+
+fused_computation {
+  one_5 = f32[] constant(1)
+  one_b.5 = f32[100,200]{1,0} broadcast(one_5), dimensions={}
+  param_1.15 = f16[100,200]{1,0} parameter(1)
+  c.6 = f32[100,200]{1,0} convert(param_1.15)
+  param_0.11 = f32[] parameter(0)
+  b.6 = f32[100,200]{1,0} broadcast(param_0.11), dimensions={}
+  d.5 = f32[100,200]{1,0} divide(c.6, b.6)
+  a.6 = f32[100,200]{1,0} add(one_b.5, d.5)
+  bitcast.1 = f32[20000]{0} bitcast(a.6)
+  z_1 = f32[] constant(0)
+  ROOT r.1 = f32[] reduce(bitcast.1, z_1), dimensions={0}, to_apply=max
+}
+
+fused_computation.1 {
+  one_3 = f32[] constant(1)
+  one_b.3 = f32[100,200]{1,0} broadcast(one_3), dimensions={}
+  param_2.7 = f16[100,200]{1,0} parameter(2)
+  c.4 = f32[100,200]{1,0} convert(param_2.7)
+  param_1.10 = f32[] parameter(1)
+  b.4 = f32[100,200]{1,0} broadcast(param_1.10), dimensions={}
+  d.3 = f32[100,200]{1,0} divide(c.4, b.4)
+  a.4 = f32[100,200]{1,0} add(one_b.3, d.3)
+  param_0.8 = f32[] parameter(0)
+  output_scale_broadcast.1 = f32[100,200]{1,0} broadcast(param_0.8), dimensions={}
+  a_scaled.1 = f32[100,200]{1,0} multiply(a.4, output_scale_broadcast.1)
+  ROOT a_scaled_converted.1 = f16[100,200]{1,0} convert(a_scaled.1)
+}
+
+ENTRY computation {
+  output_scale = f32[] parameter(2)
+  input_scale = f32[] parameter(1)
+  p = f16[100,200]{1,0} parameter(0)
+  fusion.1 = f16[100,200]{1,0} fusion(output_scale, input_scale, p), kind=kLoop, calls=fused_computation.1
+  fusion = f32[] fusion(input_scale, p), kind=kInput, calls=fused_computation
+  ROOT out = (f16[100,200]{1,0}, f32[]) tuple(fusion.1, fusion)
+}
+)";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation.1 (param_0.8: f32[], param_1.10: f32[], param_2.7: f16[100,200]) -> (f16[100,200], f32[]) {
+// CHECK-NEXT:   %one_3 = f32[] constant(1)
+// CHECK-NEXT:   %one_b.3 = f32[100,200]{1,0} broadcast(%one_3), dimensions={}
+// CHECK-NEXT:   %param_2.7 = f16[100,200]{1,0} parameter(2)
+// CHECK-NEXT:   %c.4 = f32[100,200]{1,0} convert(%param_2.7)
+// CHECK-NEXT:   %param_1.10 = f32[] parameter(1)
+// CHECK-NEXT:   %b.4 = f32[100,200]{1,0} broadcast(%param_1.10), dimensions={}
+// CHECK-NEXT:   %d.3 = f32[100,200]{1,0} divide(%c.4, %b.4)
+// CHECK-NEXT:   %a.4 = f32[100,200]{1,0} add(%one_b.3, %d.3)
+// CHECK-NEXT:   %param_0.8 = f32[] parameter(0)
+// CHECK-NEXT:   %output_scale_broadcast.1 = f32[100,200]{1,0} broadcast(%param_0.8), dimensions={}
+// CHECK-NEXT:   %a_scaled.1 = f32[100,200]{1,0} multiply(%a.4, %output_scale_broadcast.1)
+// CHECK-NEXT:   %a_scaled_converted.1 = f16[100,200]{1,0} convert(%a_scaled.1)
+// CHECK-NEXT:   %one_5.clone.1 = f32[] constant(1)
+// CHECK-NEXT:   %one_b.5.clone.1 = f32[100,200]{1,0} broadcast(%one_5.clone.1), dimensions={}
+// CHECK-NEXT:   %c.6.clone.1 = f32[100,200]{1,0} convert(%param_2.7)
+// CHECK-NEXT:   %b.6.clone.1 = f32[100,200]{1,0} broadcast(%param_1.10), dimensions={}
+// CHECK-NEXT:   %d.5.clone.1 = f32[100,200]{1,0} divide(%c.6.clone.1, %b.6.clone.1)
+// CHECK-NEXT:   %a.6.clone.1 = f32[100,200]{1,0} add(%one_b.5.clone.1, %d.5.clone.1)
+// CHECK-NEXT:   %bitcast.1.clone.1 = f32[20000]{0} bitcast(%a.6.clone.1)
+// CHECK-NEXT:   %z_1.clone.1 = f32[] constant(0)
+// CHECK-NEXT:   %r.1.clone.1 = f32[] reduce(%bitcast.1.clone.1, %z_1.clone.1), dimensions={0}, to_apply=%max
+// CHECK-NEXT:   ROOT %tuple = (f16[100,200]{1,0}, f32[]) tuple(%a_scaled_converted.1, %r.1.clone.1)
+// CHECK-NEXT: }
+  )");
+}
+
 }  // namespace gpu
 }  // namespace xla

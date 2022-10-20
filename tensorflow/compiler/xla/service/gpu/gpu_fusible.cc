@@ -178,7 +178,9 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
       (IsReductionFromOrToContiguousDimensions(*hero1) ||
        IsReductionFromOrToContiguousDimensions(*hero2));
   if (!ShapeUtil::EqualIgnoringElementType(l1, l2) &&
-      (!accept_unequal_shape || !ShapeUtil::ReshapeIsBitcast(l1, l2))) {
+      (!accept_unequal_shape ||
+       !ShapeUtil::ReshapeIsBitcast(
+           l1, ShapeUtil::ChangeElementType(l2, l1.element_type())))) {
     return "different loop shapes";
   }
   return {};
