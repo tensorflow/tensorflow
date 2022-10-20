@@ -529,6 +529,7 @@ filegroup(
         "stringprintf.cc",
         "stringprintf.h",
         "thread_annotations.h",
+        "threadpool.cc",
         "threadpool.h",
         "threadpool_interface.h",
         "tracing.h",
@@ -537,7 +538,6 @@ filegroup(
         "//conditions:default": [
             "//tensorflow/tsl/platform/default:mobile_srcs_no_runtime",
             "file_system_helper.cc",
-            "threadpool.cc",
             "tracing.cc",
         ],
     }),
