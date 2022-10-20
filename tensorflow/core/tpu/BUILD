@@ -177,7 +177,6 @@ cc_library(
     hdrs = ["tpu_initializer_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tpu_library_init_fns",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
@@ -186,6 +185,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
@@ -208,13 +208,6 @@ cc_library(
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_library_init_fns",
-    hdrs = ["tpu_library_init_fns.inc"],
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns"],
 )
 
 cc_library(
@@ -355,13 +348,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_initializer_helper",
-        ":tpu_library_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
     ],

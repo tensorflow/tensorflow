@@ -266,6 +266,13 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_library_init_fns",
+    hdrs = ["tpu_library_init_fns.inc"],
+    visibility = ["//visibility:public"],
+    deps = [":tpu_executor_init_fns"],
+)
+
+cc_library(
     name = "tpu_node_context",
     srcs = ["tpu_node_context.cc"],
     hdrs = ["tpu_node_context.h"],
