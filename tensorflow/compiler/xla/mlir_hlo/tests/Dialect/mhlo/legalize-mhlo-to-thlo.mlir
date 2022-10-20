@@ -100,49 +100,89 @@ func.func @concatenate_with_static_info(%a: tensor<?x32xi32>, %b: tensor<64x16xi
 }
 
 func.func @simple_gather(%operand : tensor<3x3xf32>,
-                         %indices: tensor<3x2xi64>) -> tensor<3xf32> {
+                         %indices: tensor<3x2xi64>) -> tensor<3x1x1xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
+      collapsed_slice_dims = [],
       index_vector_dim = 1,
-      offset_dims = [],
+      offset_dims = [1, 2],
       start_index_map = [0, 1]
     >,
     indices_are_sorted = false,
     slice_sizes = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<3x3xf32>, tensor<3x2xi64>) -> tensor<3xf32>
-  func.return %0 : tensor<3xf32>
+  } : (tensor<3x3xf32>, tensor<3x2xi64>) -> tensor<3x1x1xf32>
+  func.return %0 : tensor<3x1x1xf32>
 }
 
 // CHECK-LABEL: @simple_gather
-//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3xf32>
+//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x2xi64>)
-//  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xf32>)
 //       CHECK: return %[[GATHER]]
 
 func.func @simple_gather_unsigned(
-    %operand : tensor<3x3xui32>, %indices: tensor<3x2xi64>) -> tensor<3xui32> {
+    %operand : tensor<3x3xui32>, %indices: tensor<3x2xi64>) -> tensor<3x1x1xui32> {
   %0 = "mhlo.gather"(%operand, %indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
+      collapsed_slice_dims = [],
       index_vector_dim = 1,
-      offset_dims = [],
+      offset_dims = [1, 2],
       start_index_map = [0, 1]
     >,
     indices_are_sorted = false,
     slice_sizes = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<3x3xui32>, tensor<3x2xi64>) -> tensor<3xui32>
-  func.return %0 : tensor<3xui32>
+  } : (tensor<3x3xui32>, tensor<3x2xi64>) -> tensor<3x1x1xui32>
+  func.return %0 : tensor<3x1x1xui32>
 }
 // CHECK-LABEL: @simple_gather_unsigned
 //       CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xui32> to tensor<3x3xi32>
-//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3xi32>
+//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xi32>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %arg1 : tensor<3x2xi64>)
-//  CHECK-SAME:   outs(%[[INIT]] : tensor<3xi32>)
-//       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3xi32> to tensor<3xui32>
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xi32>)
+//       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3x1x1xi32> to tensor<3x1x1xui32>
 //       CHECK: return %[[CAST2]]
+
+func.func @gather_with_slices(
+    %operand : tensor<300x300xi32>, %indices: tensor<3x2xi64>) -> tensor<3x101x102xi32> {
+  %0 = "mhlo.gather"(%operand, %indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[101, 102]> : tensor<2xi64>
+  } : (tensor<300x300xi32>, tensor<3x2xi64>) -> tensor<3x101x102xi32>
+  func.return %0 : tensor<3x101x102xi32>
+}
+// CHECK-LABEL: @gather_with_slices
+//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3x101x102xi32>
+//       CHECK: thlo.gather
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3x101x102xi32>)
+
+func.func @gather_dynamic(
+    %operand : tensor<300xi32>, %indices: tensor<?x1xi64>) -> tensor<?x42xi32> {
+  %0 = "mhlo.gather"(%operand, %indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [1],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[42]> : tensor<1xi64>
+  } : (tensor<300xi32>, tensor<?x1xi64>) -> tensor<?x42xi32>
+  func.return %0 : tensor<?x42xi32>
+}
+// CHECK-LABEL: @gather_dynamic
+//   CHECK-DAG: %[[C0:.*]] = arith.constant 0
+//       CHECK: %[[DIM:.*]] = tensor.dim {{.*}} %[[C0]] : tensor<?x1xi64>
+//       CHECK: %[[INIT:.*]] = tensor.empty(%dim) : tensor<?x42xi32>
+//       CHECK: thlo.gather
+//  CHECK-SAME: outs(%[[INIT]] : tensor<?x42xi32>)
 
 func.func @unsupported_gather(%operand: tensor<3x3xf32>,
                               %indices: tensor<3x2xi64>) -> tensor<3xf32> {

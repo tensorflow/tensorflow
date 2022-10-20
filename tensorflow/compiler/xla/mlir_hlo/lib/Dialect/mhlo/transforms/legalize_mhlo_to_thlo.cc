@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -188,6 +190,7 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
   LogicalResult matchAndRewrite(
       mhlo::GatherOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
+    if (!isCanonicalGather(op)) return failure();
     auto startIndicesType =
         adaptor.getStartIndices().getType().dyn_cast<RankedTensorType>();
     auto operandType =
@@ -195,36 +198,23 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
 
     if (!startIndicesType || !operandType) return failure();
 
-    // index_vector_dim must be the last dimension of start_indices.
-    int indexVectorDim = op.getDimensionNumbers().getIndexVectorDim();
-    if (startIndicesType.getRank() - 1 != indexVectorDim) return failure();
-
-    // All slice_sizes must be 1.
-    if (!llvm::all_of(op.getSliceSizes(), [](auto size) { return size == 1; }))
-      return failure();
-
-    // offset_dims must be []
-    if (!op.getDimensionNumbers().getOffsetDims().empty()) return failure();
-
-    // collapsed_slice_dims[] must be range(operand.rank)
-    auto collapsedSliceDims = op.getDimensionNumbers().getCollapsedSliceDims();
-    if (!isIotaArray(collapsedSliceDims, operandType.getRank()))
-      return failure();
-
-    // start_index_map[] must be range(start_indices.shape[index_vector_dim])
-    auto startIndexMap = op.getDimensionNumbers().getStartIndexMap();
-    if (!isIotaArray(startIndexMap,
-                     startIndicesType.getShape()[indexVectorDim]))
-      return failure();
-
-    // The shape of the result must be statically known.
     auto resultType =
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
-    if (resultType.getNumDynamicDims() > 0) return failure();
+    SmallVector<OpFoldResult> sizes;
+    sizes.reserve(resultType.getRank());
+    if (resultType.getDimSize(0) != ShapedType::kDynamicSize) {
+      sizes.push_back(rewriter.getI64IntegerAttr(resultType.getDimSize(0)));
+    } else {
+      sizes.push_back(
+          rewriter
+              .create<tensor::DimOp>(op.getLoc(), adaptor.getStartIndices(), 0)
+              .getResult());
+    }
+    llvm::copy(op.getSliceSizes().getValues<IntegerAttr>(),
+               std::back_inserter(sizes));
 
-    auto loc = op.getLoc();
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType());
+        op.getLoc(), sizes, resultType.getElementType());
     rewriter.replaceOpWithNewOp<thlo::GatherOp>(
         op, resultType, adaptor.getOperand(), adaptor.getStartIndices(),
         emptyTensor);
