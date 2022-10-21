@@ -77,6 +77,10 @@ This release contains contributions from many people at Google, as well as:
         optimizer to update different parts of model in multiple stages,
         please call `optimizer.build(model.trainable_variables)` before the
         training loop.
+    *   **Performance regression on `ParameterServerStrategy`.** This could be
+        significant if you have many PS servers. We are aware of this issue and
+        working on fixes, for now we suggest using the legacy optimizers when
+        using `ParameterServerStrategy`.
     *   **Timeout or performance loss.** We don't anticipate this to happen, but
         if you see such issues, please use the legacy optimizer, and file
         an issue in the Keras GitHub repo.
