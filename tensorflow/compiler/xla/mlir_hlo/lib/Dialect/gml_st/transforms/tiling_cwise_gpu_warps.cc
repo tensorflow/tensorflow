@@ -35,6 +35,13 @@ namespace gml_st {
 
 namespace {
 
+bool isFusable(linalg::GenericOp genericOp) {
+  // The cwise op will be fusable if any user is also a cwise op.
+  return llvm::any_of(genericOp->getUsers(), [&](Operation* user) {
+    return llvm::isa<MaterializeOp>(user) || isCwiseGenericOp(user);
+  });
+}
+
 struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
   using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
 
@@ -42,6 +49,9 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
                                 PatternRewriter& rewriter) const override {
     // Only match on cwise ops.
     if (!isCwiseGenericOp(genericOp)) return failure();
+
+    // Tile only the root and fuse all other cwise ops.
+    if (isFusable(genericOp)) return failure();
 
     // Constants and attributes.
     Location loc = genericOp.getLoc();
