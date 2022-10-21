@@ -323,10 +323,13 @@ ENTRY entry {
   p0 = (f32[4]) parameter(0)
   a = f32[4] get-tuple-element(p0), index=0
   token0 = token[] after-all()
-  b = (f32[4], u32[], token[]) send(a, token0), channel_id=1, sharding={maximal device=0}
+  b = (f32[4], u32[], token[]) send(a, token0), channel_id=1,
+             sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
   c = token[] send-done(b), channel_id=1, sharding={maximal device=0}
-  d = (f32[4], u32[], token[]) recv(token0), channel_id=2, sharding={maximal device=0}
-  e = (f32[4], token[]) recv-done(d), channel_id=2, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) recv(token0), channel_id=2,
+             sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
+  e = (f32[4], token[]) recv-done(d), channel_id=2,
+             sharding={{maximal device=0},{maximal device=0}}
   e_element = f32[4] get-tuple-element(e), index=0, sharding={maximal device=0}
   f = f32[4] add(a, e_element)
   g = f32[4] subtract(a, e_element)
@@ -363,11 +366,14 @@ HloModule Module
 
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=-1}
-  a = (f32[4], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=-1}
-  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=-1}
+  a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
+        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
+  b = (f32[4], token[]) recv-done(a), channel_id=1,
+        sharding={{maximal device=-1},{maximal device=-1}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
   c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, sharding={maximal device=-1}
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, 
+        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
 }
 )";
@@ -387,11 +393,14 @@ HloModule Module
 
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
-  a = (f32[4], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=0}
-  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=0}
+  a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
+       sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
+  b = (f32[4], token[]) recv-done(a), channel_id=1,
+       sharding={{maximal device=0},{maximal device=0}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=0}
   c = f32[4] add(b_element, b_element)
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2,
+        sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=0}
 }
 )";
@@ -567,7 +576,7 @@ HloModule Module
 ENTRY entry {
   %param = f32[1] parameter(0), sharding={maximal device=0}
   %tuple = (f32[1]) tuple(%param),
-    sharding={maximal device=1}
+    sharding={{maximal device=1}}
   ROOT %gte = f32[1] get-tuple-element(%tuple), index=0,
     sharding={maximal device=1}
 })";
