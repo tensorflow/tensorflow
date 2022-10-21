@@ -147,9 +147,24 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
 
     // Insert cast if needed.
     if (fused->getType() != materializeOp.getType()) {
-      fused =
-          rewriter.create<tensor::CastOp>(loc, materializeOp.getType(), *fused)
-              .getResult();
+      if (!materializeOp.getType().isa<RankedTensorType>()) {
+        // the result should be a scalar, insert tensor.extract
+        auto tensorType = fused->getType().dyn_cast<RankedTensorType>();
+        assert(tensorType && tensorType.getNumElements() == 1 &&
+               "resulting tensor should contain a single element");
+        auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+        fused =
+            rewriter
+                .create<tensor::ExtractOp>(
+                    loc, *fused, SmallVector<Value>(tensorType.getRank(), zero))
+                .getResult();
+      } else {
+        // the result should be a tensor, cast it to the correct shape
+        fused =
+            rewriter
+                .create<tensor::CastOp>(loc, materializeOp.getType(), *fused)
+                .getResult();
+      }
     }
 
     rewriter.replaceOp(materializeOp, *fused);
