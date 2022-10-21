@@ -932,6 +932,16 @@ func.func @test_select(%arg0: tensor<13x21x3xf32>, %arg1: tensor<13x21x3xf32>, %
 
 // -----
 
+// CHECK-LABEL: test_select_with_unranked
+func.func @test_select_with_unranked(%arg0: tensor<i1>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> tensor<*xf32> {
+  // CHECK: "tosa.select"
+  // CHECK-SAME: (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %57 = "tfl.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<*xf32>
+  return %57 : tensor<*xf32>
+}
+
+// -----
+
 // CHECK-LABEL: test_addn
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.add"(%arg0, %arg1)
 // CHECK-DAG: %[[VAR1:.*]] = "tosa.add"(%arg2, %[[VAR0]])

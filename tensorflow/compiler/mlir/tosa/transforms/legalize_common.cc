@@ -415,18 +415,23 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType x_type = x_value.getType().dyn_cast<RankedTensorType>();
   RankedTensorType y_type = y_value.getType().dyn_cast<RankedTensorType>();
 
-  if (!result_type || !condition_type || !x_type || !y_type) {
+  if (!x_type || !y_type || !condition_type) {
     (void)rewriter.notifyMatchFailure(op, "failed ranked tensor type check");
     return llvm::None;
   }
 
   // First check whether we need to reshape the condition to match
   // the same rank as the then/else clauses.
-  if (result_type.getRank() == condition_type.getRank()) {
+  if (x_type == y_type && x_type.getShape() == condition_type.getShape()) {
     // Nothing to reshape.
-    return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), result_type,
+    return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), x_type,
                                             condition_value, x_value, y_value)
         .getResult();
+  }
+
+  if (!result_type) {
+    (void)rewriter.notifyMatchFailure(op, "failed ranked tensor type check");
+    return llvm::None;
   }
 
   // Need to reshape the condition.
