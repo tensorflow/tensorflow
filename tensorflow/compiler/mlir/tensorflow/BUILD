@@ -1190,6 +1190,7 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/group_by_dialect.cc",
         "transforms/guarantee_all_funcs_one_use.cc",
+        "transforms/hoist_loop_invariant.cc",
         "transforms/hoist_replicate_invariant_resource_writes.cc",
         "transforms/host_launch_to_outside_compiled.cc",
         "transforms/init_text_file_to_import.cc",
