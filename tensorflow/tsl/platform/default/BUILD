@@ -544,7 +544,6 @@ filegroup(
         "port.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
-        "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
