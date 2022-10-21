@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 
+#include <array>
 #include <memory>
 #include <numeric>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -416,12 +419,100 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::string_view(kGemmCallTarget);
   }
 
+  StatusOr<bool> TypesAreSupportedByCublasLt(
+      const HloInstruction *instr) const {
+    // cublasLt has a defined set of combinations of types that it supports.
+    // Figure out the computeType and scaleType.
+    TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
+                        AsBlasDataType(instr->shape().element_type()));
+    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
+                        GetBlasComputationType(instr->shape().element_type()));
+    se::blas::DataType scale_type =
+        cublas_lt::GetScaleType(output_dtype, compute_type);
+
+    // Figure out the Atype/Btype.
+    const PrimitiveType a_dtype = instr->operand(0)->shape().element_type();
+    const PrimitiveType b_dtype = instr->operand(1)->shape().element_type();
+
+    if (a_dtype != b_dtype) {
+      // AType must match BType.
+      return false;
+    }
+
+    using se::blas::ComputationType;
+    using se::blas::DataType;
+    // This matrix of supported types is taken directly from cublasLt
+    // documentation.
+    // https://docs.nvidia.com/cuda/cublas/index.html#cublasLtMatmul
+    const std::array<
+        std::tuple<ComputationType, DataType /*scale_type*/,
+                   PrimitiveType /*a_dtype*/, DataType /*output_dtype*/>,
+        18>
+        supported_type_combinations = {{
+            {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
+             DataType::kHalf},
+
+            {ComputationType::kI32, DataType::kInt32, PrimitiveType::S8,
+             DataType::kInt32},
+            {ComputationType::kI32, DataType::kFloat, PrimitiveType::S8,
+             DataType::kInt8},
+
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
+             DataType::kBF16},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
+             DataType::kHalf},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::S8,
+             DataType::kFloat},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
+             DataType::kFloat},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
+             DataType::kFloat},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F32,
+             DataType::kFloat},
+
+            // There would be an entry here for A/BType complex int8, but we do
+            // not support that type.
+            {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
+             DataType::kComplexFloat},
+
+            {ComputationType::kF16AsF32, DataType::kFloat, PrimitiveType::F32,
+             DataType::kFloat},
+            {ComputationType::kF16AsF32, DataType::kComplexFloat,
+             PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kBF16AsF32, DataType::kFloat, PrimitiveType::F32,
+             DataType::kFloat},
+            {ComputationType::kBF16AsF32, DataType::kComplexFloat,
+             PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
+             DataType::kFloat},
+            {ComputationType::kTF32AsF32, DataType::kComplexFloat,
+             PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
+             DataType::kDouble},
+            {ComputationType::kF64, DataType::kComplexDouble,
+             PrimitiveType::C128, DataType::kComplexDouble},
+        }};
+
+    return absl::c_linear_search(
+        supported_type_combinations,
+        std::make_tuple(compute_type, scale_type, a_dtype, output_dtype));
+  }
+
   StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction *instr,
       const GemmBackendConfig &gemm_backend_config) const {
     const HloInstruction *lhs = instr->operand(0);
     const HloInstruction *rhs = instr->operand(1);
     const Shape &output_shape = instr->shape();
+
+    TF_ASSIGN_OR_RETURN(bool types_are_supported_by_cublas_lt,
+                        TypesAreSupportedByCublasLt(instr));
+    if (!types_are_supported_by_cublas_lt) {
+      return false;
+    }
 
     // The cublasLt API has two currently known limitations:
     // 1. Batch count must be <2^16.
