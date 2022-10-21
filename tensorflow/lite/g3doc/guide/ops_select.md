@@ -225,11 +225,11 @@ bazel build -c opt --config=monolithic tensorflow/lite/delegates/flex:tensorflow
 This command generates the following shared library in
 `bazel-bin/tensorflow/lite/delegates/flex`.
 
-Platform | Library name
--------- | ----------------------------
-Linux    | libtensorflowlite_flex.so
-macOS    | libtensorflowlite_flex.dylib
-Windows  | tensorflowlite_flex.dll
+| Platform | Library name                 |
+|----------|------------------------------|
+| Linux    | libtensorflowlite_flex.so    |
+| macOS    | libtensorflowlite_flex.dylib |
+| Windows  | tensorflowlite_flex.dll      |
 
 Note that the necessary `TfLiteDelegate` will be installed automatically when
 creating the interpreter at runtime as long as the shared library is linked. It
@@ -252,7 +252,7 @@ pip package version since 2.3 for Linux and 2.4 for other environments.
 
 ### Performance
 
-When using a mixture of both builtin and select TensorFlow ops, all of the same
+When using a mixture of both builtin and select TensorFlow ops, all the same
 TensorFlow Lite optimizations and optimized builtin ops will be available and
 usable with the converted model.
 
@@ -260,21 +260,21 @@ The following table describes the average time taken to run inference on
 MobileNet on a Pixel 2. The listed times are an average of 100 runs. These
 targets were built for Android using the flags: `--config=android_arm64 -c opt`.
 
-Build                                | Time (milliseconds)
------------------------------------- | -------------------
-Only built-in ops (`TFLITE_BUILTIN`) | 260.7
-Using only TF ops (`SELECT_TF_OPS`)  | 264.5
+| Build                                | Time (milliseconds) |
+|--------------------------------------|---------------------|
+| Only built-in ops (`TFLITE_BUILTIN`) | 260.7               |
+| Using only TF ops (`SELECT_TF_OPS`)  | 264.5               |
 
 ### Binary size
 
 The following table describes the binary size of TensorFlow Lite for each build.
 These targets were built for Android using `--config=android_arm -c opt`.
 
-Build                     | C++ Binary Size | Android APK Size
-------------------------- | --------------- | ----------------
-Only built-in ops         | 796 KB          | 561 KB
-Built-in ops + TF ops     | 23.0 MB         | 8.0 MB
-Built-in ops + TF ops (1) | 4.1 MB          | 1.8 MB
+| Build                     | C++ Binary Size | Android APK Size |
+|---------------------------|-----------------|------------------|
+| Only built-in ops         | 796 KB          | 561 KB           |
+| Built-in ops + TF ops     | 23.0 MB         | 8.0 MB           |
+| Built-in ops + TF ops (1) | 4.1 MB          | 1.8 MB           |
 
 (1) These libraries are selectively built for
 [i3d-kinetics-400 model](https://tfhub.dev/deepmind/i3d-kinetics-400/1) with 8
