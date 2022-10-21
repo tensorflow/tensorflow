@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_TPU_INITIALIZER_HELPER_H_
-#define TENSORFLOW_CORE_TPU_TPU_INITIALIZER_HELPER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_HELPER_H_
+#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_HELPER_H_
 
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -28,9 +28,9 @@ namespace tpu {
 // This will acquire a system-wide lock on behalf of the whole process. Follow
 // up calls to this function will return true if the lock has been acquired and
 // false if we failed to acquire the lock.
-Status TryAcquireTpuLock();
+stream_executor::port::Status TryAcquireTpuLock();
 // This will check the lock and then load the library.
-Status FindAndLoadTpuLibrary();
+stream_executor::port::Status FindAndLoadTpuLibrary();
 // Returns arguments (e.g. flags) set in the LIBTPU_INIT_ARGS environment
 // variable. The first return value is the arguments, the second return value is
 // pointers to the arguments suitable for passing into the C API.
@@ -40,4 +40,4 @@ GetLibTpuInitArguments();
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TPU_TPU_INITIALIZER_HELPER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_INITIALIZER_HELPER_H_

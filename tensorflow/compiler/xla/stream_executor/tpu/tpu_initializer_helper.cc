@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
 
 #include <dirent.h>
 #include <dlfcn.h>
@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api_dlsym_set_fn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -109,11 +109,11 @@ bool IsTpuUsed(int64_t pid) {
 // permission to processes owned by another user.
 // TODO (shahrokhi) use tensorflow/core/platform/filesystem (GetChildren) for
 // this.
-StatusOr<int64_t> FindLibtpuProcess() {
+stream_executor::port::StatusOr<int64_t> FindLibtpuProcess() {
   DIR* proc = opendir("/proc");
 
   if (proc == nullptr) {
-    return errors::Unavailable("was not able to open /proc");
+    return tsl::errors::Unavailable("was not able to open /proc");
   }
   std::unique_ptr<DIR, int (*)(DIR*)> proc_dir(proc, closedir);
   struct dirent* ent;
@@ -126,10 +126,10 @@ StatusOr<int64_t> FindLibtpuProcess() {
       return pid;
     }
   }
-  return errors::NotFound("did not find which pid uses the libtpu.so");
+  return tsl::errors::NotFound("did not find which pid uses the libtpu.so");
 }
 
-Status TryAcquireTpuLock() {
+stream_executor::port::Status TryAcquireTpuLock() {
   static absl::Mutex* mu = new absl::Mutex();
   absl::MutexLock l(mu);
 
@@ -142,9 +142,10 @@ Status TryAcquireTpuLock() {
   }
 
   if (load_library_override == "1") {
-    return OkStatus();
+    return ::tsl::OkStatus();
   } else if (load_library_override == "0") {
-    return errors::FailedPrecondition("TPU_LOAD_LIBRARY=0, not loading libtpu");
+    return tsl::errors::FailedPrecondition(
+        "TPU_LOAD_LIBRARY=0, not loading libtpu");
   }
 
   // If TPU_CHIPS_PER_PROCESS_BOUNDS doesn't include all chips, we assume
@@ -171,31 +172,31 @@ Status TryAcquireTpuLock() {
     if (lockf(fd, F_TLOCK, 0) != 0) {
       auto pid = FindLibtpuProcess();
       if (pid.ok()) {
-        return errors::Aborted(absl::StrCat(
+        return tsl::errors::Aborted(absl::StrCat(
             "libtpu.so is already in use by process with pid ", pid.value(),
             ". Not attempting to load libtpu.so in this process."));
       } else {
-        return errors::Aborted(
+        return tsl::errors::Aborted(
             "libtpu.so already in use by another process probably owned by "
             "another user. Run \"$ sudo lsof -w /dev/accel0\" to figure out "
             "which process is using the TPU. Not attempting to load "
             "libtpu.so in this process.");
       }
     } else {
-      return OkStatus();
+      return ::tsl::OkStatus();
     }
   } else {
     VLOG(1) << "TPU_CHIPS_PER_PROCESS_BOUNDS is not empty or "
                "ALLOW_MULTIPLE_LIBTPU_LOAD is set to True, "
                "therefore allowing multiple libtpu.so loads.";
-    return OkStatus();
+    return ::tsl::OkStatus();
   }
 }
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-Status InitializeTpuLibrary(void* library_handle) {
-  Status s = InitializeTpuStructFns(library_handle);
+stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
+  stream_executor::port::Status s = InitializeTpuStructFns(library_handle);
 
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
@@ -268,7 +269,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
   });
 }
 }  // namespace
-Status FindAndLoadTpuLibrary() {
+stream_executor::port::Status FindAndLoadTpuLibrary() {
   const char* env_value = getenv("TPU_LIBRARY_PATH");
   const char* libtpu_path =
       env_value && strlen(env_value) > 0 ? env_value : "libtpu.so";
@@ -283,14 +284,14 @@ Status FindAndLoadTpuLibrary() {
   }
 
   InitializeCreateGcsFileSystemFnPtr();
-  return OkStatus();
+  return ::tsl::OkStatus();
 }
 
 #elif defined(LIBTPU_STATIC)
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_library_init_fns.inc"
 
-Status InitializeTpuLibrary() {
+stream_executor::port::Status InitializeTpuLibrary() {
   // Retrieve arguments from environment if applicable
   std::pair<std::vector<std::string>, std::vector<const char*>> args =
       GetLibTpuInitArguments();
@@ -299,20 +300,21 @@ Status InitializeTpuLibrary() {
                    args.second.data());
 
   RegisterTpuPlatform();
-  return OkStatus();
+  return ::tsl::OkStatus();
 }
 
-Status FindAndLoadTpuLibrary() {
+stream_executor::port::Status FindAndLoadTpuLibrary() {
   // We can open the shared library which means we are in a TPU environment.
   // Try to acquire exclusive access.
   TF_RETURN_IF_ERROR(TryAcquireTpuLock());
   TF_RETURN_IF_ERROR(InitializeTpuLibrary());
-  return OkStatus();
+  return ::tsl::OkStatus();
 }
 
 #else   // PLATFORM_GOOGLE
-Status InitializeTpuLibrary(void* library_handle) {
-  return errors::Unimplemented("You must statically link in a TPU library.");
+stream_executor::port::Status InitializeTpuLibrary(void* library_handle) {
+  return tsl::errors::Unimplemented(
+      "You must statically link in a TPU library.");
 }
 #endif  // PLATFORM_GOOGLE
 std::pair<std::vector<std::string>, std::vector<const char*>>
