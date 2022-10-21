@@ -203,12 +203,12 @@ struct CanonicalizeScatterPattern : public OpRewritePattern<ScatterOp> {
     int64_t scatterIndicesVectorSize = canonicalIndices.getType().getDimSize(1);
     auto canonicalDimsAttrs = ScatterDimensionNumbersAttr::get(
         rewriter.getContext(),
-        /*update_window_dims=*/
+        /*updateWindowDims=*/
         llvm::to_vector<4>(llvm::seq<int64_t>(1, operandRank + 1)),
-        /*inserted_window_dims=*/llvm::None,
-        /*scatter_dims_to_operand_dims=*/
+        /*insertedWindowDims=*/llvm::None,
+        /*scatterDimsToOperandDims=*/
         llvm::to_vector<4>(llvm::seq<int64_t>(0, scatterIndicesVectorSize)),
-        /*index_vector_dim=*/1);
+        /*indexVectorDim=*/1);
 
     auto newScatterOp = rewriter.create<ScatterOp>(
         loc, TypeRange(ValueRange(canonicalOperands)), canonicalOperands,
