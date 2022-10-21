@@ -1,6 +1,10 @@
 # Release 2.12.0
 
-<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+*   `tf.keras`:
+
+    *   Add `synchronized` optional parameter to `layers.BatchNormalization`.
+    *   Add deprecation warning to `layers.experimental.SyncBatchNormalization`
+        to use `layers.BatchNormalization` with `synchronized=True` instead.
 
 # Breaking Changes
 
