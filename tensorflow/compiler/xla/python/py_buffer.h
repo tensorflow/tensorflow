@@ -214,7 +214,28 @@ class PyShardedBuffer {
       : client_(std::move(client)),
         buffers_(std::move(buffers)),
         traceback_(std::move(traceback)),
-        sticky_(sticky) {}
+        sticky_(sticky) {
+    CHECK(PyGILState_Check());
+    next_ = client_->sharded_buffers_;
+    client_->sharded_buffers_ = this;
+    if (next_) {
+      next_->prev_ = this;
+    }
+    prev_ = nullptr;
+  }
+
+  ~PyShardedBuffer() {
+    CHECK(PyGILState_Check());
+    if (client_->sharded_buffers_ == this) {
+      client_->sharded_buffers_ = next_;
+    }
+    if (prev_) {
+      prev_->next_ = next_;
+    }
+    if (next_) {
+      next_->prev_ = prev_;
+    }
+  }
 
   std::vector<PyBuffer::object> GetPyBuffers() const {
     std::vector<PyBuffer::object> results;
@@ -248,13 +269,20 @@ class PyShardedBuffer {
 
   int num_devices() const { return buffers_.size(); }
 
+  const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
+
   Status BlockHostUntilReady();
 
  private:
+  friend class PyClient;
+
   std::shared_ptr<PyClient> client_;
   std::vector<std::shared_ptr<PjRtBuffer>> buffers_;
   std::shared_ptr<Traceback> traceback_;
   bool sticky_ = false;
+
+  PyShardedBuffer* next_;
+  PyShardedBuffer* prev_;
 };
 
 }  // namespace xla
