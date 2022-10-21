@@ -176,10 +176,15 @@ struct MaterializeOpVectorizationPattern
     Location loc = op.getLoc();
     BlockAndValueMapping bvm;
     convertTensorOperandsToVector(op, bvm, rewriter);
+    Type newResult = op.getResult().getType();
+    if (auto tensorResult = newResult.dyn_cast<RankedTensorType>()) {
+      newResult = VectorType::get(tensorResult.getShape(),
+                                  tensorResult.getElementType());
+    }
     Value vectorMaterialize = rewriter.create<MaterializeOp>(
-        loc, bvm.lookupOrDefault(source), op.getSet());
+        loc, newResult, bvm.lookupOrDefault(source), op.getSet());
     bvm.map(op, vectorMaterialize);
-    if (auto vectorType = vectorMaterialize.getType().dyn_cast<VectorType>()) {
+    if (auto vectorType = newResult.dyn_cast<VectorType>()) {
       // The result is not a scalar, generate a TransferWrite back to tensor.
       // transfer_write uses destination passing style, so we need to "invent" a
       // destination tensor. The entinre tensor_write op, together with the
