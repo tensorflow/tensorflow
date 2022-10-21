@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_ASYNC_SERVICE_INTERFACE_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_ASYNC_SERVICE_INTERFACE_H_
+#ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_ASYNC_SERVICE_INTERFACE_H_
+#define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_ASYNC_SERVICE_INTERFACE_H_
 
-namespace tensorflow {
+namespace tsl {
 
 // Represents an abstract asynchronous service that handles incoming
 // RPCs with a polling loop.
@@ -36,6 +36,6 @@ class AsyncServiceInterface {
   virtual void Shutdown() = 0;
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_ASYNC_SERVICE_INTERFACE_H_
+#endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_ASYNC_SERVICE_INTERFACE_H_

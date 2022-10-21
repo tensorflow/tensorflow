@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
@@ -174,7 +174,7 @@ class CoordinationServiceImpl {
   tsl::Env* env_ = nullptr;  // Not owned.
   std::unique_ptr<tensorflow::CoordinationServiceInterface> coord_service_;
   std::unique_ptr<tsl::thread::ThreadPool> coord_compute_pool_;
-  std::unique_ptr<tensorflow::AsyncServiceInterface> coord_rpc_service_;
+  std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<tsl::Thread> coord_rpc_thread_;
 };
 

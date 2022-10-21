@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
+#ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
+#define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/impl/service_type.h"
@@ -22,11 +22,10 @@ limitations under the License.
 #include "grpcpp/server_context.h"
 #include "grpcpp/support/async_stream.h"
 #include "grpcpp/support/async_unary_call.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/refcount.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // CALL STRUCTURES
 // ===============
@@ -517,6 +516,6 @@ class ServerBidirectionalStreamingCall
   EnqueueFunction enqueue_function_;
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
+#endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_

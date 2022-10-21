@@ -697,10 +697,10 @@ cc_library(
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_rpc_support_hdrs",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/lib/core:threadpool",
         "//tensorflow/core/platform:coding",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 
