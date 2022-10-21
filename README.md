@@ -103,7 +103,7 @@ conda activate tf-gpu
 
 TensorFlow is now installed and ready to use.
 
-Alternatively to both Anaconda / Conda installs and pip installs, many contemporary Python IDEs, such as Pycharm,
+Alternatively to both Anaconda / Conda and pip installs, many contemporary Python IDEs, such as Pycharm,
 perform the Tensorflow install under the hood and added to the program's virtual environment library packages. 
 
 
