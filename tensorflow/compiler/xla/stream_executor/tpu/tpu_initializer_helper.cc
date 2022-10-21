@@ -43,7 +43,7 @@ limitations under the License.
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
-#include "tensorflow/core/platform/cloud/gcs_file_system.h"
+#include "tensorflow/tsl/platform/cloud/gcs_file_system.h"
 #include "tensorflow/tsl/platform/env.h"
 #elif defined(LIBTPU_STATIC)
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
