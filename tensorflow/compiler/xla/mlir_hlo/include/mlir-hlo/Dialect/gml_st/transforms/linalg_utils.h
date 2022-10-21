@@ -24,22 +24,15 @@ namespace gml_st {
 // Helper functions to match `linalg.generic` ops that implement simple
 // reductions, bcasts, and cwise ops.
 
-// Checks if an affine map maps all dimensions in sequence, skipping a unique
-// dimension. This can be the output map of a reduction, or the input map of a
-// bcast. For example:
-//   - affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>
-//   - affine_map<(d0, d1, d2, d3) -> (d0, d2, d3)>
-//   - affine_map<(d0, d1) -> (d0)>
-//   - affine_map<(d0, d1) -> (d1)>
-bool isBcastOrReductionMap(AffineMap map, int64_t &dim);
+bool isSimpleReduction(Operation *op, int64_t *dimension = nullptr,
+                       Value *operand = nullptr);
 
-bool isSimpleReduction(Operation *op, int64_t &dim, Value &operand);
-
-bool isCwiseGenericOp(Operation *op, int64_t &arity);
+bool isCwiseGenericOp(Operation *op, int64_t *arity = nullptr);
 
 bool isUnaryCwiseGenericOp(Operation *op);
 
-bool isSimpleBcast(Operation *op, int64_t &dim, Value &operand);
+bool isSimpleBcast(Operation *op, int64_t *dimension = nullptr,
+                   Value *operand = nullptr);
 
 struct SimpleBcastReduction {
   Operation *bcast;
@@ -47,8 +40,8 @@ struct SimpleBcastReduction {
   Value operand;
 };
 
-bool isSimpleBcastReduction(Operation *op, int64_t &dim,
-                            SimpleBcastReduction &chain);
+bool isSimpleBcastReduction(Operation *op, int64_t *dimension = nullptr,
+                            SimpleBcastReduction *chain = nullptr);
 
 }  // namespace gml_st
 }  // namespace mlir

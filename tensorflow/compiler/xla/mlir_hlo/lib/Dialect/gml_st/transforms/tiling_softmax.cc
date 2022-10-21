@@ -49,8 +49,7 @@ LogicalResult tilePartialSoftmax(
     llvm::function_ref<FailureOr<Operation *>(Operation *, int64_t)>
         tileOperationFn) {
   // Match cwise root op.
-  int64_t arity;
-  if (!isCwiseGenericOp(op, arity)) return failure();
+  if (!isCwiseGenericOp(op)) return failure();
 
   // Match all operands to be derived from the same source value in one of two
   // ways:
@@ -64,8 +63,8 @@ LogicalResult tilePartialSoftmax(
     // Case i.
     SimpleBcastReduction bcastReduction;
     int64_t reductionDim;
-    if (isSimpleBcastReduction(operand.getDefiningOp(), reductionDim,
-                               bcastReduction)) {
+    if (isSimpleBcastReduction(operand.getDefiningOp(), &reductionDim,
+                               &bcastReduction)) {
       if (commonSource && commonSource != bcastReduction.operand) {
         return failure();
       }

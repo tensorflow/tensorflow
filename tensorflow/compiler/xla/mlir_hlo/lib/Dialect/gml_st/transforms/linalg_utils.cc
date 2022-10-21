@@ -30,8 +30,6 @@ bool hasUniqueInputAndOutputMaps(linalg::GenericOp genericOp,
   return true;
 }
 
-}  // namespace
-
 // Checks if an affine map maps all dimensions in sequence, skipping a unique
 // dimension. This can be the output map of a reduction, or the input map of a
 // bcast. For example:
@@ -57,9 +55,11 @@ bool isBcastOrReductionMap(AffineMap map, int64_t &dim) {
   return i == map.getNumDims();
 }
 
-bool isSimpleReduction(Operation *op, int64_t &dim, Value &operand) {
+}  // namespace
+
+bool isSimpleReduction(Operation *op, int64_t *dimension, Value *operand) {
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
-  if (!genericOp) return false;
+  if (!genericOp || genericOp.getNumOutputs() != 1) return false;
 
   // Expect monadic op.
   AffineMap inputMap, outputMap;
@@ -71,6 +71,7 @@ bool isSimpleReduction(Operation *op, int64_t &dim, Value &operand) {
 
   // Check that the output map is a reduction: it maps all dimensions in
   // seqence, skipping the unique reduction dimension.
+  int64_t dim;
   if (!isBcastOrReductionMap(outputMap, dim)) return false;
 
   // Check uniqueness of reduction dimension and remaining parallel iterator
@@ -84,19 +85,16 @@ bool isSimpleReduction(Operation *op, int64_t &dim, Value &operand) {
     if (expectedTy != actualTy) return false;
   }
 
-  // Allow for pattern matching the operand.
-  operand = genericOp.getInputs().front();
+  // Allow for pattern matching the reduction dimension and operand.
+  if (dimension != nullptr) *dimension = dim;
+  if (operand != nullptr) *operand = genericOp.getInputs().front();
 
   return true;
 }
 
-bool isCwiseGenericOp(Operation *op, int64_t &arity) {
+bool isCwiseGenericOp(Operation *op, int64_t *arity) {
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
-  if (!genericOp) return false;
-
-  // Check n-arity.
-  if (genericOp.getNumOutputs() != 1) return false;
-  arity = genericOp.getNumInputs();
+  if (!genericOp || genericOp.getNumOutputs() != 1) return false;
 
   // Check all-parallel iterator types.
   if (!llvm::all_of(genericOp.getIteratorTypes(), [](Attribute it) {
@@ -107,16 +105,22 @@ bool isCwiseGenericOp(Operation *op, int64_t &arity) {
   }
 
   // Check all-identity maps.
-  return llvm::all_of(genericOp.getIndexingMapsArray(),
-                      [](AffineMap map) { return map.isIdentity(); });
+  if (!llvm::all_of(genericOp.getIndexingMapsArray(),
+                    [](AffineMap map) { return map.isIdentity(); })) {
+    return false;
+  }
+
+  // Allow for pattern matching the arity.
+  if (arity != nullptr) *arity = genericOp.getNumInputs();
+  return true;
 }
 
 bool isUnaryCwiseGenericOp(Operation *op) {
   int64_t arity;
-  return isCwiseGenericOp(op, arity) && arity == 1;
+  return isCwiseGenericOp(op, &arity) && arity == 1;
 }
 
-bool isSimpleBcast(Operation *op, int64_t &dim, Value &operand) {
+bool isSimpleBcast(Operation *op, int64_t *dimension, Value *operand) {
   auto genericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
   if (!genericOp) return false;
 
@@ -135,37 +139,46 @@ bool isSimpleBcast(Operation *op, int64_t &dim, Value &operand) {
 
   // Check that the operand map is a degenerate bcast: it maps all dimensions in
   // seqence, skipping the unique bcast dimension.
+  int64_t dim;
   if (!isBcastOrReductionMap(inputMap, dim)) return false;
 
   // Check that the output map is the identity.
   if (!outputMap.isIdentity()) return false;
 
-  // Allow for pattern matching the operand.
-  operand = genericOp.getInputs().front();
+  // Allow for pattern matching the reduction dimension and operand.
+  if (dimension != nullptr) *dimension = dim;
+  if (operand != nullptr) *operand = genericOp.getInputs().front();
 
   return true;
 }
 
-bool isSimpleBcastReduction(Operation *op, int64_t &dim,
-                            SimpleBcastReduction &chain) {
+bool isSimpleBcastReduction(Operation *op, int64_t *dimension,
+                            SimpleBcastReduction *chain) {
   // Match bcast.
-  chain.bcast = op;
   int64_t bcastDim;
   Value bcastOperand;
-  if (!isSimpleBcast(chain.bcast, bcastDim, bcastOperand)) {
+  if (!isSimpleBcast(op, &bcastDim, &bcastOperand)) {
     return false;
   }
 
   // Match reduction.
-  chain.reduction = bcastOperand.getDefiningOp();
+  Operation *reduction = bcastOperand.getDefiningOp();
   int64_t reductionDim;
-  if (!isSimpleReduction(chain.reduction, reductionDim, chain.operand)) {
+  Value operand;
+  if (!isSimpleReduction(reduction, &reductionDim, &operand)) {
     return false;
   }
 
   // Check that bcast and reduction dimensions match.
   if (bcastDim != reductionDim) return false;
-  dim = bcastDim;
+
+  // Allow for pattern matching the reduction dimension and operation chain.
+  if (dimension != nullptr) *dimension = bcastDim;
+  if (chain != nullptr) {
+    chain->bcast = op;
+    chain->operand = operand;
+    chain->operand = operand;
+  }
 
   return true;
 }

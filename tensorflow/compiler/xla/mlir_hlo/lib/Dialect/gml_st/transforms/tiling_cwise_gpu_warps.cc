@@ -41,13 +41,7 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
   LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
                                 PatternRewriter& rewriter) const override {
     // Only match on cwise ops.
-    int64_t arity;
-    if (!isCwiseGenericOp(genericOp, arity)) return failure();
-
-    // Only match ops of rank.
-    auto genericOpTy =
-        genericOp.getResultTypes().front().cast<RankedTensorType>();
-    if (genericOpTy.getRank() != 1) return failure();
+    if (!isCwiseGenericOp(genericOp)) return failure();
 
     // Constants and attributes.
     Location loc = genericOp.getLoc();
@@ -59,6 +53,8 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
     StringAttr warpDist = rewriter.getStringAttr("warp");
 
     // Create `gml_st.parallel` loop to distribute among lanes.
+    auto genericOpTy =
+        genericOp.getResultTypes().front().cast<RankedTensorType>();
     Value init = genericOp.getOutputs().front();
     auto ploop = rewriter.create<gml_st::ParallelOp>(
         loc, genericOpTy, c0, cWarpSize, c1, warpDist,
