@@ -1,0 +1,7 @@
+INFO:auditwheel.main_repair:Repairing tf_nightly_cpu-2.12.0-cp39-cp39-linux_x86_64.whl
+INFO:auditwheel.wheeltools:Previous filename tags: linux_x86_64
+INFO:auditwheel.wheeltools:New filename tags: manylinux_2_17_x86_64, manylinux2014_x86_64
+INFO:auditwheel.wheeltools:Previous WHEEL info tags: cp39-cp39-linux_x86_64
+INFO:auditwheel.wheeltools:New WHEEL info tags: cp39-cp39-manylinux_2_17_x86_64, cp39-cp39-manylinux2014_x86_64
+INFO:auditwheel.main_repair:
+Fixed-up wheel written to /tf/pkg/tf_nightly_cpu-2.12.0-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
