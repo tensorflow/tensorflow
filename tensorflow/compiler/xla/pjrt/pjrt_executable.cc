@@ -69,7 +69,7 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
     const {
   auto modules = GetHloModules();
   if (!modules.ok() || (*modules).empty() ||
-      !(*modules)[0]->has_spmd_output_sharding()) {
+      !(*modules)[0]->has_spmd_parameters_shardings()) {
     return std::nullopt;
   }
 
