@@ -3130,6 +3130,51 @@ tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
   let hasVerifier = 1;
 }
 
+def TF_CumulativeLogsumexpOp : TF_Op<"CumulativeLogsumexp", [Pure, TF_AllTypesMatch<["x", "out"]>]> {
+  let summary = [{
+Compute the cumulative product of the tensor `x` along `axis`.
+  }];
+
+  let description = [{
+By default, this op performs an inclusive cumulative log-sum-exp,
+which means that the first
+element of the input is identical to the first element of the output:
+```python
+tf.math.cumulative_logsumexp([a, b, c])  # => [a, log(exp(a) + exp(b)), log(exp(a) + exp(b) + exp(c))]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumulative log-sum-exp is
+performed instead:
+```python
+tf.cumulative_logsumexp([a, b, c], exclusive=True)  # => [-inf, a, log(exp(a) * exp(b))]
+```
+Note that the neutral element of the log-sum-exp operation is `-inf`,
+however, for performance reasons, the minimal value representable by the
+floating point type is used instead.
+
+By setting the `reverse` kwarg to `True`, the cumulative log-sum-exp is performed in the
+opposite direction.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Float16, TF_Float32, TF_Float64]>, [{A `Tensor`. Must be one of the following types: `float16`, `float32`, `float64`.}]>:$x,
+    Arg<TF_I32OrI64Tensor, [{A `Tensor` of type `int32` (default: 0). Must be in the range
+`[-rank(x), rank(x))`.}]>:$axis,
+
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$exclusive,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$reverse
+  );
+
+  let results = (outs
+    TensorOf<[TF_Float16, TF_Float32, TF_Float64]>:$out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let hasVerifier = 1;
+}
+
 def TF_DataFormatDimMapOp : TF_Op<"DataFormatDimMap", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = [{
 Returns the dimension index in the destination data format given the one in

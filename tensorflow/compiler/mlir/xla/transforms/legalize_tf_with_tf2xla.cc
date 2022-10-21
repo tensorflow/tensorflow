@@ -123,6 +123,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ConjugateTransposeOp>(),
     TypeID::get<TF::CoshOp>(),
     TypeID::get<TF::CrossOp>(),
+    TypeID::get<TF::CumulativeLogsumexpOp>(),
     TypeID::get<TF::DataFormatDimMapOp>(),
     TypeID::get<TF::DataFormatVecPermuteOp>(),
     TypeID::get<TF::DepthToSpaceOp>(),

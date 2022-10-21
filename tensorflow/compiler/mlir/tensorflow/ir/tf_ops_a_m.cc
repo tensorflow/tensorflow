@@ -1409,11 +1409,13 @@ void ConcatV2Op::getCanonicalizationPatterns(RewritePatternSet &results,
 }
 
 //===----------------------------------------------------------------------===//
-// CumsumOp and CumprodOp
+// CumsumOp, CumulativeLogsumexpOp and CumprodOp
 //===----------------------------------------------------------------------===//
 
-template <typename OpT, typename std::enable_if<llvm::is_one_of<
-                            OpT, CumsumOp, CumprodOp>::value>::type * = nullptr>
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, CumsumOp, CumulativeLogsumexpOp, CumprodOp>::value>::type * =
+              nullptr>
 static LogicalResult Verify(OpT op) {
   if (!IsOfRankOrUnranked(op.axis(), 0))
     return op.emitOpError("requires scalar axis operand");
@@ -1438,6 +1440,7 @@ static LogicalResult Verify(OpT op) {
 }
 LogicalResult CumprodOp::verify() { return Verify(*this); }
 LogicalResult CumsumOp::verify() { return Verify(*this); }
+LogicalResult CumulativeLogsumexpOp::verify() { return Verify(*this); }
 
 //===----------------------------------------------------------------------===//
 // ConcatOffsetOp
