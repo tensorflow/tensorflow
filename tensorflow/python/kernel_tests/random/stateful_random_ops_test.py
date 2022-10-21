@@ -43,7 +43,9 @@ g_unseeded = None
 
 
 GPU_FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
-CPU_FLOATS = GPU_FLOATS + [dtypes.bfloat16]
+if test_util.is_gpu_available(cuda_only=True, min_cuda_compute_capability=(8, 0)):
+  GPU_FLOATS += [dtypes.bfloat16]
+CPU_FLOATS = [dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64]
 FLOATS = GPU_FLOATS
 INTS = [dtypes.int32, dtypes.int64]
 
@@ -543,7 +545,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
   def testDistributionOfUniform(self, dtype):
     """Use Pearson's Chi-squared test to test for uniformity."""
     n = 1000
-    seed = 12
+    seed = 123
     gen = random.Generator.from_seed(seed)
     maxval = 1
     if dtype.is_integer:
