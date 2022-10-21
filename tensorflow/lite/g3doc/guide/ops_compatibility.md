@@ -85,7 +85,7 @@ between floating-point and quantized models is the way they are converted.
 Quantized conversion requires dynamic range information for tensors. This
 requires "fake-quantization" during model training, getting range information
 via a calibration data set, or doing "on-the-fly" range estimation. See
-[quantization](../performance/model_optimization.md).
+[quantization](../performance/model_optimization.md) for more details.
 
 ## Supported operations and restrictions
 
