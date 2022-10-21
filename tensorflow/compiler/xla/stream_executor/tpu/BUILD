@@ -350,7 +350,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/cleanup",
     ],
 )

@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_id.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -346,7 +346,7 @@ Status TpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   }
   *device_shape = ApiConverter::FromC(&c_updated_shape);
   ApiConverter::Destroy(&c_updated_shape);
-  return OkStatus();
+  return tsl::OkStatus();
 }
 
 }  // namespace tpu

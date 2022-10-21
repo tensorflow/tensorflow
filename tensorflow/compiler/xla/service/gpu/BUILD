@@ -2838,7 +2838,6 @@ cc_library(
     srcs = ["metrics.cc"],
     hdrs = ["metrics.h"],
     deps = [
-        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/tsl/lib/monitoring:sampler",
     ],
 )
