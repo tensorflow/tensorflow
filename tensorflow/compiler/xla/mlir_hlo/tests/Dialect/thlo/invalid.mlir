@@ -13,6 +13,32 @@ func.func @concatenate(%arg1: tensor<?x?xf32>,
 
 // -----
 
+func.func @concatenate_mismatch_rank(%arg1: tensor<?x?xf32>,
+                       %arg2: tensor<?x?x?xf32>,
+                       %dst: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // expected-error @+1 {{thlo.concatenate' op expected all args to be rank 2, got 3 in arg 1}}
+  %cat = thlo.concatenate
+      ins(%arg1: tensor<?x?xf32>, %arg2: tensor<?x?x?xf32>)
+      outs(%dst: tensor<?x?xf32>)
+      { dimension = 0 : i64 }
+  func.return %cat : tensor<?x?xf32>
+}
+
+// -----
+
+func.func @concatenate_mismatch_shape(%arg1: tensor<?x8xf32>,
+                       %arg2: tensor<?x?xf32>,
+                       %dst: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // expected-error @+1 {{thlo.concatenate' op shape of input arg 1: 'tensor<?x?xf32>' doesn't match expected shape 'tensor<?x8xf32>'}}
+  %cat = thlo.concatenate
+      ins(%arg1: tensor<?x8xf32>, %arg2: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?xf32>)
+      { dimension = 0 : i64 }
+  func.return %cat : tensor<?x?xf32>
+}
+
+// -----
+
 func.func @transpose_invalid_permutation(%input: tensor<16x32x64xf32>,
     %init: tensor<32x64x16xf32>) -> tensor<32x64x16xf32> {
   // expected-error @+1 {{'thlo.transpose' op permutation is not valid}}

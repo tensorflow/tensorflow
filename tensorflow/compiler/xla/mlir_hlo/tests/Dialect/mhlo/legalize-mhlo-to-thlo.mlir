@@ -83,19 +83,19 @@ func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?x
 }
 
 // CHECK-LABEL: @concatenate_with_static_info
-// CHECK-SAME:  %[[A:.*]]: tensor<?x32xi32>, %[[B:.*]]: tensor<64x16xi32>, %[[C:.*]]: tensor<?x?xi32>
-func.func @concatenate_with_static_info(%a: tensor<?x32xi32>, %b: tensor<64x16xi32>, %c: tensor<?x?xi32>) -> tensor<64x?xi32> {
+// CHECK-SAME:  %[[A:.*]]: tensor<64x32xi32>, %[[B:.*]]: tensor<64x16xi32>, %[[C:.*]]: tensor<64x?xi32>
+func.func @concatenate_with_static_info(%a: tensor<64x32xi32>, %b: tensor<64x16xi32>, %c: tensor<64x?xi32>) -> tensor<64x?xi32> {
   // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
   // CHECK-DAG:  %[[C48:.*]] = arith.constant 48
   // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
   // CHECK-DAG:  %[[CONCAT_DIM_SUM:.*]] = arith.addi %[[CONCAT_DIM_C]], %[[C48]]
   // CHECK-DAG:  %[[INIT:.*]] = tensor.empty(%[[CONCAT_DIM_SUM]])
   // CHECK:      %[[CONCAT:.*]] = thlo.concatenate
-  // CHECK-SAME:     ins(%[[A]] : tensor<?x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<?x?xi32>)
+  // CHECK-SAME:     ins(%[[A]] : tensor<64x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<64x?xi32>)
   // CHECK-SAME:     outs(%[[INIT]] : tensor<64x?xi32>)
   // CHECK-SAME:     {dimension = 1 : i64}
   // CHECK:      return %[[CONCAT]]
-  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<?x32xi32>, tensor<64x16xi32>, tensor<?x?xi32>) -> tensor<64x?xi32>
+  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<64x32xi32>, tensor<64x16xi32>, tensor<64x?xi32>) -> tensor<64x?xi32>
   func.return %concat : tensor<64x?xi32>
 }
 

@@ -462,16 +462,43 @@ ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
 void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
+  int64_t concatDim = getDimension();
+
+  ShapedType inputType = getInputOperand(0)->get().getType().cast<ShapedType>();
+  int64_t rank = inputType.getRank();
+  auto inputShape = inputType.getShape();
+
   Type outputElementType =
       getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
 
-  for (Type inputArgType : TypeRange{getInputs()}) {
-    Type inputArgElementType = inputArgType.cast<ShapedType>().getElementType();
-    if (inputArgElementType != outputElementType) {
+  for (const auto &en : llvm::enumerate(getInputs())) {
+    ShapedType inputArgShapedType = en.value().getType().cast<ShapedType>();
+    auto inputArgShape = inputArgShapedType.getShape();
+
+    if (inputArgShapedType.getElementType() != outputElementType)
       return emitOpError() << "expected element type of input "
-                           << inputArgElementType
+                           << inputArgShapedType.getElementType()
                            << " to match output element type "
                            << outputElementType;
+
+    if (inputArgShapedType.getRank() != rank)
+      return emitOpError() << "expected all args to be rank " << rank
+                           << ", got " << inputArgShapedType.getRank()
+                           << " in arg " << en.index();
+
+    // Make sure that all dimensions, expect for concatenation dim, in the input
+    // arg are equal.
+    // TODO(shyshkov): Also check output dims once tiling is fixed for
+    // ConcatenateOp.
+    for (int64_t i = 0; i < rank; ++i) {
+      if (i == concatDim) continue;
+
+      if (inputShape[i] != inputArgShape[i])
+        return emitOpError()
+               << "shape of input arg " << en.index() << ": "
+               << inputArgShapedType << " doesn't match expected shape "
+               << inputType << " (all dims except concat dim(" << concatDim
+               << ") should match exactly)";
     }
   }
 
