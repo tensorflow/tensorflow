@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_C_C_API_OPAQUE_H_
 #define TENSORFLOW_LITE_C_C_API_OPAQUE_H_
 
-#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_types.h"  // IWYU pragma: export
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 #ifdef __cplusplus
 extern "C" {

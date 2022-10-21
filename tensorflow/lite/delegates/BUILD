@@ -69,6 +69,7 @@ cc_library(
     name = "interpreter_utils",
     srcs = ["interpreter_utils.cc"],
     hdrs = ["interpreter_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",

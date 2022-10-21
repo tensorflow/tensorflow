@@ -655,12 +655,12 @@ def tflite_custom_c_library(
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
+            "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite/c:common",
-            "//tensorflow/lite/core/c:private_c_api",
             "//tensorflow/lite/c:c_api_types",
             "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/core:private_headers",
-            "//tensorflow/lite:builtin_ops",
+            "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ] + experimental_deps,
         **kwargs

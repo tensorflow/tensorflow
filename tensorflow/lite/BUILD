@@ -1093,6 +1093,7 @@ cc_library(
 cc_library(
     name = "create_op_resolver_header",
     hdrs = ["create_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite/core:create_op_resolver_header",
     ],
@@ -1103,6 +1104,7 @@ cc_library(
     name = "create_op_resolver_with_builtin_ops",
     srcs = ["create_op_resolver_with_builtin_ops.cc"],
     hdrs = ["create_op_resolver.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":mutable_op_resolver",

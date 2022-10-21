@@ -33,6 +33,7 @@ tensorflow/go/README.md:
 tensorflow/go/op/wrappers.go:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
+tensorflow/lite/core/c/special_rules.bzl:
 tensorflow/lite/core/shims/BUILD:
 tensorflow/lite/core/shims/c/builtin_op_data.h:
 tensorflow/lite/core/shims/c/c_api.h:

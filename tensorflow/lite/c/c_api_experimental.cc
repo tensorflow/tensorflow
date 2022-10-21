@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/signature_runner.h"
 

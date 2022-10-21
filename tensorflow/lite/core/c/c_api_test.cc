@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 #include <stdarg.h>
 #include <stdint.h>
@@ -111,7 +111,7 @@ TEST(CApiSimple, Smoke) {
 
 TEST(CApiSimple, QuantizationParams) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
-      "tensorflow/lite/testdata/add_quantized.bin");
+      "third_party/tensorflow/lite/testdata/add_quantized.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, nullptr);
@@ -335,7 +335,7 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
   // The delegate should have been applied.
   EXPECT_TRUE(delegate_state.delegate_prepared);
   std::vector<int>& nodes_to_replace = *g_nodes_to_replace;
-  // We know that "tensorflow/lite/testdata/add.bin" contains two
+  // We know that "third_party/tensorflow/lite/testdata/add.bin" contains two
   // nodes, 0 and 1, and that 0 comes before 1 in the execution plan.
   EXPECT_EQ(nodes_to_replace.size(), 2);
   EXPECT_EQ(nodes_to_replace[0], 0);
@@ -539,7 +539,7 @@ void* FlexSinhInit(TfLiteOpaqueContext* context, const char* buffer,
                    size_t length) {
   auto sinh_params = new SinhParams;
   // The buffer that is passed into here is the custom_options
-  // field from the flatbuffer (tensorflow/lite/schema/schema.fbs)
+  // field from the flatbuffer (third_party/tensorflow/lite/schema/schema.fbs)
   // `Operator` for this node.
   // Typically it should be stored as a FlexBuffer, but for this test
   // we assume that it is just a string.
@@ -579,7 +579,7 @@ TfLiteStatus FlexSinhEval(TfLiteOpaqueContext* context,
 
 TEST(CApiSimple, CustomOpSupport) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
-      "tensorflow/lite/testdata/custom_sinh.bin");
+      "third_party/tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteRegistrationExternal* reg =
@@ -654,7 +654,7 @@ TfLiteStatus FlexSinhEvalExpectingData(void* data, TfLiteOpaqueContext* context,
 
 TEST(CApiSimple, CustomOpSupport_UsingFunctionsAcceptingDataArgument) {
   TfLiteModel* model = TfLiteModelCreateFromFile(
-      "tensorflow/lite/testdata/custom_sinh.bin");
+      "third_party/tensorflow/lite/testdata/custom_sinh.bin");
   ASSERT_NE(model, nullptr);
 
   TfLiteRegistrationExternal* reg =
