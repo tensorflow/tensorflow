@@ -819,24 +819,14 @@ filegroup(
         "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/strings:mobile_srcs_no_runtime",
         "//tensorflow/core/platform:mobile_srcs_no_runtime",
+        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
         "//tensorflow/core/public:mobile_srcs_no_runtime",
         "//tensorflow/core/util:mobile_srcs_no_runtime",
         "//tensorflow/core/util/ctc:mobile_srcs",
-        "//tensorflow/core/profiler:mobile_srcs_no_runtime",
         "//tensorflow/tsl/framework:mobile_srcs_no_runtime",
         "//tensorflow/tsl/framework/fixedpoint:mobile_srcs_no_runtime",
         "//tensorflow/tsl/platform:mobile_srcs_no_runtime",
-    ] + glob(
-        [
-            "client/**/*.cc",
-        ],
-        exclude = [
-            "**/*test.*",
-            "**/*testutil*",
-            "**/*testlib*",
-            "**/*main.cc",
-        ],
-    ),
+    ],
     visibility = ["//visibility:public"],
 )
 
