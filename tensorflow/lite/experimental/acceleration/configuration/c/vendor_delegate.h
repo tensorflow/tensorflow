@@ -41,7 +41,7 @@ typedef struct TfLiteVendorDelegate {
   const char* delegate_version;
 
   // Provides the implementation of the delegate plugin.
-  TfLiteOpaqueDelegatePlugin* delegate_plugin;
+  const TfLiteOpaqueDelegatePlugin* delegate_plugin;
 } TfLiteVendorDelegate;
 
 #ifdef __cplusplus
