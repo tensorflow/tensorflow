@@ -307,6 +307,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(
         auto module, CreateModuleFromProto(*proto, config, run_backend_only));
+    module->set_layout_canonicalization_callback(
+        options.layout_canonicalization_callback);
     UpdateEntryComputationLayout(
         module.get(), std::bind(&Compiler::DefaultDeviceShapeRepresentation,
                                 backend->compiler(), std::placeholders::_1));
