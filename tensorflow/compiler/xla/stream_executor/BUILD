@@ -799,7 +799,7 @@ alias(
 
 alias(
     name = "rocm_platform",
-    actual = "//tensorflow/stream_executor/rocm:all_runtime",
+    actual = "//tensorflow/compiler/xla/stream_executor/rocm:all_runtime",
 )
 
 # TODO(se-owner): document or remove this.
