@@ -279,6 +279,12 @@ class PyShardedBuffer {
 
   Status BlockHostUntilReady();
 
+  void Delete() {
+    for (auto& pjrt_buffer : buffers_) {
+      pjrt_buffer->Delete();
+    }
+  }
+
  private:
   void Link() {
     if (!client_) return;
