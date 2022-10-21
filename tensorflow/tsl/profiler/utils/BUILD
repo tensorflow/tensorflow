@@ -42,6 +42,10 @@ cc_library(
         "time_utils.h",
     ],
     copts = tf_profiler_copts(),
+    visibility = [
+        "//tensorflow/tsl/platform/cloud:__pkg__",
+        "//tensorflow/tsl/profiler:internal",
+    ],
     deps = [
         ":math_utils",
         "@com_google_absl//absl/time",

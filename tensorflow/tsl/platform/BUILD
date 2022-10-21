@@ -1671,3 +1671,65 @@ bzl_library(
     srcs = ["rules_cc.bzl"],
     deps = tf_platform_alias("rules_cc_bzl"),
 )
+
+cc_library(
+    name = "retrying_utils",
+    srcs = [
+        "retrying_utils.cc",
+    ],
+    hdrs = [
+        "retrying_utils.h",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":env",
+        ":errors",
+        ":random",
+        ":status",
+    ],
+)
+
+cc_library(
+    name = "retrying_file_system",
+    hdrs = [
+        "retrying_file_system.h",
+    ],
+    copts = tsl_copts(),
+    deps = [
+        ":env",
+        ":errors",
+        ":random",
+        ":retrying_utils",
+        ":status",
+    ],
+)
+
+tsl_cc_test(
+    name = "retrying_file_system_test",
+    size = "small",
+    srcs = ["retrying_file_system_test.cc"],
+    deps = [
+        ":env_impl",
+        ":retrying_file_system",
+        ":str_util",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
+
+tsl_cc_test(
+    name = "retrying_utils_test",
+    size = "small",
+    srcs = ["retrying_utils_test.cc"],
+    deps = [
+        ":env",
+        ":env_impl",
+        ":errors",
+        ":retrying_utils",
+        ":str_util",
+        ":test",
+        ":test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+    ],
+)
