@@ -407,52 +407,58 @@ func.func @dynamic_broadcast_in_dim(%arg : tensor<1x1xf32>,
 
 // -----
 
-func.func @concatenate(%arg0: tensor<?x?xf32>,
-                       %arg1: tensor<?x?xf32>,
-                       %arg2: tensor<?x?xf32>,
-                       %init: tensor<1x1xf32>) -> tensor<1x1xf32> {
+func.func @concatenate(
+  %arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>,
+  %arg2: tensor<?x?x?xf32>, %init: tensor<?x1x?xf32>) -> tensor<?x1x?xf32> {
   %cat = thlo.concatenate
-    ins(%arg0: tensor<?x?xf32>,
-        %arg1: tensor<?x?xf32>,
-        %arg2: tensor<?x?xf32>)
-    outs(%init: tensor<1x1xf32>)
+    ins(%arg0: tensor<?x?x?xf32>,
+        %arg1: tensor<?x?x?xf32>,
+        %arg2: tensor<?x?x?xf32>)
+    outs(%init: tensor<?x1x?xf32>)
     { dimension = 1 : i64 }
-  func.return %cat : tensor<1x1xf32>
+  func.return %cat : tensor<?x1x?xf32>
 }
 
 // CHECK-LABEL: func @concatenate(
-// CHECK-SAME:      %[[ARG_0:[0-9a-zA-Z]*]]: tensor<?x?xf32>,
-// CHECK-SAME:      %[[ARG_1:[0-9a-zA-Z]*]]: tensor<?x?xf32>,
-// CHECK-SAME:      %[[ARG_2:[0-9a-zA-Z]*]]: tensor<?x?xf32>,
-// CHECK-SAME:      %[[INIT:[0-9a-zA-Z]*]]: tensor<1x1xf32>)
+// CHECK-SAME:      %[[ARG_0:[0-9a-zA-Z]*]]: tensor<?x?x?xf32>,
+// CHECK-SAME:      %[[ARG_1:[0-9a-zA-Z]*]]: tensor<?x?x?xf32>,
+// CHECK-SAME:      %[[ARG_2:[0-9a-zA-Z]*]]: tensor<?x?x?xf32>,
+// CHECK-SAME:      %[[INIT:[0-9a-zA-Z]*]]: tensor<?x1x?xf32>)
 
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1
+// CHECK-DAG:   %[[C2:.*]] = arith.constant 2
 
-// Extract element from arg0 is it's not empty.
-// CHECK-NEXT:  %[[DIM_0:.*]] = tensor.dim %[[ARG_0]], %[[C1]]
-// CHECK-NEXT:  %[[CMP_0:.*]] = arith.cmpi ne, %[[DIM_0]], %[[C0]]
+// CHECK-DAG:   %[[DIM0:.*]] = tensor.dim %[[INIT]], %[[C0]]
+// CHECK-DAG:   %[[DIM2:.*]] = tensor.dim %[[INIT]], %[[C2]]
+
+// CHECK-NEXT:  %[[TILE:.*]] = gml_st.tile [0, 0, 0]
+// CHECK-SAME:                        [%[[DIM0]], 1, %[[DIM2]]] [1, 1, 1]
+
+// Extract elements from arg0 is it's not empty.
+// CHECK-NEXT:  %[[DIM_ARG_0:.*]] = tensor.dim %[[ARG_0]], %[[C1]]
+// CHECK-NEXT:  %[[CMP_0:.*]] = arith.cmpi ne, %[[DIM_ARG_0]], %[[C0]]
 // CHECK:       %[[RESULT:.*]] = scf.if %[[CMP_0]]
-// CHECK:         %[[EXT_0:.*]] = tensor.extract %[[ARG_0]]
-// CHECK-NEXT:    scf.yield %[[EXT_0]]
+// CHECK:         %[[MAT_0:.*]] = gml_st.materialize %[[ARG_0]][%[[TILE]]]
+// CHECK:         %[[RES_0:.*]] = tensor.insert_slice %[[MAT_0]] into %[[INIT]]
+// CHECK-NEXT:    scf.yield %[[RES_0]]
 // CHECK-NEXT:  } else {
 
-// Otherwise check arg1 and extract element if it's not empty.
-// CHECK-NEXT:    %[[DIM_1:.*]] = tensor.dim %[[ARG_1]], %[[C1]]
-// CHECK-NEXT:    %[[CMP_1:.*]] = arith.cmpi ne, %[[DIM_1]], %[[C0]]
+// Else check arg1 and extracts element if it's not empty.
+// CHECK-NEXT:    %[[DIM_ARG_1:.*]] = tensor.dim %[[ARG_1]], %[[C1]]
+// CHECK-NEXT:    %[[CMP_1:.*]] = arith.cmpi ne, %[[DIM_ARG_1]], %[[C0]]
 // CHECK-NEXT:    %[[RESULT_1:.*]] = scf.if %[[CMP_1]]
-// CHECK-NEXT:      %[[EXT_1:.*]] = tensor.extract %[[ARG_1]]
-// CHECK-NEXT:      scf.yield %[[EXT_1]]
+// CHECK-NEXT:      %[[MAT_1:.*]] = gml_st.materialize %[[ARG_1]][%[[TILE]]]
+// CHECK-NEXT:      %[[RES_1:.*]] = tensor.insert_slice %[[MAT_1]] into %[[INIT]]
+// CHECK-NEXT:      scf.yield %[[RES_1]]
 // CHECK-NEXT:    } else {
 
-// Extract element from arg2, because arg0 and arg1 are empty.
-// CHECK-NEXT:      %[[EXT_2:.*]] = tensor.extract %[[ARG_2]]
-// CHECK-NEXT:      scf.yield %[[EXT_1]]
+// Otherwise extract elements from arg2, because arg0 and arg1 are empty.
+// CHECK-NEXT:      %[[MAT_2:.*]] = gml_st.materialize %[[ARG_2]][%[[TILE]]]
+// CHECK-NEXT:      %[[RES_2:.*]] = tensor.insert_slice %[[MAT_2]] into %[[INIT]]
+// CHECK-NEXT:      scf.yield %[[RES_2]]
 // CHECK-NEXT:    }
 // CHECK-NEXT:    scf.yield %[[RESULT_1]]
 // CHECK-NEXT:  }
 
-// Insert the element into init.
-// CHECK-NEXT:  %[[INSERTED:.*]] = tensor.insert %[[RESULT]]
-// CHECK-SAME:                    into %[[INIT]][%[[C0]], %[[C0]]]
-// CHECK-NEXT:  return %[[INSERTED]] : tensor<1x1xf32>
+// CHECK-NEXT:  return %[[RESULT]] : tensor<?x1x?xf32>
