@@ -141,11 +141,11 @@ cc_test(
 
 cc_library(
     name = "delegate_registry",
-    srcs = ["delegate_registry.cc"],
     hdrs = ["delegate_registry.h"],
     deps = [
         ":configuration_fbs",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/synchronization",
     ],
 )

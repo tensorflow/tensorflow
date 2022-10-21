@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/tools/verifier.h"
+#include "tensorflow/lite/core/tools/verifier.h"
 
 #include <algorithm>
 #include <climits>
@@ -22,10 +22,10 @@ limitations under the License.
 #include <cstring>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/lite/core/tools/verifier_internal.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/tools/verifier_internal.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 

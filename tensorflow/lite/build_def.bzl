@@ -493,6 +493,7 @@ def tflite_custom_cc_library(
         deps = depset([
             framework,
             "//tensorflow/lite/kernels:builtin_ops",
+            "//tensorflow/lite/core:private_create_op_resolver_header",
         ] + real_deps),
         visibility = visibility,
         **kwargs
@@ -618,6 +619,7 @@ def tflite_custom_c_library(
             hdrs = ["//tensorflow/lite:create_op_resolver.h"],
             copts = tflite_copts(),
             deps = [
+                "//tensorflow/lite/core:private_create_op_resolver_header",
                 "//tensorflow/lite:create_op_resolver_with_selected_ops",
                 "//tensorflow/lite:op_resolver",
                 framework,

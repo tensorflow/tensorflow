@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/verifier.h"
+#include "tensorflow/lite/core/tools/verifier.h"
 
 #include <memory>
 #include <string>
@@ -39,7 +39,7 @@ namespace tflite {
 
 namespace {
 static const char* kSparseTensorTestModel =
-    "tensorflow/lite/testdata/sparse_tensor.bin";
+    "third_party/tensorflow/lite/testdata/sparse_tensor.bin";
 }  // namespace
 
 class MockErrorReporter : public ErrorReporter {
