@@ -87,12 +87,6 @@ requires "fake-quantization" during model training, getting range information
 via a calibration data set, or doing "on-the-fly" range estimation. See
 [quantization](../performance/model_optimization.md) for more details.
 
-## Supported operations and restrictions
-
-TensorFlow Lite supports a subset of TensorFlow operations with some
-limitations. For full list of operations and limitations see
-[TF Lite Ops page](https://www.tensorflow.org/mlir/tfl_ops).
-
 ## Straight-forward conversions, constant-folding and fusing
 
 A number of TensorFlow operations can be processed by TensorFlow Lite even
