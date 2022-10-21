@@ -432,40 +432,33 @@ func.func @scatter_i64(%indices: tensor<?x2xindex>,
 
 // -----
 
-func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xindex>,
-    %init: tensor<?x?xf64>) -> tensor<?x?xf64> {
+func.func @gather(%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x4xindex>,
+    %init: tensor<?x10xf64>) -> tensor<?x10xf64> {
   %result = thlo.gather
-    ins (%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x?x4xindex>)
-    outs (%init: tensor<?x?xf64>) { op_label = "tile-2d" }
-  return %result : tensor<?x?xf64>
+    ins (%operand: tensor<?x?x?x?xf64>, %indices: tensor<?x4xindex>)
+    outs (%init: tensor<?x10xf64>) { op_label = "tile-1d-point" }
+  return %result : tensor<?x10xf64>
 }
 
 // CHECK-FOR-LABEL: @gather
 // CHECK-FOR-SAME:    %[[OPERAND:.*]]: tensor<?x?x?x?xf64>
-// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x?x4xindex>
+// CHECK-FOR-SAME:    %[[INDICES:.*]]: tensor<?x4xindex>
 // CHECK-FOR-SAME:    %[[INIT:.*]]:
 // CHECK-FOR-DAG:   %[[ZERO:.*]] = arith.constant 0
 // CHECK-FOR-DAG:   %[[ONE:.*]] = arith.constant 1
-// CHECK-FOR:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]], %[[J:.*]]) =
-// CHECK-FOR-SAME:      (%[[INIT_:[a-z0-9]+]] = %[[INIT]]: tensor<?x?xf64>)
-// CHECK-FOR:         %[[SIZE0:.*]] = affine.min {{.*}}%[[I]]
-// CHECK-FOR:         %[[SIZE1:.*]] = affine.min {{.*}}%[[J]]
+// CHECK-FOR:       %[[RESULT:.*]] = gml_st.for (%[[I:.*]]) =
+// CHECK-FOR-SAME:      (%[[INIT_:[a-z0-9]+]] = %[[INIT]]: tensor<?x10xf64>)
 
-// CHECK-FOR:         %[[INDEX_TILE:.*]] = gml_st.tile
-// CHECK-FOR-SAME:      [%[[I]], %[[J]], 0] [%[[SIZE0]], %[[SIZE1]], 4]
+// CHECK-FOR:         %[[INDEX_TILE:.*]] = gml_st.tile [%[[I]], 0] [1, 4] [1, 1]
 // CHECK-FOR:         %[[INDEX_SLICE:.*]] = gml_st.materialize %[[INDICES]][%[[INDEX_TILE]]]
 
-// CHECK-FOR:         %[[INIT_TILE:.*]] = gml_st.tile
-// CHECK-FOR-SAME:      [%[[I]], %[[J]]] [%[[SIZE0]], %[[SIZE1]]] [1, 1]
+// CHECK-FOR:         %[[INIT_TILE:.*]] = gml_st.tile [%[[I]], 0] [1, 10] [1, 1]
 // CHECK-FOR:         %[[INIT_SLICE:.*]] = gml_st.materialize %[[INIT_]][%[[INIT_TILE]]]
 // CHECK-FOR:         %[[GATHER_SLICE:.*]] = thlo.gather
 // CHECK-FOR-SAME:       ins(%[[OPERAND]] : tensor<?x?x?x?xf64>,
-// CHECK-FOR-SAME:           %[[INDEX_SLICE]] : tensor<?x?x4xindex>)
-// CHECK-FOR-SAME:       outs(%[[INIT_SLICE]] : tensor<?x?xf64>)
+// CHECK-FOR-SAME:           %[[INDEX_SLICE]] : tensor<1x4xindex>)
+// CHECK-FOR-SAME:       outs(%[[INIT_SLICE]] : tensor<1x10xf64>)
 // CHECK-FOR:         gml_st.set_yield %[[GATHER_SLICE]]
-
-// CHECK-PARALLEL-LABEL: @gather
-// CHECK-PARALLEL: gml_st.parallel
 
 // -----
 

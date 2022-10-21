@@ -450,6 +450,50 @@ func.func @gather_output_result_mismatch(
 
 // -----
 
+func.func @gather_invalid_dynamic_indices(
+    %arg: tensor<100xf32>, %indices: tensor<42x?xindex>, %dst: tensor<42xf32>)
+    -> tensor<42xf64> {
+  // expected-error@+1{{'thlo.gather' op expected type of operand #2 ('tensor<42xf32>') to match type of corresponding result ('tensor<42xf64>')}}
+  %gather = "thlo.gather"(%arg, %indices, %dst) :
+      (tensor<100xf32>, tensor<42x?xindex>, tensor<42xf32>) -> (tensor<42xf64>)
+  func.return %gather : tensor<42xf64>
+}
+
+// -----
+
+func.func @gather_invalid_indices_shape(
+    %arg: tensor<100xf32>, %indices: tensor<42xindex>, %dst: tensor<42xf32>)
+    -> tensor<42xf64> {
+  // expected-error@+1{{'thlo.gather' op expected `indices` to be a 2D tensor}}
+  %gather = "thlo.gather"(%arg, %indices, %dst) :
+      (tensor<100xf32>, tensor<42xindex>, tensor<42xf32>) -> (tensor<42xf64>)
+  func.return %gather : tensor<42xf64>
+}
+
+// -----
+
+func.func @gather_indices_dst_mismatch(
+    %arg: tensor<100xf32>, %indices: tensor<42x1xindex>, %dst: tensor<43xf32>)
+    -> tensor<43xf64> {
+  // expected-error@+1{{'thlo.gather' op expected major dimension of `startIndices` to match major dimension of `init`}}
+  %gather = "thlo.gather"(%arg, %indices, %dst) :
+      (tensor<100xf32>, tensor<42x1xindex>, tensor<43xf32>) -> (tensor<43xf64>)
+  func.return %gather : tensor<43xf64>
+}
+
+// -----
+
+func.func @gather_invalid_dst_shape(
+    %arg: tensor<100xf32>, %indices: tensor<42x1xindex>, %dst: tensor<42x?xf32>)
+    -> tensor<42x?xf64> {
+  // expected-error@+1{{'thlo.gather' op only the major dimenion of `init` may be dynamic}}
+  %gather = "thlo.gather"(%arg, %indices, %dst) :
+      (tensor<100xf32>, tensor<42x1xindex>, tensor<42x?xf32>) -> (tensor<42x?xf64>)
+  func.return %gather : tensor<42x?xf64>
+}
+
+// -----
+
 func.func @sort_mismatched_number_of_inputs_and_outputs(
       %input1: tensor<?x?xf32>, %input2: tensor<?x?xi32>,
       %init1: tensor<?x?xf32>)

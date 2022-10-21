@@ -797,13 +797,34 @@ ParseResult GatherOp::parse(OpAsmParser &parser, OperationState &result) {
 void GatherOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult GatherOp::verify() {
+  auto indicesType = getStartIndices().getType();
+  int64_t indicesRank = indicesType.getRank();
+
+  if (indicesRank != 2)
+    return emitOpError() << "expected `indices` to be a 2D tensor";
+
+  auto initType = getInit().getType();
+  if (indicesType.getDimSize(0) != getInit().getType().getDimSize(0)) {
+    return emitOpError()
+           << "expected major dimension of `startIndices` to match "
+              "major dimension of `init`";
+  }
+
+  if (initType.getNumDynamicDims() > 1 ||
+      (initType.getNumDynamicDims() == 1 && !initType.isDynamicDim(0))) {
+    return emitOpError() << "only the major dimenion of `init` may be dynamic";
+  }
+
+  if (indicesType.isDynamic(1)) {
+    return emitOpError()
+           << "the minor dimensions of `startIndices` must be static";
+  }
+
   return verifyDestinationStyleOp(getOperation());
 }
 
 SmallVector<utils::IteratorType> GatherOp::getLoopIteratorTypes() {
-  // Currently, `offset_dims` is empty, so the iteration domain is just the
-  // entire output.
-  return getParallelIteratorTypes(getInit().getType().getRank());
+  return {utils::IteratorType::parallel};
 }
 
 SmallVector<Value> GatherOp::getDestinationOperands(OpBuilder &) {
@@ -811,24 +832,28 @@ SmallVector<Value> GatherOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> GatherOp::getIterationDomain(OpBuilder &b) {
-  // Currently, `offset_dims` is empty, so the iteration domain is just the
-  // entire output.
-  return getIterationDomainForTensor(b, getLoc(), getInit());
+  Value indicesCount = b.create<tensor::DimOp>(getLoc(), getStartIndices(), 0);
+  return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
 }
 
 mlir::gml_st::TilingInterface GatherOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
-  auto offsetsWithVectorDim = offsets.vec();
-  auto sizesWithVectorDim = sizes.vec();
-
-  offsetsWithVectorDim.emplace_back(b.getIndexAttr(0));
-  sizesWithVectorDim.emplace_back(
-      b.getIndexAttr(getStartIndices().getType().getShape().back()));
-
+  SmallVector<OpFoldResult> startIndexOffsets{offsets.front(),
+                                              b.getIndexAttr(0)};
+  SmallVector<OpFoldResult> startIndexSizes{
+      sizes.front(),
+      b.getIndexAttr(getStartIndices().getType().getShape().back())};
   auto subStartIndices = getMaterializedTile(
-      b, getLoc(), getStartIndices(), offsetsWithVectorDim, sizesWithVectorDim);
-  Value initSlice = getMaterializedTile(b, getLoc(), getInit(), offsets, sizes);
+      b, getLoc(), getStartIndices(), startIndexOffsets, startIndexSizes);
+
+  int64_t initRank = getInit().getType().getRank();
+  SmallVector<OpFoldResult> initOffsets(initRank, b.getIndexAttr(0));
+  initOffsets[0] = offsets.front();
+  auto initSizes = tensor::getMixedSizes(b, getLoc(), getInit());
+  initSizes[0] = sizes.front();
+  Value initSlice =
+      getMaterializedTile(b, getLoc(), getInit(), initOffsets, initSizes);
 
   return b
       .create<GatherOp>(getLoc(), TypeRange{initSlice.getType()},

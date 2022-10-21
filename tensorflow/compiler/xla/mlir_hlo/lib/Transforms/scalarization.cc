@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -116,15 +117,36 @@ Value getPoint(OpBuilder &b, Location loc, Value tensor, ValueRange indices) {
                                          tensor, tile);
 }
 
+// Returns `startIndices`[0, :] for `startIndices` of shape 1xn. Returns None if
+// startIndices has a different shape.
+Optional<SmallVector<Value>> extractStartIndices(
+    ImplicitLocOpBuilder &b, TypedValue<TensorType> startIndices) {
+  if (startIndices.getType().getRank() != 2 ||
+      startIndices.getType().getDimSize(0) != 1) {
+    return llvm::None;
+  }
+
+  int64_t indexVectorSize = startIndices.getType().getDimSize(1);
+  SmallVector<Value> result;
+  result.reserve(indexVectorSize);
+  Value zero = b.create<arith::ConstantIndexOp>(0);
+  for (int64_t i = 0; i < indexVectorSize; ++i) {
+    result.push_back(b.create<ExtractOp>(
+        startIndices, ValueRange{zero, b.create<arith::ConstantIndexOp>(i)}));
+  }
+  return result;
+}
+
 struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(thlo::ScatterOp scatterOp,
                                 PatternRewriter &rewriter) const override {
-    if (scatterOp.getIndicesCount() != 1) return failure();
-
     Location loc = scatterOp.getLoc();
     ImplicitLocOpBuilder b(loc, rewriter);
+
+    auto scatterIndices = extractStartIndices(b, scatterOp.getIndices());
+    if (!scatterIndices) return failure();
 
     // Create the loop nest that spans window dimensions of `updates`.
     Value updates = scatterOp.getUpdates();
@@ -136,8 +158,6 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
         tensor::getMixedSizes(b, loc, updates);
     auto updatesDimValues =
         getValueOrCreateConstantIndexOp(b, loc, updatesDimSizes);
-
-    Value indices = scatterOp.getIndices();
 
     Value init = scatterOp.getInit();
     auto initType = init.getType().dyn_cast<RankedTensorType>();
@@ -157,15 +177,6 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
     Value zero = b.create<arith::ConstantIndexOp>(0);
     Value one = b.create<arith::ConstantIndexOp>(1);
 
-    // Extract scatter indices.
-    SmallVector<Value> scatterIndices;
-    SmallVector<Value> currentIndexInIndicesTensor(2, zero);
-    for (int64_t i = 0, e = scatterOp.getIndexVectorDimSize(); i < e; ++i) {
-      currentIndexInIndicesTensor.back() = b.create<arith::ConstantIndexOp>(i);
-      scatterIndices.push_back(
-          b.create<ExtractOp>(indices, currentIndexInIndicesTensor));
-    }
-
     // Create a loop that spans the dimensions of the update slice.
     SmallVector<Value> lbs(updatesRank, zero);
     SmallVector<Value> steps(updatesRank, one);
@@ -177,7 +188,7 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
           Value initBlockArg = loopInits.front();
 
           auto initIndex = llvm::to_vector(updateIndex.drop_front());
-          for (const auto &en : llvm::enumerate(scatterIndices)) {
+          for (const auto &en : llvm::enumerate(*scatterIndices)) {
             initIndex[en.index()] = nestedBuilder.create<arith::AddIOp>(
                 bodyLoc, initIndex[en.index()], en.value());
           }
@@ -240,6 +251,70 @@ struct ScalarizeScatterOp : public OpRewritePattern<thlo::ScatterOp> {
       isValid = b.create<arith::AndIOp>(loc, isValid, dimInBounds);
     }
     return isValid;
+  }
+};
+
+struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(thlo::GatherOp gatherOp,
+                                PatternRewriter &rewriter) const override {
+    ImplicitLocOpBuilder b(gatherOp.getLoc(), rewriter);
+    auto startIndices = extractStartIndices(b, gatherOp.getStartIndices());
+    if (!startIndices) return failure();
+
+    TypedValue<ShapedType> init = gatherOp.getInit();
+    ShapedType initTy = init.getType();
+    int64_t initRank = initTy.getRank();
+    SmallVector<OpFoldResult> initDimSizes =
+        tensor::getMixedSizes(rewriter, gatherOp.getLoc(), init);
+    SmallVector<Value> initDimSizeValues =
+        getValueOrCreateConstantIndexOp(b, gatherOp.getLoc(), initDimSizes);
+
+    IntegerAttr oneAttr = b.getI64IntegerAttr(1);
+
+    TypedValue<ShapedType> operand = gatherOp.getOperand();
+    SmallVector<Value> operandSizes =
+        tensor::createDimValues(rewriter, gatherOp.getLoc(), operand);
+
+    Value zero = b.create<arith::ConstantIndexOp>(0);
+    Value one = b.create<arith::ConstantIndexOp>(1);
+    SmallVector<Value> lbs(initRank, zero);
+    SmallVector<Value> steps(initRank, one);
+
+    rewriter.replaceOpWithNewOp<gml_st::ForOp>(
+        gatherOp, TypeRange(ValueRange{init}), lbs, initDimSizeValues, steps,
+        init,
+        [&](OpBuilder &nestedBuilder, Location bodyLoc, ValueRange ivs,
+            ValueRange loopInits) {
+          // Compute the index in the operand.
+          SmallVector<Value> readIndices(operand.getType().getRank(), zero);
+          llvm::copy(ivs, readIndices.begin());
+          for (auto &&[readIndex, startIndex] :
+               llvm::zip(readIndices, *startIndices)) {
+            readIndex = nestedBuilder.create<arith::AddIOp>(bodyLoc, readIndex,
+                                                            startIndex);
+          }
+
+          // Clamp the indices.
+          for (auto &&[readIndex, max] : llvm::zip(readIndices, operandSizes)) {
+            auto maxMinusOne =
+                nestedBuilder.createOrFold<arith::SubIOp>(bodyLoc, max, one);
+            readIndex = nestedBuilder.create<arith::MinSIOp>(bodyLoc, readIndex,
+                                                             maxMinusOne);
+            readIndex =
+                nestedBuilder.create<arith::MaxSIOp>(bodyLoc, readIndex, zero);
+          }
+
+          // Materialize the value and yield it.
+          SmallVector<OpFoldResult> ones(initRank, oneAttr);
+          Value tile = nestedBuilder.create<gml_st::TileOp>(
+              bodyLoc, SmallVector<OpFoldResult>(ivs), ones, ones);
+          Value val = getPoint(nestedBuilder, bodyLoc, operand, readIndices);
+          nestedBuilder.create<gml_st::SetYieldOp>(bodyLoc, val,
+                                                   loopInits.front(), tile);
+        });
+    return success();
   }
 };
 
@@ -411,8 +486,9 @@ struct ScalarizationPass
     RewritePatternSet patterns(context);
     // clang-format off
     patterns.add<
-        ScalarizeDynamicBroadcastInDimOp,
         ScalarizeConcatenateOp,
+        ScalarizeDynamicBroadcastInDimOp,
+        ScalarizeGatherOp,
         ScalarizeGenericOp,
         ScalarizeScatterOp
     >(context);
