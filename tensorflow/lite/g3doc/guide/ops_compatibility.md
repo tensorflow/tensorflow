@@ -24,6 +24,7 @@ model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
 optimized, along with the limitations imposed by this process.
 
+
 ## Supported operators
 
 TensorFlow Lite built-in operators are a subset of the operators
@@ -74,6 +75,7 @@ requires you to
 which limits you from taking advantage of standard runtime services such as
 the [Google Play services](../android/play_services).
 
+
 ## Supported types
 
 Most TensorFlow Lite operations target both floating-point (`float32`) and
@@ -86,6 +88,7 @@ Quantized conversion requires dynamic range information for tensors. This
 requires "fake-quantization" during model training, getting range information
 via a calibration data set, or doing "on-the-fly" range estimation. See
 [quantization](../performance/model_optimization.md) for more details.
+
 
 ## Straight-forward conversions, constant-folding and fusing
 
@@ -131,6 +134,7 @@ from the graph:
 
 Note: Many of those operations don't have TensorFlow Lite equivalents, and the
 corresponding model will not be convertible if they can't be elided or fused.
+
 
 ## Experimental Operations
 The following TensorFlow Lite operations are present, but not ready for custom
