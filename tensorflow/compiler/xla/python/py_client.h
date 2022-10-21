@@ -31,7 +31,6 @@ limitations under the License.
 namespace xla {
 
 class PyBuffer;
-class PyShardedBuffer;
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
@@ -227,7 +226,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
 
  private:
   friend class PyBuffer;
-  friend class PyShardedBuffer;
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
@@ -242,7 +240,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
-  PyShardedBuffer* sharded_buffers_ = nullptr;
 };
 
 }  // namespace xla
