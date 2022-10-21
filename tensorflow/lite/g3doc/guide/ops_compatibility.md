@@ -74,7 +74,6 @@ requires you to
 which limits you from taking advantage of standard runtime services such as
 the [Google Play services](../android/play_services).
 
-
 ## Supported types
 
 Most TensorFlow Lite operations target both floating-point (`float32`) and
@@ -86,8 +85,13 @@ between floating-point and quantized models is the way they are converted.
 Quantized conversion requires dynamic range information for tensors. This
 requires "fake-quantization" during model training, getting range information
 via a calibration data set, or doing "on-the-fly" range estimation. See
-[quantization](../performance/model_optimization.md) for more details.
+[quantization](../performance/model_optimization.md).
 
+## Supported operations and restrictions
+
+TensorFlow Lite supports a subset of TensorFlow operations with some
+limitations. For full list of operations and limitations see
+[TF Lite Ops page](https://www.tensorflow.org/mlir/tfl_ops).
 
 ## Straight-forward conversions, constant-folding and fusing
 
@@ -102,7 +106,7 @@ Here is a non-exhaustive list of TensorFlow operations that are usually removed
 from the graph:
 
 *   `tf.add`
-*   `tf.check_numerics`
+*   `tf.debugging.check_numerics`
 *   `tf.constant`
 *   `tf.div`
 *   `tf.divide`
@@ -146,3 +150,4 @@ models:
 *   `LSH_PROJECTION`
 *   `SKIP_GRAM`
 *   `SVDF`
+
