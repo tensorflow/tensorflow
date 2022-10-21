@@ -3836,6 +3836,8 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val,
 StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
                                                      XlaOp operand, XlaOp val,
                                                      int64_t dimension) {
+  std::optional<Shape> shape_override;
+
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
   if (StringToHloOpcode(val_proto->opcode()).value() == HloOpcode::kConstant &&
@@ -3843,12 +3845,16 @@ StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
     TF_ASSIGN_OR_RETURN(auto constant_size,
                         Literal::CreateFromProto(val_proto->literal(), true));
     if (constant_size.Get<int32_t>({}) == shape.dimensions(dimension)) {
-      return operand;
+      shape_override = shape;
+      shape_override->set_dynamic_dimension(dimension, false);
     }
   }
-
   HloInstructionProto instr;
-  *instr.mutable_shape() = shape.ToProto();
+  if (shape_override) {
+    *instr.mutable_shape() = shape_override->ToProto();
+  } else {
+    *instr.mutable_shape() = shape.ToProto();
+  }
   instr.add_dimensions(dimension);
   return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
                         {operand, val});

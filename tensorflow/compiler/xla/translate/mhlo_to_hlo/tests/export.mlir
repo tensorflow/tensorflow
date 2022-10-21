@@ -861,6 +861,20 @@ func.func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
 // -----
 
 // CHECK:  HloModule
+func.func @main(%arg: tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, -1]>>) -> tensor<8x4xf32> {
+  %size = mhlo.constant dense<8> : tensor<i32>
+  %1 = "mhlo.set_dimension_size"(%arg, %size) {dimension = 0 : i64} : (tensor<?x4xf32, #mhlo.type_extensions<bounds = [8, -1]>>, tensor<i32>) -> tensor<8x4xf32>
+  func.return %1 : tensor<8x4xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG:%.*]] = f32[<=8,4] parameter(0)
+// CHECK:  [[SIZE:%.*]] = s32[] constant(8)
+// CHECK:  ROOT [[DYNAMIC:%.*]] = f32[8,4] set-dimension-size(f32[<=8,4] [[ARG]], s32[] [[SIZE]]), dimensions={0}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tuple<tensor<f32>, tensor<i32>>) -> tensor<f32> {
   %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
   func.return %0 : tensor<f32>

@@ -6043,13 +6043,26 @@ LogicalResult SetDimensionSizeOp::inferReturnTypes(
           inputType.getEncoding().dyn_cast_or_null<TypeExtensionsAttr>())
     bounds = llvm::to_vector<4>(encoding.getBounds());
 
-  // TODO(hinsu): Handle the case when the size operand is a constant.
   if (shape[dim] != ShapedType::kDynamicSize) bounds[dim] = shape[dim];
   shape[dim] = ShapedType::kDynamicSize;
 
+  DenseIntElementsAttr sizeAttr;
+  if (matchPattern(adaptor.getSize(), m_Constant(&sizeAttr))) {
+    int64_t splat =
+        sizeAttr.getSplatValue<IntegerAttr>().getValue().getSExtValue();
+    if (splat == bounds[dim]) {
+      shape[dim] = splat;
+      bounds[dim] = ShapedType::kDynamicSize;
+    }
+  }
+
   auto extensions = TypeExtensionsAttr::get(context, bounds);
   auto resultType =
-      RankedTensorType::get(shape, inputType.getElementType(), extensions);
+      llvm::all_of(bounds,
+                   [](int64_t v) { return v == ShapedType::kDynamicSize; })
+          ? RankedTensorType::get(shape, inputType.getElementType())
+          : RankedTensorType::get(shape, inputType.getElementType(),
+                                  extensions);
   inferredReturnTypes.push_back(resultType);
   return success();
 }
