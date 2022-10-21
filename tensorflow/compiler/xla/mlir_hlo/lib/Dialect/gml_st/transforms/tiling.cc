@@ -205,7 +205,11 @@ struct TilingPattern : public OpInterfaceRewritePattern<TilingInterface> {
     auto tilingResult = tile(options, rewriter, op);
     if (failed(tilingResult)) return failure();
 
-    rewriter.replaceOp(op, tilingResult->loop->getResults());
+    // If we did not tile (e.g. when all tile sizes are 0), do not replace
+    // original op and just mark it as transformed then return.
+    if (tilingResult->loop != nullptr) {
+      rewriter.replaceOp(op, tilingResult->loop->getResults());
+    }
     setTransformationAttr(rewriter, tilingResult->tiledOp);
     return success();
   }
@@ -292,6 +296,10 @@ FailureOr<TilingResult> tile(const TilingOptions &options,
   if (tileSizeVector.size() < iterationDomain.size()) {
     auto zero = rewriter.create<arith::ConstantIndexOp>(op.getLoc(), 0);
     tileSizeVector.append(numLoops - tileSizeVector.size(), zero);
+  }
+
+  if (llvm::all_of(tileSizeVector, mlir::gml_st::isZero)) {
+    return TilingResult{op, nullptr};
   }
 
   // 3. Materialize an empty loop nest that iterates over the tiles.

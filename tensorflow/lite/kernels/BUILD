@@ -733,7 +733,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow/lite/core/kernels:__subpackages__",
+    ],
     deps = BUILTIN_KERNEL_DEPS + [
         ":variable_op_kernels",
         "@fft2d",
@@ -879,7 +881,6 @@ cc_library(
 # For internal usage by shared libraries only.
 cc_library(
     name = "builtin_ops_all_linked",
-    srcs = ["register.cc"],
     hdrs = [
         "builtin_op_kernels.h",
         "fully_connected.h",
@@ -895,14 +896,13 @@ cc_library(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops_all_linked",
         "//tensorflow/lite/schema:schema_fbs",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
     name = "builtin_ops",
-    srcs = ["register.cc"],
     hdrs = [
         "builtin_op_kernels.h",
         "fully_connected.h",
@@ -915,6 +915,7 @@ cc_library(
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

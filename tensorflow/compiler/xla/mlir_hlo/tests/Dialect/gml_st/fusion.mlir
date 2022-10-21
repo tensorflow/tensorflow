@@ -306,3 +306,25 @@ func.func @dim_reification_concatenate(%init : tensor<?x?xi32>,
 // CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
 // CHECK-DAG:  %[[DIM:.*]] = tensor.dim %[[INIT]], %[[C1]] : tensor<?x?xi32>
 // CHECK:      return %[[DIM]] : index
+
+// -----
+
+#map = affine_map<(d0) -> (d0)>
+
+func.func @fusion_into_materialize_element(
+    %input : tensor<?xf32>, %init : tensor<?xf32>, %idx : index) -> f32 {
+  %neg = linalg.generic
+      {indexing_maps = [#map, #map], iterator_types = ["parallel"],
+       op_label="producer" }
+      ins(%input : tensor<?xf32>) outs(%init : tensor<?xf32>) {
+  ^bb0(%in: f32, %out: f32):
+    %0 = arith.negf %in : f32
+    linalg.yield %0 : f32
+  } -> tensor<?xf32>
+  %tile = gml_st.tile [%idx] [1] [1] : !gml_st.tile<1>
+  %res = gml_st.materialize %neg[%tile] : tensor<?xf32>[!gml_st.tile<1>] to f32
+  return { op_label="consumer" } %res : f32
+}
+// CHECK-LABEL: @fusion_into_materialize_element
+// CHECK: %[[RES:.*]] = tensor.extract
+// CHECK: return {{.*}} %[[RES]]

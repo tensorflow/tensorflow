@@ -159,6 +159,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/profiling:profile_summary_formatter",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/tools/verifier_internal.h"
+#include "tensorflow/lite/core/tools/verifier_internal.h"
 
 #include "tensorflow/lite/schema/schema_generated.h"
 

@@ -318,8 +318,9 @@ struct ScalarizeGatherOp : public OpRewritePattern<thlo::GatherOp> {
   }
 };
 
-// Replace `thlo.concatenate` that has only one element in total in all the
-// inputs with `tensor.extract/insert`.
+// Replace `thlo.concatenate` that is statically known to have only one element
+// in concatenation dimension in all the inputs with
+// `gml_st.materialize/tensor.insert_slice`.
 struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
   using OpRewritePattern::OpRewritePattern;
 
@@ -332,21 +333,35 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
     auto initType = initTensor.getType();
     int64_t rank = initTensor.getType().getRank();
 
-    // Only scalarize an op that has 1-element tensor output.
-    if (!hasSingleElement(initType)) {
+    // Only scalarize when it's statically known that output concatenation dim
+    // size is one.
+    if (initType.getShape()[concatDim] != 1) {
       return failure();
     }
 
-    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-    SmallVector<Value> indices(rank, zero);
+    IntegerAttr oneAttr = rewriter.getIndexAttr(1);
+    SmallVector<OpFoldResult> offsets(rank, rewriter.getIndexAttr(0));
+    SmallVector<OpFoldResult> strides(rank, oneAttr);
 
-    // All inputs have only one element in total. Only one input has the concat
-    // dimension equal to 1, other inputs have 0.
-    Value element = extractElementFromInputs(
-        rewriter, loc, concatenateOp.getInputs(), indices,
-        initType.getElementType(), concatDim, zero);
+    SmallVector<OpFoldResult> sizes;
+    for (int i = 0; i < rank; ++i) {
+      if (i == concatDim) {
+        sizes.push_back(oneAttr);
+      } else {
+        sizes.emplace_back(rewriter.create<tensor::DimOp>(loc, initTensor, i));
+      }
+    }
+    Value tile = rewriter.create<gml_st::TileOp>(loc, offsets, sizes, strides);
 
-    Value res = rewriter.create<InsertOp>(loc, element, initTensor, indices);
+    auto materializeAndInsert = [&](OpBuilder &b, Location l, Value input) {
+      Value slice = b.create<gml_st::MaterializeOp>(l, input, tile);
+      return b.create<tensor::InsertSliceOp>(l, slice, initTensor, offsets,
+                                             sizes, strides);
+    };
+
+    Value res =
+        extractElementFromInputs(rewriter, loc, concatenateOp.getInputs(),
+                                 initType, concatDim, materializeAndInsert);
 
     rewriter.replaceOp(concatenateOp, res);
 
@@ -355,33 +370,36 @@ struct ScalarizeConcatenateOp : public OpRewritePattern<thlo::ConcatenateOp> {
 
  private:
   Value tensorHasElement(OpBuilder &b, Location loc, Value input,
-                         int64_t concatDim, Value zero) const {
+                         int64_t concatDim) const {
+    Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
     Value concatDimSize = b.create<tensor::DimOp>(loc, input, concatDim);
     return b.create<arith::CmpIOp>(loc, arith::CmpIPredicate::ne, concatDimSize,
                                    zero);
   }
 
-  Value extractElementFromInputs(OpBuilder &b, Location loc, ValueRange inputs,
-                                 ArrayRef<Value> indices, Type resultType,
-                                 int64_t concatDim, Value zero) const {
+  Value extractElementFromInputs(
+      OpBuilder &b, Location loc, ValueRange inputs, Type resultType,
+      int64_t concatDim,
+      llvm::function_ref<Value(OpBuilder &, Location, Value)>
+          materializeAndInsert) const {
     if (inputs.size() == 1) {
-      return b.create<ExtractOp>(loc, inputs.front(), indices);
+      return materializeAndInsert(b, loc, inputs.front());
     }
 
     return b
         .create<scf::IfOp>(
             loc, resultType,
-            tensorHasElement(b, loc, inputs.front(), concatDim, zero),
+            tensorHasElement(b, loc, inputs.front(), concatDim),
             [&](OpBuilder &thenBuilder, Location thenLoc) {
-              Value el = thenBuilder.create<ExtractOp>(thenLoc, inputs.front(),
-                                                       indices);
-              b.create<scf::YieldOp>(loc, el);
+              thenBuilder.create<scf::YieldOp>(
+                  thenLoc,
+                  materializeAndInsert(thenBuilder, thenLoc, inputs.front()));
             },
             [&](OpBuilder &elseBuilder, Location elseLoc) {
-              b.create<scf::YieldOp>(
-                  loc, extractElementFromInputs(elseBuilder, elseLoc,
-                                                inputs.drop_front(), indices,
-                                                resultType, concatDim, zero));
+              elseBuilder.create<scf::YieldOp>(
+                  elseLoc, extractElementFromInputs(
+                               elseBuilder, elseLoc, inputs.drop_front(),
+                               resultType, concatDim, materializeAndInsert));
             })
         .getResult(0);
   }

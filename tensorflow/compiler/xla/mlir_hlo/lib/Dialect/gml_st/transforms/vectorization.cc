@@ -363,8 +363,7 @@ struct VectorizeGmlStLoopsPass
       patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
       patterns.add<ParallelOpVectorizationPattern>(ctx, isValidDistribution);
     }
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
-      return signalPassFailure();
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 
