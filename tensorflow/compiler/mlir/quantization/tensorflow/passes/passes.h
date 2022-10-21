@@ -88,7 +88,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizePass(
 
 // Creates an instance of the PrepareQuantizeDRQ pass, which will
 // perfrom similar transformations as TFL::PrepareQuantizeDynamicRangePass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizeDRQPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareQuantizeDRQPass(
+    const QuantizationSpecs& quant_specs, OpSet op_set);
 
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.
