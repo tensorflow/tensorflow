@@ -47,6 +47,7 @@ tf_cc_test(
     srcs = [
         "execution_metadata_exporter_test.cc",
     ],
+    linkstatic = True,
     deps = [
         ":execution_metadata_exporter",
         ":runtime_metadata_fbs",

@@ -494,6 +494,7 @@ tf_cc_test(
     name = "tftext_utils_test",
     size = "small",
     srcs = ["utils/tftext_utils_test.cc"],
+    linkstatic = True,
     deps = [
         ":tftext_utils",
         "//tensorflow/core:framework",
@@ -541,6 +542,7 @@ tf_cc_test(
     name = "lstm_utils_test",
     size = "small",
     srcs = ["utils/lstm_utils_test.cc"],
+    linkstatic = True,
     deps = [
         ":lstm_utils",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -559,6 +561,7 @@ tf_cc_test(
     name = "perception_ops_utils_test",
     size = "small",
     srcs = ["utils/perception_ops_utils_test.cc"],
+    linkstatic = True,
     deps = [
         ":perception_ops_utils",
         ":tensorflow_lite",

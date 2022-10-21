@@ -2479,6 +2479,7 @@ tf_cc_test(
     name = "bridge_logger_test",
     size = "small",
     srcs = ["utils/bridge_logger_test.cc"],
+    linkstatic = True,
     deps = [
         ":bridge_logger",
         ":serialize_mlir_module_utils",

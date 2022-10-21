@@ -243,6 +243,7 @@ cc_library(
 tf_cc_test(
     name = "tfr_decompose_ctx_test",
     srcs = ["integration/tfr_decompose_ctx_test.cc"],
+    linkstatic = True,
     deps = [
         ":tfr_decompose_ctx",
         "//tensorflow/compiler/xla:test",

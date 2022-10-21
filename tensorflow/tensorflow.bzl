@@ -1021,6 +1021,65 @@ def tf_cc_binary(
             visibility = visibility,
         )
 
+def tf_cc_shared_binary(
+        name,
+        srcs = [],
+        deps = [],
+        data = [],
+        linkopts = lrt_if_needed(),
+        copts = tf_copts(),
+        kernels = [],
+        per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
+        visibility = None,
+        **kwargs):
+    if kernels:
+        added_data_deps = tf_binary_dynamic_kernel_dsos()
+    else:
+        added_data_deps = []
+
+    if per_os_targets:
+        names = [pattern % (name, "") for pattern in SHARED_LIBRARY_NAME_PATTERNS]
+    else:
+        names = [name]
+
+    # Optional MKL dependency, we also tell buildcleaner to ignore this dep using a tag.
+    mkl_dep = if_mkl_ml([clean_dep("//third_party/mkl:intel_binary_blob")])
+    tags = kwargs.pop("tags", []) + ["req_dep=" + clean_dep("//third_party/mkl:intel_binary_blob")]
+
+    for name_os in names:
+        cc_binary(
+            name = name_os,
+            copts = copts,
+            srcs = srcs + tf_binary_additional_srcs(),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_dep + if_static(
+                extra_deps = [],
+                macos = [],
+                otherwise = [
+                    clean_dep("//tensorflow:libtensorflow_framework_import_lib_default"),
+                ],
+            ),
+            dynamic_deps = if_static(
+                extra_deps = [],
+                macos = ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+                otherwise = [],
+            ),
+            tags = tags,
+            data = depset(data + added_data_deps),
+            linkopts = linkopts + _rpath_linkopts(name_os),
+            visibility = visibility,
+            **kwargs
+        )
+    if name not in names:
+        native.filegroup(
+            name = name,
+            srcs = select({
+                "//tensorflow:windows": [":%s.dll" % name],
+                "//tensorflow:macos": [":lib%s.dylib" % name],
+                "//conditions:default": [":lib%s.so" % name],
+            }),
+            visibility = visibility,
+        )
+
 register_extension_info(
     extension = tf_cc_binary,
     label_regex_for_dep = "{extension_name}",
@@ -1401,6 +1460,55 @@ def tf_cc_test(
                tf_binary_dynamic_kernel_dsos() +
                tf_binary_additional_srcs(),
         exec_properties = tf_exec_properties(kwargs),
+        **kwargs
+    )
+
+def tf_cc_shared_test(
+        name,
+        srcs,
+        deps,
+        data = [],
+        linkstatic = False,
+        extra_copts = [],
+        suffix = "",
+        linkopts = lrt_if_needed(),
+        kernels = [],
+        **kwargs):
+    cc_test(
+        name = "%s%s" % (name, suffix),
+        srcs = srcs + tf_binary_additional_srcs(),
+        copts = tf_copts() + extra_copts,
+        linkopts = select({
+            clean_dep("//tensorflow:android"): [
+                "-pie",
+            ],
+            clean_dep("//tensorflow:windows"): [],
+            clean_dep("//tensorflow:macos"): [
+                "-lm",
+            ],
+            "//conditions:default": [
+                "-lpthread",
+                "-lm",
+                "-ldl",
+            ],
+            clean_dep("//third_party/compute_library:build_with_acl"): ["-fopenmp"],
+        }) + linkopts + _rpath_linkopts(name),  # _rpath_user_link_flags(name)
+        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
+            [
+                clean_dep("//third_party/mkl:intel_binary_blob"),
+            ],
+        ),
+        dynamic_deps = if_static(
+            extra_deps = [],
+            macos = ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
+            # otherwise = [],
+            otherwise = ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        ),
+        data = data +
+               tf_binary_dynamic_kernel_dsos() +
+               tf_binary_additional_srcs(),
+        exec_properties = tf_exec_properties(kwargs),
+        linkstatic = linkstatic,
         **kwargs
     )
 

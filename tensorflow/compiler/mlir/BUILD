@@ -253,6 +253,7 @@ tf_cc_binary(
 tf_cc_test(
     name = "mlir_graph_optimization_pass_test",
     srcs = ["mlir_graph_optimization_pass_test.cc"],
+    linkstatic = True,
     deps = [
         ":mlir_graph_optimization_pass",
         "//tensorflow/core:ops",

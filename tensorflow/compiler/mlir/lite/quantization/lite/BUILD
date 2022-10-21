@@ -156,6 +156,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
         "//tensorflow/lite/tools/optimize:testdata/where.bin",
     ],
+    linkstatic = True,
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
@@ -185,6 +186,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
         "//tensorflow/lite/tools/optimize:testdata/weight_shared_between_convs.bin",
     ],
+    linkstatic = True,  # Temporary fix. Shouldn't be needed.
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",

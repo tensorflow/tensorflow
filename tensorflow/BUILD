@@ -9,6 +9,7 @@ load(
     "VERSION",
     "VERSION_MAJOR",
     "if_google",
+    "if_macos",
     "if_oss",
     "if_xla_available",
     "tf_cc_shared_object",
@@ -1081,6 +1082,38 @@ tf_cc_shared_library(
         "//tensorflow:tf_framework_version_script.lds",
         "//tensorflow:tf_private_symbols.lds",
     ],
+    # Exports statically linked libraries so they can be linked dynamically.
+    exports_filter = [
+        "//:__subpackages__",
+        "@gif//:__subpackages__",
+        "@highwayhash//:__subpackages__",
+        "@libjpeg_turbo//:__subpackages__",
+        "@llvm-project//:__subpackages__",
+        "@nsync//:__subpackages__",
+        "@boringssl//:__subpackages__",
+        "@com_google_absl//:__subpackages__",
+        "@com_google_protobuf//:__subpackages__",
+        "@com_googlesource_code_re2//:__subpackages__",
+        "@curl//:__subpackages__",
+        "@double_conversion//:__subpackages__",
+        "@eigen_archive//:__subpackages__",
+        "@farmhash_archive//:__subpackages__",
+        "@fft2d//:__subpackages__",
+        "@jsoncpp_git//:__subpackages__",
+        "@local_config_cuda//:__subpackages__",
+        "@snappy//:__subpackages__",
+        "@zlib//:__subpackages__",
+    ] + if_macos(
+        [
+            "//third_party/eigen3:eigen3",
+            "@llvm_terminfo//:terminfo",
+            "@llvm_zlib//:zlib",
+        ],
+        [
+            "@local_config_rocm//:__subpackages__",
+            "@local_config_tensorrt//:__subpackages__",
+        ],
+    ),
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
@@ -1136,6 +1169,11 @@ cc_import(
         "//tensorflow:macos": ":libtensorflow_framework.dylib",
         "//conditions:default": ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
     }),
+)
+
+cc_import(
+    name = "libtensorflow_framework_import_lib_default",
+    shared_library = ":libtensorflow_framework.so.%s" % VERSION_MAJOR,
 )
 
 # -------------------------------------------
