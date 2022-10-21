@@ -12,18 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/profiler/lib/profiler_controller.h"
+#include "tensorflow/tsl/profiler/lib/profiler_controller.h"
 
 #include <memory>
 #include <utility>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
 ProfilerController::ProfilerController(
@@ -69,7 +69,7 @@ Status ProfilerController::Stop() {
   return status;
 }
 
-Status ProfilerController::CollectData(XSpace* space) {
+Status ProfilerController::CollectData(tensorflow::profiler::XSpace* space) {
   Status status;
   if (state_ == ProfilerState::kStop) {
     state_ = ProfilerState::kCollectData;
@@ -86,4 +86,4 @@ Status ProfilerController::CollectData(XSpace* space) {
 }
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
