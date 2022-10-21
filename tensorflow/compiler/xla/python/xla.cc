@@ -437,6 +437,9 @@ PYBIND11_MODULE(xla_extension, m) {
                &PyLoadedExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::arg("arguments"))
       .def("hlo_modules", &PyLoadedExecutable::HloModules)
+      .def("get_output_shardings", &PyLoadedExecutable::GetOutputShardings)
+      .def("get_parameter_shardings",
+           &PyLoadedExecutable::GetParameterShardings)
       .def("keep_alive", &PyLoadedExecutable::KeepAlive)
       .def_property_readonly("traceback", &PyLoadedExecutable::traceback)
       .def_property_readonly("fingerprint",
@@ -630,6 +633,8 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<PjRtExecutable, std::shared_ptr<PjRtExecutable>>(m, "Executable")
       .def("hlo_modules", &PjRtExecutable::GetHloModules)
+      .def("get_output_shardings", &PjRtExecutable::GetOutputShardings)
+      .def("get_parameter_shardings", &PjRtExecutable::GetParameterShardings)
       .def("get_compiled_memory_stats", &PjRtExecutable::GetCompiledMemoryStats)
       .def("serialize", &PjRtExecutable::SerializeExecutable);
 
