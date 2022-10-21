@@ -60,7 +60,7 @@ class DistributedRuntimeServiceImpl final
 
     // How long should we wait for all clients to call Shutdown() before giving
     // up and returning a failure?
-    absl::Duration shutdown_timeout = absl::Seconds(60);
+    absl::Duration shutdown_timeout = absl::Minutes(5);
   };
   explicit DistributedRuntimeServiceImpl(const Options& options);
   ~DistributedRuntimeServiceImpl() override;
