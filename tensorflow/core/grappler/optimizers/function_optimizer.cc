@@ -1277,6 +1277,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     if (MarkedForXlaCompilation(n->def())) continue;
     // Skip nodes in a feed set.
     if (feed_nodes.contains(n->name())) continue;
+    // Skip save and restore nodes.
+    if (n->name() == item.restore_op || n->name() == item.save_op) continue;
 
     // Function body that we will inline into the main graph. It can be a
     // function instantiation, or a gradient function instantiated from
