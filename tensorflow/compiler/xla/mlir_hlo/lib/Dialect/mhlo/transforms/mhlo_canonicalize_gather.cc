@@ -150,7 +150,7 @@ struct CanonicalizeGatherPattern : public OpRewritePattern<GatherOp> {
     auto newDims = GatherDimensionNumbersAttr::get(
         rewriter.getContext(), offsetDims,
         /*collapsedSliceDims=*/{}, startIndexMap,
-        /*indexVectoDim=*/1);
+        /*indexVectorDim=*/1);
     TypedValue<TensorType> result =
         b.create<GatherOp>(operand, startIndices, newDims,
                            b.getI64TensorAttr(permute(
