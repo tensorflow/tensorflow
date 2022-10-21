@@ -551,19 +551,13 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
 
 struct LegalizeSortPass
     : public impl::HloLegalizeSortPassBase<LegalizeSortPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<scf::SCFDialect>();
-    registry.insert<memref::MemRefDialect>();
-    registry.insert<tensor::TensorDialect>();
-    registry.insert<bufferization::BufferizationDialect>();
-  }
   // Perform the lowering to MLIR control flow.
   void runOnOperation() override {
     func::FuncOp f = getOperation();
     MLIRContext* ctx = f.getContext();
 
-    RewritePatternSet patterns(&getContext());
-    patterns.add<SortOpPattern>(&getContext());
+    RewritePatternSet patterns(ctx);
+    patterns.add<SortOpPattern>(ctx);
 
     mlir::ConversionTarget target(*ctx);
     target.markUnknownOpDynamicallyLegal([](Operation*) { return true; });
