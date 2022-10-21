@@ -31,6 +31,7 @@ limitations under the License.
 
 namespace mlir {
 namespace gml_st {
+bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 namespace {
 
 /// Rewrite a LoopOp with bounds/step that potentially do not divide evenly
@@ -116,7 +117,6 @@ static void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, LoopOp mainLoop,
   });
 }
 
-bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 using ::mlir::linalg::LinalgOp;
 
 void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,

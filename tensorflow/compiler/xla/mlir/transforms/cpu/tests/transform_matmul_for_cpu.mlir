@@ -1,4 +1,5 @@
 // RUN: xla-cpu-opt %s -xla-cpu-transform-matmul | FileCheck %s --check-prefixes COMMON,SIZE-TWO
+// RUN: xla-cpu-opt %s -xla-cpu-transform-matmul="tile-sizes=0,0,0" | FileCheck %s --check-prefix EMPTY
 // RUN: xla-cpu-opt %s -xla-cpu-transform-matmul="tile-sizes=2,2,2" | FileCheck %s --check-prefixes COMMON,SIZE-TWO
 // RUN: xla-cpu-opt %s -xla-cpu-transform-matmul="tile-sizes=8,4,2" | FileCheck %s --check-prefixes COMMON,DIFF-SIZES
 
@@ -11,6 +12,11 @@ func.func @matmul_static(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
                      outs(%output : tensor<128x64xf32>) -> tensor<128x64xf32>
   return %2 : tensor<128x64xf32>
 }
+
+// EMPTY-LABEL:     func @matmul_static(
+// EMPTY-NOT:       gml_st.parallel
+// EMPTY-NOT:       gml_st.for
+// EMPTY:           linalg.matmul
 
 // COMMON-LABEL:    func @matmul_static(
 // COMMON-SAME:       %[[LHS:.*]]: tensor<128x16xf32>,
@@ -83,6 +89,11 @@ func.func @matmul(%arg0: tensor<?x?xf32>, %arg1: tensor<?x?xf32>)
                      outs(%3 : tensor<?x?xf32>) -> tensor<?x?xf32>
   return %4 : tensor<?x?xf32>
 }
+
+// EMPTY-LABEL:     func @matmul(
+// EMPTY-NOT:       gml_st.parallel
+// EMPTY-NOT:       gml_st.for
+// EMPTY:           linalg.matmul
 
 // COMMON-LABEL:     func @matmul(
 // COMMON-SAME:        %[[LHS:.*]]: tensor<?x?xf32>,

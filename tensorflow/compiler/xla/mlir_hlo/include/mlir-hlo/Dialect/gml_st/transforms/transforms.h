@@ -30,6 +30,8 @@ struct LinalgTilingOptions;
 namespace mlir {
 namespace gml_st {
 
+bool isZero(Value v);
+
 /// Rewrite a gml_st::LoopOp with bounds/step that potentially do not divide
 /// evenly into a gml_st::LoopOp where the step divides the iteration space
 /// evenly, followed by another gml_st::LoopOp for the last (partial) iteration

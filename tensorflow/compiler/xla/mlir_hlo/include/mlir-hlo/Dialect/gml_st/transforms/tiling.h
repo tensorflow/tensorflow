@@ -26,8 +26,8 @@ namespace mlir {
 namespace gml_st {
 
 struct TilingResult {
-  Operation *tiledOp;
-  Operation *loop;
+  Operation *tiledOp = nullptr;
+  Operation *loop = nullptr;
 };
 
 /// Options to use to control tiling.
