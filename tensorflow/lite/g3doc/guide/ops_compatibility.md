@@ -24,7 +24,6 @@ model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
 optimized, along with the limitations imposed by this process.
 
-
 ## Supported operators
 
 TensorFlow Lite built-in operators are a subset of the operators
@@ -134,7 +133,6 @@ from the graph:
 
 Note: Many of those operations don't have TensorFlow Lite equivalents, and the
 corresponding model will not be convertible if they can't be elided or fused.
-
 
 ## Experimental Operations
 The following TensorFlow Lite operations are present, but not ready for custom
