@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTABLE_H_
+#define TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTABLE_H_
 
 #include <memory>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/backends/interpreter/executable_base.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/interpreter/executable_base.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -66,4 +66,4 @@ class InterpreterExecutable : public InterpreterExecutableBase {
 }  // namespace interpreter
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTABLE_H_

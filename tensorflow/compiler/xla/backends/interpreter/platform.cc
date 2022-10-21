@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/interpreter/platform.h"
+#include "tensorflow/compiler/xla/backends/interpreter/platform.h"
 
 #include <memory>
 #include <utility>
 
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/service/interpreter/executor.h"
+#include "tensorflow/compiler/xla/backends/interpreter/executor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"

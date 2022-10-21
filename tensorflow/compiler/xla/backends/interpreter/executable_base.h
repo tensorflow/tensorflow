@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_BASE_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_BASE_H_
+#ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTABLE_BASE_H_
+#define TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTABLE_BASE_H_
 
 #include <memory>
 #include <optional>
@@ -62,4 +62,4 @@ class InterpreterExecutableBase : public Executable {
 }  // namespace interpreter
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTABLE_BASE_H_
+#endif  // TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTABLE_BASE_H_

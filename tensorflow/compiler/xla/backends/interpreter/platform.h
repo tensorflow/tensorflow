@@ -12,13 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_
+#ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_PLATFORM_H_
+#define TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_PLATFORM_H_
 
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
+#include "tensorflow/compiler/xla/backends/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/executor_cache.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -73,4 +73,4 @@ class XlaInterpreterPlatform : public Platform {
 }  // namespace interpreter
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_PLATFORM_H_
+#endif  // TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_PLATFORM_H_

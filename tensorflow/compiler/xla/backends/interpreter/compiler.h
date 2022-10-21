@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_COMPILER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_COMPILER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_COMPILER_H_
+#define TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_COMPILER_H_
 
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/backends/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
@@ -71,4 +71,4 @@ class InterpreterCompiler : public Compiler {
 }  // namespace interpreter
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_COMPILER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_COMPILER_H_

@@ -16,8 +16,8 @@ limitations under the License.
 // Declares the XlaInterpreterExecutor class, which is a CPU-only implementation
 // of the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
+#define TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 
 #include <functional>
 #include <memory>
@@ -212,4 +212,4 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
 }  // namespace interpreter
 }  // namespace stream_executor
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_INTERPRETER_EXECUTOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTOR_H_

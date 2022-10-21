@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/interpreter/executable_base.h"
+#include "tensorflow/compiler/xla/backends/interpreter/executable_base.h"
 
 #include <type_traits>
 #include <vector>
