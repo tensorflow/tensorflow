@@ -24,7 +24,6 @@ import numpy
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
@@ -526,34 +525,6 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     # This matches the previous call.
     defined(1, baz=3, bar=2)
     self.assertLen(total_function_cache(defined), 3)
-
-  def testDatasetIteratorCaching(self):
-
-    def func(it1, it2):
-      next(it1)
-      next(it2)
-      return 0
-
-    defined = quarantine.defun(func)
-
-    d = dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3])
-    it1 = iter(d)
-    it2 = iter(d)
-    _ = defined(it1, it2)  # The two iterators are different
-    self.assertLen(total_function_cache(defined), 1)
-
-    it3 = iter(d)
-    it4 = iter(d)
-    _ = defined(it3, it4)  # The two iterators are different, should not retrace
-    self.assertLen(total_function_cache(defined), 1)
-
-    it5 = iter(d)
-    _ = defined(it5, it5)  # The two iterators are the same, should retrace
-    self.assertLen(total_function_cache(defined), 2)
-
-    it6 = iter(d)
-    _ = defined(it6, it6)  # The two iterators are the same, should not retrace
-    self.assertLen(total_function_cache(defined), 2)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
