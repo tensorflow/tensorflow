@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir-hlo/Transforms/gml_st_pipeline.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
@@ -49,10 +48,6 @@ int main(int argc, char **argv) {
       "hlo-to-gpu-pipeline",
       "Pipeline to transform HLO to LLVM + NVVM dialects.",
       createHloToGpuPipeline);
-
-  PassPipelineRegistration<GmlStPipelineOptions>(
-      "gml-st-pipeline", "Pipeline to transform HLO to GmlSt and Linalg.",
-      createGmlStPipeline);
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

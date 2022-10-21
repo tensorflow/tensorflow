@@ -1277,23 +1277,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gml_st_pipeline",
-    srcs = ["lib/Transforms/gml_st_pipeline.cc"],
-    hdrs = ["include/mlir-hlo/Transforms/gml_st_pipeline.h"],
-    deps = [
-        ":all_passes",
-        ":gml_st_passes",
-        ":mhlo_passes",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "gml_st_passes",
     srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h.inc",
@@ -1420,7 +1403,6 @@ cc_binary(
         ":all_passes",
         ":gml_st",
         ":gml_st_passes",
-        ":gml_st_pipeline",
         ":gml_st_test_passes",
         ":hlo_dialect_registration",
         ":lhlo",
