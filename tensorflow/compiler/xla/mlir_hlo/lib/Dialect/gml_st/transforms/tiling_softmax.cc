@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
@@ -124,10 +125,12 @@ struct TilePartialSoftmaxPattern
 
   TilePartialSoftmaxPattern(MLIRContext *ctx, bool distribute,
                             SmallVector<int64_t> tileSizes,
+                            StringRef distributionLabel,
                             PatternBenefit benefit = 1)
       : OpInterfaceRewritePattern<TilingInterface>(ctx, benefit),
         distribute(distribute),
-        tileSizes(std::move(tileSizes)) {}
+        tileSizes(std::move(tileSizes)),
+        distributionLabel(distributionLabel) {}
 
   LogicalResult matchAndRewrite(TilingInterface op,
                                 PatternRewriter &rewriter) const override {
@@ -160,7 +163,7 @@ struct TilePartialSoftmaxPattern
             return tileSizeValues;
           };
           tilingOptions.distribute = distribute;
-
+          tilingOptions.distributionLabel = distributionLabel;
           // Tile.
           FailureOr<TilingResult> tilingResult =
               tile(tilingOptions, rewriter, op);
@@ -175,6 +178,7 @@ struct TilePartialSoftmaxPattern
  private:
   bool distribute;
   SmallVector<int64_t> tileSizes;
+  std::string distributionLabel;
 };
 
 struct FusePartialSoftmaxPattern : public OpRewritePattern<MaterializeOp> {
@@ -238,9 +242,10 @@ struct FuseUnaryCwisePattern : public OpRewritePattern<MaterializeOp> {
 struct TilingSoftmaxPass
     : public impl::TilingSoftmaxPassBase<TilingSoftmaxPass> {
   TilingSoftmaxPass() = default;
-  TilingSoftmaxPass(bool distr, ArrayRef<int64_t> ts) {
+  TilingSoftmaxPass(bool distr, ArrayRef<int64_t> ts, StringRef dl) {
     this->distribute = distr;
     this->tileSizes = ts;
+    this->distributionLabel = dl.str();
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -258,7 +263,8 @@ struct TilingSoftmaxPass
     RewritePatternSet patterns(ctx);
     SmallVector<int64_t> tileSizes(this->tileSizes.begin(),
                                    this->tileSizes.end());
-    patterns.insert<TilePartialSoftmaxPattern>(ctx, distribute, tileSizes);
+    patterns.insert<TilePartialSoftmaxPattern>(ctx, distribute, tileSizes,
+                                               distributionLabel);
     patterns.insert<FuseUnaryCwisePattern, FusePartialSoftmaxPattern>(ctx);
 
     if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
@@ -277,8 +283,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass() {
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
-    bool distribute, ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TilingSoftmaxPass>(distribute, tileSizes);
+    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel) {
+  return std::make_unique<TilingSoftmaxPass>(distribute, tileSizes,
+                                             distributionLabel);
 }
 
 }  // namespace gml_st

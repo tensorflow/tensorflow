@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file \
-// RUN:     --gml-tiling-softmax="tile-sizes=8,16 distribute=true" \
+// RUN:     --gml-tiling-softmax="tile-sizes=8,16 distribute=true distribution-label=test" \
 // RUN:     --canonicalize --cse | \
 // RUN: FileCheck %s
 
@@ -21,6 +21,7 @@ func.func @partial_softmax(%arg0: tensor<64x128xf32>) -> tensor<64x128xf32> {
   // CHECK:       %[[PARALLEL:.*]] = gml_st.parallel
   // CHECK-SAME:      (%[[ARG1:.*]]) = (%[[C0]])
   // CHECK-SAME:      to (%[[C64]]) step (%[[C8]])
+  // CHECK-SAME:      distribution ("test")
   // CHECK-DAG:     %[[TILE:.*]] = gml_st.tile [%[[ARG1]], 0] [8, 128] [1, 1]
   // CHECK-DAG:     %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
   // CHECK-DAG:     %[[TILE_0:.*]] = gml_st.tile [%[[ARG1]]] [8] [1]

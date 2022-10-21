@@ -51,7 +51,8 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwiseGPUWarpsPass();
 
 /// Pass to match, tile, and fuse softmax implementations.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass(
-    bool distribute, ArrayRef<int64_t> tileSizes);
+    bool distribute, ArrayRef<int64_t> tileSizes,
+    StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingSoftmaxPass();
 
 /// Pass to collapse (or uncollapse) materialize operations.
