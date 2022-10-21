@@ -353,7 +353,12 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr,
   // We update instruction->backend_config(); if no algorithms are supported,
   // a different API is used, which does not require specifying an algorithm.
   GemmBackendConfig updated_config = gemm_config;
-  if (gemm_algorithm) {
+
+  // We only set the 'algorithm' field on non-Ampere architectures, as for
+  // Ampere it's ignored in any case.
+  if (gemm_algorithm &&
+      !executor->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
+          se::CudaComputeCapability::AMPERE)) {
     VLOG(4) << "GEMM autotuning picked algorithm " << *gemm_algorithm << " for "
             << instr->name();
     updated_config.set_selected_algorithm(*gemm_algorithm);
