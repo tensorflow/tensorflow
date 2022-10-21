@@ -386,10 +386,14 @@ CpuXlaRuntimeAotCompilationResult::LoadExecutable(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
                       compiler->AssignBuffers(hlo_module.get()));
 
+  // TODO(b/232263665): JitOptions should be used only for JIT case because it
+  // has details irrelevant to AOT.
+  runtime::JitExecutable::Options opts = GetXlaRuntimeJitExecutableOptions();
+
   return CpuExecutable::LoadFromObjFile(
       std::move(hlo_module), xla_runtime_executable.obj_file(),
       xla_runtime_executable.mlir_module(), std::move(buffer_assignment),
-      xla_framework_mapping);
+      xla_framework_mapping, opts);
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(

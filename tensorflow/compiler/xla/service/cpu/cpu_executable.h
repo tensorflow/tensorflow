@@ -172,9 +172,8 @@ class CpuExecutable : public Executable {
       std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
       absl::string_view mlir_module,
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      XlaFrameworkMapping xla_framework_mapping) {
-    return Unimplemented("LoadFromObjFile unimplemented");
-  }
+      XlaFrameworkMapping xla_framework_mapping,
+      runtime::JitExecutable::Options opts);
 
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
