@@ -31,7 +31,8 @@ from tensorflow.python.platform import test
 
 
 FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
-if test_util.is_gpu_available(cuda_only=True, min_cuda_compute_capability=(8, 0)):
+if test_util.is_gpu_available(
+      cuda_only=True, min_cuda_compute_capability=(8, 0)):
   FLOATS += [dtypes.bfloat16]
 
 class RandomOpTestCommon(test.TestCase):
@@ -213,9 +214,9 @@ class TruncatedNormalTest(test.TestCase):
         results[use_gpu] = sampler()
       atol = rtol = 1e-6
       if dt == dtypes.float16:
-         atol = rtol = 1e-3
+        atol = rtol = 1e-3
       if dt == dtypes.bfloat16:
-         atol = rtol = 1e-1
+        atol = rtol = 1e-1
       self.assertAllClose(results[False], results[True], rtol=rtol, atol=atol)
 
   @test_util.run_deprecated_v1

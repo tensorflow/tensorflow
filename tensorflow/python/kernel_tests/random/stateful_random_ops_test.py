@@ -43,7 +43,8 @@ g_unseeded = None
 
 
 GPU_FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
-if test_util.is_gpu_available(cuda_only=True, min_cuda_compute_capability=(8, 0)):
+if test_util.is_gpu_available(
+      cuda_only=True, min_cuda_compute_capability=(8, 0)):
   GPU_FLOATS += [dtypes.bfloat16]
 CPU_FLOATS = [dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64]
 FLOATS = GPU_FLOATS
