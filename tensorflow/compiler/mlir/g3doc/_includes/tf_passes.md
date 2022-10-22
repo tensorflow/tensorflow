@@ -691,6 +691,53 @@ would be transformed into something like
   call @x_2(%c)
 with @x_1, @x_2 and @y_1 filled in.
 ### `-tf-guarantee-all-funcs-one-use`: Guarantee all FuncOp's have only a single use.
+### `-tf-hoist-loop-invariant`: Hoists loop invariant ops to the outside of the loop
+   Hoists loop invariant to the outside of the loop. The pass is similar to
+   LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+   if the variable is read only.
+
+   For example, the following pseudo MLIR code (types are left out for
+   brevity)
+   ```mlir
+     func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+  %1 = "tf.ReadVariableOp"(%var)
+         %2 = "tf.OpB"(%1) {is_stateless = true}
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   would be transformed to
+   ```mlir
+    func.func @hoist_loop_invariant(%arg0, %arg1) {
+%var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+%1 = "tf.ReadVariableOp"(%var)
+       %2 = "tf.OpB"(%1) {is_stateless = true}
+       %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+       ^bb0(%arg2, %arg3):
+         %0 = "tf.OpA"() {is_stateless = true}
+         "tf.Yield"(%0)
+       }, {
+       ^bb0(%arg2, %arg3):
+         %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+         %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+         "tf.Yield"(%3, %4)
+       }) {is_stateless = true}
+       return %results#0, %results#1
+     }
+   ```
+   The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+   the loop.
+
 ### `-tf-hoist-replicate-invariant-resource-writes`: Hoists writes to replicate invariant resource variables.
 This pass hoists replicate invariant resource variable writes outside
 tf_device.replicate op. These may have been inserted by other passes such as
