@@ -170,7 +170,8 @@ struct MaterializeOpVectorizationPattern
     // TODO(b/244314345): Support imperfect tiling, which results in dynamic
     // shapes.
     if (!sourceType.isa<RankedTensorType>() ||
-        sourceType.getNumDynamicDims() > 0)
+        sourceType.getNumDynamicDims() > 0 ||
+        !op.getSet().getType().cast<TileType>().hasStaticShape())
       return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
