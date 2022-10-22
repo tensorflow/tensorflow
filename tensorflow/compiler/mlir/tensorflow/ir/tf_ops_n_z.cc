@@ -3222,6 +3222,38 @@ Region &WhileRegionOp::getLoopBody() { return body(); }
 // WhileRegionOp canonicalization
 //===----------------------------------------------------------------------===//
 namespace {
+
+// Make casts before a `WhileRegion` be explicit. After this rewrite a
+// `WhileRegion` operand will have the same type as its corresponding iteration
+// variable. An operand and its iteration variables with the same type enables
+// WhileRegionEliminatePassthrough.
+struct WhileRegionExplicitCast : public OpRewritePattern<WhileRegionOp> {
+  using OpRewritePattern<WhileRegionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(WhileRegionOp while_op,
+                                PatternRewriter &rewriter) const override {
+    auto &body_block = while_op.body().front();
+    auto &cond_block = while_op.cond().front();
+    bool changed = false;
+    for (int op_idx : llvm::seq<int>(0, while_op.getNumOperands())) {
+      auto body_arg = body_block.getArgument(op_idx);
+      auto cond_arg = cond_block.getArgument(op_idx);
+      auto while_operand = while_op.getOperand(op_idx);
+      // Do not change if the body and cond type differ since there is no type
+      // to cast to.
+      if (body_arg.getType() == cond_arg.getType() &&
+          body_arg.getType() != while_operand.getType()) {
+        changed = true;
+        rewriter.setInsertionPoint(while_op);
+        auto cast_op = rewriter.create<CastOp>(
+            while_op.getLoc(), body_arg.getType(), while_operand);
+        while_op.setOperand(op_idx, cast_op);
+      }
+    }
+    return success(changed);
+  }
+};
+
 // Eliminate values that pass through the WhileRegionOp body.
 struct WhileRegionEliminatePassThrough
     : public OpRewritePattern<WhileRegionOp> {
@@ -3325,7 +3357,8 @@ struct WhileRegionEliminatePassThrough
 
 void WhileRegionOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                 MLIRContext *context) {
-  results.add<WhileRegionEliminatePassThrough>(context);
+  results.add<WhileRegionExplicitCast, WhileRegionEliminatePassThrough>(
+      context);
 }
 
 //===----------------------------------------------------------------------===//
