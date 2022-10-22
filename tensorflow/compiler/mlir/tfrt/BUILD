@@ -691,6 +691,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_passes",
         "//tensorflow/compiler/mlir/tfrt/jit/transforms:tf_jitrt_test_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
+        "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/core:lib",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:MlirOptLib",
