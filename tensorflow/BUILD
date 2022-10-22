@@ -1151,7 +1151,7 @@ tf_cc_shared_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:managed_stack_trace",
-         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
