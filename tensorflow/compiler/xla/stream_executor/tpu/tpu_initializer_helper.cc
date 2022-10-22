@@ -231,9 +231,7 @@ void InitializePjRt(void* library_handle) {
 }
 
 namespace {
-void* CreateGcsFilesystemFn() {
-  return new tensorflow::RetryingGcsFileSystem();
-}
+void* CreateGcsFilesystemFn() { return new tsl::RetryingGcsFileSystem(); }
 
 // This is a temporary fix for including GCS file system on TPU builds.
 // Will be removed once b/176954917 is fully resolved with the build fix.
@@ -245,7 +243,7 @@ void InitializeCreateGcsFileSystemFnPtr() {
     return;
   }
 
-  if (ftruncate(fd, sizeof(tensorflow::FileSystem*)) == -1) {
+  if (ftruncate(fd, sizeof(tsl::FileSystem*)) == -1) {
     LOG(ERROR)
         << "Unable to allocate shared memory for GCS file system creator.";
     return;

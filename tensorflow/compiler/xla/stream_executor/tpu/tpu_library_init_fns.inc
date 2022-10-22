@@ -6,7 +6,7 @@
 
 namespace {
 
-tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
+tsl::Status SetTpuOpsStructFns(void* library_handle) { // TENSORFLOW_STATUS_OK
   // Constant cast so that we can initialize the functions. The functions are
   // mutable here because this is the only place where they are initialized.
   auto* ops_api_fn = const_cast<TfTpu_OpsApiFn*>(tensorflow::tpu::OpsApiFn());
@@ -113,14 +113,14 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn,
                TpuEmbeddingEngine_SendTPUEmbeddingGradientsComputation);
 
-  return tensorflow::OkStatus();
+  return tsl::OkStatus();
 }
 
-tensorflow::Status InitializeTpuStructFns(void* library_handle) {
+tsl::Status InitializeTpuStructFns(void* library_handle) { // TENSORFLOW_STATUS_OK
   TF_RETURN_IF_ERROR(SetTpuOpsStructFns(library_handle));
   TF_RETURN_IF_ERROR(SetExecutorStructFn(library_handle));
 
-  return tensorflow::OkStatus();
+  return tsl::OkStatus();
 }
 
 }  // namespace

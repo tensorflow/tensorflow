@@ -1,6 +1,6 @@
 namespace {
 
-tensorflow::Status SetExecutorStructFn(void* library_handle) {
+tsl::Status SetExecutorStructFn(void* library_handle) { // TENSORFLOW_STATUS_OK
   auto* executor_fn = tensorflow::tpu::ExecutorApiFn();
 
   TFTPU_SET_FN(executor_fn, TpuPlatform_New);
@@ -164,7 +164,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuAsyncCollectiveOffloadHelper_Init);
   TFTPU_SET_FN(executor_fn, TpuAsyncCollectiveOffloadHelper_Shutdown);
 
-  return tensorflow::OkStatus();
+  return tsl::OkStatus();
 }
 
 }  // namespace
