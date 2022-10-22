@@ -35,9 +35,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-#include "tensorflow/core/kernels/xsmm_conv2d.h"
-#endif
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
@@ -191,75 +188,6 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
     }
   }
 };
-
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-template <typename Device, class T>
-struct LaunchXsmmBackwardFilter {
-  bool operator()(OpKernelContext* context, const Device& d,
-                  typename TTypes<T, 4>::ConstTensor input_backward,
-                  typename TTypes<T, 4>::Tensor kernel,
-                  typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int row_stride,
-                  int col_stride, int pad_h, int pad_w,
-                  TensorFormat data_format) const {
-    return false;
-  }
-};
-
-template <>
-struct LaunchXsmmBackwardFilter<CPUDevice, float> {
-  bool operator()(OpKernelContext* context, const CPUDevice& d,
-                  typename TTypes<float, 4>::ConstTensor input,
-                  typename TTypes<float, 4>::Tensor filter,
-                  typename TTypes<float, 4>::ConstTensor output, int input_rows,
-                  int input_cols, int row_stride, int col_stride, int pad_h,
-                  int pad_w, TensorFormat data_format) const {
-    auto batch = input.dimension(0);
-    auto in_depth = input.dimension(3);
-    auto out_depth = output.dimension(3);
-    auto filter_rows = filter.dimension(0);
-    auto filter_cols = filter.dimension(1);
-
-    auto num_threads =
-        context->device()->tensorflow_cpu_worker_threads()->num_threads;
-    // See libxsmm_dnn.h for this struct definition.
-    libxsmm_dnn_conv_desc desc;
-    desc.N = batch;
-    desc.C = in_depth;
-    desc.H = input_rows;
-    desc.W = input_cols;
-    desc.K = out_depth;
-    desc.R = filter_rows;
-    desc.S = filter_cols;
-    desc.u = row_stride;
-    desc.v = col_stride;
-    desc.pad_h = pad_h;
-    desc.pad_w = pad_w;
-    desc.pad_h_in = 0;  // pad_rows;  // ignored by libxsmm for now.
-    desc.pad_w_in = 0;  // pad_cols;  // ignored by libxsmm for now.
-    desc.pad_h_out = 0;
-    desc.pad_w_out = 0;
-    desc.threads = num_threads;
-    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
-    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
-    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
-    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    if (!CanUseXsmmConv2D(desc, data_format)) {
-      return false;
-    }
-
-    auto input_ptr = input.data();
-    auto filter_ptr = filter.data();
-    auto output_ptr = output.data();
-    bool success = functor::XsmmBkwFilterConv2D<CPUDevice, float>()(
-        context, desc, input_ptr, filter_ptr, output_ptr);
-    return success;
-  }
-};
-#endif
 
 template <typename Device, class T>
 class Conv2DBackpropFilterOp : public OpKernel {
@@ -420,10 +348,10 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     if (std::is_same<Device, CPUDevice>::value ||
         std::is_same<Device, GPUDevice>::value) {
       // TODO(yangzihao): Add a CPU implementation for dilated convolution.
-      OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
-                  errors::InvalidArgument(
-                      "Current libxsmm and customized CPU implementations do "
-                      "not yet support dilation rates larger than 1."));
+      OP_REQUIRES(
+          context, (dilations_[1] == 1 && dilations_[2] == 1),
+          errors::InvalidArgument("Current CPU implementations do not yet "
+                                  "support dilation rates larger than 1."));
       dilations_ = {1, 1, 1, 1};
     }
   }
@@ -479,21 +407,6 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
             dims.spatial_dims[1].input_size, dims.spatial_dims[1].filter_size,
             dims.spatial_dims[1].stride, padding_,
             &dims.spatial_dims[1].output_size, &pad_left, &pad_right));
-#if defined TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS && \
-    defined TENSORFLOW_USE_LIBXSMM_BACKWARD_CONVOLUTIONS
-    if (pad_left == pad_right && pad_top == pad_bottom) {
-      if (LaunchXsmmBackwardFilter<Device, T>()(
-              context, context->eigen_device<Device>(), input.tensor<T, 4>(),
-              filter_backprop->tensor<T, 4>(), out_backprop.tensor<T, 4>(),
-              dims.spatial_dims[0].input_size, dims.spatial_dims[1].input_size,
-              static_cast<int>(dims.spatial_dims[0].stride),
-              static_cast<int>(dims.spatial_dims[1].stride),
-              static_cast<int>(pad_top), static_cast<int>(pad_left),
-              data_format_)) {
-        return;
-      }
-    }
-#endif
 
     // The total dimension size of each kernel.
     const int filter_total_size = dims.spatial_dims[0].filter_size *
