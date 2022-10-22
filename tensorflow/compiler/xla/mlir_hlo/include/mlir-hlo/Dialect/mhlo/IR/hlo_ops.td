@@ -1019,7 +1019,8 @@ def HLO_AsyncDoneOp : HLO_Op<"async_done", [DeclareOpInterfaceMethods<InferTypeO
 // conditional use of kConditional HLO.
 def HLO_IfOp: HLO_Op<"if", [
     RecursiveMemoryEffects,
-    SingleBlockImplicitTerminator<"ReturnOp">]> {
+    SingleBlockImplicitTerminator<"ReturnOp">,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "If operator";
 
   let description = [{
@@ -1047,7 +1048,6 @@ def HLO_IfOp: HLO_Op<"if", [
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 }
 
 // Xla Client API has two separate calls for indexed and predicated conditional,
@@ -1055,7 +1055,8 @@ def HLO_IfOp: HLO_Op<"if", [
 // conditional use of kConditional HLO.
 def HLO_CaseOp: HLO_Op<"case", [
       RecursiveMemoryEffects,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>
     ]> {
   let summary = "Switch-Case operator";
   let description = [{
@@ -1080,14 +1081,12 @@ def HLO_CaseOp: HLO_Op<"case", [
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 }
-
 
 def HLO_WhileOp: HLO_Op<"while", [
       RecursiveMemoryEffects,
-      HLO_PairwiseSameOperandAndResultType,
       SingleBlockImplicitTerminator<"ReturnOp">,
+      DeclareOpInterfaceMethods<InferTypeOpInterface>,
       OpAsmOpInterface
     ]> {
   let summary = "While operator";
@@ -1123,7 +1122,6 @@ def HLO_WhileOp: HLO_Op<"while", [
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
-  let hasVerifier = 1;
 }
 
 def HLO_AllGatherOp : HLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
@@ -1233,7 +1231,8 @@ def HLO_AllToAllOp : HLO_Op<"all_to_all",
 def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
       RecursiveMemoryEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferTensorType,
     ]> {
   let summary = "Reduce operator";
   let description = [{
@@ -1257,7 +1256,6 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
-  let hasVerifier = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
@@ -1454,7 +1452,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [Pure,
         "grad_offset"]>,
     AllShapesMatch<["operand", "grad_output"]>,
     AllElementTypesMatch<["operand", "grad_scale", "grad_offset"]>,
-    AllTypesMatch<["operand", "grad_operand"]>]> {
+    AllTypesMatch<["operand", "grad_operand"]>,
+    InferTensorType]> {
   let summary = "Batch Normalization Gradient";
   let description = [{
     Calculates gradients of batch norm.
@@ -1472,7 +1471,6 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [Pure,
     I64Attr:$feature_index
   );
 
-  let results = (outs Variadic<HLO_TensorOrToken>);
   let results = (outs
       RankedTensorOf<[HLO_Float]>:$grad_operand,
       1DTensorOf<[HLO_Float]>:$grad_scale,
@@ -1484,7 +1482,8 @@ def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [Pure,
 
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
     [Pure, AllTypesMatch<["operand", "result"]>,
-    AllShapesMatch<["scale", "offset", "mean", "variance"]>]> {
+    AllShapesMatch<["scale", "offset", "mean", "variance"]>,
+    InferTensorType]> {
   let summary = "Batch Normalization for Inference";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -1510,7 +1509,8 @@ def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference",
 def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training",
     [Pure, AllTypesMatch<["operand", "output"]>,
     AllElementTypesMatch<["operand", "batch_mean", "batch_var"]>,
-    AllShapesMatch<["scale", "offset", "batch_mean", "batch_var"]>]> {
+    AllShapesMatch<["scale", "offset", "batch_mean", "batch_var"]>,
+    InferTensorType]> {
   let summary = "Batch Normalization for Training";
   let description = [{
     Normalizes an array across batch and spatial dimensions.
@@ -2086,7 +2086,7 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [Pure]> {
 
 def HLO_MapOp: HLO_ShapedInterfaceOp<"map",
       [RecursiveMemoryEffects, SameOperandsAndResultShape,
-       SingleBlockImplicitTerminator<"ReturnOp">]> {
+       SingleBlockImplicitTerminator<"ReturnOp">, InferTensorTypeWithReify]> {
   let summary = "Map operator";
   let description = [{
   Applies a scalar function over the given operands arrays, producing an array
@@ -2108,7 +2108,6 @@ def HLO_MapOp: HLO_ShapedInterfaceOp<"map",
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
 }
 
 def HLO_ReshapeOp: HLO_Op<"reshape",
@@ -2271,8 +2270,8 @@ def HLO_SetDimensionSizeOp: HLO_Op<"set_dimension_size", [Pure,
   let hasVerifier = 1;
 }
 
-def HLO_SortOp : HLO_Op<"sort", [RecursiveMemoryEffects,
-                                 SameOperandsAndResultShape]> {
+def HLO_SortOp : HLO_Op<"sort",
+      [RecursiveMemoryEffects, SameOperandsAndResultShape, InferTensorType]> {
   let summary = "Sort operator";
   let description = [{
     Sorts the given `operands` at the given `dimension` with the given
@@ -2298,7 +2297,6 @@ def HLO_SortOp : HLO_Op<"sort", [RecursiveMemoryEffects,
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
-  let hasVerifier = 1;
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",
@@ -2426,7 +2424,7 @@ def HLO_TransposeOp: HLO_ShapedInterfaceOp<"transpose",
 }
 
 def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
-    [Pure, SameOperandsAndResultElementType]> {
+    [Pure, SameOperandsAndResultElementType, InferTensorType]> {
   let summary = "TriangularSolve operator";
   let description = [{
     Solves systems of linear equations with lower or upper triangular
@@ -2456,14 +2454,13 @@ def HLO_TriangularSolveOp: HLO_Op<"triangular_solve",
     HLO_TransposeAttr:$transpose_a
   );
   let results = (outs HLO_FpOrComplexTensor);
-
-  let hasVerifier = 1;
 }
 
 def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
       RecursiveMemoryEffects,
       SameVariadicOperandSize,
-      SingleBlockImplicitTerminator<"ReturnOp">
+      SingleBlockImplicitTerminator<"ReturnOp">,
+      InferTensorType,
     ]> {
   let summary = "ReduceWindow operator";
   let description = [{
@@ -2512,7 +2509,6 @@ def HLO_ReduceWindowOp: HLO_Op<"reduce_window", [
   ];
 
   let hasCustomHLOConverter = 1;
-  let hasVerifier = 1;
   // TODO(hinsu): Implement custom printer and parser.
 
   let extraClassDeclaration = [{

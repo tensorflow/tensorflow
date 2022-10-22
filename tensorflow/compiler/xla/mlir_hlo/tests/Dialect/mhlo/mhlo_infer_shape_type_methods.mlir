@@ -236,6 +236,146 @@ func.func @fft(%arg0: tensor<3x9xcomplex<f32>>) -> tensor<3x9xindex> {
   func.return %1 : tensor<3x9xindex>
 }
 
+// -----
+
+// CHECK-LABEL: func @batch_norm_grad
+func.func @batch_norm_grad(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %mean: tensor<2xf32>, %variance: tensor<2xf32>, %grad_output: tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex> {
+  %0:3 = "mhlo.batch_norm_grad" (%input, %scale, %mean, %variance, %grad_output) {epsilon = 0.001 : f32, feature_index = 0 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2x2x2x2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+  // CHECK: (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
+  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
+  %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<2xf32>) -> tensor<2xindex>
+  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
+  %3 = "mhlo_test.get_return_type_components"(%0#2) : (tensor<2xf32>) -> tensor<2xindex>
+  func.return %1 : tensor<2x2x2x2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @batch_norm_train
+func.func @batch_norm_train(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: tensor<2xf32>) -> tensor<2x2x2x2xindex> {
+  %0:3 = "mhlo.batch_norm_training" (%input, %scale, %offset) {epsilon = 0.001 : f32, feature_index = 1 : i64} : (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>) -> (tensor<2x2x2x2xf32>, tensor<2xf32>, tensor<2xf32>)
+  // CHECK: (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<2x2x2x2xf32>) -> tensor<2x2x2x2xindex>
+  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
+  %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<2xf32>) -> tensor<2xindex>
+  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
+  %3 = "mhlo_test.get_return_type_components"(%0#2) : (tensor<2xf32>) -> tensor<2xindex>
+  func.return %1 : tensor<2x2x2x2xindex>
+}
+
+// -----
+
+// CHECK-LABEL: @batch_norm_inference
+func.func @batch_norm_inference(%input: tensor<4x256xf32>, %scale: tensor<256xf32>, %offset: tensor<256xf32>, %mean: tensor<256xf32>, %variance: tensor<256xf32>) -> (tensor<4x256xindex>) {
+  %0 = "mhlo.batch_norm_inference" (%input, %scale, %offset, %mean, %variance) {epsilon = 1.001000e-05 : f32, feature_index = 1 : i64} :
+      (tensor<4x256xf32>, tensor<256xf32>, tensor<256xf32>, tensor<256xf32>,
+        tensor<256xf32>) -> tensor<4x256xf32>
+  // CHECK: (tensor<4x256xf32>) -> tensor<4x256xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<4x256xf32>) -> tensor<4x256xindex>
+  func.return %1 : tensor<4x256xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @map
+func.func @map(%arg0: tensor<4x5xf32>, %arg1: tensor<4x5xf32>) -> tensor<4x5xindex> {
+  %0 = "mhlo.map"(%arg0, %arg1) ({
+    ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %1 = mhlo.constant dense<2.0> : tensor<f32>
+    "mhlo.return"(%1) : (tensor<f32>) -> ()
+  }) {dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<4x5xf32>, tensor<4x5xf32>) -> tensor<4x5xf32>
+  // CHECK: (tensor<4x5xf32>) -> tensor<4x5xindex>
+  %2 = "mhlo_test.get_return_type_components"(%0) : (tensor<4x5xf32>) -> tensor<4x5xindex>
+  func.return %2 : tensor<4x5xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @triangular_solve
+func.func @triangular_solve(%arg0: tensor<10x5x4x4xf32>, %arg1: tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex> {
+  %0 = "mhlo.triangular_solve"(%arg0, %arg1) {left_side = true, lower = true, transpose_a = #mhlo<transpose NO_TRANSPOSE>, unit_diagonal = true} : (tensor<10x5x4x4xf32>, tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xf32>
+  // CHECK: (tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<10x5x4x4xf32>) -> tensor<10x5x4x4xindex>
+  func.return %1 : tensor<10x5x4x4xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @if
+func.func @if(%pred : tensor<i1>, %branch_operand : tensor<2xf32>, %wrong_type : tensor<2xf32>) {
+  %0 = "mhlo.if"(%pred) ({
+      "mhlo.return"(%wrong_type) : (tensor<2xf32>) -> ()
+    }, {
+      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
+    }) : (tensor<i1>) -> tensor<2xf32>
+  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2xf32>) -> tensor<2xindex>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @case
+func.func @case(%index : tensor<i32>, %branch_operand : tensor<2xf32>) {
+  %0 = "mhlo.case"(%index) ({
+      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
+  }, {
+      "mhlo.return"(%branch_operand) : (tensor<2xf32>) -> ()
+  }) : (tensor<i32>) -> tensor<2xf32>
+  // CHECK: (tensor<2xf32>) -> tensor<2xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0) : (tensor<2xf32>) -> tensor<2xindex>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @sort
+func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
+  %0:2 = "mhlo.sort"(%input0, %input1) ({
+  ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32>, %arg3: tensor<i32>):
+    %7 = "mhlo.compare"(%arg0, %arg1) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+    "mhlo.return"(%7) : (tensor<i1>) -> ()
+  }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> (tensor<16x16xf32>, tensor<16x16xi32>)
+  // CHECK: (tensor<16x16xf32>) -> tensor<16x16xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0#0) : (tensor<16x16xf32>) -> tensor<16x16xindex>
+  // CHECK: (tensor<16x16xi32>) -> tensor<16x16xindex>
+  %2 = "mhlo_test.get_return_type_components"(%0#1) : (tensor<16x16xi32>) -> tensor<16x16xindex>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: func @while
+func.func @while(%arg0: tensor<4xf32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<4xf32>, %arg4: tensor<f32>, %arg5: tensor<f32>, %arg6: tensor<f32>, %arg7: tensor<f32>, %arg8: tensor<i32>) -> tensor<index> {
+  %cst = arith.constant dense<-1> : tensor<i32>
+  %cst_0 = arith.constant dense<1> : tensor<i32>
+  %cst_1 = arith.constant dense<0> : tensor<i32>
+  %cst_2 = arith.constant dense<1000> : tensor<i32>
+  %1:3 = "mhlo.while"(%cst_1, %cst, %cst_2) ({
+  ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):
+    %4 = "mhlo.compare"(%arg9, %arg11) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    "mhlo.return"(%4) : (tensor<i1>) -> ()
+  },  {
+  ^bb0(%arg9: tensor<i32>, %arg10: tensor<i32>, %arg11: tensor<i32>):
+    %3 = mhlo.add %arg9, %cst_0 : tensor<i32>
+    "mhlo.return"(%3, %arg10, %arg11) : (tensor<i32>, tensor<i32>, tensor<i32>) -> ()
+  }) : (tensor<i32>, tensor<i32>, tensor<i32>) -> (tensor<i32>, tensor<i32>, tensor<i32>)
+  // CHECK: (tensor<i32>) -> tensor<index>
+  %4 = "mhlo_test.get_return_type_components"(%1#0) : (tensor<i32>) -> tensor<index>
+  // CHECK: (tensor<i32>) -> tensor<index>
+  %5 = "mhlo_test.get_return_type_components"(%1#1) : (tensor<i32>) -> tensor<index>
+  // CHECK: (tensor<i32>) -> tensor<index>
+  %6 = "mhlo_test.get_return_type_components"(%1#2) : (tensor<i32>) -> tensor<index>
+  func.return %4 : tensor<index>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Sparsity
+//===----------------------------------------------------------------------===//
+
 #CSR = #sparse_tensor.encoding<{
   dimLevelType = ["dense", "compressed"]
 }>
@@ -310,6 +450,55 @@ func.func @complex_sparsity(%arg0: tensor<10x10xf32, #CSR>, %arg1: tensor<10x10x
 }
 
 // -----
+
+// CHECK-LABEL: func @reduce
+func.func @reduce(%arg0: tensor<4x4xf32>, %arg1 : tensor<4xf32>)
+    -> (tensor<4xindex>) {
+  %0 = "mhlo.reduce"(%arg0, %arg1) ({
+
+  ^bb0(%arg2: tensor<4xf32>, %arg3: tensor<4xf32> ):
+    %1 = "mhlo.add"(%arg2, %arg3) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+    "mhlo.return"(%1) : (tensor<4xf32>) -> ()
+
+  }) {dimensions = dense<[0]> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  %2 = "mhlo_test.get_return_type_components"(%0)
+      : (tensor<4xf32>) -> tensor<4xindex>
+// CHECK: %1 = "mhlo_test.return_type_components"(%0) {dims0 = [4], element_type0 = f32} : (tensor<4xf32>) -> tensor<4xindex>
+  func.return %2: tensor<4xindex>
+}
+
+// -----
+
+// CHECK-LABEL: func @reduce_window
+func.func @reduce_window(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi32>,
+                    %init0: tensor<f32>, %init1: tensor<i32>) ->
+                      (tensor<2x2xindex>, tensor<2x2xindex>) {
+  %0:2 = "mhlo.reduce_window"(%arg0, %arg1, %init0, %init1) ({
+         ^bb0(%a0: tensor<f32>, %a1: tensor<i32>,
+                %b0: tensor<f32>, %b1: tensor<i32>):
+              %2 = mhlo.add %a0, %b0 : tensor<f32>
+              %3 = mhlo.add %a1, %b1 : tensor<i32>
+              "mhlo.return"(%2, %3) : (tensor<f32>, tensor<i32>) -> ()
+            })
+         { padding = dense<[[2, 2], [0, 0]]> : tensor<2x2xi64>,
+           window_dimensions = dense<[5, 1]> : tensor<2xi64>,
+           window_strides = dense<[3, 1]> : tensor<2xi64> }
+         : (tensor<4x2xf32>, tensor<4x2xi32>, tensor<f32>, tensor<i32>) ->
+              (tensor<2x2xf32>, tensor<2x2xi32>)
+  // CHECK: %1 = "mhlo_test.return_type_components"(%0#0) {dims0 = [2, 2], dims1 = [2, 2], element_type0 = f32, element_type1 = i32} : (tensor<2x2xf32>) -> tensor<2x2xindex>
+  %1 = "mhlo_test.get_return_type_components"(%0#0)
+      : (tensor<2x2xf32>) -> tensor<2x2xindex>
+  // CHECK: "mhlo_test.return_type_components"(%0#1) {dims0 = [2, 2], dims1 = [2, 2], element_type0 = f32, element_type1 = i32} : (tensor<2x2xi32>) -> tensor<2x2xindex>
+  %2 = "mhlo_test.get_return_type_components"(%0#1)
+      : (tensor<2x2xi32>) -> tensor<2x2xindex>
+  func.return %1, %2 : tensor<2x2xindex>, tensor<2x2xindex>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// Bounded Dynamism
+//===----------------------------------------------------------------------===//
 
 // CHECK-LABEL: @tensor_bounds
 func.func @tensor_bounds(%arg0: tensor<3x5xf32>, %arg1: tensor<i32>) -> tensor<*xindex> {
