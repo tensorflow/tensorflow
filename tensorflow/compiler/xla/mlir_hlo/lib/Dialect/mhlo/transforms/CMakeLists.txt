@@ -101,6 +101,7 @@ add_mlir_library(MhloToThloConversion
 
   DEPENDS
   MLIRMhloPassIncGen
+  MLIRGmlStTilingInterfaceIncGen
   THLODialect
 
   LINK_COMPONENTS
