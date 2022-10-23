@@ -34,6 +34,7 @@ namespace {
 
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
+using mlir::linalg::MatmulOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
@@ -345,6 +346,13 @@ struct VectorizeGmlStLoopsPass
     auto genericOpFilter = [&](GenericOp op) {
       return isValidDistribution(op) && isGenericOpTiledOrOneDimReduction(op);
     };
+    auto matmulOpFilter = [&](MatmulOp op) {
+      if (isInsideGmlStLoop(op)) return true;
+      // Allow vectorization for static shapes.
+      auto outputType =
+          op.getResult(0).getType().cast<mlir::RankedTensorType>();
+      return outputType.hasStaticShape();
+    };
     auto materializeOpFilter = [&](MaterializeOp op) {
       // Materialize op should only be vectorized if the producer of its
       // source is within the vectorized region, otherwise we vectorize one
@@ -360,6 +368,7 @@ struct VectorizeGmlStLoopsPass
     patterns.add<TransferReadOfOneDimExpandShape>(func.getContext());
     patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
     patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
+    patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
     if (vectorizeGmlStOps) {
       patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
       patterns.add<ParallelOpVectorizationPattern>(ctx, isValidDistribution);
