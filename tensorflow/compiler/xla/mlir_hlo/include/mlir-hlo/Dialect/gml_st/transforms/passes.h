@@ -62,10 +62,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createCollapseMaterializeOpsPass();
 /// loops and memref.load/memref.store accesses.
 std::unique_ptr<OperationPass<func::FuncOp>> createGmlStToScfPass();
 
-// Pass to bufferize `linalg.tiled_loop` including the operations contained in
-// its body.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateTiledLoopBufferizePass();
-
 /// Pass to vectorize linalg.generic ops tiled to gml_st.parallel and gml_st.for
 /// loops.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeGmlStLoopsPass(

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -tf-jitrt-pipeline="one-shot-bufferize" %s | FileCheck %s
+// RUN: tf-tfrt-opt -split-input-file -tf-jitrt-pipeline %s | FileCheck %s
 
 // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 

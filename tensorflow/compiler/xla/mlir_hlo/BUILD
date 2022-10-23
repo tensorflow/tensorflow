@@ -1282,7 +1282,6 @@ cc_library(
     srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h.inc",
         "include/mlir-hlo/Dialect/gml_st/transforms/transforms.h",
-        "lib/Dialect/gml_st/transforms/bufferize_tiled_loop.cc",
         "lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc",
         "lib/Dialect/gml_st/transforms/fusion.cc",
         "lib/Dialect/gml_st/transforms/gml_st_to_gpu.cc",

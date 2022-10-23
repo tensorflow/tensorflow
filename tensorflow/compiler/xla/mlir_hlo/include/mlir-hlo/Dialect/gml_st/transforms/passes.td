@@ -103,12 +103,6 @@ def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
                            "::mlir::vector::VectorDialect"];
 }
 
-def TiledLoopBufferizePass :
-    Pass<"gml-tiled-loop-bufferize", "mlir::func::FuncOp"> {
-  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
-  let constructor = "::mlir::gml_st::CreateTiledLoopBufferizePass()";
-}
-
 def VectorizeGmlStLoopsPass :
     Pass<"vectorize-gml-st-loops", "mlir::func::FuncOp"> {
   let summary =
