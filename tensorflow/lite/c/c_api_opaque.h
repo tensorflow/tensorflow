@@ -150,7 +150,8 @@ TFL_CAPI_EXPORT TfLiteStatus TfLiteOpaqueContextGetNodeAndRegistration(
 //
 // The ownership of the `nodes_to_replace` and the `opaque_delegate` remains
 // with the caller.
-TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
+TFL_CAPI_EXPORT TfLiteStatus
+TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
     struct TfLiteOpaqueContext* opaque_context,
     TfLiteRegistrationExternal* registration_external,
     const TfLiteIntArray* nodes_to_replace,
