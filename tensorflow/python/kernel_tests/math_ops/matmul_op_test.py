@@ -311,7 +311,6 @@ if __name__ == "__main__":
                              transpose_a=transpose_a,
                              adjoint_b=adjoint_b,
                              transpose_b=transpose_b))
-
                 _AddTest(MatMulGradientTest, "MatMulGradientTest", name,
                          _GetMatMulGradientTest(
                              a_np,
