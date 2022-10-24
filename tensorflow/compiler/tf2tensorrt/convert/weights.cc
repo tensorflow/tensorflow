@@ -73,7 +73,6 @@ size_t TRT_ShapedWeights::size_bytes() const {
     case nvinfer1::DataType::kBOOL:
       data_type_size = 1;
       break;
-    default: break;
   }
   return volume_ * data_type_size;
 }
