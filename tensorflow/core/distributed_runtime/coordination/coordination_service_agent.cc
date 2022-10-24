@@ -74,6 +74,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
                     std::unique_ptr<CoordinationClient> leader_client,
                     StatusCallback error_fn) override;
   bool IsInitialized() override;
+  bool IsConnected() override;
+  bool IsError() override;
 
   Status Connect() override;
   Status WaitForAllTasks(const DeviceInfo& local_devices) override;
@@ -198,6 +200,16 @@ Status CoordinationServiceAgentImpl::Initialize(
 bool CoordinationServiceAgentImpl::IsInitialized() {
   mutex_lock l(state_mu_);
   return state_ != CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+}
+
+bool CoordinationServiceAgentImpl::IsConnected() {
+  mutex_lock l(state_mu_);
+  return state_ == CoordinatedTaskState::TASKSTATE_CONNECTED;
+}
+
+bool CoordinationServiceAgentImpl::IsError() {
+  mutex_lock l(state_mu_);
+  return state_ == CoordinatedTaskState::TASKSTATE_ERROR;
 }
 
 void CoordinationServiceAgentImpl::StopHeartbeat() {
