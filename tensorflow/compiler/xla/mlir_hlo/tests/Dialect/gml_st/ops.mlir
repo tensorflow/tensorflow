@@ -54,6 +54,46 @@ func.func @materialize_vector(%vector: vector<64x32xf32>,
 
 // -----
 
+// CHECK-LABEL: @materialize_0d_vector
+// CHECK-SAME: %[[VECTOR:.*]]: vector<f32>,
+// CHECK-SAME: %[[TILE:.*]]: !gml_st.tile<>
+func.func @materialize_0d_vector(%vector: vector<f32>, %tile: !gml_st.tile<>) {
+  // CHECK: %{{.*}} = gml_st.materialize %[[VECTOR]][%[[TILE]]]
+  // CHECK-SAME: : vector<f32>[!gml_st.tile<>] to vector<f32>
+  %0 = gml_st.materialize %vector[%tile]
+    : vector<f32>[!gml_st.tile<>] to vector<f32>
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: @distribute_vector
+// CHECK-SAME: %[[VECTOR:.*]]: vector<42x16xf32>,
+// CHECK-SAME: %[[TILE:.*]]: !gml_st.tile<42x16>
+func.func @distribute_vector(%vector: vector<42x16xf32>,
+                              %tile: !gml_st.tile<42x16>) {
+  // CHECK: %{{.*}} = gml_st.distribute %[[VECTOR]] into[%[[TILE]]]
+  // CHECK-SAME: : vector<42x16xf32> into vector<64x32xf32>[!gml_st.tile<42x16>]
+  %0 = gml_st.distribute %vector into[%tile]
+    : vector<42x16xf32> into vector<64x32xf32>[!gml_st.tile<42x16>]
+  func.return
+}
+
+// -----
+
+// CHECK-LABEL: @distribute_0d_vector
+// CHECK-SAME: %[[VECTOR:.*]]: vector<f32>,
+// CHECK-SAME: %[[TILE:.*]]: !gml_st.tile<>
+func.func @distribute_0d_vector(%vector: vector<f32>, %tile: !gml_st.tile<>) {
+  // CHECK: %{{.*}} = gml_st.distribute %[[VECTOR]] into[%[[TILE]]]
+  // CHECK-SAME: : vector<f32> into vector<f32>[!gml_st.tile<>]
+  %0 = gml_st.distribute %vector into[%tile]
+    : vector<f32> into vector<f32>[!gml_st.tile<>]
+  func.return
+}
+
+// -----
+
 #cwise_trait = {
   indexing_maps = [
     affine_map<(i, j) -> (i, j)>,

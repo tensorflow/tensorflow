@@ -24,9 +24,9 @@ include "mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td"
 
 def RankedTensorOrVector
-  : AnyTypeOf<[AnyRankedTensor, AnyVector], "", "::mlir::ShapedType">;
+  : AnyTypeOf<[AnyRankedTensor, AnyVectorOfAnyRank], "", "::mlir::ShapedType">;
 def RankedTensorOrVectorOrScalar : AnyTypeOf<[
-  AnyRankedTensor, AnyVector, AnyFloat, AnyInteger, AnyComplex
+  AnyRankedTensor, AnyVectorOfAnyRank, AnyFloat, AnyInteger, AnyComplex
 ]>;
 
 def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
@@ -316,8 +316,8 @@ def GMLST_DistributeOp : GMLST_Op<"distribute", [Pure,
     pipeline. This is also the reason why it does not need a destination
     argument.
   }];
-  let arguments = (ins AnyVector:$source, AnySet:$set);
-  let results = (outs AnyVector:$result);
+  let arguments = (ins AnyVectorOfAnyRank:$source, AnySet:$set);
+  let results = (outs AnyVectorOfAnyRank:$result);
 
   let assemblyFormat = [{
     $source `into` `[` $set `]` attr-dict `:` type($source)
