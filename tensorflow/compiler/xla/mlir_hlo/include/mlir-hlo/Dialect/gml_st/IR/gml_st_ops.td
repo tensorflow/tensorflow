@@ -41,51 +41,6 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
   }];
 }
 
-def GMLST_OffsetOp : GMLST_Op<"offset", [Pure]> {
-  let summary = [{Returns the offset of a tile in a given dimension}];
-  let description = [{
-    Returns the composed offset of a tile in a given dimension relative to the
-    root space.
-  }];
-  let arguments = (ins AnySet:$subset, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $subset `[` $dim `]` attr-dict `:` qualified(type($subset))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
-}
-
-def GMLST_SizeOp : GMLST_Op<"size", [Pure]> {
-  let summary = [{Returns the size of a tile in a given dimension}];
-  let description = [{
-    Returns the composed size of a tile in a given dimension relative to the
-    root space.
-  }];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
-}
-
-def GMLST_StrideOp : GMLST_Op<"stride", [Pure]> {
-  let summary = [{Returns the stride of a tile in a given dimension}];
-  let description = [{
-    Returns the composed stride of a tile in a given dimension relative to the
-    root space.
-  }];
-  let arguments = (ins GMLST_TileType:$tile, Index:$dim);
-  let results = (outs Index:$result);
-  let assemblyFormat = [{
-    $tile `[` $dim `]` attr-dict `:` qualified(type($tile))
-  }];
-  let hasVerifier = 0;
-  let hasFolder = 1;
-}
-
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>
     : GMLST_Op<mnemonic, !listconcat(traits, [
       AttrSizedOperandSegments,
@@ -273,6 +228,8 @@ def GMLST_ForOp : GMLST_LoopLikeOp<"for", []> {
         getNumControlOperands() + opResult.getResultNumber());
     }
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
@@ -336,6 +293,8 @@ def GMLST_SetYieldOp : GMLST_Op<"set_yield", [Pure, ReturnLike,
       return operand.getOperandNumber() >= getNumUpdates() &&
              operand.getOperandNumber() < getNumUpdates() * 2;
     }
+
+    unsigned getNumDstOperands() { return getNumOperands() - getNumUpdates(); }
   }];
 }
 

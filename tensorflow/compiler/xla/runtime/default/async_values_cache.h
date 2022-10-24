@@ -99,6 +99,7 @@ AsyncValueRef<Chain> AsyncValuesCache<Key, Value>::AllAvailable() const {
   absl::MutexLock lock(&mu_);
 
   llvm::SmallVector<AsyncValue*> avs;
+  avs.reserve(cache_.size());
   for (auto& it : cache_) avs.push_back(it.getSecond().GetAsyncValue());
 
   AsyncValueRef<Chain> chain = MakeConstructedAsyncValueRef<Chain>();

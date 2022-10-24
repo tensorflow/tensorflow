@@ -1739,14 +1739,15 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
       ConversionPatternRewriter& rewriter) const final {
     Location loc = op.getLoc();
 
-    int numOperands = static_cast<int>(adaptor.operands().size());
+    int numOperands = static_cast<int>(adaptor.getInputs().size());
 
-    if (llvm::any_of(adaptor.operands(), [](Value v) {
+    if (llvm::any_of(adaptor.getInputs(), [](Value v) {
           return !v.getType().isa<RankedTensorType>();
         })) {
       return rewriter.notifyMatchFailure(op, "expects known-rank args");
     }
-    auto srcRank = adaptor.operands()[0].getType().cast<ShapedType>().getRank();
+    auto srcRank =
+        adaptor.getInputs()[0].getType().cast<ShapedType>().getRank();
 
     SmallVector<int64_t, 4> reductionDims = extract1DVector(op.getDimensions());
 
@@ -1757,7 +1758,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     SmallVector<Value> outputs;
     SmallVector<AffineMap, 3> indexingMaps;
     for (auto [operand, initValue, resultType] :
-         llvm::zip(adaptor.operands(), adaptor.getInitValues(), resultTypes)) {
+         llvm::zip(adaptor.getInputs(), adaptor.getInitValues(), resultTypes)) {
       // Check if init_value is constant. If so, inline the value into the
       // region.
       initValue = rewriter.createOrFold<tensor::ExtractOp>(loc, initValue);
@@ -1789,7 +1790,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
                                        rewriter.getContext()));
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, /*resultTensorTypes=*/resultTypes, adaptor.operands(),
+        loc, /*resultTensorTypes=*/resultTypes, adaptor.getInputs(),
         /*outputBuffers=*/ValueRange{outputs}, indexingMaps,
         getParallelAndReductionIterators(srcRank, reductionDims.size()),
         /*bodyBuild=*/nullptr, linalg::getPrunedAttributeList(op));
@@ -1808,7 +1809,7 @@ class ReduceConversion : public OpConversionPattern<mhlo::ReduceOp> {
     // modify the signature of the block and the value mappings, so the output
     // args will correlate with the original LHS and the inputs correlate with
     // the original RHS.
-    for (const auto& [idx, val] : llvm::enumerate(op.operands())) {
+    for (const auto& [idx, val] : llvm::enumerate(op.getInputs())) {
       signatureConverter.addInputs(
           /*origInputNo=*/idx + numOperands,
           // type for the new operand number 'idx'.
@@ -2684,7 +2685,7 @@ struct ReduceWindowOpOnTensorsGenericConversion
           loc, resultTy, initValue, broadcastSizes));
     }
 
-    llvm::SmallVector<Value> inputs = llvm::to_vector(adaptor.operands());
+    llvm::SmallVector<Value> inputs = llvm::to_vector(adaptor.getInputs());
 
     // Pad as necessary.
     if (llvm::any_of(padding, [](int64_t v) { return v != 0; }) ||
@@ -2857,7 +2858,7 @@ struct ReduceWindowOpConversion
 
     SmallVector<Value> poolingOps;
 
-    ValueRange operands = adaptor.operands();
+    ValueRange operands = adaptor.getInputs();
     ValueRange initValues = adaptor.getInitValues();
     for (auto it : llvm::zip(op.getResults(), operands, initValues)) {
       OpResult result = std::get<0>(it);

@@ -75,16 +75,3 @@ add_mlir_library(MLIRHLOGPUTransforms
   MLIRSCFTransforms
   MLIRTransforms
 )
-
-add_mlir_library(MLIRHLOGmlStPipeline
-  gml_st_pipeline.cc
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  GmlStPasses
-  MLIRBufferTransforms
-  MLIRLinalgTransforms
-  MLIRPass
-)

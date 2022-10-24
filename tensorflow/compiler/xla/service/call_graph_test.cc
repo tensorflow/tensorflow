@@ -564,7 +564,7 @@ TEST_F(CallGraphTest, VisitWithError) {
       [](const CallGraphNode&) { return InternalError("Visitation failed"); });
 
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
+  ASSERT_EQ(status.code(), tsl::error::INTERNAL);
   ASSERT_THAT(status.error_message(),
               ::testing::HasSubstr("Visitation failed"));
 }

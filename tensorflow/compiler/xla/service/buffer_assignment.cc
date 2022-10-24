@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/numbers.h"
 
 namespace xla {
@@ -55,7 +55,7 @@ using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
 using memory_space_assignment::PresetAssignments;
-using ::tensorflow::strings::HumanReadableNumBytes;
+using ::tsl::strings::HumanReadableNumBytes;
 
 }  // namespace
 

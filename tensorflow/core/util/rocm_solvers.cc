@@ -599,7 +599,6 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
   Status GpuSolver::PotrfBatched<Scalar>(                                     \
       rocblas_fill uplo, int n, const Scalar* const host_a_dev_ptrs[],        \
       int lda, DeviceLapackInfo* dev_lapack_info, int batch_size) {           \
-    rocblas_stride stride = n;                                                \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
     ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \

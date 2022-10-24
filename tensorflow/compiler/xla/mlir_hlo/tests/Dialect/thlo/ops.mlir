@@ -54,10 +54,10 @@ func.func @dynamic_broadcast_in_dim_memref(%arg: memref<?x?xf32>,
 // -----
 
 func.func @gather(%arg: tensor<100xf32>,
-                  %indices: tensor<42x1xi64>,
+                  %indices: tensor<42x1xindex>,
                   %dst: tensor<42xf32>) -> tensor<42xf32> {
   %gather = thlo.gather
-      ins(%arg: tensor<100xf32>, %indices: tensor<42x1xi64>)
+      ins(%arg: tensor<100xf32>, %indices: tensor<42x1xindex>)
       outs(%dst: tensor<42xf32>)
   func.return %gather : tensor<42xf32>
 }
@@ -66,10 +66,10 @@ func.func @gather(%arg: tensor<100xf32>,
 // -----
 
 func.func @gather_memref(%arg: memref<100xf32>,
-                         %indices: memref<42x1xi64>,
+                         %indices: memref<42x1xindex>,
                          %dst: memref<42xf32>) {
   thlo.gather
-      ins(%arg: memref<100xf32>, %indices: memref<42x1xi64>)
+      ins(%arg: memref<100xf32>, %indices: memref<42x1xindex>)
       outs(%dst: memref<42xf32>)
   func.return
 }
@@ -77,9 +77,10 @@ func.func @gather_memref(%arg: memref<100xf32>,
 
 // -----
 
-func.func @scatter(%indices: tensor<2x2xi32>, %updates: tensor<2x1x3xf32>,
+func.func @scatter(%indices: tensor<2x2xindex>, %updates: tensor<2x1x3xf32>,
     %init: tensor<3x3xf32>) -> tensor<3x3xf32> {
-  %0 = thlo.scatter ins(%indices : tensor<2x2xi32>, %updates : tensor<2x1x3xf32>)
+  %0 = thlo.scatter ins(%indices : tensor<2x2xindex>,
+                        %updates : tensor<2x1x3xf32>)
                     outs(%init : tensor<3x3xf32>)
                     (%in: f32, %out: f32) {
     %sum = arith.addf %in, %out : f32
@@ -91,9 +92,9 @@ func.func @scatter(%indices: tensor<2x2xi32>, %updates: tensor<2x1x3xf32>,
 
 // -----
 
-func.func @scatter_memref(%indices: memref<2x2xi32>,
+func.func @scatter_memref(%indices: memref<2x2xindex>,
     %updates: memref<2x1x3xf32>, %init: memref<3x3xf32>) {
-  thlo.scatter ins(%indices : memref<2x2xi32>, %updates : memref<2x1x3xf32>)
+  thlo.scatter ins(%indices : memref<2x2xindex>, %updates : memref<2x1x3xf32>)
                outs(%init : memref<3x3xf32>)
                (%in: f32, %out: f32) {
     %sum = arith.addf %in, %out : f32

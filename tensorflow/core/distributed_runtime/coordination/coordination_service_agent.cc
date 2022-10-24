@@ -76,9 +76,8 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   bool IsInitialized() override;
 
   Status Connect() override;
-  Status WaitForAllTasks(
-      const CoordinationServiceDeviceInfo& local_devices) override;
-  const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() override;
+  Status WaitForAllTasks(const DeviceInfo& local_devices) override;
+  const DeviceInfo& GetClusterDeviceInfo() override;
   StatusOr<CoordinatedTask> GetOwnTask() override;
   StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
       const std::vector<CoordinatedTask>& task) override;
@@ -142,7 +141,7 @@ class CoordinationServiceAgentImpl : public CoordinationServiceAgent {
   absl::flat_hash_set<std::string> used_barrier_ids_ TF_GUARDED_BY(state_mu_);
 
   uint64_t leader_incarnation_ = 0;
-  CoordinationServiceDeviceInfo cluster_devices_;
+  DeviceInfo cluster_devices_;
 
   mutex heartbeat_thread_shutdown_mu_;
   condition_variable heartbeat_thread_cv_;
@@ -299,6 +298,16 @@ Status CoordinationServiceAgentImpl::Connect() {
                                            n.Notify();
                                          });
           n.WaitForNotification();
+          {
+            mutex_lock l(heartbeat_thread_shutdown_mu_);
+            // Ignore heartbeat errors and exit thread if shutting down. For
+            // example, the agent may send a heartbeat right after Shutdown(),
+            // but before StopHeartbeat(). This results in an unexpected
+            // heartbeat error.
+            if (shutting_down_) {
+              return;
+            }
+          }
           if (!status.ok()) {
             SetError(status);
           } else if (response.leader_incarnation() != leader_incarnation_) {
@@ -321,14 +330,14 @@ Status CoordinationServiceAgentImpl::Connect() {
 }
 
 Status CoordinationServiceAgentImpl::WaitForAllTasks(
-    const CoordinationServiceDeviceInfo& local_devices) {
+    const DeviceInfo& local_devices) {
   Status agent_running_status = ValidateRunningAgent();
   if (!agent_running_status.ok()) {
     return agent_running_status;
   }
   WaitForAllTasksRequest request;
   *request.mutable_source_task() = task_;
-  *request.mutable_local_device_info() = local_devices;
+  *request.mutable_device_info() = local_devices;
   WaitForAllTasksResponse response;
   Status status;
   absl::Notification n;
@@ -341,12 +350,11 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
     SetError(status);
     return status;
   }
-  cluster_devices_.MergeFrom(response.cluster_device_info());
+  cluster_devices_.MergeFrom(response.device_info());
   return OkStatus();
 }
 
-const CoordinationServiceDeviceInfo&
-CoordinationServiceAgentImpl::GetClusterDeviceInfo() {
+const DeviceInfo& CoordinationServiceAgentImpl::GetClusterDeviceInfo() {
   return cluster_devices_;
 }
 

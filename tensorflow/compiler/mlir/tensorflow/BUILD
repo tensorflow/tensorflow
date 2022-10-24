@@ -702,6 +702,7 @@ cc_library(
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
+    visibility = ["//visibility:public"],
     deps = [
         ":tensorflow_all_ops_inc_gen",
         ":tensorflow_attributes",
@@ -1008,6 +1009,7 @@ cc_library(
     hdrs = [
         "transforms/tf_saved_model_passes.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":resource_value_typed_analyzer",
         ":tensorflow",
@@ -1188,6 +1190,7 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/group_by_dialect.cc",
         "transforms/guarantee_all_funcs_one_use.cc",
+        "transforms/hoist_loop_invariant.cc",
         "transforms/hoist_replicate_invariant_resource_writes.cc",
         "transforms/host_launch_to_outside_compiled.cc",
         "transforms/init_text_file_to_import.cc",
@@ -1270,6 +1273,7 @@ cc_library(
         "transforms/tf_passes.h.inc",
         "transforms/tf_savedmodel_passes.h.inc",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":attribute_utils",
         ":bridge_logger",
@@ -1510,6 +1514,7 @@ cc_library(
     hdrs = [
         "translate/export_graphdef.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":convert_type",
         ":error_util",
@@ -1773,6 +1778,7 @@ cc_library(
     name = "mlir_roundtrip_flags",
     srcs = ["translate/mlir_roundtrip_flags.cc"],
     hdrs = ["translate/mlir_roundtrip_flags.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
@@ -1855,6 +1861,7 @@ cc_library(
     hdrs = ["utils/convert_tensor.h"],
     deps = [
         ":convert_type",
+        ":dynamic_shape_utils",
         ":mangling_util",
         ":tensorflow_attributes",
         ":tensorflow_types",
@@ -1928,6 +1935,7 @@ cc_library(
     hdrs = [
         "transforms/constant_fold.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":convert_tensor",
         ":eval_util",
@@ -2009,12 +2017,14 @@ cc_library(
 cc_library(
     name = "mlir_import_options",
     hdrs = ["translate/mlir_import_options.h"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "translate_lib",
     srcs = ["translate/tf_mlir_translate.cc"],
     hdrs = ["translate/tf_mlir_translate.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":error_util",
         ":export_graphdef",

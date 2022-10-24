@@ -189,7 +189,7 @@ cc_library(
         "//tensorflow/core/common_runtime:device_factory",
         "//tensorflow/core/common_runtime:dma_helper",
         "//tensorflow/core/platform:status",
-        "//tensorflow/core/tpu:tpu_api",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/core/tpu:tpu_defs",
         "//tensorflow/core/tpu:tpu_node_device_util",
         "//tensorflow/core/tpu:virtual_device",

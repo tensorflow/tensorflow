@@ -52,14 +52,11 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
 // CHECK-SAME:      to (%[[C32]])
 // CHECK-SAME:      step (%[[C8]])
 // CHECK-SAME:      outs (%[[ARG3:.*]] = %[[FILL]]: tensor<32xf32>)
-// CHECK:         %[[SPACE:.*]] = gml_st.space [32, 16]
-// CHECK:         %[[TILE:.*]] = gml_st.tile %[[SPACE]] [%[[ARG2]], 0] [8, 16] [1, 1]
+// CHECK:         %[[TILE:.*]] = gml_st.tile [%[[ARG2]], 0] [8, 16] [1, 1]
 // CHECK:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
-// CHECK:         %[[SPACE_0:.*]] = gml_st.space [32, 16]
-// CHECK:         %[[TILE_0:.*]] = gml_st.tile %[[SPACE_0]] [%[[ARG2]], 0] [8, 16] [1, 1]
+// CHECK:         %[[TILE_0:.*]] = gml_st.tile [%[[ARG2]], 0] [8, 16] [1, 1]
 // CHECK:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG1]][%[[TILE_0]]]
-// CHECK:         %[[SPACE_1:.*]] = gml_st.space [32, 16]
-// CHECK:         %[[TILE_1:.*]] = gml_st.tile %[[SPACE_1]] [%[[ARG2]], 0] [8, 16] [1, 1]
+// CHECK:         %[[TILE_1:.*]] = gml_st.tile [%[[ARG2]], 0] [8, 16] [1, 1]
 // CHECK:         %[[MATERIALIZE_1:.*]] = gml_st.materialize %[[INIT]][%[[TILE_1]]]
 // CHECK:         %[[GENERIC:.*]] = linalg.generic
 // CHECK-SAME:        iterator_types = ["parallel", "parallel"]
@@ -69,8 +66,7 @@ func.func @reduce_cwise(%lhs: tensor<32x16xf32>, %rhs: tensor<32x16xf32>)
 // CHECK:         ^bb0(%[[ARG4:.*]]: f32, %[[ARG5:.*]]: f32, %[[ARG6:.*]]: f32):
 // CHECK:           %[[MULF:.*]] = arith.mulf %[[ARG4]], %[[ARG5]]
 // CHECK:           linalg.yield %[[MULF]]
-// CHECK:         %[[SPACE_2:.*]] = gml_st.space [32]
-// CHECK:         %[[TILE_2:.*]] = gml_st.tile %[[SPACE_2]] [%[[ARG2]]] [8] [1]
+// CHECK:         %[[TILE_2:.*]] = gml_st.tile [%[[ARG2]]] [8] [1]
 // CHECK:         %[[MATERIALIZE_2:.*]] = gml_st.materialize %[[ARG3]][%[[TILE_2]]]
 // CHECK:         %[[GENERIC_0:.*]] = linalg.generic
 // CHECK-SAME:        iterator_types = ["parallel", "reduction"]

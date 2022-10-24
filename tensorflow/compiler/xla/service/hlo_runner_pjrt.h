@@ -93,6 +93,9 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);
+
+  StatusOr<CompileOptions> GenerateDefaultCompileOptions(HloModule* module,
+                                                         bool run_hlo_passes);
 };
 
 }  // namespace xla

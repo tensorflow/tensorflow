@@ -2842,23 +2842,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "histogram_ops_test",
-    size = "small",
-    srcs = ["ops/histogram_ops_test.py"],
-    main = "ops/histogram_ops_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":histogram_ops",
-        ":init_ops",
-        ":variables",
-        "//tensorflow/python/framework:for_generated_wrappers",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
     name = "image_grad_d9m_test",
     size = "large",
     srcs = ["ops/image_grad_d9m_test.py"],
@@ -3268,8 +3251,14 @@ pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
     srcs = ["pywrap_tensorflow_internal.cc"],
     dynamic_deps = select({
-        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
-        "//conditions:default": ["//tensorflow:libtensorflow_framework.so.%s" % VERSION],
+        "//tensorflow:macos": [
+            "//tensorflow:libtensorflow_cc.%s.dylib" % VERSION,
+            "//tensorflow:libtensorflow_framework.%s.dylib" % VERSION,
+        ],
+        "//conditions:default": [
+            "//tensorflow:libtensorflow_cc.so.%s" % VERSION,
+            "//tensorflow:libtensorflow_framework.so.%s" % VERSION,
+        ],
         "//tensorflow:windows": [],
     }),
     exports_filter = [
@@ -3318,7 +3307,6 @@ pywrap_tensorflow_macro(
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",

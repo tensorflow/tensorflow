@@ -46,6 +46,23 @@ TEST(GpuExecutorTest, DeviceDescription) {
   }
 }
 
+TEST(GpuExecutorTest, FPUCount) {
+  ASSERT_FALSE(cuInit(/*Flags=*/0));
+  std::unique_ptr<DeviceDescription> d =
+      GpuExecutor::CreateDeviceDescription(/*device_ordinal=*/0).value();
+  const std::string &name = d->name();
+  if (name == "NVIDIA RTX A6000") {
+    EXPECT_EQ(d->fpus_per_core(), 128);
+  } else if (name == "Quadro P1000") {
+    EXPECT_EQ(d->fpus_per_core(), 128);
+  } else if (name == "Tesla P100-SXM2-16GB") {
+    EXPECT_EQ(d->fpus_per_core(), 64);
+  } else {
+    VLOG(1) << "FPU count not tested for " << name << "; reported value is "
+            << d->fpus_per_core();
+  }
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace stream_executor

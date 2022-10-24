@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
 #include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -136,17 +136,6 @@ class ScopedLoggingTimer {
   uint64_t start_micros_;
   bool enabled_;
 };
-
-// Given a vector<T>, returns a Span<char> that points at its
-// internals.
-//
-// Warning: if the vector is updated its storage pointer may change, so use this
-// with caution (ideally in limited scopes with temporary lifetimes).
-template <typename T>
-absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
-                             v->size() * sizeof(T));
-}
 
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.

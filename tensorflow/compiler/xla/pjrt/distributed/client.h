@@ -53,7 +53,7 @@ class DistributedRuntimeClient {
 
     // How long to wait for all nodes to call Shutdown(). If the timeout
     // expires, then shutdown() reports an error and returns control.
-    absl::Duration shutdown_timeout = absl::Seconds(60);
+    absl::Duration shutdown_timeout = absl::Minutes(5);
 
     // Interval at which the client should send heartbeat RPCs to the
     // coordinator.

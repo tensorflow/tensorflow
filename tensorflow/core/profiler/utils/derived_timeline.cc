@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -293,7 +293,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
                                std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
-    Stat<uint64_t> stat;
+    tsl::Stat<uint64_t> stat;
 
     void AddEventTimespan(Timespan event_span) {
       if (stat.count() == 0) {

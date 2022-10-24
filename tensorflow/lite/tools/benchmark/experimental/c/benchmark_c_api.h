@@ -35,7 +35,7 @@ typedef enum {
 } TfLiteBenchmarkRunType;
 
 // -----------------------------------------------------------------------------
-// C APIs corresponding to tensorflow::Stat<int64_t> type.
+// C APIs corresponding to tsl::Stat<int64_t> type.
 // -----------------------------------------------------------------------------
 typedef struct TfLiteBenchmarkInt64Stat {
   bool empty;

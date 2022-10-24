@@ -26,8 +26,8 @@ namespace mlir {
 namespace gml_st {
 
 struct TilingResult {
-  Operation *tiledOp;
-  Operation *loop;
+  Operation *tiledOp = nullptr;
+  Operation *loop = nullptr;
 };
 
 /// Options to use to control tiling.
@@ -45,6 +45,10 @@ struct TilingOptions {
 
   // Distribution label to add to the gml_st.parallel op
   std::string distributionLabel = "";
+
+  /// Convenience function to set the `tileSizeComputationFn` to a
+  /// function that computes tile sizes from an input vector parameter.
+  void setTileSizeComputationFn(ArrayRef<int64_t> ts);
 };
 
 /// Create tiled operation based on the specified tiling options. The result is

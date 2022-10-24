@@ -74,6 +74,21 @@ func.func @tf2xla_fallback_op() -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+// CHECK-LABEL: func @tf2xla_fallback_op_approx_top_k
+func.func @tf2xla_fallback_op_approx_top_k(%arg0: tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  %0:2 = "tf_device.cluster"() ({
+    // CHECK: tf.ApproxTopK
+    // CHECK-NOT: _xla_outside_compilation
+    %1:2 = "tf.ApproxTopK"(%arg0) {k = 2} : (tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+    tf_device.return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> (tensor<?xf32>, tensor<?xi32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @ignore_embedding_ops
 func.func @ignore_embedding_ops() -> () {
   "tf_device.cluster"() ({

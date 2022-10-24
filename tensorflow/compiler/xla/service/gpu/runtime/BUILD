@@ -11,6 +11,21 @@ package_group(
 )
 
 cc_library(
+    name = "fft",
+    srcs = ["fft.cc"],
+    hdrs = ["fft.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:fft_thunk",
+        "//tensorflow/compiler/xla/stream_executor:fft",
+    ],
+)
+
+cc_library(
     name = "graph_launch",
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
@@ -55,6 +70,7 @@ cc_library(
     name = "support",
     hdrs = ["support.h"],
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
     ],

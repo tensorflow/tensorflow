@@ -99,8 +99,8 @@ static constexpr llvm::StringLiteral kWrittenOperandsAttrName = "lmhlo.written";
 void GpuFusionRewritePass::getDependentDialects(
     DialectRegistry& registry) const {
   OpPassManager passManager;
-  createHloToGpuPipeline(passManager, /*blockTileDim=*/{}, /*warpTileDim=*/{},
-                         /*threadTileDim=*/{});
+  HloToGpuPipelineOptions opts;
+  createHloToGpuPipeline(passManager, opts);
   passManager.getDependentDialects(registry);
 }
 
@@ -247,8 +247,11 @@ LogicalResult FusionRewritePattern::matchAndRewrite(
   // Note: passManager.enableIRPrinting() doesn't do anything on dynamic pass
   // pipelines. Printing needs to be enabled on the parent pass manager.
   PassManager passManager(getContext());
-  createHloToGpuPipeline(passManager, {elementsPerBlock}, {elementsPerWarp},
-                         {elementsPerThread});
+  HloToGpuPipelineOptions opts;
+  opts.blockTileDim = {elementsPerBlock};
+  opts.warpTileDim = {elementsPerWarp};
+  opts.threadTileDim = {elementsPerThread};
+  createHloToGpuPipeline(passManager, opts);
   if (failed(parentPass.runPipeline(passManager, moduleOp)))
     return rewriter.notifyMatchFailure(fusionOp, "failed to run pipeline");
 

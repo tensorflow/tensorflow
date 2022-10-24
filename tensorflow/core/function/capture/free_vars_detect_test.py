@@ -667,6 +667,29 @@ class GenerateLoggingTest(parameterized.TestCase):
     self.assertEqual(lines[0], "Inside function Foo.f(): self.g")
     self.assertEqual(lines[1], "Inside function Foo.g(): x")
 
+  def test_partial_wrapped_partial_func(self):
+
+    def decorator_foo(func):
+
+      def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+      return functools.update_wrapper(wrapper, func)
+
+    x = 1
+    y = 2
+
+    def f(a, b):
+      return a + b + x + y
+
+    f = functools.partial(f, a=0)
+    f = decorator_foo(f)
+    f = functools.partial(f, b=0)
+
+    txt = free_vars_detect.generate_free_var_logging(f)
+    txt = self._remove_explanation(txt)
+    self.assertEqual(txt, "Inside function f(): x, y")
+
   def test_freevar_threshold(self):
     a = b = c = d = e = 1
 

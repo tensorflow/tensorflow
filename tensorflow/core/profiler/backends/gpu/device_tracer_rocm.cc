@@ -224,7 +224,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     /*HIP-API activities <<==== HIP-OPS activities*/
     auto activity_api_events_map_iter = activity_api_events_map_.begin();
     while (activity_api_events_map_iter != activity_api_events_map_.end()) {
-      uint32_t activity_corr_id = activity_api_events_map_iter->first;
       RocmTracerEvent& activity_api_event =
           activity_api_events_map_iter->second;
 
@@ -895,7 +894,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       host_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
-      size_t num_events = events.size();
       events.clear();
     }
 

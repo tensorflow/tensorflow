@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl:tsl.bzl", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 
 licenses(["notice"])
 
@@ -22,7 +22,7 @@ cc_library(
     }),
     hdrs = ["dso_loader.h"],
     compatible_with = [],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     tags = [
         "manual",
         "nobuilder",

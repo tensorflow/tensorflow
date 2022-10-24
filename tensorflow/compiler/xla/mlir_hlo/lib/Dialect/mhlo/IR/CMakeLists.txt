@@ -46,6 +46,7 @@ target_link_libraries(MhloDialect
   MLIRIR
   MLIRMhloUtils
   MLIRQuantDialect
+  MLIRSparseTensorDialect
   HloOpsCommon
   StablehloBase
 )

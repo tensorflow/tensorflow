@@ -503,7 +503,7 @@ stylesheet=<
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
     absl::StrAppendFormat(&graph_label, "<br/>total cycles = %d (%s)", cycles,
-                          tensorflow::strings::HumanReadableNum(cycles));
+                          tsl::strings::HumanReadableNum(cycles));
   }
 
   // Create CSS rules that say, when you hover over the given node or cluster,

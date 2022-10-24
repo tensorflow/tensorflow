@@ -152,14 +152,11 @@ class DTensorDevice(object):
   def meshes(self) -> Set[layout_lib.Mesh]:
     return self._meshes
 
-  def copy_to_mesh(self, tensor, new_layout, source_layout=None) -> ops.Tensor:
+  def copy_to_mesh(self, tensor, new_layout) -> ops.Tensor:
     """Copy `tensor` to `device` with the given layout."""
     self._register_mesh(new_layout.mesh)
     with ops.device(self.name):
-      return gen_dtensor_ops.copy_to_mesh(
-          tensor,
-          layout=new_layout.to_string(),
-          source_layout=source_layout.to_string() if source_layout else "")
+      return gen_dtensor_ops.copy_to_mesh(tensor, layout=new_layout.to_string())
 
   def pack(self, tensors: Sequence[Any], layout: layout_lib.Layout) -> Any:
     """Packs tensors into a DTensor handle on this DTensor device.

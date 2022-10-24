@@ -21,7 +21,6 @@ add_mlir_dialect_library(GmlStDialect
 
   DEPENDS
   MLIRgml_st_opsIncGen
-  MLIRGmlStComposeSetInterfaceIncGen
 
   LINK_LIBS PUBLIC
   MLIRControlFlowInterfaces

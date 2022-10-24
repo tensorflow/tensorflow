@@ -534,6 +534,8 @@ bool AdjustShardingsWithPartialMeshShape(
 // 2]; input [4, 8, 2] returns [1, 8, 1], [4, 8, 1] and [ 4, 8, 2].
 std::vector<std::vector<int64_t>> DecomposeMeshShapes(
     std::vector<int64_t> mesh_shape);
+
+bool OutputInputSameShapes(const HloInstruction* ins);
 }  // namespace spmd
 }  // namespace xla
 

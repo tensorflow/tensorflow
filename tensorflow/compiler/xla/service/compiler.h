@@ -24,6 +24,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -231,6 +232,10 @@ class Compiler {
 
     // An optional thread pool for parallel compilation.
     tsl::thread::ThreadPool* thread_pool = nullptr;
+
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>
+        layout_canonicalization_callback = {};
   };
 
   virtual ~Compiler() {}

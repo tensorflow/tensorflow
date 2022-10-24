@@ -14,14 +14,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <tuple>
-#include <utility>
-#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -33,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -150,10 +146,61 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
 
 int64_t HloCostAnalysis::FusionParameterReadBytes(
     const HloInstruction* hlo) const {
+  int64_t size = 0;
+  bool seen_trivial_user = false;
   CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
                            hlo->opcode() == HloOpcode::kGetTupleElement));
-  return GetShapeSize(hlo->shape()) *
-         hlo_properties_.at(hlo).at(kUtilizationKey);
+  for (const HloInstruction* user : hlo->users()) {
+    switch (user->opcode()) {
+      case HloOpcode::kFusion: {
+        for (int64_t idx : user->OperandIndices(hlo)) {
+          size += FusionParameterReadBytes(user->fused_parameter(idx));
+        }
+        break;
+      }
+      case HloOpcode::kSlice:
+        size += GetShapeSize(user->shape());
+        break;
+      case HloOpcode::kDynamicSlice:
+        if (hlo == user->operand(0)) {
+          size += GetShapeSize(user->shape());
+        } else if (!seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
+        break;
+      case HloOpcode::kDynamicUpdateSlice:
+        // Operand 0 is aliased to the output.
+        if (hlo != user->operand(0) && !seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
+        break;
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kReshape:
+        size += GetShapeSize(hlo->shape());
+        break;
+      default:
+        // Other instructions reading this parameter are assumed to be able to
+        // share the read from memory.
+        if (!seen_trivial_user) {
+          seen_trivial_user = true;
+          size += GetShapeSize(hlo->shape());
+        }
+    }
+  }
+  return size;
+}
+
+Status HloCostAnalysis::FusionCalculateUtilizations(
+    const HloInstruction* fusion) {
+  // Default trivial implementation: assume 100% utilization of every fusion
+  // instruction.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
+    hlo_properties_[instr][kUtilizationKey] = 1.0;
+  }
+  return OkStatus();
 }
 
 Status HloCostAnalysis::HandleElementwiseUnary(const HloInstruction* hlo) {
@@ -231,10 +278,10 @@ Status HloCostAnalysis::HandleDynamicSlice(
       GetShapeSize(dynamic_slice->operand(1)->shape());
   SetOutputBytesAccessed(GetShapeSize(dynamic_slice->shape()));
   SetOperandBytesAccessed(0, GetShapeSize(dynamic_slice->shape()));
+  SetOperandBytesAccessed(1, GetShapeSize(dynamic_slice->operand(1)->shape()));
   SetOperandUtilization(
       0, 1.0 * ShapeUtil::ElementsIn(dynamic_slice->shape()) /
              ShapeUtil::ElementsIn(dynamic_slice->operand(0)->shape()));
-  SetOperandBytesAccessed(1, GetShapeSize(dynamic_slice->operand(1)->shape()));
   return OkStatus();
 }
 
@@ -939,9 +986,6 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
         if (!subshape.IsArray()) {
           return;
         }
-        // dynamic-update-slice at the fusion output only writes an update
-        // into operand 0 without accessing its original content, so zero this
-        // operand's utilization
         if (shape_index.empty()) {
           if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
             int64_t size = GetShapeSize(root->operand(1)->shape());
@@ -1000,77 +1044,11 @@ Status HloCostAnalysis::HandleFusion(const HloInstruction* fusion) {
     propagate_output_size_to_parent(fusion->shape(), {});
   }
 
-  // Traverse through the computation from the root till parameters propagating
-  // the utilization of operands; store utilization of each node
-  // in hlo_properties_. All consumers of an instruction are processed before
-  // the instruction itself.
-  std::vector<HloInstruction*> instructions =
-      fusion->fused_instructions_computation()->MakeInstructionPostOrder();
-  absl::c_reverse(instructions);
+  TF_RETURN_IF_ERROR(FusionCalculateUtilizations(fusion));
 
-  // To estimate where within the computation an instruction output can be
-  // reused and where it has to be recomputed again we group accesses to the
-  // instruction by their origin from "element-wise use roots". All access
-  // paths from such a root to the instruction are element-wise.
-  // Whenever we account a non-element-wise operation we forget about
-  // element-wise roots encountered so far and provisionally set its operands
-  // as new element-wise roots.
-  absl::flat_hash_map<const HloInstruction*, ConstHloInstructionSet>
-      elementwise_use_roots;
-
-  // For the purpose of operand utilization analysis, no matter how the fusion
-  // outputs are used, we assume that fusion is always executed completely
-  // producing 100% of its outputs.
-  hlo_properties_[root][kUtilizationKey] = 1.0;
-  elementwise_use_roots[root].insert(root);
-  current_properties_[kFlopsKey] = 0;
-
-  for (const HloInstruction* instr : instructions) {
-    VLOG(8) << instr->ToString() << ":";
-    VLOG(9) << "Elementwise use roots:";
-    for (const HloInstruction* r : elementwise_use_roots[instr]) {
-      VLOG(9) << "\t" << r->ToString();
-      if (instr != r) {
-        hlo_properties_[instr][kUtilizationKey] +=
-            hlo_properties_[r][kUtilizationKey];
-      }
-    }
-
-    float cur_instr_utilization = hlo_properties_[instr][kUtilizationKey];
-    VLOG(8) << "Total utilization: " << cur_instr_utilization;
-
-    current_properties_[kFlopsKey] +=
-        cur_instr_utilization * hlo_properties_[instr][kFlopsKey];
-
-    for (int operand_idx = 0; operand_idx < instr->operand_count();
-         ++operand_idx) {
-      const HloInstruction* operand = instr->operand(operand_idx);
-      if ((instr->IsElementwise()) || instr->opcode() == HloOpcode::kTuple ||
-          instr->opcode() == HloOpcode::kGetTupleElement) {
-        auto instr_roots = elementwise_use_roots[instr];
-        for (const HloInstruction* r : instr_roots) {
-          elementwise_use_roots[operand].insert(r);
-        }
-      } else {
-        elementwise_use_roots[operand].insert(operand);
-        float cur_operand_utilization =
-            cur_instr_utilization * operand_utilization(*instr, operand_idx);
-        // The utilization is always a best-effort estimate, but in some cases
-        // cannot be precise due to dynamic nature of operations - dynamic
-        // slice is one such example. We do an average estimate in these
-        // cases and this can sometimes produce fractional utilizations which
-        // should be at least rounded up to a whole number of produced elements
-        // to be more realistic.
-        int64_t operand_elements = ShapeUtil::ElementsIn(operand->shape());
-        cur_operand_utilization =
-            ceil(cur_operand_utilization * operand_elements) / operand_elements;
-        hlo_properties_[operand][kUtilizationKey] = cur_operand_utilization;
-      }
-    }
-  }
-
-  for (const HloInstruction* instr : instructions) {
-    // Count memory access to all large constants.
+  // Count memory access to all large constants.
+  for (const HloInstruction* instr :
+       fusion->fused_instructions_computation()->instructions()) {
     if (instr->opcode() == HloOpcode::kConstant &&
         ShapeUtil::ElementsIn(instr->shape()) >
             immediate_constant_max_elements()) {
@@ -1196,10 +1174,10 @@ Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
   current_properties_[kBytesAccessedKey] =
       output_size * 2 + GetShapeSize(gather->operand(1)->shape());
   SetOperandBytesAccessed(0, output_size);
+  SetOperandBytesAccessed(1, GetShapeSize(gather->operand(1)->shape()));
   SetOperandUtilization(0,
                         1.0 * ShapeUtil::ElementsIn(gather->shape()) /
                             ShapeUtil::ElementsIn(gather->operand(0)->shape()));
-  SetOperandBytesAccessed(1, GetShapeSize(gather->operand(1)->shape()));
   SetOutputBytesAccessed(output_size);
   // Gather does not issue any flops.
   return OkStatus();

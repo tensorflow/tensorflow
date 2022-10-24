@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 
 #include <algorithm>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -30,11 +31,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -94,10 +93,12 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       std::unique_ptr<CoordinationClientCache> client_cache);
   ~CoordinationServiceStandaloneImpl() override { Stop(); }
 
+  void SetDeviceAggregationFunction(
+      std::function<DeviceInfo(const DeviceInfo& devices)>
+          post_aggregate_device_fn) override;
   Status RegisterTask(const CoordinatedTask& task,
                       uint64_t incarnation) override;
-  void WaitForAllTasks(const CoordinatedTask& task,
-                       const CoordinationServiceDeviceInfo& devices,
+  void WaitForAllTasks(const CoordinatedTask& task, const DeviceInfo& devices,
                        StatusCallback done) override;
   void ShutdownTaskAsync(const CoordinatedTask& task,
                          StatusCallback done) override;
@@ -123,7 +124,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
                        const CoordinatedTask& task) override;
 
  private:
-  const CoordinationServiceDeviceInfo& ListClusterDevices() override
+  const DeviceInfo& ListClusterDevices() override
       TF_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   uint64_t GetServiceIncarnation() override;
   void StartCheckStaleness();  // Checks both heartbeat and barrier timeouts.
@@ -189,16 +190,11 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t GetDisconnectedGracePeriodMicros();
     void SetError(Status status);
-    CoordinationServiceDeviceInfo GetDeviceInfo() { return devices_; }
-    void CollectDeviceInfo(const CoordinationServiceDeviceInfo& devices) {
-      devices_ = devices;
-    }
+    DeviceInfo GetDeviceInfo() { return devices_; }
+    void CollectDeviceInfo(const DeviceInfo& devices) { devices_ = devices; }
     // Checks if task has called WaitForAllTasks() previously, which gathers the
     // local device info.
-    bool DeviceInfoIsCollected() {
-      return devices_.type_case() !=
-             CoordinationServiceDeviceInfo::TYPE_NOT_SET;
-    }
+    bool DeviceInfoIsCollected() { return devices_.device_size() != 0; }
 
     absl::flat_hash_set<std::string> GetOngoingBarriers();
     void JoinBarrier(absl::string_view barrier_id);
@@ -216,7 +212,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
     // disconnected task. This grace period accounts for the lag time between
     // the service recording the state change and the agent stopping heartbeats.
     uint64_t disconnect_grace_period_us_ = 0;
-    CoordinationServiceDeviceInfo devices_;
+    DeviceInfo devices_;
     // For now, we assume there won't be many simultaneous barriers so we simply
     // use a set.
     absl::flat_hash_set<std::string> ongoing_barriers_for_task_;
@@ -227,6 +223,8 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   const uint64_t service_incarnation_ = random::New64();
   const uint64_t heartbeat_timeout_ms_;
   const absl::Duration shutdown_barrier_timeout_;
+  std::function<DeviceInfo(const DeviceInfo& devices)>
+      post_aggregate_device_fn_;
 
   const std::string device_propagation_barrier_id_ =
       absl::StrCat("WaitForAllTasks::", std::to_string(service_incarnation_));
@@ -236,7 +234,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   mutex state_mu_;
   absl::flat_hash_map<std::string, std::unique_ptr<TaskState>> cluster_state_
       TF_GUARDED_BY(state_mu_);
-  CoordinationServiceDeviceInfo cluster_devices_ TF_GUARDED_BY(state_mu_);
+  DeviceInfo cluster_devices_ TF_GUARDED_BY(state_mu_);
 
   mutex kv_mu_;
   // Ordered map to store config key-values
@@ -323,6 +321,13 @@ void CoordinationServiceStandaloneImpl::TaskState::ExitBarrier(
     absl::string_view barrier_id) {
   ongoing_barriers_for_task_.erase(barrier_id);
 }
+
+void CoordinationServiceStandaloneImpl::SetDeviceAggregationFunction(
+    std::function<DeviceInfo(const DeviceInfo& devices)>
+        post_aggregate_device_fn) {
+  post_aggregate_device_fn_ = std::move(post_aggregate_device_fn);
+}
+
 CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
     Env* env, const CoordinationServiceConfig& config,
     std::unique_ptr<CoordinationClientCache> client_cache)
@@ -519,7 +524,7 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
 }
 
 void CoordinationServiceStandaloneImpl::WaitForAllTasks(
-    const CoordinatedTask& task, const CoordinationServiceDeviceInfo& devices,
+    const CoordinatedTask& task, const DeviceInfo& devices,
     StatusCallback done) {
   {
     mutex_lock l(state_mu_);
@@ -587,8 +592,7 @@ Status CoordinationServiceStandaloneImpl::DisconnectTask(
   return OkStatus();
 }
 
-const CoordinationServiceDeviceInfo&
-CoordinationServiceStandaloneImpl::ListClusterDevices() {
+const DeviceInfo& CoordinationServiceStandaloneImpl::ListClusterDevices() {
   return cluster_devices_;
 }
 
@@ -1139,8 +1143,7 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
 }
 
 void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
-  assert(cluster_devices_.type_case() ==
-         CoordinationServiceDeviceInfo::TYPE_NOT_SET);
+  assert(cluster_devices_.device_size() == 0);
   std::vector<std::string> ordered_tasks;
   // Sort by task name to set deterministic order for cluster devices.
   ordered_tasks.reserve(cluster_state_.size());
@@ -1154,15 +1157,8 @@ void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
     cluster_devices_.MergeFrom(cluster_state_[task]->GetDeviceInfo());
   }
 
-  if (cluster_devices_.has_xla()) {
-    // Set global device id.
-    int xla_global_id = 0;
-    for (xla::LocalTopologyProto& local_topology :
-         *cluster_devices_.mutable_xla()->mutable_devices()->mutable_nodes()) {
-      for (xla::DeviceProto& device : *local_topology.mutable_devices()) {
-        device.set_global_device_id(xla_global_id++);
-      }
-    }
+  if (post_aggregate_device_fn_ != nullptr) {
+    cluster_devices_ = post_aggregate_device_fn_(cluster_devices_);
   }
 }
 }  // namespace

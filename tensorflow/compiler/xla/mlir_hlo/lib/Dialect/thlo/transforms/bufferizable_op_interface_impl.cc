@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 
 namespace mlir {
 namespace thlo {
@@ -29,7 +30,7 @@ using mlir::bufferization::BufferizationOptions;
 // We can reuse the upstream implementaiton when DestinationStyleOpInterface
 // is moved out of linalg.
 static LogicalResult bufferizeDestinationStyleOpInterface(
-    RewriterBase &rewriter, linalg::DestinationStyleOpInterface op,
+    RewriterBase &rewriter, DestinationStyleOpInterface op,
     const BufferizationOptions &options) {
   // Take a guard before anything else.
   OpBuilder::InsertionGuard g(rewriter);
@@ -77,7 +78,7 @@ static LogicalResult bufferizeDestinationStyleOpInterface(
   // Clone the op, but use the new operands. Move the existing block into the
   // new op. Since the new op does not have any tensor results, it does not
   // return anything.
-  auto newOp = cast<linalg::DestinationStyleOpInterface>(op.cloneWithoutRegions(
+  auto newOp = cast<DestinationStyleOpInterface>(op.cloneWithoutRegions(
       rewriter, op.getLoc(), /*resultTypes=*/TypeRange{}, newOperands));
 
   assert(op->getNumRegions() <= 1);
@@ -102,13 +103,12 @@ struct ThloSortOpBufferizationModel
 
   bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
                                const AnalysisState & /*state*/) const {
-    return cast<linalg::DestinationStyleOpInterface>(op).isOutputTensor(
-        &opOperand);
+    return cast<DestinationStyleOpInterface>(op).isOutput(&opOperand);
   }
 
   SmallVector<OpOperand *> getAliasingOpOperand(
       Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
-    auto dstStyleOp = cast<linalg::DestinationStyleOpInterface>(op);
+    auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
     // The i-th OpResult may alias with the i-th "out" tensor.
     return {dstStyleOp.getOutputOperand(opResult.getResultNumber())};
@@ -117,10 +117,10 @@ struct ThloSortOpBufferizationModel
   SmallVector<OpResult> getAliasingOpResult(
       Operation *op, OpOperand &opOperand,
       const AnalysisState & /*state*/) const {
-    auto dstStyleOp = cast<linalg::DestinationStyleOpInterface>(op);
+    auto dstStyleOp = cast<DestinationStyleOpInterface>(op);
 
     // The i-th "out" tensor may alias with the i-th OpResult.
-    if (dstStyleOp.isOutputTensor(&opOperand))
+    if (dstStyleOp.isOutput(&opOperand))
       return {dstStyleOp.getTiedOpResult(&opOperand)};
     return {};
   }
@@ -128,7 +128,7 @@ struct ThloSortOpBufferizationModel
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
     return bufferizeDestinationStyleOpInterface(
-        rewriter, cast<linalg::DestinationStyleOpInterface>(op), options);
+        rewriter, cast<DestinationStyleOpInterface>(op), options);
   }
 };
 

@@ -154,6 +154,7 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -182,6 +183,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
@@ -394,6 +396,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/compiler/xla/stream_executor:platform",
     ] + if_libtpu(

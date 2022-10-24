@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

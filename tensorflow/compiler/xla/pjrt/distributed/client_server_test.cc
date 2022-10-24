@@ -202,18 +202,20 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
   *node1 = locals[1];
   node1->mutable_devices(0)->set_global_device_id(3);
 
-  // Used to ensure that thread0's client connects before thread1's client to
-  // set the global device ids deterministically.
+  // Used to ensure that thread0's client sends their device after thread1's
+  // client. This ensures that devices are sent out of turn (compared to their
+  // node ids).
   absl::Notification n;
   auto thread0_fn = [&]() -> xla::Status {
     auto client = GetClient(/*node_id=*/0, GetParam().use_coordination_service);
     GlobalTopologyProto topology;
-    // Unblock the second thread.
-    // Note: For distributed runtime service, client->Connect() blocks
-    // until all clients have connected concurrently. Thus, we cannot notify
-    // after this Connect() due to a deadlock.
-    n.Notify();
     TF_RETURN_IF_ERROR(client->Connect());
+    // Wait until second thread sends their device info to the service. This
+    // tests that devices are set in the order of their node ids even if they
+    // are sent out of turn.
+    n.WaitForNotification();
+    // Sleep a short while for the other thread to send their device info first.
+    absl::SleepFor(absl::Seconds(1));
     TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[0], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
@@ -226,13 +228,15 @@ TEST_P(ClientServerTest, ConnectAndEnumerateDevices) {
     return OkStatus();
   };
   auto thread1_fn = [&]() -> xla::Status {
-    // Wait for thread0 client to be ready for connection, to ensure global ids
-    // are set in order (thread0 client, then thread1 client).
-    n.WaitForNotification();
     auto client = GetClient(/*node_id=*/1, GetParam().use_coordination_service);
     GlobalTopologyProto topology;
     TF_RETURN_IF_ERROR(client->Connect());
-    absl::SleepFor(absl::Seconds(1));
+    // Unblock the first thread after sending device info to the service. This
+    // tests that devices are set in the order of their node ids even if they
+    // are sent out of turn.
+    // We cannot send the notification after the call since there is a barrier
+    // within the call that would cause a deadlock.
+    n.Notify();
     TF_RETURN_IF_ERROR(client->EnumerateDevices(locals[1], &topology));
     TF_RET_CHECK(
         xla::protobuf_util::ProtobufEquals(topology, expected_topology))
@@ -341,7 +345,7 @@ TEST_P(ClientServerTest, ClientsTerminateShutdownIfAnyClientGoesAway) {
       EXPECT_TRUE(tsl::errors::IsInternal(statuses[i]) ||
                   tsl::errors::IsFailedPrecondition(statuses[i]));
     } else {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::ABORTED);
+      EXPECT_EQ(statuses[i].code(), tsl::error::ABORTED);
     }
   }
 }
@@ -431,9 +435,9 @@ TEST_P(ClientServerTest, ClientsTerminateIfServiceGoesAway) {
   }
   for (int i = 0; i < num_nodes; ++i) {
     if (GetParam().use_coordination_service) {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION);
+      EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION);
     } else {
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+      EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
           << statuses[i];
     }
   }
@@ -509,7 +513,7 @@ TEST_P(ClientServerTest, ConnectEventuallyTimesOutIfAClientDoesNotShowUp) {
     }
   }
   for (int i = 0; i < num_nodes - 1; ++i) {
-    EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED);
+    EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED);
   }
 }
 
@@ -577,15 +581,15 @@ TEST_P(ClientServerTest, WaitAtBarrier_Timeout) {
     if (GetParam().use_coordination_service) {
       // Co-ordination service returns the status of the previous barrier
       // failure without waiting for the thread to time out.
-      EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+      EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
           << " node id: " << i;
     } else {
       if (i == 0) {
-        EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+        EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
             << " node id: " << i;
       }
       if (i == 1) {
-        EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+        EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
             << " node id: " << i;
       }
     }
@@ -621,7 +625,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_TimeoutWithDifferentBarrierId) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tensorflow::error::DEADLINE_EXCEEDED)
+    EXPECT_EQ(statuses[i].code(), tsl::error::DEADLINE_EXCEEDED)
         << " node id: " << i;
   }
 }
@@ -650,7 +654,7 @@ TEST_P(ClientServerTest, WaitAtBarrier_FailWithSameBarrierId) {
     }
   }
   for (int i = 0; i < num_nodes; ++i) {
-    EXPECT_EQ(statuses[i].code(), tensorflow::error::FAILED_PRECONDITION)
+    EXPECT_EQ(statuses[i].code(), tsl::error::FAILED_PRECONDITION)
         << " node id: " << i;
   }
 }

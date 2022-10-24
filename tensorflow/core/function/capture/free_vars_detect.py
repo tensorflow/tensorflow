@@ -48,12 +48,17 @@ def _parse_and_analyze(func):
 
 
 def _handle_wrap_partial_func(obj):
-  """Handle wrapped function and partial functions."""
-  while hasattr(obj, "__wrapped__"):
-    obj = obj.__wrapped__
-  if isinstance(obj, functools.partial) or isinstance(obj,
-                                                      functools.partialmethod):
-    obj = obj.func
+  """Processes wrapped function and partial functions recursively."""
+  modified = True
+  while modified:
+    modified = False
+    while hasattr(obj, "__wrapped__"):
+      obj = obj.__wrapped__
+      modified = True
+    if isinstance(obj, functools.partial) or isinstance(
+        obj, functools.partialmethod):
+      obj = obj.func
+      modified = True
   return obj
 
 
@@ -218,8 +223,6 @@ def _detect_function_free_vars(fn):
   assert isinstance(fn, types.FunctionType) or isinstance(
       fn, types.MethodType
   ), f"The input should be of Python function type. Got type: {type(fn)}."
-
-  fn = _handle_wrap_partial_func(fn)
 
   queue = collections.deque([fn])
   fn_map = dict()

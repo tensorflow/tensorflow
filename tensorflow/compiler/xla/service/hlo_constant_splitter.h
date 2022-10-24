@@ -29,11 +29,16 @@ namespace xla {
 // constants within the same domain, will be rejoined back.
 class HloConstantSplitter : public HloModulePass {
  public:
+  explicit HloConstantSplitter(bool split_expressions = false)
+      : split_expressions_(split_expressions) {}
   absl::string_view name() const override { return "hlo-constant-splitter"; }
   using HloPassInterface::Run;
   StatusOr<bool> Run(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  bool split_expressions_;
 };
 
 }  // namespace xla

@@ -17,23 +17,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_CUDAMALLOCASYNC_ALLOCATOR_H_
 
 #include <memory>
+#include <optional>
+#include <string>
+
+#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
+
+#define TF_CUDA_MALLOC_ASYNC_SUPPORTED CUDA_VERSION >= 11020
 #endif  // GOOGLE_CUDA
 
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
-
-#if GOOGLE_CUDA
-#define TF_CUDA_MALLOC_ASYNC_SUPPORTED CUDA_VERSION >= 11020
-#endif
 
 // An allocator that wraps cudaMallocAsync. It has fewer fragmentation
 // issues then the BFC memory allocator.  The compute-sanitizer tool
@@ -62,14 +64,14 @@ namespace tensorflow {
 // Here, the pool_size isn't the absolute max as for [Gpu]BFCAllocator.
 // The pool can grow above that up to the total GPU memory.  But the
 // driver can return the excess memory to other processes.
-class GpuCudaMallocAsyncAllocator : public Allocator {
+class GpuCudaMallocAsyncAllocator : public tsl::Allocator {
  public:
   explicit GpuCudaMallocAsyncAllocator(tsl::PlatformDeviceId platform_device_id,
                                        size_t pool_size,
                                        bool reserve_memory = false,
                                        bool compute_stats = true);
   ~GpuCudaMallocAsyncAllocator() override;
-  string Name() override { return name_; }
+  std::string Name() override { return name_; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
 
@@ -79,7 +81,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   size_t AllocatedSize(const void* ptr) const override;
 
-  absl::optional<AllocatorStats> GetStats() override;
+  std::optional<tsl::AllocatorStats> GetStats() override;
 
   bool ClearStats() override;
 
@@ -93,8 +95,8 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
 
   static int GetInstantiatedCountTestOnly() { return number_instantiated_; }
 
-  AllocatorMemoryType GetMemoryType() const override {
-    return AllocatorMemoryType::kDevice;
+  tsl::AllocatorMemoryType GetMemoryType() const override {
+    return tsl::AllocatorMemoryType::kDevice;
   }
 
  private:
@@ -118,7 +120,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // Only useful for tests.
   static std::atomic<int> number_instantiated_;
 
-  string name_;
+  std::string name_;
 
   bool reserve_memory_;
 
@@ -127,7 +129,7 @@ class GpuCudaMallocAsyncAllocator : public Allocator {
   // Stats.
   // Structures mutable after construction
   mutable tsl::mutex lock_;
-  std::unique_ptr<AllocatorStats> stats_ TF_PT_GUARDED_BY(lock_);
+  std::unique_ptr<tsl::AllocatorStats> stats_ TF_PT_GUARDED_BY(lock_);
   absl::flat_hash_map<const void*, size_t> size_map_ TF_GUARDED_BY(lock_);
 };
 

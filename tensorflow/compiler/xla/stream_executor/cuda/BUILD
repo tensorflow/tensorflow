@@ -2,7 +2,7 @@
 #   CUDA-platform specific StreamExecutor support code.
 
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_cc_test", "tf_cuda_cc_test")
-load("//tensorflow/tsl:tsl.bzl", "if_google", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "tsl_copts")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
@@ -271,7 +271,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:errors"],
 )
 
 cc_library(
@@ -351,7 +351,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/lib",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:errors"],
 )
 
 cc_library(
@@ -395,7 +395,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
-    ]),
+    ]) + ["//tensorflow/tsl/platform:errors"],
     alwayslink = True,
 )
 
@@ -464,7 +464,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:temporary_device_memory",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
-    ]) + tf_additional_cudnn_plugin_deps() + ["@com_google_absl//absl/synchronization"],
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
+        "//tensorflow/tsl/util:env_var",
+    ]) + tf_additional_cudnn_plugin_deps() + [
+        "@com_google_absl//absl/synchronization",
+    ],
     alwayslink = True,
 )
 
@@ -708,7 +713,7 @@ tf_cc_test(
 
 cc_library(
     name = "all_runtime",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":cublas_plugin",

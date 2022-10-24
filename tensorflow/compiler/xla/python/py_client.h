@@ -31,8 +31,11 @@ limitations under the License.
 namespace xla {
 
 class PyBuffer;
+class PyShardedBuffer;
 class PyClient;
 class PyLoadedExecutable;
+class PyArray;
+struct PyArray_Storage;
 
 // Custom holder types.
 //
@@ -220,9 +223,14 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       absl::Span<uint16_t const> send_channel_ids,
       absl::Span<uint16_t const> recv_channel_ids);
 
+  std::vector<pybind11::object> LiveArrays();
+
  private:
   friend class PyBuffer;
+  friend class PyShardedBuffer;
   friend class PyLoadedExecutable;
+  friend class PyArray;
+  friend struct PyArray_Storage;
 
   std::shared_ptr<PjRtClient> pjrt_client_;
 
@@ -233,6 +241,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // buffers_ is a per-device list, indexed by device->id().
   std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
+  PyArray_Storage* arrays_ = nullptr;
+  PyShardedBuffer* sharded_buffers_ = nullptr;
 };
 
 }  // namespace xla

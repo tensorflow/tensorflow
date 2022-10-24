@@ -147,6 +147,7 @@ DECL_CONVERT_OP(ZerosLike);
 DECL_CONVERT_OP(Less);
 DECL_CONVERT_OP(LessEqual);
 DECL_CONVERT_OP(Pad);
+DECL_CONVERT_OP(MirrorPad);
 DECL_CONVERT_OP(PadV2);
 DECL_CONVERT_OP(ResizeBilinear);
 DECL_CONVERT_OP(ResizeNearestNeighbor);
@@ -2436,6 +2437,38 @@ LogicalResult ConvertTFLPadOp::matchAndRewrite(
   return success();
 }
 
+LogicalResult ConvertTFLMirrorPadOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_mirrorpad_op = cast<TFL::MirrorPadOp>(op);
+
+  RankedTensorType output_type =
+      tfl_mirrorpad_op.getResult().getType().dyn_cast<RankedTensorType>();
+  if (!output_type) {
+    return rewriter.notifyMatchFailure(op, "output type isn't a ranked tensor");
+  }
+
+  TFTFLMirrorPaddingType mode;
+  switch (tfl_mirrorpad_op.mode()) {
+    case mlir::TFL::MirrorPaddingType::REFLECT:
+      mode = TFTFLMirrorPaddingType::REFLECT;
+      break;
+    case mlir::TFL::MirrorPaddingType::SYMMETRIC:
+      mode = TFTFLMirrorPaddingType::SYMMETRIC;
+      break;
+    default:
+      return rewriter.notifyMatchFailure(
+          op, "mode isn't one of REFLECT or SYMMETRIC");
+  }
+
+  llvm::Optional<Value> result = convertMirrorPadCommon(
+      rewriter, op, output_type, tfl_mirrorpad_op.input(),
+      tfl_mirrorpad_op.pad(), mode);
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
+}
+
 LogicalResult ConvertTFLPadV2Op::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tfl_pad_op = cast<TFL::PadV2Op>(op);
@@ -3630,6 +3663,7 @@ void populateLegalizeTFLPatterns(MLIRContext* ctx,
   DEF_PATTERN_INSERT(TFLLess);
   DEF_PATTERN_INSERT(TFLLessEqual);
   DEF_PATTERN_INSERT(TFLPad);
+  DEF_PATTERN_INSERT(TFLMirrorPad);
   DEF_PATTERN_INSERT(TFLPadV2);
   DEF_PATTERN_INSERT(TFLResizeBilinear);
   DEF_PATTERN_INSERT(TFLResizeNearestNeighbor);

@@ -415,18 +415,23 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
   RankedTensorType x_type = x_value.getType().dyn_cast<RankedTensorType>();
   RankedTensorType y_type = y_value.getType().dyn_cast<RankedTensorType>();
 
-  if (!result_type || !condition_type || !x_type || !y_type) {
+  if (!x_type || !y_type || !condition_type) {
     (void)rewriter.notifyMatchFailure(op, "failed ranked tensor type check");
     return llvm::None;
   }
 
   // First check whether we need to reshape the condition to match
   // the same rank as the then/else clauses.
-  if (result_type.getRank() == condition_type.getRank()) {
+  if (x_type == y_type && x_type.getShape() == condition_type.getShape()) {
     // Nothing to reshape.
-    return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), result_type,
+    return CreateOpAndInfer<tosa::SelectOp>(rewriter, op->getLoc(), x_type,
                                             condition_value, x_value, y_value)
         .getResult();
+  }
+
+  if (!result_type) {
+    (void)rewriter.notifyMatchFailure(op, "failed ranked tensor type check");
+    return llvm::None;
   }
 
   // Need to reshape the condition.
@@ -850,7 +855,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   SmallVector<int64_t> a2_shape(1 + block_rank * 2 + remaining_shape_rank);
 
   // First dimension is batch.
-  a2_shape[0] = input_type.getShape()[0];
+  a2_shape[0] = input_type.getDimSize(0);
   for (int i = 0; i < block_rank; i++) {
     int32_t block_shape_val =
         block_shape_elems.getValues<IntegerAttr>()[i].getInt();
@@ -872,7 +877,8 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
       rewriter, op->getLoc(),
       tensorflow::GetTypeFromTFTensorShape(a2_shape,
                                            result_type.getElementType()),
-      a1_pad_input_op.getResult(), rewriter.getI64ArrayAttr(a2_shape));
+      a1_pad_input_op.getResult(),
+      rewriter.getI64ArrayAttr(tensorflow::ConvertTFShapeToMlir(a2_shape)));
 
   // 3. Transpose dimensions to:
   //  block-shape +
@@ -2053,7 +2059,7 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
   assert(axis >= 0 && axis < input_type.getRank());
 
   Value slice_value = input_value;
-  bool is_dyn_split = input_type.getDimSize(axis) == -1;
+  bool is_dyn_split = input_type.isDynamicDim(axis);
   if (is_dyn_split) {
     SmallVector<int64_t> new_shape;
     for (int i = 0, s = input_type.getRank(); i < s; i++) {
@@ -2079,7 +2085,9 @@ llvm::Optional<SmallVector<Value>> convertSplitOp(
   SmallVector<int64_t> begin_vals, size_vals;
   for (int j = 0, s = slice_type.getRank(); j < s; j++) {
     begin_vals.push_back(0);
-    size_vals.push_back(slice_type.getDimSize(j));
+    int64_t dim = slice_type.getDimSize(j);
+    size_vals.push_back(ShapedType::isDynamic(dim) ? tensorflow::kTFDynamicSize
+                                                   : dim);
   }
   size_vals[axis] = size_vals[axis] / num_split;
 
@@ -3046,7 +3054,7 @@ llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                        int& border) {
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
-      n = 0;
+      n = 1;
       d = 1;
       offset = 0;
       border = output - 1;
@@ -3352,6 +3360,155 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   return CreateOpAndInfer<tosa::AddOp>(rewriter, op->getLoc(), output_type,
                                        op7_mul_op6.getResult(), cst_min)
       .getResult();
+}
+
+llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
+                                             Operation* op,
+                                             RankedTensorType output_type,
+                                             Value input, Value pad,
+                                             TFTFLMirrorPaddingType mode) {
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  if (!input_type) {
+    (void)rewriter.notifyMatchFailure(op, "input type isn't a ranked tensor");
+    return llvm::None;
+  }
+
+  if (mode != TFTFLMirrorPaddingType::SYMMETRIC &&
+      mode != TFTFLMirrorPaddingType::REFLECT) {
+    return llvm::None;
+  }
+
+  ElementsAttr pad_elems;
+  if (!matchPattern(pad, m_Constant(&pad_elems))) {
+    (void)rewriter.notifyMatchFailure(op, "fail to retrieve padding values");
+    return llvm::None;
+  }
+
+  // Split N-rank mirrorpad into N sequences of "slice, reverse, concat"
+  // operation. Take an example below. Perform mirrorpad on a 2D input tensor
+  // with paddings[] = ([[1, 1,], [2, 2]]) in `SYMMETRIC` mode. Original input
+  // tensor:
+  //            | 1 2 3 |
+  //            | 4 5 6 |
+  //
+  // First, fill in the padding value on the top and bottom.
+  // pad before | 1 2 3 |
+  //            | 1 2 3 |
+  //            | 4 5 6 |
+  // pad after  | 4 5 6 |
+  //
+  // Second, fill in the padding value on the left and right.
+  // pad before          pad after
+  //       2 1 | 1 2 3 | 3 2
+  //       2 1 | 1 2 3 | 3 2
+  //       5 4 | 4 5 6 | 6 5
+  //       5 4 | 4 5 6 | 6 5
+
+  // Indicate the value and shape of the tensor being processed in that
+  // dimension.
+  Value current_tensor(input);
+  SmallVector<int64_t> current_dim_size = to_vector(input_type.getShape());
+
+  // Note that this also represents the intermediate padded tensors for each
+  // dimension.
+  llvm::Optional<Value> result;
+
+  const int rank = input_type.getRank();
+  const int offset = (mode == TFTFLMirrorPaddingType::SYMMETRIC) ? 0 : 1;
+
+  for (int axis = 0; axis < rank; ++axis) {
+    int pad_before = pad_elems.getValues<IntegerAttr>()[2 * axis].getInt();
+    int pad_after = pad_elems.getValues<IntegerAttr>()[2 * axis + 1].getInt();
+
+    SmallVector<int64_t> slice_before_begin, slice_before_size;
+    SmallVector<int64_t> slice_after_begin, slice_after_size;
+
+    for (int i = 0; i < rank; ++i) {
+      if (axis == i) {
+        // Calculate the padding area of slices that is going to be added to
+        // the core tensor in that axis.
+        slice_before_begin.push_back(offset);
+        slice_before_size.push_back(pad_before);
+        slice_after_begin.push_back(current_dim_size[i] - pad_after - offset);
+        slice_after_size.push_back(pad_after);
+      } else {
+        // Keep the whole length of other axes.
+        slice_before_begin.push_back(0);
+        slice_before_size.push_back(current_dim_size[i]);
+        slice_after_begin.push_back(0);
+        slice_after_size.push_back(current_dim_size[i]);
+      }
+    }
+
+    SmallVector<Value, 3> slices;
+
+    if (pad_before != 0) {
+      // Construct a padding slice for adding values before the contents of
+      // tensor.
+      auto slice_before_op = CreateOpAndInfer<tosa::SliceOp>(
+          rewriter, op->getLoc(),
+          RankedTensorType::get(slice_before_size,
+                                output_type.getElementType()),
+          current_tensor, rewriter.getI64ArrayAttr(slice_before_begin),
+          rewriter.getI64ArrayAttr(slice_before_size));
+
+      // Reverse op is superfluous when the padding value is 1.
+      if (pad_before == 1) {
+        slices.push_back(slice_before_op);
+      } else {
+        auto reverse_before_op = CreateOpAndInfer<tosa::ReverseOp>(
+            rewriter, op->getLoc(), slice_before_op.getType(), slice_before_op,
+            rewriter.getI64IntegerAttr(axis));
+        slices.push_back(reverse_before_op);
+      }
+    }
+
+    // Copy the core tensor
+    slices.push_back(current_tensor);
+
+    if (pad_after != 0) {
+      // Construct a padding slice for adding values after the contents of
+      // tensor.
+      auto slice_after_op = CreateOpAndInfer<tosa::SliceOp>(
+          rewriter, op->getLoc(),
+          RankedTensorType::get(slice_after_size, output_type.getElementType()),
+          current_tensor, rewriter.getI64ArrayAttr(slice_after_begin),
+          rewriter.getI64ArrayAttr(slice_after_size));
+
+      if (pad_after == 1) {
+        slices.push_back(slice_after_op);
+      } else {
+        auto reverse_after_op = CreateOpAndInfer<tosa::ReverseOp>(
+            rewriter, op->getLoc(), slice_after_op.getType(), slice_after_op,
+            rewriter.getI64IntegerAttr(axis));
+        slices.push_back(reverse_after_op);
+      }
+    }
+
+    // The padded size of each dimension D of the output is:
+    // paddings[D, 0] + tensor.dim_size(D) + paddings[D, 1]
+    current_dim_size[axis] =
+        pad_before + input_type.getDimSize(axis) + pad_after;
+
+    // Create the expected output shape and type, and initialize it with zero.
+    RankedTensorType result_type =
+        RankedTensorType::get(current_dim_size, output_type.getElementType());
+    DenseElementsAttr zero = result_type.getElementType().isa<FloatType>()
+                                 ? DenseElementsAttr::get(result_type, {0.f})
+                                 : DenseElementsAttr::get(result_type, {0});
+    Value result_value =
+        rewriter.create<tosa::ConstOp>(op->getLoc(), result_type, zero);
+
+    // Concatenate the old tensor with padding areas.
+    result = convertConcatV2Op(rewriter, op, result_value, slices, axis);
+
+    if (!result) return llvm::None;
+
+    // Update to the padded tensor
+    current_tensor = result.getValue();
+  }
+
+  return result;
 }
 
 llvm::Optional<Value> convertTFConv2DCommon(

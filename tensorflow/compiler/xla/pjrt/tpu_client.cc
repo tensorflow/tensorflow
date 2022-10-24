@@ -38,10 +38,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executable_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_interface.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/tpu/tpu_initializer_helper.h"
 #include "tensorflow/tsl/platform/casts.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -268,7 +268,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetTpuClient(
     // while(!platform->Initialized()) once the Initialized() function works
     // correctly, and remove this check. The platform may already be initialized
     // when running internally.
-    if (status.code() == tensorflow::error::ALREADY_EXISTS) {
+    if (status.code() == tsl::error::ALREADY_EXISTS) {
       LOG(INFO) << "TpuPlatform already initialized, continuing...";
       break;
     }

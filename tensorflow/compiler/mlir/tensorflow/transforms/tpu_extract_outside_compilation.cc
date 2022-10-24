@@ -212,9 +212,10 @@ Operation* CreateRecvAtHostOp(OpBuilder& builder, Location loc,
 // with yield op and an empty block.
 TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
                                          OpBuilder& builder) {
+  // Mark op as stateful due to side-effecting communication ops added later.
   auto host_side_if = builder.create<TF::IfRegionOp>(
       if_region.getLoc(), llvm::SmallVector<Type, 4>{}, if_region.cond(),
-      if_region.is_stateless(), if_region._then_func_nameAttr(),
+      /*is_stateless=*/false, if_region._then_func_nameAttr(),
       if_region._else_func_nameAttr());
 
   // Create empty then branch region.
@@ -234,12 +235,12 @@ TF::IfRegionOp CloneEmptyIfWithPredicate(TF::IfRegionOp if_region,
 }
 // Creates a WhileRegionOp cond and body regions with yield op and
 // an empty body.
-TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
-                                  uint64_t parallel_iterations, Location loc,
+TF::WhileRegionOp CloneEmptyWhile(uint64_t parallel_iterations, Location loc,
                                   OpBuilder& builder) {
+  // Mark op as stateful due to side-effecting communication ops added later.
   auto host_side_while = builder.create<TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
-      parallel_iterations, is_stateless, /*shape_invariant=*/false);
+      parallel_iterations, /*is_stateless=*/false, /*shape_invariant=*/false);
 
   // Create empty else branch region.
   auto& body = host_side_while.body();
@@ -726,13 +727,14 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
                                default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
+      // Mark op as stateful due to side-effecting communication ops.
+      if_op->setAttr("is_stateless", builder.getBoolAttr(false));
       MarkOutsideCompiled(host_if.getOperation());
     }
     if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(op)) {
       if (!HasOutsideCompilationNested(op)) return WalkResult::advance();
       OpBuilder builder(while_op);
-      auto host_while = CloneEmptyWhile(while_op.is_stateless(),
-                                        while_op.parallel_iterations(),
+      auto host_while = CloneEmptyWhile(while_op.parallel_iterations(),
                                         while_op.getLoc(), builder);
       const auto condition_send_recv_key =
           llvm::formatv("while_condition_channel_{0}",
@@ -763,6 +765,8 @@ LogicalResult DecomposeControlFlow(tf_device::ClusterOp tpu_cluster,
                                default_device_ordignal,
                                communication_key_index)))
         return WalkResult::interrupt();
+      // Mark op as stateful due to side-effecting communication ops.
+      while_op->setAttr("is_stateless", builder.getBoolAttr(false));
       MarkOutsideCompiled(host_while.getOperation());
     }
     return WalkResult::advance();
