@@ -18,6 +18,10 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "if_static",
 )
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 package(
     default_visibility = [
@@ -59,6 +63,8 @@ filegroup(
         "command_line_flags.h",
         "env_var.h",
         "ptr_util.h",
+        "stat_summarizer_options.h",
+        "stats_calculator.h",
         "use_cudnn.h",
     ],
 )
@@ -99,6 +105,7 @@ filegroup(
     name = "framework_srcs",
     srcs = [
         "ptr_util.h",
+        "stat_summarizer_options.h",
         "use_cudnn.h",
     ],
 )
@@ -202,6 +209,31 @@ cc_library(
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "stats_calculator_portable",
+    srcs = [
+        "stats_calculator.cc",
+    ],
+    hdrs = [
+        "stat_summarizer_options.h",
+        "stats_calculator.h",
+    ],
+    copts = tsl_copts(),
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
+tsl_cc_test(
+    name = "stats_calculator_test",
+    srcs = ["stats_calculator_test.cc"],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 

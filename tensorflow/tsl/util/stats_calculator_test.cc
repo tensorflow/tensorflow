@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 #include <cfloat>
 
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 using Detail = StatsCalculator::Detail;
@@ -105,4 +105,4 @@ TEST(StatsCalculatorTest, UpdateStat) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

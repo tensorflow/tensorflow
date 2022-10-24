@@ -15,30 +15,11 @@ limitations under the License.
 
 #ifndef TENSORFLOW_CORE_UTIL_STAT_SUMMARIZER_OPTIONS_H_
 #define TENSORFLOW_CORE_UTIL_STAT_SUMMARIZER_OPTIONS_H_
-namespace tensorflow {
-// Used to control the output of the statistics summarizer;
-struct StatSummarizerOptions {
-  StatSummarizerOptions()
-      : show_run_order(true),
-        run_order_limit(0),
-        show_time(true),
-        time_limit(10),
-        show_memory(true),
-        memory_limit(10),
-        show_type(true),
-        show_summary(true),
-        format_as_csv(false) {}
 
-  bool show_run_order;
-  int run_order_limit;
-  bool show_time;
-  int time_limit;
-  bool show_memory;
-  int memory_limit;
-  bool show_type;
-  bool show_summary;
-  bool format_as_csv;
-};
+#include "tensorflow/tsl/util/stat_summarizer_options.h"
+
+namespace tensorflow {
+using tsl::StatSummarizerOptions;
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_STAT_SUMMARIZER_OPTIONS_H_

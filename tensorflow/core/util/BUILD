@@ -384,16 +384,31 @@ cc_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = [
-        "stat_summarizer_options.h",
-        "stats_calculator.cc",
-    ],
     hdrs = [
+        "stat_summarizer_options.h",
         "stats_calculator.h",
     ],
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/util:stats_calculator_portable",
+    ],
+)
+
+cc_library(
+    name = "stat_summarizer",
+    hdrs = [
+        "stat_summarizer.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -450,16 +465,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "stats_calculator_test",
-    srcs = ["stats_calculator_test.cc"],
-    deps = [
-        ":stats_calculator_portable",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "reporter",
     hdrs = ["reporter.h"],
@@ -490,8 +495,8 @@ cc_library(
         "//tensorflow/python/util:__pkg__",
     ],
     deps = [
+        ":env_var",
         "//tensorflow/core/platform:platform_port",
-        "//tensorflow/core/util:env_var",
         "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
@@ -637,8 +642,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/util:env_var",
         "//tensorflow/tsl/util:determinism",
     ],
     alwayslink = 1,

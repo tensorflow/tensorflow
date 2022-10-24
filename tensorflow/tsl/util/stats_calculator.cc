@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 #include <iomanip>
 #include <map>
@@ -21,7 +21,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-namespace tensorflow {
+namespace tsl {
 
 StatsCalculator::StatsCalculator(const StatSummarizerOptions& options)
     : options_(options) {}
@@ -311,4 +311,4 @@ void StatsCalculator::AddNodeStats(const std::string& name,
   detail->times_called++;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

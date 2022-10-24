@@ -1271,7 +1271,10 @@ tflite_cc_shared_object(
 bzl_library(
     name = "build_def_bzl",
     srcs = ["build_def.bzl"],
-    visibility = ["//tensorflow/lite/core/shims:__subpackages__"],
+    visibility = [
+        "//learning/brain/models/app_benchmarks:__pkg__",
+        "//tensorflow/lite/core/shims:__subpackages__",
+    ],
     deps = [
         ":special_rules_bzl",
         "//tensorflow:tensorflow_bzl",
