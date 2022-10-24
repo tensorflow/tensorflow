@@ -161,10 +161,10 @@ void createArgs(ArrayRef<OpAsmParser::UnresolvedOperand> operands,
   }
 }
 
-const auto hasDuplicates = [](SmallVector<int64_t>& nums) {
-  if (!llvm::is_sorted(nums)) std::sort(nums.begin(), nums.end());
-  auto* last = std::unique(nums.begin(), nums.end());
-  return last != nums.end();
+// Checks if the vector `nums` has duplicates.
+const auto hasDuplicates = [](const ArrayRef<int64_t> nums) {
+  llvm::SmallDenseSet<int64_t> set(nums.begin(), nums.end());
+  return set.size() != nums.size();
 };
 
 //===----------------------------------------------------------------------===//
@@ -3161,7 +3161,6 @@ LogicalResult BroadcastInDimOp::verify() {
                       operandRank));
   }
 
-  auto dimensions = getBroadcastDimensions();
   auto dimensionsType = getBroadcastDimensions().getType();
   auto dimensionsRank = dimensionsType.getRank();
   if (dimensionsRank != 1) {
@@ -3176,16 +3175,15 @@ LogicalResult BroadcastInDimOp::verify() {
         dimensionsSize, operandRank));
   }
 
+  auto dimensions =
+      llvm::to_vector(getBroadcastDimensions().getValues<int64_t>());
+  if (hasDuplicates(dimensions))
+    return emitOpError("broadcast_dimensions should not have duplicates");
+
   auto resultType = getResult().getType().cast<RankedTensorType>();
   auto resultRank = resultType.getRank();
-  if (resultRank < operandRank) {
-    return emitOpError(
-        llvm::formatv("result rank ({0}) is less than operand rank ({1})",
-                      resultRank, operandRank));
-  }
-
   for (int i = 0; i != dimensionsSize; ++i) {
-    auto dimIndex = dimensions.getValues<int64_t>()[i];
+    auto dimIndex = dimensions[i];
     if (dimIndex >= resultRank) {
       return emitOpError(
           llvm::formatv("broadcast_dimensions contains invalid value {0} for "
