@@ -276,9 +276,22 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":reference_errors",
+        ":reference_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "reference_errors",
+    hdrs = [
+        "stablehlo/reference/Errors.h",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -292,6 +305,7 @@ cc_library(
     ],
     includes = ["."],
     deps = [
+        ":reference_errors",
         ":reference_ops",
         ":reference_tensor",
         ":stablehlo_ops",
@@ -313,8 +327,11 @@ cc_library(
     includes = ["."],
     deps = [
         ":reference_element",
+        ":reference_errors",
         ":reference_tensor",
+        ":reference_types",
         ":stablehlo_ops",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
@@ -331,10 +348,25 @@ cc_library(
     includes = ["."],
     deps = [
         ":reference_element",
+        ":reference_errors",
+        ":reference_types",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AsmParser",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "reference_types",
+    srcs = [
+        "stablehlo/reference/Types.cpp",
+    ],
+    hdrs = [
+        "stablehlo/reference/Types.h",
+    ],
+    includes = ["."],
+    deps = [
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -350,6 +382,23 @@ cc_library(
         ":chlo_ops",
         ":stablehlo_ops",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "stablehlo_assembly_format",
+    srcs = [
+        "stablehlo/dialect/AssemblyFormat.cpp",
+    ],
+    hdrs = [
+        "stablehlo/dialect/AssemblyFormat.h",
+    ],
+    includes = ["."],
+    deps = [
+        ":base",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -510,6 +559,24 @@ td_library(
 )
 
 cc_library(
+    name = "stablehlo_type_inference",
+    srcs = [
+        "stablehlo/dialect/TypeInference.cpp",
+    ],
+    hdrs = [
+        "stablehlo/dialect/TypeInference.h",
+    ],
+    includes = ["."],
+    deps = [
+        ":base",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "stablehlo_ops",
     srcs = [
         "stablehlo/dialect/StablehloBytecode.cpp",
@@ -522,9 +589,11 @@ cc_library(
     includes = ["."],
     deps = [
         ":base",
+        ":stablehlo_assembly_format",
         ":stablehlo_attrs_inc_gen",
         ":stablehlo_enums_inc_gen",
         ":stablehlo_ops_inc_gen",
+        ":stablehlo_type_inference",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:BytecodeReader",
@@ -538,6 +607,35 @@ cc_library(
         "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+    ],
+)
+
+cc_binary(
+    name = "stablehlo-interpreter",
+    srcs = [
+        "stablehlo/tools/StablehloInterpreterMain.cpp",
+    ],
+    deps = [
+        ":reference_interpreter",
+        ":stablehlo_ops",
+        ":test_utils",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+)
+
+cc_binary(
+    name = "stablehlo-opt",
+    srcs = [
+        "stablehlo/tools/StablehloOptMain.cpp",
+    ],
+    deps = [
+        ":register",
+        ":test_utils",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:MlirOptLib",
     ],
 )
 

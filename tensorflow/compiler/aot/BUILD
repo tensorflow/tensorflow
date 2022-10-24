@@ -40,7 +40,10 @@ cc_library(
     defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) + if_llvm_system_z_available([
         "TF_LLVM_S390X_AVAILABLE=1",
     ]),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
@@ -69,6 +72,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep

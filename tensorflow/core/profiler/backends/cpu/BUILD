@@ -10,18 +10,13 @@ package(
 
 cc_library(
     name = "host_tracer_utils",
-    srcs = ["host_tracer_utils.cc"],
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:parse_annotation",
-        "//tensorflow/core/profiler/utils:tf_op_utils",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_utils",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/profiler/backends/cpu:host_tracer_utils",
     ],
 )
 
@@ -116,6 +111,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
     ] + if_static([
         ":annotation_stack_impl",
     ]),
@@ -124,13 +120,14 @@ cc_library(
 cc_library(
     name = "annotation_stack_impl",
     srcs = [
-        "annotation_stack.cc",
         "annotation_stack.h",
     ],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:__pkg__"],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack",
+        "//tensorflow/tsl/profiler/backends/cpu:annotation_stack_impl",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,

@@ -140,7 +140,14 @@ class CheckQuantizableOps
       // feature group count.
       if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/3)) {
         return tensorflow::errors::Unknown(
-            "The channel dimension of Conv2D are required to be static.");
+            "The channel dimension of Conv2D is required to be static.");
+      }
+    } else if (function_name.contains("conv3d")) {
+      // For Conv3D, the channel dimension must be static to calculate the
+      // feature group count.
+      if (!HasStaticShapeAtDims(call_op->getOperand(0), /*dims=*/4)) {
+        return tensorflow::errors::Unknown(
+            "The channel dimension of Conv3D is required to be static.");
       }
     }
 

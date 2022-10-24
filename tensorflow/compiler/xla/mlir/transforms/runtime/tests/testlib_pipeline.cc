@@ -29,48 +29,49 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
 
 namespace xla {
 namespace runtime {
 
-void RegisterXlaRuntimeTestlibDialects(mlir::DialectRegistry& registry) {
+void RegisterXlaRuntimeTestlibDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the Xla runtime tests.
-  registry
-      .insert<mlir::arith::ArithDialect, mlir::async::AsyncDialect,
-              mlir::scf::SCFDialect, mlir::func::FuncDialect, RuntimeDialect>();
+  dialects->insert<mlir::arith::ArithDialect, mlir::async::AsyncDialect,
+                   mlir::scf::SCFDialect, mlir::func::FuncDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
-  registerLLVMDialectTranslation(registry);
+  registerLLVMDialectTranslation(*dialects);
 }
 
-void CreateXlaRuntimeTestlibPipeline(mlir::OpPassManager& pm) {
-  pm.addPass(mlir::createConvertSCFToCFPass());
+void CreateXlaRuntimeTestlibPipeline(PassManager& passes) {
+  passes->addPass(mlir::createConvertSCFToCFPass());
 
   // Export functions to the XLA runtime.
-  pm.addPass(CreateExportRuntimeFunctionsPass());
-  pm.addPass(CreateConvertAssertsPass());
+  passes->addPass(CreateExportRuntimeFunctionsPass());
+  passes->addPass(CreateConvertAssertsPass());
 
   // Lower from high level async operations to async runtime.
-  pm.addPass(mlir::createAsyncToAsyncRuntimePass());
+  passes->addPass(mlir::createAsyncToAsyncRuntimePass());
 
   // Add async.runtime reference counting operations.
-  pm.addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
+  passes->addPass(mlir::createAsyncRuntimePolicyBasedRefCountingPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts;
-  pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
+  passes->addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert async runtime operations to LLVM dialect.
-  pm.addPass(mlir::createConvertAsyncToLLVMPass());
+  passes->addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
-  pm.addPass(mlir::createConvertFuncToLLVMPass());
-  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  passes->addPass(mlir::createConvertFuncToLLVMPass());
+  passes->addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Clean up IR before translating it to LLVM.
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
+  passes->addPass(mlir::createCSEPass());
+  passes->addPass(mlir::createCanonicalizerPass());
 }
 
 }  // namespace runtime

@@ -76,8 +76,8 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -399,6 +399,9 @@ py_library(
         "load.py",
     ],
     srcs_version = "PY3",
+    tags = [
+        "ignore_for_dep=third_party.py.keras.optimizers.optimizer_v2",
+    ],
     deps = [
         ":function_deserialization",
         ":load_options",
@@ -428,6 +431,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
+        "//tensorflow/python/framework:config",
         "//tensorflow/python/saved_model/registration",
         "//tensorflow/python/trackable:asset",
         "//tensorflow/python/trackable:autotrackable",
@@ -522,6 +526,18 @@ tf_py_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "load_optimizer_test",
+    srcs = ["load_optimizer_test.py"],
+    data = ["//tensorflow/cc/saved_model:saved_model_test_files"],
+    tags = ["no_oss"],  # Due to the usage of keras component.
+    deps = [
+        ":load",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:test",
     ],
 )
 

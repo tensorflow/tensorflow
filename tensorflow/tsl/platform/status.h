@@ -29,11 +29,11 @@ limitations under the License.
 #include "absl/strings/cord.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/macros.h"
 #include "tensorflow/tsl/platform/stack_frame.h"
 #include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tsl {
 
@@ -361,8 +361,8 @@ inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   return TfCheckOpHelperOutOfLine(v, msg);
 }
 
-#define TF_DO_CHECK_OK(val, level)                         \
-  while (auto _result = ::tsl::TfCheckOpHelper(val, #val)) \
+#define TF_DO_CHECK_OK(val, level)                          \
+  while (auto* _result = ::tsl::TfCheckOpHelper(val, #val)) \
   LOG(level) << *(_result)
 
 #define TF_CHECK_OK(val) TF_DO_CHECK_OK(val, FATAL)

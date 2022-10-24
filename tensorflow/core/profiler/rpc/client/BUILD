@@ -35,7 +35,6 @@ cc_library(
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
@@ -87,7 +86,10 @@ cc_library(
         "profiler_client.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

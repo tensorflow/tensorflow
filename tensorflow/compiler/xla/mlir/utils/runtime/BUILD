@@ -1,12 +1,30 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.bzl", "if_google")
 
 package(
-    default_visibility = [
-        "//tensorflow:internal",
-        "@tf_runtime//:friends",
-    ],
+    default_visibility = [":friends"],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    packages = if_google(
+        [
+            "//platforms/xla/service/cpu/...",
+            "//tensorflow/compiler/mlir/tfrt/...",
+            "//tensorflow/compiler/xla/mlir/transforms/...",
+            "//tensorflow/compiler/xla/runtime/...",
+            "@tf_runtime//backends/...",
+            "//third_party/tf_runtime_google/...",
+        ],
+        [
+            "//platforms/xla/service/cpu/...",
+            "//tensorflow/compiler/mlir/tfrt/...",
+            "//tensorflow/compiler/xla/mlir/transforms/...",
+            "//tensorflow/compiler/xla/runtime/...",
+        ],
+    ),
 )
 
 cc_library(

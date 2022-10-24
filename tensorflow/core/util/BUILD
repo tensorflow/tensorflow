@@ -18,15 +18,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -392,16 +384,31 @@ cc_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = [
-        "stat_summarizer_options.h",
-        "stats_calculator.cc",
-    ],
     hdrs = [
+        "stat_summarizer_options.h",
         "stats_calculator.h",
     ],
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/util:stats_calculator_portable",
+    ],
+)
+
+cc_library(
+    name = "stat_summarizer",
+    hdrs = [
+        "stat_summarizer.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -458,16 +465,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "stats_calculator_test",
-    srcs = ["stats_calculator_test.cc"],
-    deps = [
-        ":stats_calculator_portable",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "reporter",
     hdrs = ["reporter.h"],
@@ -497,6 +494,11 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
     ],
+    deps = [
+        ":env_var",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
+    ],
     alwayslink = 1,
 )
 
@@ -504,6 +506,7 @@ cc_library(
     name = "managed_stack_trace",
     hdrs = ["managed_stack_trace.h"],
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/compiler/mlir/tensorflow:__pkg__",
         "//tensorflow/core:__pkg__",
@@ -639,8 +642,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/util:env_var",
         "//tensorflow/tsl/util:determinism",
     ],
     alwayslink = 1,

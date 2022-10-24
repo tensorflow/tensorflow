@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_topology.h"
 #include "tensorflow/core/framework/collective.h"
@@ -35,9 +37,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tpu_system_interface.h"
 
@@ -71,7 +71,10 @@ Status DeleteIfExists(ResourceMgr* resource_manager,
 class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
  public:
   explicit ConfigureAndInitializeGlobalTPUOpKernel(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("use_tfrt_host_runtime", &use_tfrt_host_runtime_));
+  }
   void Compute(OpKernelContext* ctx) override {
     LOG(INFO) << "ConfigureAndInitializeGlobalTPUOpKernel op";
 
@@ -86,8 +89,10 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
                                              &core_id_output_vec));
     } else {
       VLOG(1) << "Initializing a preferred TPU system.";
-      OP_REQUIRES_OK(ctx, tpu_system->Initialize(ctx, rmgr, retry_timeout,
-                                                 &core_id_output_vec));
+      OP_REQUIRES_OK(ctx,
+                     tpu_system->Initialize(
+                         ctx, rmgr, retry_timeout, &core_id_output_vec,
+                         /*use_tfrt_host_runtime=*/use_tfrt_host_runtime_));
     }
 
     if (VLOG_IS_ON(1)) {
@@ -120,6 +125,8 @@ class ConfigureAndInitializeGlobalTPUOpKernel : public OpKernel {
       const ConfigureAndInitializeGlobalTPUOpKernel&) = delete;
   ConfigureAndInitializeGlobalTPUOpKernel& operator=(
       const ConfigureAndInitializeGlobalTPUOpKernel&) = delete;
+
+  bool use_tfrt_host_runtime_;
 
   static Status InitializeInternal(OpKernelContext* ctx, ResourceMgr* rmgr,
                                    absl::Duration retry_timeout,
@@ -278,6 +285,10 @@ class SetGlobalTPUArrayOpKernel : public OpKernel {
       : OpKernel(ctx) {}
   void Compute(OpKernelContext* ctx) override {
     VLOG(1) << "SetGlobalTPUArrayOpKernel op";
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+        errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                                ctx->input(0).DebugString()));
     auto tpu_topology = ctx->input(0).scalar<tstring>()();
     TF_Status* status = TF_NewStatus();
 

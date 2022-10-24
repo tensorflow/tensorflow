@@ -357,7 +357,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                      bool trans_y, const MatMulBCast& bcast, Tensor* out) {
-    static const bool use_autotune = MatmulAutotuneEnable();
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -401,6 +400,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         Coefficient;
 
 #if GOOGLE_CUDA
+    static const bool use_autotune = MatmulAutotuneEnable();
     if (EnableCublasLtGemm()) {
       static const int64_t max_scratch_size =
           GetWorkspaceLimit(1LL << 32);  // 4GB by default

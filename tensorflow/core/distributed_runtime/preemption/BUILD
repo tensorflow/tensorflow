@@ -61,7 +61,6 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/coordination:coordination_service",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_impl",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
-        "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_client",
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/platform:env",
@@ -69,6 +68,7 @@ tf_cc_test(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:coordination_config_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
     ] + tf_grpc_cc_dependencies(),
 )
 

@@ -94,8 +94,7 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                             hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
-    return {tensorflow::error::UNIMPLEMENTED,
-            "Feature not yet implemented in ROCm"};
+    return {tsl::error::UNIMPLEMENTED, "Feature not yet implemented in ROCm"};
 #endif
   }
   return xla::OkStatus();

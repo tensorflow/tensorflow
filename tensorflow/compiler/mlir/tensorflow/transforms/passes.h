@@ -295,8 +295,17 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateRemoveUnusedArgumentsPass();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreateRemoveUnusedWhileResultsPass();
 
+// Hoists loop invariant ops to the outside of the loop.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateHoistLoopInvariantPass();
+
 // Creates VarHandleOps right next to the operations that use them.
 std::unique_ptr<OperationPass<ModuleOp>> CreateLocalizeVarHandlesPass();
+
+// Removes all TF attributes
+std::unique_ptr<OperationPass<func::FuncOp>> CreateStripTfAttributesPass();
+
+// Converts AnonymousIteratorOps to (named) IteratorOps.
+std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
 
 // Populates the supplied passmanager with the passes required to run the
 // CPU/GPU bridge.

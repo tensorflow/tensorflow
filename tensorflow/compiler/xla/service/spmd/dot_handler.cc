@@ -445,7 +445,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     const std::optional<HloSharding>& rhs_sharding_transposed_to_match_lhs,
     const HloSharding& lhs_sharding, const HloSharding& rhs_sharding,
     const Window& conv_window, const DotConvDimsMapping& dims_mapping,
-    int64_t max_iterations = INT64_MAX,
+    const CallGraph& call_graph, int64_t max_iterations = INT64_MAX,
     const HloInstruction* original_hlo = nullptr,
     PartitionedHlo* partitioned_lhs = nullptr,
     PartitionedHlo* partitioned_rhs = nullptr,
@@ -467,7 +467,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
 
   // Determine if any of the users have the same shardings that can allow
   // reuse of the resharding for the operand with original_hlo.
-  auto check_users_sharding = [original_hlo](
+  auto check_users_sharding = [original_hlo, &call_graph](
                                   const HloInstruction* to_loop_over) {
     if (to_loop_over->users().size() <= 1) {
       return true;
@@ -476,7 +476,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
     std::optional<HloSharding> original_ideal_sharding =
         ShardingPropagation::GetShardingFromUser(*to_loop_over, *original_hlo,
                                                  kAggressiveness,
-                                                 /*is_spmd=*/true);
+                                                 /*is_spmd=*/true, call_graph);
     // Default to perform collective matmul if GetShardingFromUser() couldn't
     // determine the sharding.
     if (!original_ideal_sharding) {
@@ -487,9 +487,9 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
         continue;
       }
       std::optional<HloSharding> from_user =
-          ShardingPropagation::GetShardingFromUser(*to_loop_over, *user,
-                                                   kAggressiveness,
-                                                   /*is_spmd=*/true);
+          ShardingPropagation::GetShardingFromUser(
+              *to_loop_over, *user, kAggressiveness,
+              /*is_spmd=*/true, call_graph);
       // Could't determine sharding. Skip to next one and pretend it wouldn't
       // share the resharding.
       if (!from_user) {
@@ -1834,8 +1834,8 @@ StatusOr<HloInstruction*> PartitionBaseCase(
       output_sharding_transposed_to_match_rhs,
       lhs_sharding_transposed_to_match_rhs,
       rhs_sharding_transposed_to_match_lhs, lhs_sharding, rhs_sharding,
-      conv_window, dims_mapping, kMaxIterations, original_hlo, &lhs, &rhs,
-      create_sharded_dot, b, module, visitor);
+      conv_window, dims_mapping, visitor->call_graph(), kMaxIterations,
+      original_hlo, &lhs, &rhs, create_sharded_dot, b, module, visitor);
   if (e_config) {
     VLOG(2) << "Emit windowed dot.";
     return emit_windowed_dot_general(*e_config);
@@ -2851,7 +2851,8 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
     int64_t rhs_contracting_partitions,
     int64_t output_lhs_non_contracting_partitions,
     int64_t output_rhs_non_contracting_partitions, int64_t lhs_batch_partitions,
-    int64_t rhs_batch_partitions, const Window& conv_window) {
+    int64_t rhs_batch_partitions, const Window& conv_window,
+    SpmdPartitioningVisitor* visitor) {
   const DotDimensionIndexMapping indices_map = ComputeDimensionIndexMapping(
       dims_mapping, lhs.base_shape().rank(), rhs.base_shape().rank(),
       output_base_shape.rank());
@@ -2967,7 +2968,8 @@ EstimateWindowedEinsumIterationsForNonContractingPartitioning(
             output_sharding_transposed_to_match_other,
             lhs_sharding_transposed_to_match_rhs,
             rhs_sharding_transposed_to_match_lhs, matching_grouped.sharding,
-            other_grouped->sharding, conv_window, dims_mapping);
+            other_grouped->sharding, conv_window, dims_mapping,
+            visitor->call_graph());
     return e_config ? new_num_partitions : std::optional<int64_t>(std::nullopt);
   };
   std::optional<int64_t> lhs_matching_iterations;
@@ -3030,7 +3032,7 @@ bool PrioritizeContractingDimensionsPartitioning(
           rhs_matching_non_contracting_partitions, lhs_contracting_partitions,
           rhs_contracting_partitions, output_lhs_non_contracting_partitions,
           output_rhs_non_contracting_partitions, lhs_batch_partitions,
-          rhs_batch_partitions, conv_window);
+          rhs_batch_partitions, conv_window, visitor);
   if (!lhs_matching_iterations && !rhs_matching_iterations) {
     return false;
   }
@@ -3143,7 +3145,7 @@ bool PrioritizeContractingDimensionsPartitioning(
       output_sharding_transposed_to_match_rhs,
       lhs_sharding_transposed_to_match_rhs,
       rhs_sharding_transposed_to_match_lhs, lhs_grouped.sharding,
-      rhs_grouped.sharding, conv_window, dims_mapping);
+      rhs_grouped.sharding, conv_window, dims_mapping, visitor->call_graph());
   if (!e_config) {
     return false;
   }
@@ -3273,7 +3275,7 @@ bool LhsIsBestMatchForNonContractingPartitioning(
             rhs_matching_partitions, lhs_contracting_partitions,
             rhs_contracting_partitions, output_lhs_non_contracting_partitions,
             output_rhs_non_contracting_partitions, lhs_batch_partitions,
-            rhs_batch_partitions, conv_window);
+            rhs_batch_partitions, conv_window, visitor);
     if (lhs_matching_iterations && rhs_matching_iterations) {
       const int64_t lhs_all_gather_bytes =
           ShapeUtil::ByteSizeOf(lhs.hlo()->shape()) *

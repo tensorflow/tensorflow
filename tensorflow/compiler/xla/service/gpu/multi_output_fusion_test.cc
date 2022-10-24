@@ -323,26 +323,6 @@ TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
               op::Tuple(op::Multiply(), op::Divide()));
 }
 
-TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopReduceToInputFusion) {
-  // Fusing a reduce into a loop fusion would require changing the fusion kind.
-  // That's not supported yet.
-  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
-    fused_computation_1 {
-      p0.1 = f32[6400]{0} parameter(0)
-      ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
-    }
-
-    ENTRY entry {
-      p0 = f32[6400]{0} parameter(0)
-      fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
-      const.2 = f32[] constant(0)
-      reduce = f32[] reduce(p0, const.2), dimensions={0}, to_apply=scalar_add_computation
-      ROOT root = (f32[6400]{0}, f32[]) tuple(fusion.1, reduce)
-    })"))
-                    .value();
-  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).value());
-}
-
 TEST_F(MultiOutputFusionTest, MultiOutputFusionLoopElementwise) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
@@ -1372,13 +1352,13 @@ ENTRY main {
 
   CheckGpuMultiOutputFusion(hlo, R"(
 // CHECK: %fused_computation (param_0.1: f32[16,32]) -> (f32[32,16], f32[32,16]) {
-// CHECK-NEXT:   %param_0.1 = f32[16,32]{1,0} parameter(0)
-// CHECK-NEXT:   %s.1 = f32[16,32]{1,0} sqrt(%param_0.1)
-// CHECK-NEXT:   %c.1 = f32[32,16]{1,0} transpose(%s.1), dimensions={1,0}
-// CHECK-NEXT:   %c1.1 = f32[32,16]{1,0} transpose(%param_0.1), dimensions={1,0}
-// CHECK-NEXT:   ROOT %tuple = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple(%c.1, %c1.1)
+// CHECK-NEXT:   [[param_0_1_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+// CHECK-NEXT:   [[s_1_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0_1_0]])
+// CHECK-NEXT:   [[c_1_2:%[^ ]+]] = f32[32,16]{1,0} transpose([[s_1_1]]), dimensions={1,0}
+// CHECK-NEXT:   [[c1_1_3:%[^ ]+]] = f32[32,16]{1,0} transpose([[param_0_1_0]]), dimensions={1,0}
+// CHECK-NEXT:   ROOT [[tuple_4:%[^ ]+]] = (f32[32,16]{1,0}, f32[32,16]{1,0}) tuple([[c_1_2]], [[c1_1_3]])
 // CHECK-NEXT: }
-// CHECK: %fusion = (f32[32,16]{1,0}, f32[32,16]{1,0}) fusion(%p), kind=kInput, calls=%fused_computation
+// CHECK: [[fusion_0:%[^ ]+]] = (f32[32,16]{1,0}, f32[32,16]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
 }
 
@@ -1489,6 +1469,173 @@ ENTRY main {
 // CHECK-NEXT: }
 // CHECK:   [[fusion_0:%[^ ]+]] = (f32[16,32]{0,1}, f32[16,32]{1,0}) fusion([[p_1:%[^ ]+]]), kind=kInput, calls=[[fused_computation_2:%[^ ]+]]
 )");
+}
+
+class ReduceMultiOutputFusionTest : public MultiOutputFusionTest {};
+
+TEST_F(ReduceMultiOutputFusionTest, ReduceAndLoop) {
+  const char* hlo = R"(
+HloModule module
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+fused_reduction {
+  p = f32[200] parameter(0)
+  z = f32[] constant(0)
+  e = f32[200] exponential(p)
+  ROOT r = f32[] reduce(e, z), dimensions={0}, to_apply=add
+}
+
+fused_elementwise {
+  p = f32[200] parameter(0)
+  ROOT r = f32[200] sqrt(p)
+}
+
+ENTRY computation {
+  p = f32[200] parameter(0)
+  o1 = f32[200] fusion(p), kind=kLoop, calls=fused_elementwise
+  o2 = f32[] fusion(p), kind=kInput, calls=fused_reduction
+  ROOT out = (f32[200], f32[]) tuple(o1, o2)
+}
+
+)";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_elementwise
+// CHECK-NEXT:  [[p_1_0:%[^ ]+]] = f32[200]{0} parameter(0)
+// CHECK-NEXT:  [[r_1_1:%[^ ]+]] = f32[200]{0} sqrt([[p_1_0]])
+// CHECK-NEXT:  [[e_2:%[^ ]+]].clone.1 = f32[200]{0} exponential([[p_1_0]])
+// CHECK-NEXT:  [[z_3:%[^ ]+]].clone.1 = f32[] constant(0)
+// CHECK-NEXT:  [[r_4:%[^ ]+]].clone.1 = f32[] reduce([[e_2]].clone.1, [[z_3]].clone.1), dimensions={0}, to_apply=[[add_5:%[^ ]+]]
+// CHECK-NEXT:  ROOT [[tuple_6:%[^ ]+]] = (f32[200]{0}, f32[]) tuple([[r_1_1]], [[r_4]].clone.1)
+// CHECK-NEXT:}
+// CHECK: [[o1_0:%[^ ]+]] = (f32[200]{0}, f32[]) fusion([[p_2_1:%[^ ]+]]), kind=kInput, calls=[[fused_elementwise_2:%[^ ]+]]
+  )");
+}
+
+TEST_F(ReduceMultiOutputFusionTest, ReduceAndLoopDifferentShape) {
+  const char* hlo = R"(
+HloModule module
+
+add {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] add(a, b)
+}
+
+fused_reduction {
+  p = f32[10,20] parameter(0)
+  z = f32[] constant(0)
+  e = f32[10,20] exponential(p)
+  b = f32[200] bitcast(e)
+  ROOT r = f32[] reduce(b, z), dimensions={0}, to_apply=add
+}
+
+fused_elementwise {
+  p = f32[10,20] parameter(0)
+  ROOT r = f32[10,20] sqrt(p)
+}
+
+ENTRY computation {
+  p = f32[10,20] parameter(0)
+  o1 = f32[10,20] fusion(p), kind=kLoop, calls=fused_elementwise
+  o2 = f32[] fusion(p), kind=kInput, calls=fused_reduction
+  ROOT out = (f32[10,20], f32[]) tuple(o1, o2)
+}
+)";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_elementwise (p.1: f32[10,20]) -> (f32[10,20], f32[]) {
+// CHECK-NEXT:   %p.1 = f32[10,20]{1,0} parameter(0)
+// CHECK-NEXT:   %r.1 = f32[10,20]{1,0} sqrt(%p.1)
+// CHECK-NEXT:   %e.clone.1 = f32[10,20]{1,0} exponential(%p.1)
+// CHECK-NEXT:   %b.1.clone.1 = f32[200]{0} bitcast(%e.clone.1)
+// CHECK-NEXT:   %z.clone.1 = f32[] constant(0)
+// CHECK-NEXT:   %r.clone.1 = f32[] reduce(%b.1.clone.1, %z.clone.1), dimensions={0}, to_apply=%add
+// CHECK-NEXT:   ROOT %tuple = (f32[10,20]{1,0}, f32[]) tuple(%r.1, %r.clone.1)
+// CHECK-NEXT: }
+  )");
+}
+
+TEST_F(ReduceMultiOutputFusionTest, ReduceAndLoopDifferentShapeDifferentType) {
+  const char* hlo = R"(
+HloModule module, entry_computation_layout={(f16[100,200]{1,0},f32[],f32[])->(f16[100,200]{1,0}, f32[])}
+
+max {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT c = f32[] maximum(a, b)
+}
+
+fused_computation {
+  one_5 = f32[] constant(1)
+  one_b.5 = f32[100,200]{1,0} broadcast(one_5), dimensions={}
+  param_1.15 = f16[100,200]{1,0} parameter(1)
+  c.6 = f32[100,200]{1,0} convert(param_1.15)
+  param_0.11 = f32[] parameter(0)
+  b.6 = f32[100,200]{1,0} broadcast(param_0.11), dimensions={}
+  d.5 = f32[100,200]{1,0} divide(c.6, b.6)
+  a.6 = f32[100,200]{1,0} add(one_b.5, d.5)
+  bitcast.1 = f32[20000]{0} bitcast(a.6)
+  z_1 = f32[] constant(0)
+  ROOT r.1 = f32[] reduce(bitcast.1, z_1), dimensions={0}, to_apply=max
+}
+
+fused_computation.1 {
+  one_3 = f32[] constant(1)
+  one_b.3 = f32[100,200]{1,0} broadcast(one_3), dimensions={}
+  param_2.7 = f16[100,200]{1,0} parameter(2)
+  c.4 = f32[100,200]{1,0} convert(param_2.7)
+  param_1.10 = f32[] parameter(1)
+  b.4 = f32[100,200]{1,0} broadcast(param_1.10), dimensions={}
+  d.3 = f32[100,200]{1,0} divide(c.4, b.4)
+  a.4 = f32[100,200]{1,0} add(one_b.3, d.3)
+  param_0.8 = f32[] parameter(0)
+  output_scale_broadcast.1 = f32[100,200]{1,0} broadcast(param_0.8), dimensions={}
+  a_scaled.1 = f32[100,200]{1,0} multiply(a.4, output_scale_broadcast.1)
+  ROOT a_scaled_converted.1 = f16[100,200]{1,0} convert(a_scaled.1)
+}
+
+ENTRY computation {
+  output_scale = f32[] parameter(2)
+  input_scale = f32[] parameter(1)
+  p = f16[100,200]{1,0} parameter(0)
+  fusion.1 = f16[100,200]{1,0} fusion(output_scale, input_scale, p), kind=kLoop, calls=fused_computation.1
+  fusion = f32[] fusion(input_scale, p), kind=kInput, calls=fused_computation
+  ROOT out = (f16[100,200]{1,0}, f32[]) tuple(fusion.1, fusion)
+}
+)";
+
+  CheckGpuMultiOutputFusion(hlo, R"(
+// CHECK: %fused_computation.1 (param_0.8: f32[], param_1.10: f32[], param_2.7: f16[100,200]) -> (f16[100,200], f32[]) {
+// CHECK-NEXT:   %one_3 = f32[] constant(1)
+// CHECK-NEXT:   %one_b.3 = f32[100,200]{1,0} broadcast(%one_3), dimensions={}
+// CHECK-NEXT:   %param_2.7 = f16[100,200]{1,0} parameter(2)
+// CHECK-NEXT:   %c.4 = f32[100,200]{1,0} convert(%param_2.7)
+// CHECK-NEXT:   %param_1.10 = f32[] parameter(1)
+// CHECK-NEXT:   %b.4 = f32[100,200]{1,0} broadcast(%param_1.10), dimensions={}
+// CHECK-NEXT:   %d.3 = f32[100,200]{1,0} divide(%c.4, %b.4)
+// CHECK-NEXT:   %a.4 = f32[100,200]{1,0} add(%one_b.3, %d.3)
+// CHECK-NEXT:   %param_0.8 = f32[] parameter(0)
+// CHECK-NEXT:   %output_scale_broadcast.1 = f32[100,200]{1,0} broadcast(%param_0.8), dimensions={}
+// CHECK-NEXT:   %a_scaled.1 = f32[100,200]{1,0} multiply(%a.4, %output_scale_broadcast.1)
+// CHECK-NEXT:   %a_scaled_converted.1 = f16[100,200]{1,0} convert(%a_scaled.1)
+// CHECK-NEXT:   %one_5.clone.1 = f32[] constant(1)
+// CHECK-NEXT:   %one_b.5.clone.1 = f32[100,200]{1,0} broadcast(%one_5.clone.1), dimensions={}
+// CHECK-NEXT:   %c.6.clone.1 = f32[100,200]{1,0} convert(%param_2.7)
+// CHECK-NEXT:   %b.6.clone.1 = f32[100,200]{1,0} broadcast(%param_1.10), dimensions={}
+// CHECK-NEXT:   %d.5.clone.1 = f32[100,200]{1,0} divide(%c.6.clone.1, %b.6.clone.1)
+// CHECK-NEXT:   %a.6.clone.1 = f32[100,200]{1,0} add(%one_b.5.clone.1, %d.5.clone.1)
+// CHECK-NEXT:   %bitcast.1.clone.1 = f32[20000]{0} bitcast(%a.6.clone.1)
+// CHECK-NEXT:   %z_1.clone.1 = f32[] constant(0)
+// CHECK-NEXT:   %r.1.clone.1 = f32[] reduce(%bitcast.1.clone.1, %z_1.clone.1), dimensions={0}, to_apply=%max
+// CHECK-NEXT:   ROOT %tuple = (f16[100,200]{1,0}, f32[]) tuple(%a_scaled_converted.1, %r.1.clone.1)
+// CHECK-NEXT: }
+  )");
 }
 
 }  // namespace gpu

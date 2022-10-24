@@ -180,6 +180,18 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id, cl_platform_id platform_id) {
       ParseCLVersion(info.opencl_info.opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');
+  const std::vector<std::string> unsupported_extensions =
+      GetUnsupportedExtensions();
+  for (const auto& unsupported_extension : unsupported_extensions) {
+    for (auto it = info.opencl_info.extensions.begin();
+         it != info.opencl_info.extensions.end();) {
+      if (*it == unsupported_extension) {
+        it = info.opencl_info.extensions.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
   info.opencl_info.supports_fp16 = false;
   info.opencl_info.supports_image3d_writes = false;
   for (const auto& ext : info.opencl_info.extensions) {

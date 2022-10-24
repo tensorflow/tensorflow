@@ -29,6 +29,7 @@ tfrt_cc_test(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
         "//tensorflow/compiler/xla/runtime:executable",
         "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/core:test",

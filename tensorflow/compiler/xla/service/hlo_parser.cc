@@ -5115,13 +5115,10 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 // layout
 //   ::= '{' int64_list
 //       (':' dim_level_types
-//            tiles element_size_in_bits
+//            tiles
 //            memory_space
 //            physical_shape)?
 //       '}'
-// element_size_in_bits
-//   ::= /*empty*/
-//   ::= 'E' '(' int64_t ')'
 // memory_space
 //   ::= /*empty*/
 //   ::= 'S' '(' int64_t ')'
@@ -5129,7 +5126,6 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<int64_t> minor_to_major;
   std::vector<DimLevelType> dim_level_types;
   std::vector<Tile> tiles;
-  int64_t element_size_in_bits = 0;
   int64_t memory_space = 0;
   std::optional<Shape> physical_shape;
 
@@ -5170,11 +5166,6 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
         ParseTiles(&tiles);
       }
 
-      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "E") {
-        lexer_.Lex();
-        ParseLayoutIntAttribute(&element_size_in_bits, "element size in bits");
-      }
-
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "S") {
         lexer_.Lex();
         ParseLayoutIntAttribute(&memory_space, "memory space");
@@ -5198,8 +5189,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
     vec_tiles[i] = Tile(tiles[i]);
   }
   *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, vec_tiles,
-                                   element_size_in_bits, memory_space,
-                                   std::move(physical_shape));
+                                   memory_space, std::move(physical_shape));
   return true;
 }
 

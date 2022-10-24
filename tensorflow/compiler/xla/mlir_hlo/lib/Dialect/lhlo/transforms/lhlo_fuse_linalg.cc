@@ -163,7 +163,7 @@ class LhloFuseLinalgPass
         tileSizes = SmallVector<int64_t, 2>(genericOp.getNumLoops(), 1);
       }
       auto op = cast<LinalgOp>(genericOp.getOperation());
-      for (OpOperand* opOperand : op.getOutputBufferOperands()) {
+      for (OpOperand* opOperand : op.getOutputOperands()) {
         if (!resultBuffers.count(opOperand->get())) continue;
         if (tileGenericOp(op, tileSizes, &b)) {
           genericOp.erase();

@@ -535,7 +535,9 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
 ; CHECK: call SHUFFLE
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: br i1 %[[LOGICAL_T0]],
+; CHECK: LCAL
+; CHECK: EXTV
+; CHECK: BR_CAL
 )";
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
@@ -572,8 +574,11 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
 ; CHECK: call SHUFFLE
 ; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: br i1 %[[LOGICAL_T0]],
+; CHECK: LCAL
+; CHECK: EXTV
+; CHECK: BR_CAL
 )";
+
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
@@ -683,13 +688,18 @@ ENTRY main {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  auto expected_ir = R"(
-; CHECK-LABEL: define void @fusion
+  std::string expected_ir = R"(
+; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: load <4 x i16>
-; CHECK-COUNT-4: load float
+; CHECK-COUNT-4: load PLATFORM_SPECIFIC_TYPE
 ; CHECK-NOT: load
 ; CHECK: }
 )";
+
+  expected_ir = absl::StrReplaceAll(
+      expected_ir,
+      {{"PLATFORM_SPECIFIC_TYPE", is_built_with_rocm_ ? "i32" : "float"}});
+
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
@@ -851,7 +861,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   Status status = CompileToExecutable(std::move(hlo_module)).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::FAILED_PRECONDITION);
+  EXPECT_EQ(status.code(), tsl::error::Code::FAILED_PRECONDITION);
   EXPECT_THAT(
       status.error_message(),
       ::testing::HasSubstr(

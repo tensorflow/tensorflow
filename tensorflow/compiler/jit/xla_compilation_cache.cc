@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.pb.h"
+#include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -492,18 +493,8 @@ Status XlaCompilationCache::CompileStrict(
   entry->compile_state = CompileState::kCompiled;
   entry->compilation_status = [&] {
     if (scope == CompileScope::kOp) {
-      XlaCompiler::SingleOpCompileArgument single_op_arg;
-      std::vector<DataType> output_dtypes(ctx->num_outputs());
-      for (int i = 0; i < output_dtypes.size(); ++i) {
-        output_dtypes[i] = ctx->expected_output_dtype(i);
-      }
-      single_op_arg.output_dtypes = std::move(output_dtypes);
-      single_op_arg.node_def = ctx->op_kernel().def();
-      auto* config_proto = ctx->function_library()->config_proto();
-      if (config_proto != nullptr) {
-        single_op_arg.config_proto = *config_proto;
-      }
-      return XlaSingleOpToHlo(&compiler, options, args, single_op_arg,
+      return XlaSingleOpToHlo(&compiler, options, args,
+                              BuildSingleOpCompileArgument(ctx),
                               compile_options, &entry->compilation_result);
 
     } else {

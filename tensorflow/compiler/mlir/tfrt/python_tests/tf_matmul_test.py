@@ -47,14 +47,14 @@ class TfMatMulTest(test.TestCase):
 
   # Matmul: [1, k] x [k, 1]
   def test_dot_product(self):
-    compiled = jitrt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul", vectorize=True)
     for _ in range(100):
       k = np.random.randint(1, 10)
       verify_matmul(compiled, 1, k, 1)
 
   # Matmul: [1, k] x [k, n]
   def test_vec_mat(self):
-    compiled = jitrt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul", vectorize=True)
     for _ in range(100):
       k = np.random.randint(1, 10)
       n = np.random.randint(1, 10)
@@ -62,7 +62,7 @@ class TfMatMulTest(test.TestCase):
 
   # Matmul: [n, k] x [k, 1]
   def test_mat_vec(self):
-    compiled = jitrt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul", vectorize=True)
     for _ in range(100):
       m = np.random.randint(1, 10)
       k = np.random.randint(1, 10)
@@ -70,7 +70,7 @@ class TfMatMulTest(test.TestCase):
 
   # Matmul: [m, k] x [k, n]
   def test_matmul(self):
-    compiled = jitrt.compile(matmul(), "matmul")
+    compiled = jitrt.compile(matmul(), "matmul", vectorize=True)
     for _ in range(100):
       m = np.random.randint(1, 10)
       k = np.random.randint(1, 10)

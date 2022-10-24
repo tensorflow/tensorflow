@@ -50,6 +50,8 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
     ListOption<"tileSizes_", "tile-sizes", "int64_t", 
                "Right-aligned tile sizes. Do not tile possible remaining "
                "dimensions", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel_", "distribution-label", "std::string",
+            /*default=*/"", "Distribution label for generated gml_st.parallel">,
   ];
 }
 
@@ -60,19 +62,31 @@ def TilingReductionPass : Pass<"gml-tiling-reduction", "mlir::func::FuncOp"> {
                            "::mlir::arith::ArithDialect"];
 }
 
-def ComposeSetOpsPass : Pass<"gml-compose-set-ops", "mlir::func::FuncOp"> {
-  let summary = "Compose set operations.";
-  let constructor = "::mlir::gml_st::createComposeSetOpsPass()";
+def TilingCwiseGPUWarpsPass : Pass<"gml-tiling-cwise-gpu-warps", "mlir::func::FuncOp"> {
+  let summary = "Tile cwise linalg.generic for GPU on the warp level";
+  let constructor = "::mlir::gml_st::createTilingCwiseGPUWarpsPass()";
+  let dependentDialects = ["::mlir::gml_st::GmlStDialect",
+                           "::mlir::arith::ArithDialect"];
+}
+
+def TilingSoftmaxPass : Pass<"gml-tiling-softmax", "mlir::func::FuncOp"> {
+  let summary = "Match, tile, and fuse softmax implementations";
+  let constructor = "::mlir::gml_st::createTilingSoftmaxPass()";
+  let options = [
+    Option<"distribute", "distribute", "bool", /*default=*/"true",
+           "Generate gml_st.parallel or gml_st.for">,
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Right-aligned tile sizes. Do not tile possible remaining "
+               "dimensions", "llvm::cl::ZeroOrMore">,
+    Option<"distributionLabel", "distribution-label", "std::string",
+            /*default=*/"", "Distribution label for generated gml_st.parallel">,
+  ];
 }
 
 def CollapseMaterializeOpsPass : Pass<"gml-collapse-materialize-ops",
     "mlir::func::FuncOp"> {
   let summary = "Collapse (or uncollapse) materialize operations.";
   let constructor = "::mlir::gml_st::createCollapseMaterializeOpsPass()";
-  let options = [
-    Option<"reverse_", "reverse", "bool", /*default=*/"false", "Whether to "
-        "revert collapsing of materialize operations.">,
-  ];
 }
 
 def GmlStToScf : Pass<"gml-st-to-scf", "mlir::func::FuncOp"> {
@@ -89,12 +103,6 @@ def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
                            "::mlir::vector::VectorDialect"];
 }
 
-def TiledLoopBufferizePass :
-    Pass<"gml-tiled-loop-bufferize", "mlir::func::FuncOp"> {
-  let summary = "Pass to bufferize linalg.tiled_loop with the ops inside it.";
-  let constructor = "::mlir::gml_st::CreateTiledLoopBufferizePass()";
-}
-
 def VectorizeGmlStLoopsPass :
     Pass<"vectorize-gml-st-loops", "mlir::func::FuncOp"> {
   let summary =
@@ -104,6 +112,30 @@ def VectorizeGmlStLoopsPass :
   let options = [
     Option<"vectorizeGmlStOps", "vectorize-gml-st-ops", "bool", "false",
            "If true, vectorizes GmlSt ops in addition to linalg ops">,
+    ListOption<"distributionLabels", "included-distribution-labels",
+               "std::string", "Distribution labels of gml_st.parallel ops "
+               "where vectorization is allowed. Empty list signifies that "
+               "vectorization is allowed within all loops.",
+               "llvm::cl::ZeroOrMore">,
   ];
   let dependentDialects = ["::mlir::vector::VectorDialect"];
+}
+
+def TransformScatterForCpuPass :
+    Pass<"xla-cpu-transform-scatter", "mlir::func::FuncOp"> {
+  let summary = "Transform scatter ops for running on CPU";
+
+  let constructor = "createTransformScatterForCpuPass()";
+}
+
+def TransformMatmulForCpuPass :
+    Pass<"xla-cpu-transform-matmul", "mlir::func::FuncOp"> {
+  let summary = "Transform matmul ops for running on CPU";
+
+  let constructor = "createTransformMatmulForCpuPass()";
+
+  let options = [
+    ListOption<"tileSizes", "tile-sizes", "int64_t",
+               "Tile sizes for a `linalg.matmul`">,
+  ];
 }

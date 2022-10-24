@@ -56,7 +56,9 @@ constexpr int64_t kBatchThreadPoolSize = 128;
 
 Status GetTfrtExecutionContext(OpKernelContext* c,
                                const tfrt::ExecutionContext** exec_ctx) {
-  // ExecutionContext's address is passed in as an I64 input.
+  // ExecutionContext's address is passed in as an I64 input. exec_ctx is only
+  // valid during the period of one bef execution. It should not be stored and
+  // accessed after bef execution completes.
   const Tensor* tensor;
   TF_RETURN_IF_ERROR(c->input("tfrt_exec_ctx", &tensor));
   int64_t exec_ctx_intptr = *reinterpret_cast<const int64_t*>(tensor->data());

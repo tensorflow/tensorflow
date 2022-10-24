@@ -43,15 +43,7 @@ load(
     "if_rocm_is_configured",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_cuda_cc_test")
 
 package(
     default_visibility = [
@@ -277,6 +269,28 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/tsl/platform:env",
     ] + tf_windows_aware_platform_deps("env"),
+)
+
+tf_cc_test(
+    name = "env_test",
+    size = "small",
+    srcs = ["env_test.cc"],
+    deps = [
+        ":cord",
+        ":env",
+        ":env_impl",
+        ":null_file_system",
+        ":path",
+        ":protobuf",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":test",
+        ":test_main",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -919,9 +933,6 @@ cc_library(
 
 cc_library(
     name = "retrying_utils",
-    srcs = [
-        "retrying_utils.cc",
-    ],
     hdrs = [
         "retrying_utils.h",
     ],
@@ -929,6 +940,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/platform:retrying_utils",
     ],
 )
 
@@ -942,34 +954,7 @@ cc_library(
         ":retrying_utils",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_file_system_test",
-    size = "small",
-    srcs = ["retrying_file_system_test.cc"],
-    deps = [
-        ":retrying_file_system",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:str_util",
-    ],
-)
-
-tf_cc_test(
-    name = "retrying_utils_test",
-    size = "small",
-    srcs = ["retrying_utils_test.cc"],
-    deps = [
-        ":retrying_utils",
-        ":str_util",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:retrying_file_system",
     ],
 )
 
@@ -1027,6 +1012,16 @@ cc_binary(
     ] + if_not_android([":rocm_rocdl_path"]),
 )
 
+# This do-nothing lib should only be used as a dep in cuda_deps in :stream_executor cuda lib because
+# the "+" operator doesn't work for bazel in stream_executor cuda_deps.
+cc_library(
+    name = "private_static_dep",
+    visibility = ["//visibility:private"],
+    deps = if_static(
+        ["//tensorflow/compiler/xla/stream_executor/cuda:all_runtime"],
+    ),
+)
+
 tf_cuda_library(
     name = "stream_executor",
     srcs = ["stream_executor.h"],
@@ -1039,6 +1034,7 @@ tf_cuda_library(
         if_google(
             ["//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform"],
             [
+                ":private_static_dep",
                 "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation",
                 "//tensorflow/compiler/xla/stream_executor/rocm:rocm_activation",
             ],
@@ -1639,7 +1635,6 @@ filegroup(
         "png.h",
         "protobuf_internal.h",
         "random.h",
-        "subprocess.h",
         "test_benchmark.h",
         "threadpool_options.h",
         "unbounded_work_queue.h",
@@ -1693,6 +1688,7 @@ bzl_library(
     name = "build_config_root_bzl",
     srcs = [
         "build_config_root.bzl",
+        "build_config_root.default.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
     visibility = [
         "//learning/brain/google/xla/tests:__pkg__",
@@ -1704,8 +1700,6 @@ bzl_library(
 
 bzl_library(
     name = "rules_cc_bzl",
-    srcs = [
-        "rules_cc.bzl",
-    ] + tf_platform_alias("rules_cc.bzl"),
-    deps = ["@bazel_skylib//rules:common_settings"],
+    srcs = ["rules_cc.bzl"],
+    deps = tf_platform_alias("rules_cc_bzl"),
 )

@@ -614,7 +614,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   `tf.shape` and `Tensor.shape` should be identical in eager mode.  Within
   `tf.function` or within a `compat.v1` context, not all dimensions may be
-  known until execution time. Hence when defining custom layers and models
+  known until execution time. Hence, when defining custom layers and models
   for graph mode, prefer the dynamic `tf.shape(x)` over the static `x.shape`.
 
   Args:
@@ -2026,7 +2026,7 @@ def unique(x, out_idx=dtypes.int32, name=None):
 
   See also `tf.unique_with_counts`.
 
-  This operation returns a tensor `y` containing all of the unique elements
+  This operation returns a tensor `y` containing all the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
   also returns a tensor `idx` the same size as `x` that contains the index
   of each value of `x` in the unique output `y`. In other words:
@@ -2074,7 +2074,7 @@ def unique_with_counts(x, out_idx=dtypes.int32, name=None):
 
   See also `tf.unique`.
 
-  This operation returns a tensor `y` containing all of the unique elements
+  This operation returns a tensor `y` containing all the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
   also returns a tensor `idx` the same size as `x` that contains the index
   of each value of `x` in the unique output `y`. Finally, it returns a
@@ -2211,7 +2211,7 @@ def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
 
   The returned tensor's dimension `i` will correspond to the input dimension
   `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
-  of the input tensor. Hence by default, this operation performs a regular
+  of the input tensor. Hence, by default, this operation performs a regular
   matrix transpose on 2-D input Tensors.
 
   If conjugate is `True` and `a.dtype` is either `complex64` or `complex128`
@@ -2292,7 +2292,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
   The returned tensor's dimension i will correspond to the input dimension
   `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
-  the rank of the input tensor. Hence by default, this operation performs a
+  the rank of the input tensor. Hence, by default, this operation performs a
   regular matrix transpose on 2-D input Tensors. If conjugate is True and
   `a.dtype` is either `complex64` or `complex128` then the values of `a`
   are conjugated and transposed.
@@ -3013,7 +3013,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():
-          # Create a constant if it won't be very big. Otherwise create a fill
+          # Create a constant if it won't be very big. Otherwise, create a fill
           # op to prevent serialized GraphDefs from becoming too large.
           output = _constant_if_small(zero, shape, dtype, name)
           if output is not None:
@@ -3269,7 +3269,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():
-          # Create a constant if it won't be very big. Otherwise create a fill
+          # Create a constant if it won't be very big. Otherwise, create a fill
           # op to prevent serialized GraphDefs from becoming too large.
           output = _constant_if_small(one, shape, dtype, name)
           if output is not None:
@@ -5543,7 +5543,7 @@ def gather_nd(params, indices, name=None, batch_dims=0):
 
   ## Batches
 
-  Additionally both `params` and `indices` can have `M` leading batch
+  Additionally, both `params` and `indices` can have `M` leading batch
   dimensions that exactly match. In this case `batch_dims` must be set to `M`.
 
   For example, to collect one row from each of a batch of matrices you could
@@ -5853,7 +5853,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
     the index vectors each point to scalars in `tensor` and each update is a
     scalar.
   * If the length of the index vectors is less than the rank of `tensor`, then
-    the index vectors each point to slices of `tensor` and shape of the updates
+    the index vectors each point to the slices of `tensor` and shape of the updates
     must match that slice.
 
   Overall this leads to the following shape constraints:
@@ -6433,7 +6433,7 @@ def searchsorted(sorted_sequence,
 
   Note: This operation assumes that `sorted_sequence` **is sorted** along the
   innermost axis, maybe using `tf.sort(..., axis=-1)`. **If the sequence is not
-  sorted no error is raised** and the content of the returned tensor is not well
+  sorted, no error is raised** and the content of the returned tensor is not well
   defined.
 
   Args:
@@ -6684,7 +6684,7 @@ def fingerprint(data, method="farmhash64", name=None):
   Args:
     data: A `Tensor`. Must have rank 1 or higher.
     method: A `Tensor` of type `tf.string`. Fingerprint method used by this op.
-      Currently available method is `farmhash64`.
+      Currently, available method is `farmhash64`.
     name: A name for the operation (optional).
 
   Returns:
@@ -6892,7 +6892,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
       # E.g., repeats = [3, 4, 0, 2, 1].
       # E.g., repeats_scan = [3, 7, 7, 9, 10].
       repeats_scan = math_ops.cumsum(repeats)
-      # This concat just prepends 0 to handle the case when repeats is empty.
+      # This concat just prepends 0 to handle the case when repeats are empty.
       # E.g., output_size = [0, 3, 7, 7, 9, 10][-1] = 10.
       output_size = concat([zeros(1, dtype=repeats_scan.dtype), repeats_scan],
                            axis=0)[-1]
@@ -6942,7 +6942,7 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     repeats: An 1-D `int` Tensor. The number of repetitions for each element.
       repeats is broadcasted to fit the shape of the given axis. `len(repeats)`
       must equal `input.shape[axis]` if axis is not None.
-    axis: An int. The axis along which to repeat values. By default (axis=None),
+    axis: An int. The axis along which to repeat values. By default, (axis=None),
       use the flattened input array, and return a flat output array.
     name: A name for the operation.
 

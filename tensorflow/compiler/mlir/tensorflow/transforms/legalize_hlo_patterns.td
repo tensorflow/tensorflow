@@ -261,24 +261,20 @@ def : Pat<(HLO_PadOp:$old_value $input, $pad_value, $pad_low, $pad_high,
           (ConvertPadOp $old_value),
           [(IsZero $pad_interior)]>;
 
-class FloatValueEquals<string val> : Constraint<CPred<
-  "$0.isa<SplatElementsAttr>() && "
-  "$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isExactlyValue(" # val # ")">>;
-def FloatValueGreaterThanZero : Constraint<CPred<
-  "$0.isa<SplatElementsAttr>() && "
-  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isNegative() && "
-  "!$0.cast<SplatElementsAttr>().getSplatValue<APFloat>().isZero()">>;
-def FloatValueIsReciprocal : Constraint<CPred<
-  "$0.isa<SplatElementsAttr>() && $1.isa<SplatElementsAttr>() &&"
-  "($0.cast<SplatElementsAttr>().getSplatValue<APFloat>() * "
-  "$1.cast<SplatElementsAttr>().getSplatValue<APFloat>()).isExactlyValue(1.0)">>;
-def FloatTensorIsSign : Constraint<CPred<"FloatTensorIsSign($_builder, $0, $1)">>;
+class ValueEquals<string val> : Constraint<CPred<"ValueEquals($0, " # val # ")">>;
+def ValueGreaterThanZero : Constraint<CPred<"ValueGreaterThanZero($0)">>;
+def ValueIsReciprocal : Constraint<CPred<"ValueIsReciprocal($0, $1)">>;
+def TensorIsSign : Constraint<CPred<"TensorIsSign($_builder, $0, $1)">>;
 def SameValue : Constraint<CPred<"$0 == $1">>;
 def FloatOrDefaultCompare : Constraint<CPred<
   "!$0 || $0.getValue() == ::mlir::mhlo::ComparisonType::FLOAT">>;
+def SameTypeOrDefaultCompare : Constraint<CPred<
+  "SameTypeOrDefaultCompare($0, $1)">>;
 
 // Converts a dag of HLOs representing banker rounding (round x.5 to nearest
-// even) to tf.round.
+// even) to tf.round. This only supports float types because mhlo.floor only
+// supports float types. tf.round with integer input type will become an
+// identity op, so we will never face an mhlo.floor with an integer input type.
 // The pattern matched executes the following computation:
 // frac = x - floor(x)
 // to_even = (floor(x) - 2 * floor(0.5 * x)) == 1
@@ -312,12 +308,12 @@ def : Pat<(HLO_SelectOp
             (HLO_AddOp $floor2, (HLO_ConstantOp $one)),
             $floor3),
           (TF_RoundOp $input),
-          [(FloatValueEquals<"1.0"> $one),
-           (FloatValueEquals<"1.0"> $one1),
-           (FloatValueEquals<"2.0"> $two),
-           (FloatValueEquals<"0.5"> $half),
-           (FloatValueEquals<"0.5"> $half1),
-           (FloatValueEquals<"0.5"> $half2),
+          [(ValueEquals<"1.0"> $one),
+           (ValueEquals<"1.0"> $one1),
+           (ValueEquals<"2.0"> $two),
+           (ValueEquals<"0.5"> $half),
+           (ValueEquals<"0.5"> $half1),
+           (ValueEquals<"0.5"> $half2),
            (SameValue $floor, $floor1),
            (SameValue $floor, $floor2),
            (SameValue $floor, $floor3),
@@ -349,15 +345,15 @@ def : Pat<(HLO_SelectOp
             (HLO_AddOp $rem2, $arg1),
             $rem3),
           (TF_FloorModOp $arg, $arg1),
-          [(FloatValueEquals<"0.0"> $cst),
-           (FloatValueEquals<"0.0"> $cst1),
-           (FloatValueEquals<"0.0"> $cst2),
+          [(ValueEquals<"0.0"> $cst),
+           (ValueEquals<"0.0"> $cst1),
+           (ValueEquals<"0.0"> $cst2),
            (SameValue $rem, $rem1),
            (SameValue $rem, $rem2),
            (SameValue $rem, $rem3),
-           (FloatOrDefaultCompare $compare_type),
-           (FloatOrDefaultCompare $compare_type1),
-           (FloatOrDefaultCompare $compare_type2)]>;
+           (SameTypeOrDefaultCompare $compare_type, $cst),
+           (SameTypeOrDefaultCompare $compare_type1, $cst1),
+           (SameTypeOrDefaultCompare $compare_type2, $compare_type)]>;
 
 // Converts a dag of HLOs representing floor_mod with a constant to
 // tf.FloorMod. The pattern matched executes the following computation:
@@ -379,15 +375,15 @@ def : Pat<(HLO_SelectOp
             (HLO_AddOp $rem2, (HLO_ConstantOp $cst3)),
             $rem3),
           (TF_FloorModOp $arg, (TF_ConstOp $cst3)),
-          [(FloatValueGreaterThanZero $cst),
-           (FloatValueEquals<"0.0"> $cst1),
-           (FloatValueEquals<"0.0"> $cst2),
+          [(ValueGreaterThanZero $cst),
+           (ValueEquals<"0.0"> $cst1),
+           (ValueEquals<"0.0"> $cst2),
            (SameValue $cst, $cst3),
            (SameValue $rem, $rem1),
            (SameValue $rem, $rem2),
            (SameValue $rem, $rem3),
-           (FloatOrDefaultCompare $compare_type),
-           (FloatOrDefaultCompare $compare_type3)]>;
+           (SameTypeOrDefaultCompare $compare_type, $cst1),
+           (SameTypeOrDefaultCompare $compare_type3, $cst2)]>;
 
 // Converts a dag of HLOs representing floor_div to tf.FloorDiv.
 // The pattern matched executes the following computation:
@@ -434,13 +430,13 @@ def : Pat<(HLO_RoundOp
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
           (TF_FloorDivOp $arg0, $arg1),
-          [(FloatValueEquals<"0.0"> $cst),
-           (FloatValueEquals<"-1.0"> $cst_neg1),
+          [(ValueEquals<"0.0"> $cst),
+           (ValueEquals<"-1.0"> $cst_neg1),
            (SameValue $div, $div1),
            (SameValue $rem, $rem1),
            (SameValue $rem, $rem2),
-           (FloatOrDefaultCompare $compare_type),
-           (FloatOrDefaultCompare $compare_type1)]>;
+           (FloatOrDefaultCompare $compare_type, $cst),
+           (FloatOrDefaultCompare $compare_type1, $cst)]>;
 
 // Converts a dag of HLOs representing floor_div with a splat constant to
 // tf.FloorDiv. The pattern matched executes the following computation:
@@ -490,15 +486,15 @@ def : Pat<(HLO_RoundOp
                 (HLO_ConstantOp $cst_neg1)),
               $mul1)),
           (TF_FloorDivOp $arg0, $cst),
-          [(FloatValueEquals<"0.0"> $cst_zero),
-           (FloatValueEquals<"-1.0"> $cst_neg1),
-           (FloatTensorIsSign $cstv, $cst_sgn),
-           (FloatValueIsReciprocal $cstv, $cst_recip),
+          [(ValueEquals<"0.0"> $cst_zero),
+           (ValueEquals<"-1.0"> $cst_neg1),
+           (TensorIsSign $cstv, $cst_sgn),
+           (ValueIsReciprocal $cstv, $cst_recip),
            (SameValue $mul, $mul1),
            (SameValue $rem, $rem1),
            (SameValue $rem, $rem2),
-           (FloatOrDefaultCompare $compare_type),
-           (FloatOrDefaultCompare $compare_type1)]>;
+           (FloatOrDefaultCompare $compare_type, $cst_zero),
+           (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
 // Converts a dag of HLOs representing floor_div with a splat constant to
 // tf.FloorDiv. The pattern matched executes the following computation:
@@ -548,15 +544,15 @@ def : Pat<(HLO_RoundOp
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
           (TF_FloorDivOp $arg0, $cst),
-          [(FloatValueEquals<"0.0"> $cst_zero),
-           (FloatValueEquals<"-1.0"> $cst_neg1),
-           (FloatTensorIsSign $cstv, $cst_sgn),
+          [(ValueEquals<"0.0"> $cst_zero),
+           (ValueEquals<"-1.0"> $cst_neg1),
+           (TensorIsSign $cstv, $cst_sgn),
            (SameValue $div, $div1),
            (SameValue $rem, $rem1),
            (SameValue $rem, $rem2),
            (SameValue $cstv1, $cstv),
-           (FloatOrDefaultCompare $compare_type),
-           (FloatOrDefaultCompare $compare_type1)]>;
+           (FloatOrDefaultCompare $compare_type, $cst_zero),
+           (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
 // Converts a dag of HLOs representing floor_div with a broadcasted vector
 // constant to tf.FloorDiv. The pattern matched executes the following
@@ -613,15 +609,15 @@ def : Pat<(HLO_RoundOp
                 (HLO_ConstantOp $cst_neg1)),
               $div1)),
           (TF_FloorDivOp $arg0, $bcst),
-          [(FloatValueEquals<"0.0"> $cst_zero),
-           (FloatValueEquals<"-1.0"> $cst_neg1),
-           (FloatTensorIsSign $cstv, $cst_sgn),
+          [(ValueEquals<"0.0"> $cst_zero),
+           (ValueEquals<"-1.0"> $cst_neg1),
+           (TensorIsSign $cstv, $cst_sgn),
            (SameValue $bcst, $bcst1),
            (SameValue $div, $div1),
            (SameValue $rem, $rem1),
            (SameValue $rem, $rem2),
-           (FloatOrDefaultCompare $compare_type),
-           (FloatOrDefaultCompare $compare_type1)]>;
+           (FloatOrDefaultCompare $compare_type, $cst_zero),
+           (FloatOrDefaultCompare $compare_type1, $cst_sgn)]>;
 
 //===----------------------------------------------------------------------===//
 // TorchIndexSelect op patterns.

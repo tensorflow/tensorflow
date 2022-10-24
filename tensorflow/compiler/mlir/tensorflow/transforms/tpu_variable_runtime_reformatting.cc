@@ -333,11 +333,12 @@ void WrapOpInLaunch(OpBuilder* builder, Location loc, Operation* op,
   builder->restoreInsertionPoint(insert_point);
 }
 
-// Performs the transformation for a replicate op inside a while loop.
-void HandleReplicateOp(TF::WhileRegionOp while_op,
+// Performs the transformation for a replicate op inside a while loop. Returns
+// true when any change was made by this function.
+bool HandleReplicateOp(TF::WhileRegionOp while_op,
                        tf_device::ReplicateOp replicate) {
   int64_t num_replicas = replicate.getN();
-  if (num_replicas == 1) return;
+  if (num_replicas == 1) return false;
 
   // Set execute_launch when there is exactly one
   // TPUExecuteAndUpdateVariablesOp. More than one means there is model
@@ -359,24 +360,24 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
     execute = nullptr;
     return WalkResult::interrupt();
   });
-  if (!execute) return;
+  if (!execute) return false;
   auto compile =
       SkipIdentity(execute.key(), /*allow_other_use=*/true).getDefiningOp();
-  if (!compile) return;
+  if (!compile) return false;
   auto compile_launch = llvm::dyn_cast<tf_device::LaunchOp>(compile);
   if (!compile_launch || !compile_launch.WrapsSingleOp() ||
       !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
-    return;
+    return false;
 
   // Analyze the formattable inputs.
   auto execute_arg_to_outer_args =
       AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
           while_op, replicate, execute, compile_launch);
-  if (execute_arg_to_outer_args.empty()) return;
+  if (execute_arg_to_outer_args.empty()) return false;
 
   // Extract the replicated devices.
   auto devices_attr = replicate.getDevices();
-  if (!devices_attr) return;
+  if (!devices_attr) return false;
 
   auto device_map = devices_attr.getValue();
   llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>> devices;
@@ -475,10 +476,13 @@ void HandleReplicateOp(TF::WhileRegionOp while_op,
   WrapOpInLaunch(&builder, execute_launch.getLoc(), unformat_op,
                  execute_launch.getDevice());
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
+
+  return true;
 }
 
 void TPUVariableRuntimeReformattingPass::runOnOperation() {
   auto module = getOperation();
+  bool reshard_was_inserted = false;
   module.walk([&](TF::WhileRegionOp while_op) {
     tf_device::ReplicateOp replicate;
     while_op.body().walk([&](tf_device::ReplicateOp replicate_op) {
@@ -490,8 +494,15 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    if (replicate) HandleReplicateOp(while_op, replicate);
+    if (replicate)
+      reshard_was_inserted |= HandleReplicateOp(while_op, replicate);
   });
+  if (reshard_was_inserted)
+    VLOG(1) << "tf-tpu-variable-runtime-reformatting inserted at least one "
+               "TPUReshardVariables";
+  else
+    VLOG(1) << "tf-tpu-variable-runtime-reformatting inserted no "
+               "TPUReshardVariables";
 }
 
 }  // namespace

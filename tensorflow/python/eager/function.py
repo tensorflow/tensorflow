@@ -43,5 +43,3 @@ from tensorflow.python.eager.polymorphic_function.monomorphic_function import _f
 # QUARANTINED - Defun API
 from tensorflow.python.eager.polymorphic_function.quarantine import defun
 from tensorflow.python.eager.polymorphic_function.quarantine import defun_with_attributes
-from tensorflow.python.eager.polymorphic_function.quarantine import register
-

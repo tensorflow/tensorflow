@@ -362,21 +362,6 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
   EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
             "pred[8,8,8]{0,2,1:T(8,128)}");
 
-  // PRED with element size of 32 bits.
-  shape.mutable_layout()->clear_tiles();
-  tile = shape.mutable_layout()->add_tiles();
-  tile->add_dimensions(8);
-  tile->add_dimensions(128);
-  shape.mutable_layout()->set_element_size_in_bits(32);
-  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
-            "pred[8,8,8]{0,2,1:T(8,128)E(32)}");
-
-  // No tile. PRED with element size of 32 bits.
-  shape.mutable_layout()->clear_tiles();
-  shape.mutable_layout()->set_element_size_in_bits(32);
-  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
-            "pred[8,8,8]{0,2,1:E(32)}");
-
   // Tile with negative dimension size for combining dimensions.
   shape = ShapeUtil::MakeShapeWithLayout(BF16, {2, 3, 1004}, {2, 1, 0});
   tile = shape.mutable_layout()->add_tiles();
@@ -462,7 +447,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
       {1, 0}, {DIM_DENSE, DIM_COMPRESSED}, {Tile({10, 10})});
   EXPECT_THAT(LayoutUtil::ValidateLayoutInShape(shape),
               tsl::testing::StatusIs(
-                  tensorflow::error::INVALID_ARGUMENT,
+                  tsl::error::INVALID_ARGUMENT,
                   ::testing::HasSubstr(
                       "layout has tiles, but the shape is a sparse array")));
   shape.mutable_layout()->clear_tiles();
@@ -477,7 +462,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));
   shape.mutable_layout()->mutable_physical_shape()->clear_layout();
@@ -485,7 +470,7 @@ TEST_F(LayoutUtilTest, ValidateLayout_Sparse) {
   EXPECT_THAT(
       LayoutUtil::ValidateLayoutInShape(shape),
       tsl::testing::StatusIs(
-          tensorflow::error::INVALID_ARGUMENT,
+          tsl::error::INVALID_ARGUMENT,
           ::testing::HasSubstr(
               "layout has a physical_shape, but is not a sparse array")));
 }

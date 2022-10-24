@@ -105,7 +105,7 @@ def convert_structure_to_signature(structure, arg_names=None,
         # of the function argument.
         name = user_specified_name
       else:
-        name = "/".join(str(p) for p in path)
+        name = tensor_spec.sanitize_spec_name("_".join(str(p) for p in path))
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, resource_variable_ops.ResourceVariable):
       return trace_type.from_value(arg, signature_context)

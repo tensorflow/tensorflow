@@ -50,6 +50,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
         "//tensorflow/python/ops/linalg/sparse:gen_sparse_csr_matrix_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

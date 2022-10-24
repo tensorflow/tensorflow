@@ -71,6 +71,18 @@ def LiftMatMul : Pat<
       (NamedAttr<"transpose_b"> $transpose_b))),
   [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
 
+def LiftConv3D : Pat<
+  (TF_Conv3DOp:$res $input, $filter, $strides, $padding,
+    IsDataFormatNDHWC:$data_format, $dilations),
+  (LiftAsFunctionCall<"composite_conv3d_fn">
+    (ArgumentList $input, $filter),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"dilations"> $dilations))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 1)>;
+
 //===----------------------------------------------------------------------===//
 // Pattern rules for lifting ops with bias as functions
 //===----------------------------------------------------------------------===//
@@ -116,6 +128,20 @@ def LiftMatmulWithBias : Pat<
     (NamedAttributeList
       (NamedAttr<"transpose_a"> $transpose_a),
       (NamedAttr<"transpose_b"> $transpose_b))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
+def LiftConv3dWithBias : Pat<
+  (TF_BiasAddOp:$res
+    (TF_Conv3DOp $input, $filter, $strides, $padding,
+      IsDataFormatNDHWC:$data_format, $dilations),
+    $bias, $bias_data_format),
+  (LiftAsFunctionCall<"composite_conv3d_with_bias_fn">
+    (ArgumentList $input, $filter, $bias),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"strides"> $strides),
+      (NamedAttr<"padding"> $padding),
+      (NamedAttr<"dilations"> $dilations))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
 //===----------------------------------------------------------------------===//
@@ -207,6 +233,34 @@ multiclass LiftCompositeOpsWithActivation<Op ActivationOp, string ActivationName
       (NamedAttributeList
         (NamedAttr<"transpose_a"> $transpose_a),
         (NamedAttr<"transpose_b"> $transpose_b))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftConv3dWith#ActivationOp : Pat<
+    (ActivationOp:$res
+      (TF_Conv3DOp $input, $filter, $strides, $padding,
+        IsDataFormatNDHWC:$data_format, $dilations)),
+    (LiftAsFunctionCall<"composite_conv3d_with_"# ActivationName #"_fn">
+      (ArgumentList $input, $filter),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"strides"> $strides),
+        (NamedAttr<"padding"> $padding),
+        (NamedAttr<"dilations"> $dilations))),
+    [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
+
+  def LiftConv3dWithBiasAnd#LastFusedOp : Pat<
+    (ActivationOp:$res
+      (TF_BiasAddOp
+        (TF_Conv3DOp $input, $filter, $strides, $padding,
+          IsDataFormatNDHWC:$data_format, $dilations),
+        $bias, $bias_data_format)),
+    (LiftAsFunctionCall<"composite_conv3d_with_bias_and_"# ActivationName #"_fn">
+      (ArgumentList $input, $filter, $bias),
+      (ResultList $res),
+      (NamedAttributeList
+        (NamedAttr<"strides"> $strides),
+        (NamedAttr<"padding"> $padding),
+        (NamedAttr<"dilations"> $dilations))),
     [(IsNotInLiftedFunc $res)], (addBenefit 10)>;
 
 }

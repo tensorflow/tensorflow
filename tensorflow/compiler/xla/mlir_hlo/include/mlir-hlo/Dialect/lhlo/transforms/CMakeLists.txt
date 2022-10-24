@@ -15,5 +15,5 @@
 #
 
 set(LLVM_TARGET_DEFINITIONS lmhlo_passes.td)
-mlir_tablegen(lmhlo_passes.h.inc -gen-pass-decls -name LMHLO)
+mlir_tablegen(lmhlo_passes.h.inc -gen-pass-decls -name AllLmhlo)
 add_public_tablegen_target(MLIRLmhloPassIncGen)

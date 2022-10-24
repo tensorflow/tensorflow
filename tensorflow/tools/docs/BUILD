@@ -149,7 +149,6 @@ py_library(
 py_test(
     name = "fenced_doctest_test",
     srcs = ["fenced_doctest_test.py"],
-    data = glob(["**/create_model.md"]),
     tags = [
         "no_oss",
         "no_pip",

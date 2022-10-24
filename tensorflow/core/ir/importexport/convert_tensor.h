@@ -59,7 +59,9 @@ void SetTensorShapeProto(ShapeContainerT shape,
                          tensorflow::TensorShapeProto* proto) {
   if (shape.hasRank()) {
     for (int64_t dim : shape.getShape()) {
-      proto->add_dim()->set_size(dim);
+      // TODO(hinsu): Use tensorflow::kTFDynamicSize instead of -1 without
+      // depending on tensorflow/compiler
+      proto->add_dim()->set_size(mlir::ShapedType::isDynamic(dim) ? -1 : dim);
     }
   } else {
     proto->set_unknown_rank(true);

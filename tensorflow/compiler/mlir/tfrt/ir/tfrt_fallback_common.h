@@ -109,6 +109,8 @@ struct ParseExecuteOpOptions {
   bool has_device = false;
   bool has_func_attr = false;
   bool has_cost = false;
+  bool has_op_name = true;
+  bool has_symbol_ref = false;
 };
 
 mlir::ParseResult ParseExecuteOpCommon(mlir::OpAsmParser &parser,

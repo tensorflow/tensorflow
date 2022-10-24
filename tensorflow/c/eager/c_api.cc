@@ -65,10 +65,11 @@ limitations under the License.
 
 // "tensorflow/core/platform/platform.h" must be included first before using
 // PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
+    !defined(PLATFORM_FUCHSIA)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
 #include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_impl.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
 
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
@@ -116,7 +117,8 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
+#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
+    !defined(PLATFORM_FUCHSIA)
     tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
         opts->session_options.options,
         static_cast<tensorflow::ContextDevicePlacementPolicy>(
@@ -131,7 +133,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
+#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
   }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(

@@ -19,6 +19,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/macros.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -317,7 +319,7 @@ void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
   memcpy(arr->data, vec.data(), sizeof(int) * arr->size);
 }
 
-// This function allocates a continuous memory space that contains a
+// This function template allocates a continuous memory space that contains a
 // TfLiteDelegateParams followed by a several TfLiteIntArray.
 // When calling `free` at TfLiteDelegateParams*, all the allocated space
 // will be freed together.
@@ -335,10 +337,36 @@ void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
 // +-----------------------------------+        |
 // | TfLiteIntArray (variable size)    |<-------/
 // +-----------------------------------+
-TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
-                                           const NodeSubset& node_subset) {
+//
+// Note that the 'delegate' field has to be set by the caller of this function
+// template.
+//
+// This function can also be used with TfLiteOpaqueDelegateParams as a template
+// parameter instead of TfLiteDelegateParams, in which case the layout looks
+// as follows:
+//
+// +----------------------------------------------+
+// | TfLiteOpaqueDelegateParams                   |
+// | struct TfLiteOpaqueDelegateStruct* delegate; |
+// | void* delegate_data;                         |
+// | TfLiteIntArray* nodes_to_replace;            |--\
+// | TfLiteIntArray* input_tensors;               |--+--\
+// | TfLiteIntArray* output_tensors;              |--+--+--\
+// +----------------------------------------------+  |  |  |
+// | TfLiteIntArray (variable size)               |<-/  |  |
+// +----------------------------------------------+     |  |
+// | TfLiteIntArray (variable size)               |<----/  |
+// +----------------------------------------------+        |
+// | TfLiteIntArray (variable size)               |<-------/
+// +----------------------------------------------+
+//
+// Note that the 'delegate' and delegate_data field has to be set by the caller
+// of this function template.
+template <typename Params>
+Params* CreateDelegateParamsImpl(TfLiteDelegate* delegate,
+                                 const NodeSubset& node_subset) {
   // Step 1: Calculate the allocation size.
-  int allocation_size = sizeof(TfLiteDelegateParams);
+  int allocation_size = sizeof(Params);
 
   int nodes_to_replace_size =
       TfLiteIntArrayGetSizeInBytes(node_subset.nodes.size());
@@ -357,10 +385,10 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
   char* allocation = static_cast<char*>(malloc(allocation_size));
 
   // Step 3: Fill all data structures.
-  TfLiteDelegateParams* params =
-      reinterpret_cast<TfLiteDelegateParams*>(allocation);
-  params->delegate = delegate;
-  allocation += sizeof(TfLiteDelegateParams);
+  Params* params = reinterpret_cast<Params*>(allocation);
+  // Callers are expected to fill any fields that sit before the
+  // 'nodes_to_replace' field.
+  allocation += sizeof(Params);
 
   params->nodes_to_replace = reinterpret_cast<TfLiteIntArray*>(allocation);
   CopyVectorToTfLiteIntArray(node_subset.nodes, params->nodes_to_replace);
@@ -375,6 +403,27 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
                              params->output_tensors);
   allocation += output_tensors_size;
 
+  return params;
+}
+
+TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
+                                           const NodeSubset& node_subset) {
+  TfLiteDelegateParams* params =
+      CreateDelegateParamsImpl<TfLiteDelegateParams>(delegate, node_subset);
+  params->delegate = delegate;
+  return params;
+}
+
+TfLiteOpaqueDelegateParams* CreateOpaqueDelegateParams(
+    TfLiteDelegate* delegate, const NodeSubset& node_subset) {
+  TfLiteOpaqueDelegateParams* params =
+      CreateDelegateParamsImpl<TfLiteOpaqueDelegateParams>(delegate,
+                                                           node_subset);
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  params->delegate = reinterpret_cast<TfLiteOpaqueDelegateStruct*>(delegate);
+  params->delegate_data = delegate->opaque_delegate_builder->data;
   return params;
 }
 
@@ -400,6 +449,14 @@ void PopulatePreviewDelegateParams(const NodeSubset& node_subset,
 
 }  // namespace
 
+TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
+                                      std::vector<NodeSubset>* node_subsets) {
+  const InterpreterInfo info(this);
+  return PartitionGraphIntoIndependentNodeSubsets(
+      &info, nodes_to_replace, node_subsets,
+      /*greedily=*/!DisableDelegateClustering(), control_edges_);
+}
+
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
@@ -413,11 +470,10 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
   // Analyze the graph to find all independent node_subsets that are either
   // fully not-this-delegate or this-delegate computation.
-  InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(
-      &info, nodes_to_replace, &node_subsets,
-      /*greedily=*/!DisableDelegateClustering());
+  if (PartitionGraph(nodes_to_replace, &node_subsets) == kTfLiteError) {
+    return kTfLiteError;
+  }
 
   // On Android the log message below is used for diagnosing delegation success
   // also in production builds. Use VERBOSE here so that the logging is turned
@@ -430,6 +486,13 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       node_subsets.size());
 
   execution_plan_.clear();
+
+  // The subgraph is taking ownership of the external registration, in case the
+  // user has supplied an opaque delegate.
+  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+    registration_externals_.insert(std::unique_ptr<TfLiteRegistrationExternal>(
+        registration.registration_external));
+  }
 
   for (auto& node_subset : node_subsets) {
     // Subsets claimed by the delegate should have a "macro" op created, the
@@ -445,11 +508,19 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
       case NodeSubset::kTfPartition: {
         int node_index;
 
-        TfLiteDelegateParams* params =
-            CreateDelegateParams(delegate, node_subset);
+        void* delegate_params = nullptr;
+        if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+          TfLiteOpaqueDelegateParams* opaque_params =
+              CreateOpaqueDelegateParams(delegate, node_subset);
+          delegate_params = opaque_params;
+        } else {
+          TfLiteDelegateParams* params =
+              CreateDelegateParams(delegate, node_subset);
+          delegate_params = params;
+        }
         TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
             node_subset.input_tensors, node_subset.output_tensors, {}, nullptr,
-            0, params, &registration, &node_index));
+            0, delegate_params, &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : node_subset.output_tensors) {
@@ -565,11 +636,10 @@ TfLiteStatus Subgraph::PreviewDelegatePartitioning(
   }
 
   // Partition the execution plan into node subsets.
-  InterpreterInfo info(this);
   std::vector<NodeSubset> node_subsets;
-  PartitionGraphIntoIndependentNodeSubsets(
-      &info, nodes_to_replace, &node_subsets,
-      /*greedily=*/!DisableDelegateClustering());
+  if (PartitionGraph(nodes_to_replace, &node_subsets) == kTfLiteError) {
+    return kTfLiteError;
+  }
 
   // Create one TfLiteDelegateParams per node-subset which would be delegated.
   for (auto& node_subset : node_subsets) {
@@ -616,8 +686,10 @@ TfLiteStatus Subgraph::SetVariables(std::vector<int> variables) {
 }
 
 TfLiteStatus Subgraph::SetMetadata(
-    const std::map<std::string, std::string>* metadata) {
+    const std::map<std::string, std::string>* metadata,
+    const ControlEdges* control_edges) {
   metadata_ = metadata;
+  control_edges_ = control_edges;
   return kTfLiteOk;
 }
 
@@ -639,6 +711,22 @@ TfLiteStatus Subgraph::EnsureTensorDataIsReadable(int tensor_index) {
     t->data_is_stale = false;
   }
   return status;
+}
+
+TfLiteStatus Subgraph::EnableCancellation(std::atomic_flag* flag) {
+  continue_invocation_ = flag;
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::Cancel() {
+  if (continue_invocation_) {
+    // Sets cancellation flag to false so cancellation check between nodes will
+    // cancel the invocation.
+    continue_invocation_->clear();
+    return kTfLiteOk;
+  }
+  // Cancellation is not enabled in the interpreter.
+  return kTfLiteError;
 }
 
 bool Subgraph::IsCancelled() {
@@ -1336,11 +1424,18 @@ TfLiteStatus Subgraph::Invoke() {
       return kTfLiteError;
     }
 
+    if (continue_invocation_ && !continue_invocation_->test_and_set()) {
+      // `Cancel` is called and cancellation flag is flipped.
+      ReportError("Client requested cancel during Invoke()");
+      return kTfLiteCancelled;
+    }
+
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
-    if (OpInvoke(registration, &node) != kTfLiteOk) {
-      return ReportOpError(&context_, node, registration, node_index,
-                           "failed to invoke");
+    if (auto s = OpInvoke(registration, &node); s != kTfLiteOk) {
+      auto err = ReportOpError(&context_, node, registration, node_index,
+                               "failed to invoke");
+      return s == kTfLiteCancelled ? s : err;
     }
 
     // Force execution prep for downstream ops if the latest op triggered the

@@ -153,14 +153,15 @@ MinibenchmarkStatus CustomValidationEmbedder::BuildModel(
                     buffers, tensors);
   auto input_offset = fbb.CreateVector(input);
   auto output_offset = fbb.CreateVector(output);
-  subgraphs.push_back(CreateSubGraph(
-      fbb, fbb.CreateVector(tensors), input_offset, output_offset,
-      fbb.CreateVector({CreateOperator(
-          fbb, operator_code_index, input_offset, output_offset,
-          tflite::BuiltinOptions_NONE, 0,
-          CallOpCustomOptions(/*primary_graph_index*/ 0, batch_size_, fbb),
-          tflite::CustomOptionsFormat_FLEXBUFFERS)}),
-      fbb.CreateString(std::string(kValidationGraphName))));
+  std::vector<flatbuffers::Offset<Operator>> operators{CreateOperator(
+      fbb, operator_code_index, input_offset, output_offset,
+      tflite::BuiltinOptions_NONE, 0,
+      CallOpCustomOptions(/*primary_graph_index*/ 0, batch_size_, fbb),
+      tflite::CustomOptionsFormat_FLEXBUFFERS)};
+  subgraphs.push_back(
+      CreateSubGraph(fbb, fbb.CreateVector(tensors), input_offset,
+                     output_offset, fbb.CreateVector(operators),
+                     fbb.CreateString(std::string(kValidationGraphName))));
 
   fbb.Finish(
       CreateModel(fbb, kModelSchemaVersion, fbb.CreateVector(operator_codes),

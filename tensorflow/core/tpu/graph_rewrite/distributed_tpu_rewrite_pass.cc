@@ -18,7 +18,10 @@ limitations under the License.
 #include "tensorflow/core/tpu/graph_rewrite/distributed_tpu_rewrite_pass.h"
 
 #include <algorithm>
+#include <map>
+#include <optional>
 #include <queue>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -37,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -79,7 +83,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 #include "tensorflow/core/tpu/tpu_fingerprint_utils.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -1470,16 +1473,16 @@ void FindNodesMaybeContainingShardingInfo(const Node& input_node,
 // XlaSharding configuration may be derived from
 //   a) Connected Identity op node.
 //   b) Connected Cast op node.
-xla::StatusOr<absl::optional<NodeAndSharding>>
+xla::StatusOr<std::optional<NodeAndSharding>>
 ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
                                    const Node& node) {
   // If |node| has `device` attribute or is a XlaSharding op,
   // return the parsed OpSharding.
-  TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+  TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                       ParseShardingFromDevice(node, num_cores_per_replica,
                                               /*add_metadata=*/true));
   if (sharding.has_value()) {
-    return absl::optional<NodeAndSharding>(NodeAndSharding(&node, *sharding));
+    return std::optional<NodeAndSharding>(NodeAndSharding(&node, *sharding));
   }
 
   // XlaShardingOp may be followed by an identity or followed by identity
@@ -1492,15 +1495,15 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
     if (maybe_node_with_sharding_info->type_string() != "XlaSharding") continue;
 
     TF_ASSIGN_OR_RETURN(
-        absl::optional<xla::OpSharding> sharding_config,
+        std::optional<xla::OpSharding> sharding_config,
         ParseShardingFromDevice(*maybe_node_with_sharding_info,
                                 num_cores_per_replica, /*add_metadata=*/true));
     if (sharding_config.has_value()) {
-      return absl::optional<NodeAndSharding>(
+      return std::optional<NodeAndSharding>(
           NodeAndSharding(maybe_node_with_sharding_info, *sharding_config));
     }
   }
-  return absl::optional<NodeAndSharding>();
+  return std::optional<NodeAndSharding>();
 }
 
 // Walk the graph from an argument node to find OpSharding configuration
@@ -1511,7 +1514,7 @@ ParseInputShardingFromAdjacentNode(const int num_cores_per_replica,
 Status ParseAndValidateShardingFromNeighbors(
     const int num_cores_per_replica, const std::string& arg_node_name,
     const Node& neighbor_node, int64_t* inferred_core_id, bool* is_fast_mem,
-    absl::optional<NodeAndSharding>* result) {
+    std::optional<NodeAndSharding>* result) {
   if (neighbor_node.attrs().Find(TPU_FAST_MEM_ATTR) != nullptr) {
     *is_fast_mem = true;
     VLOG(2) << "place " << neighbor_node.name() << " on fast memory because "
@@ -1521,7 +1524,7 @@ Status ParseAndValidateShardingFromNeighbors(
   // XlaSharding information may be encoded on node directly connected to the
   // argument node.
   TF_ASSIGN_OR_RETURN(
-      absl::optional<NodeAndSharding> node_and_sharding,
+      std::optional<NodeAndSharding> node_and_sharding,
       ParseInputShardingFromAdjacentNode(num_cores_per_replica, neighbor_node));
   if (node_and_sharding.has_value()) {
     TF_RETURN_IF_ERROR(ParseAndValidateSharding(
@@ -1543,7 +1546,7 @@ Status ParseAndValidateShardingFromNeighbors(
       }
 
       TF_ASSIGN_OR_RETURN(
-          absl::optional<NodeAndSharding> node_and_sharding,
+          std::optional<NodeAndSharding> node_and_sharding,
           ParseInputShardingFromAdjacentNode(num_cores_per_replica, *e->dst()));
       if (node_and_sharding.has_value()) {
         TF_RETURN_IF_ERROR(ParseAndValidateSharding(*node_and_sharding,
@@ -2030,7 +2033,7 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
 static Status ValidateCoreNumbers(const Graph& graph,
                                   int num_cores_per_replica) {
   for (Node* n : graph.nodes()) {
-    TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> sharding,
+    TF_ASSIGN_OR_RETURN(std::optional<xla::OpSharding> sharding,
                         ParseShardingFromDevice(*n, num_cores_per_replica,
                                                 /*add_metadata=*/true));
   }
@@ -2040,10 +2043,10 @@ static Status ValidateCoreNumbers(const Graph& graph,
 static Status InferXlaShardingFromNeighbors(
     const Node& n, int num_cores_per_replica, FunctionLibraryRuntime* flr,
     CachedFunctionHandles* cached_function_handles,
-    absl::optional<NodeAndSharding>* output_node_and_sharding,
+    std::optional<NodeAndSharding>* output_node_and_sharding,
     bool* is_fast_mem) {
   int64_t core = -1;
-  absl::optional<NodeAndSharding> result;
+  std::optional<NodeAndSharding> result;
   // We assume the variable has been allocated on fast memory if any consuming
   // op has TPU_FAST_MEM_ATTR attribute. This is a protocol between runtime and
   // compiler.
@@ -2204,8 +2207,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       (params_info.NumReplicas() - 1) * params_info.NumPerReplicaArgs();
   for (int i = 0; i < args.size(); ++i) {
     const Node* n = args[i];
-    absl::optional<int64_t> assigned_core;
-    absl::optional<NodeAndSharding> node_and_sharding;
+    std::optional<int64_t> assigned_core;
+    std::optional<NodeAndSharding> node_and_sharding;
     bool is_fast_mem;
     TF_RETURN_IF_ERROR(InferXlaShardingFromNeighbors(
         *n, num_cores_per_replica, flr, &cached_function_handles,

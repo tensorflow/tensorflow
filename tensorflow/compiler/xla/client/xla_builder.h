@@ -96,6 +96,15 @@ struct XlaBuilderFriend {
   static XlaOp BuildAllGatherDone(XlaBuilder* builder, const XlaOp operands,
                                   const Shape& shape);
 
+  static XlaOp BuildAllReduceStart(
+      XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& layout = std::nullopt,
+      const std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllReduceDone(XlaBuilder* builder, const XlaOp operands,
+                                  const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -818,7 +827,8 @@ class XlaBuilder {
 
   XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
   XlaOp ReplicaId();
 
@@ -1082,7 +1092,7 @@ class XlaBuilder {
   // Use a deque so pointers into this are stable, for example the return
   // value of LookUpInstructionByHandle().
   std::deque<HloInstructionProto> instructions_;
-  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 
@@ -1430,7 +1440,8 @@ class XlaBuilder {
                              const std::optional<Layout>& layout);
   friend XlaOp CollectivePermute(
       XlaOp operand,
-      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+      const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+      const std::optional<ChannelHandle>& channel_id);
   friend XlaOp ReplicaId(XlaBuilder* builder);
   friend XlaOp SelectAndScatter(XlaOp operand, const XlaComputation& select,
                                 absl::Span<const int64_t> window_dimensions,
@@ -2429,7 +2440,8 @@ XlaOp AllToAllTuple(XlaOp operand, int64_t split_dimension,
 // consists of 0(s) with the same shape as the input.
 XlaOp CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id = std::nullopt);
 
 // Enqueues an operation that returns the replica ID.
 XlaOp ReplicaId(XlaBuilder* builder);

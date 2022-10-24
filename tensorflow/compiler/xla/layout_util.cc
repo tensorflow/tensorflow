@@ -53,8 +53,8 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space, std::optional<Shape> physical_shape) {
+    absl::Span<const Tile> tiles, int64_t memory_space,
+    std::optional<Shape> physical_shape) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
@@ -73,7 +73,6 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
     }
     *layout.add_tiles() = tile;
   }
-  layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);

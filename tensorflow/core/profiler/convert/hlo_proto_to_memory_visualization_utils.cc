@@ -17,24 +17,24 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/container/node_hash_map.h"
-#include "absl/container/node_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/profiler/protobuf/memory_viewer_preprocess.pb.h"
 
@@ -157,8 +157,8 @@ int64_t UnpaddedSize(Shape shape) {
 void Convert(const xla::BufferAllocationProto_Assigned& assigned,
              const absl::flat_hash_map<int64_t, const LogicalBufferProto*>&
                  id_to_logical_buffer,
-             const absl::node_hash_map<std::string, const HloInstructionProto*>&
-                 name_to_hlo,
+             const absl::flat_hash_map<absl::string_view,
+                                       const HloInstructionProto*>& name_to_hlo,
              LogicalBuffer* result) {
   result->set_id(assigned.logical_buffer_id()),
       result->set_size_mib(BytesToMiB(assigned.size()));
@@ -180,8 +180,8 @@ bool IsReusable(const BufferAllocationProto& buffer_allocation) {
 void Convert(const BufferAllocationProto& proto,
              const absl::flat_hash_map<int64_t, const LogicalBufferProto*>&
                  id_to_logical_buffer,
-             const absl::node_hash_map<std::string, const HloInstructionProto*>&
-                 name_to_hlo,
+             const absl::flat_hash_map<absl::string_view,
+                                       const HloInstructionProto*>& name_to_hlo,
              BufferAllocation* result) {
   result->set_id(proto.index());
   result->set_size_mib(BytesToMiB(proto.size()));
@@ -219,8 +219,7 @@ void NoteSpecialAllocations(
         all_buffer_allocations,
     const absl::flat_hash_map<int64_t, const LogicalBufferProto*>&
         id_to_logical_buffer,
-
-    const absl::node_hash_map<std::string, const HloInstructionProto*>&
+    const absl::flat_hash_map<absl::string_view, const HloInstructionProto*>&
         name_to_hlo,
     int64_t small_buffer_size, PreprocessResult* result) {
   int64_t entry_parameters_bytes = 0;
@@ -252,13 +251,26 @@ void NoteSpecialAllocations(
   result->set_maybe_live_out_mib(BytesToMiB(maybe_live_out_bytes));
 }
 
+const int64_t GetUnpaddedSizeFromLogicalBufferProto(
+    const LogicalBufferProto* logical_buffer,
+    const absl::flat_hash_map<absl::string_view, const HloInstructionProto*>&
+        name_to_hlo) {
+  const auto& instruction_name =
+      logical_buffer->defined_at().instruction_name();
+  const Shape top_level_shape(name_to_hlo.at(instruction_name)->shape());
+  const Shape* shape = ResolveShapeIndex(
+      &top_level_shape, logical_buffer->defined_at().shape_index());
+  return UnpaddedSize(*shape);
+}
+
 }  // namespace
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
     int64_t heap_simulator_trace_id, int64_t memory_color) {
   // Construct a mapping from name to HLO proto.
-  absl::node_hash_map<std::string, const HloInstructionProto*> name_to_hlo;
+  absl::flat_hash_map<absl::string_view, const HloInstructionProto*>
+      name_to_hlo;
   for (const auto& computation : hlo_proto.hlo_module().computations()) {
     for (const auto& instruction : computation.instructions()) {
       name_to_hlo[instruction.name()] = &instruction;
@@ -284,7 +296,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   // buffer protos that exist inside of it.
   absl::flat_hash_map<const LogicalBufferProto*, const BufferAllocationProto*>
       logical_buffer_to_buffer_allocation;
-  absl::node_hash_map<const BufferAllocationProto*,
+  absl::flat_hash_map<const BufferAllocationProto*,
                       absl::flat_hash_set<const LogicalBufferProto*>>
       buffer_allocation_to_logical_buffers;
   absl::flat_hash_set<const BufferAllocationProto*> all_buffer_allocations;
@@ -319,10 +331,34 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   std::vector<double> heap_sizes;
   std::vector<double> unpadded_heap_sizes;
 
-  absl::node_hash_map<int64_t, std::pair<int64_t, absl::optional<int64_t>>>
+  // Map from the logical buffer ID of the SHARE_WITH buffer to the logical
+  // buffer ID of the canonical buffer being shared.
+  absl::flat_hash_map<int64_t, int64_t> share_with_to_canonical;
+  // Number of times a canonical buffer is referenced.
+  absl::flat_hash_map<int64_t, int32_t> canonical_buffer_ref_count;
+  absl::flat_hash_map<int64_t, std::pair<int64_t, std::optional<int64_t>>>
       logical_buffer_spans;
   absl::flat_hash_set<const LogicalBufferProto*> seen;
   absl::flat_hash_set<const BufferAllocationProto*> seen_buffer_allocations;
+
+  // Increase memory usage using canonical logical buffer.
+  auto update_on_increase =
+      [&](const LogicalBufferProto* canonical_logical_buffer) {
+        logical_buffers.push_back(canonical_logical_buffer->id());
+        heap_size_bytes += canonical_logical_buffer->size();
+        unpadded_heap_size_bytes += GetUnpaddedSizeFromLogicalBufferProto(
+            canonical_logical_buffer, name_to_hlo);
+        // Update max memory.
+        int64_t prior_peak_heap_size_bytes = peak_heap_size_bytes;
+        peak_heap_size_bytes = std::max(peak_heap_size_bytes, heap_size_bytes);
+        if (prior_peak_heap_size_bytes != peak_heap_size_bytes) {
+          peak_heap_size_position = heap_sizes.size() - 1;
+          unpadded_peak_heap_size_bytes = unpadded_heap_size_bytes;
+          VLOG(1) << StrFormat("New peak heap size on %d :: %d bytes",
+                               peak_heap_size_position, peak_heap_size_bytes);
+          peak_logical_buffers = logical_buffers;
+        }
+      };
 
   // Run through all the simulator events in the given trace, and simulate the
   // heap in order to find the point of peak memory usage and record its
@@ -341,40 +377,69 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
       seen.insert(logical_buffer);
       seen_buffer_allocations.insert(
           logical_buffer_to_buffer_allocation.at(logical_buffer));
-      const auto& instruction_name =
-          logical_buffer->defined_at().instruction_name();
-      const Shape top_level_shape(name_to_hlo.at(instruction_name)->shape());
-      const Shape* shape = ResolveShapeIndex(
-          &top_level_shape, logical_buffer->defined_at().shape_index());
-      if (event.kind() == xla::HeapSimulatorTrace_Event::ALLOC ||
-          event.kind() == xla::HeapSimulatorTrace_Event::SHARE_WITH) {
-        logical_buffers.push_back(event.buffer_id());
-        heap_size_bytes += logical_buffer->size();
-        unpadded_heap_size_bytes += UnpaddedSize(*shape);
+      if (event.kind() == xla::HeapSimulatorTrace_Event::ALLOC) {
+        // The first time a canonical buffer is allocated.
+        canonical_buffer_ref_count[event.buffer_id()] = 1;
+        update_on_increase(logical_buffer);
         // Initialize the buffer span from the current event to the last event.
-        logical_buffer_spans[event.buffer_id()] = {heap_sizes.size() - 1,
-                                                   simulator_events.size() - 1};
-        int64_t prior_peak_heap_size_bytes = peak_heap_size_bytes;
-        peak_heap_size_bytes = std::max(peak_heap_size_bytes, heap_size_bytes);
-        if (prior_peak_heap_size_bytes != peak_heap_size_bytes) {
-          peak_heap_size_position = heap_sizes.size() - 1;
-          unpadded_peak_heap_size_bytes = unpadded_heap_size_bytes;
-          VLOG(1) << StrFormat("New peak heap size on %d: %s :: %d bytes",
-                               peak_heap_size_position, instruction_name,
-                               peak_heap_size_bytes);
-          peak_logical_buffers = logical_buffers;
-        }
+        logical_buffer_spans[logical_buffer->id()] = {
+            heap_sizes.size() - 1, simulator_events.size() - 1};
       } else if (event.kind() == xla::HeapSimulatorTrace_Event::FREE) {
-        logical_buffers.erase(
-            std::remove(logical_buffers.begin(), logical_buffers.end(),
-                        event.buffer_id()),
-            logical_buffers.end());
-        heap_size_bytes -= logical_buffer->size();
-        unpadded_heap_size_bytes -= UnpaddedSize(*shape);
-        logical_buffer_spans[event.buffer_id()].second = heap_sizes.size() - 1;
-        if (heap_size_bytes < 0) {
+        // Get the canonical buffer ID of this free event.
+        int64_t canonical_buffer_id = event.buffer_id();
+        if (const int64_t* canonical_id =
+                gtl::FindOrNull(share_with_to_canonical, event.buffer_id())) {
+          canonical_buffer_id = *canonical_id;
+        }
+        // Decrease the ref count of canonical buffer.
+        int32_t& ref_count = canonical_buffer_ref_count[canonical_buffer_id];
+        --ref_count;
+        if (ref_count < 0) {
           return absl::InvalidArgumentError(absl::StrCat(
-              "heap_size_bytes should be non-negative: ", heap_size_bytes));
+              "Buffer ", canonical_buffer_id, " is freed multiple times."));
+        }
+        if (ref_count == 0) {
+          // There is no more reference to the canonical buffer, the canonical
+          // buffer is finally freed. Update memory usage and memory timespan
+          // using the metadata of canonical buffer.
+          const auto* canonical_buffer =
+              id_to_logical_buffer.at(canonical_buffer_id);
+          if (!canonical_buffer) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Unable to find canonical buffer with ID: ",
+                             canonical_buffer_id));
+          }
+          logical_buffers.erase(
+              std::remove(logical_buffers.begin(), logical_buffers.end(),
+                          canonical_buffer_id),
+              logical_buffers.end());
+          heap_size_bytes -= canonical_buffer->size();
+          if (heap_size_bytes < 0) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "heap_size_bytes should be non-negative: ", heap_size_bytes));
+          }
+          unpadded_heap_size_bytes -= GetUnpaddedSizeFromLogicalBufferProto(
+              canonical_buffer, name_to_hlo);
+          logical_buffer_spans[canonical_buffer_id].second =
+              heap_sizes.size() - 1;
+        }
+      } else if (event.kind() == xla::HeapSimulatorTrace_Event::SHARE_WITH) {
+        share_with_to_canonical[event.buffer_id()] =
+            event.share_with_canonical_id();
+        // Increase the ref count of canonical buffer.
+        int32_t& ref_count =
+            canonical_buffer_ref_count[event.share_with_canonical_id()];
+        ++ref_count;
+        if (ref_count == 1) {
+          // SHARE_WITH happens after the FREE of a canonical buffer.
+          const auto* canonical_buffer =
+              id_to_logical_buffer.at(event.share_with_canonical_id());
+          if (!canonical_buffer) {
+            return absl::InvalidArgumentError(
+                absl::StrCat("Unable to find canonical buffer with ID: ",
+                             event.share_with_canonical_id()));
+          }
+          update_on_increase(canonical_buffer);
         }
       } else {
         return absl::InvalidArgumentError(

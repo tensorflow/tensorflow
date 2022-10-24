@@ -1,13 +1,7 @@
 # Contains targets that expose client session APIs
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 package(
@@ -198,9 +192,15 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:replay_log_proto_cc",
-    ],
+    ] + if_static(
+        extra_deps = [
+            "//tensorflow/core/protobuf:master_proto_cc",
+        ],
+        otherwise = [
+            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
+        ],
+    ),
 )
 
 tf_cuda_library(

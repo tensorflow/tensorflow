@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
@@ -29,6 +29,7 @@ cc_library(
     srcs = [
         "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
+        "launch_func_to_cuda_graph.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_launch.cc",
         "lmhlo_to_gpu_runtime.cc",

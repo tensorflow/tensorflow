@@ -162,13 +162,6 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // Bit size of each element. If the size is bigger than what the element
-  // type requires, the value is stored in the least significant
-  // bits and the additional most significant bits are filled with 0's.
-  //
-  // TODO(b/119839262): implement in each backend or add Unimplemented error.
-  int64 element_size_in_bits = 7;
-
   // Memory space where this array resides. The integer field is interpreted in
   // a backend-specific manner.
   int64 memory_space = 8;
@@ -190,6 +183,8 @@ message LayoutProto {
   reserved "format";
   reserved 5;
   reserved "max_sparse_elements";
+  reserved 7;
+  reserved "element_size_in_bits";
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \

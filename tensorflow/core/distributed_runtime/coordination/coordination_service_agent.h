@@ -102,11 +102,10 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status WaitForAllTasks(
-      const CoordinationServiceDeviceInfo& local_devices) = 0;
+  virtual Status WaitForAllTasks(const DeviceInfo& local_devices) = 0;
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  virtual const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() = 0;
+  virtual const DeviceInfo& GetClusterDeviceInfo() = 0;
 
   // State transition in coordination service agent:
   //
