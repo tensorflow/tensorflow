@@ -16,7 +16,6 @@
 
 from typing import List, Optional
 
-from absl import flags
 from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -26,7 +25,6 @@ from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.platform import remote_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -108,13 +106,6 @@ def initialize_multi_client_cluster(job_name: str,
   context.ensure_initialized()
 
 
-def _configure_tpu_runtime():
-  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
-    context.context().use_tfrt = True
-    # Unit tests that skip tfrt backends requires the following line.
-    tfrt_utils.set_tfrt_enabled(True)
-
-
 @tf_export(
     "experimental.dtensor.initialize_accelerator_system",
     "experimental.dtensor.initialize_tpu_system",
@@ -187,10 +178,6 @@ def initialize_accelerator_system(
   if device_type not in {"CPU", "GPU", "TPU"}:
     raise ValueError(f"Unknown device_type {device_type}. "
                      "Allowed values are CPU, GPU, or TPU")
-
-  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
-  if device_type == "TPU":
-    _configure_tpu_runtime()
 
   if config.gpu_use_nccl_communication():
     logical_gpu_count = api.num_local_devices("GPU")
