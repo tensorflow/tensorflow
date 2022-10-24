@@ -43,6 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
+#include "tensorflow/core/util/determinism.h"
+using tsl::OpDeterminismRequired;
+
 namespace stream_executor {
 namespace gpu {
 
@@ -193,7 +196,19 @@ bool ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   }
 
   gpu::ScopedActivateExecutorContext sac{parent_};
-  rocblas_status ret = rocblas_func(blas_, args...);
+
+  // set the atomics mode, leaving default to library
+  bool allow_atomics = !OpDeterminismRequired();
+  rocblas_status ret;
+  if (!allow_atomics) {
+    ret = rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
+    if (err_on_failure && ret != rocblas_status_success) {
+      LOG(ERROR) << "failed to to set atomics mode before " << rocblas_func.kName << ": "
+                 << ToString(ret);
+    }
+  }
+
+  ret = rocblas_func(blas_, args...);
   if (err_on_failure && ret != rocblas_status_success) {
     LOG(ERROR) << "failed to run ROCBLAS routine " << rocblas_func.kName << ": "
                << ToString(ret);

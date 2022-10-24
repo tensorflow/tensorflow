@@ -163,6 +163,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
+        "//tensorflow/core:framework",
     ]),
     alwayslink = True,
 )
