@@ -146,6 +146,7 @@ build --define=no_hdfs_support=true
 build --experimental_ui_max_stdouterr_bytes=-1
 
 # TF uses `cc_shared_library` targets, so it needs the experimental flag
+# TODO(rostam): Remove when `cc_shared_library` is enabled by default
 build --experimental_cc_shared_library
 build --experimental_link_static_libraries_once=true
 
