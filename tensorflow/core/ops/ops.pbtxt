@@ -10154,7 +10154,26 @@ op {
     type: "string"
   }
   attr {
-    name: "source_layout"
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "CopyToMeshGrad"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "forward_input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "reference_layout"
     type: "string"
     default_value {
       s: ""

@@ -61,22 +61,22 @@ void LlvmIrGenTestBase::CompileAndVerifyIr(
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
 }
 
-void LlvmIrGenTestBase::CompileAndVerifyIr(
-    std::unique_ptr<HloModule> hlo_module,
-    const std::vector<std::string>& patterns, bool match_optimized_ir) {
-  SetIrHook(match_optimized_ir);
-  Status status = CompileToExecutable(std::move(hlo_module)).status();
-  ResetIrHook();
-  TF_ASSERT_OK(status);
-  bool any_pass = false;
-  for(auto& pattern: patterns) {
-    StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
-    TF_ASSERT_OK(filecheck_result.status());
-    any_pass = any_pass || filecheck_result.ValueOrDie();
-  }
-  EXPECT_TRUE(any_pass) << "Full IR: " << ir_;
-}
-
+// TODO: remove it?
+// void LlvmIrGenTestBase::CompileAndVerifyIr(
+//     std::unique_ptr<HloModule> hlo_module,
+//     const std::vector<std::string>& patterns, bool match_optimized_ir) {
+//   SetIrHook(match_optimized_ir);
+//   Status status = CompileToExecutable(std::move(hlo_module)).status();
+//   ResetIrHook();
+//   TF_ASSERT_OK(status);
+//   bool any_pass = false;
+//   for(auto& pattern: patterns) {
+//     StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
+//     TF_ASSERT_OK(filecheck_result.status());
+//     any_pass = any_pass || filecheck_result.ValueOrDie();
+//   }
+//   EXPECT_TRUE(any_pass) << "Full IR: " << ir_;
+// }
 
 
 void LlvmIrGenTestBase::CompileAndVerifyIr(const std::string& hlo_text,
@@ -103,36 +103,6 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
-}
-
-void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
-                                          absl::string_view pattern,
-                                          bool print_operand_shape) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo));
-  HloPrintOptions print_opts;
-  print_opts.set_print_operand_shape(print_operand_shape);
-  StatusOr<bool> filecheck_result =
-      RunFileCheck(optimized_module->ToString(print_opts), pattern);
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.value());
-}
-
-StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
-    absl::string_view hlo) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
-  return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
-}
-
-StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
-    std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->RunHloPasses(
-      std::move(hlo_module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
 }
 
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {

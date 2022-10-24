@@ -1,0 +1,26 @@
+--- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
+@@ -236,6 +236,7 @@ cc_library(
+         ":__support_cpp_type_traits",
+         ":__support_fputil_float_properties",
+         ":__support_fputil_platform_defs",
++        ":__support_uint128",
+         ":libc_root",
+     ],
+ )
+@@ -260,12 +261,14 @@ cc_library(
+     hdrs = ["src/__support/FPUtil/ManipulationFunctions.h"],
+     textual_hdrs = ["src/__support/FPUtil/x86_64/NextAfterLongDouble.h"],
+     deps = [
++        ":__support_common",
+         ":__support_cpp_bit",
+         ":__support_cpp_type_traits",
+         ":__support_fputil_fp_bits",
+         ":__support_fputil_nearest_integer_operations",
+         ":__support_fputil_normal_float",
+         ":__support_fputil_platform_defs",
++        ":__support_uint128",
+         ":libc_root",
+     ],
+ )
+

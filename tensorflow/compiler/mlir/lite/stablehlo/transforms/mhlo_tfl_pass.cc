@@ -24,7 +24,9 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -58,7 +60,7 @@ class MhloToTflPass
  private:
   void runOnOperation() override;
 
-  void getDependentDialects(DialectRegistry &registry) const override {
+  void getDependentDialects(DialectRegistry& registry) const override {
     mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
     registry.insert<mlir::func::FuncDialect, mlir::arith::ArithDialect>();
@@ -85,7 +87,7 @@ class MhloToTflPass
 void MhloToTflPass::runOnOperation() {
   func::FuncOp fn = getOperation();
   OpBuilder builder(fn.getContext());
-  fn.walk([&](Operation *op) {
+  fn.walk([&](Operation* op) {
     // Process only MHLO ops.
     if (op->getDialect()->getNamespace() != "mhlo") return;
 
@@ -96,24 +98,53 @@ void MhloToTflPass::runOnOperation() {
     for (auto pair : op->getAttrDictionary().getValue()) {
       const char* key = pair.getName().data();
       const auto attr = pair.getValue();
+
       if (attr.isa<::mlir::IntegerAttr>()) {
         fbb->Int(key, attr.dyn_cast<mlir::IntegerAttr>().getInt());
-      } else if (attr.isa<::mlir::ElementsAttr>()) {
+        continue;
+      }
+
+      if (attr.isa<::mlir::FloatAttr>()) {
+        fbb->Double(key, attr.dyn_cast<mlir::FloatAttr>().getValueAsDouble());
+        continue;
+      }
+
+      if (attr.isa<::mlir::ElementsAttr>()) {
         auto start = fbb->StartVector(key);
         auto array_attr = attr.dyn_cast<mlir::ElementsAttr>();
-        for (auto value : array_attr.getValues<IntegerAttr>()) {
-          auto int_value = value.dyn_cast_or_null<mlir::IntegerAttr>().getInt();
-          fbb->Add(int_value);
+        const auto ftype = array_attr.getElementType();
+        if (ftype.isInteger(16) || ftype.isInteger(32) || ftype.isInteger(64) ||
+            ftype.isInteger(128) || ftype.isInteger(1)) {
+          for (auto value : array_attr.getValues<IntegerAttr>()) {
+            auto int_value =
+                value.dyn_cast_or_null<mlir::IntegerAttr>().getInt();
+            fbb->Add(int_value);
+          }
+        } else if (ftype.isF32() || ftype.isF64() || ftype.isF128()) {
+          for (auto value : array_attr.getValues<FloatAttr>()) {
+            auto double_value =
+                value.dyn_cast_or_null<mlir::FloatAttr>().getValueAsDouble();
+            fbb->Add(double_value);
+          }
+        } else {
+          emitWarning(op->getLoc(), "serialization of ElementsAttr for ")
+              << key << " only supports Integer and Float.";
         }
         fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
-      } else if (attr.isa<::mlir::StringAttr>()) {
+        continue;
+      }
+
+      if (attr.isa<::mlir::StringAttr>()) {
         fbb->String(key, attr.dyn_cast<mlir::StringAttr>().data());
-      } else if (attr.isa<::mlir::ArrayAttr>()) {
+        continue;
+      }
+
+      if (attr.isa<::mlir::ArrayAttr>()) {
         auto start = fbb->StartVector(key);
         auto array_attr = attr.dyn_cast<mlir::ArrayAttr>();
         if (array_attr.size() > 1 && !array_attr[0].isa<mlir::StringAttr>() &&
             !array_attr[0].isa<mlir::mhlo::PrecisionAttr>()) {
-          emitWarning(op->getLoc(), "seralization of ArrayAttr for ")
+          emitWarning(op->getLoc(), "serialization of ArrayAttr for ")
               << key << " only supports Strings.";
           continue;
         }
@@ -131,7 +162,10 @@ void MhloToTflPass::runOnOperation() {
           }
         }
         fbb->EndVector(start, /*typed=*/true, /*fixed=*/false);
-      } else if (attr.isa<::mlir::mhlo::ConvDimensionNumbersAttr>()) {
+        continue;
+      }
+
+      if (attr.isa<::mlir::mhlo::ConvDimensionNumbersAttr>()) {
         auto dimension_attr =
             attr.dyn_cast<::mlir::mhlo::ConvDimensionNumbersAttr>();
         auto start = fbb->StartVector(key);
@@ -145,9 +179,68 @@ void MhloToTflPass::runOnOperation() {
         fbb->Add(dimension_attr.getOutputFeatureDimension());
         AddIntegerArray(fbb.get(), dimension_attr.getOutputSpatialDimensions());
         fbb->EndVector(start, /*typed=*/false, /*fixed=*/false);
-      } else {
-        emitWarning(op->getLoc(), "seralization not supported for : ") << key;
+        continue;
       }
+
+      if (attr.isa<::mlir::mhlo::GatherDimensionNumbersAttr>()) {
+        auto dimension_attr =
+            attr.dyn_cast<::mlir::mhlo::GatherDimensionNumbersAttr>();
+        auto start = fbb->StartVector(key);
+        AddIntegerArray(fbb.get(), dimension_attr.getOffsetDims());
+        AddIntegerArray(fbb.get(), dimension_attr.getCollapsedSliceDims());
+        AddIntegerArray(fbb.get(), dimension_attr.getStartIndexMap());
+        fbb->Add(dimension_attr.getIndexVectorDim());
+        fbb->EndVector(start, /*typed=*/false, /*fixed=*/false);
+        continue;
+      }
+
+      if (attr.isa<::mlir::mhlo::ScatterDimensionNumbersAttr>()) {
+        auto dimension_attr =
+            attr.dyn_cast<::mlir::mhlo::ScatterDimensionNumbersAttr>();
+        auto start = fbb->StartVector(key);
+        AddIntegerArray(fbb.get(), dimension_attr.getUpdateWindowDims());
+        AddIntegerArray(fbb.get(), dimension_attr.getInsertedWindowDims());
+        AddIntegerArray(fbb.get(),
+                        dimension_attr.getScatterDimsToOperandDims());
+        fbb->Add(dimension_attr.getIndexVectorDim());
+        fbb->EndVector(start, /*typed=*/false, /*fixed=*/false);
+        continue;
+      }
+
+      if (attr.isa<::mlir::mhlo::DotDimensionNumbersAttr>()) {
+        auto dimension_attr =
+            attr.dyn_cast<::mlir::mhlo::DotDimensionNumbersAttr>();
+        auto start = fbb->StartVector(key);
+        AddIntegerArray(fbb.get(), dimension_attr.getLhsBatchingDimensions());
+        AddIntegerArray(fbb.get(), dimension_attr.getRhsBatchingDimensions());
+        AddIntegerArray(fbb.get(),
+                        dimension_attr.getLhsContractingDimensions());
+        AddIntegerArray(fbb.get(),
+                        dimension_attr.getRhsContractingDimensions());
+        fbb->EndVector(start, /*typed=*/false, /*fixed=*/false);
+        continue;
+      }
+
+      if (attr.isa<::mlir::mhlo::ComparisonDirectionAttr>()) {
+        auto string_value =
+            mlir::mhlo::stringifyComparisonDirection(
+                attr.cast<mlir::mhlo::ComparisonDirectionAttr>().getValue())
+                .str();
+        fbb->String(key, string_value);
+        continue;
+      }
+
+      if (attr.isa<::mlir::mhlo::ComparisonTypeAttr>()) {
+        auto string_value =
+            mlir::mhlo::stringifyComparisonType(
+                attr.cast<mlir::mhlo::ComparisonTypeAttr>().getValue())
+                .str();
+        fbb->String(key, string_value);
+        continue;
+      }
+
+      // default
+      emitWarning(op->getLoc(), "serialization not supported for : ") << key;
     }
     fbb->EndMap(map_start);
     fbb->Finish();

@@ -640,10 +640,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
   LogicalResult matchAndRewrite(CollectiveOp op,
                                 PatternRewriter& rewriter) const override {
-    // Channel ID is not supported.
-    if (op.getChannelId().has_value())
-      return op.emitOpError() << "Collective channel id is not supported";
-
     // Construct an NCCL collective config from the parent func attributes.
     func::FuncOp fn = op->template getParentOfType<func::FuncOp>();
     auto replica_count_attr = fn->getAttrOfType<IntegerAttr>("replica_count");

@@ -26,7 +26,6 @@ package(
 )
 
 COMMON_PROTO_SRCS = [
-    "bfc_memory_map.proto",
     "config.proto",
     "cluster.proto",
     "debug.proto",
@@ -142,8 +141,6 @@ tf_proto_library(
     cc_stubby_versions = ["2"],
     create_grpc_library = True,
     create_service = True,
-    protodeps = ["//tensorflow/compiler/xla/pjrt/distributed:protocol_proto"] +
-                tf_additional_all_protos(),
 )
 
 tf_proto_library(
@@ -201,6 +198,7 @@ tf_proto_library(
         #
         # Note that some protos are in neither core_proto_srcs nor this
         # filegroup; e.g. ones with individual proto_library targets.
+        "bfc_memory_map.proto",
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
@@ -231,8 +229,10 @@ tf_proto_library(
         ":coordination_config_proto",
         ":error_codes_proto_impl",
         "//tensorflow/core/framework:protos_all",
+        "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
+    exports = ["//tensorflow/tsl/protobuf:bfc_memory_map_proto"],
 )
 
 # copybara:uncomment_begin(google-only)

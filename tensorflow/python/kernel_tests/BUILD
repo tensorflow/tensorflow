@@ -256,3 +256,20 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
 )
+
+cuda_py_test(
+    name = "histogram_ops_test",
+    size = "small",
+    srcs = ["histogram_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:histogram_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/framework:test_lib",
+        "//third_party/py/numpy",
+    ],
+)

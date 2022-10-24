@@ -44,6 +44,9 @@ typedef struct {
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
   struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
+  // Whether READ_VARIABLE, ASSIGN_VARIABLE, and VARIABLE_HANDLE operations
+  // should be handled by XNNPACK.
+  bool handle_variable_ops;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.

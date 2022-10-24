@@ -155,7 +155,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
     usage_stream_pool_.pop();
     auto status = stream->RefreshStatus();  // Can return error::Unimplemented
     // Stream may fail with "ABORTED: Bad connection".
-    if (status.code() != tensorflow::error::ABORTED) {
+    if (status.code() != tsl::error::ABORTED) {
       CHECK(stream->ok()) << status;
     }
     return stream;
@@ -165,7 +165,7 @@ std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
 void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
   auto status = stream->RefreshStatus();  // Can return error::Unimplemented
   // Stream may fail with "ABORTED: Bad connection".
-  if (status.code() != tensorflow::error::ABORTED) {
+  if (status.code() != tsl::error::ABORTED) {
     CHECK(stream->ok()) << status;
   }
   absl::MutexLock lock(&mu_);

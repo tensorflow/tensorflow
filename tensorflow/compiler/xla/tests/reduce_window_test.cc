@@ -113,7 +113,7 @@ XLA_TEST_P(ReduceWindowTest, MismatchedRanksGivesErrorStatus) {
                CreateScalarAddComputation(FloatType(), &builder_),
                /*window_dimensions=*/{1, 2},
                /*window_strides=*/{1}, Padding::kValid);
-  ASSERT_EQ(builder_.first_error().code(), tensorflow::error::INVALID_ARGUMENT)
+  ASSERT_EQ(builder_.first_error().code(), tsl::error::INVALID_ARGUMENT)
       << builder_.first_error();
   ASSERT_THAT(builder_.first_error().error_message(),
               ::testing::HasSubstr("Want input dimensions size"));

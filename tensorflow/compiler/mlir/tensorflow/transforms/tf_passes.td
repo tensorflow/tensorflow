@@ -2464,6 +2464,59 @@ def RemoveUnusedWhileResultsPass : Pass<"tf-remove-unused-while-results", "mlir:
   let constructor = "TF::CreateRemoveUnusedWhileResultsPass()";
 }
 
+def HoistLoopInvariantPass : Pass<"tf-hoist-loop-invariant", "mlir::func::FuncOp"> {
+  let summary = "Hoists loop invariant ops to the outside of the loop";
+   let description = [{
+      Hoists loop invariant to the outside of the loop. The pass is similar to
+      LoopInvariantCodeMotion pass, but it also hoists ReadVariableOps,
+      if the variable is read only.
+
+      For example, the following pseudo MLIR code (types are left out for
+      brevity)
+      ```mlir
+        func.func @hoist_loop_invariant(%arg0, %arg1) {
+	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+          %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %0 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%0)
+          }, {
+          ^bb0(%arg2, %arg3):
+	    %1 = "tf.ReadVariableOp"(%var)
+            %2 = "tf.OpB"(%1) {is_stateless = true}
+            %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+            %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+            "tf.Yield"(%3, %4)
+          }) {is_stateless = true}
+          return %results#0, %results#1
+        }
+      ```
+      would be transformed to
+      ```mlir
+       func.func @hoist_loop_invariant(%arg0, %arg1) {
+	  %var = "tf.VarHandleOp"() {container="", shared_name="var_name", device = "/device:CPU:0"}
+	  %1 = "tf.ReadVariableOp"(%var)
+          %2 = "tf.OpB"(%1) {is_stateless = true}
+          %results:2 = "tf.WhileRegion"(%arg0, %arg1) ({
+          ^bb0(%arg2, %arg3):
+            %0 = "tf.OpA"() {is_stateless = true}
+            "tf.Yield"(%0)
+          }, {
+          ^bb0(%arg2, %arg3):
+            %3 = "tf.OpC"(%arg2, %2) {is_stateless = true}
+            %4 = "tf.OpD"(%arg3, %2) {is_stateless = true}
+            "tf.Yield"(%3, %4)
+          }) {is_stateless = true}
+          return %results#0, %results#1
+        }
+      ```
+      The `tf.ReadVariableOp` and `tf.OpB` can be hoisted to the outside of
+      the loop.
+
+  }];
+  let constructor = "TF::CreateHoistLoopInvariantPass()";
+}
+
 def LocalizeVarHandlesPass : Pass<"tf-localize-var-handles", "ModuleOp"> {
   let summary = "Creates VarHandleOps next to the operations that use them.";
   let description = [{

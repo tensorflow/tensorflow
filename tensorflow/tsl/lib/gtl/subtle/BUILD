@@ -1,7 +1,7 @@
 # Description:
 # gtl subtle packages.
 
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 package(
     licenses = ["notice"],

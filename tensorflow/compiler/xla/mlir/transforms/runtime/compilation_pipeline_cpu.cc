@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/X86Vector/X86VectorToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/transforms/cpu/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/math/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/memref/passes.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
@@ -119,6 +120,8 @@ void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   passes->addPass(mlir::createConvertSCFToCFPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
+  passes->addPass(cpu::createConvertLmhloToCpuRuntimePass());
+  passes->addPass(CreateConvertCustomCallsPass());
   const CompilationPipelineOptions& copts = opts.common_options;
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       copts.populate_type_id_names, copts.populate_type_conversions,

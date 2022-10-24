@@ -162,5 +162,226 @@ ENTRY e {
   EXPECT_EQ(analysis.flop_count(), n_elements * 3);
 }
 
+TEST_F(GpuHloCostAnalysisTest, Slice) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p1 = s8[100000000] parameter(0)
+  i1 = s8[100000000] iota(), iota_dimension=0
+  a1 = s8[100000000] add(p1, i1)
+  ROOT r1 = s8[1] slice(a1), slice={[0:1]}
+}
+
+ENTRY e {
+  p0 = s8[100000000] parameter(0)
+  ROOT r0 = s8[1] fusion(p0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  GpuHloCostAnalysis analysis({ShapeSize});
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 1);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 2);
+  EXPECT_EQ(analysis.bytes_accessed(), 2);
+}
+
+TEST_F(GpuHloCostAnalysisTest, MultipleTrivialUsers) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[] parameter(0)
+  m0 = s8[] multiply(p0, p0)
+  n0 = s8[] negate(p0)
+  ROOT a0 = s8[] add(m0, n0)
+}
+
+ENTRY e {
+  param0 = s8[] parameter(0)
+  ROOT r0 = s8[] fusion(param0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  GpuHloCostAnalysis analysis({ShapeSize});
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  // Expect that uses of p0 by different trivial users (m0, n0) can be
+  // combined into a single memory access.
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 1);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 1 + 1);
+  EXPECT_EQ(analysis.bytes_accessed(), 1 + 1);
+}
+
+TEST_F(GpuHloCostAnalysisTest, MixedUsers) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[10] parameter(0)
+  m0 = s8[10] multiply(p0, p0)
+  a0 = s8[10] add(p0, p0)
+  s0 = s8[5] slice(a0), slice={[0:5]}
+  s1 = s8[2] slice(p0), slice={[4:6]}
+  n1 = s8[2] negate(s1)
+  ROOT c0 = s8[17] concatenate(s0, m0, n1), dimensions={0}
+}
+
+ENTRY e {
+  param0 = s8[10] parameter(0)
+  ROOT r0 = s8[17] fusion(param0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  GpuHloCostAnalysis analysis({ShapeSize});
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  // Expect that uses of p0 by different trivial users (m0, a0) can be
+  // combined into a single memory access, but slices have to be counted
+  // separately.
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 17);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 17);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 17 + 17);
+  EXPECT_EQ(analysis.bytes_accessed(), 17 + 17);
+}
+
+TEST_F(GpuHloCostAnalysisTest, FractionalUseRoundingUp) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+add_s8 {
+  lhs = s8[] parameter(0)
+  rhs = s8[] parameter(1)
+  ROOT add = s8[] add(lhs, rhs)
+}
+
+f {
+  p0 = s8[] parameter(0)
+  b0 = s8[10] broadcast(p0), dimensions={}
+  c0 = s8[] constant(0)
+  r0 = s8[] reduce(b0, c0), dimensions={0}, to_apply=add_s8
+  bitcast0 = s8[1] bitcast(r0)
+  i0 = s8[5] iota(), iota_dimension=0
+  cat0 = s8[6] concatenate(bitcast0, i0), dimensions={0}
+  p1 = s32[] parameter(1)
+  ROOT s0 = s8[2] dynamic-slice(cat0, p1), dynamic_slice_sizes={2}
+}
+
+ENTRY e {
+  p0 = s8[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT r = s8[2] fusion(p0, p1), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  GpuHloCostAnalysis analysis({ShapeSize});
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 2);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 10);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), 4);
+  EXPECT_EQ(analysis.bytes_accessed(*root), 2 + 10 + 4);
+  EXPECT_EQ(analysis.bytes_accessed(), 2 + 10 + 4);
+}
+
+TEST_F(GpuHloCostAnalysisTest, LargeConstant) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[1000] parameter(0)
+  c0 = s8[1000] constant({...})
+  ROOT a0 = s8[1000] add(p0, c0)
+}
+
+ENTRY e {
+  p0 = s8[1000] parameter(0)
+  ROOT r = s8[1000] fusion(p0), kind=kInput, calls=f
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  GpuHloCostAnalysis analysis({ShapeSize});
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), 1000);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 1000);
+  // parameter + output + constant
+  EXPECT_EQ(analysis.bytes_accessed(*root), 3000);
+  EXPECT_EQ(analysis.bytes_accessed(), 3000);
+}
+
+TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceUsingOperandData) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  f {
+    to_update = s8[3,1,1,1] parameter(0)
+    update = s8[1,1,1,1] constant(0)
+    a = s32[] constant(0)
+    dus = s8[3,1,1,1] dynamic-update-slice(to_update, update, a, a, a, a)
+    ROOT _ = s8[3,1,1,1] negate(dus)
+  }
+
+  ENTRY _ {
+    to_update = s8[3,1,1,1] parameter(0)
+    ROOT _ = s8[3,1,1,1] fusion(to_update), kind=kLoop, calls=f
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  GpuHloCostAnalysis fusion_analysis({ShapeSize});
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ASSERT_EQ(fusion->opcode(), HloOpcode::kFusion);
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  // Input size minus update size.
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0), 3 - 1);
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion), 3);
+}
+
+TEST_F(GpuHloCostAnalysisTest, DynUpdateSliceNotUsingOperandData) {
+  const char* hlo_fusion_module_str = R"(
+  HloModule m
+
+  f {
+    to_update = s8[3,1,1,1] parameter(0)
+    update = s8[1,1,1,1] constant(0)
+    a = s32[] constant(0)
+    ROOT dus = s8[3,1,1,1] dynamic-update-slice(to_update, update, a, a, a, a)
+  }
+
+  ENTRY _ {
+    to_update = s8[3,1,1,1] parameter(0)
+    ROOT _ = s8[3,1,1,1] fusion(to_update), kind=kLoop, calls=f
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_fusion_module_str));
+  GpuHloCostAnalysis fusion_analysis({ShapeSize});
+
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ASSERT_EQ(fusion->opcode(), HloOpcode::kFusion);
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.operand_bytes_accessed(*fusion, 0), 0);
+  EXPECT_EQ(fusion_analysis.output_bytes_accessed(*fusion), 1);
+}
+
 }  // namespace gpu
 }  // namespace xla

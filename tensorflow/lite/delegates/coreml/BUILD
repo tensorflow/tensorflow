@@ -59,6 +59,7 @@ objc_library(
         "//tensorflow/lite/delegates/coreml/builders:util",
         "//tensorflow/lite/kernels:kernel_util",
     ],
+    alwayslink = 1,
 )
 
 objc_library(

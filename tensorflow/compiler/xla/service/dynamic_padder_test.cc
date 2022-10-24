@@ -2197,7 +2197,7 @@ ENTRY gds {
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
   DynamicPadder pass(options);
   auto status = pass.Run(module.get()).status();
-  EXPECT_THAT(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_THAT(status.code(), tsl::error::INVALID_ARGUMENT);
 }
 
 TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpPass) {

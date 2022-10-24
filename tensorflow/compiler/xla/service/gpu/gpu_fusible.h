@@ -109,8 +109,8 @@ const HloInstruction* GetRealHeroForMultiOutputFusion(
 // So far, multi-output fusion is supported for loop fusions and reduce
 // input fusions only. It is up to the caller to ensure the instructions
 // themselves are fusible!
-bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
-                                          const HloInstruction& instr2);
+FusionDecision ShapesCompatibleForMultiOutputFusion(
+    const HloInstruction& instr1, const HloInstruction& instr2);
 
 // Whether the instructions are compatible for producer-consumer fusion
 // i.e. whether the producer and consumer are loop/input fusible and
@@ -122,8 +122,8 @@ FusionDecision IsProducerConsumerFusible(const HloInstruction& producer,
 // Whether the instructions are producer-consumer fusible with multiple outputs.
 // That is, the root tuple of the multi-output fusion will contain the results
 // of both, the producer and consumer.
-bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
-                                          const HloInstruction& consumer);
+FusionDecision IsProducerConsumerMultiOutputFusible(
+    const HloInstruction& producer, const HloInstruction& consumer);
 // Whether `instr` is a candidate for sibling fusion or as a consumer in
 // a producer-consumer multi-output fusion.
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr);

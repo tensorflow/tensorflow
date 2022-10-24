@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -1435,7 +1435,19 @@ int64_t ComputeNonRootUsers(const HloInstruction* instr) {
           // Set sharding only if it is different. We don't overwrite the
           // metadata if it has the same sharding besides metadata.
           if (!operand->has_sharding() || operand->sharding() != *sharding) {
-            d->mutable_operand(0)->set_sharding(*sharding);
+            if (operand->has_sharding() && operand->sharding().IsTuple() &&
+                !sharding->IsTuple()) {
+              // Expand sharding into tuple sharding per
+              // CloneShardingForDomain() in
+              // third_party/tensorflow/compiler/xla/service/hlo_sharding_metadata.cc
+              // Create Tuple HloSharding.
+              ShapeTree<HloSharding> output_tuple_sharding(operand->shape(),
+                                                           *sharding);
+              d->mutable_operand(0)->set_sharding(
+                  HloSharding::Tuple(output_tuple_sharding));
+            } else {
+              d->mutable_operand(0)->set_sharding(*sharding);
+            }
           }
         }
         return OkStatus();
@@ -2374,6 +2386,24 @@ bool ShardingPropagation::InferShardingFromOperands(
   return false;
 }  // NOLINT(readability/fn_size)
 
+Status ShardingPropagation::CanonicalizeLayouts(HloModule* module) {
+  if (!allow_spmd_sharding_propagation_to_output_) {
+    return Status::OK();
+  }
+  if (!module->layout_canonicalization_callback()) {
+    LOG(INFO) << "There is no registered layout_canonicalization_callback.";
+    return Status::OK();
+  }
+  TF_ASSIGN_OR_RETURN(auto layouts,
+                      module->layout_canonicalization_callback()(*module));
+  Shape& result_shape = layouts.second;
+  TF_RETURN_IF_ERROR(module->config()
+                         .mutable_entry_computation_layout()
+                         ->mutable_result_layout()
+                         ->CopyLayoutFromShape(result_shape));
+  return Status::OK();
+}
+
 StatusOr<bool> ShardingPropagation::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
@@ -2718,6 +2748,8 @@ StatusOr<bool> ShardingPropagation::Run(
       }
     }
   }
+
+  TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";

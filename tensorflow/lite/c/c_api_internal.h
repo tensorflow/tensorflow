@@ -108,6 +108,10 @@ struct TfLiteInterpreterOptions {
   // TfLiteRegistrationExternal objects owned by caller of
   // `TfLiteInterpreterOptionsAddRegistrationExternal` API.
   std::vector<TfLiteRegistrationExternal*> op_registrations;
+
+  // Determines whether to allow to cancel invocations with
+  // `Interpreter::Cancel` or `SignatureRunner::Cancel`.
+  bool enable_cancellation = false;
 };
 
 struct TfLiteInterpreter {

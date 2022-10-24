@@ -17,7 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 #if CUDA_VERSION >= 10020
 
@@ -101,7 +102,7 @@ GpuVirtualMemAllocator::Create(
       GpuDriver::ReserveVirtualMemory(
           &gpu_context, AlignUp(virtual_address_space_size, max_granularity)));
   VLOG(1) << "Reserved GPU virtual memory at " << vmem.base << " of size "
-          << strings::HumanReadableNumBytes(vmem.size_bytes) << " bytes";
+          << tsl::strings::HumanReadableNumBytes(vmem.size_bytes) << " bytes";
 
   return std::unique_ptr<GpuVirtualMemAllocator>(new GpuVirtualMemAllocator(
       alloc_visitors, free_visitors, gpu_context, gpu_id,
@@ -142,7 +143,7 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
   if (next_va + padded_bytes > vmem_.base + vmem_.size_bytes) {
     LOG(ERROR) << "OOM in GPU virtual memory allocator when attempting to "
                   "allocate {request: "
-               << strings::HumanReadableNumBytes(num_bytes)
+               << tsl::strings::HumanReadableNumBytes(num_bytes)
                << ", aligned: " << padded_bytes << "} bytes.";
     return nullptr;
   }
@@ -195,8 +196,10 @@ void GpuVirtualMemAllocator::Free(void* ptr, size_t num_bytes) {
   }
   if (total_bytes != num_bytes) {
     LOG(ERROR) << "Invalid size requested for freeing GPU vmem mapping. Got "
-               << strings::HumanReadableNumBytes(num_bytes) << " but expected "
-               << strings::HumanReadableNumBytes(mapping_it->physical.bytes);
+               << tsl::strings::HumanReadableNumBytes(num_bytes)
+               << " but expected "
+               << tsl::strings::HumanReadableNumBytes(
+                      mapping_it->physical.bytes);
     return;
   }
 

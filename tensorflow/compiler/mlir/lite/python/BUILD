@@ -2,7 +2,10 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
-package(default_visibility = [":friends"])
+package(default_visibility = [
+    ":friends",
+    "//tensorflow:__pkg__",
+])
 
 package_group(
     name = "friends",

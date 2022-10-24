@@ -24,8 +24,7 @@ func.func @tile_reduction(%arg0 : tensor<1x?xf32>) -> tensor<1xf32> {
   // CHECK:        %[[PARTVAL:.*]] = gml_st.for
   // CHECK-SAME:       (%[[COL:.*]]) = (%[[LANE]]) to (%[[RDIM]]) step (%c32)
   // CHECK-SAME:       outs (%[[OUTVAL:.*]] = %[[INITVAL]]: tensor<1xf32>)
-  // CHECK:          %[[SPACE:.*]] = gml_st.space [1, %[[RDIM]]] : !gml_st.tile<1x?>
-  // CHECK:          %[[TILE:.*]] = gml_st.tile %[[SPACE]] [0, %arg2] [1, 1] [1, 1]
+  // CHECK:          %[[TILE:.*]] = gml_st.tile [0, %arg2] [1, 1] [1, 1]
   // CHECK:          %[[INVAL:.*]] = gml_st.materialize %arg0
   // CHECK:          %[[ACCVAL:.*]] = linalg.generic
   // CHECK-SAME:         ins(%[[INVAL]] : tensor<1x1xf32>)

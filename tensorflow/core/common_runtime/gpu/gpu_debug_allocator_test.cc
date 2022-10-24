@@ -22,17 +22,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/framework/typed_allocator.h"
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/lib/gtl/inlined_vector.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/types.h"
 
 namespace tensorflow {
 namespace {

@@ -244,6 +244,18 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
                                          double max, int64_t num_bits,
                                          bool narrow_range);
 
+// Align to TF_MirrorPadOp::mode and TFL_MirrorPadOp::mode
+enum class TFTFLMirrorPaddingType : uint32_t {
+  REFLECT = 0,
+  SYMMETRIC = 1,
+};
+
+llvm::Optional<Value> convertMirrorPadCommon(PatternRewriter& rewriter,
+                                             Operation* op,
+                                             RankedTensorType output_type,
+                                             Value input, Value pad,
+                                             TFTFLMirrorPaddingType mode);
+
 // Lowers TensorFlow Conv2D to a sequence of TOSA quantization ops.
 llvm::Optional<Value> convertTFConv2DCommon(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,

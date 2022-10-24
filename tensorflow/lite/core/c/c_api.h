@@ -20,6 +20,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_C_C_API_H_
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -259,6 +260,15 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddRegistrationExternal(
     TfLiteInterpreterOptions* options,
     TfLiteRegistrationExternal* registration);
 
+// Enables users to cancel in-flight invocations with `TfLiteInterpreterCancel`.
+//
+// By default it is disabled and calling to `TfLiteInterpreterCancel` will
+// return kTfLiteError. See `TfLiteInterpreterCancel`.
+//
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterOptionsEnableCancellation(
+    TfLiteInterpreterOptions* options, bool enable);
+
 // Returns a new interpreter using the provided model and options, or null on
 // failure.
 //
@@ -360,6 +370,21 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorCount(
 // calling TfLiteInterpreterInvoke().
 TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteInterpreterGetOutputTensor(
     const TfLiteInterpreter* interpreter, int32_t output_index);
+
+// Tries to cancel any in-flight invocation.
+//
+// NOTE: This only cancels `TfLiteInterpreterInvoke` calls that happen before
+// calling this and it does not cancel subsequent invocations.
+// NOTE: Calling this function will also cancel any in-flight invocations of
+// SignatureRunners constructed from this interpreter.
+// Non-blocking and thread safe.
+//
+// Returns kTfLiteError if cancellation is not enabled via
+// `TfLiteInterpreterOptionsEnableCancellation`.
+//
+// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterCancel(
+    const TfLiteInterpreter* interpreter);
 
 // --------------------------------------------------------------------------
 // TfLiteTensor wraps data associated with a graph tensor.

@@ -1,7 +1,7 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-load("//tensorflow/tsl:tsl.bzl", "if_not_windows", "tf_copts")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.bzl", "if_not_windows", "tsl_copts")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -297,7 +297,7 @@ cc_library(
         "//tensorflow/tsl/platform:snappy.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
     ],
-    copts = tf_copts(),
+    copts = tsl_copts(),
     defines = ["TF_USE_SNAPPY"] + select({
         # TF Additional NUMA defines
         "//tensorflow/tsl:with_numa_support": ["TENSORFLOW_USE_NUMA"],
@@ -521,6 +521,11 @@ bzl_library(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+bzl_library(
+    name = "rules_cc_bzl",
+    srcs = ["rules_cc.bzl"],
+)
+
 # Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
     name = "additional_mobile_srcs_no_runtime",
@@ -539,7 +544,6 @@ filegroup(
         "port.cc",
         "posix_file_system.cc",
         "posix_file_system.h",
-        "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
         "//tensorflow/tsl/platform/profile_utils:cpu_utils.h",
@@ -559,8 +563,6 @@ filegroup(
         "mutex.h",
         "mutex_data.h",
         "notification.h",
-        "subprocess.cc",
-        "subprocess.h",
         "unbounded_work_queue.cc",
         "unbounded_work_queue.h",
     ],

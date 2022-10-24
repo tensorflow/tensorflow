@@ -131,6 +131,10 @@ class PyLoadedExecutable
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
+  std::optional<std::vector<OpSharding>> GetParameterShardings() const;
+
+  std::optional<std::vector<OpSharding>> GetOutputShardings() const;
+
   Traceback* traceback() { return traceback_.get(); }
 
   const PjRtLoadedExecutable& pjrt_executable() const { return *executable_; }

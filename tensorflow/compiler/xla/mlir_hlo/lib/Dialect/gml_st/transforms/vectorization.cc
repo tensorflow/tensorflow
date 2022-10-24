@@ -34,6 +34,7 @@ namespace {
 
 using mlir::linalg::FillOp;
 using mlir::linalg::GenericOp;
+using mlir::linalg::MatmulOp;
 using mlir::tensor::ExpandShapeOp;
 using mlir::vector::TransferReadOp;
 using mlir::vector::TransferWriteOp;
@@ -170,16 +171,22 @@ struct MaterializeOpVectorizationPattern
     // TODO(b/244314345): Support imperfect tiling, which results in dynamic
     // shapes.
     if (!sourceType.isa<RankedTensorType>() ||
-        sourceType.getNumDynamicDims() > 0)
+        sourceType.getNumDynamicDims() > 0 ||
+        !op.getSet().getType().cast<TileType>().hasStaticShape())
       return rewriter.notifyMatchFailure(op, "input is not statically shaped");
 
     Location loc = op.getLoc();
     BlockAndValueMapping bvm;
     convertTensorOperandsToVector(op, bvm, rewriter);
+    Type newResult = op.getResult().getType();
+    if (auto tensorResult = newResult.dyn_cast<RankedTensorType>()) {
+      newResult = VectorType::get(tensorResult.getShape(),
+                                  tensorResult.getElementType());
+    }
     Value vectorMaterialize = rewriter.create<MaterializeOp>(
-        loc, bvm.lookupOrDefault(source), op.getSet());
+        loc, newResult, bvm.lookupOrDefault(source), op.getSet());
     bvm.map(op, vectorMaterialize);
-    if (auto vectorType = vectorMaterialize.getType().dyn_cast<VectorType>()) {
+    if (auto vectorType = newResult.dyn_cast<VectorType>()) {
       // The result is not a scalar, generate a TransferWrite back to tensor.
       // transfer_write uses destination passing style, so we need to "invent" a
       // destination tensor. The entinre tensor_write op, together with the
@@ -339,6 +346,13 @@ struct VectorizeGmlStLoopsPass
     auto genericOpFilter = [&](GenericOp op) {
       return isValidDistribution(op) && isGenericOpTiledOrOneDimReduction(op);
     };
+    auto matmulOpFilter = [&](MatmulOp op) {
+      if (isInsideGmlStLoop(op)) return true;
+      // Allow vectorization for static shapes.
+      auto outputType =
+          op.getResult(0).getType().cast<mlir::RankedTensorType>();
+      return outputType.hasStaticShape();
+    };
     auto materializeOpFilter = [&](MaterializeOp op) {
       // Materialize op should only be vectorized if the producer of its
       // source is within the vectorized region, otherwise we vectorize one
@@ -354,12 +368,12 @@ struct VectorizeGmlStLoopsPass
     patterns.add<TransferReadOfOneDimExpandShape>(func.getContext());
     patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
     patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
+    patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
     if (vectorizeGmlStOps) {
       patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
       patterns.add<ParallelOpVectorizationPattern>(ctx, isValidDistribution);
     }
-    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
-      return signalPassFailure();
+    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
   }
 };
 

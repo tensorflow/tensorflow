@@ -15,11 +15,99 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_cost_analysis.h"
 
+#include <vector>
+
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 
 namespace xla {
 namespace gpu {
+
+int64_t GpuHloCostAnalysis::FusionParameterReadBytes(
+    const HloInstruction* hlo) const {
+  CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
+                           hlo->opcode() == HloOpcode::kGetTupleElement));
+  return GetShapeSize(hlo->shape()) *
+         hlo_properties_.at(hlo).at(kUtilizationKey);
+}
+
+Status GpuHloCostAnalysis::FusionCalculateUtilizations(
+    const HloInstruction* fusion) {
+  const HloInstruction* root = fusion->fused_expression_root();
+  // Traverse through the computation from the root till parameters propagating
+  // the utilization of operands; store utilization of each node
+  // in hlo_properties_. All consumers of an instruction are processed before
+  // the instruction itself.
+  std::vector<HloInstruction*> instructions =
+      fusion->fused_instructions_computation()->MakeInstructionPostOrder();
+  absl::c_reverse(instructions);
+
+  // To estimate where within the computation an instruction output can be
+  // reused and where it has to be recomputed again we group accesses to the
+  // instruction by their origin from "element-wise use roots". All access
+  // paths from such a root to the instruction are element-wise.
+  // Whenever we account a non-element-wise operation we forget about
+  // element-wise roots encountered so far and provisionally set its operands
+  // as new element-wise roots.
+  absl::flat_hash_map<const HloInstruction*, ConstHloInstructionSet>
+      elementwise_use_roots;
+
+  for (const HloInstruction* instr : instructions) {
+    hlo_properties_[instr][kUtilizationKey] = 0;
+  }
+
+  // For the purpose of operand utilization analysis, no matter how the fusion
+  // outputs are used, we assume that fusion is always executed completely
+  // producing 100% of its outputs.
+  hlo_properties_[root][kUtilizationKey] = 1.0;
+  elementwise_use_roots[root].insert(root);
+  current_properties_[kFlopsKey] = 0;
+
+  for (const HloInstruction* instr : instructions) {
+    VLOG(8) << instr->ToString() << ":";
+    VLOG(9) << "Elementwise use roots:";
+    for (const HloInstruction* r : elementwise_use_roots[instr]) {
+      VLOG(9) << "\t" << r->ToString();
+      if (instr != r) {
+        hlo_properties_[instr][kUtilizationKey] +=
+            hlo_properties_[r][kUtilizationKey];
+      }
+    }
+
+    float cur_instr_utilization = hlo_properties_[instr][kUtilizationKey];
+    VLOG(8) << "Total utilization: " << cur_instr_utilization;
+
+    current_properties_[kFlopsKey] +=
+        cur_instr_utilization * hlo_properties_[instr][kFlopsKey];
+
+    for (int operand_idx = 0; operand_idx < instr->operand_count();
+         ++operand_idx) {
+      const HloInstruction* operand = instr->operand(operand_idx);
+      if ((instr->IsElementwise()) || instr->opcode() == HloOpcode::kTuple ||
+          instr->opcode() == HloOpcode::kGetTupleElement) {
+        auto instr_roots = elementwise_use_roots[instr];
+        for (const HloInstruction* r : instr_roots) {
+          elementwise_use_roots[operand].insert(r);
+        }
+      } else {
+        elementwise_use_roots[operand].insert(operand);
+        float cur_operand_utilization =
+            cur_instr_utilization * operand_utilization(*instr, operand_idx);
+        // The utilization is always a best-effort estimate, but in some cases
+        // cannot be precise due to dynamic nature of operations - dynamic
+        // slice is one such example. We do an average estimate in these
+        // cases and this can sometimes produce fractional utilizations which
+        // should be at least rounded up to a whole number of produced elements
+        // to be more realistic.
+        int64_t operand_elements = ShapeUtil::ElementsIn(operand->shape());
+        cur_operand_utilization =
+            ceil(cur_operand_utilization * operand_elements) / operand_elements;
+        hlo_properties_[operand][kUtilizationKey] = cur_operand_utilization;
+      }
+    }
+  }
+  return OkStatus();
+}
 
 Status GpuHloCostAnalysis::HandleCustomCall(const HloInstruction* custom_call) {
   if (IsCublasGemm(*custom_call)) {

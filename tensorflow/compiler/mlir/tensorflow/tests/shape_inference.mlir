@@ -384,6 +384,24 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %2 : tensor<*xf32>
   }
 
+  // CHECK-LABEL: func @cast_variant_same_shape
+  func.func @cast_variant_same_shape(%arg0: tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant> {
+    // CHECK: Cast
+    // CHECK-SAME: (tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>>
+    %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant>
+    %1 = "tf.Identity"(%0) : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
+    func.return %1 : tensor<!tf_type.variant>
+  }
+
+  // CHECK-LABEL: func @cast_variant_to_unranked
+  func.func @cast_variant_to_unranked(%arg0: tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<*x!tf_type.variant> {
+    // CHECK: Cast
+    // CHECK-SAME: (tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+    %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<*x!tf_type.variant>
+    %1 = "tf.Identity"(%0) : (tensor<*x!tf_type.variant>) -> tensor<*x!tf_type.variant>
+    func.return %1 : tensor<*x!tf_type.variant>
+  }
+
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf_type.variant<tensor<16x1xf32>>>
   func.func @while_variant(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant> {

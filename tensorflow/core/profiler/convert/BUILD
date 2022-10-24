@@ -242,7 +242,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:time_utils",
-        "//tensorflow/core/util:stats_calculator_portable",
+        "//tensorflow/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -763,6 +763,7 @@ cc_library(
     hdrs = ["hlo_to_tools_data.h"],
     copts = tf_profiler_copts(),
     visibility = [
+        "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
     ],
     deps = [

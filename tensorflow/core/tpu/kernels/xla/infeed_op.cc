@@ -21,10 +21,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
 
 namespace tensorflow {
@@ -84,7 +84,7 @@ Status UpdateInfeedLayout(xla::Shape* shape,
 // (InfeedDequeue has no inputs!)
 // Compare this op to tf.Queue operations which operate on N tensors.
 
-// This TensorFlow op supports the XLA Infeed primitve.
+// This TensorFlow op supports the XLA Infeed primitive.
 class InfeedDequeueOp : public XlaOpKernel {
  public:
   explicit InfeedDequeueOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {

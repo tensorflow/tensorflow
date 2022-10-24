@@ -82,7 +82,7 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
     PyObject_ClearWeakRefs(self);
   }
 
-  GetPyArrayStorageFromObject(obj)->~Storage();
+  GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
 
   tp->tp_free(self);
   Py_DECREF(tp);
@@ -264,6 +264,49 @@ Status PyArray::BlockUntilReady() const {
   return status;
 }
 
+bool PyArray::IsDeleted() const {
+  if (pjrt_buffers().empty()) {
+    return true;
+  }
+
+  for (const auto& pjrt_buffer : pjrt_buffers()) {
+    if (pjrt_buffer->IsDeleted()) return true;
+  }
+  return false;
+}
+
+py::handle PyArray::Storage::AsHandle() {
+  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
+                                     offsetof(PyArrayObject, array_storage));
+}
+
+PyArray::Storage::~PyArray_Storage() {
+  CHECK(PyGILState_Check());
+  if (py_client->arrays_ == this) {
+    py_client->arrays_ = next;
+  }
+  if (prev) {
+    prev->next = next;
+  }
+  if (next) {
+    next->prev = prev;
+  }
+}
+
+std::vector<py::object> PyClient::LiveArrays() {
+  std::vector<py::object> result;
+  for (PyArray::Storage* array = arrays_; array; array = array->next) {
+    bool all_deleted = true;
+    for (auto& buffer : array->pjrt_buffers) {
+      all_deleted &= buffer->IsDeleted();
+    }
+    if (!all_deleted) {
+      result.push_back(py::reinterpret_borrow<py::object>(array->AsHandle()));
+    }
+  }
+  return result;
+}
+
 Status PyArray::SetUpType() {
   static constexpr char kName[] = "Array";
 
@@ -317,10 +360,14 @@ Status PyArray::RegisterTypes(py::module& m) {
           auto py_arrays = py::cast<std::vector<PyArray>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding), py_arrays,
                           committed, skip_checks);
-        } else {
+        } else if (arrays[0].get_type().ptr() == PyBuffer::type()) {
           auto py_buffers = py::cast<std::vector<PyBuffer::object>>(arrays);
           PyArray::PyInit(self, std::move(aval), std::move(sharding),
                           py_buffers, committed, skip_checks);
+        } else {
+          throw py::type_error(
+              absl::StrCat("Unsupported type for elements in `arrays`: ",
+                           std::string(py::str(arrays[0].get_type()))));
         }
       },
       py::is_method(type), py::arg("aval"), py::arg("sharding"),
@@ -337,6 +384,9 @@ Status PyArray::RegisterTypes(py::module& m) {
         return self;
       },
       py::is_method(type));
+  type.attr("is_deleted") =
+      py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
+  type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
   type.attr("__module__") = m.attr("__name__");
 
   return OkStatus();

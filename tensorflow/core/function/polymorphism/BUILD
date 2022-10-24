@@ -13,7 +13,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/types",
+        ":function_type",
     ],
 )
 
@@ -22,6 +22,7 @@ py_strict_test(
     srcs = ["type_dispatch_test.py"],
     python_version = "PY3",
     deps = [
+        ":function_type",
         ":type_dispatch",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
@@ -55,7 +56,6 @@ py_strict_test(
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python/eager/polymorphic_function:function_context",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
     ],

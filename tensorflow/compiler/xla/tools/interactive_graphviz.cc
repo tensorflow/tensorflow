@@ -461,7 +461,7 @@ void RenderAndDisplayGraph(
 
   // Ignore UNAVAILABLE errors; these are expected when there's no URL renderer
   // plugin registered.
-  if (url_result.status().code() != tensorflow::error::UNAVAILABLE) {
+  if (url_result.status().code() != tsl::error::UNAVAILABLE) {
     std::cerr << "Unable to render graph as URL: " << url_result.status()
               << std::endl;
     std::cerr << "Trying as HTML..." << std::endl;

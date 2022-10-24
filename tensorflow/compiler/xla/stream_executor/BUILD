@@ -64,7 +64,10 @@ cc_library(
         ":host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -682,7 +685,13 @@ cc_library(
         "timer.h",
         "trace_listener.h",
     ],
-    deps = [":stream_executor_headers"] + if_static([":stream_executor_impl"]),
+    deps = [
+        ":stream_executor_headers",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+    ] + if_static([":stream_executor_impl"]),
 )
 
 cc_library(

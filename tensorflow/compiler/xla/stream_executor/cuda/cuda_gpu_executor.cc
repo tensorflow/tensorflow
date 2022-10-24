@@ -369,6 +369,20 @@ absl::uint128 Fingerprint128(const absl::string_view s) {
   auto fp = tsl::Fingerprint128(s);
   return absl::MakeUint128(fp.high64, fp.low64);
 }
+
+int fpus_per_core(int cc_major, int cc_minor) {
+  // Source:
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#arithmetic-instructions
+  int n = 128;          // 5.x, 6.1, 6.2, 8.6, 9.0 -> 128.
+  if (cc_major == 3) {  // 3.x -> 192.
+    n = 192;
+  } else if ((cc_major == 6 && cc_minor == 0) || (cc_major == 7) ||
+             (cc_major == 8 && cc_minor == 0)) {
+    n = 64;  // 6.0, 7.x, 8.0 -> 64.
+  }
+  return n;
+}
+
 }  // namespace
 
 port::StatusOr<std::shared_ptr<DeviceMemoryBase>>
@@ -1116,6 +1130,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_shared_memory_per_block(
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
   builder.set_core_count(GpuDriver::GetMultiprocessorCount(device).value());
+  builder.set_fpus_per_core(fpus_per_core(cc_major, cc_minor));
   builder.set_threads_per_core_limit(
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(

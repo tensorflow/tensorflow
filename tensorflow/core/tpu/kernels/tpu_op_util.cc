@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/tpu/tpu_compile_interface.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace tpu {

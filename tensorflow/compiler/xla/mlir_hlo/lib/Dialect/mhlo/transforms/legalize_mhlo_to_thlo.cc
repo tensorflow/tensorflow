@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <memory>
 #include <utility>
 
@@ -52,6 +54,17 @@ bool isIotaArray(llvm::ArrayRef<int64_t> array, int expectedSize = -1) {
     if (i != array[i]) return false;
   }
   return true;
+}
+
+Value castToIndex(OpBuilder& b, Location loc, TensorType originalType,
+                  Value value) {
+  Type elementTy = originalType.getElementType();
+  if (elementTy.isIndex()) return value;
+
+  Type ty = RankedTensorType::get(originalType.getShape(), b.getIndexType());
+  return elementTy.isUnsignedInteger()
+             ? b.create<arith::IndexCastUIOp>(loc, ty, value).getResult()
+             : b.create<arith::IndexCastOp>(loc, ty, value).getResult();
 }
 
 struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {
@@ -188,6 +201,7 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
   LogicalResult matchAndRewrite(
       mhlo::GatherOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const override {
+    if (!isCanonicalGather(op)) return failure();
     auto startIndicesType =
         adaptor.getStartIndices().getType().dyn_cast<RankedTensorType>();
     auto operandType =
@@ -195,38 +209,27 @@ struct GatherPattern : public OpConversionPattern<mhlo::GatherOp> {
 
     if (!startIndicesType || !operandType) return failure();
 
-    // index_vector_dim must be the last dimension of start_indices.
-    int indexVectorDim = op.getDimensionNumbers().getIndexVectorDim();
-    if (startIndicesType.getRank() - 1 != indexVectorDim) return failure();
-
-    // All slice_sizes must be 1.
-    if (!llvm::all_of(op.getSliceSizes(), [](auto size) { return size == 1; }))
-      return failure();
-
-    // offset_dims must be []
-    if (!op.getDimensionNumbers().getOffsetDims().empty()) return failure();
-
-    // collapsed_slice_dims[] must be range(operand.rank)
-    auto collapsedSliceDims = op.getDimensionNumbers().getCollapsedSliceDims();
-    if (!isIotaArray(collapsedSliceDims, operandType.getRank()))
-      return failure();
-
-    // start_index_map[] must be range(start_indices.shape[index_vector_dim])
-    auto startIndexMap = op.getDimensionNumbers().getStartIndexMap();
-    if (!isIotaArray(startIndexMap,
-                     startIndicesType.getShape()[indexVectorDim]))
-      return failure();
-
-    // The shape of the result must be statically known.
     auto resultType =
         typeConverter->convertType(op.getType()).cast<RankedTensorType>();
-    if (resultType.getNumDynamicDims() > 0) return failure();
+    SmallVector<OpFoldResult> sizes;
+    sizes.reserve(resultType.getRank());
+    if (resultType.getDimSize(0) != ShapedType::kDynamicSize) {
+      sizes.push_back(rewriter.getI64IntegerAttr(resultType.getDimSize(0)));
+    } else {
+      sizes.push_back(
+          rewriter
+              .create<tensor::DimOp>(op.getLoc(), adaptor.getStartIndices(), 0)
+              .getResult());
+    }
+    llvm::copy(op.getSliceSizes().getValues<IntegerAttr>(),
+               std::back_inserter(sizes));
 
-    auto loc = op.getLoc();
     auto emptyTensor = rewriter.create<tensor::EmptyOp>(
-        loc, resultType.getShape(), resultType.getElementType());
+        op.getLoc(), sizes, resultType.getElementType());
     rewriter.replaceOpWithNewOp<thlo::GatherOp>(
-        op, resultType, adaptor.getOperand(), adaptor.getStartIndices(),
+        op, resultType, adaptor.getOperand(),
+        castToIndex(rewriter, op.getLoc(), op.getStartIndices().getType(),
+                    adaptor.getStartIndices()),
         emptyTensor);
     return success();
   }
@@ -255,7 +258,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
       mhlo::ReduceOp op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
     auto srcRank =
-        adaptor.operands()[0].getType().cast<RankedTensorType>().getRank();
+        adaptor.getInputs()[0].getType().cast<RankedTensorType>().getRank();
     auto reductionDims =
         llvm::to_vector(op.getDimensions().getValues<int64_t>());
     // mhlo.reduce doesn't specify the order of the reduction dimensions.
@@ -273,7 +276,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
 
     Location loc = op.getLoc();
     for (auto [operand, initValue, resultType] :
-         llvm::zip(adaptor.operands(), adaptor.getInitValues(), resultTypes)) {
+         llvm::zip(adaptor.getInputs(), adaptor.getInitValues(), resultTypes)) {
       auto initType = toRankedTensor(initValue);
       if (!initType)
         return rewriter.notifyMatchFailure(op,
@@ -297,7 +300,7 @@ struct ReductionPattern : public OpConversionPattern<mhlo::ReduceOp> {
     }
 
     auto thloReduction = rewriter.create<thlo::ReductionOp>(
-        loc, resultTypes, adaptor.operands(), outputs,
+        loc, resultTypes, adaptor.getInputs(), outputs,
         rewriter.getDenseI64ArrayAttr(reductionDims));
     Region& region = thloReduction.getCombiner();
     rewriter.inlineRegionBefore(op.getBody(), region, region.end());
@@ -375,8 +378,10 @@ struct ScatterPattern : public OpConversionPattern<mhlo::ScatterOp> {
 
     Location loc = op.getLoc();
     auto thloScatter = rewriter.create<thlo::ScatterOp>(
-        loc, opType, adaptor.getScatterIndices(), adaptor.getUpdates().front(),
-        adaptor.operands().front());
+        loc, opType,
+        castToIndex(rewriter, loc, op.getScatterIndices().getType(),
+                    adaptor.getScatterIndices()),
+        adaptor.getUpdates().front(), adaptor.getInputs().front());
 
     Region& region = thloScatter.getUpdateComputation();
     rewriter.inlineRegionBefore(op.getRegion(), region, region.end());
@@ -435,7 +440,7 @@ struct MapPattern : public OpConversionPattern<mhlo::MapOp> {
         getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
 
     auto thloMap = rewriter.create<thlo::MapOp>(
-        loc, resultTy, adaptor.operands(), emptyTensor);
+        loc, resultTy, adaptor.getInputs(), emptyTensor);
     Region& region = thloMap.getMapper();
     rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
 
@@ -532,7 +537,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
       return failure();
 
     for (auto [operand, resultType] :
-         llvm::zip(adaptor.operands(), resultTypes)) {
+         llvm::zip(adaptor.getInputs(), resultTypes)) {
       RankedTensorType operandType =
           operand.getType().dyn_cast<RankedTensorType>();
       if (!operandType)
@@ -555,7 +560,7 @@ struct SortPattern : public OpConversionPattern<mhlo::SortOp> {
     bool isStable = op.getIsStable();
 
     auto thloSort = rewriter.create<thlo::SortOp>(
-        loc, resultTypes, adaptor.operands(), outputs,
+        loc, resultTypes, adaptor.getInputs(), outputs,
         rewriter.getI64IntegerAttr(dimension), rewriter.getBoolAttr(isStable));
 
     Region& region = thloSort.getComparator();

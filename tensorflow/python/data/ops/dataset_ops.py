@@ -1757,7 +1757,7 @@ class DatasetV2(
       sharding strategy within a complete pipeline:
 
     ```python
-    d = Dataset.list_files(pattern)
+    d = Dataset.list_files(pattern, shuffle=False)
     d = d.shard(num_workers, worker_index)
     d = d.repeat(num_epochs)
     d = d.shuffle(shuffle_buffer_size)
@@ -1985,19 +1985,11 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return BatchDataset(self, batch_size, drop_remainder, name=name)
-    else:
-      return ParallelBatchDataset(
-          self,
-          batch_size,
-          drop_remainder,
-          num_parallel_calls,
-          deterministic,
-          name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> batch_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import batch_op  # pylint: disable=g-import-not-at-top,redefined-outer-name
+    return batch_op.batch(self, batch_size, drop_remainder, num_parallel_calls,
+                          deterministic, name)
 
   def padded_batch(self,
                    batch_size,
@@ -2133,6 +2125,67 @@ class DatasetV2(
         padding_values,
         drop_remainder,
         name=name)
+
+  def ragged_batch(self,
+                   batch_size,
+                   drop_remainder=False,
+                   row_splits_dtype=dtypes.int64,
+                   name=None):
+    """Combines consecutive elements of this dataset into `tf.RaggedTensor`s.
+
+    Like `tf.data.Dataset.batch`, the components of the resulting element will
+    have an additional outer dimension, which will be `batch_size` (or
+    `N % batch_size` for the last element if `batch_size` does not divide the
+    number of input elements `N` evenly and `drop_remainder` is `False`). If
+    your program depends on the batches having the same outer dimension, you
+    should set the `drop_remainder` argument to `True` to prevent the smaller
+    batch from being produced.
+
+    Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
+    different shapes:
+
+    *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` is
+    fully defined, then it is batched as normal.
+    *  If an input element is a `tf.Tensor` whose static `tf.TensorShape`
+    contains one or more axes with unknown size (i.e., `shape[i]=None`), then
+    the output will contain a `tf.RaggedTensor` that is ragged up to any of such
+    dimensions.
+    *  If an input element is a `tf.RaggedTensor` or any other type, then it is
+    batched as normal.
+
+    Example:
+
+    >>> dataset = tf.data.Dataset.range(6)
+    >>> dataset = dataset.map(lambda x: tf.range(x))
+    >>> dataset.element_spec.shape
+    TensorShape([None])
+    >>> dataset = dataset.ragged_batch(2)
+    >>> for batch in dataset:
+    ...   print(batch)
+    <tf.RaggedTensor [[], [0]]>
+    <tf.RaggedTensor [[0, 1], [0, 1, 2]]>
+    <tf.RaggedTensor [[0, 1, 2, 3], [0, 1, 2, 3, 4]]>
+
+    Args:
+      batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements of this dataset to combine in a single batch.
+      drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+        whether the last batch should be dropped in the case it has fewer than
+        `batch_size` elements; the default behavior is not to drop the smaller
+        batch.
+      row_splits_dtype: The dtype that should be used for the `row_splits` of
+        any new ragged tensors.  Existing `tf.RaggedTensor` elements do not have
+        their row_splits dtype changed.
+      name: (Optional.) A string indicating a name for the `tf.data` operation.
+
+    Returns:
+      A new `Dataset` with the transformation applied as described above.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # ragged_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import ragged_batch_op  # pylint: disable=g-import-not-at-top
+    return ragged_batch_op.ragged_batch(self, batch_size, drop_remainder,
+                                        row_splits_dtype, name)
 
   def map(self,
           map_func,
@@ -4815,6 +4868,15 @@ class _VariantTracker(resource_lib.CapturableResource):
     return children
 
 
+# TODO(b/254291122): Remove.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# batch_op -> dataset_ops).
+batch_op = lazy_loader.LazyLoader(
+    "batch_op", globals(),
+    "tensorflow.python.data.ops.batch_op")
+BatchDataset = batch_op.BatchDataset
+
+
 class TensorDataset(DatasetSource):
   """A `Dataset` with a single element."""
 
@@ -5180,101 +5242,6 @@ class ShardDataset(UnaryUnchangedStructureDataset):
         index=self._index,
         **self._common_args)
     super(ShardDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class BatchDataset(UnaryDataset):
-  """A `Dataset` that batches contiguous elements from its input."""
-
-  def __init__(self, input_dataset, batch_size, drop_remainder, name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    # pylint: disable=protected-access
-    if constant_drop_remainder:
-      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
-      # or `False` (explicitly retaining the remainder).
-      # pylint: disable=g-long-lambda
-      constant_batch_size = tensor_util.constant_value(self._batch_size)
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(constant_batch_size),
-          input_dataset.element_spec)
-    else:
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(None),
-          input_dataset.element_spec)
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.batch_dataset_v2(
-        input_dataset._variant_tensor,
-        batch_size=self._batch_size,
-        drop_remainder=self._drop_remainder,
-        **self._common_args)
-    super(BatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class ParallelBatchDataset(UnaryDataset):
-  """A `Dataset` that batches contiguous elements from its input in parallel."""
-
-  def __init__(self,
-               input_dataset,
-               batch_size,
-               drop_remainder,
-               num_parallel_calls,
-               deterministic,
-               name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-    self._num_parallel_calls = ops.convert_to_tensor(
-        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    if deterministic is None:
-      self._deterministic = "default"
-    elif deterministic:
-      self._deterministic = "true"
-    else:
-      self._deterministic = "false"
-
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    # pylint: disable=protected-access
-    if constant_drop_remainder:
-      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
-      # or `False` (explicitly retaining the remainder).
-      # pylint: disable=g-long-lambda
-      constant_batch_size = tensor_util.constant_value(self._batch_size)
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(constant_batch_size),
-          input_dataset.element_spec)
-    else:
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(None),
-          input_dataset.element_spec)
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-        input_dataset._variant_tensor,
-        batch_size=self._batch_size,
-        num_parallel_calls=self._num_parallel_calls,
-        drop_remainder=self._drop_remainder,
-        deterministic=self._deterministic,
-        **self._common_args)
-
-    super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 def _is_padded_shape_compatible_with(padded_shape, input_component_shape):

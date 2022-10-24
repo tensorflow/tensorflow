@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Linalg/IR/LinalgInterfaces.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/DestinationStyleOpInterface.h"
 
 namespace mlir {
 namespace {
@@ -48,7 +50,7 @@ namespace {
 //===----------------------------------------------------------------------===//
 
 LogicalResult verifyDestinationStyleOp(Operation *op) {
-  auto dstStyleOp = cast<linalg::DestinationStyleOpInterface>(*op);
+  auto dstStyleOp = cast<DestinationStyleOpInterface>(*op);
   if (dstStyleOp.hasBufferSemantics()) return success(op->getNumResults() == 0);
 
   if (!dstStyleOp.hasTensorSemantics())
@@ -170,13 +172,8 @@ Value getMaterializedTile(OpBuilder &b, Location loc,
                           TypedValue<TensorType> tensor,
                           ArrayRef<OpFoldResult> offsets,
                           ArrayRef<OpFoldResult> sizes) {
-  SmallVector<Value> dynamicDims =
-      tensor::createDynamicDimValues(b, loc, tensor);
-  ArrayAttr staticDims = b.getI64ArrayAttr(tensor.getType().getShape());
-  Value space = b.create<gml_st::SpaceOp>(loc, dynamicDims, staticDims);
-
   SmallVector<OpFoldResult> strides(offsets.size(), b.getIndexAttr(1));
-  Value tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, strides);
+  Value tile = b.create<gml_st::TileOp>(loc, offsets, sizes, strides);
   return b.create<gml_st::MaterializeOp>(loc, tensor, tile);
 }
 
@@ -236,12 +233,7 @@ gml_st::TileOp createTileOp(OpBuilder &b, Location loc, Value tensor,
                             ArrayRef<OpFoldResult> sizes) {
   auto initTy = tensor.getType().cast<RankedTensorType>();
   SmallVector<OpFoldResult> unitStrides(initTy.getRank(), b.getIndexAttr(1));
-  SmallVector<Value> dynamicSpaceSizes =
-      tensor::createDynamicDimValues(b, loc, tensor);
-  ArrayAttr staticSpaceSizes = b.getI64ArrayAttr(initTy.getShape());
-  auto space =
-      b.create<gml_st::SpaceOp>(loc, dynamicSpaceSizes, staticSpaceSizes);
-  return b.create<gml_st::TileOp>(loc, space, offsets, sizes, unitStrides);
+  return b.create<gml_st::TileOp>(loc, offsets, sizes, unitStrides);
 }
 
 }  // namespace
@@ -278,20 +270,25 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
   SmallVector<Value> baseSpaceSizes(rank);
   SmallVector<Value> baseTileOffsets(rank);
   SmallVector<Value> baseTileSizes(rank);
+  auto tileOp = tile.getDefiningOp<gml_st::TileOp>();
+  auto tileOffsets =
+      getValueOrCreateConstantIndexOp(builder, loc, tileOp.getMixedOffsets());
+  auto tileSizes =
+      getValueOrCreateConstantIndexOp(builder, loc, tileOp.getMixedSizes());
+  auto tileStrides =
+      getValueOrCreateConstantIndexOp(builder, loc, tileOp.getMixedStrides());
   for (int64_t i = 0; i < rank; ++i) {
     Value iCst = builder.create<arith::ConstantIndexOp>(loc, i);
-    sharedTileStrides[i] = builder.create<gml_st::StrideOp>(loc, tile, iCst);
+    sharedTileStrides[i] = tileStrides[i];
 
     // The space sizes, tile offsets, and tile sizes differ in the concat
     // dimension. Do not populate these.
-    if (i == static_cast<int64_t>(concatDim)) {
-      continue;
-    }
+    if (i == static_cast<int64_t>(concatDim)) continue;
 
     baseSpaceSizes[i] =
         builder.createOrFold<tensor::DimOp>(loc, anyOperand, iCst);
-    baseTileOffsets[i] = builder.create<gml_st::OffsetOp>(loc, tile, iCst);
-    baseTileSizes[i] = builder.create<gml_st::SizeOp>(loc, tile, iCst);
+    baseTileOffsets[i] = tileOffsets[i];
+    baseTileSizes[i] = tileSizes[i];
   }
 
   // Some shared values.
@@ -301,14 +298,12 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
       SmallVector<int64_t>(rank, ShapedType::kDynamicSize));
   Value zeroCst = builder.create<arith::ConstantIndexOp>(loc, 0);
   Value concatDimCst = builder.create<arith::ConstantIndexOp>(loc, concatDim);
-  Value maxTileSizeInConcatDim =
-      builder.create<gml_st::SizeOp>(loc, tile, concatDimCst);
+  Value maxTileSizeInConcatDim = tileSizes[concatDim];
 
   // The remaining tile offset in the concat dimension is subtracted by each
   // operand's size in that dimension. We maintain the invariant
   // remainingTileOffsetInConcatDim >= 0.
-  Value remainingTileOffsetInConcatDim =
-      builder.create<gml_st::OffsetOp>(loc, tile, concatDimCst);
+  Value remainingTileOffsetInConcatDim = tileOffsets[concatDim];
 
   // Create the relevant subsets per operand. These tiles can be empty at
   // runtime.
@@ -319,8 +314,6 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
     Value operandSizeInConcatDim =
         builder.create<tensor::DimOp>(loc, operand, concatDimCst);
     baseSpaceSizes[concatDim] = operandSizeInConcatDim;
-    Value operandSpace = builder.create<gml_st::SpaceOp>(loc, baseSpaceSizes,
-                                                         allDynamicSizesAttr);
 
     // Find the current operand's tile offset in the concat dimension. This is
     // the remaining offset clamped into the bounds of the operand. Note that
@@ -337,7 +330,7 @@ Value fuseConcatenateOpThroughTile(ConcatenateOp op, OpBuilder &builder,
 
     // Create the operand tile and materialize the subset for this operand.
     Value tile = builder.create<gml_st::TileOp>(
-        loc, operandSpace, baseTileOffsets, baseTileSizes, sharedTileStrides,
+        loc, baseTileOffsets, baseTileSizes, sharedTileStrides,
         allDynamicStridesOrOffsetsAttr, allDynamicSizesAttr,
         allDynamicStridesOrOffsetsAttr);
     subOperands.push_back(
@@ -381,20 +374,13 @@ Value fuseConcatenateOpThroughPointRecursively(
 
   // Terminal case of exactly one operand.
   if (remainingOperands.size() == 1) {
-    // Create operand space.
-    SmallVector<Value> dynamicDims =
-        tensor::createDynamicDimValues(builder, loc, leadingOperand);
-    ArrayAttr staticDims = builder.getI64ArrayAttr(rankedTy.getShape());
-    Value operandSpace =
-        builder.create<gml_st::SpaceOp>(loc, dynamicDims, staticDims);
-
     // Create operand point.
     SmallVector<int64_t> allDynamicOffsets(rankedTy.getRank(),
                                            ShapedType::kDynamicStrideOrOffset);
 
     auto sizeOrStride = builder.getI64ArrayAttr({1});
     Value operandPoint = builder.create<gml_st::TileOp>(
-        loc, operandSpace, remainingOffsets, ValueRange{}, ValueRange{},
+        loc, remainingOffsets, ValueRange{}, ValueRange{},
         builder.getI64ArrayAttr(allDynamicOffsets), sizeOrStride, sizeOrStride);
 
     return builder.create<gml_st::MaterializeOp>(loc, rankedTy.getElementType(),
@@ -437,16 +423,12 @@ Value fuseConcatenateOpThroughPointRecursively(
 Value fuseConcatenateOpThroughPoint(ConcatenateOp op, OpBuilder &builder,
                                     Location loc, Value subset) {
   auto resultTy = op.getType(0).cast<RankedTensorType>();
-  int64_t resultRank = resultTy.getRank();
   uint64_t concatDim = op.getDimension();
 
   // Materialize initial offsets.
-  SmallVector<Value> initialOffsets;
-  initialOffsets.reserve(resultRank);
-  for (int64_t i = 0; i < resultRank; ++i) {
-    initialOffsets.push_back(builder.create<gml_st::OffsetOp>(
-        loc, subset, builder.create<arith::ConstantIndexOp>(loc, i)));
-  }
+  auto tileOp = subset.getDefiningOp<gml_st::TileOp>();
+  SmallVector<Value> initialOffsets =
+      getValueOrCreateConstantIndexOp(builder, loc, tileOp.getMixedOffsets());
 
   ValueRange initialOperands = op.getInputs();
   return fuseConcatenateOpThroughPointRecursively(
@@ -480,16 +462,43 @@ ParseResult ConcatenateOp::parse(OpAsmParser &parser, OperationState &result) {
 void ConcatenateOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult ConcatenateOp::verify() {
-  Type outputElementType =
-      getOutputs().front().getType().cast<ShapedType>().getElementType();
+  int64_t concatDim = getDimension();
 
-  for (Type inputArgType : TypeRange{getInputs()}) {
-    Type inputArgElementType = inputArgType.cast<ShapedType>().getElementType();
-    if (inputArgElementType != outputElementType) {
+  ShapedType inputType = getInputOperand(0)->get().getType().cast<ShapedType>();
+  int64_t rank = inputType.getRank();
+  auto inputShape = inputType.getShape();
+
+  Type outputElementType =
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
+
+  for (const auto &en : llvm::enumerate(getInputs())) {
+    ShapedType inputArgShapedType = en.value().getType().cast<ShapedType>();
+    auto inputArgShape = inputArgShapedType.getShape();
+
+    if (inputArgShapedType.getElementType() != outputElementType)
       return emitOpError() << "expected element type of input "
-                           << inputArgElementType
+                           << inputArgShapedType.getElementType()
                            << " to match output element type "
                            << outputElementType;
+
+    if (inputArgShapedType.getRank() != rank)
+      return emitOpError() << "expected all args to be rank " << rank
+                           << ", got " << inputArgShapedType.getRank()
+                           << " in arg " << en.index();
+
+    // Make sure that all dimensions, expect for concatenation dim, in the input
+    // arg are equal.
+    // TODO(shyshkov): Also check output dims once tiling is fixed for
+    // ConcatenateOp.
+    for (int64_t i = 0; i < rank; ++i) {
+      if (i == concatDim) continue;
+
+      if (inputShape[i] != inputArgShape[i])
+        return emitOpError()
+               << "shape of input arg " << en.index() << ": "
+               << inputArgShapedType << " doesn't match expected shape "
+               << inputType << " (all dims except concat dim(" << concatDim
+               << ") should match exactly)";
     }
   }
 
@@ -561,11 +570,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
 
   // Materialize operand space.
   auto operandTy = getOperand().getType().cast<RankedTensorType>();
-  auto operandSpaceTy = b.getType<gml_st::TileType>(operandTy.getShape());
   auto dynamicDims = tensor::createDynamicDimValues(b, loc, getOperand());
-  auto staticDims = b.getI64ArrayAttr(operandTy.getShape());
-  Value operandSpace =
-      b.create<gml_st::SpaceOp>(loc, operandSpaceTy, dynamicDims, staticDims);
 
   // Materialize operand dimensions.
   SmallVector<Value> operandDims;
@@ -592,6 +597,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   }
 
   // Compute operand tile offsets.
+  auto tileOpOffsets =
+      getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
   int64_t operandRank = operandTy.getRank();
   auto staticOffsets = b.getI64ArrayAttr(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicStrideOrOffset));
@@ -600,8 +607,7 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
     if (!dimensionsThatStay.contains(initId)) continue;
     Value isExpanding = operandExpandingDims[operandId++];
-    Value collapsedSubsetOffset =
-        b.create<gml_st::OffsetOp>(loc, tile, getIndexConstant(initId));
+    Value collapsedSubsetOffset = tileOpOffsets[initId];
     operandOffsets.push_back(b.create<arith::SelectOp>(loc, isExpanding, zero,
                                                        collapsedSubsetOffset));
   }
@@ -611,11 +617,12 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
   SmallVector<Value> tileSizes;
   Value one = getIndexConstant(1);
+  auto tileOpSizes =
+      getValueOrCreateConstantIndexOp(b, loc, tile.getMixedSizes());
   for (int initId = 0, operandId = 0; initId < initRank; ++initId) {
     if (!dimensionsThatStay.contains(initId)) continue;
     Value isExpanding = operandExpandingDims[operandId++];
-    Value tileSize =
-        b.create<gml_st::SizeOp>(loc, tile, getIndexConstant(initId));
+    Value tileSize = tileOpSizes[initId];
     tileSizes.push_back(
         b.create<arith::SelectOp>(loc, isExpanding, one, tileSize));
   }
@@ -627,8 +634,8 @@ gml_st::TilingInterface DynamicBroadcastInDimOp::getTiledImplementation(
   auto operandTileTy = b.getType<gml_st::TileType>(
       SmallVector<int64_t>(operandRank, ShapedType::kDynamicSize));
   auto operandTile = b.create<gml_st::TileOp>(
-      loc, operandTileTy, operandSpace, operandOffsets, tileSizes, tileStrides,
-      staticOffsets, staticTileSizes, staticTileStrides);
+      loc, operandTileTy, operandOffsets, tileSizes, tileStrides, staticOffsets,
+      staticTileSizes, staticTileStrides);
 
   // Materialize operand tiles.
   Value tiledInit = b.create<gml_st::MaterializeOp>(loc, getInit(), tile);
@@ -725,7 +732,7 @@ LogicalResult ScatterOp::verify() {
   // The update computation should yield exactly 1 result.
   auto updateTerminator = cast<YieldOp>(getBody()->getTerminator());
   Type outputElementType =
-      getOutputs().front().getType().cast<ShapedType>().getElementType();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
   if (!succeeded(checkYieldOutputs(updateTerminator, outputElementType)))
     return failure();
 
@@ -748,20 +755,15 @@ SmallVector<Range> ScatterOp::getIterationDomain(OpBuilder &b) {
 static Value getSlice(OpBuilder &b, Location loc, Value tensor,
                       ArrayRef<OpFoldResult> offsets,
                       ArrayRef<OpFoldResult> sizes) {
-  auto tensorType = tensor.getType().cast<RankedTensorType>();
-  SmallVector<Value> dynSizes = tensor::createDynamicDimValues(b, loc, tensor);
-  auto staticSizes = b.getI64ArrayAttr(tensorType.getShape());
-
-  Value space = b.create<gml_st::SpaceOp>(loc, dynSizes, staticSizes);
-  if (sizes.empty()) return b.create<gml_st::MaterializeOp>(loc, tensor, space);
-
-  SmallVector<OpFoldResult> strides(offsets.size(), b.getIndexAttr(1));
-  Value tile = b.create<gml_st::TileOp>(loc, space, offsets, sizes, strides);
+  SmallVector<OpFoldResult> ones(offsets.size(), b.getIndexAttr(1));
+  Value tile = b.create<gml_st::TileOp>(loc, offsets, sizes, ones);
   return b.create<gml_st::MaterializeOp>(loc, tensor, tile);
 }
 
 static Value getFullSpace(OpBuilder &b, Location loc, Value tensor) {
-  return getSlice(b, loc, tensor, llvm::None, llvm::None);
+  SmallVector<OpFoldResult> sizes = tensor::getMixedSizes(b, loc, tensor);
+  SmallVector<OpFoldResult> offsets(sizes.size(), b.getIndexAttr(0));
+  return getSlice(b, loc, tensor, offsets, sizes);
 }
 
 mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
@@ -799,8 +801,7 @@ mlir::gml_st::TilingInterface ScatterOp::getTiledImplementation(
   Value init = this->getInit();
   Value initSlice = getFullSpace(b, loc, init);
 
-  auto dpsInterface =
-      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
   return dpsInterface.clone(b, loc, TypeRange{initSlice.getType()},
                             ValueRange{indicesSlice, updateSlice, initSlice});
 }
@@ -823,13 +824,34 @@ ParseResult GatherOp::parse(OpAsmParser &parser, OperationState &result) {
 void GatherOp::print(OpAsmPrinter &p) { printDstStyleOp(*this, p); }
 
 LogicalResult GatherOp::verify() {
+  auto indicesType = getStartIndices().getType();
+  int64_t indicesRank = indicesType.getRank();
+
+  if (indicesRank != 2)
+    return emitOpError() << "expected `indices` to be a 2D tensor";
+
+  auto initType = getInit().getType();
+  if (indicesType.getDimSize(0) != getInit().getType().getDimSize(0)) {
+    return emitOpError()
+           << "expected major dimension of `startIndices` to match "
+              "major dimension of `init`";
+  }
+
+  if (initType.getNumDynamicDims() > 1 ||
+      (initType.getNumDynamicDims() == 1 && !initType.isDynamicDim(0))) {
+    return emitOpError() << "only the major dimenion of `init` may be dynamic";
+  }
+
+  if (indicesType.isDynamic(1)) {
+    return emitOpError()
+           << "the minor dimensions of `startIndices` must be static";
+  }
+
   return verifyDestinationStyleOp(getOperation());
 }
 
 SmallVector<utils::IteratorType> GatherOp::getLoopIteratorTypes() {
-  // Currently, `offset_dims` is empty, so the iteration domain is just the
-  // entire output.
-  return getParallelIteratorTypes(getInit().getType().getRank());
+  return {utils::IteratorType::parallel};
 }
 
 SmallVector<Value> GatherOp::getDestinationOperands(OpBuilder &) {
@@ -837,28 +859,28 @@ SmallVector<Value> GatherOp::getDestinationOperands(OpBuilder &) {
 }
 
 SmallVector<Range> GatherOp::getIterationDomain(OpBuilder &b) {
-  // Currently, `offset_dims` is empty, so the iteration domain is just the
-  // entire output.
-  return getIterationDomainForTensor(b, getLoc(), getInit());
+  Value indicesCount = b.create<tensor::DimOp>(getLoc(), getStartIndices(), 0);
+  return {Range{b.getIndexAttr(0), indicesCount, b.getIndexAttr(1)}};
 }
 
 mlir::gml_st::TilingInterface GatherOp::getTiledImplementation(
     OpBuilder &b, ArrayRef<OpFoldResult> offsets,
     ArrayRef<OpFoldResult> sizes) {
-  auto offsetsWithVectorDim = offsets.vec();
-  auto sizesWithVectorDim = sizes.vec();
+  SmallVector<OpFoldResult> startIndexOffsets{offsets.front(),
+                                              b.getIndexAttr(0)};
+  SmallVector<OpFoldResult> startIndexSizes{
+      sizes.front(),
+      b.getIndexAttr(getStartIndices().getType().getShape().back())};
+  auto subStartIndices = getMaterializedTile(
+      b, getLoc(), getStartIndices(), startIndexOffsets, startIndexSizes);
 
-  offsetsWithVectorDim.emplace_back(b.getIndexAttr(0));
-  sizesWithVectorDim.emplace_back(
-      b.getIndexAttr(getStartIndices().getType().getShape().back()));
-
-  llvm::SmallVector<OpFoldResult> strides(offsets.size() + 1,
-                                          b.getIndexAttr(1));
-
-  auto subStartIndices = b.create<tensor::ExtractSliceOp>(
-      getLoc(), getStartIndices(), offsetsWithVectorDim, sizesWithVectorDim,
-      strides);
-  Value initSlice = getMaterializedTile(b, getLoc(), getInit(), offsets, sizes);
+  int64_t initRank = getInit().getType().getRank();
+  SmallVector<OpFoldResult> initOffsets(initRank, b.getIndexAttr(0));
+  initOffsets[0] = offsets.front();
+  auto initSizes = tensor::getMixedSizes(b, getLoc(), getInit());
+  initSizes[0] = sizes.front();
+  Value initSlice =
+      getMaterializedTile(b, getLoc(), getInit(), initOffsets, initSizes);
 
   return b
       .create<GatherOp>(getLoc(), TypeRange{initSlice.getType()},
@@ -1247,7 +1269,7 @@ LogicalResult MapOp::verify() {
 
   // The shape of each input must match the shape of the output.
   auto outputShape =
-      getOutputs().front().getType().cast<ShapedType>().getShape();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getShape();
   for (Type inputArgType : TypeRange{getInputs()}) {
     auto inputElemShape = inputArgType.cast<ShapedType>().getShape();
     if (inputElemShape != outputShape) {
@@ -1260,7 +1282,7 @@ LogicalResult MapOp::verify() {
   // The mapper should yield exactly one output.
   YieldOp mapperTerminator = cast<YieldOp>(bodyBlock->getTerminator());
   Type outputElementType =
-      getOutputs().front().getType().cast<ShapedType>().getElementType();
+      getOutputOperand(0)->get().getType().cast<ShapedType>().getElementType();
   if (!succeeded(checkYieldOutputs(mapperTerminator, outputElementType)))
     return failure();
 
@@ -1318,11 +1340,17 @@ LogicalResult SortOp::verify() {
 
   // Checks that the arity of the comparator is equal to twice the number of
   // inputs.
-  if (comparatorArgs.size() != getNumInputs() * 2)
+  int64_t numInputs = getNumInputs();
+  int64_t numOutputs = getNumOutputs();
+  if (getNumOutputs() != numInputs) {
+    return emitOpError() << "expected the number of inputs " << numInputs
+                         << " to match the number of outputs " << numOutputs;
+  }
+  if (comparatorArgs.size() != numInputs * 2) {
     return emitOpError() << "expected the number of block arguments "
                          << comparatorArgs.size() << " to be twice the number "
-                         << "of inputs (2*" << getNumInputs() << ")";
-
+                         << "of inputs (2*" << numInputs << ")";
+  }
   // Checks that the comparator's arguments match the element type of the
   // inputs.
   TypeRange inputTypes = TypeRange{getInputs()};
@@ -1363,8 +1391,9 @@ LogicalResult SortOp::verify() {
   }
 
   // Checks that the outputs have the same shape as the inputs.
-  for (auto &item : llvm::enumerate(TypeRange{getOutputs()})) {
-    ArrayRef<int64_t> shape = item.value().cast<ShapedType>().getShape();
+  for (auto &item : llvm::enumerate(getInits())) {
+    ArrayRef<int64_t> shape =
+        item.value().getType().cast<ShapedType>().getShape();
     if (shape != referenceShape) {
       return emitOpError() << "expected outputs to have shape ("
                            << referenceShape << ") but output " << item.index()
@@ -1454,8 +1483,7 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
         b.create<gml_st::MaterializeOp>(loc, init, tile));
   }
 
-  auto dpsInterface =
-      cast<linalg::DestinationStyleOpInterface>(this->getOperation());
+  auto dpsInterface = cast<DestinationStyleOpInterface>(this->getOperation());
   return dpsInterface.clone(b, loc, tiledResultTypes, tiledInputsAndInits);
 }
 

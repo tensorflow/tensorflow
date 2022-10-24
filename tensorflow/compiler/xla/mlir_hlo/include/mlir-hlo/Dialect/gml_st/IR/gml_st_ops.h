@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
 #define MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
 
-#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
 #include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"

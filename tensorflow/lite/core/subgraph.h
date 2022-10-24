@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdarg.h>
 #include <stddef.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <map>
@@ -58,6 +59,7 @@ class TestDelegate;  // Class for friend declarations.
 class Subgraph {
  public:
   friend class Interpreter;
+  friend class SignatureRunner;
   friend class SingleOpModel;
   friend class internal::CommonOpaqueConversionUtil;
 
@@ -725,6 +727,18 @@ class Subgraph {
   // Ensures the memory required is planned and allocated.
   TfLiteStatus EnsureMemoryAllocations();
 
+  // Enables cancellation of in flight invocation with `Cancel` call.
+  // Should only be called by the interpreter when building the subgraph.
+  // `flag` should be nullptr otherwise cancellation is disabled.
+  TfLiteStatus EnableCancellation(std::atomic_flag* flag);
+
+  // Attempts to cancel in flight invocation if any.
+  // This will not affect `Invoke`s that happends after the cancellation.
+  // Non blocking. Thread safe.
+  // Returns kTfLiteError if cancellation is not enabled, otherwise returns
+  // kTfLiteOk.
+  TfLiteStatus Cancel();
+
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
@@ -894,6 +908,13 @@ class Subgraph {
   // thrown by Invoke().
   bool (*check_cancelled_func_)(void*) = nullptr;
 
+  // Pointer to the cancellation flag owned by the interpreter.
+  // If null, it means cancellation is not enabled.
+  // If not null, in flight invocation will be cancelled if the flag is false.
+  // The flag will be reset to true in the beginning of every `Invoke` call
+  // so cancellation hapens before will not cancel subsequent invocations.
+  std::atomic_flag* continue_invocation_ = nullptr;
+
   // Reference to data used by the cancellation function in
   // `check_cancelled_func_`.
   void* cancellation_data_ = nullptr;
@@ -934,7 +955,7 @@ class Subgraph {
   std::unordered_set<  // NOLINT
       std::unique_ptr<const TfLiteRegistrationExternal>>
       registration_externals_;
-  // LINT.ThenChange(//tensorflow/lite/c/c_api.cc)
+  // LINT.ThenChange(//tensorflow/lite/core/c/c_api.cc)
 
   // `InterpreterOptions` object which is being used and owned by Interpreter.
   InterpreterOptions* options_;

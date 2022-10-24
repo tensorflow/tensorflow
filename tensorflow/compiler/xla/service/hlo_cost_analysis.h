@@ -284,7 +284,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
   // node.
-  int64_t FusionParameterReadBytes(const HloInstruction* hlo) const;
+  virtual int64_t FusionParameterReadBytes(const HloInstruction* hlo) const;
+
+  // Traverses a fusion counting total utilization of every instruction inside.
+  // Currently implemented non-trivially only in the GPU cost analysis.
+  virtual Status FusionCalculateUtilizations(const HloInstruction* fusion);
 
   // Set bytes accessed by the specified operand and shape index.
   void SetOperandBytesAccessed(int64_t operand_num, float value);
