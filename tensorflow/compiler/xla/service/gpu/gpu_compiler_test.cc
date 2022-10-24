@@ -19,12 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
-#if GOOGLE_CUDA
-#define PLATFORM "CUDA"
-#else
-#define PLATFORM "ROCM"
-#endif
-
 namespace xla {
 namespace gpu {
 namespace {
@@ -34,11 +28,7 @@ namespace op = xla::testing::opcode_matchers;
 class GpuCompilerTest : public HloTestBase {
  public:
   GpuCompilerTest()
-<<<<<<< HEAD
-      : HloTestBase(PlatformUtil::GetPlatform(PLATFORM).value(),
-=======
       : HloTestBase(PlatformUtil::GetDefaultPlatform().value(),
->>>>>>> upstream/master
                     GetReferencePlatform()) {}
 };
 

@@ -189,11 +189,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_type_conversion_util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/service/llvm_ir:ir_builder_mixin",
-        "//tensorflow/core:lib",
-=======
->>>>>>> upstream/master
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

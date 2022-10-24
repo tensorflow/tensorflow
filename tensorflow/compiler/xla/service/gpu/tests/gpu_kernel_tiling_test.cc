@@ -529,17 +529,7 @@ TEST_F(GpuKernelTilingTest, RowReductionTwoRowsPerWarp) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  auto expected_ir = is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
-; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
-; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
-; CHECK: call SHUFFLE
-; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: %[[LOGICAL_T1:.*]] = call { i1, i64 } @llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])
-; CHECK: %[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0
-; CHECK: br i1 %[[LOGICAL_T2]],
-)"
-                                         : R"(
+  auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 15
@@ -578,17 +568,7 @@ TEST_F(GpuKernelTilingTest, RowReductionFourRowsPerWarp) {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-  auto expected_ir =  is_built_with_rocm_ ? R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
-; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
-; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
-; CHECK: call SHUFFLE
-; CHECK: %[[LOGICAL_T0:.*]] = icmp eq i32 %[[TID_LOGICAL]], 0
-; CHECK: %[[LOGICAL_T1:.*]] = call { i1, i64 } @llvm.amdgcn.if.i64(i1 %[[LOGICAL_T0]])
-; CHECK: %[[LOGICAL_T2:.*]] = extractvalue { i1, i64 } %[[LOGICAL_T1]], 0
-; CHECK: br i1 %[[LOGICAL_T2]],
-)"
-                                         : R"(
+  auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @reduce
 ; CHECK: %[[TID_X:.*]] = tail call i32 TIDX()
 ; CHECK: %[[TID_LOGICAL:.*]] = and i32 %[[TID_X]], 7
@@ -708,17 +688,10 @@ ENTRY main {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
-<<<<<<< HEAD
-  auto expected_ir = R"(
-; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
-; CHECK: load <4 x i16>
-; CHECK-COUNT-4: load
-=======
   std::string expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: load <4 x i16>
 ; CHECK-COUNT-4: load PLATFORM_SPECIFIC_TYPE
->>>>>>> upstream/master
 ; CHECK-NOT: load
 ; CHECK: }
 )";
