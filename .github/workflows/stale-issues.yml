@@ -13,8 +13,8 @@ jobs:
       - name: Awaiting resposnse issues
         uses: actions/stale@v5
         with:
-          days-before-issue-stale: 30
-          days-before-issue-close: 14
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
           stale-issue-label: "stale"
           only-issue-labels: 
            - stat:awaiting response
@@ -25,14 +25,14 @@ jobs:
             This issue was closed because it has been inactive for 14 days since being marked as stale.
             Please reopen if you'd like to work on this further.
           days-before-pr-stale: -1
-          days-before-pr-close: 60
+          days-before-pr-close: -1
           stale-pr-message: "This PR is stale because it has been open for 30 days with no activity."
           repo-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Contribution issues
         uses: actions/stale@v5
         with:
-          days-before-issue-stale: 180
-          days-before-issue-close: 360
+          days-before-issue-stale: -1
+          days-before-issue-close: -1
           stale-issue-label: "stale"
           only-issue-labels: 
            - stat:contribution welcome
