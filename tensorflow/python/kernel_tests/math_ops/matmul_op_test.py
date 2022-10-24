@@ -286,6 +286,9 @@ if __name__ == "__main__":
           for k in sizes:
             # Construct compatible random matrices a_np of size [m, k] and b_np
             # of size [k, n].
+            # Add seed value to make the tests for bfloat16 stable.
+            if dtype == dtypes.bfloat16.as_numpy_dtype:
+              np.random.seed(12)
             a_np = np.random.normal(-5, 5, m * k).astype(dtype).reshape([m, k])
             if dtype in (np.complex64, np.complex128):
               a_np.imag = np.random.normal(-5, 5,
@@ -308,13 +311,6 @@ if __name__ == "__main__":
                              transpose_a=transpose_a,
                              adjoint_b=adjoint_b,
                              transpose_b=transpose_b))
-
-                # Gradient test cases with bfloat16 might encounter tolerance
-                # issues when the sizes are large. We will skip these cases for
-                # now.
-                if (dtype == dtypes.bfloat16.as_numpy_dtype and
-                    (m, n, k) == (5, 5, 5)):
-                  continue
 
                 _AddTest(MatMulGradientTest, "MatMulGradientTest", name,
                          _GetMatMulGradientTest(

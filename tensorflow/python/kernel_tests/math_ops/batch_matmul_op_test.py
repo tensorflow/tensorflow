@@ -30,9 +30,11 @@ from tensorflow.python.platform import test
 
 
 def GetRandomNormalInput(shape, dtype):
-  # float16 has limited range so we reduce the variance of the scalars.
-  scale = 10.0 if dtype != np.float16 else 0.1
-  loc = -10.0 if dtype != np.float16 else 0.1
+  # float16 or bfloat16 has limited range so we reduce the variance of the
+  # scalars.
+  is_16bit = dtype in (np.float16, dtypes.bfloat16.as_numpy_dtype)
+  scale = 0.1 if is_16bit else 10.0
+  loc = 0.1 if is_16bit else -10.0
   vals = np.array(np.random.normal(loc, scale, np.prod(shape)), dtype=dtype)
   if dtype in (np.complex64, np.complex128):
     imag = np.array(np.random.normal(loc, scale, np.prod(shape)), dtype=dtype)
@@ -199,10 +201,7 @@ def _GetBatchMatmulGradientTest(dtype, adjoint_a, adjoint_b):
       self._compare(a_shape, b_shape, dtype, adjoint_a, adjoint_b)
 
     CheckGradients(self, [1, 2, 3], [1, 3, 5])
-    # Gradient test cases with bfloat16 might encounter tolerance issues when
-    # the sizes are large. We will skip these cases for now.
-    if dtype != dtypes.bfloat16.as_numpy_dtype:
-      CheckGradients(self, [3, 4, 7], [3, 7, 10])
+    CheckGradients(self, [3, 4, 7], [3, 7, 10])
 
   return Test
 
@@ -216,13 +215,10 @@ def _GetBatchMatmulGradientWithBroadcastingTest(dtype, adjoint_a, adjoint_b):
     CheckGradients(self, [1, 5, 2, 3], [7, 1, 3, 2])
     CheckGradients(self, [2, 3], [1, 3, 5])
     CheckGradients(self, [2, 3], [5, 3, 5])
-    # Gradient test cases with bfloat16 might encounter tolerance issues when
-    # the sizes are large. We will skip these cases for now.
-    if dtype != dtypes.bfloat16.as_numpy_dtype:
-      CheckGradients(self, [5, 2, 5], [5, 3])
-      CheckGradients(self, [5, 2, 2, 3], [3, 5])
-      CheckGradients(self, [4, 5, 1, 2, 3], [1, 1, 3, 5])
-      CheckGradients(self, [1, 2, 1, 4, 2, 1, 3, 4], [3, 2, 1, 1, 1, 2, 4, 2])
+    CheckGradients(self, [5, 2, 5], [5, 3])
+    CheckGradients(self, [5, 2, 2, 3], [3, 5])
+    CheckGradients(self, [4, 5, 1, 2, 3], [1, 1, 3, 5])
+    CheckGradients(self, [1, 2, 1, 4, 2, 1, 3, 4], [3, 2, 1, 1, 1, 2, 4, 2])
 
   return Test
 
