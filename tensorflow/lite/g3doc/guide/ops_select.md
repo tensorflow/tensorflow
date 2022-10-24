@@ -252,7 +252,7 @@ pip package version since 2.3 for Linux and 2.4 for other environments.
 
 ### Performance
 
-When using a mixture of both builtin and select TensorFlow ops, all the same
+When using a mixture of both builtin and select TensorFlow ops, all of the same
 TensorFlow Lite optimizations and optimized builtin ops will be available and
 usable with the converted model.
 
