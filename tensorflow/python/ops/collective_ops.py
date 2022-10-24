@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow collective Ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.ops import gen_collective_ops
 
 
@@ -58,7 +54,8 @@ def all_reduce(t,
     ValueError: if any of the input parameter constraints are not met.
   """
   if group_size < 1:
-    raise ValueError('Parameter group_size to all_reduce must be at least 1.')
+    raise ValueError('Parameter `group_size` to all_reduce must be at least 1. '
+                     f'Received: {group_size}.')
   return gen_collective_ops.collective_reduce(
       t,
       group_size=group_size,
@@ -71,6 +68,30 @@ def all_reduce(t,
       timeout_seconds=timeout)
 
 
+def assign_group_v2(group_assignment, device_index, base_key):
+  """Assign group key based on group_assignment.
+
+  Args:
+    group_assignment: a 2 dimensional integer Tensor that encodes which devices
+      belong to the same group. The values are indices of the devices within 0
+      to number of devices.
+    device_index: integer for the index of the current device
+    base_key: integer to offset the resulted group_key. The base key shall be
+      unique for different values of group_assignment in the same tf.function.
+  Notes: The device_index argument must be consistent with the index of the
+    device of this Op in the device assignment list. The behavior of this Op is
+    undefined if they are inconsistent.
+
+  Returns:
+    group_size, group_key: The group size and group key for the current device.
+  """
+  group_size, group_key = gen_collective_ops.collective_assign_group_v2(
+      group_assignment=group_assignment,
+      device_index=device_index,
+      base_key=base_key)
+  return group_size, group_key
+
+
 def all_reduce_v2(t,
                   group_size,
                   group_key,
@@ -80,7 +101,8 @@ def all_reduce_v2(t,
                   communication_hint='auto',
                   timeout=0,
                   ordering_token=None,
-                  max_subdivs_per_device=-1):
+                  max_subdivs_per_device=-1,
+                  name=None):
   """Reduces tensors collectively, across devices.
 
   Args:
@@ -100,20 +122,26 @@ def all_reduce_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness.  If the timer goes off, a DeadlineExceededError is raised.  The
       timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
+    ordering_token: a resource tensor on the same device as the op to order
+      the collectives in a per-device manner by auto control dependency.
+      This argument can be omited when there is one collective Op per
+      `tf.function`, or when explicit control dependency is used instead of
+      auto control dependency.
     max_subdivs_per_device: int specifying the maximum number of subdivisions a
       tensor on a device can be divided into. The runtime uses this contraint to
       parallelize processing of each per-device tensor. Setting to -1 disables
       subdivision and reverts to previous behavior of not sub-dividing tensor.
       Setting to 0 uses sytem defaults.
+    name: name of the Op.
 
   Returns:
     An Op implementing the distributed reduction.
   """
   if ordering_token is not None:
     ordering_token = [ordering_token]
+  else:
+    ordering_token = []
+
   return gen_collective_ops.collective_reduce_v2(
       t,
       group_size=group_size,
@@ -123,8 +151,9 @@ def all_reduce_v2(t,
       final_op=final_op,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [],
-      max_subdivs_per_device=max_subdivs_per_device)
+      ordering_token=ordering_token,
+      max_subdivs_per_device=max_subdivs_per_device,
+      name=name)
 
 
 def all_gather(t,
@@ -155,7 +184,8 @@ def all_gather(t,
     ValueError: if any of the input parameter constraints are not met.
   """
   if group_size < 1:
-    raise ValueError('Parameter group_size to all_gather must be at least 1.')
+    raise ValueError('Parameter `group_size` to all_gather must be at least 1.'
+                     f' Received: {group_size}.')
   return gen_collective_ops.collective_gather(
       t,
       shape=[0],
@@ -172,7 +202,8 @@ def all_gather_v2(t,
                   instance_key,
                   communication_hint='auto',
                   timeout=0,
-                  ordering_token=None):
+                  ordering_token=None,
+                  name=None):
   """Accumulates tensors collectively, across devices, along first dimension.
 
   Args:
@@ -188,15 +219,21 @@ def all_gather_v2(t,
     timeout: a float. If set to a non zero, set a completion timeout to detect
       staleness. If the timer goes off, a DeadlineExceededError is raised. The
       timeout value in seconds. This feature is experimental.
-    ordering_token: an optional resource tensor to pass to the op as inputs.
-      They aren't used by the kernel but allow AutoControlDependency to order
-      the collectives with control dependencies.
+    ordering_token: a resource tensor on the same device as the op to order
+      the collectives in a per-device manner by auto control dependency.
+      This argument can be omited when there is one collective Op per
+      `tf.function`, or when explicit control dependency is used instead of
+      auto control dependency.
+    name: name of the Op.
 
   Returns:
     An Op implementing the distributed operation.
   """
   if ordering_token is not None:
     ordering_token = [ordering_token]
+  else:
+    ordering_token = []
+
   return gen_collective_ops.collective_gather_v2(
       t,
       group_size=group_size,
@@ -204,7 +241,8 @@ def all_gather_v2(t,
       instance_key=instance_key,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout,
-      ordering_token=ordering_token or [])
+      ordering_token=ordering_token,
+      name=name)
 
 
 def broadcast_send(t,
@@ -251,13 +289,16 @@ def broadcast_send(t,
   """
   if group_size <= 1:
     raise ValueError(
-        'Parameter group_size to broadcast_send must be at least 2.')
+        'Parameter `group_size` to broadcast_send must be at least 2. '
+        f'Received: {group_size}.')
   if t.shape != shape:
     raise ValueError(
-        'Shape of broadcast_send tensor not equal to declared shape')
+        'Shape of broadcast_send tensor `t` not equal to declared shape. '
+        f'Received {t.shape}, expected {shape}.')
   if t.dtype != dtype:
     raise ValueError(
-        'Type of broadcast_send tensor not equal to declared type')
+        'Type of broadcast_send tensor `t` not equal to declared type. '
+        f'Received {t.dtype}, expected {dtype}.')
   return gen_collective_ops.collective_bcast_send(
       t,
       shape=shape,
@@ -334,7 +375,8 @@ def broadcast_recv(shape,
   """
   if group_size <= 1:
     raise ValueError(
-        'Parameter group_size to broadcast_send must be at least 2.')
+        'Parameter `group_size` to broadcast_send must be at least 2. '
+        f'Received: {group_size}.')
   return gen_collective_ops.collective_bcast_recv(
       shape=shape,
       T=dtype,
@@ -380,3 +422,102 @@ def broadcast_recv_v2(shape,
       shape=shape,
       communication_hint=communication_hint.lower(),
       timeout_seconds=timeout)
+
+
+def initialize_communicator(group_key,
+                            rank,
+                            group_size,
+                            communication_hint='auto',
+                            timeout_seconds=0):
+  """Initializes a collective communicator.
+
+  This creates a collective communicator, which represents membership to a
+  collective group identified by the group_key. It should be called once per
+  member of the group, and each member needs to be on a different device.
+  It blocks until all members of the group run this op.
+
+  Communicators of a group can only be initialized once. Trying to initialize
+  communicators for an existing group key will result in an error.
+
+  Args:
+    group_key: an int32 `tf.Tensor` identifying the group.
+    rank: an `tf.Tensor` specifying the rank of this device in the group. If
+      specified, the rank is required to be unique in the group.
+    group_size: an int32 `tf.Tensor`. The size of the group.
+    communication_hint: preferred collective communication.  The implementation
+      may fall back to another mechanism.  Options include `auto`, `ring`, and
+      `nccl`.
+    timeout_seconds: If set to a non zero, set a completion timeout to detect
+      staleness. If the timer goes off, a DeadlineExceededError is raised. The
+      timeout value in seconds. This feature is experimental.
+
+
+  Returns:
+    A resource `tf.Tensor`.
+  """
+  return gen_collective_ops.collective_initialize_communicator(
+      group_key=group_key,
+      rank=rank,
+      group_size=group_size,
+      communication_hint=communication_hint,
+      timeout_seconds=timeout_seconds)
+
+
+def all_reduce_v3(communicator,
+                  t,
+                  reduction='Add',
+                  group_assignment=None,
+                  timeout_seconds=None):
+  """Reduces tensors mutually.
+
+  Args:
+    communicator: the resource `tf.Tensor` returned from
+      `initialize_communicator`.
+    t: the `tf.Tensor` to be reduced.
+    reduction: a string. The name of the operation to reduce the values.
+      Accpeted values are `"min"`, `"max"`, `"mul"`, `"add"`.
+    group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
+      num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
+      `ith` subgroup.
+    timeout_seconds: If set to a non zero, set a completion timeout to detect
+      staleness. If the timer goes off, a DeadlineExceededError is raised. The
+      timeout value in seconds. This feature is experimental.
+
+  Returns:
+    The reduced `tf.Tensor`.
+  """
+  if group_assignment is None:
+    group_assignment = []
+  return gen_collective_ops.collective_reduce_v3(
+      communicator=communicator,
+      input=t,
+      group_assignment=group_assignment,
+      reduction=reduction,
+      timeout_seconds=timeout_seconds)
+
+
+def all_to_all_v3(communicator, t, group_assignment=None, timeout_seconds=None):
+  """Exchanges tensors mutually.
+
+  Args:
+    communicator: the resource `tf.Tensor` returned from
+      `initialize_communicator`.
+    t: a `tf.Tensor`. The first dimension should have the length as the size of
+      the group. `t[i]` is sent to `rank i` within the group.
+    group_assignment: Optional int32 `tf.Tensor` with shape [num_groups,
+      num_ranks_per_group]. `group_assignment[i]` represents the ranks in the
+      `ith` subgroup.
+    timeout_seconds: If set to a non zero, set a completion timeout to detect
+      staleness. If the timer goes off, a DeadlineExceededError is raised. The
+      timeout value in seconds. This feature is experimental.
+
+  Returns:
+    a `tf.Tensor`. `t[i]` is sent from `rank i` within the group.
+  """
+  if group_assignment is None:
+    group_assignment = []
+  return gen_collective_ops.collective_all_to_all_v3(
+      communicator=communicator,
+      input=t,
+      group_assignment=group_assignment,
+      timeout_seconds=timeout_seconds)

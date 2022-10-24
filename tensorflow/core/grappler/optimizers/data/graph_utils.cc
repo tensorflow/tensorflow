@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstddef>
 
+#include "tensorflow/core/framework/dataset_metadata.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -188,14 +190,14 @@ Status GetScalarConstNodeValueHelper(
 
   get_value(tensor);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <>
 Status GetScalarConstNodeValue(const NodeDef& node, int64_t* value) {
   return GetScalarConstNodeValueHelper(
       node, DT_INT64,
-      [value](const Tensor& tensor) { *value = tensor.scalar<int64>()(); });
+      [value](const Tensor& tensor) { *value = tensor.scalar<int64_t>()(); });
 }
 
 template <>
@@ -315,7 +317,8 @@ void SetUniqueGraphNodeName(StringPiece prefix, GraphDef* graph,
   node->set_name(std::move(name));
 }
 
-void SetUniqueGraphFunctionName(StringPiece prefix, FunctionDefLibrary* library,
+void SetUniqueGraphFunctionName(StringPiece prefix,
+                                const FunctionDefLibrary* library,
                                 FunctionDef* function) {
   string name = string(prefix);
   int id = library->function_size();
@@ -358,7 +361,7 @@ Status EnsureNodeNamesUnique(Graph* g) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
@@ -371,7 +374,7 @@ Status GetFetchNode(const MutableGraphView& graph, const GrapplerItem& item,
 
   *fetch_node = graph.GetNode(item.fetch.at(0));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
@@ -387,6 +390,27 @@ bool IsItemDerivedFromFunctionDef(const GrapplerItem& item,
   return true;
 }
 
+void MaybeSetFusedMetadata(const NodeDef& node1, const NodeDef& node2,
+                           NodeDef* fused_node) {
+  data::Metadata metadata1;
+  if (node1.attr().contains("metadata")) {
+    metadata1.ParseFromString(node1.attr().at("metadata").s());
+  }
+  data::Metadata metadata2;
+  if (node2.attr().contains("metadata")) {
+    metadata2.ParseFromString(node2.attr().at("metadata").s());
+  }
+  data::Metadata fused_metadata;
+  auto normalize_name = [](const string& name) {
+    return name.empty() ? "?" : name;
+  };
+  *fused_metadata.mutable_name() =
+      strings::StrCat("fused(", normalize_name(metadata1.name()), ",",
+                      normalize_name(metadata2.name()), ")");
+  fused_metadata.SerializeToString(
+      (*fused_node->mutable_attr())["metadata"].mutable_s());
+}
+
 bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
   auto* attr = gtl::FindOrNull(from.attr(), kOutputTypes);
   attr = (attr == nullptr ? gtl::FindOrNull(from.attr(), kToutputTypes) : attr);
@@ -398,6 +422,52 @@ bool CopyShapesAndTypesAttrs(const NodeDef& from, NodeDef* to_node) {
   if (attr == nullptr) return false;
   (*to_node->mutable_attr())[kOutputShapes] = *attr;
   return true;
+}
+
+namespace {
+const auto* kSloppyAttrOps = new absl::flat_hash_set<string>{
+    "ParallelInterleaveDatasetV2",
+    "ParallelMapDataset",
+    "ParseExampleDataset",
+};
+
+const auto* kReplicateOnSplitAttrOps = new absl::flat_hash_set<string>{
+    "TensorSliceDataset",
+    "RangeDataset",
+};
+
+const auto* kDeterministicAttrOps = new absl::flat_hash_set<string>{
+    "LegacyParallelInterleaveDatasetV2",
+    "ParallelInterleaveDatasetV3",
+    "ParallelInterleaveDatasetV4",
+    "ParallelMapDatasetV2",
+    "ParallelBatchDataset",
+};
+}  // anonymous namespace
+
+bool HasSloppyAttr(const string& op) { return kSloppyAttrOps->contains(op); }
+
+bool HasReplicateOnSplitAttr(const string& op) {
+  return kReplicateOnSplitAttrOps->contains(op);
+}
+
+bool HasDeterministicAttr(const string& op) {
+  return kDeterministicAttrOps->contains(op);
+}
+
+Status SetMetadataName(const std::string& name, NodeDef* node) {
+  data::Metadata metadata;
+  if (node->attr().contains("metadata")) {
+    metadata.ParseFromString(node->attr().at("metadata").s());
+  }
+  if (!metadata.name().empty()) {
+    return errors::InvalidArgument("Node ", node->name(),
+                                   " already has a metadata name \"",
+                                   metadata.name(), "\".");
+  }
+  *metadata.mutable_name() = name;
+  metadata.SerializeToString((*node->mutable_attr())["metadata"].mutable_s());
+  return OkStatus();
 }
 
 }  // namespace graph_utils

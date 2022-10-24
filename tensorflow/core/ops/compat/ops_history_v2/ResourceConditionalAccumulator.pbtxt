@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "ResourceConditionalAccumulator"
   output_arg {
     name: "handle"

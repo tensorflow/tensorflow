@@ -58,9 +58,8 @@ swift_library(
     module_name = "TensorFlowLite",
     tags = TFL_DEFAULT_TAGS + ["nobuilder"],
     visibility = ios_visibility_allowlist(),
-    deps = [
-        "//tensorflow/lite/ios:tensorflow_lite_c",
-    ] + select({
+    # Do not sort: these targets sort differently internally vs open source
+    deps = ["//tensorflow/lite/ios:tensorflow_lite_c"] + select({
         ":use_coreml_delegate": [
             "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
@@ -131,6 +130,7 @@ objc_library(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     tags = TFL_DEFAULT_TAGS,
 )

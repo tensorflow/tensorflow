@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/canonicalize_all_gather_for_cse.h"
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -22,24 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 
 namespace xla {
-
-namespace {
-
-// Returns if an instructions adds only degenerate dimensions to the shape of
-// the input, like going from [X,Y] to [1,X,Y,1].
-bool IsAddingOnlyDegenerateDimensions(const HloInstruction* inst) {
-  if (inst->opcode() != HloOpcode::kBitcast &&
-      inst->opcode() != HloOpcode::kReshape) {
-    return false;
-  }
-  const Shape& in_shape = inst->operand(0)->shape();
-  const Shape& out_shape = inst->shape();
-  return ShapeUtil::ElementsIn(in_shape) == ShapeUtil::ElementsIn(out_shape) &&
-         ShapeUtil::DimensionsUnmodifiedByReshape(in_shape, out_shape).size() ==
-             in_shape.rank();
-}
-
-}  // namespace
 
 StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
     HloComputation* comp) {
@@ -49,66 +32,72 @@ StatusOr<bool> CanonicalizeAllGatherForCSE::RunOnComputation(
   std::vector<HloInstruction*> ordered_hlos = comp->MakeInstructionPostOrder();
   for (HloInstruction* hlo : ordered_hlos) {
     HloAllGatherInstruction* ag = DynCast<HloAllGatherInstruction>(hlo);
-    // Only supporting AllGather on dimension 0 as it's the only case currently
-    // happening and additional cases needs more complexity.
+
     // TODO(cjfj): Support all-gathers with more than one operand.
-    if (!ag || ag->all_gather_dimension() != 0 || ag->operand_count() > 1) {
+    if (!ag || ag->operand_count() > 1) {
       continue;
     }
+
+    // Also only do this for degenerate dimension sizes as the additional
+    // reshaping may not be worth the potential for CSE.
     HloInstruction* real_data = ag->mutable_operand(0);
-    const int64_t ag_dim = ag->all_gather_dimension();
-    const Shape& out_shape = ag->shape();
-    const Shape& in_shape = ag->operand(0)->shape();
-    CHECK_EQ(out_shape.dimensions(ag_dim) % in_shape.dimensions(ag_dim), 0);
-    const int64_t all_gather_participants =
-        out_shape.dimensions(ag_dim) / in_shape.dimensions(ag_dim);
-    // Look through bitcast/bitcast-like reshapes, keeping track of the position
-    // of the all-gather dimension through the reshapes (should stay 0 or become
-    // -1 if the dimension has been added from a reshape we have passed through)
-    while (IsAddingOnlyDegenerateDimensions(real_data)) {
+    while (real_data->ReshapeMerelyInsertsOrDeletes1SizedDimensions()
+               .has_value()) {
       real_data = real_data->mutable_operand(0);
     }
-    // If we looked through some reshapes and there's more than just one reshape
-    // adding the dimension the all-gather is operating on then perform the
-    // canonicalization.
-    if (real_data != ag->operand(0)) {
-      std::vector<int64_t> new_dimensions;
-      new_dimensions.reserve(real_data->shape().dimensions_size() + 1);
-      new_dimensions.push_back(1);
-      new_dimensions.insert(new_dimensions.end(),
-                            real_data->shape().dimensions().begin(),
-                            real_data->shape().dimensions().end());
-      // Adding specialized all-gather dimension.
-      HloInstruction* ag_input =
-          comp->AddInstruction(HloInstruction::CreateReshape(
-              ShapeUtil::MakeShape(real_data->shape().element_type(),
-                                   new_dimensions),
-              real_data));
-      new_dimensions[0] = all_gather_participants;
-      absl::optional<int64_t> new_channel_id =
-          ag->channel_id() ? absl::make_optional(this->NextChannelId())
-                           : absl::nullopt;
-      HloInstruction* new_ag =
-          comp->AddInstruction(HloInstruction::CreateAllGather(
-              ShapeUtil::MakeShape(real_data->shape().element_type(),
-                                   new_dimensions),
-              {ag_input}, /*all_gather_dimension=*/0, ag->replica_groups(),
-              ag->constrain_layout(), new_channel_id,
-              ag->use_global_device_ids()));
-      HloInstruction* new_formatting = comp->AddInstruction(
-          HloInstruction::CreateReshape(ag->shape(), new_ag));
-      TF_RETURN_IF_ERROR(ag->ReplaceAllUsesWith(new_formatting));
-      TF_RETURN_IF_ERROR(comp->RemoveInstructionAndUnusedOperands(ag));
-      changed = true;
+
+    if (real_data == ag->operand(0)) {
+      continue;
     }
+
+    const int64_t ag_dim = ag->all_gather_dimension();
+    int64_t new_ag_dim;
+    if (auto dims = ShapeUtil::ReshapeLeavesDimensionsUnmodified(
+            ag->operand(0)->shape(), real_data->shape(), {ag_dim})) {
+      new_ag_dim = dims->at(0);
+    } else {
+      int64_t major_elements =
+          Product(absl::MakeConstSpan(ag->operand(0)->shape().dimensions())
+                      .subspan(0, ag_dim));
+      new_ag_dim = 0;
+      while (major_elements > 1) {
+        major_elements /= real_data->shape().dimensions(new_ag_dim++);
+      }
+    }
+    if (new_ag_dim == real_data->shape().rank()) {
+      continue;
+    }
+
+    const int64_t all_gather_participants =
+        ShapeUtil::ElementsIn(ag->shape()) /
+        ShapeUtil::ElementsIn(ag->operand(0)->shape());
+    Shape new_ag_shape = real_data->shape();
+    new_ag_shape.set_dimensions(
+        new_ag_dim,
+        all_gather_participants * new_ag_shape.dimensions(new_ag_dim));
+    std::optional<int64_t> new_channel_id =
+        ag->channel_id() ? std::make_optional(this->NextChannelId())
+                         : std::nullopt;
+    HloInstruction* new_ag =
+        comp->AddInstruction(HloInstruction::CreateAllGather(
+            new_ag_shape, {real_data}, /*all_gather_dimension=*/new_ag_dim,
+            ag->replica_groups(), ag->constrain_layout(), new_channel_id,
+            ag->use_global_device_ids()));
+    ag->SetupDerivedInstruction(new_ag);
+    HloInstruction* new_formatting = comp->AddInstruction(
+        HloInstruction::CreateReshape(ag->shape(), new_ag));
+    TF_RETURN_IF_ERROR(comp->ReplaceInstruction(ag, new_formatting));
+    changed = true;
   }
   return changed;
 }
 
-StatusOr<bool> CanonicalizeAllGatherForCSE::Run(HloModule* module) {
+StatusOr<bool> CanonicalizeAllGatherForCSE::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   next_channel_id_ = hlo_query::NextChannelId(*module);
-  for (HloComputation* comp : module->computations()) {
+  for (HloComputation* comp : module->computations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool comp_changed, RunOnComputation(comp));
     changed |= comp_changed;
   }

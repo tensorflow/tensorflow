@@ -1,0 +1,4 @@
+# Please enter your registered saver names, separated by new lines.
+
+tf.TestDummySaver
+tf.TPUEmbeddingCallback

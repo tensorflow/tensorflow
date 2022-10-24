@@ -15,8 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/sparsity/sparsify_model.h"
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -50,8 +53,8 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
 
-  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
-                                                    UnknownLoc::get(&context));
+  OwningOpRef<mlir::ModuleOp> module = tflite::FlatBufferToMlir(
+      serialized_model, &context, UnknownLoc::get(&context));
   if (!module) {
     error_reporter->Report("Couldn't import flatbuffer to MLIR.");
     return kTfLiteError;

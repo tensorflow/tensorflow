@@ -26,6 +26,14 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/util/util.h"
+
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#define MKL_OP_LABEL mkl_op_registry::kMklNameChangeOpLabel
+#else
+#define MKL_OP_LABEL ""
+#endif  // INTEL_MKL
 
 namespace tensorflow {
 
@@ -90,8 +98,11 @@ static Conv2DGraph Conv2D(int batch, int height, int width, int in_depth,
   Node* filter = test::graph::Constant(graph, filter_t, "filter");
 
   Node* conv2d;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "Conv2D")
-                  .Input(images)
+  auto builder = IsMKLEnabled()
+                     ? NodeBuilder(graph->NewName("conv"), "_MklNativeConv2D")
+                           .Attr("_kernel", MKL_OP_LABEL)
+                     : NodeBuilder(graph->NewName("conv"), "Conv2D");
+  TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
@@ -235,13 +246,19 @@ static Graph* FusedConv2DWithBias(int batch, int height, int width,
   Node* bias = test::graph::Constant(graph, bias_t, "bias");
 
   std::vector<NodeBuilder::NodeOut> args = {bias};
+  std::vector<NodeBuilder::NodeOut> host_args = {};
 
   Node* conv;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
-                  .Input(images)
+  auto builder =
+      IsMKLEnabled()
+          ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
+                .Attr("_kernel", MKL_OP_LABEL)
+          : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
+  TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("num_args", 1)
                   .Input(args)
+                  .Input(host_args)
                   .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
@@ -280,13 +297,19 @@ static Graph* FusedConv2DWithBatchNorm(
   Node* variance = test::graph::Constant(graph, variance_t, "variance");
 
   std::vector<NodeBuilder::NodeOut> args = {scale, offset, mean, variance};
+  std::vector<NodeBuilder::NodeOut> host_args = {};
 
   Node* conv;
-  TF_CHECK_OK(NodeBuilder(graph->NewName("conv"), "_FusedConv2D")
-                  .Input(images)
+  auto builder =
+      IsMKLEnabled()
+          ? NodeBuilder(graph->NewName("conv"), "_MklNativeFusedConv2D")
+                .Attr("_kernel", MKL_OP_LABEL)
+          : NodeBuilder(graph->NewName("conv"), "_FusedConv2D");
+  TF_CHECK_OK(builder.Input(images)
                   .Input(filter)
                   .Attr("num_args", 4)
                   .Input(args)
+                  .Input(host_args)
                   .Attr("T", DataTypeToEnum<T>::value)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
@@ -326,7 +349,8 @@ static Graph* FusedConv2DWithBatchNorm(
     BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                       \
   }                                                                     \
   BENCHMARK(BM_NAME(BM_Conv2D, type, N, H, W, C, FW, FH, FC))           \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                           \
+      ->MeasureProcessCPUTime();
 
 #define BM_Conv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH,       \
@@ -338,7 +362,8 @@ static Graph* FusedConv2DWithBatchNorm(
     BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                        \
   }                                                                      \
   BENCHMARK(BM_NAME(BM_Conv2DWithBias, type, N, H, W, C, FW, FH, FC))    \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                            \
+      ->MeasureProcessCPUTime();
 
 #define BM_Conv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)        \
   static void BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH,    \
@@ -352,7 +377,8 @@ static Graph* FusedConv2DWithBatchNorm(
     BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                            \
   }                                                                          \
   BENCHMARK(BM_NAME(BM_Conv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC)) \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                \
+      ->MeasureProcessCPUTime();
 
 #define BM_FusedConv2DWithBias(N, H, W, C, FW, FH, FC, type, LABEL)        \
   static void BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH,    \
@@ -365,7 +391,8 @@ static Graph* FusedConv2DWithBatchNorm(
     BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                          \
   }                                                                        \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBias, type, N, H, W, C, FW, FH, FC)) \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                              \
+      ->MeasureProcessCPUTime();
 
 #define BM_FusedConv2DWithBiasAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, \
@@ -379,7 +406,8 @@ static Graph* FusedConv2DWithBatchNorm(
   }                                                                            \
   BENCHMARK(                                                                   \
       BM_NAME(BM_FusedConv2DWithBiasAndRelu, type, N, H, W, C, FW, FH, FC))    \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                  \
+      ->MeasureProcessCPUTime();
 
 #define BM_Conv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)           \
   static void BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH,       \
@@ -391,7 +419,8 @@ static Graph* FusedConv2DWithBatchNorm(
     BM_SET_INFO(N, H, W, C, type, LABEL, Conv2D);                             \
   }                                                                           \
   BENCHMARK(BM_NAME(BM_Conv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC))    \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                 \
+      ->MeasureProcessCPUTime();
 
 #define BM_Conv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, \
@@ -406,7 +435,8 @@ static Graph* FusedConv2DWithBatchNorm(
   }                                                                            \
   BENCHMARK(                                                                   \
       BM_NAME(BM_Conv2DWithBatchNormAndRelu, type, N, H, W, C, FW, FH, FC))    \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                  \
+      ->MeasureProcessCPUTime();
 
 #define BM_FusedConv2DWithBatchNorm(N, H, W, C, FW, FH, FC, type, LABEL)     \
   static void BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, \
@@ -420,7 +450,8 @@ static Graph* FusedConv2DWithBatchNorm(
   }                                                                          \
   BENCHMARK(                                                                 \
       BM_NAME(BM_FusedConv2DWithBatchNorm, type, N, H, W, C, FW, FH, FC))    \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                \
+      ->MeasureProcessCPUTime();
 
 #define BM_FusedConv2DWithBatchNormAndRelu(N, H, W, C, FW, FH, FC, type,      \
                                            LABEL)                             \
@@ -435,7 +466,8 @@ static Graph* FusedConv2DWithBatchNorm(
   }                                                                           \
   BENCHMARK(BM_NAME(BM_FusedConv2DWithBatchNormAndRelu, type, N, H, W, C, FW, \
                     FH, FC))                                                  \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                 \
+      ->MeasureProcessCPUTime();
 
 // -------------------------------------------------------------------------- //
 // Pixel CNN convolutions.
@@ -595,7 +627,8 @@ BM_FusedConv2DWithBiasAndRelu(32, 32, 32, 128, 3, 3, 1024, gpu, "3x3 /b 32");
     BM_SET_INFO(N, H, W, C, type, "", Conv2D);                                \
   }                                                                           \
   BENCHMARK(BM_LONG_NAME(BM_Conv2D, type, T, FORMAT, N, H, W, C, FW, FH, FC)) \
-      ->Arg(/*unused arg*/ 1);
+      ->Arg(/*unused arg*/ 1)                                                 \
+      ->MeasureProcessCPUTime();
 
 #if GOOGLE_CUDA
 using fp32 = float;

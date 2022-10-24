@@ -17,7 +17,8 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -33,44 +34,18 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 
-class InitializeVariablesInSessionInitializerPass
-    : public PassWrapper<InitializeVariablesInSessionInitializerPass,
-                         OperationPass<ModuleOp>> {
- public:
-  explicit InitializeVariablesInSessionInitializerPass(
-      tensorflow::Session* session)
-      : session_(session) {}
-
-  StringRef getArgument() const final {
-    return "tf-saved-model-initialize-variables-in-session-init";
-  }
-
-  StringRef getDescription() const final {
-    return "Initialize variables in session initializer function.";
-  }
-
-  void runOnOperation() override;
-
- private:
-  void InitializeVariable(TF::VarHandleOp var_handle_op,
-                          tensorflow::Tensor* tensor, FuncOp session_init_func,
-                          OpBuilder builder);
-
-  tensorflow::Session* session_ = nullptr;
-};
-
-void InitializeVariablesInSessionInitializerPass::InitializeVariable(
-    TF::VarHandleOp var_handle_op, tensorflow::Tensor* tensor,
-    FuncOp session_init_func, OpBuilder builder) {
+void InitializeVariable(TF::VarHandleOp var_handle_op,
+                        tensorflow::Tensor* tensor,
+                        func::FuncOp session_init_func, OpBuilder builder) {
   tensorflow::StatusOr<ElementsAttr> tensor_attr_or =
       tensorflow::ConvertTensor(*tensor, &builder);
   assert(tensor_attr_or.ok() && "Expect valid tensor");
-  ElementsAttr tensor_attr = tensor_attr_or.ValueOrDie();
+  ElementsAttr tensor_attr = tensor_attr_or.value();
 
   builder.setInsertionPointToStart(&session_init_func.getBlocks().front());
   auto var_handle_op_in_init = var_handle_op->clone();
   builder.insert(var_handle_op_in_init);
-  auto const_op = builder.create<mlir::ConstantOp>(
+  auto const_op = builder.create<mlir::arith::ConstantOp>(
       session_init_func.getLoc(), tensor_attr.getType(), tensor_attr);
 
   builder.create<TF::AssignVariableOp>(
@@ -82,19 +57,21 @@ void InitializeVariablesInSessionInitializerPass::InitializeVariable(
 constexpr char kTfSavedModelExportedNameAttr[] =
     "tf_saved_model.exported_names";
 
-FuncOp CreateSessionInitFunc(ModuleOp module) {
+func::FuncOp CreateSessionInitFunc(ModuleOp module) {
   constexpr char kSessionInitFuncName[] = "SessionInitializerFunction";
 
-  mlir::OpBuilder builder(module.body());
+  mlir::OpBuilder builder(module.getBodyRegion());
   auto func_type =
       FunctionType::get(module.getContext(), /*inputs=*/{}, /*results=*/{});
-  auto func =
-      builder.create<FuncOp>(module->getLoc(), kSessionInitFuncName, func_type);
+  auto func = builder.create<func::FuncOp>(module->getLoc(),
+                                           kSessionInitFuncName, func_type);
   func->setAttr(kTfSavedModelExportedNameAttr,
                 builder.getStrArrayAttr({kSessionInitFuncName}));
-  func.setVisibility(mlir::FuncOp::Visibility::Public);
+  func->setAttr(kTfSavedModelInitializerTypeAttr,
+                builder.getStringAttr(kTfSavedModelInitializerRestoreType));
+  func.setVisibility(mlir::func::FuncOp::Visibility::Public);
   auto func_builder = OpBuilder::atBlockBegin(func.addEntryBlock());
-  func_builder.create<mlir::ReturnOp>(func.getLoc());
+  func_builder.create<mlir::func::ReturnOp>(func.getLoc());
   // In cases where there is a session initializer op with empty initializer,
   // replace the session initializer with the new one that points to the session
   // initializer func.
@@ -110,35 +87,57 @@ FuncOp CreateSessionInitFunc(ModuleOp module) {
   return func;
 }
 
-FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
+func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   SessionInitializerOp session_init_op = GetSessionInitializerOp(module);
   if (!session_init_op) return CreateSessionInitFunc(module);
 
   SymbolTable symbol_table(module);
-  if (!session_init_op.initializers().empty()) {
-    FuncOp init_func_op = symbol_table.lookup<mlir::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+
+  // Find the init function that has tf_saved_model.initializer_type ==
+  // "restore_op".
+  for (auto init_sym :
+       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
+
+    const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+        kTfSavedModelInitializerTypeAttr);
+    if (init_type_attr &&
+        init_type_attr == kTfSavedModelInitializerRestoreType) {
+      return init_func_op;
+    }
+  }
+
+  // When the init function with type "restore_op" is not found, fall back to
+  // taking the init function corresponding to the first symbol in the
+  // initializers list to be backwards-compatible, before
+  // tf_saved_model.initializer_type attribute was introduced.
+  if (!session_init_op.getInitializers().empty()) {
+    auto init_func_op =
+        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
+                                              .cast<FlatSymbolRefAttr>()
+                                              .getValue());
     return init_func_op;
   }
+
   return CreateSessionInitFunc(module);
 }
 
-void InitializeVariablesInSessionInitializerPass::runOnOperation() {
-  ModuleOp module = getOperation();
-  if (!session_) return;
+}  // namespace
 
+LogicalResult InitializeVariablesInSessionInitializer(
+    ModuleOp module, tensorflow::Session* session) {
   const tensorflow::DeviceMgr* mgr = nullptr;
-  auto status = session_->LocalDeviceManager(&mgr);
+  auto status = session->LocalDeviceManager(&mgr);
   if (!status.ok()) {
     module->emitError("failed to fetch device manager: " +
                       status.error_message());
-    return signalPassFailure();
+    return failure();
   }
 
   // Fetch all VarHandleOp.
   llvm::StringSet<> variable_names;
   llvm::SmallVector<TF::VarHandleOp, 4> var_ops;
-  for (auto func_op : module.getOps<FuncOp>()) {
+  for (auto func_op : module.getOps<func::FuncOp>()) {
     for (auto var_handle_op : func_op.getOps<TF::VarHandleOp>()) {
       auto variable_name = GetVariableName(var_handle_op);
       if (variable_names.count(variable_name)) continue;
@@ -148,10 +147,10 @@ void InitializeVariablesInSessionInitializerPass::runOnOperation() {
   }
 
   // Get resources from Session.
-  auto resource_tensors_or = GetResourcesFromSession(var_ops, session_);
+  auto resource_tensors_or = GetResourcesFromSession(var_ops, session);
   if (!resource_tensors_or.ok()) {
     module->emitError(resource_tensors_or.status().message().data());
-    return signalPassFailure();
+    return failure();
   }
 
   auto session_init_func = GetOrCreateSessionInitFunc(module);
@@ -178,14 +177,8 @@ void InitializeVariablesInSessionInitializerPass::runOnOperation() {
 
     InitializeVariable(var_op, tensor, session_init_func, builder);
   }
+  return success();
 }
 
-}  // namespace
-
-std::unique_ptr<OperationPass<ModuleOp>>
-CreateInitializeVariablesInSessionInitializerPass(
-    tensorflow::Session* session) {
-  return std::make_unique<InitializeVariablesInSessionInitializerPass>(session);
-}
 }  // namespace tf_saved_model
 }  // namespace mlir

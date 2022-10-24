@@ -16,14 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_CLIENT_TPU_CLIENT_H_
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -33,12 +36,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/casts.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
-constexpr char kTpuPlatform[] = "tpu";
+inline const char* TpuPlatform() {
+  static constexpr char kTpuPlatform[] = "tpu";
+  return kTpuPlatform;
+}
 
 class PyTpuClient;
 
@@ -50,7 +55,9 @@ class TpuDevice : public PjRtDevice {
   const std::array<int, 3>& coords() const { return coords_; }
   int core_on_chip() const { return core_on_chip_; }
 
-  std::string DebugString() const override;
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
 
   static xla::StatusOr<std::vector<std::shared_ptr<xla::PjRtDevice>>>
   GetTpuDevices(const tpu_driver::SystemInfo& system_info);
@@ -77,11 +84,24 @@ class TpuDevice : public PjRtDevice {
     return Unimplemented("Outfeed not yet implemented via this API");
   }
 
+  std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
+      absl::string_view description) const override {
+    return nullptr;
+  }
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
  private:
   const int id_;
   const int process_index_;
   const std::array<int, 3> coords_;
   const std::string device_kind_ = "Cloud TPU";
+  std::string debug_string_;
+  std::string to_string_;
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
   // Index of the core of the same chip.
   int core_on_chip_;
   PyTpuClient* tpu_client_;
@@ -134,7 +154,7 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
 
   tpu_driver::TpuDriver* driver() { return driver_.get(); }
 
-  tensorflow::thread::ThreadPool* GetThreadPool() { return pool_.get(); }
+  tsl::thread::ThreadPool* GetThreadPool() { return pool_.get(); }
 
  protected:
   std::string platform_name_;
@@ -150,7 +170,7 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
   int process_index_;
 
   // A thread pool for scheduling core executions in parallel.
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> pool_;
 };
 
 // Manages a buffer shared amongst multiple users. Buffers are asynchronously
@@ -264,7 +284,7 @@ class PyTpuBuffer {
   // Allocates and optionally initializes a non-tuple buffer on the device.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> CreateBuffer(
       const Shape& non_tuple_shape,
-      absl::optional<BufferInitializer> initializer,
+      std::optional<BufferInitializer> initializer,
       std::shared_ptr<PyTpuClient> client, std::shared_ptr<PjRtDevice> device);
 
   const std::shared_ptr<PyTpuClient> client_;
@@ -275,9 +295,9 @@ class PyTpuBuffer {
   // `child_buffers_` stores the child buffers; else, `device_buffer_` stores
   // the data content and `child_buffers_` is empty.
   mutable absl::Mutex mu_;
-  std::shared_ptr<TpuSharedBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<TpuSharedBuffer> device_buffer_ ABSL_GUARDED_BY(mu_);
   std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyTpuBuffer is destroyed.
@@ -290,7 +310,22 @@ class PyTpuBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ ABSL_GUARDED_BY(mu_);
+};
+
+// A dummy token that is always ready. PyTpuExecutable::Execute() is blocking
+// until the computation finishes.
+class PyTpuToken {
+ public:
+  PyTpuToken() {}
+  Status Await() { return OkStatus(); }
+};
+
+class PyShardedTpuToken {
+ public:
+  PyShardedTpuToken() {}
+  Status Await() { return OkStatus(); }
+  PyTpuToken GetPyToken(int i) { return PyTpuToken(); }
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -299,7 +334,12 @@ class PyTpuExecutable {
  public:
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
+      std::optional<std::vector<Shape>> argument_layouts,
+      const ExecutableBuildOptions* build_options,
+      std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
+
+  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileMlir(
+      mlir::ModuleOp module, std::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 
@@ -346,6 +386,13 @@ class PyTpuExecutable {
   StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> Execute(
       absl::Span<PyTpuBuffer* const> argument_handles);
 
+  StatusOr<std::pair<std::vector<std::unique_ptr<PyTpuBuffer>>, PyTpuToken>>
+  ExecuteWithToken(absl::Span<PyTpuBuffer* const> argument_handles) {
+    TF_ASSIGN_OR_RETURN(auto results, Execute(argument_handles));
+    return std::pair<std::vector<std::unique_ptr<PyTpuBuffer>>, PyTpuToken>(
+        std::move(results), PyTpuToken());
+  }
+
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
@@ -357,6 +404,18 @@ class PyTpuExecutable {
   StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
   ExecuteShardedOnLocalDevices(
       absl::Span<const std::vector<PyTpuBuffer*>> args);
+
+  StatusOr<std::pair<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>,
+                     PyShardedTpuToken>>
+  ExecuteShardedOnLocalDevicesWithTokens(
+      absl::Span<const std::vector<PyTpuBuffer*>> args) {
+    TF_ASSIGN_OR_RETURN(auto results, ExecuteShardedOnLocalDevices(args));
+
+    TF_RET_CHECK(!args.empty());
+    return std::pair<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>,
+                     PyShardedTpuToken>(std::move(results),
+                                        PyShardedTpuToken());
+  }
 
   void Delete() { executables_.clear(); }
 

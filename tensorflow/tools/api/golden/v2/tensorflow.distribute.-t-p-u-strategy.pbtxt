@@ -18,7 +18,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'tpu_cluster_resolver\', \'experimental_device_assignment\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'tpu_cluster_resolver\', \'experimental_device_assignment\', \'experimental_spmd_xla_partitioning\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "colocate_vars_with"

@@ -61,6 +61,7 @@ struct TfLiteTypeToType {};  // Specializations below
 MATCH_TYPE_AND_TFLITE_TYPE(int32_t, kTfLiteInt32);
 MATCH_TYPE_AND_TFLITE_TYPE(uint32_t, kTfLiteUInt32);
 MATCH_TYPE_AND_TFLITE_TYPE(int16_t, kTfLiteInt16);
+MATCH_TYPE_AND_TFLITE_TYPE(uint16_t, kTfLiteUInt16);
 MATCH_TYPE_AND_TFLITE_TYPE(int64_t, kTfLiteInt64);
 MATCH_TYPE_AND_TFLITE_TYPE(float, kTfLiteFloat32);
 MATCH_TYPE_AND_TFLITE_TYPE(unsigned char, kTfLiteUInt8);

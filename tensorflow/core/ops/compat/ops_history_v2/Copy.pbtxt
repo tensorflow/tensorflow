@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Copy"
   input_arg {
     name: "input"

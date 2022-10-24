@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -39,7 +40,7 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
 // Checks if a function only contains a tf_executor.graph.
-bool IsSupportedGraph(FuncOp func) {
+bool IsSupportedGraph(func::FuncOp func) {
   if (!llvm::hasSingleElement(func)) return false;
 
   Block& block = func.front();
@@ -50,7 +51,7 @@ bool IsSupportedGraph(FuncOp func) {
 
   Operation* terminator = block.getTerminator();
   if (graph.getNumResults() != terminator->getNumOperands()) return false;
-  for (auto result : llvm::zip(graph.results(), terminator->getOperands()))
+  for (auto result : llvm::zip(graph.getResults(), terminator->getOperands()))
     if (std::get<0>(result) != std::get<1>(result)) return false;
 
   return true;
@@ -138,7 +139,8 @@ llvm::StringRef FindDeviceFromOperands(
 
 // Propagates devices from function arguments.
 void PropagateDevicesFromArguments(
-    FuncOp func, llvm::DenseMap<Value, llvm::StringRef>& value_to_device) {
+    func::FuncOp func,
+    llvm::DenseMap<Value, llvm::StringRef>& value_to_device) {
   for (BlockArgument& arg : func.getArguments()) {
     auto arg_device_attr =
         func.getArgAttrOfType<StringAttr>(arg.getArgNumber(), kFuncDeviceAttr);
@@ -209,7 +211,7 @@ void PropagateDevicesInGraph(
 
 // Propagates devices to function results.
 void PropagateDevicesToResults(
-    FuncOp func, tf_executor::FetchOp fetch,
+    func::FuncOp func, tf_executor::FetchOp fetch,
     const llvm::DenseMap<Value, llvm::StringRef>& value_to_device) {
   for (OpOperand& operand : fetch.getOperation()->getOpOperands()) {
     if (operand.get().getType().isa<tf_executor::ControlType>()) break;
@@ -224,22 +226,16 @@ void PropagateDevicesToResults(
   }
 }
 
+#define GEN_PASS_DEF_TPUDEVICEPROPAGATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUDevicePropagation
-    : public PassWrapper<TPUDevicePropagation, FunctionPass> {
-  void runOnFunction() override;
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-tpu-device-propagation";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Propagates TPU devices from ops to users";
-  }
+    : public impl::TPUDevicePropagationPassBase<TPUDevicePropagation> {
+  void runOnOperation() override;
 };
 
-void TPUDevicePropagation::runOnFunction() {
-  FuncOp func = getFunction();
+void TPUDevicePropagation::runOnOperation() {
+  func::FuncOp func = getOperation();
   if (!IsSupportedGraph(func)) return;
 
   llvm::DenseMap<Value, llvm::StringRef> value_to_device;
@@ -251,11 +247,9 @@ void TPUDevicePropagation::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTPUDevicePropagationPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTPUDevicePropagationPass() {
   return std::make_unique<TPUDevicePropagation>();
 }
-
-static PassRegistration<TPUDevicePropagation> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

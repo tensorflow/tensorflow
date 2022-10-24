@@ -110,7 +110,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -128,7 +128,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
@@ -138,7 +138,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -180,7 +180,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
         this,
         {input_graph_node, batch_size, num_parallel_calls, drop_remainder},
         attrs, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -202,16 +202,18 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(*mu_);
+      interleave_depth_ = ctx->interleave_depth();
+
       if (num_parallel_calls_->value == model::kAutotune) {
         // If we copy elements in the same batch in parallel, to be safe, we
         // initialize the parallelism to be 1.
         if (dataset()->parallel_copy_) {
           num_parallel_calls_->value = 1;
         } else {
-          num_parallel_calls_->value = ctx->runner_threadpool_size();
+          num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
         }
       }
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
@@ -254,7 +256,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
                        out_tensors, end_of_sequence, &result->output));
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -281,7 +283,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < batch_results_.size(); ++i) {
         TF_RETURN_IF_ERROR(WriteBatchResult(writer, i));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -295,7 +297,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -314,6 +316,9 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
           parallelism == -1
               ? kTraceInfoUnavailable
               : strings::Printf("%lld", static_cast<long long>(parallelism))));
+      result.push_back(std::make_pair(
+          "interleave_depth",
+          strings::Printf("%lld", static_cast<long long>(interleave_depth_))));
       return result;
     }
 
@@ -322,7 +327,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       explicit BatchResult()
           : end_of_input(false),
             num_elements(0),
-            status(Status::OK()),
+            status(OkStatus()),
             call_finished(false),
             output_allocated(false),
             uid(tensorflow::EnvTime::NowNanos()) {}
@@ -402,7 +407,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
                   TF_EXCLUSIVE_LOCKS_REQUIRED(&BatchResult::mu) {
                     result->output_allocated = true;
                     RecordBufferEnqueue(ctx.get(), result->output);
-                    return Status::OK();
+                    return OkStatus();
                   };
           status = CopyBatch(CopyBatchParams(ctx.get()), *batch_elements,
                              dataset()->parallel_copy_,
@@ -541,7 +546,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferEnqueue(ctx, result->output);
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteBatchResult(IteratorStateWriter* writer, size_t index)
@@ -572,7 +577,7 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(
           WriteStatus(prefix(), strings::StrCat(batch_prefix, "_", kStatus),
                       result->status, writer));
-      return Status::OK();
+      return OkStatus();
     }
 
     // Used for coordination between the main thread and the runner thread.
@@ -600,13 +605,19 @@ class ParallelBatchDatasetOp::Dataset : public DatasetBase {
     // TODO(xiaojies): improve the accuracy of the condition used for
     // determining when to record allocated bytes.
     std::deque<std::shared_ptr<BatchResult>> batch_results_ TF_GUARDED_BY(*mu_);
-    // Background thread used for coordinating input processing.
-    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     // Determines whether the transformation has been cancelled.
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;
 
     // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
+
+    // Records the number of ParallelInterleave operations in the path from the
+    // root node to this node (not including this node) in the input pipeline
+    // tree. We record the interleave depth so that it can be included in the
+    // trace metadata.
+    int64 interleave_depth_ = -1;
+    // Background thread used for coordinating input processing.
+    std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
   };
 
   const int64_t batch_size_;

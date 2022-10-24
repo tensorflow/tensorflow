@@ -15,10 +15,6 @@
 
 """Functional operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import re
 
@@ -39,6 +35,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -374,6 +371,8 @@ def map_fn(fn,
         "parallel.", 1)
     parallel_iterations = 1
 
+  # Explicitly read values of ResourceVariables.
+  elems = variable_utils.convert_variables_to_tensors(elems)
   # Flatten the input tensors, and get the TypeSpec for each one.
   elems_flat = nest.flatten(elems)
 
@@ -421,10 +420,11 @@ def map_fn(fn,
 
     # Check that inputs are not scalars.
     first_elem = elems_flat[0]
-    elems_static_shape = first_elem.shape
-    if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
-      raise ValueError(
-          "Elements in elems must be 1+ dimensional Tensors, not scalars")
+    if hasattr(first_elem, "shape"):
+      elems_static_shape = first_elem.shape
+      if elems_static_shape.ndims is not None and elems_static_shape.ndims < 1:
+        raise ValueError(
+            "Elements in elems must be 1+ dimensional Tensors, not scalars")
 
     # Box any composite tensors into tensor lists.
     elems_batchable = _elems_flat_to_batchable(elems_flat)

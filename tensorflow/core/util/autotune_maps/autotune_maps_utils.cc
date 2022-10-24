@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/util/autotune_maps/autotune_maps_utils.h"
 
+#include <string>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -29,6 +32,7 @@ namespace autotune_maps_utils {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 namespace {
+
 using ::stream_executor::gpu::GpuDeviceHandle;
 using ::stream_executor::gpu::GpuDriver;
 
@@ -62,7 +66,7 @@ std::vector<std::string> GetDeviceIdToIdentifierMap() {
     StatusOr<string> device_identifier_or_status =
         DeviceIdToIdentifierHelper(device_id);
     if (device_identifier_or_status.ok()) {
-      map[device_id] = device_identifier_or_status.ValueOrDie();
+      map[device_id] = device_identifier_or_status.value();
     } else {
       map[device_id] = "Unknown Graphics Device";
     }
@@ -75,11 +79,7 @@ std::string DeviceIdToIdentifier(int device_id) {
   // destruct in multi-thread setting.
   static const auto& map =
       *new std::vector<string>(GetDeviceIdToIdentifierMap());
-  if (device_id >= map.size()) {
-    return "Unknown Graphics Device";
-  } else {
-    return map[device_id];
-  }
+  return device_id < map.size() ? map[device_id] : "Unknown Graphics Device";
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

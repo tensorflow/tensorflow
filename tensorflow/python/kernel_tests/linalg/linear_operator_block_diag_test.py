@@ -13,13 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -65,12 +62,25 @@ class SquareLinearOperatorBlockDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-4
     self._atol[dtypes.float32] = 1e-4
     self._atol[dtypes.complex64] = 1e-4
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   @staticmethod
   def operator_shapes_infos():
@@ -343,6 +353,24 @@ class SquareLinearOperatorBlockDiagTest(
     )
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    matrices = []
+    for _ in range(3):
+      matrices.append(variables_module.Variable(
+          linear_operator_test_util.random_positive_definite_matrix(
+              [3, 3], dtype=dtypes.float32, force_well_conditioned=True)))
+
+    operator = block_diag.LinearOperatorBlockDiag(
+        [linalg.LinearOperatorFullMatrix(
+            matrix, is_self_adjoint=True,
+            is_positive_definite=True) for matrix in matrices],
+        is_self_adjoint=True,
+        is_positive_definite=True,
+    )
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
+
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.
     # The matrix values do not effect auto-setting of the flags.
@@ -402,7 +430,12 @@ class NonSquareLinearOperatorBlockDiagTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-4
     self._atol[dtypes.float32] = 1e-4
     self._atol[dtypes.complex64] = 1e-4

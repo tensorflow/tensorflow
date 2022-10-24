@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal_comparison.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <cmath>
 #include <vector>
@@ -25,7 +27,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 using absl::StrAppend;
 using absl::StrAppendFormat;
@@ -41,8 +43,8 @@ template <typename T>
 T GetRawValue(T val) {
   return val;
 }
-uint16 GetRawValue(Eigen::half val) {
-  return Eigen::numext::bit_cast<uint16>(val);
+uint16_t GetRawValue(Eigen::half val) {
+  return Eigen::numext::bit_cast<uint16_t>(val);
 }
 
 // Helper function for comparing a floating point type, FloatT, bitwise equal
@@ -70,17 +72,18 @@ bool CompareEqual(NativeT lhs, NativeT rhs,
 template <>
 bool CompareEqual<bfloat16>(bfloat16 lhs, bfloat16 rhs,
                             absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<bfloat16, uint16>(lhs, rhs, multi_index);
+  return CompareFloatsBitwiseEqual<bfloat16, uint16_t>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<Eigen::half>(Eigen::half lhs, Eigen::half rhs,
                                absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<Eigen::half, uint16>(lhs, rhs, multi_index);
+  return CompareFloatsBitwiseEqual<Eigen::half, uint16_t>(lhs, rhs,
+                                                          multi_index);
 }
 template <>
 bool CompareEqual<float>(float lhs, float rhs,
                          absl::Span<const int64_t> multi_index) {
-  return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs, multi_index);
+  return CompareFloatsBitwiseEqual<float, uint32_t>(lhs, rhs, multi_index);
 }
 template <>
 bool CompareEqual<double>(double lhs, double rhs,
@@ -127,17 +130,17 @@ Status MakeErrorStatus(NativeT lhs, NativeT rhs,
 template <>
 Status MakeErrorStatus(bfloat16 lhs, bfloat16 rhs,
                        absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<bfloat16, uint16>(lhs, rhs, multi_index);
+  return MakeBitwiseErrorStatus<bfloat16, uint16_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(Eigen::half lhs, Eigen::half rhs,
                        absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<Eigen::half, uint16>(lhs, rhs, multi_index);
+  return MakeBitwiseErrorStatus<Eigen::half, uint16_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(float lhs, float rhs,
                        absl::Span<const int64_t> multi_index) {
-  return MakeBitwiseErrorStatus<float, uint32>(lhs, rhs, multi_index);
+  return MakeBitwiseErrorStatus<float, uint32_t>(lhs, rhs, multi_index);
 }
 template <>
 Status MakeErrorStatus(double lhs, double rhs,
@@ -181,13 +184,20 @@ Status Equal(LiteralSlice expected, LiteralSlice actual,
     if (mismatched) {
       mismatched->Set<bool>(multi_index, !result);
     }
-    return result ? Status::OK()
+    return result ? OkStatus()
                   : MakeErrorStatus<NativeT>(expected_value, actual_value,
                                              multi_index);
   }
 
   Status result;
-  for (int64_t i = 0; i < expected.shape().dimensions(dimension); ++i) {
+  int64_t upper_bound = expected.shape().dimensions(dimension);
+  if (expected.shape().is_dynamic_dimension(dimension)) {
+    // If the dimension is dynamic, we only want to check up until the actual
+    // dynamic size specified by the literal.
+    upper_bound = expected.GetDynamicSize(dimension);
+  }
+
+  for (int64_t i = 0; i < upper_bound; ++i) {
     multi_index[dimension] = i;
     if (mismatched != nullptr) {
       result.Update(Equal<NativeT>(expected, actual, multi_index, dimension + 1,
@@ -229,28 +239,28 @@ bool IsNan(NativeT value) {
 }
 
 // Converts the given floating-point value to a string.
-string FpValueToString(bfloat16 value) {
+std::string FpValueToString(bfloat16 value) {
   return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
 
-string FpValueToString(half value) {
+std::string FpValueToString(half value) {
   return absl::StrFormat("%11.5g", static_cast<double>(value));
 }
 
-string FpValueToString(float value) {
+std::string FpValueToString(float value) {
   return absl::StrFormat("%15.9g", static_cast<double>(value));
 }
 
-string FpValueToString(double value) {
+std::string FpValueToString(double value) {
   return absl::StrFormat("%24.17g", value);
 }
 
-string FpValueToString(complex64 value) {
+std::string FpValueToString(complex64 value) {
   return absl::StrCat(FpValueToString(value.real()), " + ",
                       FpValueToString(value.imag()));
 }
 
-string FpValueToString(complex128 value) {
+std::string FpValueToString(complex128 value) {
   return absl::StrCat(FpValueToString(value.real()), " + ",
                       FpValueToString(value.imag()));
 }
@@ -306,7 +316,7 @@ class NearComparator {
       return rel_error < other.rel_error;
     }
 
-    string ToString(const Shape& shape) const {
+    std::string ToString(const Shape& shape) const {
       return absl::StrFormat(
           "actual %s, expected %s, index %s, rel error %8.3g, abs error %8.3g",
           FpValueToString(actual), FpValueToString(expected),
@@ -347,9 +357,11 @@ class NearComparator {
     CompareLiterals();
 
     if (num_mismatches_ == 0) {
-      return Status::OK();
+      return OkStatus();
     } else if (!VLOG_IS_ON(1) && miscompare_callback_ != nullptr) {
-      miscompare_callback_(expected_, actual_, mismatches_, shape_index_);
+      miscompare_callback_(
+          expected_, actual_, mismatches_, shape_index_,
+          ErrorBuckets(abs_error_buckets_, rel_error_buckets_));
     }
     return InvalidArgument("%s", ErrorMessage());
   }
@@ -507,9 +519,11 @@ class NearComparator {
 
   // Compares the two literals elementwise.
   void CompareLiterals() {
-    // Fast path optimization for the case were layouts match.
+    // Fast path optimization for the case were layouts match and the shapes are
+    // static.
     if (LayoutUtil::Equal(actual_.shape().layout(),
-                          expected_.shape().layout())) {
+                          expected_.shape().layout()) &&
+        expected_.shape().is_static() && actual_.shape().is_static()) {
       absl::Span<const NativeT> expected_data = expected_.data<NativeT>();
       absl::Span<const NativeT> actual_data = actual_.data<NativeT>();
       const int64_t len = expected_data.size();
@@ -522,9 +536,9 @@ class NearComparator {
     CompareLiteralsSlow(0, &multi_index);
   }
 
-  // Slow path for CompareLiterals when 'actual' and 'expected' literals have
-  // different layouts. In this case, multidimensional indices are constructed
-  // and indexed for each element.
+  // Slow path for CompareLiterals when 'actual' and 'expected' literals are
+  // dynamic or have different layouts. In this case, multidimensional indices
+  // are constructed and indexed for each element.
   void CompareLiteralsSlow(int64_t dimension,
                            std::vector<int64_t>* multi_index) {
     if (dimension == multi_index->size()) {
@@ -533,7 +547,13 @@ class NearComparator {
                     IndexUtil::MultidimensionalIndexToLinearIndex(
                         actual_.shape(), *multi_index));
     } else {
-      for (int64_t i = 0; i < expected_.shape().dimensions(dimension); ++i) {
+      int64_t upper_bound = expected_.shape().dimensions(dimension);
+      if (expected_.shape().is_dynamic_dimension(dimension)) {
+        // If the dimension is dynamic, we only want to check up until the
+        // actual dynamic size specified by the literal.
+        upper_bound = expected_.GetDynamicSize(dimension);
+      }
+      for (int64_t i = 0; i < upper_bound; ++i) {
         (*multi_index)[dimension] = i;
         CompareLiteralsSlow(dimension + 1, multi_index);
       }
@@ -542,8 +562,8 @@ class NearComparator {
 
   // Returns an error message string with a detailed breakdown of the
   // mismatches. Called after calling Run().
-  string ErrorMessage() {
-    string out;
+  std::string ErrorMessage() {
+    std::string out;
     int64_t element_count = ShapeUtil::ElementsIn(actual_.shape());
 
     auto percent_string = [](float a, float b) {
@@ -576,7 +596,7 @@ class NearComparator {
     for (int i = 0; i < abs_value_buckets_.size(); ++i) {
       const int64_t bucket_size = abs_value_buckets_[i].first;
       const int64_t bucket_mismatches = abs_value_buckets_[i].second;
-      string mismatch_str =
+      std::string mismatch_str =
           bucket_mismatches > 0
               ? absl::StrFormat(", mismatches %d", bucket_mismatches)
               : "";
@@ -586,7 +606,7 @@ class NearComparator {
                       mismatch_str);
     }
 
-    auto print_accum_buckets = [&](const string& header, int64_t total,
+    auto print_accum_buckets = [&](const std::string& header, int64_t total,
                                    absl::Span<const int64_t> buckets) {
       StrAppend(&out, header, ":\n");
       StrAppendFormat(&out, "  <  %-6g : %7d (%s)\n", kErrorBucketBounds[0],
@@ -713,25 +733,25 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         result = Equal<bool>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S8:
-        result = Equal<int8>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int8_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S16:
-        result = Equal<int16>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int16_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S32:
-        result = Equal<int32>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<int32_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case S64:
         result = Equal<int64_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U8:
-        result = Equal<uint8>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint8_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U16:
-        result = Equal<uint16>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint16_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U32:
-        result = Equal<uint32>(expected, actual, index, 0, miscompared_ptr);
+        result = Equal<uint32_t>(expected, actual, index, 0, miscompared_ptr);
         break;
       case U64:
         result = Equal<uint64_t>(expected, actual, index, 0, miscompared_ptr);
@@ -756,7 +776,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
         break;
       case TOKEN:
         // Tokens have no on-device representation and are trivially equal.
-        return Status::OK();
+        return OkStatus();
       default:
         LOG(FATAL) << "Unsupported primitive type: "
                    << PrimitiveType_Name(expected.shape().element_type());
@@ -764,7 +784,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 
     if (!result.ok() && miscompare_callback) {
       miscompare_callback(expected, actual, LiteralSlice(miscompared),
-                          shape_index);
+                          shape_index, ErrorBuckets());
     }
   }
 
@@ -776,7 +796,7 @@ Status EqualHelper(const LiteralSlice& expected, const LiteralSlice& actual,
 // currently being compared.
 Status NearHelper(const LiteralSlice& expected, const LiteralSlice& actual,
                   const ShapeIndex& shape_index, const ErrorSpec& error,
-                  absl::optional<bool> detailed_message,
+                  std::optional<bool> detailed_message,
                   const MiscompareCallback& miscompare_callback) {
   TF_RETURN_IF_ERROR(EqualShapes(expected.shape(), actual.shape()));
 
@@ -909,7 +929,7 @@ Status EqualShapes(const Shape& expected, const Shape& actual) {
     }
   }
   // Non-array, non-tuple shapes are trivially equivalent.
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -939,7 +959,7 @@ Status Equal(const LiteralSlice& expected, const LiteralSlice& actual) {
 }
 
 Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
-            const ErrorSpec& error, absl::optional<bool> detailed_message,
+            const ErrorSpec& error, std::optional<bool> detailed_message,
             const MiscompareCallback& miscompare_callback) {
   VLOG(1) << "Expected literal:";
   XLA_VLOG_LINES(1, expected.ToString());
@@ -950,7 +970,7 @@ Status Near(const LiteralSlice& expected, const LiteralSlice& actual,
   return EmitLiteralsInErrorMessage(result, expected, actual);
 }
 
-string ToStringTruncated(const LiteralSlice& literal) {
+std::string ToStringTruncated(const LiteralSlice& literal) {
   return RecursiveElementCount(literal.shape()) < 1000
              ? literal.ToString()
              : "[TRUNCATED, Literal with more than 1000 values]";

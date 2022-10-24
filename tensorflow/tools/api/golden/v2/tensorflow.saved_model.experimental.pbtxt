@@ -2,7 +2,7 @@ path: "tensorflow.saved_model.experimental"
 tf_module {
   member {
     name: "TrackableResource"
-    mtype: "<class \'tensorflow.python.training.tracking.tracking.ResourceMetaclass\'>"
+    mtype: "<class \'tensorflow.python.trackable.resource._ResourceMetaclass\'>"
   }
   member {
     name: "VariablePolicy"

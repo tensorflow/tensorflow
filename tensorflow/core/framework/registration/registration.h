@@ -141,7 +141,7 @@ struct InitOnStartupMarker {
 //
 // Usage:
 //   #define M_IMPL(id, a, b) ...
-//   #define M(a, b) TF_NEW_ID_FOR_INIT(M, a, b)
+//   #define M(a, b) TF_NEW_ID_FOR_INIT(M_IMPL, a, b)
 #define TF_NEW_ID_FOR_INIT_2(m, c, ...) m(c, __VA_ARGS__)
 #define TF_NEW_ID_FOR_INIT_1(m, c, ...) TF_NEW_ID_FOR_INIT_2(m, c, __VA_ARGS__)
 #define TF_NEW_ID_FOR_INIT(m, ...) \

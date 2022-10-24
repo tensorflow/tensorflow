@@ -64,6 +64,7 @@ REGISTER_OP("RaggedCross")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<DataType> ragged_values_types;
       std::vector<DataType> ragged_splits_types;
+      std::vector<DataType> sparse_values_types;
       std::vector<DataType> dense_types;
 
       TF_RETURN_IF_ERROR(
@@ -71,15 +72,21 @@ REGISTER_OP("RaggedCross")
       TF_RETURN_IF_ERROR(
           c->GetAttr("ragged_splits_types", &ragged_splits_types));
       TF_RETURN_IF_ERROR(c->GetAttr("dense_types", &dense_types));
+      TF_RETURN_IF_ERROR(
+          c->GetAttr("sparse_values_types", &sparse_values_types));
 
       int num_ragged = ragged_values_types.size();
       if (num_ragged != ragged_splits_types.size()) {
         return errors::InvalidArgument(
-            "Parameters `values` and `row_splits` must be the same length");
+            "ragged values and splits must have the same length.");
       }
 
       int num_sparse;
       TF_RETURN_IF_ERROR(c->GetAttr("Nsparse", &num_sparse));
+      if (num_sparse != sparse_values_types.size()) {
+        return errors::InvalidArgument(
+            "sparse indices and values must have the same length");
+      }
 
       ShapeHandle out_values = c->UnknownShapeOfRank(1);
       ShapeHandle out_splits = c->UnknownShapeOfRank(1);
@@ -99,6 +106,13 @@ REGISTER_OP("RaggedCross")
       int dense_start = num_ragged * 2 + num_sparse * 3;
       for (int i = 0; i < dense_types.size(); ++i) {
         ShapeHandle dense_input = c->input(i + dense_start);
+        int32 rank = c->Rank(dense_input);
+        if (rank == InferenceContext::kUnknownRank) {
+          continue;
+        } else if (rank != 2) {
+          return errors::InvalidArgument(
+              "tf.ragged.cross only supports inputs with rank=2");
+        }
         int64_t batch_size = c->Value(c->Dim(dense_input, 0));
         if (batch_size != InferenceContext::kUnknownDim) {
           ShapeHandle row_splits = c->Vector(batch_size + 1);
@@ -111,7 +125,7 @@ REGISTER_OP("RaggedCross")
 
       c->set_output(0, out_values);
       c->set_output(1, out_splits);
-      return Status::OK();
+      return OkStatus();
     });
 
 //==============================================================================
@@ -153,7 +167,7 @@ Status RaggedGatherShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->Concatenate(c->UnknownShapeOfRank(1), value, &values));
   c->set_output(num_splits, values);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

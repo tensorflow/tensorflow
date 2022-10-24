@@ -4,120 +4,120 @@
 // methods.
 
 // CHECK-LABEL: tensor_type_noconstraint
-func private @tensor_type_noconstraint() -> !tfr.tensor
+func.func private @tensor_type_noconstraint() -> !tfr.tensor
 
 // -----
 
 // CHECK-LABEL: tensor_type
-func private @tensor_type() -> !tfr.tensor<T>
+func.func private @tensor_type() -> !tfr.tensor<T>
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_noconstraint
-func private @tensor_list_type_noconstraint() -> !tfr.tensor_list
+func.func private @tensor_list_type_noconstraint() -> !tfr.tensor_list
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_array_like
-func private @tensor_list_type_array_like() -> !tfr.tensor_list<[N, T]>
+func.func private @tensor_list_type_array_like() -> !tfr.tensor_list<[N, T]>
 
 // -----
 
 // CHECK-LABEL: tensor_list_type_tuple_like
-func private @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
+func.func private @tensor_list_type_tuple_like() -> !tfr.tensor_list<input_T>
 
 // -----
 
 // expected-error@+1 {{unbalanced '>' character in pretty dialect name}}
-func private @tensor_invalid_1() -> !tfr.tensor<[N, T>
+func.func private @tensor_invalid_1() -> !tfr.tensor<[N, T>
 
 // -----
 
-// expected-error@+1 {{unexpected nul or EOF in pretty dialect name}}
-func @tensor_invalid_2() -> !tfr.tensor<[N, T]
+// expected-error@+1 {{unbalanced}}
+func.func @tensor_invalid_2() -> !tfr.tensor<[N, T]
 
 // -----
 
 // CHECK-LABEL: call_op
-func @call_op(%arg0: !tfr.tensor<T>, %arg1: !tfr.tensor_list<TL>, %arg2: i32) -> !tfr.tensor<K> {
+func.func @call_op(%arg0: !tfr.tensor<T>, %arg1: !tfr.tensor_list<TL>, %arg2: i32) -> !tfr.tensor<K> {
   %0 = tfr.call @Foo(%arg0, %arg1, %arg2) : (!tfr.tensor<T>, !tfr.tensor_list<TL>, i32) -> !tfr.tensor<K>
-  return %0 : !tfr.tensor<K>
+  func.return %0 : !tfr.tensor<K>
 }
 
 // -----
 
 // CHECK-LABEL: call_op_arg_attr(%arg0: i32) -> !tfr.tensor<K>
-func @call_op_arg_attr(%arg0: i32) -> !tfr.tensor<K> {
+func.func @call_op_arg_attr(%arg0: i32) -> !tfr.tensor<K> {
   %0 = tfr.call @Bar(%arg0) : (i32) -> !tfr.tensor<K>
-  return %0 : !tfr.tensor<K>
+  func.return %0 : !tfr.tensor<K>
 }
 
 // -----
 
-func @call_op_invalid_1(%arg0: tensor<?xf32>) -> !tfr.tensor<K> {
+func.func @call_op_invalid_1(%arg0: tensor<?xf32>) -> !tfr.tensor<K> {
   // expected-error@+1 {{got 'tensor<?xf32>'}}
   %0 = tfr.call @Huu(%arg0)  : (tensor<?xf32>) -> !tfr.tensor<K>
-  return %0 : !tfr.tensor<K>
+  func.return %0 : !tfr.tensor<K>
 }
 
 // -----
 
 // CHECK-LABEL: get_shape
-func @get_shape(%arg0: !tfr.tensor) -> (!shape.shape, !shape.shape) {
+func.func @get_shape(%arg0: !tfr.tensor) -> (!shape.shape, !shape.shape) {
   %0 = tfr.get_shape %arg0 -> !shape.shape
   %1 = "tfr.get_shape"(%arg0) : (!tfr.tensor) -> !shape.shape
-  return %0, %1 : !shape.shape, !shape.shape
+  func.return %0, %1 : !shape.shape, !shape.shape
 }
 
 // -----
 
 // CHECK-LABEL: get_real_shape
-func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
+func.func @get_real_shape(%arg0: tensor<1x2xf32>) -> tensor<2xindex> {
   %0 = "tfr.cast"(%arg0) : (tensor<1x2xf32>) -> !tfr.tensor
   %1 = tfr.get_shape %0 -> !shape.shape
   %2 = shape.to_extent_tensor %1 : !shape.shape -> tensor<2xindex>
-  return %2 : tensor<2xindex>
+  func.return %2 : tensor<2xindex>
 }
 
 // -----
 
-func @get_element_type(%arg0: !tfr.tensor) -> (!tfr.attr, !tfr.attr) {
+func.func @get_element_type(%arg0: !tfr.tensor) -> (!tfr.attr, !tfr.attr) {
   %0 = tfr.get_element_type %arg0 -> !tfr.attr
   %1 = "tfr.get_element_type"(%arg0) : (!tfr.tensor) -> !tfr.attr
-  return %0, %1 : !tfr.attr, !tfr.attr
+  func.return %0, %1 : !tfr.attr, !tfr.attr
 }
 
 // -----
 
 // CHECK-LABEL: from_tf_tensor
-func @from_tf_tensor(%arg0: tensor<?xf32>) -> !tfr.tensor<K> {
+func.func @from_tf_tensor(%arg0: tensor<?xf32>) -> !tfr.tensor<K> {
   %0 = "tfr.cast"(%arg0) : (tensor<?xf32>) -> !tfr.tensor<K>
-  return %0 : !tfr.tensor<K>
+  func.return %0 : !tfr.tensor<K>
 }
 
 // -----
 
 // CHECK-LABEL: to_tf_tensor
-func @to_tf_tensor(%arg0: !tfr.tensor<T>) -> tensor<?xi32> {
+func.func @to_tf_tensor(%arg0: !tfr.tensor<T>) -> tensor<?xi32> {
   %0 = "tfr.cast"(%arg0) : (!tfr.tensor<T>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // -----
 
 // CHECK-LABEL: constant
-func @constant() -> (!tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr) {
+func.func @constant() -> (!tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr) {
   %0 = tfr.constant f32 -> !tfr.attr
   %1 = tfr.constant [f32, i32] -> !tfr.attr
   %2 = "tfr.constant"() {value = f32} : () -> !tfr.attr
   %3 = "tfr.constant"() {value = [f32, i32]} : () -> !tfr.attr
-  return %0, %1, %2, %3 : !tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr
+  func.return %0, %1, %2, %3 : !tfr.attr, !tfr.attr, !tfr.attr, !tfr.attr
 }
 
 // -----
 
 // CHECK-LABEL: equal
-func @equal() -> (i1, i1, i1, i1) {
+func.func @equal() -> (i1, i1, i1, i1) {
   %0 = tfr.constant f32 -> !tfr.attr
   %1 = tfr.constant f32 -> !tfr.attr
   %2 = tfr.constant i32 -> !tfr.attr
@@ -129,169 +129,169 @@ func @equal() -> (i1, i1, i1, i1) {
   %5 = tfr.constant "how are you" -> !tfr.attr
   %same_str = tfr.equal %3,%4 -> i1
   %diff_str = tfr.equal %3,%5 -> i1
-  return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
+  func.return %same_type, %diff_type, %same_str, %diff_str  : i1, i1, i1, i1
 }
 
 // -----
 
 // CHECK-LABEL: constant_tensor_scalar
-func @constant_tensor_scalar(%arg0: i32) -> tensor<i32> {
+func.func @constant_tensor_scalar(%arg0: i32) -> tensor<i32> {
   %0 = "tfr.constant_tensor"(%arg0) : (i32) -> tensor<i32>
-  return %0 : tensor<i32>
+  func.return %0 : tensor<i32>
 }
 
 // -----
 
 // CHECK-LABEL: constant_tensor_vector
-func @constant_tensor_vector(%arg0: vector<1x2xi32>) -> tensor<1x2xi32> {
+func.func @constant_tensor_vector(%arg0: vector<1x2xi32>) -> tensor<1x2xi32> {
   %0 = "tfr.constant_tensor"(%arg0) : (vector<1x2xi32>) -> tensor<1x2xi32>
-  return %0 : tensor<1x2xi32>
+  func.return %0 : tensor<1x2xi32>
 }
 
 // -----
 
 // CHECK-LABEL: constant_tensor_array
-func @constant_tensor_array() -> !tfr.tensor {
+func.func @constant_tensor_array() -> !tfr.tensor {
   %0 = tfr.constant [1, -1, 3] -> !tfr.attr
   %1 = "tfr.constant_tensor"(%0) : (!tfr.attr) -> !tfr.tensor
-  return %1 : !tfr.tensor
+  func.return %1 : !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: constant_tensor_scalar
-func @constant_tensor_scalar() -> !tfr.tensor {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
+func.func @constant_tensor_scalar() -> !tfr.tensor {
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
   %1 = "tfr.constant_tensor"(%0) : (i32) -> !tfr.tensor
-  return %1 : !tfr.tensor
+  func.return %1 : !tfr.tensor
 }
 
 // -----
 
-func @constant_tensor_invalid_0(%arg0: i32) -> tensor<f32> {
+func.func @constant_tensor_invalid_0(%arg0: i32) -> tensor<f32> {
     // expected-error@+1 {{input and output should have the same scalar types.}}
   %0 = "tfr.constant_tensor"(%arg0) : (i32) -> tensor<f32>
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }
 
 // -----
 
-func @constant_tensor_invalid_1(%arg0: vector<1xi32>) -> tensor<?xi32> {
+func.func @constant_tensor_invalid_1(%arg0: vector<1xi32>) -> tensor<?xi32> {
     // expected-error@+1 {{output type should be static and ranked}}
   %0 = "tfr.constant_tensor"(%arg0) : (vector<1xi32>) -> tensor<?xi32>
-  return %0 : tensor<?xi32>
+  func.return %0 : tensor<?xi32>
 }
 
 // -----
 
-func @constant_tensor_invalid_2(%arg0: vector<1xi32>) -> tensor<1xf32> {
+func.func @constant_tensor_invalid_2(%arg0: vector<1xi32>) -> tensor<1xf32> {
     // expected-error@+1 {{input and output should have same shape and element type}}
   %0 = "tfr.constant_tensor"(%arg0) : (vector<1xi32>) -> tensor<1xf32>
-  return %0 : tensor<1xf32>
+  func.return %0 : tensor<1xf32>
 }
 
 // -----
 
-func @constant_tensor_invalid_3(%arg0: vector<1xi32>) -> tensor<1x1xi32> {
+func.func @constant_tensor_invalid_3(%arg0: vector<1xi32>) -> tensor<1x1xi32> {
     // expected-error@+1 {{input and output should have same shape and element type}}
   %0 = "tfr.constant_tensor"(%arg0) : (vector<1xi32>) -> tensor<1x1xi32>
-  return %0 : tensor<1x1xi32>
+  func.return %0 : tensor<1x1xi32>
 }
 
 // -----
 
-func @constant_tensor_invalid_4(%arg0: i32) -> tensor<1x1xi32> {
+func.func @constant_tensor_invalid_4(%arg0: i32) -> tensor<1x1xi32> {
     // expected-error@+1 {{input can not be converted to an output tensor}}
   %0 = "tfr.constant_tensor"(%arg0) : (i32) -> tensor<1x1xi32>
-  return %0 : tensor<1x1xi32>
+  func.return %0 : tensor<1x1xi32>
 }
 
 // -----
 
 // CHECK-LABEL: get_element
-func @get_element(%arg0: !tfr.tensor_list<T>) -> !tfr.tensor {
-  %cst = "std.constant"() {value = 1 : index} : () -> index
+func.func @get_element(%arg0: !tfr.tensor_list<T>) -> !tfr.tensor {
+  %cst = "arith.constant"() {value = 1 : index} : () -> index
   %0 = tfr.get_element %arg0[%cst] : (!tfr.tensor_list<T>, index) -> !tfr.tensor
-  return %0 : !tfr.tensor
+  func.return %0 : !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: build_list
-func @build_list(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> !tfr.tensor_list {
+func.func @build_list(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> !tfr.tensor_list {
   %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
-  return %0 : !tfr.tensor_list
+  func.return %0 : !tfr.tensor_list
 }
 
 // -----
 
 // CHECK-LABEL: quant_act_range
-func @quant_act_range(%arg0: !tfr.attr, %arg1: f32, %arg2: i64) -> !tfr.tensor {
+func.func @quant_act_range(%arg0: !tfr.attr, %arg1: f32, %arg2: i64) -> !tfr.tensor {
   %0:2 = "tfr.quant_act_range"(%arg0, %arg1, %arg2) : (!tfr.attr,f32,i64) -> (!tfr.tensor,!tfr.tensor)
-  return %0#0 : !tfr.tensor
+  func.return %0#0 : !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: quant_rescale
-func @quant_rescale(%arg0: !tfr.tensor, %arg1: !tfr.tensor, %arg2: i64) -> !tfr.tensor {
+func.func @quant_rescale(%arg0: !tfr.tensor, %arg1: !tfr.tensor, %arg2: i64) -> !tfr.tensor {
   %0 = "tfr.quant_rescale"(%arg0, %arg1, %arg2) : (!tfr.tensor, !tfr.tensor, i64) -> (!tfr.tensor)
-  return %0 : !tfr.tensor
+  func.return %0 : !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: quant_raw_data
-func @quant_raw_data(%arg0: !tfr.tensor) -> !tfr.tensor {
+func.func @quant_raw_data(%arg0: !tfr.tensor) -> !tfr.tensor {
   %0 = "tfr.quant_raw_data"(%arg0) : (!tfr.tensor) -> (!tfr.tensor)
-  return %0 : !tfr.tensor
+  func.return %0 : !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: quant_qparam
-func @quant_qparam(%arg0: !tfr.tensor) -> (!tfr.tensor, !tfr.tensor) {
+func.func @quant_qparam(%arg0: !tfr.tensor) -> (!tfr.tensor, !tfr.tensor) {
   %scale, %zp = tfr.quant_qparam(%arg0) : (!tfr.tensor) -> (!tfr.tensor, !tfr.tensor)
-  return %scale, %zp : !tfr.tensor, !tfr.tensor
+  func.return %scale, %zp : !tfr.tensor, !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: quant_scale_factor
-func @quant_scale_factor(%arg0: f32, %arg1: !tfr.tensor_list) -> (!tfr.tensor) {
+func.func @quant_scale_factor(%arg0: f32, %arg1: !tfr.tensor_list) -> (!tfr.tensor) {
   %0 = "tfr.quant_scale_factor"(%arg0, %arg1) : (f32, !tfr.tensor_list) -> (!tfr.tensor)
-  return %0 : !tfr.tensor
+  func.return %0 : !tfr.tensor
 }
 
 // -----
 
 // CHECK-LABEL: build_const_list
-func @build_const_list() -> !tfr.attr {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
-  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+func.func @build_const_list() -> !tfr.attr {
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
+  %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
-  return %2 : !tfr.attr
+  func.return %2 : !tfr.attr
 }
 
 // -----
 
 // CHECK-LABEL: build_high_dim_const_list
-func @build_high_dim_const_list() -> !tfr.attr {
-  %0 = "std.constant"() {value = 42 : i32} : () -> i32
-  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+func.func @build_high_dim_const_list() -> !tfr.attr {
+  %0 = "arith.constant"() {value = 42 : i32} : () -> i32
+  %1 = "arith.constant"() {value = 41 : i32} : () -> i32
   %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
   %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
-  return %4 : !tfr.attr
+  func.return %4 : !tfr.attr
 }
 
 // -----
 
 // CHECK-LABEL: get_length
-func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
+func.func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
   %0 = "tfr.build_list"(%arg0, %arg1) : (!tfr.tensor<A>, !tfr.tensor<B>) -> !tfr.tensor_list
   %1 = "tfr.get_length"(%0) : (!tfr.tensor_list) -> index
-  return %1 : index
+  func.return %1 : index
 }
 
 // -----

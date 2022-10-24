@@ -26,10 +26,6 @@ This includes converting Python lists to TensorArray/TensorList.
 #   * convert to TensorArray only when complete write once behavior can be
 #     guaranteed (e.g. list comprehensions)
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gast
 
 from tensorflow.python.autograph.core import converter

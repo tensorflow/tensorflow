@@ -14,14 +14,11 @@
 # ==============================================================================
 """Tests for tf.ragged.cross and tf.ragged.matmul."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -170,6 +167,28 @@ class RaggedMatmulOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           ], [3, 4]], [[2, 4, 6], [1, 3, 5], [7, 8, 9], [1, 2, 3], [3, 2, 1]]]),
           transpose_b=True,
           expected_shape=[2, None, 5]),
+      dict(
+          testcase_name='2xIx3_times_2xJx3_transpose_b',
+          a=lambda: ragged_factory_ops.constant([
+              [[1., 2., 3.], [3., 4., 5.]],
+              [[1., 3., 5.], [5., 7., 9.], [9., 11., 13.]]],
+                                                ragged_rank=1),
+          b=lambda: ragged_factory_ops.constant([
+              [[10., 20., 30.], [30., 40., 50.],
+               [50., 60., 70.], [70., 80., 90.]],
+              [[11., 21., 31.]]], ragged_rank=1),
+          transpose_b=True,
+          expected_shape=[2, None, None]),
+      dict(
+          testcase_name='2x2x3_times_2xIx3_transpose_b',
+          a=lambda: constant_op.constant([
+              [[1., 2., 3.], [3., 4., 5.]], [[1., 3., 5.], [5., 7., 9.]]]),
+          b=lambda: ragged_factory_ops.constant([
+              [[10., 20., 30.], [30., 40., 50.],
+               [50., 60., 70.], [70., 80., 90.]],
+              [[11., 21., 31.]]], ragged_rank=1),
+          transpose_b=True,
+          expected_shape=[2, None, None]),
   ])
   def testMatmul(self, a, b, expected_shape=None, **kwargs):
     if callable(a):

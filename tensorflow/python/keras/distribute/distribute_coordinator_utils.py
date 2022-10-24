@@ -21,10 +21,6 @@ subject to cleanup once TF1 is no longer supported.
 TODO(rchao): Remove this module once TF1 is not supported.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import json
 import os

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for MirroredStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import json
 import sys
 
@@ -27,13 +23,13 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
@@ -41,6 +37,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -60,6 +57,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import traceback_utils
 
 
 GPU_TEST = "test_gpu" in sys.argv[0]
@@ -271,7 +269,7 @@ class MirroredTwoDeviceDistributionTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")
@@ -293,7 +291,7 @@ class MirroredTwoDeviceDistributionTest(
     if context.executing_eagerly():
       item = next(iter(dataset))
     else:
-      if isinstance(dataset, input_lib.DistributedDatasetV1):
+      if isinstance(dataset, input_lib_v1.DistributedDatasetV1):
         item = dataset.make_initializable_iterator().get_next()
       else:
         self.skipTest("unsupported test combination")
@@ -301,6 +299,61 @@ class MirroredTwoDeviceDistributionTest(
         tf_device.DeviceSpec.from_string(tensor.device).device_type for
         tensor in item.values}
     self.assertAllEqual(list(device_types), ["CPU"])
+
+
+@combinations.generate(
+    combinations.combine(
+        mode=["eager", "graph"], required_gpus=[2]))
+class MirroredCollectiveOpTest(strategy_test_lib.DistributionTestBase,
+                               strategy_test_lib.TwoDeviceDistributionTestBase,
+                               parameterized.TestCase):
+
+  def tearDown(self):
+    super(MirroredCollectiveOpTest, self).tearDown()
+    context._reset_context()
+
+  def testAllCpu(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "CPU:1"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.RING)
+    fn()
+
+  def testMixedDevices(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["CPU:0", "GPU:0"])
+      self.assertIsInstance(
+          strategy.extended._collective_ops,
+          cross_device_ops_lib.ReductionToOneDevice)
+    fn()
+
+  def testAllPhysicalGpu(self):
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.NCCL)
+    fn()
+
+  def testVirtualGpu(self):
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    # Logical devices cannot be changed after context initialization.
+    context._reset_context()
+    context.context().set_logical_device_configuration(physical_gpus[1], [
+        context.LogicalDeviceConfiguration(memory_limit=1024),
+        context.LogicalDeviceConfiguration(memory_limit=1024)
+    ])
+    @def_function.function
+    def fn():
+      strategy = mirrored_strategy.MirroredStrategy(["GPU:0", "GPU:1", "GPU:2"])
+      self.assertEqual(
+          strategy.extended._collective_ops._options.implementation,
+          collective_util.CommunicationImplementation.RING)
+    fn()
 
 
 def one_device_combinations():
@@ -1451,6 +1504,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return f()
 
       distribution.run(replica_fn)
+
+  def testPreserveTracebackFiltering(self, distribution):
+    traceback_utils.disable_traceback_filtering()
+    self.assertFalse(traceback_utils.is_traceback_filtering_enabled())
+
+    def f():
+      self.assertFalse(traceback_utils.is_traceback_filtering_enabled())
+
+    distribution.run(f)
 
 
 def _replica_id():

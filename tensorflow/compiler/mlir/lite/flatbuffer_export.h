@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"

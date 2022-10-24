@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.kernels.logging_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import string
 import sys
@@ -274,7 +270,7 @@ class PrintV2Test(test.TestCase):
     self.assertIn((expected + "\n"), printed.contents())
 
   def testPrintTensorsToFile(self):
-    tmpfile_name = tempfile.mktemp(".printv2_test")
+    fd, tmpfile_name = tempfile.mkstemp(".printv2_test")
     tensor_0 = math_ops.range(0, 10)
     print_op_0 = logging_ops.print_v2(tensor_0,
                                       output_stream="file://"+tmpfile_name)
@@ -284,14 +280,14 @@ class PrintV2Test(test.TestCase):
                                       output_stream="file://"+tmpfile_name)
     self.evaluate(print_op_1)
     try:
-      f = open(tmpfile_name, "r")
+      f = os.fdopen(fd, "r")
       line_0 = f.readline()
       expected_0 = "[0 1 2 ... 7 8 9]"
       self.assertTrue(expected_0 in line_0)
       line_1 = f.readline()
       expected_1 = "[11 12 13 ... 17 18 19]"
       self.assertTrue(expected_1 in line_1)
-      f.close()
+      os.close(fd)
       os.remove(tmpfile_name)
     except IOError as e:
       self.fail(e)

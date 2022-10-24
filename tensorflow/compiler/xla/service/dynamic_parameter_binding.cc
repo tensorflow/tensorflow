@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
+
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -25,15 +26,15 @@ Status DynamicParameterBinding::Bind(
     const DynamicDimension& dynamic_dimension) {
   auto result = bindings_.emplace(dynamic_dimension, dynamic_parameter);
   TF_RET_CHECK(result.second);
-  return Status::OK();
+  return OkStatus();
 }
 
-absl::optional<DynamicParameterBinding::DynamicParameter>
+std::optional<DynamicParameterBinding::DynamicParameter>
 DynamicParameterBinding::GetBinding(
     const DynamicDimension& dynamic_dimension) const {
   auto param_iter = bindings_.find(dynamic_dimension);
   if (param_iter == bindings_.end()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return param_iter->second;
 }
@@ -82,8 +83,8 @@ StatusOr<DynamicParameterBinding> DynamicParameterBinding::CreateFromProto(
   return result;
 }
 
-string DynamicParameterBinding::ToString() const {
-  std::vector<string> pieces;
+std::string DynamicParameterBinding::ToString() const {
+  std::vector<std::string> pieces;
   pieces.push_back("DynamicParameterBinding: ");
   for (const auto& binding : bindings_) {
     const DynamicDimension& dynamic_dimension = binding.first;
@@ -104,7 +105,7 @@ Status DynamicParameterBinding::ForEachBinding(BindingFn fn) const {
   for (const auto& binding : bindings_) {
     TF_RETURN_IF_ERROR(fn(binding.second, binding.first));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status DynamicParameterBinding::Verify(const HloModule& module) const {
@@ -128,7 +129,7 @@ Status DynamicParameterBinding::Verify(const HloModule& module) const {
                 ->shape(),
             dynamic_dimension.parameter_index)
             .rank());
-    return Status::OK();
+    return OkStatus();
   });
 }
 

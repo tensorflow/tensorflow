@@ -15,10 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/transforms/corert_converter.h"
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/Identifier.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/PassManager.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/attr_lowering_utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tfrt/basic_kernels/opdefs/basic_kernels.h"  // from @tf_runtime
 #include "tfrt/core_runtime/opdefs/attributes.h"  // from @tf_runtime
@@ -59,52 +59,19 @@ void CoreRTConverter::MaterializeDerivedAttributes(mlir::Operation *op) {
   if (auto interface = llvm::dyn_cast<mlir::DerivedAttributeOpInterface>(op)) {
     auto derived_attrs = interface.materializeDerivedAttributes();
     for (auto named_attr : derived_attrs) {
-      op->setAttr(named_attr.first, named_attr.second);
+      op->setAttr(named_attr.getName(), named_attr.getValue());
     }
   }
-}
-
-bool CoreRTConverter::IsSupportedNumericDType(mlir::Type type) const {
-  // Most of the tensorflow data types (eg. f32, i64) are supported and they
-  // are standard MLIR types that need no conversion here.
-  if (type.isBF16() || type.isF16() || type.isF32() || type.isF64() ||
-      type.isInteger(1) || type.isInteger(8) || type.isInteger(16) ||
-      type.isInteger(32) || type.isInteger(64) || type.isUnsignedInteger(8) ||
-      type.isUnsignedInteger(16) || type.isUnsignedInteger(32) ||
-      type.isUnsignedInteger(64))
-    return true;
-
-  if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
-    auto element_type = complex_type.getElementType();
-    if (element_type.isF32() || element_type.isF64()) return true;
-  }
-
-  return false;
-}
-
-mlir::ArrayAttr CoreRTConverter::CreateOpAttrs(ArrayRef<NamedAttribute> attrs) {
-  llvm::SmallVector<mlir::Attribute, 4> attr_array;
-  for (auto key_and_value : attrs) {
-    if (!IsUnusedAttribute(key_and_value.first)) {
-      auto converted = ConvertAttribute(key_and_value.second);
-      if (!converted) return {};
-
-      mlir::StringAttr key =
-          builder_.getStringAttr(key_and_value.first.strref());
-      attr_array.push_back(builder_.getArrayAttr({key, converted}));
-    }
-  }
-  return builder_.getArrayAttr(attr_array);
 }
 
 mlir::ArrayAttr CoreRTConverter::CreateOpFuncAttrs(
     ArrayRef<NamedAttribute> attrs,
-    llvm::SmallVector<mlir::Identifier, 4> *func_attr_keys) {
+    llvm::SmallVector<mlir::StringAttr, 4> *func_attr_keys) {
   llvm::SmallVector<mlir::Attribute, 4> attr_array;
   for (auto key_and_value : attrs) {
-    auto attr_key = key_and_value.first;
-    auto attr_value = key_and_value.second;
-    if (!IsUnusedAttribute(attr_key) &&
+    auto attr_key = key_and_value.getName();
+    auto attr_value = key_and_value.getValue();
+    if (!IsUnusedTfrtAttribute(attr_key) &&
         attr_value.isa<mlir::FlatSymbolRefAttr, mlir::SymbolRefAttr>()) {
       auto func_attr = attr_value.dyn_cast<mlir::FlatSymbolRefAttr>();
       auto converted = ConvertSymbolAttrToStringAttr(func_attr);
@@ -168,7 +135,7 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
   ConversionPatternRewriter::InsertionGuard insertion_guard(*rewriter);
   rewriter->setInsertionPointToStart(block);
 
-  FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   mlir::Value in_chain = func_op.getArgument(0);
   auto get_op_handler_op = rewriter->create<tfrt::corert::GetOpHandler>(
       block->getParent()->getLoc(), op_handler_type(), in_chain,
@@ -179,7 +146,7 @@ mlir::Value CoreRTConverter::ConvertOpHandler(
 
 mlir::Value CoreRTConverter::GetDistributedContext(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   auto iter = distributed_context_by_func_.find(func_op.getOperation());
   if (iter != distributed_context_by_func_.end()) {
     return iter->second;
@@ -189,14 +156,14 @@ mlir::Value CoreRTConverter::GetDistributedContext(
   auto get_dist_ctx_op = rewriter->create<tfrt::dist::GetDistributedContextOp>(
       op->getLoc(), distributed_context_type());
 
-  mlir::Value result = get_dist_ctx_op.result();
+  mlir::Value result = get_dist_ctx_op.getResult();
   distributed_context_by_func_[func_op.getOperation()] = result;
   return result;
 }
 
 mlir::Value CoreRTConverter::GetRemoteChainManager(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   auto iter = remote_chain_mgr_by_func_.find(func_op.getOperation());
   if (iter != remote_chain_mgr_by_func_.end()) {
     return iter->second;
@@ -210,19 +177,22 @@ mlir::Value CoreRTConverter::GetRemoteChainManager(
   auto create_mgr_op = rewriter->create<tfrt::dist::CreateRemoteChainManager>(
       op->getLoc(), remote_chain_mgr_type, dist_ctx);
 
-  mlir::Value result = create_mgr_op.result();
+  mlir::Value result = create_mgr_op.getResult();
   remote_chain_mgr_by_func_[func_op.getOperation()] = result;
   return result;
 }
 
 mlir::Value CoreRTConverter::GetLocalSideEffectChain(
     mlir::Operation *op, mlir::ConversionPatternRewriter *rewriter) {
-  auto func_op = op->getParentOfType<mlir::FuncOp>();
-  auto predecessors = side_effect_analysis_.DirectControlPredecessors(op);
+  auto func_op = op->getParentOfType<mlir::func::FuncOp>();
 
-  // If there is no side-effect predecessor, then the input side-effect chain
-  // is used.
-  if (predecessors.empty()) return func_op.getArgument(0);
+  llvm::SmallVector<mlir::Operation *, 4> predecessors;
+  if (llvm::isa<mlir::func::ReturnOp>(op)) {
+    auto sinks = side_effect_analysis_.ControlSinks();
+    predecessors.assign(sinks.begin(), sinks.end());
+  } else {
+    predecessors = side_effect_analysis_.DirectControlPredecessors(op);
+  }
 
   llvm::SmallVector<mlir::Value, 2> chains;
   for (auto *pred : predecessors) {
@@ -234,6 +204,8 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
       chains.push_back(chain);
   }
 
+  // If there is no side-effect predecessor, then the input side-effect chain
+  // is used.
   if (chains.empty()) return func_op.getArgument(0);
 
   if (chains.size() == 1) return chains[0];
@@ -249,7 +221,7 @@ mlir::Value CoreRTConverter::GetLocalSideEffectChain(
 mlir::Value CoreRTConverter::GetTaskHandle(
     mlir::Operation *op, StringRef task_name,
     mlir::ConversionPatternRewriter *rewriter) {
-  mlir::FuncOp func_op = op->getParentOfType<mlir::FuncOp>();
+  mlir::func::FuncOp func_op = op->getParentOfType<mlir::func::FuncOp>();
   llvm::StringMap<mlir::Value> &task_handle_by_name =
       task_handles_by_func_[func_op.getOperation()];
   auto iter = task_handle_by_name.find(task_name);
@@ -282,56 +254,6 @@ mlir::Value CoreRTConverter::GetRemoteSideEffectChain(
   return get_chain_op.getResult();
 }
 
-mlir::Attribute CoreRTConverter::ConvertAttribute(mlir::Attribute attr) {
-  // The supported attributes here should be kept consistent with
-  // //third_party/tf_runtime/include/tfrt/core_runtime/op_attr_type.h
-  //
-  // Currently, not all tensorflow data types are supported. Unranked shape
-  // attributes are not supported yet.
-
-  // Return directly if the attribute is already supported.
-  if (attr.isa<mlir::IntegerAttr, mlir::FloatAttr, mlir::BoolAttr,
-               mlir::StringAttr, mlir::DenseIntOrFPElementsAttr>())
-    return attr;
-
-  // For type attributes, we convert non-standard MLIR types to corresponding
-  // corert types.
-  if (auto type_attr = attr.dyn_cast<mlir::TypeAttr>()) {
-    if (auto shape_type = type_attr.getValue().dyn_cast<mlir::TensorType>()) {
-      if (!shape_type.hasRank())
-        return tfrt::corert::ShapeAttr::get(builder_.getContext());
-
-      return tfrt::corert::ShapeAttr::get(builder_.getContext(),
-                                          shape_type.getShape());
-    }
-
-    return ConvertTypeAttribute(type_attr);
-  }
-
-  // Convert the attribute to the corresponding format in TFRT dialect if
-  // needed.
-  if (auto shape_attr = attr.dyn_cast<mlir::TF::ShapeAttr>()) {
-    if (!shape_attr.hasRank())
-      return tfrt::corert::ShapeAttr::get(builder_.getContext());
-    return tfrt::corert::ShapeAttr::get(builder_.getContext(),
-                                        shape_attr.getShape());
-  }
-
-  // For arrays, we recursively convert the elements.
-  if (auto array_attr = attr.dyn_cast<mlir::ArrayAttr>()) {
-    llvm::SmallVector<mlir::Attribute, 8> attrs;
-    attrs.reserve(array_attr.size());
-    for (auto attr : array_attr) {
-      auto converted = ConvertAttribute(attr);
-      if (!converted) return {};
-      attrs.push_back(converted);
-    }
-    return builder_.getArrayAttr(attrs);
-  }
-
-  return {};
-}
-
 mlir::StringAttr CoreRTConverter::ConvertSymbolAttrToStringAttr(
     mlir::FlatSymbolRefAttr symbol_attr) {
   // Currently in TF graph to MLIR importing, a "0" is appended to the original
@@ -345,53 +267,6 @@ mlir::StringAttr CoreRTConverter::ConvertSymbolAttrToStringAttr(
   auto func_name = symbol_attr.getValue().drop_back().str();
 
   return mlir::StringAttr::get(builder_.getContext(), func_name);
-}
-
-mlir::TypeAttr CoreRTConverter::ConvertTypeAttribute(mlir::TypeAttr type_attr) {
-  auto type = type_attr.getValue();
-
-  if (IsSupportedNumericDType(type)) return type_attr;
-
-  // For TF custom types, we convert it to custom corert types.
-  if (type.isa<mlir::TF::StringType>())
-    return mlir::TypeAttr::get(
-        tfrt::corert::StringType::get(builder_.getContext()));
-
-  if (type.isa<mlir::TF::ResourceType>())
-    return mlir::TypeAttr::get(
-        tfrt::corert::ResourceType::get(builder_.getContext()));
-
-  if (type.isa<mlir::TF::VariantType>())
-    return mlir::TypeAttr::get(
-        tfrt::corert::VariantType::get(builder_.getContext()));
-
-  if (type.isa<mlir::TF::Quint8Type>()) {
-    return mlir::TypeAttr::get(
-        tfrt::corert::Quint8Type::get(builder_.getContext()));
-  }
-
-  if (type.isa<mlir::TF::Quint16Type>()) {
-    return mlir::TypeAttr::get(
-        tfrt::corert::Quint16Type::get(builder_.getContext()));
-  }
-
-  if (type.isa<mlir::TF::Qint8Type>()) {
-    return mlir::TypeAttr::get(
-        tfrt::corert::Qint8Type::get(builder_.getContext()));
-  }
-
-  if (type.isa<mlir::TF::Qint16Type>()) {
-    return mlir::TypeAttr::get(
-        tfrt::corert::Qint16Type::get(builder_.getContext()));
-  }
-
-  if (type.isa<mlir::TF::Qint32Type>()) {
-    return mlir::TypeAttr::get(
-        tfrt::corert::Qint32Type::get(builder_.getContext()));
-  }
-
-  // Return invalid results to emit error for unsupported types.
-  return {};
 }
 
 }  // namespace tensorflow

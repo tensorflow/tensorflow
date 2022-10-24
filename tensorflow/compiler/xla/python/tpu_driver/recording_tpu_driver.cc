@@ -14,18 +14,17 @@
 // =============================================================================
 #include <atomic>
 #include <functional>
+#include <optional>
 
 #include "absl/base/internal/sysinfo.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_service.grpc.pb.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 /*
  * The ReplayDriver wraps a concrete TpuDriver implementation and records the
@@ -54,7 +53,7 @@ class RecordingEvent : public Event {
 
   xla::Status Await() override { return shared_event_->Await(); }
 
-  absl::optional<xla::Status> AwaitWithTimeout(
+  std::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) override {
     return shared_event_->AwaitWithTimeout(duration);
   }
@@ -78,7 +77,7 @@ class RecordingBufferHandle : public BufferHandle {
         event_(std::make_shared<RecordingEvent>(handle_->OnReady(), id_)) {}
   std::shared_ptr<Event> OnReady() override { return event_; }
   int64_t size_in_bytes() override { return handle_->size_in_bytes(); }
-  absl::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
+  std::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
 
  private:
   std::unique_ptr<BufferHandle> handle_;
@@ -132,8 +131,8 @@ class RecordingTpuDriver : public TpuDriver {
       : driver_(std::move(driver)),
         recording_path_(recording_path),
         flush_(flush) {
-    auto file_status = tensorflow::Env::Default()->NewAppendableFile(
-        recording_path_, &log_file_);
+    auto file_status =
+        tsl::Env::Default()->NewAppendableFile(recording_path_, &log_file_);
     if (!file_status.ok()) {
       LOG(FATAL) << "Unable to open " << recording_path_
                  << " for appending. Error: " << file_status.ToString();
@@ -209,6 +208,9 @@ class RecordingTpuDriver : public TpuDriver {
 
     std::vector<BufferHandle*> unwrapped_children;
     std::vector<int64_t> child_ids;
+    const auto children_size = children.size();
+    unwrapped_children.reserve(children_size);
+    child_ids.reserve(children_size);
     for (auto child : children) {
       BufferHandle* unwrapped_child =
           static_cast<const RecordingBufferHandle*>(child)->handle_.get();
@@ -340,12 +342,14 @@ class RecordingTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
     auto thread_id = GetCurrentThreadId();
     auto recording_handle = std::make_unique<RecordingCompiledProgramHandle>(
-        driver_->CompileProgram(source, num_replicas, unwrapped_wait_for));
+        driver_->CompileProgram(source, num_replicas, unwrapped_wait_for,
+                                debug_options));
     auto handle_id = recording_handle->id_;
 
     {
@@ -420,6 +424,9 @@ class RecordingTpuDriver : public TpuDriver {
 
     std::vector<BufferHandle*> unwrapped_inputs;
     std::vector<int64_t> input_ids;
+    const auto inputs_size = inputs.size();
+    unwrapped_inputs.reserve(inputs_size);
+    input_ids.reserve(inputs_size);
     for (auto input : inputs) {
       BufferHandle* unwrapped_input =
           static_cast<const RecordingBufferHandle*>(input)->handle_.get();
@@ -430,6 +437,9 @@ class RecordingTpuDriver : public TpuDriver {
 
     std::vector<BufferHandle*> unwrapped_outputs;
     std::vector<int64_t> output_ids;
+    const auto output_size = outputs.size();
+    unwrapped_outputs.reserve(output_size);
+    output_ids.reserve(output_size);
     for (auto output : outputs) {
       BufferHandle* unwrapped_output =
           static_cast<const RecordingBufferHandle*>(output)->handle_.get();
@@ -471,7 +481,7 @@ class RecordingTpuDriver : public TpuDriver {
   const std::string recording_path_;
   const bool flush_;
 
-  std::unique_ptr<tensorflow::WritableFile> log_file_;
+  std::unique_ptr<tsl::WritableFile> log_file_;
 
   void PopulateAndSaveEntry(StreamRequest::Entry* r,
                             absl::Span<Event* const> wait_for,
@@ -496,7 +506,7 @@ class RecordingTpuDriver : public TpuDriver {
         return;
       }
 
-      tensorflow::StringPiece buffer_sp(buffer.data(), buffer.size());
+      absl::string_view buffer_sp(buffer.data(), buffer.size());
       auto data_status = log_file_->Append(buffer_sp);
       if (!data_status.ok()) {
         LOG(WARNING) << "Unable to write data to log file. File possibly "
@@ -564,10 +574,8 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
 
   auto driver_status = TpuDriverRegistry::Open(worker_config);
   if (!driver_status.ok()) return driver_status.status();
-  auto driver = driver_status.ConsumeValueOrDie();
-
   return std::unique_ptr<TpuDriver>(
-      new RecordingTpuDriver(std::move(driver), file, flush));
+      new RecordingTpuDriver(std::move(driver_status).value(), file, flush));
 }
 
 // To record a sequence of operations, set the worker configuration string to

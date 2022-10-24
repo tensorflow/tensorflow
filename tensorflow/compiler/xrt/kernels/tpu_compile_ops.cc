@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/cleanup/cleanup.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
@@ -29,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_metrics.h"
@@ -55,10 +58,8 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_op_util.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/stream_executor/stream_executor.h"
 
 namespace tensorflow {
 
@@ -147,7 +148,7 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   // doesn't hurt to also deregister the callback in the failure case; the
   // CancellationManager ensures that already-registered callbacks will be run
   // once cancellation has started.
-  auto cancellation_cleanup = xla::MakeCleanup([ctx, token, done] {
+  auto cancellation_cleanup = absl::MakeCleanup([ctx, token, done] {
     ctx->cancellation_manager()->DeregisterCallback(token);
     done->store(true);
   });

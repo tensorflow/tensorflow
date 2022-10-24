@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -41,10 +41,11 @@ class CpuProfilingTest
     : public CpuCodegenTest,
       public ::testing::WithParamInterface<ProfilingTestSpec> {
  public:
-  static string Name(const ::testing::TestParamInfo<ProfilingTestSpec>& info) {
+  static std::string Name(
+      const ::testing::TestParamInfo<ProfilingTestSpec>& info) {
     auto spec = info.param;
 
-    string triple{spec.triple.data(), spec.triple.size()};
+    std::string triple{spec.triple.data(), spec.triple.size()};
     if (triple == kTriple_x86_64) {
       triple = "x86_64";
     } else if (triple == kTriple_android_arm) {
@@ -68,7 +69,7 @@ TEST_P(CpuProfilingTest, DoIt) {
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
 
-  string triple{spec.triple.data(), spec.triple.size()};
+  std::string triple{spec.triple.data(), spec.triple.size()};
 
   CpuAotCompilationOptions options{
       /*triple=*/triple, /*cpu_name=*/"", /*features=*/"",
@@ -87,9 +88,9 @@ TEST_P(CpuProfilingTest, DoIt) {
   config.set_debug_options(debug_options);
   auto hlo_module = ParseAndReturnVerifiedModule(hlo_text, config);
 
-  string check_lines{spec.check_lines.data(), spec.check_lines.size()};
+  std::string check_lines{spec.check_lines.data(), spec.check_lines.size()};
 
-  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).ValueOrDie(), options,
+  CompileAheadOfTimeAndVerifyIr(std::move(hlo_module).value(), options,
                                 check_lines,
                                 /*match_optimized_ir=*/true);
 }

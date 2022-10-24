@@ -15,15 +15,15 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
-
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
@@ -73,52 +73,9 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("XlaDynamicUpdateSlice"), DynamicUpdateSliceOp);
 
-class DynamicSliceOp : public XlaOpKernel {
- public:
-  explicit DynamicSliceOp(OpKernelConstruction* context)
-      : XlaOpKernel(context) {}
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    DataType index_type = ctx->InputType("start_indices");
-    CHECK(index_type == DT_INT32 || index_type == DT_INT64);
-    CHECK(index_type == ctx->InputType("size_indices"));
-
-    const TensorShape input_shape = ctx->InputShape("input");
-    const TensorShape start_indices_shape = ctx->InputShape("start_indices");
-    const TensorShape size_indices_shape = ctx->InputShape("size_indices");
-
-    int64_t rank = input_shape.dims();
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsVector(start_indices_shape) &&
-                    start_indices_shape.num_elements() == rank,
-                errors::InvalidArgument(
-                    "start_indices must be a vector with length equal to "
-                    "input rank, but input rank is ",
-                    rank, " and start_indices has shape ",
-                    start_indices_shape.DebugString()));
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsVector(size_indices_shape) &&
-                    size_indices_shape.num_elements() == rank,
-                errors::InvalidArgument(
-                    "size_indices must be a vector with length equal to "
-                    "input rank, but input rank is ",
-                    input_shape.dims(), " and size_indices has shape ",
-                    size_indices_shape.DebugString()));
-
-    std::vector<int64_t> size_indices;
-    OP_REQUIRES_OK(
-        ctx, ctx->ConstantInputAsIntVector("size_indices", &size_indices));
-
-    xla::XlaOp start_indices = ctx->Input("start_indices");
-    xla::XlaOp result = xla::DynamicSlice(
-        ctx->Input("input"), SliceVector(start_indices, rank), size_indices);
-    ctx->SetOutput(0, result);
-  }
-};
-
 REGISTER_XLA_OP(
     Name("XlaDynamicSlice").CompileTimeConstantInput("size_indices"),
-    DynamicSliceOp);
+    MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 
+#include <algorithm>
+#include <ios>
+#include <sstream>
+#include <string>
+#include <vector>
+
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -37,7 +43,49 @@ static bool IsQuantizationType(tensorflow::DataType dtype) {
 }
 
 namespace mlir {
-namespace TFL {
+namespace quant {
+namespace {
+bool GetBooleanSpecs(const std::string& bool_val) {
+  bool result;
+  std::stringstream iss(bool_val);
+  iss >> std::boolalpha >> result;
+  return result;
+}
+}  // namespace
+
+void ParseCustomOpSpecs(absl::string_view node_names,
+                        const CustomOpUpdateOptions& update_option,
+                        CustomOpMap& custom_op_map) {
+  if (node_names.empty()) return;
+
+  std::vector<std::string> custom_nodes = absl::StrSplit(node_names, ',');
+
+  for (auto& cur_node : custom_nodes) {
+    std::vector<std::string> node_infos = absl::StrSplit(cur_node, '=');
+    std::string node_name = node_infos[0];
+    auto node_specification = node_infos[1];
+    CustomOpInfo new_node_info;
+    switch (update_option) {
+      case CustomOpUpdateOptions::kINputIndices: {
+        std::vector<std::string> indices =
+            absl::StrSplit(node_specification, '-');
+        for (auto& cur_index : indices) {
+          custom_op_map[node_name].quantizable_input_indices.push_back(
+              std::stoi(cur_index));
+        }
+        break;
+      }
+      case CustomOpUpdateOptions::kWeightOnly:
+        custom_op_map[node_name].is_weight_only =
+            GetBooleanSpecs(node_specification);
+        break;
+      case CustomOpUpdateOptions::kNoSideEffect:
+        custom_op_map[node_name].no_side_effect =
+            GetBooleanSpecs(node_specification);
+        break;
+    }
+  }
+}
 
 bool ParseInputNodeQuantSpecs(absl::string_view node_names,
                               absl::string_view min_values,
@@ -110,5 +158,5 @@ bool GetInputNodeQuantSpecs(
   return false;
 }
 
-}  // namespace TFL
+}  // namespace quant
 }  // namespace mlir

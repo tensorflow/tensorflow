@@ -25,6 +25,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "enable_op_determinism"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enable_tensor_float_32_execution"
     argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
   }

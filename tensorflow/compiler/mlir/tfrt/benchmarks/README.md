@@ -50,12 +50,9 @@ benchy                                                                        \
   third_party/tensorflow/compiler/mlir/tfrt/benchmarks:cwise_op_tanh_benchmark
 ```
 
-As of Q1 2021 `indus-skylake-2000` is the machine of the day, and rougly 60% of
+As of Q1 2021 `indus-skylake-2000` is the machine of the day, and roughly 60% of
 the fleet cycles are executed on Skylakes.
 
-Reference can be:
-1. Cl number to test agains another pending change
-2. `srcfs` to test agains the g3 head
-3. Another client number to test local changes wihtout exporting them
-<!-- END GOOGLE-INTERNAL -->
-
+Reference can be: 1. Cl number to test agains another pending change 2. `srcfs`
+to test agains the g3 head 3. Another client number to test local changes
+without exporting them <!-- END GOOGLE-INTERNAL -->

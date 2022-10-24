@@ -107,20 +107,23 @@ the same way with eager and graph execution.
 * _Distributed value_: Distributed value is represented by the base class
   `tf.distribute.DistributedValues`. `tf.distribute.DistributedValues` is useful
   to represent values on multiple devices, and it contains a map from replica id
-  to values. Two representative kinds of `tf.distribute.DistributedValues` are
-  "PerReplica" and "Mirrored" values.
+  to values. Two representative types of `tf.distribute.DistributedValues`
+  are `tf.types.experimental.PerReplica` and `tf.types.experimental.Mirrored`
+  values.
 
-  "PerReplica" values exist on the worker
-  devices, with a different value for each replica. They are produced by
-  iterating through a distributed dataset returned by
-  `tf.distribute.Strategy.experimental_distribute_dataset` and
-  `tf.distribute.Strategy.distribute_datasets_from_function`. They
-  are also the typical result returned by
-  `tf.distribute.Strategy.run`.
+  `PerReplica` values exist on the worker devices, with a different value for
+  each replica. They are produced by iterating through a distributed dataset
+  returned by `tf.distribute.Strategy.experimental_distribute_dataset` and
+  `tf.distribute.Strategy.distribute_datasets_from_function`. They are also the
+  typical result returned by `tf.distribute.Strategy.run`.
 
-  "Mirrored" values are like "PerReplica" values, except we know that the value
-  on all replicas are the same. We can safely read a "Mirrored" value in a
-  cross-replica context by using the value on any replica.
+  `Mirrored` values are like `PerReplica` values, except we know that the value
+  on all replicas are the same. `Mirrored` values are kept synchronized by the
+  distribution strategy in use, while `PerReplica` values are left
+  unsynchronized. `Mirrored` values typically represent model weights. We can
+  safely read a `Mirrored` value in a cross-replica context by using the value
+  on any replica, while PerReplica values can only be read within a replica
+  context.
 
 * _Unwrapping_ and _merging_: Consider calling a function `fn` on multiple
   replicas, like `strategy.run(fn, args=[w])` with an
@@ -185,10 +188,6 @@ reasonable default behavior.
 """
 # pylint: enable=line-too-long
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import copy
 import enum  # pylint: disable=g-bad-import-order
@@ -212,6 +211,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -224,14 +224,13 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
-
 
 # ------------------------------------------------------------------------------
 # Context tracking whether in a strategy.update() or .update_non_slot() call.
@@ -429,8 +428,16 @@ class _CurrentDistributionContext(object):
 
     if self._resource_creator_scope:
       try:
-        self._resource_creator_scope.__exit__(exception_type, exception_value,
-                                              traceback)
+        if isinstance(self._resource_creator_scope, list):
+          reversed_resource_creator_scope = self._resource_creator_scope[::-1]
+          nest.map_structure(
+              lambda scope: scope.__exit__(exception_type, exception_value,  # pylint:disable=g-long-lambda
+                                           traceback),
+              reversed_resource_creator_scope)
+
+        else:
+          self._resource_creator_scope.__exit__(exception_type, exception_value,
+                                                traceback)
       except RuntimeError as e:
         six.raise_from(
             RuntimeError("Resource creator scope nesting error: move call "
@@ -550,27 +557,27 @@ class ValueContext(object):
 
   Example usage:
 
-  1. Directly constructed.
+  1.  Directly constructed.
 
-  >>> def value_fn(context):
-  ...   return context.replica_id_in_sync_group/context.num_replicas_in_sync
-  >>> context = tf.distribute.experimental.ValueContext(
-  ...   replica_id_in_sync_group=2, num_replicas_in_sync=4)
-  >>> per_replica_value = value_fn(context)
-  >>> per_replica_value
-  0.5
+      >>> def value_fn(context):
+      ...   return context.replica_id_in_sync_group/context.num_replicas_in_sync
+      >>> context = tf.distribute.experimental.ValueContext(
+      ...   replica_id_in_sync_group=2, num_replicas_in_sync=4)
+      >>> per_replica_value = value_fn(context)
+      >>> per_replica_value
+      0.5
 
-  2. Passed in by `experimental_distribute_values_from_function`.
+  2.  Passed in by `experimental_distribute_values_from_function`.  {: value=2}
 
-  >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-  >>> def value_fn(value_context):
-  ...   return value_context.num_replicas_in_sync
-  >>> distributed_values = (
-  ...      strategy.experimental_distribute_values_from_function(
-  ...        value_fn))
-  >>> local_result = strategy.experimental_local_results(distributed_values)
-  >>> local_result
-  (2, 2)
+      >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+      >>> def value_fn(value_context):
+      ...   return value_context.num_replicas_in_sync
+      >>> distributed_values = (
+      ...      strategy.experimental_distribute_values_from_function(
+      ...        value_fn))
+      >>> local_result = strategy.experimental_local_results(distributed_values)
+      >>> local_result
+      (2, 2)
 
   """
 
@@ -1228,56 +1235,57 @@ class StrategyBase(object):
 
     Example usage:
 
-    1. Constant tensor input.
+    1.  Constant tensor input.
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> tensor_input = tf.constant(3.0)
-    >>> @tf.function
-    ... def replica_fn(input):
-    ...   return input*2.0
-    >>> result = strategy.run(replica_fn, args=(tensor_input,))
-    >>> result
-    PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
-      1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
-    }
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> tensor_input = tf.constant(3.0)
+        >>> @tf.function
+        ... def replica_fn(input):
+        ...   return input*2.0
+        >>> result = strategy.run(replica_fn, args=(tensor_input,))
+        >>> result
+        PerReplica:{
+          0: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>,
+          1: <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+        }
 
-    2. DistributedValues input.
+    2.  DistributedValues input.  {: value=2}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> @tf.function
-    ... def run():
-    ...   def value_fn(value_context):
-    ...     return value_context.num_replicas_in_sync
-    ...   distributed_values = (
-    ...     strategy.experimental_distribute_values_from_function(
-    ...       value_fn))
-    ...   def replica_fn2(input):
-    ...     return input*2
-    ...   return strategy.run(replica_fn2, args=(distributed_values,))
-    >>> result = run()
-    >>> result
-    <tf.Tensor: shape=(), dtype=int32, numpy=4>
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> @tf.function
+        ... def run():
+        ...   def value_fn(value_context):
+        ...     return value_context.num_replicas_in_sync
+        ...   distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...       value_fn))
+        ...   def replica_fn2(input):
+        ...     return input*2
+        ...   return strategy.run(replica_fn2, args=(distributed_values,))
+        >>> result = run()
+        >>> result
+        <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
-    3. Use `tf.distribute.ReplicaContext` to allreduce values.
+    3.  Use `tf.distribute.ReplicaContext` to allreduce values. {: value=3}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["gpu:0", "gpu:1"])
-    >>> @tf.function
-    ... def run():
-    ...    def value_fn(value_context):
-    ...      return tf.constant(value_context.replica_id_in_sync_group)
-    ...    distributed_values = (
-    ...        strategy.experimental_distribute_values_from_function(
-    ...            value_fn))
-    ...    def replica_fn(input):
-    ...      return tf.distribute.get_replica_context().all_reduce("sum", input)
-    ...    return strategy.run(replica_fn, args=(distributed_values,))
-    >>> result = run()
-    >>> result
-    PerReplica:{
-      0: <tf.Tensor: shape=(), dtype=int32, numpy=1>,
-      1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
-    }
+        >>> strategy = tf.distribute.MirroredStrategy(["gpu:0", "gpu:1"])
+        >>> @tf.function
+        ... def run():
+        ...    def value_fn(value_context):
+        ...      return tf.constant(value_context.replica_id_in_sync_group)
+        ...    distributed_values = (
+        ...        strategy.experimental_distribute_values_from_function(
+        ...            value_fn))
+        ...    def replica_fn(input):
+        ...      return tf.distribute.get_replica_context().all_reduce(
+        ...          "sum", input)
+        ...    return strategy.run(replica_fn, args=(distributed_values,))
+        >>> result = run()
+        >>> result
+        PerReplica:{
+          0: <tf.Tensor: shape=(), dtype=int32, numpy=1>,
+          1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
+        }
 
     Args:
       fn: The function to run on each replica.
@@ -1686,61 +1694,64 @@ class Strategy(StrategyBase):
 
     Example usage:
 
-    1. Return constant value per replica:
+    1.  Return constant value per replica:
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> def value_fn(ctx):
-    ...   return tf.constant(1.)
-    >>> distributed_values = (
-    ...      strategy.experimental_distribute_values_from_function(
-    ...        value_fn))
-    >>> local_result = strategy.experimental_local_results(distributed_values)
-    >>> local_result
-    (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,
-     <tf.Tensor: shape=(), dtype=float32, numpy=1.0>)
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> def value_fn(ctx):
+        ...   return tf.constant(1.)
+        >>> distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...        value_fn))
+        >>> local_result = strategy.experimental_local_results(
+        ...     distributed_values)
+        >>> local_result
+        (<tf.Tensor: shape=(), dtype=float32, numpy=1.0>,
+        <tf.Tensor: shape=(), dtype=float32, numpy=1.0>)
 
-    2. Distribute values in array based on replica_id:
+    2.  Distribute values in array based on replica_id: {: value=2}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> array_value = np.array([3., 2., 1.])
-    >>> def value_fn(ctx):
-    ...   return array_value[ctx.replica_id_in_sync_group]
-    >>> distributed_values = (
-    ...      strategy.experimental_distribute_values_from_function(
-    ...        value_fn))
-    >>> local_result = strategy.experimental_local_results(distributed_values)
-    >>> local_result
-    (3.0, 2.0)
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> array_value = np.array([3., 2., 1.])
+        >>> def value_fn(ctx):
+        ...   return array_value[ctx.replica_id_in_sync_group]
+        >>> distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...         value_fn))
+        >>> local_result = strategy.experimental_local_results(
+        ...     distributed_values)
+        >>> local_result
+        (3.0, 2.0)
 
-    3. Specify values using num_replicas_in_sync:
+    3.  Specify values using num_replicas_in_sync:  {: value=3}
 
-    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
-    >>> def value_fn(ctx):
-    ...   return ctx.num_replicas_in_sync
-    >>> distributed_values = (
-    ...      strategy.experimental_distribute_values_from_function(
-    ...        value_fn))
-    >>> local_result = strategy.experimental_local_results(distributed_values)
-    >>> local_result
-    (2, 2)
+        >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
+        >>> def value_fn(ctx):
+        ...   return ctx.num_replicas_in_sync
+        >>> distributed_values = (
+        ...     strategy.experimental_distribute_values_from_function(
+        ...         value_fn))
+        >>> local_result = strategy.experimental_local_results(
+        ...     distributed_values)
+        >>> local_result
+        (2, 2)
 
-    4. Place values on devices and distribute:
+    4.  Place values on devices and distribute: {: value=4}
 
-    ```
-    strategy = tf.distribute.TPUStrategy()
-    worker_devices = strategy.extended.worker_devices
-    multiple_values = []
-    for i in range(strategy.num_replicas_in_sync):
-      with tf.device(worker_devices[i]):
-        multiple_values.append(tf.constant(1.0))
+        ```
+        strategy = tf.distribute.TPUStrategy()
+        worker_devices = strategy.extended.worker_devices
+        multiple_values = []
+        for i in range(strategy.num_replicas_in_sync):
+          with tf.device(worker_devices[i]):
+            multiple_values.append(tf.constant(1.0))
 
-    def value_fn(ctx):
-      return multiple_values[ctx.replica_id_in_sync_group]
+        def value_fn(ctx):
+          return multiple_values[ctx.replica_id_in_sync_group]
 
-    distributed_values = strategy.
-      experimental_distribute_values_from_function(
-      value_fn)
-    ```
+        distributed_values = strategy.
+          experimental_distribute_values_from_function(
+          value_fn)
+        ```
 
     """
     return self._extended._experimental_distribute_values_from_function(  # pylint: disable=protected-access
@@ -1848,7 +1859,7 @@ class Strategy(StrategyBase):
                                                        error_message)
     dst = device_util.current(
     ) or self._extended._default_device or "/device:CPU:0"
-    if isinstance(value, ops.IndexedSlices):
+    if isinstance(value, indexed_slices.IndexedSlices):
       raise NotImplementedError("gather does not support IndexedSlices")
     return self._extended._local_results(
         self._extended._gather_to(value, dst, axis))[0]
@@ -2106,7 +2117,7 @@ class StrategyExtendedV2(object):
     self._require_static_shapes = False
 
   def _resource_creator_scope(self):
-    """Returns one or more ops.resource_creator_scope for some Strategy."""
+    """Returns one or a list of ops.resource_creator_scope for some Strategy."""
     return None
 
   def _container_strategy(self):
@@ -3231,7 +3242,7 @@ class ReplicaContextBase(object):
     has_indexed_slices = False
 
     for v in flattened_value:
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         has_indexed_slices = True
 
     if isinstance(reduce_op, six.string_types):
@@ -3389,13 +3400,13 @@ class ReplicaContext(ReplicaContextBase):
     `value` as a nested structure consisting of two items to all-gather, `a` and
     `b`.
 
-      On Replica 0, `value` is `{'a': [0], 'b': [[0, 1]]}`.
+    * On Replica 0, `value` is `{'a': [0], 'b': [[0, 1]]}`.
+    * On Replica 1, `value` is `{'a': [1], 'b': [[2, 3], [4, 5]]}`.
+    * Result for `all_gather` with `axis=0` (on each of the replicas) is:
 
-      On Replica 1, `value` is `{'a': [1], 'b': [[2, 3], [4, 5]]}`.
-
-      Result for `all_gather` with `axis`=0 (on each of the replicas) is:
-
-      ```{'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}```
+      ```
+      {'a': [1, 2], 'b': [[0, 1], [2, 3], [4, 5]]}
+      ```
 
     Args:
       value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts,
@@ -3415,7 +3426,7 @@ class ReplicaContext(ReplicaContextBase):
        is the same as `value`.
     """
     for v in nest.flatten(value):
-      if isinstance(v, ops.IndexedSlices):
+      if isinstance(v, indexed_slices.IndexedSlices):
         raise NotImplementedError("all_gather does not support IndexedSlices")
 
     if options is None:
@@ -3550,8 +3561,6 @@ def _batch_reduce_destination(x):
     return x.device
   else:
     return x
-
-
 # ------------------------------------------------------------------------------
 
 

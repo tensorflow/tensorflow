@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_pow.h"
 
-#include "tensorflow/core/platform/macros.h"
+#include "absl/base/attributes.h"
 
 template <typename T>
 static T Powi(T a, int32_t b) {
@@ -30,6 +30,6 @@ static T Powi(T a, int32_t b) {
   return recip ? 1 / r : r;
 }
 
-float TF_ATTRIBUTE_WEAK __powisf2(float a, int32_t b) { return Powi(a, b); }
+float ABSL_ATTRIBUTE_WEAK __powisf2(float a, int32_t b) { return Powi(a, b); }
 
-double TF_ATTRIBUTE_WEAK __powidf2(double a, int32_t b) { return Powi(a, b); }
+double ABSL_ATTRIBUTE_WEAK __powidf2(double a, int32_t b) { return Powi(a, b); }

@@ -61,7 +61,7 @@ Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
   (*out_counter)[0] = (*out_counter)[1] = 0;
   (*out_counter)[2] = mix[2];
   (*out_counter)[3] = mix[3];
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace {
@@ -294,6 +294,7 @@ TF_CALL_int64(REGISTER_ALL_POISSON);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_half(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_int32(REGISTER_INT_GPU);

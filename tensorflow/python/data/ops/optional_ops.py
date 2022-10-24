@@ -13,13 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """A type for representing values that may or may not exist."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-
-import six
 
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import composite_tensor
@@ -34,8 +28,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("experimental.Optional", "data.experimental.Optional")
 @deprecation.deprecated_endpoints("data.experimental.Optional")
-@six.add_metaclass(abc.ABCMeta)
-class Optional(composite_tensor.CompositeTensor):
+class Optional(composite_tensor.CompositeTensor, metaclass=abc.ABCMeta):
   """Represents a value that may or may not be present.
 
   A `tf.experimental.Optional` can represent the result of an operation that may
@@ -171,6 +164,7 @@ class _OptionalImpl(Optional):
   """
 
   def __init__(self, variant_tensor, element_spec):
+    super().__init__()
     self._variant_tensor = variant_tensor
     self._element_spec = element_spec
 
@@ -229,6 +223,7 @@ class OptionalSpec(type_spec.TypeSpec):
   __slots__ = ["_element_spec"]
 
   def __init__(self, element_spec):
+    super().__init__()
     self._element_spec = element_spec
 
   @property

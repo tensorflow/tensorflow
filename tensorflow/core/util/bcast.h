@@ -104,7 +104,7 @@ class BCastList {
   // operation should use the `x_batch_indices()[i]`th batch index of `x`.
   // Note: Returns an empty vector if broadcasting is not required. Callers
   // should only use this when IsBroadcastingRequired() returns true.
-  const std::vector<int64>& batch_indices(int i) const {
+  const std::vector<int64_t>& batch_indices(int i) const {
     return batch_indices_[i];
   }
 
@@ -118,7 +118,7 @@ class BCastList {
   Vec grad_reduce_idx_[N];
 
   int64_t output_batch_size_;
-  std::vector<int64> batch_indices_[N];
+  std::vector<int64_t> batch_indices_[N];
 
   static void Reverse(Vec* shape) {
     std::reverse(shape->begin(), shape->end());
@@ -134,7 +134,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
   typedef BCastList::Vec Vec;
 
   // Safely multiplies dimensions taking into account symbolic shapes.
-  auto mul_dims = [](int64_t dim1, int64_t dim2) -> int64 {
+  auto mul_dims = [](int64_t dim1, int64_t dim2) -> int64_t {
     return dim1 != 0 && dim2 != 0 && (dim1 < 0 || dim2 < 0) ? -1 : dim1 * dim2;
   };
 
@@ -199,7 +199,7 @@ BCastList<N>::BCastList(const BCastList::Vec (&x)[N],
   }
   Vec output;
   bool output_dim_set = false;
-  int output_dim = -1;
+  int64_t output_dim = -1;
   bool none_is_one = true;
   bool set_one = false;
   for (int j = 0; j < largest_rank; ++j) {

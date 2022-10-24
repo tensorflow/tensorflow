@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 
 #include <initializer_list>
+#include <string>
 
 #include "tensorflow/compiler/xla/test.h"
 
@@ -147,7 +148,7 @@ TEST(Array2dTest, Linspace) {
 
 TEST(Array2dTest, Stringification) {
   auto arr = MakeLinspaceArray2D(1.0, 3.5, 3, 2);
-  const string expected = R"([[1, 1.5],
+  const std::string expected = R"([[1, 1.5],
  [2, 2.5],
  [3, 3.5]])";
   EXPECT_EQ(expected, arr->ToString());

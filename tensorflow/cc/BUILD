@@ -10,12 +10,7 @@ load(
     "tf_copts",
     "transitive_hdrs",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_wrappers_cc")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -51,10 +46,7 @@ filegroup(
     srcs = [
         "training/coordinator.h",
     ],
-    visibility = [
-        "//tensorflow/python:__pkg__",
-        "//tensorflow/python/grappler:__pkg__",
-    ],
+    visibility = ["//tensorflow/python/grappler:__pkg__"],
 )
 
 cc_library(
@@ -163,6 +155,7 @@ cc_library(
         ":data_flow_grad",
         ":functional_grad",
         ":image_grad",
+        ":linalg_grad",
         ":manip_grad",
         ":math_grad",
         ":nn_grad",
@@ -412,11 +405,59 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "grad_helper",
+    srcs = ["gradients/grad_helper.cc"],
+    hdrs = ["gradients/grad_helper.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+    ],
+)
+
+cc_library(
+    name = "linalg_grad",
+    srcs = ["gradients/linalg_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_helper",
+        ":grad_op_registry",
+        ":gradients",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_linalg_grad_test",
+    srcs = ["gradients/linalg_grad_test.cc"],
+    deps = [
+        ":cc_ops",
+        ":client_session",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
+        ":gradients",
+        ":linalg_grad",
+        ":testutil",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "math_grad",
     srcs = ["gradients/math_grad.cc"],
     deps = [
         ":cc_ops",
         ":cc_ops_internal",
+        ":grad_helper",
         ":grad_op_registry",
         ":gradients",
     ],
@@ -633,6 +674,7 @@ tf_gen_op_wrappers_cc(
     api_def_srcs = ["//tensorflow/core/api_def:base_api_def"],
     deps_internal = [
         ":array_ops_internal",
+        ":dataset_ops_internal",
         ":math_ops_internal",
     ],
     op_lib_names = [
@@ -664,6 +706,7 @@ tf_gen_op_wrappers_cc(
         "ops/math_ops.h",
         "ops/dataset_ops.h",
         "ops/experimental_dataset_ops.h",
+        "ops/resource_variable_ops.h",
         "ops/standard_ops.h",
     ],
     other_hdrs_internal = [
@@ -678,6 +721,7 @@ tf_gen_op_wrappers_cc(
         ":const_op",
         ":dataset_ops",
         ":math_ops",
+        ":resource_variable_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
     ],
@@ -757,22 +801,48 @@ tf_gen_op_wrappers_cc(
 )
 
 cc_library(
+    name = "cc_op_gen_util",
+    srcs = [
+        "framework/cc_op_gen_util.cc",
+    ],
+    hdrs = [
+        "framework/cc_op_gen_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "cc_op_gen_main",
     srcs = [
         "framework/cc_op_gen.cc",
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_main.cc",
+        "framework/cc_op_gen_util.cc",
+        "framework/cc_op_gen_util.h",
     ],
     copts = tf_copts(),
     data = [
         "//tensorflow/core/api_def:base_api_def",
     ],
     deps = [
-        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -783,6 +853,8 @@ tf_cc_test(
         "framework/cc_op_gen.cc",
         "framework/cc_op_gen.h",
         "framework/cc_op_gen_test.cc",
+        "framework/cc_op_gen_util.cc",
+        "framework/cc_op_gen_util.h",
     ],
     deps = [
         "//tensorflow/core:framework",
@@ -792,6 +864,8 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )

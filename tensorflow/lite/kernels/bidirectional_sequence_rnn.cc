@@ -299,6 +299,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         context,
         GetTemporarySafe(context, node, /*index=*/kFwRowSums, &fw_row_sums));
     fw_row_sums->type = kTfLiteInt32;
+    fw_row_sums->name = "Lstm_fw_row_sums";
     fw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int fw_row_sums_dims[2] = {num_row_sums, fw_num_units};
     if (!TfLiteIntArrayEqualsArray(fw_row_sums->dims, 2, fw_row_sums_dims)) {
@@ -315,6 +316,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         context,
         GetTemporarySafe(context, node, /*index=*/kBwRowSums, &bw_row_sums));
     bw_row_sums->type = kTfLiteInt32;
+    bw_row_sums->name = "Lstm_bw_row_sums";
     bw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
     int bw_row_sums_dims[2] = {num_row_sums, bw_num_units};
     if (!TfLiteIntArrayEqualsArray(bw_row_sums->dims, 2, bw_row_sums_dims)) {
@@ -830,7 +832,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           &op_data->bw_compute_row_sums);
     }
     default:
-      context->ReportError(context, "Type not currently supported.");
+      TF_LITE_KERNEL_LOG(context, "Type not currently supported.");
       return kTfLiteError;
   }
 }

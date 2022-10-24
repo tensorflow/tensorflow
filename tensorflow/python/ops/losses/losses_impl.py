@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implementation of Loss operations for use in neural networks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,7 +32,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(v1=["losses.Reduction"])
-class Reduction(object):
+class Reduction:
   """Types of loss reduction.
 
   Contains the following values:
@@ -70,7 +66,8 @@ class Reduction(object):
   @classmethod
   def validate(cls, key):
     if key not in cls.all():
-      raise ValueError("Invalid Reduction Key %s." % key)
+      raise ValueError(f"Invalid Reduction Key {key}. Key should be one of "
+                       f"{cls.all()}.")
 
 
 def _safe_mean(losses, num_present):
@@ -256,9 +253,9 @@ def absolute_difference(
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if predictions is None:
-    raise ValueError("predictions must not be None.")
+    raise ValueError("Argument `predictions` must not be None.")
   with ops.name_scope(scope, "absolute_difference",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
@@ -309,11 +306,11 @@ def cosine_distance(
   """
   axis = deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
-    raise ValueError("You must specify 'axis'.")
+    raise ValueError("You must specify argument `axis`.")
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if predictions is None:
-    raise ValueError("predictions must not be None.")
+    raise ValueError("Argument `predictions` must not be None.")
   with ops.name_scope(scope, "cosine_distance_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
@@ -361,9 +358,9 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if logits is None:
-    raise ValueError("logits must not be None.")
+    raise ValueError("Argument `logits` must not be None.")
   with ops.name_scope(scope, "hinge_loss", (logits, labels, weights)) as scope:
     logits = math_ops.cast(logits, dtype=dtypes.float32)
     labels = math_ops.cast(labels, dtype=dtypes.float32)
@@ -428,9 +425,9 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if predictions is None:
-    raise ValueError("predictions must not be None.")
+    raise ValueError("Argument `predictions` must not be None.")
   with ops.name_scope(scope, "huber_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
@@ -495,9 +492,9 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if predictions is None:
-    raise ValueError("predictions must not be None.")
+    raise ValueError("Argument `predictions` must not be None.")
   with ops.name_scope(scope, "log_loss",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
@@ -564,9 +561,9 @@ def mean_pairwise_squared_error(
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if predictions is None:
-    raise ValueError("predictions must not be None.")
+    raise ValueError("Argument `predictions` must not be None.")
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       (predictions, labels, weights)) as scope:
     weights = math_ops.cast(weights, dtype=dtypes.float32)
@@ -757,9 +754,9 @@ def mean_squared_error(
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if predictions is None:
-    raise ValueError("predictions must not be None.")
+    raise ValueError("Argument `predictions` must not be None.")
   with ops.name_scope(scope, "mean_squared_error",
                       (predictions, labels, weights)) as scope:
     predictions = math_ops.cast(predictions, dtype=dtypes.float32)
@@ -816,9 +813,9 @@ def sigmoid_cross_entropy(
   @end_compatibility
   """
   if multi_class_labels is None:
-    raise ValueError("multi_class_labels must not be None.")
+    raise ValueError("Argument `multi_class_labels` must not be None.")
   if logits is None:
-    raise ValueError("logits must not be None.")
+    raise ValueError("Argument `logits` must not be None.")
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
@@ -969,9 +966,9 @@ def softmax_cross_entropy(
   @end_compatibility
   """
   if onehot_labels is None:
-    raise ValueError("onehot_labels must not be None.")
+    raise ValueError("Argument `onehot_labels` must not be None.")
   if logits is None:
-    raise ValueError("logits must not be None.")
+    raise ValueError("Argument `logits` must not be None.")
   with ops.name_scope(scope, "softmax_cross_entropy_loss",
                       (logits, onehot_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
@@ -1087,9 +1084,9 @@ def sparse_softmax_cross_entropy(
   @end_compatibility
   """
   if labels is None:
-    raise ValueError("labels must not be None.")
+    raise ValueError("Argument `labels` must not be None.")
   if logits is None:
-    raise ValueError("logits must not be None.")
+    raise ValueError("Argument `logits` must not be None.")
   with ops.name_scope(scope, "sparse_softmax_cross_entropy_loss",
                       (logits, labels, weights)) as scope:
     # As documented above in Args, labels contain class IDs and logits contains

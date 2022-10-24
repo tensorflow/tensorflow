@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/export.h"
 
+#include <string>
+
 #include "flatbuffers/flexbuffers.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -672,7 +674,8 @@ tensorflow::Status Export(
     }
     if (::tflite::optimize::QuantizeWeights(
             &q_builder, input_model, quantized_type,
-            !params.disable_per_channel) != kTfLiteOk) {
+            !params.disable_per_channel,
+            ::tflite::optimize::QuantizerType::OLD_QUANTIZER) != kTfLiteOk) {
       return tensorflow::errors::InvalidArgument(
           "Quantize weights transformation failed.");
     }

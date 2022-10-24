@@ -15,10 +15,6 @@
 """XLA tests for pfor."""
 # pylint: disable=g-direct-tensorflow-import
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla

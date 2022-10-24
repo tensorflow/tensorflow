@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for forward and backwards compatibility utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import datetime
 import os
 from tensorflow.python.compat import compat

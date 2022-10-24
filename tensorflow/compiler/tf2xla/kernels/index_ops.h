@@ -30,7 +30,6 @@ class XlaArgMinMaxOp : public XlaOpKernel {
 
  private:
   const bool is_min_;  // Are we computing ArgMin (true) or ArgMax (false)?
-  const bool is_gpu_;
 };
 
 class XlaArgMaxOp : public XlaArgMinMaxOp {

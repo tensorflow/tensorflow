@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tools/hlo_module_loader.h"
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -28,11 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
@@ -40,36 +41,38 @@ namespace {
 Status OverrideConfig(const hlo_module_loader_details::Config& ovr_config,
                       HloModuleConfig* config) {
   config->set_replica_count(ovr_config.num_replicas);
-  return Status::OK();
+  config->set_num_partitions(ovr_config.num_partitions);
+  return OkStatus();
 }
 
 }  // namespace
 
-string StripLogHeaders(const string& hlo_string) {
+std::string StripLogHeaders(const std::string& hlo_string) {
   // I0521 12:04:45.883483    1509 service.cc:186] ...
   static RE2* matcher = new RE2(
       "[IWEF]\\d{4} "
       "\\d{2}:\\d{2}:\\d{2}\\.\\d+\\s+\\d+\\s+[^:]+:\\d+\\]\\s?(.*)");
   absl::string_view matches[4];
-  std::vector<string> lines = absl::StrSplit(hlo_string, '\n');
+  std::vector<std::string> lines = absl::StrSplit(hlo_string, '\n');
   for (auto& line : lines) {
     if (matcher->Match(line, 0, line.size(), RE2::ANCHOR_START, matches, 4)) {
-      line = string(matches[1]);
+      line = std::string(matches[1]);
     }
   }
-  return absl::StrJoin(lines, "\n", [](string* out, const string& line) {
-    absl::StrAppend(out, line);
-  });
+  return absl::StrJoin(lines, "\n",
+                       [](std::string* out, const std::string& line) {
+                         absl::StrAppend(out, line);
+                       });
 }
 
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
-    const string& data, const string& format,
+    const std::string& data, const std::string& format,
     hlo_module_loader_details::Config ovr_config,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   std::unique_ptr<HloModule> module;
   if (format == "hlo" || format == "txt") {
-    string hlo_string = StripLogHeaders(data);
+    std::string hlo_string = StripLogHeaders(data);
     HloModuleConfig config;
     config.set_debug_options(debug_options);
     TF_RETURN_IF_ERROR(OverrideConfig(ovr_config, &config));
@@ -87,10 +90,10 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
         return InvalidArgument("Failed to parse input as HLO protobuf binary");
       }
     } else if (format == "pbtxt") {
-      if (!tensorflow::protobuf::TextFormat::ParseFromString(data, &proto) &&
-          !tensorflow::protobuf::TextFormat::ParseFromString(
-              data, proto.mutable_hlo()) &&
-          !tensorflow::protobuf::TextFormat::ParseFromString(
+      if (!tsl::protobuf::TextFormat::ParseFromString(data, &proto) &&
+          !tsl::protobuf::TextFormat::ParseFromString(data,
+                                                      proto.mutable_hlo()) &&
+          !tsl::protobuf::TextFormat::ParseFromString(
               data, proto.mutable_hlo()->mutable_hlo_module())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
@@ -114,15 +117,14 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
 }
 
 StatusOr<std::unique_ptr<HloModule>> LoadModuleFromFile(
-    const string& path, hlo_module_loader_details::Config ovr_config,
-    string format,
+    const std::string& path, hlo_module_loader_details::Config ovr_config,
+    std::string format,
     const std::function<void(HloModuleConfig*)>& config_modifier_hook) {
-  string data;
+  std::string data;
   if (format.empty()) {
-    format = string(tensorflow::io::Extension(path));
+    format = std::string(tsl::io::Extension(path));
   }
-  TF_RETURN_IF_ERROR(
-      tensorflow::ReadFileToString(tensorflow::Env::Default(), path, &data));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(tsl::Env::Default(), path, &data));
   return LoadModuleFromData(data, format, ovr_config, config_modifier_hook);
 }
 

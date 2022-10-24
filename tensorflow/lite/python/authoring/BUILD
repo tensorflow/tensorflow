@@ -13,7 +13,7 @@ py_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/python/metrics_wrapper:converter_error_data_proto_py",
+        "//tensorflow/lite/python/metrics:converter_error_data_proto_py",
         "//tensorflow/python:framework",
     ],
 )

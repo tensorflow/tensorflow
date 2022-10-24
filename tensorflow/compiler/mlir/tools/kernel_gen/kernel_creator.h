@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/core/platform/statusor.h"
@@ -35,16 +36,17 @@ namespace kernel_gen {
 
 // Parses tf_code to create a module. An MLIRContext is taken in case any
 // unexpected dialects are needed.
-StatusOr<mlir::OwningModuleRef> SetupContextAndParseModule(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> SetupContextAndParseModule(
     mlir::MLIRContext& context, llvm::StringRef tf_code);
 
 // Converts TF code to LLVM with or without GPU support.
-StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
+StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GenerateKernelForTfCode(
     mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<int64_t> tile_sizes, llvm::ArrayRef<int64_t> unroll_factors,
     int64_t max_supported_rank, bool embed_memref_prints, bool print_ptx,
-    bool print_llvmir, bool enable_ftz, bool cpu_codegen, bool jit_compile);
+    bool print_llvmir, bool enable_ftz, bool index_64bit, bool jit_compile,
+    bool jit_i64_indexed_for_large_tensors, bool apply_cl_options);
 
 }  // namespace kernel_gen
 }  // namespace tensorflow

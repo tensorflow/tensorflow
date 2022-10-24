@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for `tf.data.Dataset.unique()`."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
@@ -86,6 +82,11 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
     ]:
       with self.assertRaises(TypeError):
         _ = dataset_ops.Dataset.from_generator(lambda: [], dtype).unique()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).unique(name="unique")
+    self.assertDatasetProduces(dataset, [42])
 
 
 class UniqueCheckpointTest(checkpoint_test_base.CheckpointTestBase,

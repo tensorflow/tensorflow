@@ -1,0 +1,20 @@
+path: "tensorflow.distribute.experimental.rpc.Server"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.experimental.rpc.rpc_ops.Server\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "create"
+    argspec: "args=[\'rpc_layer\', \'address\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register"
+    argspec: "args=[\'self\', \'method_name\', \'func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "start"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

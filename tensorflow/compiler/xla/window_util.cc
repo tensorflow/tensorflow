@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/window_util.h"
 
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace window_util {
@@ -62,10 +63,10 @@ PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes) {
   return config;
 }
 
-/* static */ string ToString(const WindowDimension& dim) {
+/* static */ std::string ToString(const WindowDimension& dim) {
   using absl::StrAppend;
   using absl::StrCat;
-  string str = StrCat("(size=", dim.size());
+  std::string str = StrCat("(size=", dim.size());
   if (dim.stride() != 1) {
     StrAppend(&str, ",stride=", dim.stride());
   }
@@ -88,14 +89,14 @@ PaddingConfig MakeSymmetricPadding(absl::Span<const int64_t> sizes) {
   return str;
 }
 
-string ToString(const Window& window) {
+std::string ToString(const Window& window) {
   using absl::StrAppend;
   using absl::StrCat;
 
-  string str;
+  std::string str;
   const auto add_field =
       [&](const char* heading,
-          std::function<string(const WindowDimension&)> format) {
+          std::function<std::string(const WindowDimension&)> format) {
         StrAppend(&str, heading, "=");
         const char* prefix = "";
         for (const auto& window_dimension : window.dimensions()) {

@@ -68,7 +68,9 @@ class StackTrace final {
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);
-      result.code_objs_.push_back(std::make_pair(code_obj, frame->f_lasti));
+      int line_number =
+          PyFrame_GetLineNumber(const_cast<PyFrameObject*>(frame));
+      result.code_objs_.push_back(std::make_pair(code_obj, line_number));
     }
     return result;
   }
@@ -115,7 +117,7 @@ class StackTrace final {
 };
 
 // A class that manages Python stack traces in a circular buffer. Users can
-// insert stack trace entries and retrive them by ids.
+// insert stack trace entries and retrieve them by ids.
 class StackTraceManager {
  public:
   static constexpr int kStackTraceCircularBufferSize = 1024;

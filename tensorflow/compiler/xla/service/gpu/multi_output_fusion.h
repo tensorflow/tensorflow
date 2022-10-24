@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -93,15 +94,21 @@ class GpuMultiOutputFusion : public HloModulePass {
 
   absl::string_view name() const override { return "multi_output_fusion"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
-  bool FuseSiblings(HloInstruction* parent);
+  bool FuseSiblings(HloInstruction* parent, FusionInfoCache* fusion_info_cache);
 
   StatusOr<bool> DoMultiOutputFusion();
 
   // Recompute reachability for the current computation.
   void RecomputeReachability();
+
+  void DumpFusionState(const HloInstruction& consumer, absl::string_view label,
+                       const HloInstruction* producer = nullptr);
 
   // Computation for the pass.
   HloComputation* computation_;

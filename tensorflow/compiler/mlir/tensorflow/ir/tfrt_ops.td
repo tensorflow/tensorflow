@@ -38,7 +38,7 @@ def TF__TfrtSetResourceOp : TF_Op<"_TfrtSetResource", []> {
 }
 
 def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
-    [NoSideEffect, TF_NoConstantFold, DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
+    [Pure, TF_NoConstantFold, DeclareOpInterfaceMethods<TF_ResourceHandleAllocatorInterface>]> {
   let summary = "Get values from TFRT runtime's static resource.";
 
   let description = [{
@@ -60,9 +60,7 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
     Variadic<TF_Tensor>:$results
   );
 
-  let verifier = [{
-    return Verify(*this);
-  }];
+  let hasVerifier = 1;
 }
 
 #endif // TFRT_OPS

@@ -41,7 +41,7 @@ TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
     T data = GetTensorData<T>(dims)[i];
     if (data < 0) {
       TfLiteIntArrayFree(output_shape);
-      context->ReportError(context, "Fill dimensions must be >= 0", dims->type);
+      TF_LITE_KERNEL_LOG(context, "Fill dimensions must be >= 0", dims->type);
       return kTfLiteError;
     }
     output_shape->data[i] = data;
@@ -57,7 +57,7 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* dims,
     case kTfLiteInt64:
       return ResizeOutputImpl<int64_t>(context, dims, output);
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Fill only currently supports int32, int64 for input 0, "
           "got %d.",
@@ -162,7 +162,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       FillString(value, output);
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Fill only currently supports int8, int16, int32, int64, float32, "
           "bool, string for input 1, got %d.",

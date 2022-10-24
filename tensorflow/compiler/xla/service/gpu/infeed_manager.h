@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/xfeed_queue.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -44,7 +44,7 @@ namespace gpu {
 
 // Client-side class used to enqueue infeed buffers.
 class InfeedManager
-    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8>>> {
+    : public BlockingXfeedQueue<ShapeTree<se::ScopedDeviceMemory<uint8_t>>> {
  public:
   explicit InfeedManager(se::StreamExecutor* executor);
 

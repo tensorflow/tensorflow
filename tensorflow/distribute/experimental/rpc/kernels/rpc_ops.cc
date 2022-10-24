@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
+#include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_state.h"
@@ -195,7 +196,7 @@ class FunctionRegistry {
       return tensorflow::errors::InvalidArgument(
           absl::StrCat(method, " is already registered."));
     }
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   tensorflow::Status LookUp(const std::string& method,
@@ -208,7 +209,7 @@ class FunctionRegistry {
     }
 
     *output = it->second;
-    return tensorflow::Status::OK();
+    return OkStatus();
   }
 
   const gtl::FlatMap<std::string, FunctionMetadata>& List() const {
@@ -388,8 +389,11 @@ class GrpcPollingThread {
 
 class RpcClient : public ResourceBase {
  public:
-  explicit RpcClient(std::string address, std::string resource_name)
-      : server_address_(address), thread_(resource_name) {
+  explicit RpcClient(std::string address, std::string resource_name,
+                     int64 timeout_in_ms)
+      : server_address_(address),
+        thread_(resource_name),
+        timeout_in_ms_(timeout_in_ms) {
     std::shared_ptr<::grpc::ChannelCredentials> creds =
         GetDefaultChannelCredentials();
 
@@ -408,22 +412,25 @@ class RpcClient : public ResourceBase {
 
   void CallAsync(const std::string& method_name,
                  const std::vector<Tensor>& inputs, CallResponse* response,
-                 StatusCallback callback) {
+                 StatusCallback callback, int64 timeout_in_ms) {
     CallRequest request;
     request.set_method(method_name);
     for (const auto& t : inputs) {
       t.AsProtoField(request.add_input_tensors());
     }
     ::grpc::ClientContext context;
+    // Use per call timeout if specified, otherwise use default client timeout.
+    int64 timeout = timeout_in_ms > 0 ? timeout_in_ms : timeout_in_ms_;
     new RPCState<CallResponse>(
         stub_.get(), cq_, "/tensorflow.rpc.RpcService/Call", request, response,
         /*done=*/std::move(callback),
         /*call_opts=*/nullptr,
-        /*threadpool=*/callback_threadpool_.get());
+        /*threadpool=*/callback_threadpool_.get(),
+        /*fail_fast=*/false, /*timeout_in_ms=*/timeout,
+        /*max_retries=*/0, /*target=*/nullptr);
   }
 
-  void ListAsync(rpc::ListResponse* response, StatusCallback callback,
-                 int64 timeout_in_ms) {
+  void ListAsync(rpc::ListResponse* response, StatusCallback callback) {
     rpc::ListRequest request;
     ::grpc::ClientContext context;
     // fail_fast=false sets wait_for_ready to true in GRPC call.
@@ -434,7 +441,7 @@ class RpcClient : public ResourceBase {
         /*done=*/std::move(callback),
         /*call_opts=*/nullptr,
         /*threadpool=*/callback_threadpool_.get(),
-        /*fail_fast=*/false, /*timeout_in_ms=*/timeout_in_ms,
+        /*fail_fast=*/false, /*timeout_in_ms=*/timeout_in_ms_,
         /*max_retries=*/0, /*target=*/nullptr);
   }
 
@@ -445,6 +452,7 @@ class RpcClient : public ResourceBase {
   ::grpc::CompletionQueue* cq_;
   GrpcPollingThread thread_;
   std::unique_ptr<thread::ThreadPool> callback_threadpool_;
+  int64 timeout_in_ms_;
 };
 
 class RpcFutureResource : public ResourceBase {
@@ -514,7 +522,7 @@ void RpcServerOp::Compute(OpKernelContext* ctx) {
   // Create resource
   auto creator = [address](RpcServer** server) {
     *server = new RpcServer(address);
-    return Status::OK();
+    return OkStatus();
   };
   core::RefCountPtr<RpcServer> server;
   OP_REQUIRES_OK(ctx, LookupOrCreateResource<RpcServer>(ctx, resource_handle,
@@ -553,9 +561,9 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   DeleteResource(ctx, resource_handle).IgnoreError();
 
   // Create resource
-  auto creator = [&address, &resource_name](RpcClient** client) {
-    *client = new RpcClient(address, resource_name);
-    return Status::OK();
+  auto creator = [&address, &resource_name, timeout_in_ms](RpcClient** client) {
+    *client = new RpcClient(address, resource_name, timeout_in_ms);
+    return OkStatus();
   };
 
   core::RefCountPtr<RpcClient> client;
@@ -566,19 +574,22 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   ctx->set_output(0, handle);
 
   if (!list_registered_methods_) {
+    Tensor* method_output_t;
+    OP_REQUIRES_OK_ASYNC(
+        ctx, ctx->allocate_output(1, TensorShape({}), &method_output_t), done);
+    method_output_t->scalar<tstring>()() = "";
     done();
     return;
   }
   auto* response = new ListResponse();
   client->ListAsync(
-      response,
-      [ctx, response, done](const Status& status) {
+      response, [ctx, response, done](const Status& status) {
         if (!status.ok()) {
           ctx->SetStatus(status);
         } else {
           Tensor* method_output_signatures_t;
           auto method_output_shape = TensorShape(
-              {static_cast<int64>(response->registered_methods_size())});
+              {static_cast<int64_t>(response->registered_methods_size())});
           OP_REQUIRES_OK_ASYNC(
               ctx,
               ctx->allocate_output(1, method_output_shape,
@@ -593,8 +604,7 @@ void RpcClientOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         }
         delete response;
         done();
-      },
-      timeout_in_ms);
+      });
 }
 
 RpcServerStartOp::RpcServerStartOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -604,7 +614,7 @@ void RpcServerStartOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &server));
 
   server->StartServer();
-  ctx->SetStatus(Status::OK());
+  ctx->SetStatus(OkStatus());
 }
 
 RpcServerRegisterOp::RpcServerRegisterOp(OpKernelConstruction* ctx)
@@ -691,6 +701,10 @@ void RpcCallOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("method_name", &method_name));
   std::string method = method_name->scalar<tstring>()();
 
+  const Tensor* timeout;
+  OP_REQUIRES_OK(ctx, ctx->input("timeout_in_ms", &timeout));
+  auto timeout_in_ms = timeout->scalar<int64_t>()();
+
   OpInputList arguments;
   OP_REQUIRES_OK(ctx, ctx->input_list("args", &arguments));
   std::vector<Tensor> args(arguments.begin(), arguments.end());
@@ -711,7 +725,7 @@ void RpcCallOp::Compute(OpKernelContext* ctx) {
   // Create resource
   auto creator = [](RpcFutureResource** resource) {
     *resource = new RpcFutureResource();
-    return Status::OK();
+    return OkStatus();
   };
   core::RefCountPtr<RpcFutureResource> future_resource;
   OP_REQUIRES_OK(ctx, LookupOrCreateResource<RpcFutureResource>(
@@ -728,12 +742,14 @@ void RpcCallOp::Compute(OpKernelContext* ctx) {
   CallResponse* response = future_resource->get_response();
   auto* future_resource_ptr = future_resource.release();
 
-  client->CallAsync(method, args, response,
-                    [future_resource_ptr](const Status& status) {
-                      future_resource_ptr->set_status(status);
-                      future_resource_ptr->OperationFinished();
-                      future_resource_ptr->Unref();
-                    });
+  client->CallAsync(
+      method, args, response,
+      [future_resource_ptr](const Status& status) {
+        future_resource_ptr->set_status(status);
+        future_resource_ptr->OperationFinished();
+        future_resource_ptr->Unref();
+      },
+      timeout_in_ms);
 }
 
 RpcCheckStatusOp::RpcCheckStatusOp(OpKernelConstruction* ctx)
@@ -761,7 +777,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       [ctx, done, handle](const Status& status, const CallResponse& response) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
-        error_code.scalar<int64>()() = status.code();
+        error_code.scalar<int64_t>()() = status.code();
         error_message.scalar<tstring>()() = status.error_message();
 
         ctx->set_output(0, error_code);
@@ -853,6 +869,7 @@ REGISTER_OP("RpcCall")
     .Input("client: resource")
     .Input("method_name: string")
     .Input("args: Tin")
+    .Input("timeout_in_ms: int64")
     .Attr("Tin: list(type) >= 0")
     .Output("future: resource")
     .Output("deleter: variant")
@@ -883,5 +900,6 @@ REGISTER_KERNEL_BUILDER(Name("RpcGetValue").Device(DEVICE_CPU), RpcGetValueOp);
 REGISTER_KERNEL_BUILDER(Name("DeleteRpcFutureResource").Device(DEVICE_CPU),
                         DeleteRpcFutureResourceOp);
 
+REGISTER_INPUT_COLOCATION_EXEMPTION("RpcServerRegister");
 }  // namespace rpc
 }  // namespace tensorflow

@@ -76,7 +76,7 @@ Status QueueRunner::Init(const QueueRunnerDef& queue_runner_def) {
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix(queue_name_), nthreads));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 QueueRunner::~QueueRunner() {
@@ -117,7 +117,7 @@ Status QueueRunner::Start(Session* sess, int wait_for) {
       return status_;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status QueueRunner::StartAndCollectCostGraph(Session* session, int wait_for_ms,
@@ -184,7 +184,7 @@ void QueueRunner::Run(Session* sess, const string& enqueue_op) {
   }
 
   // Close the queue unless the coordinator is shutting down since the cancel op
-  // will be run anway in this case.
+  // will be run anyway in this case.
   if (IsQueueClosed(status) && (!coord_ || !coord_->ShouldStop())) {
     if (last_run && !close_op_name_.empty()) {
       UpdateStatus(RealRun(sess, close_op_name_, false));
@@ -211,7 +211,7 @@ Status QueueRunner::ExportCostGraph(CostGraphDef* cost_graph) const {
   }
   mutex_lock l(*cg_mu_);
   cost_graph->MergeFrom(*cost_graph_);
-  return Status::OK();
+  return OkStatus();
 }
 
 void QueueRunner::SetRunArgumentsAndCostGraph(const RunOptions& run_options) {

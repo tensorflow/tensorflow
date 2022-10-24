@@ -12,19 +12,37 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
+
+#include "tensorflow/compiler/mlir/tensorflow/transforms/initialize_variables_in_session_init.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
-namespace tf_saved_model {
+namespace tf_test {
 namespace {
-class InitializeVariablesInSessionInitializerPass;
 
-static PassRegistration<InitializeVariablesInSessionInitializerPass>
-    initialize_variables_in_session_init_test_pass([] {
-      static tensorflow::Session* session = new TF::test_util::FakeSession();
-      return CreateInitializeVariablesInSessionInitializerPass(session);
-    });
-}  // namespace
-}  // namespace tf_saved_model
+#define GEN_PASS_DEF_INITIALIZEVARIABLESINSESSIONINITIALIZERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
+class InitializeVariablesInSessionInitializerPass
+    : public impl::InitializeVariablesInSessionInitializerPassBase<
+          InitializeVariablesInSessionInitializerPass> {
+ public:
+  void runOnOperation() final {
+    static tensorflow::Session* session = new TF::test_util::FakeSession();
+    if (failed(tf_saved_model::InitializeVariablesInSessionInitializer(
+            getOperation(), session)))
+      signalPassFailure();
+  }
+
+ private:
+};
+}  // anonymous namespace
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateInitializeVariablesInSessionInitializerTestPass() {
+  return std::make_unique<InitializeVariablesInSessionInitializerPass>();
+}
+
+}  // namespace tf_test
 }  // namespace mlir

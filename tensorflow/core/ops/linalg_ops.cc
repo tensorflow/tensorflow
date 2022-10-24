@@ -37,14 +37,14 @@ Status MakeBatchSquareMatrix(InferenceContext* c, ShapeHandle input,
   ShapeHandle batch_shape;
   TF_RETURN_IF_ERROR(c->Subshape(s, 0, -2, &batch_shape));
   TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(d, d), out));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status BatchUnchangedSquareShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // The first input is [...,K,M] and second input is [...,M,N].
@@ -87,7 +87,7 @@ Status BandedTriangularSolveShapeFn(InferenceContext* c) {
       c->Concatenate(output_batch_shape, c->Matrix(m, c->Dim(rhs, -1)), &out));
 
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // The first input is [...,M,N] and second input is either [...,M,K] or [...,M].
@@ -124,7 +124,7 @@ Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
   TF_RETURN_IF_ERROR(c->Concatenate(lhs_batch_shape, c->Vector(n), &out));
   TF_RETURN_IF_ERROR(c->Concatenate(out, c->Vector(c->Dim(rhs, -1)), &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // The first input is [...,M,M] and second input is [...,M,N].
@@ -152,7 +152,7 @@ Status MatrixTriangularSolveShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       c->Concatenate(output_batch_shape, c->Matrix(m, c->Dim(rhs, -1)), &out));
   c->set_output(0, out);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Input is [...,N,N]. Outputs are:
@@ -177,7 +177,7 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
   } else {
     c->set_output(1, c->Vector(0ll));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Input is [...,N,N].
@@ -201,7 +201,7 @@ Status LuShapeFn(InferenceContext* c) {
 
   c->set_output(0, lu_shape);
   c->set_output(1, p_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Input is [...,M,N].
@@ -231,7 +231,7 @@ Status QrShapeFn(InferenceContext* c) {
   }
   c->set_output(0, q_shape);
   c->set_output(1, r_shape);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Input is [...,M,N].  First output is [...,min(M,N)].
@@ -276,7 +276,7 @@ Status SvdShapeFn(InferenceContext* c) {
     c->set_output(1, c->Vector(0ll));
     c->set_output(2, c->Vector(0ll));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Inputs: [...,1,M], [...,1,M], [...,1,M],[...,M,N].
@@ -324,7 +324,7 @@ Status TridiagonalMatMulShapeFn(InferenceContext* c) {
 
   // The output shape is the same as rhs shape.
   c->set_output(0, rhs);
-  return Status::OK();
+  return OkStatus();
 }
 
 // The first input is [...,3,M] and second input is [...,M,K].
@@ -354,7 +354,7 @@ Status TridiagonalSolveShapeFn(InferenceContext* c) {
 
   // The output shape is the same as rhs shape.
   c->set_output(0, rhs);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -374,7 +374,7 @@ REGISTER_OP("MatrixDeterminant")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("LogMatrixDeterminant")
@@ -397,7 +397,7 @@ REGISTER_OP("LogMatrixDeterminant")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &out));
       c->set_output(1, out);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("MatrixInverse")
@@ -451,7 +451,7 @@ REGISTER_OP("SelfAdjointEig")
       TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &s));
       TF_RETURN_IF_ERROR(c->Concatenate(s, c->Matrix(d_plus_1, d), &s));
       c->set_output(0, s);
-      return Status::OK();
+      return OkStatus();
     });
 
 REGISTER_OP("Eig")
@@ -506,7 +506,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Output("output: T")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float, half, complex64, complex128}")
+    .Attr("T: {bfloat16, double, float, half, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       return MatrixTriangularSolveShapeFn(c);
     });

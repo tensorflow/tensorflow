@@ -73,9 +73,10 @@ public final class NativeInterpreterWrapperTest {
 
   @Test
   public void testConstructorWithOptions() {
+    InterpreterImpl.Options options = new InterpreterImpl.Options();
+    options.setNumThreads(2).setUseNNAPI(true);
     try (NativeInterpreterWrapper wrapper =
-        new NativeInterpreterWrapper(
-            FLOAT_MODEL_PATH, new Interpreter.Options().setNumThreads(2).setUseNNAPI(true))) {
+        new NativeInterpreterWrapper(FLOAT_MODEL_PATH, options)) {
       assertThat(wrapper).isNotNull();
     }
   }

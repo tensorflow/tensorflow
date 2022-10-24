@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STATUS_H_
 #define TENSORFLOW_COMPILER_XLA_STATUS_H_
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/tsl/platform/status.h"  // IWYU pragma: export
 
 namespace xla {
 
-using tensorflow::Status;  // TENSORFLOW_STATUS_OK
+using tsl::OkStatus;
+using tsl::Status;  // TENSORFLOW_STATUS_OK
 
 }  // namespace xla
 

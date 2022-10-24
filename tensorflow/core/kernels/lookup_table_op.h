@@ -79,7 +79,7 @@ class LookupTableOp : public OpKernel {
                     container->MemoryUsed() + table_.AllocatedBytes());
               }
               *ret = container;
-              return Status::OK();
+              return OkStatus();
             };
 
     lookup::LookupInterface* table = nullptr;
@@ -131,6 +131,40 @@ class LookupTableOp : public OpKernel {
   bool use_node_name_sharing_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(LookupTableOp);
+};
+
+// An anonymous version of LookupTableOp, which creates a new table resource
+// everytime `Compute` is called. The resource can only be accessed by the
+// returned resource handle (e.g. it can't be looked up by a name in a resource
+// manager). The resource will be automatically deleted when all resource
+// handles pointing to it are gone.
+template <class Container, class key_dtype, class value_dtype>
+class AnonymousLookupTableOp : public OpKernel {
+ public:
+  explicit AnonymousLookupTableOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table = new Container(ctx, this);
+    if (!ctx->status().ok()) {
+      table->Unref();
+      return;
+    }
+    Tensor table_tensor;
+    OP_REQUIRES_OK(
+        ctx, ctx->allocate_temp(tensorflow::DT_RESOURCE,
+                                tensorflow::TensorShape({}), &table_tensor));
+    if (ctx->track_allocations()) {
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() +
+                                               table_tensor.AllocatedBytes());
+    }
+    table_tensor.scalar<ResourceHandle>()() =
+        ResourceHandle::MakeRefCountingHandle<lookup::LookupInterface>(
+            table, ctx->device()->name());
+    ctx->set_output(0, table_tensor);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(AnonymousLookupTableOp);
 };
 
 namespace lookup {
@@ -200,7 +234,7 @@ class HashTable : public InitializableLookupTable {
                            .WithAttr("use_node_name_sharing", true));
     if (table_.empty()) {
       *out = hash_table_node;
-      return Status::OK();
+      return OkStatus();
     }
 
     if (initializer_serializer_ == nullptr) {
@@ -215,7 +249,7 @@ class HashTable : public InitializableLookupTable {
         builder, hash_table_node, &initializer));
     *out = ops::UnaryOp("Identity", hash_table_node,
                         builder->opts().WithControlInput(initializer));
-    return Status::OK();
+    return OkStatus();
   }
 
   size_t size() const override {
@@ -246,7 +280,7 @@ class HashTable : public InitializableLookupTable {
       keys_data(i) = it->first;
       values_data(i) = it->second;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
@@ -261,7 +295,7 @@ class HashTable : public InitializableLookupTable {
     if (size > 0) {
       table_.reserve(size);
     }
-    return Status::OK();
+    return OkStatus();
   };
 
   Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
@@ -281,7 +315,7 @@ class HashTable : public InitializableLookupTable {
             result.first->second, " and trying to add value ", value);
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status DoFind(const Tensor& key, Tensor* value,
@@ -294,7 +328,7 @@ class HashTable : public InitializableLookupTable {
       value_values(i) = gtl::FindWithDefault(
           table_, SubtleMustCopyIfIntegral(key_values(i)), default_val);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   int64_t MemoryUsed() const override {

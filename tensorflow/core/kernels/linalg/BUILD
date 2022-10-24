@@ -8,15 +8,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_kernel_library")
 
 package(
     default_visibility = [
@@ -63,6 +55,7 @@ exports_files([
     "qr_op_complex64.cc",
     "qr_op_double.cc",
     "qr_op_float.cc",
+    "qr_op_half.cc",
     "qr_op_impl.h",
 ])
 
@@ -104,10 +97,11 @@ LINALG_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
-] + if_cuda([
-    ":eye_functor",
-    "//tensorflow/core/util:cuda_solvers",
     "//tensorflow/core/kernels:transpose_functor",
+] + if_cuda_or_rocm([
+    ":eye_functor",
+]) + if_cuda([
+    "//tensorflow/core/util:cuda_solvers",
 ]) + if_rocm([
     "//tensorflow/core/util:rocm_solvers",
 ])
@@ -133,7 +127,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cholesky_op",
     prefix = "cholesky_op",
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
     ]) + LINALG_DEPS,
 )
@@ -188,7 +182,7 @@ tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
     visibility = [":friends"],
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + [":loose_headers"],
 )
 
 tf_kernel_library(
@@ -227,7 +221,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:fill_functor",
         "//tensorflow/core/platform:stream_executor",
     ] + if_cuda([
-        "//tensorflow/core/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/util:cuda_solvers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -258,7 +252,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "qr_op",
     prefix = "qr_op",
-    deps = LINALG_DEPS + if_cuda([
+    deps = LINALG_DEPS + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cwise_op",
         ":matrix_band_part_op",
     ]),
@@ -273,9 +267,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lu_op",
     prefix = "lu_op",
-    deps = if_cuda([
-        "//tensorflow/core/util:cuda_solvers",
+    deps = if_cuda_or_rocm([
         "//tensorflow/core/kernels:transpose_functor",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]) + [
         "//third_party/eigen3",
         "//tensorflow/core:framework",
@@ -310,6 +307,21 @@ cc_library(
         "//tensorflow/core:lib",
         "//third_party/eigen3",
     ],
+)
+
+# For a more maintainable build this target should not exist and the headers
+# should  be split into the existing cc_library targets, but this change was
+# automatically  done so that we can remove long standing issues and complexity
+# in the build system. It's up to the OWNERS of this package to get rid of it or
+# not. The use of the textual_hdrs attribute is discouraged, use hdrs instead.
+# Here it is used to avoid header parsing errors in packages where the feature
+# parse_headers was enabled since loose headers were not being parsed. See
+# go/loose-lsc-one-target-approach for more details.
+cc_library(
+    name = "loose_headers",
+    tags = ["avoid_dep"],
+    textual_hdrs = ["eye_functor.h"],
+    visibility = [":__pkg__"],
 )
 
 tf_cuda_cc_test(

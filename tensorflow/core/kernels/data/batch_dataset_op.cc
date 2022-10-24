@@ -90,7 +90,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       const string& prefix) const override {
     name_utils::IteratorPrefixParams params;
     params.op_version = op_version_;
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix, params)});
   }
 
@@ -109,8 +109,16 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t Cardinality() const override {
+  int64_t CardinalityInternal() const override {
     int64_t n = input_->Cardinality();
+    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+      return n;
+    }
+    return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
+  }
+
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -119,7 +127,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -145,7 +153,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(CopyBatch(CopyBatchParams(ctx), batch_elements,
                                  parallel_copy_,
                                  /*allocation_callback=*/nullptr, out_tensors));
-    return Status::OK();
+    return OkStatus();
   }
 
  protected:
@@ -163,7 +171,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {input_graph_node, batch_size, drop_remainder},
                       {{kParallelCopy, parallel_copy}}, output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -186,7 +194,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
-          return Status::OK();
+          return OkStatus();
         }
         batch_elements.reserve(dataset()->reserve_size_);
         *end_of_sequence = false;
@@ -204,13 +212,13 @@ class BatchDatasetOp::Dataset : public DatasetBase {
 
       if (batch_elements.empty()) {
         DCHECK(*end_of_sequence);
-        return Status::OK();
+        return OkStatus();
       }
 
       if (dataset()->drop_remainder_ &&
           batch_elements.size() < dataset()->batch_size_) {
         *end_of_sequence = true;
-        return Status::OK();
+        return OkStatus();
       }
 
       // Copy the retrieved batch elements into one output tensor per tuple
@@ -226,7 +234,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
           /*allocation_callback=*/nullptr, out_tensors));
 
       *end_of_sequence = false;
-      return Status::OK();
+      return OkStatus();
     }
 
    protected:
@@ -243,7 +251,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       } else {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -254,7 +262,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       } else {
         input_impl_.reset();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {

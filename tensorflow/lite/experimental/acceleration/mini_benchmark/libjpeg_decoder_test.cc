@@ -270,46 +270,6 @@ TEST(LibjpegDecoderTest, DoesNotDecodeBeyondWhatIsSpecifiedInHeader) {
   EXPECT_EQ(status.code, kTfLiteOk);
 }
 
-// the LibJpeg implementation we are using for testing is neither failing nor
-// signaling that no data has been actually read when calling
-// jpeg_read_scanlines after the end of the image data. It just
-// writes a warning message "Corrupt JPEG data: premature end of data segment"
-// and returns 1 as the number of lines actually read.
-// This tests is here for documentation of this limitation and to validate
-// that we are not causing any buffer overrun.
-TEST(LibjpegDecoderTest,
-     DoesNotFailDecodingAnImageWithLessDataThanDeclaredInJpegHeader) {
-  Status status;
-  std::unique_ptr<LibjpegDecoder> decoder = LibjpegDecoder::Create(status);
-  EXPECT_THAT(status.error_message, IsEmpty());
-  EXPECT_EQ(status.code, kTfLiteOk);
-  ASSERT_THAT(decoder, NotNull());
-  std::string origin_encoded_img(
-      reinterpret_cast<const char*>(g_tflite_acceleration_test_card_jpeg),
-      g_tflite_acceleration_test_card_jpeg_len);
-  tflite::StringRef origin_string_ref = {
-      origin_encoded_img.c_str(),
-      static_cast<int>(origin_encoded_img.length())};
-
-  JpegHeader oversized_image_header = {
-      .height = kExpectedImageDimensions.height * 2,
-      .width = kExpectedImageDimensions.width * 2,
-      .channels = kExpectedImageDimensions.channels};
-  std::string altered_image;
-  Status alter_header_status = BuildImageWithNewHeader(
-      origin_string_ref, oversized_image_header, altered_image);
-  ASSERT_EQ(alter_header_status.code, kTfLiteOk);
-
-  tflite::StringRef altered_string_ref = {
-      altered_image.c_str(), static_cast<int>(altered_image.length())};
-
-  unsigned char decoded[kDecodedSize * 4];
-
-  status = decoder->DecodeImage(altered_string_ref, oversized_image_header,
-                                decoded, kDecodedSize * 4);
-  EXPECT_EQ(status.code, kTfLiteOk);
-}
-
 TEST(LibjpegDecoderTest, CanReadImagesWithVeryLargeRows) {
   Status status;
   std::unique_ptr<LibjpegDecoder> decoder = LibjpegDecoder::Create(status);

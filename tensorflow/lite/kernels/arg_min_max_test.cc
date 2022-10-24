@@ -143,7 +143,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgFloat) {
   ArgMaxOpModel model({1, 1, 1, 4}, TensorType_FLOAT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<float>(model.input(), {0.1, 0.9, 0.7, 0.3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
@@ -153,7 +153,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgUInt8) {
   ArgMaxOpModel model({1, 1, 1, 4}, TensorType_UINT8, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<uint8_t>(model.input(), {1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
@@ -163,7 +163,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgInt8) {
   ArgMaxOpModel model({1, 1, 1, 4}, TensorType_INT8, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int8_t>(model.input(), {-1, -9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {2});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
@@ -173,9 +173,19 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgInt) {
   ArgMaxOpModel model({1, 1, 1, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {1});
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
+TEST_P(ArgMinMaxOpTest, GetMaxArgBool) {
+  ArgMaxOpModel model({1, 1, 1, 4}, TensorType_BOOL, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  model.PopulateTensor<bool>(model.input(), {true, false, false, false});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  ValidateOutput(model, {0});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
@@ -183,7 +193,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgMulDimensions) {
   ArgMaxOpModel model({1, 1, 2, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {3, 1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
@@ -193,7 +203,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgNegativeAxis) {
   ArgMaxOpModel model({1, 1, 2, 4}, TensorType_INT32, -2, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {0, 1, 0, 0});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 4}));
@@ -203,7 +213,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgOutput64) {
   ArgMaxOpModel model({1, 1, 2, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {10, 2, 7, 8, 1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {0, 1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
@@ -216,7 +226,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgFloatLastAxis) {
                         OutputType());
     model.PopulateTensor<float>(
         model.input(), std::vector<float>(input.begin(), input.begin() + i));
-    model.Invoke();
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
     ValidateOutput(model, {i - 1});
   }
@@ -226,7 +236,7 @@ TEST_P(ArgMinMaxOpTest, GetMinArgFloat) {
   ArgMinOpModel model({1, 1, 1, 4}, TensorType_FLOAT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<float>(model.input(), {0.1, 0.9, 0.7, 0.3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {0});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
@@ -236,9 +246,19 @@ TEST_P(ArgMinMaxOpTest, GetMinArgInt) {
   ArgMinOpModel model({1, 1, 1, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {0});
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
+TEST_P(ArgMinMaxOpTest, GetMinArgBool) {
+  ArgMinOpModel model({1, 1, 1, 4}, TensorType_BOOL, 3, AxisType(),
+                      ConstantAxis(), OutputType());
+  model.PopulateTensor<bool>(model.input(), {true, false, true, true});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  ValidateOutput(model, {1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
@@ -246,7 +266,7 @@ TEST_P(ArgMinMaxOpTest, GetMinArgMulDimensions) {
   ArgMinOpModel model({1, 1, 2, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {0, 0});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
@@ -256,7 +276,7 @@ TEST_P(ArgMinMaxOpTest, GetMinArgNegativeAxis) {
   ArgMinOpModel model({1, 1, 2, 4}, TensorType_INT32, -2, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {1, 2, 7, 8, 1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {0, 0, 0, 1});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 4}));
@@ -266,7 +286,7 @@ TEST_P(ArgMinMaxOpTest, GetMinArgOutput64) {
   ArgMinOpModel model({1, 1, 2, 4}, TensorType_INT32, 3, AxisType(),
                       ConstantAxis(), OutputType());
   model.PopulateTensor<int>(model.input(), {10, 2, 7, 8, 1, 9, 7, 3});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
   ValidateOutput(model, {1, 0});
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2}));
@@ -279,7 +299,7 @@ TEST_P(ArgMinMaxOpTest, GetMinArgFloatLastAxis) {
                         OutputType());
     model.PopulateTensor<float>(
         model.input(), std::vector<float>(input.begin(), input.begin() + i));
-    model.Invoke();
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
     ValidateOutput(model, {i - 1});
   }
@@ -299,7 +319,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgInt8LastAxis) {
                         OutputType());
     model.PopulateTensor<int8_t>(
         model.input(), std::vector<int8_t>(input.begin(), input.begin() + i));
-    model.Invoke();
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
     ValidateOutput(model, {i - 1});
   }
@@ -319,7 +339,7 @@ TEST_P(ArgMinMaxOpTest, GetMaxArgUInt8LastAxis) {
                         OutputType());
     model.PopulateTensor<uint8_t>(
         model.input(), std::vector<uint8_t>(input.begin(), input.begin() + i));
-    model.Invoke();
+    ASSERT_EQ(model.Invoke(), kTfLiteOk);
 
     ValidateOutput(model, {i - 1});
   }

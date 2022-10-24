@@ -14,14 +14,11 @@
 # ==============================================================================
 """Functional tests for Ftrl operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -299,10 +296,10 @@ class FtrlOptimizerTest(test.TestCase):
         with self.cached_session():
           var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
           var1 = variables.Variable([[4.0], [3.0]], dtype=dtype)
-          grads0 = ops.IndexedSlices(
+          grads0 = indexed_slices.IndexedSlices(
               constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
               constant_op.constant([0]), constant_op.constant([2, 1]))
-          grads1 = ops.IndexedSlices(
+          grads1 = indexed_slices.IndexedSlices(
               constant_op.constant([0.02], shape=[1, 1], dtype=dtype),
               constant_op.constant([1]), constant_op.constant([2, 1]))
 
@@ -375,10 +372,10 @@ class FtrlOptimizerTest(test.TestCase):
     if is_sparse:
       var0 = variables.Variable([[0.0], [0.0]], dtype=dtype)
       var1 = variables.Variable([[0.0], [0.0]], dtype=dtype)
-      grads0 = ops.IndexedSlices(
+      grads0 = indexed_slices.IndexedSlices(
           constant_op.constant([0.1], shape=[1, 1], dtype=dtype),
           constant_op.constant([0]), constant_op.constant([2, 1]))
-      grads1 = ops.IndexedSlices(
+      grads1 = indexed_slices.IndexedSlices(
           constant_op.constant([0.02], shape=[1, 1], dtype=dtype),
           constant_op.constant([1]), constant_op.constant([2, 1]))
     else:

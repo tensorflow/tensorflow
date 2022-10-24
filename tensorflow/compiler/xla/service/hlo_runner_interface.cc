@@ -46,8 +46,8 @@ StatusOr<std::unique_ptr<HloModule>> HloProtoToModule(
 HloRunnerInterface::ReadModuleFromBinaryProtoFile(
     const std::string& filename, const DebugOptions& debug_options) {
   HloProto proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 filename, &proto));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBinaryProto(tsl::Env::Default(), filename, &proto));
   return HloProtoToModule(proto, debug_options);
 }
 
@@ -55,17 +55,16 @@ HloRunnerInterface::ReadModuleFromBinaryProtoFile(
 HloRunnerInterface::ReadModuleFromTextProtoFile(
     const std::string& filename, const DebugOptions& debug_options) {
   HloProto proto;
-  TF_RETURN_IF_ERROR(
-      tensorflow::ReadTextProto(tensorflow::Env::Default(), filename, &proto));
+  TF_RETURN_IF_ERROR(tsl::ReadTextProto(tsl::Env::Default(), filename, &proto));
   return HloProtoToModule(proto, debug_options);
 }
 
 /*static*/ StatusOr<std::unique_ptr<HloModule>>
 HloRunnerInterface::ReadModuleFromHloTextFile(
     const std::string& filename, const DebugOptions& debug_options) {
-  string hlo_string;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(tensorflow::Env::Default(),
-                                                  filename, &hlo_string));
+  std::string hlo_string;
+  TF_RETURN_IF_ERROR(
+      tsl::ReadFileToString(tsl::Env::Default(), filename, &hlo_string));
   HloModuleConfig config;
   config.set_debug_options(debug_options);
   return ParseAndReturnUnverifiedModule(hlo_string, config);
@@ -75,8 +74,8 @@ HloRunnerInterface::ReadModuleFromHloTextFile(
 HloRunnerInterface::ReadModuleFromModuleBinaryProtofile(
     const std::string& filename, const DebugOptions& debug_options) {
   HloModuleProto module_proto;
-  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
-                                                 filename, &module_proto));
+  TF_RETURN_IF_ERROR(
+      tsl::ReadBinaryProto(tsl::Env::Default(), filename, &module_proto));
 
   TF_ASSIGN_OR_RETURN(
       HloModuleConfig module_config,
@@ -111,22 +110,6 @@ StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
     argument_pointers.push_back(&argument);
   }
   return ExecuteWithExecutable(executable, argument_pointers, nullptr);
-}
-
-void HloRunnerInterface::UpdateEntryComputationLayout(
-    HloModule* module, DeviceShapeRepresentationFn shape_representation_fn) {
-  CHECK(shape_representation_fn != nullptr);
-  // Make sure entry computation shapes are in device representation.
-  for (int i = 0; i < module->entry_computation_layout().parameter_count();
-       i++) {
-    Shape shape =
-        module->entry_computation_layout().parameter_layout(i).shape();
-    *module->mutable_entry_computation_layout()->mutable_parameter_layout(i) =
-        ShapeLayout(shape_representation_fn(shape));
-  }
-  *module->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(shape_representation_fn(
-          module->entry_computation_layout().result_layout().shape()));
 }
 
 }  // namespace xla

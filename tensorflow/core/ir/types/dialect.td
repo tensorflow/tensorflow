@@ -17,6 +17,7 @@ limitations under the License.
 #else
 #define TFType_DIALECT
 
+include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 
@@ -41,6 +42,11 @@ def TFTypeDialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::tf_type";
+  let extraClassDeclaration = [{
+     ::mlir::Type parseType(::mlir::DialectAsmParser &parser) const;
+     void printType(::mlir::Type type, ::mlir::DialectAsmPrinter &printer) const;
+  }];
+  let useDefaultAttributePrinterParser = 1;
 }
 
 //===----------------------------------------------------------------------===//

@@ -6,7 +6,11 @@ load(
     "if_cuda_or_rocm",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load(
+    "@local_config_rocm//rocm:build_defs.bzl",
+    "if_rocm",
+)
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -84,6 +88,8 @@ tf_kernel_library(
     ] + if_cuda_or_rocm([
         "//tensorflow/core/util:cuda_solvers",
         "//tensorflow/core/util:cuda_sparse",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
     ]),
     alwayslink = 1,
 )

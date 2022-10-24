@@ -14,16 +14,12 @@
 # ==============================================================================
 """Tests for RaggedTensor supported value types."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -44,16 +40,8 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.util import dispatch
 
 
-class WrappedTensor(composite_tensor.CompositeTensor):
-  """A class used to test extending RaggedTensor value type support.
-
-  Simply wraps a `tf.Tensor` value.
-  """
-
-  def __init__(self, value):
-    if not isinstance(value, ops.Tensor):
-      raise ValueError("Expect Tensor object, but get '%s'" % value)
-    self.value = value
+class WrappedTensor(extension_type.BatchableExtensionType):
+  value: ops.Tensor
 
   @property
   def shape(self):
@@ -66,35 +54,18 @@ class WrappedTensor(composite_tensor.CompositeTensor):
   def __getitem__(self, idx):
     return WrappedTensor(self.value.__getitem__(idx))
 
-  @property
-  def _type_spec(self):
-    return WrappedTensorSpec(type_spec.type_spec_from_value(self.value))
+  def set_shape(self, shape):
+    return self.value.set_shape(shape)
 
+  class Spec(type_spec.TypeSpec):
 
-class WrappedTensorSpec(type_spec.TypeSpec):
+    @property
+    def shape(self):
+      return self.value.shape
 
-  def __init__(self, value_spec):
-    self._value_spec = value_spec
-
-  @property
-  def dtype(self):
-    return self._value_spec.dtype
-
-  @property
-  def value_type(self):
-    return WrappedTensor
-
-  def _to_components(self, value):
-    return value.value
-
-  def _from_components(self, value):
-    return WrappedTensor(value)
-
-  def _component_specs(self):
-    return self._value_spec
-
-  def _serialize(self):
-    return (self._value_spec,)
+    @property
+    def dtype(self):
+      return self.value.dtype
 
 
 class WrappedTensorOpDispatcher(dispatch.GlobalOpDispatcher):
@@ -335,7 +306,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
       self.assertAllEqual(t1, t2)
 
   def testConstruction(self):
-    flat_values_spec = WrappedTensorSpec(
+    flat_values_spec = WrappedTensor.Spec(
         tensor_spec.TensorSpec(shape=(None, 5), dtype=dtypes.float32))
     spec1 = RaggedTensorSpec(
         shape=None,
@@ -391,34 +362,36 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
       (RaggedTensorSpec(
           ragged_rank=0,
           shape=[5, 3],
-          flat_values_spec=WrappedTensorSpec(
+          flat_values_spec=WrappedTensor.Spec(
               tensor_spec.TensorSpec([5, 3], dtypes.float32))),
-       [WrappedTensorSpec(tensor_spec.TensorSpec([5, 3], dtypes.float32))]),
+       [WrappedTensor.Spec(tensor_spec.TensorSpec([5, 3], dtypes.float32))]),
       (RaggedTensorSpec(
           ragged_rank=1,
-          flat_values_spec=WrappedTensorSpec(
+          flat_values_spec=WrappedTensor.Spec(
               tensor_spec.TensorSpec([None, 3], dtypes.float32))),
        [
-           WrappedTensorSpec(tensor_spec.TensorSpec([None, 3], dtypes.float32)),
+           WrappedTensor.Spec(
+               tensor_spec.TensorSpec([None, 3], dtypes.float32)),
            tensor_spec.TensorSpec([None], dtypes.int64),
        ]),
       (RaggedTensorSpec(
           ragged_rank=2,
           dtype=dtypes.float64,
-          flat_values_spec=WrappedTensorSpec(
+          flat_values_spec=WrappedTensor.Spec(
               tensor_spec.TensorSpec([None, 3], dtypes.float64))),
        [
-           WrappedTensorSpec(tensor_spec.TensorSpec([None, 3], dtypes.float64)),
+           WrappedTensor.Spec(
+               tensor_spec.TensorSpec([None, 3], dtypes.float64)),
            tensor_spec.TensorSpec([None], dtypes.int64),
            tensor_spec.TensorSpec([None], dtypes.int64),
        ]),
       (RaggedTensorSpec(
           shape=[5, None, None],
           dtype=dtypes.string,
-          flat_values_spec=WrappedTensorSpec(
+          flat_values_spec=WrappedTensor.Spec(
               tensor_spec.TensorSpec([None, 3], dtypes.string))),
        [
-           WrappedTensorSpec(tensor_spec.TensorSpec([None, 3], dtypes.string)),
+           WrappedTensor.Spec(tensor_spec.TensorSpec([None, 3], dtypes.string)),
            tensor_spec.TensorSpec([6], dtypes.int64),
            tensor_spec.TensorSpec([None], dtypes.int64),
        ]),
@@ -430,9 +403,9 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
       {
           'rt_spec':
               RaggedTensorSpec(
-                  shape=[2, None, None],
+                  shape=[3, None, None],
                   ragged_rank=1,
-                  flat_values_spec=WrappedTensorSpec(
+                  flat_values_spec=WrappedTensor.Spec(
                       tensor_spec.TensorSpec(None, dtype=dtypes.float32))),
           'flat_values': [[1.0, 2.0], [3.0, 4.0]],
           'nested_row_splits': [[0, 1, 1, 2]],
@@ -441,7 +414,7 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
           'rt_spec':
               RaggedTensorSpec(
                   shape=[2, None, None],
-                  flat_values_spec=WrappedTensorSpec(
+                  flat_values_spec=WrappedTensor.Spec(
                       tensor_spec.TensorSpec(None, dtype=dtypes.float32))),
           'flat_values': [1.0, 2.0, 3.0, 4.0],
           'nested_row_splits': [[0, 2, 4], [0, 2, 3, 3, 4]],
@@ -466,25 +439,25 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
     spec1 = RaggedTensorSpec([32, None, None],
                              dtypes.float32,
                              2,
-                             flat_values_spec=WrappedTensorSpec(
+                             flat_values_spec=WrappedTensor.Spec(
                                  tensor_spec.TensorSpec([None, None],
                                                         dtypes.float32)))
     spec2 = RaggedTensorSpec(
         None,
         dtypes.float32,
         2,
-        flat_values_spec=WrappedTensorSpec(
+        flat_values_spec=WrappedTensor.Spec(
             tensor_spec.TensorSpec(None, dtypes.float32)))
     spec3 = RaggedTensorSpec(
         None,
         dtypes.int32,
         1,
-        flat_values_spec=WrappedTensorSpec(
+        flat_values_spec=WrappedTensor.Spec(
             tensor_spec.TensorSpec(None, dtypes.int32)))
     spec4 = RaggedTensorSpec([None],
                              dtypes.int32,
                              0,
-                             flat_values_spec=WrappedTensorSpec(
+                             flat_values_spec=WrappedTensor.Spec(
                                  tensor_spec.TensorSpec(None, dtypes.int32)))
     spec5 = RaggedTensorSpec([None], dtypes.int32, 0)
 
@@ -537,6 +510,28 @@ class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
         values = WrappedTensorWithToList(tensor_values)
         rt = RaggedTensor.from_row_splits(values, row_splits)
         self.assertEqual(rt.to_list(), expected)
+
+  def testFromValue(self):
+    tensor_values = constant_op.constant([[1.0, 2], [4, 5], [7, 8]])
+    values = WrappedTensor(tensor_values)
+
+    row_splits = constant_op.constant([0, 2, 3, 3, 3], dtypes.int32)
+    rt = RaggedTensor.from_row_splits(values, row_splits)
+
+    rt_spec = type_spec.type_spec_from_value(rt)
+    self.assertEqual(
+        rt_spec,
+        RaggedTensorSpec(
+            shape=[4, None, 2],
+            dtype=dtypes.float32,
+            ragged_rank=1,
+            row_splits_dtype=dtypes.int32,
+            flat_values_spec=WrappedTensor.Spec(
+                tensor_spec.TensorSpec([None, 2], dtypes.float32))))
+    # Ensure the shape of flat_values_spec being consistent with the shape
+    # of the RaggedTensor.
+    self.assertEqual(rt_spec.shape[rt_spec.ragged_rank:],
+                     rt_spec.flat_values_spec.shape)
 
 
 if __name__ == '__main__':

@@ -440,7 +440,7 @@ struct SparseApplyAdagrad<GPUDevice, T, Tindex, has_epsilon> {
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
     if (grad_size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(
@@ -501,7 +501,7 @@ struct SparseApplyProximalAdagrad<GPUDevice, T, Tindex> {
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
     if (grad_size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
     return GpuLaunchKernel(SparseApplyProximalAdagradKernel<T, Tindex>,
@@ -711,7 +711,7 @@ struct SparseApplyFtrl<GPUDevice, T, Tindex, has_l2_shrinkage> {
     const Tindex grad_size = grad.size();
     const Tindex indices_size = indices.size();
     if (grad_size == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     // The simpler overload of GetGpuLaunchConfig() would result in a "too many
     // resources requested for launch" error.
@@ -877,9 +877,9 @@ struct ApplyAdam<GPUDevice, T> {
       return;
     }  // No work load.
     GpuLaunchConfig config = GetGpuLaunchConfig(data_dim, d);
-    eigen_assert(static_cast<int64>(grad.dimension(0)) +
-                     static_cast<int64>(config.block_count) *
-                         static_cast<int64>(config.thread_per_block) <
+    eigen_assert(static_cast<int64_t>(grad.dimension(0)) +
+                     static_cast<int64_t>(config.block_count) *
+                         static_cast<int64_t>(config.thread_per_block) <
                  std::numeric_limits<int32>::max());
 
     TF_CHECK_OK(GpuLaunchKernel(

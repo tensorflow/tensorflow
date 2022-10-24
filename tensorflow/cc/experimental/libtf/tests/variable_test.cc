@@ -83,7 +83,7 @@ void ExpectEquals(AbstractTensorHandle* t, T expected) {
 }
 
 TEST_P(VariableTest, CreateAssignReadDestroy) {
-  // Create unintialized variable.
+  // Create uninitialized variable.
   tensorflow::AbstractTensorHandlePtr var;
   {
     AbstractTensorHandle* var_ptr = nullptr;

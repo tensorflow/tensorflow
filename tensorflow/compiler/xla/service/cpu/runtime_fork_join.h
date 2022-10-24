@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_FORK_JOIN_H_
 
-#include "tensorflow/core/platform/types.h"
+#include <stdint.h>
 
 extern "C" {
 
@@ -24,7 +24,7 @@ extern "C" {
 // threads before returning. See comments in runtime_fork_join.cc for details.
 extern void __xla_cpu_runtime_ParallelForkJoin(
     void* result_ptr, const void* run_options_ptr, const void** params,
-    void** buffer_table, tensorflow::uint64* prof_counters,
+    void** buffer_table, void* status, uint64_t* prof_counters,
     int32_t num_partitions, int64_t* partitions, int32_t num_partitioned_dims,
     void* function_ptr);
 

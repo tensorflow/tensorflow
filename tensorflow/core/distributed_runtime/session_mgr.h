@@ -17,7 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SESSION_MGR_H_
 
 #include <functional>
+#include <string>
 
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -41,16 +44,20 @@ class SessionMgr {
       WorkerCacheFactory;
 
   explicit SessionMgr(
-      WorkerEnv* worker_env, const string& default_worker_name,
+      WorkerEnv* worker_env, const std::string& default_worker_name,
       std::unique_ptr<WorkerCacheInterface> default_worker_cache,
       WorkerCacheFactory worker_cache_factory);
   ~SessionMgr() {}
 
   // Allocates state for a new session.
-  Status CreateSession(const string& session, const ServerDef& server_def,
-                       bool isolate_session_state);
   Status CreateSession(
-      const string& session, const ServerDef& server_def,
+      const std::string& session, const ServerDef& server_def,
+      bool isolate_session_state,
+      StatusCallback coordination_error_callback = [](Status s) {
+        LOG(ERROR) << "Coordination agent is set to error: " << s;
+      });
+  Status CreateSession(
+      const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
       bool isolate_session_state);
 
@@ -62,34 +69,45 @@ class SessionMgr {
   // happens, old sessions associated with the master will be automatically
   // removed before the new session is created.
   Status CreateSession(
-      const string& session, const ServerDef& server_def,
+      const std::string& session, const ServerDef& server_def,
       const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
-      bool isolate_session_state, string master_task,
-      int64_t master_incarnation);
+      bool isolate_session_state, std::string master_task,
+      int64_t master_incarnation,
+      StatusCallback coordination_error_callback = [](Status s) {
+        LOG(ERROR) << "Coordination agent is set to error: " << s;
+      });
 
   void ResetDefaultWorkerCache(WorkerCacheInterface* worker_cache);
 
   // Updates state (worker cache, devices) of worker session identified by
   // session name (`session`) based on a new server_def and set of devices.
-  Status UpdateSession(const string& session, const ServerDef& server_def,
+  Status UpdateSession(const std::string& session, const ServerDef& server_def,
                        const protobuf::RepeatedPtrField<DeviceAttributes>&
-                           cluster_device_attributes,
-                       bool isolate_session_state);
+                           cluster_device_attributes);
 
   // Locates the worker session for a given session handle
-  Status WorkerSessionForSession(const string& session_handle,
+  Status WorkerSessionForSession(const std::string& session_handle,
                                  std::shared_ptr<WorkerSession>* out_session);
   std::shared_ptr<WorkerSession> LegacySession();
 
-  Status DeleteSession(const string& session);
+  Status DeleteSession(const std::string& session);
 
-  static string WorkerNameFromServerDef(const ServerDef& server_def);
+  // Provides access to the coordination service. This method should only be
+  // called after the agent has been initialized during session creation, or an
+  // invalid nullptr is returned. Note: the agent is thread-safe and mutable.
+  CoordinationServiceAgent* GetCoordinationServiceAgent();
+
+  static std::string WorkerNameFromServerDef(const ServerDef& server_def);
 
   void SetLogging(bool active);
 
   void RetrieveLogs(int64_t step_id, LoggingResponse* response);
 
   void ClearLogs();
+
+  // Agent should be torn down before service as it needs to disconnect first.
+  void TeardownCoordinationServiceAgent();
+  void TeardownCoordinationService();
 
  private:
   WorkerEnv* const worker_env_;  // Not owned.
@@ -109,26 +127,30 @@ class SessionMgr {
 
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
+  std::unique_ptr<CoordinationServiceInterface> coordination_service_;
+  std::unique_ptr<CoordinationServiceAgent> coordination_service_agent_;
 
   bool is_logging_active_ = false;
 
   const WorkerCacheFactory worker_cache_factory_;
 
   Status WorkerSessionForSessionLocked(
-      const string& session_handle, std::shared_ptr<WorkerSession>* out_session)
+      const std::string& session_handle,
+      std::shared_ptr<WorkerSession>* out_session)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   // A map from session identifier to internal session structure.
-  std::map<string, std::shared_ptr<WorkerSession>> sessions_ TF_GUARDED_BY(mu_);
+  std::map<std::string, std::shared_ptr<WorkerSession>> sessions_
+      TF_GUARDED_BY(mu_);
 
   // Incarnation and WorkerSession handle associated with a master task.
   struct MasterAssociatedSession {
     const int64_t master_incarnation;
-    const string session_handle;
+    const std::string session_handle;
   };
   // A map from master task name to its associated worker sessions.
-  std::unordered_multimap<string, MasterAssociatedSession>
+  std::unordered_multimap<std::string, MasterAssociatedSession>
       master_to_associated_sessions_ TF_GUARDED_BY(mu_);
 };
 

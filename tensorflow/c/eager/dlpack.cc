@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/eager/dlpack.h"
 
+#include <string>
+
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -97,6 +99,10 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
     case TF_DataType::TF_BFLOAT16:
       dtype.code = DLDataTypeCode::kDLBfloat;
       break;
+    case TF_DataType::TF_COMPLEX64:
+    case TF_DataType::TF_COMPLEX128:
+      dtype.code = DLDataTypeCode::kDLComplex;
+      break;
     default:
       status->status = tensorflow::errors::InvalidArgument(
           DataType_Name(static_cast<DataType>(data_type)),
@@ -106,9 +112,9 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
   return dtype;
 }
 
-// Gets DLPack's DLContext from eager tensor handle.
-DLContext GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
-  DLContext ctx;
+// Gets DLPack's DLDevice from eager tensor handle.
+DLDevice GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
+  DLDevice ctx;
   const char* device_name =
       tensorflow::unwrap(h)->BackingDeviceName(&status->status);
   DeviceNameUtils::ParsedName parsed_name;
@@ -123,7 +129,7 @@ DLContext GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   if (device_type == "CPU") {
     ctx.device_type = DLDeviceType::kDLCPU;
   } else if (device_type == "GPU") {
-    ctx.device_type = DLDeviceType::kDLGPU;
+    ctx.device_type = DLDeviceType::kDLCUDA;
   } else {
     status->status = tensorflow::errors::InvalidArgument(
         "Unsupported Device Type for dlpack");
@@ -132,13 +138,13 @@ DLContext GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   return ctx;
 }
 
-// Converts DLContext to TF device name.
-absl::optional<std::string> DeviceNameFromDlContext(const DLContext& ctx,
+// Converts DLDevice to TF device name.
+absl::optional<std::string> DeviceNameFromDlContext(const DLDevice& ctx,
                                                     TF_Status* status) {
   switch (ctx.device_type) {
     case DLDeviceType::kDLCPU:
       return "CPU:0";
-    case DLDeviceType::kDLGPU:
+    case DLDeviceType::kDLCUDA:
       return absl::StrCat("GPU:", ctx.device_id);
     default:
       return absl::nullopt;
@@ -153,51 +159,51 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_UINT8;
-          return Status::OK();
+          return OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_UINT16;
-          return Status::OK();
+          return OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_UINT32;
-          return Status::OK();
+          return OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_UINT64;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported UInt bits: ",
                                                      dtype.bits);
       }
-      return Status::OK();
+      return OkStatus();
     case DLDataTypeCode::kDLInt:
       switch (dtype.bits) {
         case 8:
           *tf_dtype = TF_DataType::TF_INT8;
-          return Status::OK();
+          return OkStatus();
         case 16:
           *tf_dtype = TF_DataType::TF_INT16;
-          return Status::OK();
+          return OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_INT32;
-          return Status::OK();
+          return OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_INT64;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Int bits: ",
                                                      dtype.bits);
       }
-      return Status::OK();
+      return OkStatus();
     case DLDataTypeCode::kDLFloat:
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_HALF;
-          return Status::OK();
+          return OkStatus();
         case 32:
           *tf_dtype = TF_DataType::TF_FLOAT;
-          return Status::OK();
+          return OkStatus();
         case 64:
           *tf_dtype = TF_DataType::TF_DOUBLE;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument("Unsupported Float bits: ",
                                                      dtype.bits);
@@ -207,10 +213,23 @@ Status TfDataTypeFormDlDataType(const DLDataType& dtype,
       switch (dtype.bits) {
         case 16:
           *tf_dtype = TF_DataType::TF_BFLOAT16;
-          return Status::OK();
+          return OkStatus();
         default:
           return tensorflow::errors::InvalidArgument(
               "Unsupported BFloat bits: ", dtype.bits);
+      }
+      break;
+    case DLDataTypeCode::kDLComplex:
+      switch (dtype.bits) {
+        case 64:
+          *tf_dtype = TF_DataType::TF_COMPLEX64;
+          return OkStatus();
+        case 128:
+          *tf_dtype = TF_DataType::TF_COMPLEX128;
+          return OkStatus();
+        default:
+          return tensorflow::errors::InvalidArgument(
+              "Unsupported Complex bits: ", dtype.bits);
       }
       break;
     default:
@@ -274,7 +293,7 @@ void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
   DLManagedTensor* dlm_tensor = &tf_dlm_tensor_ctx->tensor;
   dlm_tensor->manager_ctx = tf_dlm_tensor_ctx;
   dlm_tensor->deleter = &DLManagedTensorDeleter;
-  dlm_tensor->dl_tensor.ctx = tf_dlm_context;
+  dlm_tensor->dl_tensor.device = tf_dlm_context;
   int ndim = tensor->dims();
   dlm_tensor->dl_tensor.ndim = ndim;
   dlm_tensor->dl_tensor.data = tf_dlm_data;
@@ -309,7 +328,7 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
   DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(dlm);
   DLTensor* dl_tensor = &dlmt->dl_tensor;
   absl::optional<std::string> device_name =
-      DeviceNameFromDlContext(dl_tensor->ctx, status);
+      DeviceNameFromDlContext(dl_tensor->device, status);
   if (!device_name.has_value()) {
     status->status =
         tensorflow::errors::InvalidArgument("Unsupported Device Type");

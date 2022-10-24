@@ -55,7 +55,7 @@ struct Where {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const Device& d,
       typename TTypes<T, NDIM>::ConstTensor input,
-      typename TTypes<int64>::Matrix output, TIndex* found_true);
+      typename TTypes<int64_t>::Matrix output, TIndex* found_true);
 };
 
 }  // namespace functor

@@ -3,6 +3,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 package(
     default_visibility = [
         ":friends",
+        "//tensorflow:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -34,6 +35,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
     ],

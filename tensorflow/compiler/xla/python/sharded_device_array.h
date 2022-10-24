@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARDED_DEVICE_ARRAY_H_
 
+#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -47,7 +47,6 @@ namespace jax {
 // - `sharding`, which specifies how to shard the inputs.
 // - `mesh_mapping`, which specifies how to map shards to devices.
 //
-
 // The 3 following structs define how to shard one dimension of an ndarry.
 //
 // `NoSharding` (`None` in Python) means no sharding.
@@ -104,7 +103,7 @@ H AbslHashValue(H h, const Unstacked& key) {
   return h;
 }
 
-using AvalDimSharding = absl::variant<NoSharding, Chunked, Unstacked>;
+using AvalDimSharding = std::variant<NoSharding, Chunked, Unstacked>;
 
 // Assigns sharded axes to mesh dimensions.
 //
@@ -144,10 +143,33 @@ H AbslHashValue(H h, const Replicated& key) {
   return h;
 }
 
-using MeshDimAssignment = absl::variant<ShardedAxis, Replicated>;
+using MeshDimAssignment = std::variant<ShardedAxis, Replicated>;
 
 // Describes how each axis is sharded (if it is), and how it's mapped to the
 // devices mesh. See Jax pxla.py for the documentation.
+//
+// ShardingSpec is shared across pmap, pjit and xpmap. For pmap, an input
+// `sharding`  is composed of `NoSharding` and at most one `Unstacked`.
+// If `axis_size=None`, at least one the inputs has a dimension associated to
+// `Unstacked`.
+//
+// Examples:
+//
+// 1. For pmap, with a tensor of shape [8, 2, 2], to unstack along the first
+//    dimension into [8] devices:
+//
+//    sharding = [Unstacked(8), NoSharding, NoSharding]
+//    mesh_mapping = [ShardedAxis(0)]
+//
+// 2. With an input array of shape [6], that we want to chunk into [2, 3]
+//    Assuming an device mesh [3, 4, 2] of devices, we will have:
+//
+//    sharding = [Chunked([2, 3])]
+//    mesh_mapping = [ShardedAxis(1), Replicated, ShardedAxis(0)]
+//
+//    In particular, in the above example, the ShardedAxis refers to indices
+//    of the sharded shape [2, 3]. (only the `Chunked` sharding can produce more
+//    than one dimension).
 class ShardingSpec {
  public:
   ShardingSpec(std::vector<AvalDimSharding> sharding,
@@ -194,10 +216,6 @@ H AbslHashValue(H h, const ShardingSpec& key) {
   return h;
 }
 
-// Empty base-class to support isinstance(x, ShardedDeviceArrayBase) with both
-// the C++ and Python ShardedDeviceArray.
-class ShardedDeviceArrayBase {};
-
 // A ShardedDeviceArray is an ndarray sharded across devices.
 //
 // The purpose of a ShardedDeviceArray is to reduce the number of transfers when
@@ -212,8 +230,79 @@ class ShardedDeviceArrayBase {};
 
 // Design note: We move to C++, only what will need to be accessed by C++ to
 // execute a pmap computation. A large part of the logic is still in Python.
-class ShardedDeviceArray : public ShardedDeviceArrayBase {
+class ShardedDeviceArray {
  public:
+  ShardedDeviceArray(const ShardedDeviceArray&) = delete;
+  ShardedDeviceArray& operator=(const ShardedDeviceArray&) = delete;
+  ShardedDeviceArray(ShardedDeviceArray&&) = default;
+  ShardedDeviceArray& operator=(ShardedDeviceArray&&) = default;
+
+  // Delete all the underlying buffers (freeing memory on device).
+  // The Numpy value on the host, if it exists, will also be deleted.
+  void Delete();
+  const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
+  // Returns an error status iff the object has been deleted.
+  xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> GetPjRtBuffers();
+
+  bool is_deleted() const { return is_deleted_; }
+  bool weak_type() const { return weak_type_; }
+  std::optional<pybind11::list> device_buffers() const {
+    return device_buffers_;
+  }
+  pybind11::object aval() const { return aval_; }
+  pybind11::object indices() const { return indices_; }
+
+  std::optional<pybind11::object> npy_value() const { return npy_value_; }
+  void set_npy_value(pybind11::object npy_value) { npy_value_ = npy_value; }
+
+  std::optional<pybind11::object> one_replica_buffer_indices() const {
+    return one_replica_buffer_indices_;
+  }
+  void set_one_replica_buffer_indices(pybind11::object obj) {
+    one_replica_buffer_indices_ = obj;
+  }
+
+  // Python-wrapper definitions.
+
+  // pybind11::object typed subclass for PyBuffer objects.
+  class pyobject : public pybind11::object {
+   public:
+    PYBIND11_OBJECT(pyobject,  // NOLINT
+                    pybind11::object, ShardedDeviceArray::IsShardedDeviceArray);
+    pyobject() = default;
+    ShardedDeviceArray* sda() const {
+      return ShardedDeviceArray::AsShardedDeviceArrayUnchecked(*this);
+    }
+  };
+  using object = pyobject;
+
+  // Returns true if `handle` is a IsShardedDeviceArray.
+  static bool IsShardedDeviceArray(pybind11::handle handle);
+  // Converts `handle` to a PyBuffer*. Does not do any checking.
+  static ShardedDeviceArray* AsShardedDeviceArrayUnchecked(
+      pybind11::handle handle);
+  // Converts `handle` to a PyBuffer*. Returns an error status if
+  // !IsPyBuffer(handle)
+  static xla::StatusOr<ShardedDeviceArray*> AsShardedDeviceArray(
+      pybind11::handle handle);
+
+  // Gets a Python handle to an existing ShardedDeviceArray. Assumes the
+  // PyObject was allocated on the Python heap, which is the case if Make() was
+  // used.
+  pybind11::handle AsHandle();
+
+  static object Make(pybind11::object aval, ShardingSpec sharding_spec,
+                     pybind11::list device_buffers, pybind11::object indices,
+                     bool weak_type);
+  static object Make(pybind11::object aval, ShardingSpec sharding_spec,
+                     const xla::PyShardedBuffer& sharded_buffer,
+                     pybind11::object indices, bool weak_type);
+
+  static xla::Status RegisterTypes(pybind11::module& m);
+  static PyObject* base_type() { return base_type_; }
+  static PyObject* type() { return type_; }
+
+ private:
   // Buffers are expected to be xla::PyBuffer objects, but as there are
   // alternative backend implementations, this may not be guaranteed.
   // TODO(jblespiau): As soon as PjRtBuffer is supported by all
@@ -226,39 +315,9 @@ class ShardedDeviceArray : public ShardedDeviceArrayBase {
         indices_(std::move(indices)),
         device_buffers_(std::move(device_buffers)),
         weak_type_(weak_type) {}
-  ShardedDeviceArray(const ShardedDeviceArray&) = delete;
-  ShardedDeviceArray& operator=(const ShardedDeviceArray&) = delete;
-  ShardedDeviceArray(ShardedDeviceArray&&) = default;
-  ShardedDeviceArray& operator=(ShardedDeviceArray&&) = default;
+  static PyObject* base_type_;
+  static PyObject* type_;
 
-  const ShardingSpec& GetShardingSpec() const { return sharding_spec_; }
-  // Returns an error status iff the object has been deleted.
-  xla::StatusOr<absl::Span<xla::PjRtBuffer* const>> GetPjRtBuffers();
-
-  // Delete all the underlying buffers (freeing memory on device).
-  // The Numpy value on the host, if it exists, will also be deleted.
-  void Delete();
-
-  bool is_deleted() const { return is_deleted_; }
-  bool weak_type() const { return weak_type_; }
-  // Accessors and mutators for Python values are named like the variables.
-  absl::optional<pybind11::list> device_buffers() const {
-    return device_buffers_;
-  }
-  pybind11::object aval() const { return aval_; }
-  pybind11::object indices() const { return indices_; }
-
-  absl::optional<pybind11::object> npy_value() const { return npy_value_; }
-  void set_npy_value(pybind11::object npy_value) { npy_value_ = npy_value; }
-
-  absl::optional<pybind11::object> one_replica_buffer_indices() const {
-    return one_replica_buffer_indices_;
-  }
-  void set_one_replica_buffer_indices(pybind11::object obj) {
-    one_replica_buffer_indices_ = obj;
-  }
-
- private:
   // A ShapedArray indicating the shape and dtype of this array.
   pybind11::object aval_;
   // Describes how this array is sharded across `device_buffers`.
@@ -269,18 +328,18 @@ class ShardedDeviceArray : public ShardedDeviceArrayBase {
   // The buffers containing the data for this array. Each buffer is the same
   // shape and on a different device. Buffers are in row-major order, with
   // replication treated as an extra innermost dimension.
-  absl::optional<pybind11::list> device_buffers_;
+  std::optional<pybind11::list> device_buffers_;
 
-  absl::optional<pybind11::object> npy_value_ = absl::nullopt;
-  absl::optional<pybind11::object> one_replica_buffer_indices_ = absl::nullopt;
+  std::optional<pybind11::object> npy_value_ = std::nullopt;
+  std::optional<pybind11::object> one_replica_buffer_indices_ = std::nullopt;
 
   // The device_buffers as a C++ object. As this is what we consume from C++
   // and this is also what we generate from C++, cache the result so that
   // we don't have to perform casts.
   // TODO(jblespiau): Make this the default, and have `device_buffers_` the
   // the optional Python value if it's accessed from Python.
-  absl::optional<std::vector<xla::PjRtBuffer*>> cpp_device_buffers_ =
-      absl::nullopt;
+  std::optional<std::vector<xla::PjRtBuffer*>> cpp_device_buffers_ =
+      std::nullopt;
 
   // The weak_type to prevent accessing the "aval_.weak_type" attribute which
   // is significantly slower.

@@ -22,14 +22,13 @@ limitations under the License.
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 // Implementation notes:
 //
@@ -170,11 +169,11 @@ class OutfeedReceiverImpl {
                                       std::vector<XlaOp> arrays);
 
  private:
-  bool CallbackQueueHasSpace() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool CallbackQueueHasSpace() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return callback_queue_size_bytes_ < max_callback_queue_size_bytes_;
   }
 
-  bool ShutdownDone() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool ShutdownDone() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return (num_working_callback_threads_ == 0 && num_listening_threads_ == 0);
   }
 
@@ -191,7 +190,7 @@ class OutfeedReceiverImpl {
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(uint32_t device_idx,
                            std::unique_ptr<OutfeedData> received)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Shuts down the threads. See implementation notes at top of file.
   // It is not safe to restart an OutfeedReceiver after shutting down one.
@@ -207,21 +206,21 @@ class OutfeedReceiverImpl {
   // Registered shapes by consumer id.
   // The shape registry must be alive as long as the program exists.
   // Right now we tell the user to never restart after Shutdown.
-  absl::flat_hash_map<uint32_t, Shape> shape_registry_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<uint32_t, Shape> shape_registry_ ABSL_GUARDED_BY(mu_);
   // How many bytes of Literal are in the ensemble of callback queues.
-  uint64_t callback_queue_size_bytes_ TF_GUARDED_BY(mu_);
+  uint64_t callback_queue_size_bytes_ ABSL_GUARDED_BY(mu_);
   // Threads listening.
-  int num_listening_threads_ TF_GUARDED_BY(mu_);
-  bool shutdown_started_ TF_GUARDED_BY(mu_);
+  int num_listening_threads_ ABSL_GUARDED_BY(mu_);
+  bool shutdown_started_ ABSL_GUARDED_BY(mu_);
 
   // How many callback threads are still working. Used for shutdown.
-  int num_working_callback_threads_ TF_GUARDED_BY(mu_);
+  int num_working_callback_threads_ ABSL_GUARDED_BY(mu_);
 
   std::vector<std::queue<std::unique_ptr<OutfeedData>>> callback_queues_
-      TF_GUARDED_BY(mu_);
+      ABSL_GUARDED_BY(mu_);
   // The threadpool must come last to ensure the queue exists
   // when the pool destructor is called.
-  std::unique_ptr<tensorflow::thread::ThreadPool> threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> threads_;
 };
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
@@ -251,8 +250,8 @@ void OutfeedReceiverImpl::Start() {
   }
 
   int num_threads = 2 * devices_.size();
-  threads_ = absl::make_unique<tensorflow::thread::ThreadPool>(
-      tensorflow::Env::Default(), "outfeed_receiver", num_threads);
+  threads_ = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "outfeed_receiver", num_threads);
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
         [this, device_idx]() { DeviceListenerThreadLoop(device_idx); });
@@ -291,8 +290,8 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
   while (true) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
-        ReceiveRawFromOutfeed(device, header_shape).ValueOrDie();
-    absl::Span<uint32_t> header_data = header->data<uint32>();
+        ReceiveRawFromOutfeed(device, header_shape).value();
+    absl::Span<uint32_t> header_data = header->data<uint32_t>();
     CHECK_EQ(header_data.size(), kOutfeedHeaderWords);
     CHECK_EQ(header_data[0], kOutfeedHeaderStart);
     uint32_t consumer_id = header_data[1];
@@ -309,7 +308,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       }
       shape = registered_shape->second;
     }
-    auto received = absl::make_unique<OutfeedData>(device, consumer_id, shape);
+    auto received = std::make_unique<OutfeedData>(device, consumer_id, shape);
     VLOG(2) << "Listener received header " << received->DebugString();
     if (consumer_id == kOutfeedCidShutdown) {
       VLOG(2) << "[" << device->DebugString()
@@ -321,7 +320,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
       return;
     }
     std::unique_ptr<Literal> data =
-        ReceiveRawFromOutfeed(device, shape).ValueOrDie();
+        ReceiveRawFromOutfeed(device, shape).value();
     received->SetLiteral(std::move(data));
     absl::MutexLock lock(&mu_);
     EnqueueReceivedData(device_idx, std::move(received));
@@ -330,7 +329,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
 
 void OutfeedReceiverImpl::EnqueueReceivedData(
     uint32_t device_idx, std::unique_ptr<OutfeedData> received)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   mu_.Await(absl::Condition(this, &OutfeedReceiverImpl::CallbackQueueHasSpace));
   ssize_t literal_size_bytes = received->literal_size_bytes();
   callback_queue_size_bytes_ += literal_size_bytes;
@@ -385,7 +384,7 @@ void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
       return;
     }
     {
-      tensorflow::profiler::TraceMe traceme("OutfeedReceiver::Callback");
+      tsl::profiler::TraceMe traceme("OutfeedReceiver::Callback");
       callback_(received->device(), received->consumer_id(),
                 received->literal());
     }
@@ -401,8 +400,8 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
       absl::StrFormat("special_outfeed_header_%d_%d", consumer_id, device_idx));
   XlaOp send =
       AddOutfeedToBuilder(&builder, CreateToken(&builder), consumer_id, {})
-          .ValueOrDie();
-  XlaComputation computation = builder.Build(send).ValueOrDie();
+          .value();
+  XlaComputation computation = builder.Build(send).value();
 
   CompileOptions compile_options;
   compile_options.executable_build_options.set_num_replicas(1);
@@ -412,21 +411,21 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       devices_[device_idx]->client()->Compile(
                           computation, std::move(compile_options)));
   ExecuteOptions execute_options;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
       executable->Execute({{}}, execute_options));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
     XlaBuilder* builder, XlaOp token, uint32_t consumer_id,
     std::vector<XlaOp> arrays) {
   XlaOp data = Tuple(builder, std::move(arrays));
-  Shape shape_with_layout = builder->GetShape(data).ValueOrDie();
+  Shape shape_with_layout = builder->GetShape(data).value();
   ShapeUtil::ForEachMutableSubshape(
       &shape_with_layout, [](Shape* subshape, const ShapeIndex&) {
         if (!subshape->has_layout()) {
@@ -468,7 +467,7 @@ StatusOr<XlaOp> OutfeedReceiverImpl::AddOutfeedToBuilder(
 OutfeedReceiver::OutfeedReceiver(Callback callback,
                                  absl::Span<PjRtClient* const> clients,
                                  ssize_t max_callback_queue_size_bytes) {
-  p_impl_ = absl::make_unique<OutfeedReceiverImpl>(
+  p_impl_ = std::make_unique<OutfeedReceiverImpl>(
       callback, clients, max_callback_queue_size_bytes);
 }
 

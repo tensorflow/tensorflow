@@ -2,7 +2,7 @@
 // RUN: tf-opt %s -tf-layout-optimization="force-data-format=NHWC skip-fold-transpose-in-ops=true" -verify-diagnostics | FileCheck %s --check-prefix=NOFOLD
 
 // CHECK-LABEL: func @transpose_resnet_layer
-func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
+func.func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
                              %arg1: tensor<64xf32>,          // batch_norm args
                              %arg2: tensor<256xf32>,          // batch_norm args
                              %arg3: tensor<7x7x3x64xf32>,    // conv filter #0
@@ -156,6 +156,6 @@ func @transpose_resnet_layer(%arg0: tensor<?x224x224x3xf32>, // input
   // CHECK-SAME: (tensor<?x56x56x256xf32>, tensor<2xi32>) -> tensor<?x256xf32>
   // CHECK: return %[[MEAN]] : tensor<?x256xf32>
 
-  return %16 : tensor<?x256xf32>
+  func.return %16 : tensor<?x256xf32>
 }
 

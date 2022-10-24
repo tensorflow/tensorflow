@@ -165,7 +165,7 @@ TEST_F(LocalRendezvousTest, CancelBeforeRecv) {
   auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(errors::IsCancelled(s));
-  EXPECT_EQ("[_Derived_]RecvAsync is cancelled.", s.error_message());
+  EXPECT_EQ("RecvAsync is cancelled.", s.error_message());
   delete cm;
 }
 
@@ -184,7 +184,7 @@ TEST_F(LocalRendezvousTest, CancelAfterRecv) {
   auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(errors::IsCancelled(s));
-  EXPECT_EQ("[_Derived_]RecvAsync is cancelled.", s.error_message());
+  EXPECT_EQ("RecvAsync is cancelled.", s.error_message());
   n.WaitForNotification();
   delete cm;
 }
@@ -403,7 +403,7 @@ class DummyDeviceContext : public DeviceContext {
   void CopyTensorInSameDevice(const Tensor* input_tensor, Device* device,
                               Tensor* output_tensor,
                               StatusCallback done) const override {
-    done(Status::OK());
+    done(OkStatus());
   }
 
  private:

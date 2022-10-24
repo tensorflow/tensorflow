@@ -14,14 +14,10 @@
 # ==============================================================================
 """Bring in all of the public TensorFlow interface into this module."""
 
-from __future__ import absolute_import as _absolute_import
-from __future__ import division as _division
-from __future__ import print_function as _print_function
-
 import logging as _logging
 import os as _os
-import six as _six
 import sys as _sys
+import typing as _typing
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
@@ -53,19 +49,11 @@ if _module_dir:
 setattr(_current_module, "estimator", estimator)
 
 _keras_module = "keras.api._v2.keras"
-keras = _LazyLoader("keras", globals(), _keras_module)
+_keras = _LazyLoader("keras", globals(), _keras_module)
 _module_dir = _module_util.get_parent_dir_for_name(_keras_module)
 if _module_dir:
   _current_module.__path__ = [_module_dir] + _current_module.__path__
-setattr(_current_module, "keras", keras)
-
-# Explicitly import lazy-loaded modules to support autocompletion.
-# pylint: disable=g-import-not-at-top
-if not _six.PY2:
-  import typing as _typing
-  if _typing.TYPE_CHECKING:
-    from tensorflow_estimator.python.estimator.api._v2 import estimator
-# pylint: enable=g-import-not-at-top
+setattr(_current_module, "keras", _keras)
 
 # We would like the following to work for fully enabling 2.0 in a 1.0 install:
 #
@@ -83,15 +71,26 @@ if hasattr(_current_module, 'keras'):
   # when it doing some very initial loading, like tf.compat.v2, etc.
   try:
     _keras_package = "keras.api._v2.keras."
-    losses = _LazyLoader("losses", globals(), _keras_package + "losses")
-    metrics = _LazyLoader("metrics", globals(), _keras_package + "metrics")
-    optimizers = _LazyLoader(
+    _losses = _LazyLoader("losses", globals(), _keras_package + "losses")
+    _metrics = _LazyLoader("metrics", globals(), _keras_package + "metrics")
+    _optimizers = _LazyLoader(
         "optimizers", globals(), _keras_package + "optimizers")
-    initializers = _LazyLoader(
+    _initializers = _LazyLoader(
         "initializers", globals(), _keras_package + "initializers")
-    setattr(_current_module, "losses", losses)
-    setattr(_current_module, "metrics", metrics)
-    setattr(_current_module, "optimizers", optimizers)
-    setattr(_current_module, "initializers", initializers)
+    setattr(_current_module, "losses", _losses)
+    setattr(_current_module, "metrics", _metrics)
+    setattr(_current_module, "optimizers", _optimizers)
+    setattr(_current_module, "initializers", _initializers)
   except ImportError:
     pass
+
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if _typing.TYPE_CHECKING:
+  from tensorflow_estimator.python.estimator.api._v2 import estimator as estimator
+  from keras.api._v2 import keras
+  from keras.api._v2.keras import losses
+  from keras.api._v2.keras import metrics
+  from keras.api._v2.keras import optimizers
+  from keras.api._v2.keras import initializers
+# pylint: enable=g-import-not-at-top

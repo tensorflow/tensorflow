@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Support/TargetRegistry.h"
+#include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/test_target_triple_helper.h"
@@ -71,7 +71,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(text));
   cpu::CpuCompiler cpu_compiler;
-  auto module_group = absl::make_unique<HloModuleGroup>("group");
+  auto module_group = std::make_unique<HloModuleGroup>("group");
   module_group->push_back(std::move(hlo_module));
 
   // Check that the GetTargetVectorRegisterByteSize is itself working.

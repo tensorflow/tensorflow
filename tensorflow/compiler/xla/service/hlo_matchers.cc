@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/test.h"
 
 namespace xla {
@@ -53,7 +55,7 @@ bool HloMatcher::MatchAndExplain(
                   << operands[index]->ToString()
                   << "\ndoesn't match expected:\n\t";
         operands_[index].DescribeTo(listener->stream());
-        string explanation = inner_listener.str();
+        std::string explanation = inner_listener.str();
         if (!explanation.empty()) {
           *listener << ", " << explanation;
         }
@@ -314,6 +316,42 @@ bool HloConstantMatcher::MatchAndExplain(
 void HloConstantMatcher::DescribeTo(std::ostream* os) const {
   HloMatcher::DescribeTo(os);
   *os << " (has value " << literal_.ToString() << ")";
+}
+
+bool HloReplicaGroupsMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  const HloCollectiveInstruction* collective =
+      DynCast<HloCollectiveInstruction>(instruction);
+
+  if (!collective) {
+    *listener << instruction->ToString() << " not a collective op";
+    return false;
+  }
+
+  if (absl::c_equal(collective->replica_groups(), replica_groups_,
+                    [](const ReplicaGroup& a, const std::vector<int64_t>& b) {
+                      return absl::c_equal(a.replica_ids(), b);
+                    })) {
+    return true;
+  }
+
+  std::ostringstream desc_stream;
+  DescribeTo(&desc_stream);
+  *listener << instruction->ToString()
+            << " has incorrect replica_groups (expected: " << desc_stream.str()
+            << ")";
+  return false;
+}
+
+void HloReplicaGroupsMatcher::DescribeTo(std::ostream* os) const {
+  std::vector<std::string> replica_group_strs;
+  replica_group_strs.reserve(replica_groups_.size());
+  for (const std::vector<int64_t>& replica_group : replica_groups_) {
+    replica_group_strs.push_back(
+        absl::StrCat("{", absl::StrJoin(replica_group, ","), "}"));
+  }
+  *os << "{" << absl::StrJoin(replica_group_strs, ",") << "}";
 }
 
 }  // namespace testing

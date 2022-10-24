@@ -16,16 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 
 namespace xla {
@@ -40,14 +40,14 @@ class IrEmitterContext {
                    const BufferAssignment* buffer_assignment,
                    std::string platform_name, GpuDeviceInfo gpu_device_info,
                    se::CudaComputeCapability cuda_compute_capability,
-                   const HloProfileIndexMap* profile_index_map,
+                   se::RocmComputeCapability rocm_compute_capability,
                    mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         cuda_compute_capability_(cuda_compute_capability),
-        profile_index_map_(profile_index_map),
+        rocm_compute_capability_(rocm_compute_capability),
         mlir_context_(mlir_context),
         llvm_module_(llvm_module) {}
   // Disallow copy and assign.
@@ -64,7 +64,9 @@ class IrEmitterContext {
   se::CudaComputeCapability cuda_compute_capability() const {
     return cuda_compute_capability_;
   }
-  const HloProfileIndexMap* profile_index_map() { return profile_index_map_; }
+  se::RocmComputeCapability rocm_compute_capability() const {
+    return rocm_compute_capability_;
+  }
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
@@ -83,6 +85,12 @@ class IrEmitterContext {
     allocations_ = allocations;
   }
 
+  // Emit a constant with a given number of element, given byte size of the
+  // element, given symbol name and content.
+  void emit_constant(int64_t num_elements, int64_t bytes_per_element,
+                     absl::string_view symbol_name, int allocation_idx,
+                     llvm::ArrayRef<uint8_t> content, llvm::IRBuilder<>* b);
+
  private:
   const HloModule* hlo_module_;
   const BufferAssignment* buffer_assignment_;
@@ -90,7 +98,7 @@ class IrEmitterContext {
   std::string platform_name_;
   GpuDeviceInfo gpu_device_info_;
   se::CudaComputeCapability cuda_compute_capability_;
-  const HloProfileIndexMap* profile_index_map_;
+  se::RocmComputeCapability rocm_compute_capability_;
   mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;

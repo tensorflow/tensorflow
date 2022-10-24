@@ -24,11 +24,11 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 
 class ElementalIrEmitterExecutionTest : public HloTestBase {
  protected:
-  void RunTest(const string& hlo_text, absl::Span<Literal* const> args) {
+  void RunTest(const std::string& hlo_text, absl::Span<Literal* const> args) {
     HloModuleConfig config;
     config.set_debug_options(GetDebugOptionsForTest());
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -49,7 +49,7 @@ class ElementalIrEmitterExecutionTest : public HloTestBase {
 };
 
 XLA_TEST_F(ElementalIrEmitterExecutionTest, DotFusion) {
-  const string hlo_text = R"(
+  const std::string hlo_text = R"(
 HloModule FusedDot
 
 fused_computation {
@@ -67,8 +67,8 @@ ENTRY main {
 }
 )";
 
-  Literal lhs = LiteralUtil::CreateR3<int32>({{{1}, {2}}});
-  Literal rhs = LiteralUtil::CreateR3<int32>({{{3}, {4}}});
+  Literal lhs = LiteralUtil::CreateR3<int32_t>({{{1}, {2}}});
+  Literal rhs = LiteralUtil::CreateR3<int32_t>({{{3}, {4}}});
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
@@ -91,8 +91,8 @@ ENTRY main {
 }
 )";
 
-  Literal lhs = LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}});
-  Literal rhs = LiteralUtil::CreateR2<int32>({{10, 20}, {30, 40}});
+  Literal lhs = LiteralUtil::CreateR2<int32_t>({{1, 2}, {3, 4}});
+  Literal rhs = LiteralUtil::CreateR2<int32_t>({{10, 20}, {30, 40}});
   RunTest(hlo_text, {&lhs, &rhs});
 }
 
@@ -319,6 +319,22 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertBF16ToComplex) {
       ROOT tuple = (c64[], c128[]) tuple(c64_, c128_)
     }
   )");
+}
+
+XLA_TEST_F(ElementalIrEmitterExecutionTest, CompareBF16) {
+  constexpr char hlo_text[] = R"(
+  HloModule compareBF16
+  ENTRY main {
+    p0 = bf16[4] parameter(0)
+    p1 = bf16[4] parameter(1)
+    ROOT cmp = pred[4] compare(p0, p1), direction=LT
+})";
+
+  Literal lhs = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
+  Literal rhs = LiteralUtil::CreateR1<float>({4, 3, 2, 1});
+  lhs = LiteralUtil::ConvertF32ToBF16(lhs);
+  rhs = LiteralUtil::ConvertF32ToBF16(rhs);
+  RunTest(hlo_text, {&lhs, &rhs});
 }
 
 }  // namespace

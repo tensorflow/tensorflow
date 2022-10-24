@@ -74,6 +74,10 @@ TF_CAPI_EXPORT unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable);
 // as if passed in XLA_FLAGS. This has global effect.
 TF_CAPI_EXPORT void TF_SetXlaAutoJitMode(const char* mode);
 
+// Returns whether the single GPU or general XLA auto jit optimizations are
+// enabled through MarkForCompilationPassFlags.
+TF_CAPI_EXPORT unsigned char TF_GetXlaAutoJitEnabled();
+
 // Sets XLA's minimum cluster size. This has global effect.
 TF_CAPI_EXPORT void TF_SetXlaMinClusterSize(int size);
 

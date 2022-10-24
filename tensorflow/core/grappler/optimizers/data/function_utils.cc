@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/util/ptr_util.h"
 

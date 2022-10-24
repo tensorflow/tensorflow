@@ -19,9 +19,10 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -32,10 +33,11 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Translation.h"  // from @llvm-project
+#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -120,7 +122,7 @@ static opt<bool, true> strip_debug_info_flag(
 
 namespace mlir {
 namespace {
-static OwningModuleRef FlatBufferFileToMlirTrans(
+static OwningOpRef<mlir::ModuleOp> FlatBufferFileToMlirTrans(
     llvm::SourceMgr* source_mgr, MLIRContext* context,
     bool use_external_constant,
     bool experimental_prune_unreachable_nodes_unconditionally) {
@@ -176,7 +178,7 @@ static LogicalResult MlirToFlatBufferFileTranslateFunction(
 }  // namespace
 
 static TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
-    "tflite-flatbuffer-to-mlir",
+    "tflite-flatbuffer-to-mlir", "tflite-flatbuffer-to-mlir",
     [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
       return FlatBufferFileToMlirTrans(
           &source_mgr, context, use_external_constant,
@@ -184,11 +186,13 @@ static TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
     });
 
 static TranslateFromMLIRRegistration MLIRToFlatBufferTranslate(
-    "mlir-to-tflite-flatbuffer", MlirToFlatBufferFileTranslateFunction,
-    [](DialectRegistry& registry) {
-      registry.insert<quant::QuantizationDialect>();
+    "mlir-to-tflite-flatbuffer", "mlir-to-tflite-flatbuffer",
+    MlirToFlatBufferFileTranslateFunction, [](DialectRegistry& registry) {
+      registry.insert<quant::QuantizationDialect,
+                      quantfork::QuantizationForkDialect>();
       mlir::RegisterAllTensorFlowDialects(registry);
       registry.insert<TFL::TensorFlowLiteDialect>();
-      registry.insert<StandardOpsDialect>();
+      registry.insert<arith::ArithDialect>();
+      registry.insert<func::FuncDialect>();
     });
 }  // namespace mlir

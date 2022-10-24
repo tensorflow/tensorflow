@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for slicing."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Tests for reshape."""
 
 from absl.testing import parameterized
 
@@ -44,6 +40,18 @@ class ReshapeTest(xla_test.XLATestCase, parameterized.TestCase):
         result = o.eval(feed_dict=params)
 
         self.assertAllEqual([[1, 2], [3, 4], [5, 6]], result)
+
+  def testInt64(self):
+    with self.session():
+      with self.test_scope():
+        x = array_ops.zeros([50000, 50000], dtype=dtypes.bool)
+        # Provide dimension larger than int32
+        y = array_ops.reshape(x, [50000**2])
+        self.assertEqual([50000**2], y.get_shape().as_list())
+        # Even if first dimension is within int32, ensure we correctly go to
+        # int64
+        y = array_ops.reshape(x, [1, 50000**2])
+        self.assertEqual([1, 50000**2], y.get_shape().as_list())
 
 
 if __name__ == '__main__':

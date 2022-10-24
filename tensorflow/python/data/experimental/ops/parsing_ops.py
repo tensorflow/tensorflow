@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Experimental `dataset` API for parsing example."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -37,7 +33,8 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     if not structure.are_compatible(
         input_dataset.element_spec,
         tensor_spec.TensorSpec([None], dtypes.string)):
-      raise TypeError("Input dataset should be a dataset of vectors of strings")
+      raise TypeError("Input dataset should be a dataset of vectors of "
+                      f"strings. Instead it is `{input_dataset.element_spec}`.")
     self._num_parallel_calls = num_parallel_calls
     if deterministic is None:
       self._deterministic = "default"
@@ -142,7 +139,7 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
     ValueError: if features argument is None.
   """
   if features is None:
-    raise ValueError("Missing: features was %s." % features)
+    raise ValueError("Argument `features` is required, but not specified.")
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
@@ -150,7 +147,7 @@ def parse_example_dataset(features, num_parallel_calls=1, deterministic=None):
                                        deterministic)
     if any(
         isinstance(feature, parsing_ops.SparseFeature) or
-        (isinstance(feature, parsing_ops.RaggedFeature) and feature.partitions)
+        isinstance(feature, parsing_ops.RaggedFeature)
         for feature in features.values()):
       # pylint: disable=protected-access
       # pylint: disable=g-long-lambda

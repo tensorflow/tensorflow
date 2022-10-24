@@ -20,20 +20,16 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_SHARDING_H_
 
 #include <map>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -122,7 +118,7 @@ class HloSharding {
 
   // Note that this string canonically has outer curly braces, e.g.
   // "{replicated}".
-  string ToString(bool include_metadata = false) const;
+  std::string ToString(bool include_metadata = false) const;
 
   // Validate that this sharding can be applied to a tensor with shape `shape`.
   Status Validate(const Shape& shape, int64_t num_devices) const;
@@ -226,7 +222,7 @@ class HloSharding {
   // span a single device, the return value will be empty.
   // In order for a sharding to span a single device, every leaf sharding must
   // be maximal and not replicated, and the used device must match.
-  absl::optional<int64_t> UniqueDevice() const;
+  std::optional<int64_t> UniqueDevice() const;
 
   // Retrieves the unique device or fails with a CHECK.
   int64_t GetUniqueDevice() const;
@@ -240,7 +236,7 @@ class HloSharding {
   // ShapeTree object so is not cheap.
   StatusOr<ShapeTree<HloSharding>> AsShapeTree(const Shape& shape) const;
   ShapeTree<HloSharding> GetAsShapeTree(const Shape& shape) const {
-    return AsShapeTree(shape).ValueOrDie();
+    return AsShapeTree(shape).value();
   }
 
   // Retrieves the sub sharding at a given index, out of a tuple sharding.
@@ -257,7 +253,7 @@ class HloSharding {
   // be returned. If it is a tuple, and all the tuple elements are common, the
   // common element will be returned. Otherwise the optional will contain no
   // value.
-  absl::optional<HloSharding> ExtractSingleSharding() const;
+  std::optional<HloSharding> ExtractSingleSharding() const;
 
   // Returns a copy of the sharding with no metadata. If sharding is of tuple
   // type, sub shardings will have no metadata.
@@ -280,13 +276,15 @@ class HloSharding {
   }
   bool operator!=(const HloSharding& other) const { return !(*this == other); }
 
-  size_t Hash() const;
-
-  struct Hasher {
-    size_t operator()(const HloSharding& sharding) const {
-      return sharding.Hash();
+  template <typename H>
+  friend H AbslHashValue(H h, const HloSharding& sharding) {
+    if (sharding.tuple_) {
+      return H::combine(std::move(h), sharding.tuple_elements_);
     }
-  };
+    return H::combine(std::move(h), sharding.replicated_, sharding.manual_,
+                      sharding.tile_assignment_,
+                      sharding.replicate_on_last_tile_dim_);
+  }
 
   // Gets the tile assignment tensor.
   // REQUIRES: !IsReplicated() && !IsTuple()
@@ -314,6 +312,8 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape, int64_t device) const;
 
+  // Gets the total number of tiles including subgroups and partial replication.
+  int64_t TotalNumTiles() const;
   // Gets the number of tiles. If it has partial replication, this will not
   // equal the device count.
   int64_t NumTiles() const;
@@ -329,7 +329,7 @@ class HloSharding {
   int64_t SubgroupReplicationDim() const {
     auto it = absl::c_find(subgroup_types_, OpSharding::REPLICATED);
     if (it != subgroup_types_.end()) {
-      return it - subgroup_types_.begin();
+      return (it - subgroup_types_.begin()) + TiledDataRank();
     }
     if (replicate_on_last_tile_dim_) {
       return tile_assignment_.num_dimensions() - 1;
@@ -337,11 +337,11 @@ class HloSharding {
     return -1;
   }
 
-  // Returns the manual subgroiup dim, or -1 if it doesn't exist.
+  // Returns the manual subgroup dim, or -1 if it doesn't exist.
   int64_t SubgroupManualDim() const {
     auto it = absl::c_find(subgroup_types_, OpSharding::MANUAL);
     if (it != subgroup_types_.end()) {
-      return it - subgroup_types_.begin();
+      return (it - subgroup_types_.begin()) + TiledDataRank();
     }
     return -1;
   }
@@ -356,6 +356,9 @@ class HloSharding {
     rank -= subgroup_types_.size();
     return rank;
   }
+
+  // Returns the number of tuple_elements_ entries to fit the shape.
+  static int64_t RequiredLeaves(const Shape& shape);
 
  private:
   explicit HloSharding(bool manual, bool replicated,
@@ -420,9 +423,6 @@ class HloSharding {
 
   // Internal helper to validate a non-tuple (leaf) sharding.
   Status ValidateNonTuple(const Shape& shape, int64_t num_devices) const;
-
-  // Returns the number of tuple_elements_ entries to fit the shape.
-  static int64_t RequiredLeaves(const Shape& shape);
 
   bool replicated_;
   bool maximal_;

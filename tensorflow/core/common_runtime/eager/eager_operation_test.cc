@@ -41,7 +41,37 @@ TEST(EagerOperationTest, DeviceName) {
   TF_ASSERT_OK(op->SetDeviceName("/job:localhost"));
   EXPECT_EQ("/job:localhost", op->DeviceName());
 
-  EXPECT_NE(Status::OK(), op->SetDeviceName("/not/a/valid/name"));
+  EXPECT_NE(OkStatus(), op->SetDeviceName("/not/a/valid/name"));
+
+  delete op;
+  ctx->Unref();
+}
+
+TEST(EagerOperationTest, EagerFunctionParamsAndStepId) {
+  StaticDeviceMgr device_mgr(DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  auto ctx = new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      &device_mgr, false, nullptr, nullptr);
+
+  tensorflow::FunctionDef function_def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'DummyFunction'"
+      "    }",
+      &function_def));
+  TF_ASSERT_OK(ctx->AddFunctionDef(function_def));
+
+  auto op = new EagerOperation(ctx);
+  EXPECT_FALSE(op->eager_func_params().has_value());
+
+  string device_name = "/job:localhost/replica:0/task:0/device:CPU:0";
+  TF_ASSERT_OK(op->SetDeviceName(device_name.c_str()));
+  TF_ASSERT_OK(op->Reset("DummyFunction", device_name.c_str()));
+
+  op->SetStepId(255);
+  EXPECT_EQ(op->eager_func_params()->step_id.value(), 255);
 
   delete op;
   ctx->Unref();

@@ -14,11 +14,8 @@
 # ==============================================================================
 
 """Synchronize replicas for training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -290,7 +287,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             aggregated_grad.append(grad_accum.take_grad(
                 self._replicas_to_aggregate))
           else:
-            if not isinstance(grad, ops.IndexedSlices):
+            if not isinstance(grad, indexed_slices.IndexedSlices):
               raise ValueError("Unknown grad type!")
             grad_accum = data_flow_ops.SparseConditionalAccumulator(
                 grad.dtype, shape=(), shared_name=var.name + "/grad_accum")

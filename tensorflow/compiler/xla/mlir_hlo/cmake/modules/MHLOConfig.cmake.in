@@ -1,0 +1,16 @@
+# This file allows users to call find_package(MHLO) and pick up mlir-hlo targets.
+
+@MHLO_CONFIG_CODE@
+
+# MLIR is needed for this setup to be usable.
+find_package(MLIR REQUIRED CONFIG)
+
+# Set variables needed by dependent projects.
+set(MHLO_BUILD_LIBRARY_DIR "@MLIR_HLO_LIB_DIR@")
+set(MHLO_CMAKE_DIR "@MHLO_CONFIG_CMAKE_DIR@")
+set(MHLO_ENABLE_BINDINGS_PYTHON "@MHLO_ENABLE_BINDINGS_PYTHON@")
+set(MHLO_EXPORTED_TARGETS "@MLIR_EXPORTS@")
+set(MHLO_INCLUDE_DIRS "@MHLO_CONFIG_INCLUDE_DIRS@")
+
+# Provide all our library targets to users.
+@MHLO_CONFIG_INCLUDE_EXPORTS@

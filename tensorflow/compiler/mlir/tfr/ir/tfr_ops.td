@@ -19,11 +19,13 @@ limitations under the License.
 #define DIALECT_TFR_OPS_
 
 include "mlir/Dialect/Shape/IR/ShapeBase.td"
-include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/OpBase.td"
+include "mlir/IR/FunctionInterfaces.td"
+include "mlir/Dialect/Quant/QuantOpsBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
@@ -39,6 +41,8 @@ def TFR_Dialect : Dialect {
   }];
 
   let cppNamespace = "::mlir::TFR";
+
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 //===----------------------------------------------------------------------===//
@@ -107,7 +111,7 @@ def TFR_allowedListResultType : Type<Or<[
 // Op classes
 //===----------------------------------------------------------------------===//
 
-class TFR_Op<string mnemonic, list<OpTrait> traits> :
+class TFR_Op<string mnemonic, list<Trait> traits> :
     Op<TFR_Dialect, mnemonic, traits>;
 
 def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
@@ -136,13 +140,11 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
     Variadic<TFR_allowedResultType>:$outs);
 
   let extraClassDeclaration = [{
-    StringRef getCallee() { return callee(); }
-
     // Get the argument operands to the called function.
-    operand_range getArgOperands() { return args(); }
+    operand_range getArgOperands() { return getArgs(); }
 
     // Return the callee of this operation.
-    CallInterfaceCallable getCallableForCallee() { return calleeAttr(); }
+    CallInterfaceCallable getCallableForCallee() { return getCalleeAttr(); }
   }];
 
   let assemblyFormat = [{
@@ -150,7 +152,7 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
   }];
 }
 
-def TFR_CastOp : TFR_Op<"cast", [NoSideEffect]> {
+def TFR_CastOp : TFR_Op<"cast", [Pure]> {
   let description = [{
     The `cast` operation converts the operand with built-in tensor type to
     tfr.tensor type, or vice versa.
@@ -171,7 +173,7 @@ def TFR_CastOp : TFR_Op<"cast", [NoSideEffect]> {
     // Return element type of the input tensor type. Only available when the
     // input is a MLIR built-in tensor type.
     Attribute getInputElementType() {
-      if (auto ty = arg().getType().dyn_cast<TensorType>()) {
+      if (auto ty = getArg().getType().dyn_cast<TensorType>()) {
         return TypeAttr::get(ty.getElementType());
       }
       return {};
@@ -181,7 +183,7 @@ def TFR_CastOp : TFR_Op<"cast", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
-def TFR_GetShapeOp : TFR_Op<"get_shape", [NoSideEffect]> {
+def TFR_GetShapeOp : TFR_Op<"get_shape", [Pure]> {
   let description = [{
     The `get_shape` operation gets the shape of a tfr.tensor and returns
     !shape.shape type.
@@ -203,7 +205,7 @@ def TFR_GetShapeOp : TFR_Op<"get_shape", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
-def TFR_GetElementTypeOp : TFR_Op<"get_element_type", [NoSideEffect]> {
+def TFR_GetElementTypeOp : TFR_Op<"get_element_type", [Pure]> {
   let description = [{
     The `get_element_type` operation gets the element type of a tfr.tensor and
     returns !tfr.attr.
@@ -223,7 +225,7 @@ def TFR_GetElementTypeOp : TFR_Op<"get_element_type", [NoSideEffect]> {
   let assemblyFormat = "$arg attr-dict `->` type($out)";
 }
 
-def TFR_EqualOp : TFR_Op<"equal", [NoSideEffect, SameTypeOperands]> {
+def TFR_EqualOp : TFR_Op<"equal", [Pure, SameTypeOperands]> {
   let description = [{
     The `equal` operation compares the values of the tfr.attr type arguments.
     The operation returns an i1 boolean indicating if the two values are the
@@ -247,7 +249,7 @@ def TFR_EqualOp : TFR_Op<"equal", [NoSideEffect, SameTypeOperands]> {
   let assemblyFormat = "$lhs `,` $rhs attr-dict `->` type($result)";
 }
 
-def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
+def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, Pure]> {
   let description = [{
     The `attr` operation stores TF op's attribute, which doesn't support
     arithmetic operations.
@@ -282,7 +284,7 @@ def TFR_ConstOp : TFR_Op<"constant", [ConstantLike, NoSideEffect]> {
   }];
 }
 
-def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [NoSideEffect]> {
+def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [Pure]> {
   let description = [{
     The `constant_tensor` operation converts the operand with non-built-in
     tensor type to built-in tensor type or tfr.tensor type. If it is built-in
@@ -302,10 +304,10 @@ def TFR_ConstantTensorOp : TFR_Op<"constant_tensor", [NoSideEffect]> {
 
   let hasCanonicalizer = 1;
 
-  let verifier = [{ return Verify(*this); }];
+  let hasVerifier = 1;
 }
 
-def TFR_GetElementOp : TFR_Op<"get_element", [NoSideEffect]> {
+def TFR_GetElementOp : TFR_Op<"get_element", [Pure]> {
   let description = [{
     The `get_element` operation extracts one tfr.tensor element from a
     tfr.tensor_list.
@@ -331,7 +333,7 @@ def TFR_GetElementOp : TFR_Op<"get_element", [NoSideEffect]> {
   }];
 }
 
-def TFR_BuildListOp : TFR_Op<"build_list", [NoSideEffect]> {
+def TFR_BuildListOp : TFR_Op<"build_list", [Pure]> {
   let description = [{
    The `build_list` operation builds a tensor list from a list of tensors, or
    an tfr.attr from a list of scalars.
@@ -352,7 +354,7 @@ def TFR_BuildListOp : TFR_Op<"build_list", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
-def TFR_GetLengthOp : TFR_Op<"get_length", [NoSideEffect]> {
+def TFR_GetLengthOp : TFR_Op<"get_length", [Pure]> {
   let description = [{
     The `get_length` operation returns the number of tensors for a
     tfr.tensor_list.
@@ -382,7 +384,7 @@ def TFR_GetLengthOp : TFR_Op<"get_length", [NoSideEffect]> {
 
 def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
                                     DeclareOpInterfaceMethods<CallableOpInterface>,
-                                    FunctionLike,
+                                    FunctionOpInterface,
                                     IsolatedFromAbove, Symbol]> {
   let summary = "TFR Function defines a composition of other ops";
 
@@ -413,7 +415,7 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   }];
 
   let arguments = (ins
-    TypeAttr:$type,
+    TypeAttrOf<FunctionType>:$function_type,
     StrAttr:$sym_name
   );
 
@@ -432,21 +434,22 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
   ];
 
   let extraClassDeclaration = [{
-    // FunctionLike trait needs access to the functions below.
-    friend class OpTrait::FunctionLike<TFRFuncOp>;
+    LogicalResult verifyType() { return success(); }
 
-    // Hooks for the input/output type enumeration in FunctionLike .
-    unsigned getNumFuncArguments() { return getType().getNumInputs(); }
-    unsigned getNumFuncResults() { return getType().getNumResults(); }
+    /// Returns the argument types of this function.
+    ArrayRef<Type> getArgumentTypes() { return getFunctionType().getInputs(); }
+
+    /// Returns the result types of this function.
+    ArrayRef<Type> getResultTypes() { return getFunctionType().getResults(); }
 
     // Get the names of all defined attributes, including both derived and
     // non-derived ones.
     llvm::StringSet<> getDefinedAttributeNames() {
       llvm::StringSet<> all_attrs;
       for (auto& attr : (*this)->getAttrs()) {
-        all_attrs.insert(attr.first.strref());
+        all_attrs.insert(attr.getName().strref());
       }
-      for (const auto& operand : llvm::enumerate(getType().getInputs())) {
+      for (const auto& operand : llvm::enumerate(getArgumentTypes())) {
         if (auto attr_name = getArgAttrOfType<StringAttr>(
             operand.index(), kAttrArgumentNameAttr)) {
           all_attrs.insert(attr_name.getValue());
@@ -456,12 +459,11 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
     }
   }];
 
-  let verifier = [{ return Verify(*this); }];
-  let parser = [{ return ParseFuncOp(parser, &result); }];
-  let printer = [{ PrintFuncOp(p, *this); }];
+  let hasVerifier = 1;
+  let hasCustomAssemblyFormat = 1;
 }
 
-def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,
+def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, Pure,
                                         ReturnLike, Terminator]> {
   let description = [{
     A terminator operation for regions that appear in the body of  `tfr.func`
@@ -480,7 +482,7 @@ def TFR_TFRReturnOp : TFR_Op<"return", [HasParent<"TFRFuncOp">, NoSideEffect,
 // Quantization related operations
 //===----------------------------------------------------------------------===//
 
-def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
+def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [Pure]> {
   let description = [{
    The `quant_act_range` returns the a pair of integers to indicate the fixed
    range for the fused activation `act` with the quantization defined by the
@@ -507,9 +509,9 @@ def TFR_TFRQuantActRangeOp : TFR_Op<"quant_act_range", [NoSideEffect]> {
   }];
 }
 
-def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
+def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [Pure]> {
   let description = [{
-   The `quant_rescale` rescales the elements of the integer tensor by the the
+   The `quant_rescale` rescales the elements of the integer tensor by the
    floating-point rescale factor. This op needs to be legalized to the preferred
    operations of the backends.
 
@@ -536,7 +538,7 @@ def TFR_TFRQuantRescaleOp : TFR_Op<"quant_rescale", [NoSideEffect]> {
 }
 
 def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultType]> {
   let description = [{
    The `quant_raw_data` removes the quantization parameter from the intput
@@ -560,7 +562,7 @@ def TFR_TFRQuantRawDataOp : TFR_Op<"quant_raw_data", [
   let hasCanonicalizer = 1;
 }
 
-def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [NoSideEffect]> {
+def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [Pure]> {
   let description = [{
    The `quant_qparam` returns the quantization parameter of the input
    tensors.
@@ -584,7 +586,7 @@ def TFR_TFRQuantQParamsOp : TFR_Op<"quant_qparam", [NoSideEffect]> {
 }
 
 
-def TFR_TFRQuantScaleFactorOp : TFR_Op<"quant_scale_factor", [NoSideEffect]> {
+def TFR_TFRQuantScaleFactorOp : TFR_Op<"quant_scale_factor", [Pure]> {
   let description = [{
    The `quant_scale_factor` computes the effective scale factor according to the
    output scale and input scales.

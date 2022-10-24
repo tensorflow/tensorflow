@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,17 +14,12 @@
 # ==============================================================================
 """Upgrader for Python scripts from 1.* TensorFlow to 2.0 TensorFlow."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import ast
 import copy
 import functools
 import sys
 
 import pasta
-import six
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits
@@ -49,8 +43,7 @@ class VersionedTFImport(ast_edits.AnalysisResult):
 
   def __init__(self, version):
     self.log_level = ast_edits.INFO
-    self.log_message = ("Not upgrading symbols because `tensorflow." +
-                        six.ensure_str(version) +
+    self.log_message = ("Not upgrading symbols because `tensorflow." + version +
                         "` was directly imported as `tf`.")
 
 
@@ -1764,7 +1757,7 @@ def _rename_if_arg_found_transformer(parent, node, full_name, name, logs,
 
   # All conditions met, insert v1 and log what we did.
   # We must have a full name, so the func is an attribute.
-  new_name = six.ensure_str(full_name).replace("tf.", "tf.compat.v1.", 1)
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
   node.func = ast_edits.full_name_node(new_name)
   logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
@@ -1792,8 +1785,8 @@ def _iterator_transformer(parent, node, full_name, name, logs):
   # (tf.compat.v1.data), or something which is handled in the rename
   # (tf.data). This transformer only handles the method call to function call
   # conversion.
-  if full_name and (six.ensure_str(full_name).startswith("tf.compat.v1.data") or
-                    six.ensure_str(full_name).startswith("tf.data")):
+  if full_name and (full_name.startswith("tf.compat.v1.data") or
+                    full_name.startswith("tf.data")):
     return
 
   # This should never happen, since we're only called for Attribute nodes.
@@ -2078,8 +2071,8 @@ def _add_summary_step_transformer(parent, node, full_name, name, logs):
     if keyword_arg.arg == "step":
       return node
   default_value = "tf.compat.v1.train.get_or_create_global_step()"
-  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
-  ast_value = pasta.parse(default_value)
+  ast_value = ast.parse(default_value).body[0].value
+  del ast_value.lineno  # hack to prevent spurious reordering of call args
   node.keywords.append(ast.keyword(arg="step", value=ast_value))
   logs.append((
       ast_edits.WARNING, node.lineno, node.col_offset,
@@ -2540,7 +2533,7 @@ def _name_scope_transformer(parent, node, full_name, name, logs):
 
 
 def _rename_to_compat_v1(node, full_name, logs, reason):
-  new_name = six.ensure_str(full_name).replace("tf.", "tf.compat.v1.", 1)
+  new_name = full_name.replace("tf.", "tf.compat.v1.", 1)
   return _rename_func(node, full_name, new_name, logs, reason)
 
 

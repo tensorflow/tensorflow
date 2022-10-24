@@ -19,12 +19,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -48,15 +50,13 @@ class Thunk {
     kConditional,
     kConvolution,
     kCopy,
-    kCudnnBatchNormBackward,
-    kCudnnBatchNormForwardInference,
-    kCudnnBatchNormForwardTraining,
+    kCublasLtMatmul,
     kCustomCall,
     kFft,
+    kFor,
     kGemm,
     kInfeed,
     kKernel,
-    kMemcpy,
     kMemset32BitValue,
     kMemzero,
     kNcclAllGather,
@@ -74,8 +74,10 @@ class Thunk {
   };
 
   struct ThunkInfo {
-    absl::optional<int64_t> profile_index;
+    explicit ThunkInfo(mlir::Operation* op) : op(op) {}
+    std::optional<int64_t> profile_index;
     std::string profile_annotation;
+    mlir::Operation* op;
   };
 
   // The hlo_instruction argument is meant to be the instruction this thunk was
@@ -84,7 +86,8 @@ class Thunk {
   explicit Thunk(Kind kind, ThunkInfo thunk_info)
       : kind_(kind),
         profile_index_(thunk_info.profile_index),
-        profile_annotation_(thunk_info.profile_annotation) {}
+        profile_annotation_(thunk_info.profile_annotation),
+        op_(thunk_info.op) {}
   virtual ~Thunk() {}
   Thunk(const Thunk&) = delete;
   Thunk& operator=(const Thunk&) = delete;
@@ -92,6 +95,10 @@ class Thunk {
   virtual std::string ToStringExtra(int indent) const { return ""; }
   Kind kind() const { return kind_; }
   std::string profile_annotation() const { return profile_annotation_; }
+  // Only valid during compilation, i.e., lowering thunks to kernel-launch
+  // related XLA runtime custom calls). nullptr at runtime. MLIR codegen will
+  // cease the practice of lowering thunks to XLA runtime custom calls.
+  mlir::Operation* op() { return op_; }
 
   // Prepares the thunk for execution on the given StreamExecutor.
   //
@@ -100,22 +107,20 @@ class Thunk {
   // time spent initializing doesn't count towards our execution profile.
   virtual Status Initialize(const GpuExecutable& /*executable*/,
                             se::StreamExecutor* /*executor*/) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Parameters passed to ExecuteOnStream.  Encapsulated in a struct so that
   // when we add something we don't have to change every subclass of Thunk.
   struct ExecuteParams {
+    ExecuteParams(const ServiceExecutableRunOptions& run_options,
+                  const BufferAllocations& buffer_allocations,
+                  se::Stream* stream, se::Stream* async_comms_stream);
+
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     se::Stream* async_comms_stream;
-    RunId run_id;
-    const DeviceAssignment* device_assn;                          // never null
-    std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
-    const std::vector<GlobalDeviceId>* gpu_global_device_ids;     // may be null
-    const NcclUniqueIdCallback* nccl_unique_id_callback;          // may be null
-
-    StatusOr<GlobalDeviceId> GetGlobalDeviceId() const;
+    NcclExecuteParams nccl_params;
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be
@@ -125,27 +130,19 @@ class Thunk {
   // Precondition: Initialize(stream->parent()) has been called.
   virtual Status ExecuteOnStream(const ExecuteParams& params) = 0;
 
+  // Clears metadata that is only valid during compile time.
+  virtual void ClearCompileTimeInfo() { op_ = nullptr; }
+
   static absl::string_view KindToString(Thunk::Kind kind);
 
  protected:
-  absl::optional<int64_t> profile_index() const { return profile_index_; }
-
-  // Safely copies the given buffer to the GPU, deleting it on the host only
-  // after the copy has completed.
-  template <typename T>
-  void SafeH2DMemcpy(
-      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64_t count,
-      se::Stream* stream,
-      std::vector<std::function<void()>>* deferred_host_callbacks) {
-    stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
-    auto* buf_raw = buf.release();
-    deferred_host_callbacks->push_back([buf_raw] { delete[] buf_raw; });
-  }
+  std::optional<int64_t> profile_index() const { return profile_index_; }
 
  private:
   Kind kind_;
-  absl::optional<int64_t> profile_index_;
+  std::optional<int64_t> profile_index_;
   std::string profile_annotation_;
+  mlir::Operation* op_;
 };
 
 // A sequence of thunks.

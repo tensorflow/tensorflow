@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -55,6 +51,13 @@ class LinearOperatorZerosTest(
         shapes_info((1, 3, 3)),
         shapes_info((3, 4, 4)),
         shapes_info((2, 1, 4, 4))]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+    ]
 
   def operator_and_matrix(
       self, build_info, dtype, use_placeholder,

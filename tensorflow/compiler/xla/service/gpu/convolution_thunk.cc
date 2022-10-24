@@ -15,16 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -38,6 +39,18 @@ ConvolutionThunk::ConvolutionThunk(
       result_buffer_(result_slice),
       scratch_buffer_(scratch_slice),
       config_(std::move(config)) {}
+
+MaybeFusedConvRunner& ConvolutionThunk::GetOrCreateRunner(
+    const stream_executor::Stream* stream) {
+  absl::MutexLock lock(&mu_);
+  auto it = runner_cache_.find(stream);
+  if (it == runner_cache_.end()) {
+    it = runner_cache_
+             .insert({stream, std::make_unique<MaybeFusedConvRunner>(config_)})
+             .first;
+  }
+  return *it->second;
+}
 
 Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
@@ -53,15 +66,18 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
+  RunConvOptions opts;
+  opts.runner_cache = &GetOrCreateRunner(params.stream);
+
   TF_RETURN_IF_ERROR(RunGpuConv(config_, absl::MakeSpan(operand_se_buffers),
-                                result_buffer, scratch, params.stream));
+                                result_buffer, scratch, params.stream, opts));
 
   // Note: Convolution has a tuple buffer as an output, but we don't need to
   // populate it as no one should be reading from the tuple directly.
   if (!params.stream->ok()) {
     return InternalError("ConvolutionThunk::ExecuteOnStream failed.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

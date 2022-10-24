@@ -35,10 +35,6 @@ bazel run tensorflow/examples/speech_commands:generate_streaming_test_wav -- \
 Once you've created a streaming audio file, you can then use the
 test_streaming_accuracy tool to calculate accuracy metrics for a model.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import math
 import sys

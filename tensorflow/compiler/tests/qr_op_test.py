@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.ops.math_ops.matrix_inverse."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
 import unittest
 
@@ -64,7 +60,7 @@ class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
   def CheckApproximation(self, a, q, r):
     # Tests that a ~= q*r.
     precision = self.AdjustedNorm(a - np.matmul(q, r))
-    self.assertTrue(np.all(precision < 10.0))
+    self.assertTrue(np.all(precision < 11.0))
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.

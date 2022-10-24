@@ -81,6 +81,8 @@ message CreateWorkerSessionRequest {
   // worker. To prevent memory leaks, the worker should garbage collect the old
   // WorkerSessions.
   int64 master_incarnation = 6;
+
+  reserved 7;  // Deprecated config that is embedded within server_def now.
 }
 
 message CreateWorkerSessionResponse {}

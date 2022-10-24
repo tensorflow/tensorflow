@@ -42,24 +42,31 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
     ] + select({
         "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:android_arm": [
-            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
-        ],
-        "//tensorflow:android_arm64": [
+        "//tensorflow:arm_any": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:linux_armhf": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         ],
+    }) + select({
+        "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        ],
+        "//tensorflow:macos_arm64": [
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
+        ],
+        "//conditions:default": [],
     }),
 )
 

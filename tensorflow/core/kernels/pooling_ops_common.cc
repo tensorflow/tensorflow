@@ -63,7 +63,7 @@ struct PadInputWithNegativeInf {
     functor::PadInput<GPUDevice, T, int, 4>()(
         d, in, {{input_pad_top, input_pad_left}},
         {{input_pad_bottom, input_pad_right}}, out, format, padding_value);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -111,7 +111,7 @@ Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
                                    "window size ",
                                    window_cols);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 PoolParameters::PoolParameters(OpKernelContext* context,
@@ -396,19 +396,15 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  bool status =
-      stream
-          ->ThenPoolForward(pooling_desc, input_desc, input_data, output_desc,
-                            &output_data, &scratch_allocator)
-          .ok();
+  OP_REQUIRES_OK(context, stream->ThenPoolForward(
+                              pooling_desc, input_desc, input_data, output_desc,
+                              &output_data, &scratch_allocator));
 #else
-  bool status = stream
-                    ->ThenPoolForward(pooling_desc, input_desc, input_data,
-                                      output_desc, &output_data)
-                    .ok();
+  OP_REQUIRES_OK(context,
+                 stream->ThenPoolForward(pooling_desc, input_desc, input_data,
+                                         output_desc, &output_data));
 #endif
-  OP_REQUIRES(context, status,
-              errors::Internal("dnn PoolForward launch failed"));
+
 #if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC
@@ -465,6 +461,16 @@ void DnnPoolingGradOp<T>::Compute(
   if (!context->status().ok()) {
     return;
   }
+  if (tensor_out) {
+    OP_REQUIRES(context, tensor_out->shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out->shape()));
+  }
+  OP_REQUIRES(context, out_backprop.shape() == params.forward_output_shape(),
+              errors::InvalidArgument("Expected grad shape to be ",
+                                      params.forward_output_shape(),
+                                      ", but got ", out_backprop.shape()));
 
   TensorFormat transformed_input_data_format = data_format;
 
@@ -714,23 +720,17 @@ void DnnPoolingGradOp<T>::Compute(
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  bool status = stream
-                    ->ThenPoolBackward(pooling_desc, orig_input_desc,
-                                       orig_input_data, orig_output_desc,
-                                       orig_output_data, output_backprop_data,
-                                       &input_backprop_data, &scratch_allocator)
-                    .ok();
+  OP_REQUIRES_OK(context,
+                 stream->ThenPoolBackward(
+                     pooling_desc, orig_input_desc, orig_input_data,
+                     orig_output_desc, orig_output_data, output_backprop_data,
+                     &input_backprop_data, &scratch_allocator));
 #else
-  bool status =
-      stream
-          ->ThenPoolBackward(pooling_desc, orig_input_desc, orig_input_data,
-                             orig_output_desc, orig_output_data,
-                             output_backprop_data, &input_backprop_data)
-          .ok();
+  OP_REQUIRES_OK(context, stream->ThenPoolBackward(
+                              pooling_desc, orig_input_desc, orig_input_data,
+                              orig_output_desc, orig_output_data,
+                              output_backprop_data, &input_backprop_data));
 #endif
-
-  OP_REQUIRES(context, status,
-              errors::Internal("dnn PoolBackward launch failed"));
 
   if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
                               params.pad_left != params.pad_right)) {

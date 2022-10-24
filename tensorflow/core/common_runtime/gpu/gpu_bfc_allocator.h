@@ -17,35 +17,44 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_
 
 #include <memory>
+#include <optional>
 #include <string>
-#include <unordered_map>
-#include <vector>
 
-#include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/framework/bfc_allocator.h"
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {
 
 // A GPU memory allocator that implements a 'best-fit with coalescing'
 // algorithm.
-class GPUBFCAllocator : public BFCAllocator {
+class GPUBFCAllocator : public tsl::BFCAllocator {
  public:
-  GPUBFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                  const string& name, double fragmentation_fraction = 0.0);
-  GPUBFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-                  const GPUOptions& gpu_options, const string& name,
-                  double fragmentation_fraction = 0.0);
+  // See BFCAllocator::Options.
+  struct Options {
+    // Overridden by TF_FORCE_GPU_ALLOW_GROWTH if that envvar is set.
+    bool allow_growth = false;
+
+    // If nullopt, defaults to TF_ENABLE_GPU_GARBAGE_COLLECTION, or true if that
+    // envvar is not present.
+    //
+    // Note:
+    //
+    //  - BFCAllocator defaults garbage_collection to false, not true.
+    //  - this is not the same override behavior as TF_FORCE_GPU_ALLOW_GROWTH.
+    std::optional<bool> garbage_collection;
+
+    double fragmentation_fraction = 0;
+    bool allow_retry_on_failure = true;
+  };
+
+  GPUBFCAllocator(std::unique_ptr<tsl::SubAllocator> sub_allocator,
+                  size_t total_memory, const std::string& name,
+                  const Options& opts);
+
   ~GPUBFCAllocator() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUBFCAllocator);
-
- private:
-  static bool GetAllowGrowthValue(const GPUOptions& gpu_options);
-  static bool GetGarbageCollectionValue();
 };
 
 }  // namespace tensorflow

@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace gpu {
@@ -35,7 +35,7 @@ namespace {
 
 class SortingTest : public GpuCodegenTest {
  protected:
-  SortingTest() { setenv("XLA_FLAGS", "--xla_dump_hlo_as_text", 0); }
+  SortingTest() {}
 
   HloModuleConfig ConfigWithoutLayoutAssignment() {
     HloModuleConfig config;

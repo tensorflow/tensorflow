@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -33,6 +31,175 @@ from tensorflow.python.platform import test
 
 rng = np.random.RandomState(0)
 _to_complex = linear_operator_circulant._to_complex
+
+exponential_power_convolution_kernel = (
+    linear_operator_circulant.exponential_power_convolution_kernel)
+
+
+def _operator_from_kernel(kernel, d, **kwargs):
+  spectrum = linear_operator_circulant._FFT_OP[d](
+      math_ops.cast(kernel, dtypes.complex64))
+  if d == 1:
+    return linear_operator_circulant.LinearOperatorCirculant(spectrum, **kwargs)
+  elif d == 2:
+    return linear_operator_circulant.LinearOperatorCirculant2D(
+        spectrum, **kwargs)
+  elif d == 3:
+    return linear_operator_circulant.LinearOperatorCirculant3D(
+        spectrum, **kwargs)
+
+
+def _spectrum_for_symmetric_circulant(
+    spectrum_shape,
+    d,
+    ensure_self_adjoint_and_pd,
+    dtype,
+):
+  """Spectrum for d-dimensional real/symmetric circulant."""
+  grid_shape = spectrum_shape[-d:]
+
+  if grid_shape == (0,) * d:
+    kernel = array_ops.reshape(math_ops.cast([], dtype), grid_shape)
+  else:
+    kernel = exponential_power_convolution_kernel(
+        grid_shape=grid_shape,
+        # power=2 with this scale and no inflation will have some negative
+        # spectra. It will still be real/symmetric.
+        length_scale=math_ops.cast([0.2] * d, dtype.real_dtype),
+        power=1 if ensure_self_adjoint_and_pd else 2,
+        zero_inflation=0.2 if ensure_self_adjoint_and_pd else None,
+    )
+  spectrum = linear_operator_circulant._FFT_OP[d](_to_complex(kernel))
+  spectrum = math_ops.cast(spectrum, dtype)
+  return array_ops.broadcast_to(spectrum, spectrum_shape)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class ExponentialPowerConvolutionKernelTest(parameterized.TestCase,
+                                            test.TestCase):
+
+  def assert_diag_is_ones(self, matrix, rtol):
+    self.assertAllClose(
+        np.ones_like(np.diag(matrix)), np.diag(matrix), rtol=rtol)
+
+  def assert_real_symmetric(self, matrix, tol):
+    self.assertAllClose(np.zeros_like(matrix.imag), matrix.imag, atol=tol)
+    self.assertAllClose(matrix.real, matrix.real.T, rtol=tol)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="1Deven_power1", grid_shape=[10], power=1.),
+      dict(testcase_name="2Deven_power1", grid_shape=[4, 6], power=1.),
+      dict(testcase_name="3Deven_power1", grid_shape=[4, 6, 8], power=1.),
+      dict(testcase_name="3Devenodd_power1", grid_shape=[4, 5, 7], power=1.),
+      dict(testcase_name="1Dodd_power2", grid_shape=[9], power=2.),
+      dict(testcase_name="2Deven_power2", grid_shape=[8, 4], power=2.),
+      dict(testcase_name="3Devenodd_power2", grid_shape=[4, 5, 3], power=2.),
+  )
+  def test_makes_symmetric_and_real_circulant_with_ones_diag(
+      self, grid_shape, power):
+    d = len(grid_shape)
+    length_scale = [0.2] * d
+    kernel = exponential_power_convolution_kernel(
+        grid_shape=grid_shape,
+        length_scale=length_scale,
+        power=power)
+    operator = _operator_from_kernel(kernel, d)
+
+    matrix = self.evaluate(operator.to_dense())
+
+    tol = np.finfo(matrix.dtype).eps * np.prod(grid_shape)
+    self.assert_real_symmetric(matrix, tol)
+    self.assert_diag_is_ones(matrix, rtol=tol)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="1D", grid_shape=[10]),
+      dict(testcase_name="2D", grid_shape=[5, 5]),
+      dict(testcase_name="3D", grid_shape=[5, 4, 3]),
+  )
+  def test_zero_inflation(self, grid_shape):
+    d = len(grid_shape)
+    length_scale = [0.2] * d
+
+    kernel_no_inflation = exponential_power_convolution_kernel(
+        grid_shape=grid_shape,
+        length_scale=length_scale,
+        zero_inflation=None,
+    )
+    matrix_no_inflation = self.evaluate(
+        _operator_from_kernel(kernel_no_inflation, d).to_dense())
+
+    kernel_inflation_one_half = exponential_power_convolution_kernel(
+        grid_shape=grid_shape,
+        length_scale=length_scale,
+        zero_inflation=0.5,
+    )
+    matrix_inflation_one_half = self.evaluate(
+        _operator_from_kernel(kernel_inflation_one_half, d).to_dense())
+
+    kernel_inflation_one = exponential_power_convolution_kernel(
+        grid_shape=grid_shape,
+        length_scale=length_scale,
+        zero_inflation=1.0,
+    )
+    matrix_inflation_one = self.evaluate(
+        _operator_from_kernel(kernel_inflation_one, d).to_dense())
+
+    tol = np.finfo(matrix_no_inflation.dtype).eps * np.prod(grid_shape)
+
+    # In all cases, matrix should be real and symmetric.
+    self.assert_real_symmetric(matrix_no_inflation, tol)
+    self.assert_real_symmetric(matrix_inflation_one, tol)
+    self.assert_real_symmetric(matrix_inflation_one_half, tol)
+
+    # In all cases, the diagonal should be all ones.
+    self.assert_diag_is_ones(matrix_no_inflation, rtol=tol)
+    self.assert_diag_is_ones(matrix_inflation_one_half, rtol=tol)
+    self.assert_diag_is_ones(matrix_inflation_one, rtol=tol)
+
+    def _matrix_with_zerod_diag(matrix):
+      return matrix - np.diag(np.diag(matrix))
+
+    # Inflation = 0.5 means the off-diagonal is deflated by factor (1 - .5) = .5
+    self.assertAllClose(
+        _matrix_with_zerod_diag(matrix_no_inflation) * 0.5,
+        _matrix_with_zerod_diag(matrix_inflation_one_half), rtol=tol)
+
+    # Inflation = 1.0 means the off-diagonal is deflated by factor (1 - 1) = 0
+    self.assertAllClose(
+        np.zeros_like(matrix_inflation_one),
+        _matrix_with_zerod_diag(matrix_inflation_one), rtol=tol)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="1D", grid_shape=[10]),
+      dict(testcase_name="2D", grid_shape=[5, 5]),
+      dict(testcase_name="3D", grid_shape=[5, 4, 3]),
+  )
+  def test_tiny_scale_corresponds_to_identity_matrix(self, grid_shape):
+    d = len(grid_shape)
+
+    kernel = exponential_power_convolution_kernel(
+        grid_shape=grid_shape, length_scale=[0.001] * d, power=2)
+    matrix = self.evaluate(_operator_from_kernel(kernel, d).to_dense())
+
+    tol = np.finfo(matrix.dtype).eps * np.prod(grid_shape)
+    self.assertAllClose(matrix, np.eye(np.prod(grid_shape)), atol=tol)
+    self.assert_real_symmetric(matrix, tol)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="1D", grid_shape=[10]),
+      dict(testcase_name="2D", grid_shape=[5, 5]),
+      dict(testcase_name="3D", grid_shape=[5, 4, 3]),
+  )
+  def test_huge_scale_corresponds_to_ones_matrix(self, grid_shape):
+    d = len(grid_shape)
+
+    kernel = exponential_power_convolution_kernel(
+        grid_shape=grid_shape, length_scale=[100.] * d, power=2)
+    matrix = self.evaluate(_operator_from_kernel(kernel, d).to_dense())
+
+    tol = np.finfo(matrix.dtype).eps * np.prod(grid_shape) * 50
+    self.assert_real_symmetric(matrix, tol)
+    self.assertAllClose(np.ones_like(matrix), matrix, rtol=tol)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -114,6 +281,14 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     # real, the matrix will not be real.
     return [dtypes.complex64, dtypes.complex128]
 
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(self,
                           shape_info,
                           dtype,
@@ -165,6 +340,14 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
     operator = linalg.LinearOperatorCirculant(spectrum, is_self_adjoint=True)
     self.check_tape_safe(operator)
 
+  def test_convert_variables_to_tensors(self):
+    spectrum = variables_module.Variable(
+        math_ops.cast([1. + 0j, 1. + 0j], dtypes.complex64))
+    operator = linalg.LinearOperatorCirculant(spectrum, is_self_adjoint=True)
+    with self.cached_session() as sess:
+      sess.run([spectrum.initializer])
+      self.check_convert_variables_to_tensors(operator)
+
 
 class LinearOperatorCirculantTestHermitianSpectrum(
     LinearOperatorCirculantBaseTest,
@@ -176,36 +359,32 @@ class LinearOperatorCirculantTestHermitianSpectrum(
   zero imaginary part.
   """
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
+
   def operator_and_matrix(self,
                           shape_info,
                           dtype,
                           use_placeholder,
                           ensure_self_adjoint_and_pd=False):
     shape = shape_info.shape
-    # For this test class, we are creating Hermitian spectrums.
-    # We also want the spectrum to have eigenvalues bounded away from zero.
-    #
-    # pre_spectrum is bounded away from zero.
-    pre_spectrum = linear_operator_test_util.random_uniform(
-        shape=self._shape_to_spectrum_shape(shape),
-        dtype=dtype,
-        minval=1.,
-        maxval=2.)
-    pre_spectrum = math_ops.cast(math_ops.abs(pre_spectrum), dtype=dtype)
-    pre_spectrum_c = _to_complex(pre_spectrum)
-
-    # Real{IFFT[pre_spectrum]}
-    #  = IFFT[EvenPartOf[pre_spectrum]]
-    # is the IFFT of something that is also bounded away from zero.
-    # Therefore, FFT[pre_h] would be a well-conditioned spectrum.
-    pre_h = fft_ops.ifft(pre_spectrum_c)
-
-    # A spectrum is Hermitian iff it is the DFT of a real convolution kernel.
-    # So we will make spectrum = FFT[h], for real valued h.
-    h = math_ops.real(pre_h)
-    h_c = _to_complex(h)
-
-    spectrum = fft_ops.fft(h_c)
+    spectrum = _spectrum_for_symmetric_circulant(
+        spectrum_shape=self._shape_to_spectrum_shape(shape),
+        d=1,
+        ensure_self_adjoint_and_pd=ensure_self_adjoint_and_pd,
+        dtype=dtype)
 
     lin_op_spectrum = spectrum
 
@@ -260,6 +439,14 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   @staticmethod
   def skip_these_tests():
     return ["cholesky", "eigvalsh"]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
+    ]
 
   def operator_and_matrix(self,
                           shape_info,
@@ -406,6 +593,21 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 class LinearOperatorCirculant2DBaseTest(object):
   """Common class for 2D circulant tests."""
 
+  _atol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
+  _rtol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
+
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
     """We overwrite the FFT operation mapping for testing."""
@@ -423,6 +625,14 @@ class LinearOperatorCirculant2DBaseTest(object):
         shape_info((1, 6, 6)),
         shape_info((3, 4, 4)),
         shape_info((2, 1, 3, 3))
+    ]
+
+  @staticmethod
+  def optional_tests():
+    """List of optional test names to run."""
+    return [
+        "operator_matmul_with_same_type",
+        "operator_solve_with_same_type",
     ]
 
   def _shape_to_spectrum_shape(self, shape):
@@ -493,9 +703,12 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
   zero imaginary part.
   """
 
-  @staticmethod
-  def skip_these_tests():
-    return ["cond"]
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   def operator_and_matrix(self,
                           shape_info,
@@ -503,29 +716,11 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
                           use_placeholder,
                           ensure_self_adjoint_and_pd=False):
     shape = shape_info.shape
-    # For this test class, we are creating Hermitian spectrums.
-    # We also want the spectrum to have eigenvalues bounded away from zero.
-    #
-    # pre_spectrum is bounded away from zero.
-    pre_spectrum = linear_operator_test_util.random_uniform(
-        shape=self._shape_to_spectrum_shape(shape),
-        dtype=dtype,
-        minval=1.,
-        maxval=2.)
-    pre_spectrum_c = _to_complex(pre_spectrum)
-
-    # Real{IFFT[pre_spectrum]}
-    #  = IFFT[EvenPartOf[pre_spectrum]]
-    # is the IFFT of something that is also bounded away from zero.
-    # Therefore, FFT[pre_h] would be a well-conditioned spectrum.
-    pre_h = fft_ops.ifft2d(pre_spectrum_c)
-
-    # A spectrum is Hermitian iff it is the DFT of a real convolution kernel.
-    # So we will make spectrum = FFT[h], for real valued h.
-    h = math_ops.real(pre_h)
-    h_c = _to_complex(h)
-
-    spectrum = fft_ops.fft2d(h_c)
+    spectrum = _spectrum_for_symmetric_circulant(
+        spectrum_shape=self._shape_to_spectrum_shape(shape),
+        d=2,
+        ensure_self_adjoint_and_pd=ensure_self_adjoint_and_pd,
+        dtype=dtype)
 
     lin_op_spectrum = spectrum
 
@@ -627,7 +822,7 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
           [matrix_tensor, matrix_t, imag_matrix])
 
       np.testing.assert_allclose(0, imag_matrix, atol=1e-6)
-      self.assertAllClose(matrix, matrix_transpose, atol=0)
+      self.assertAllClose(matrix, matrix_transpose, atol=1e-6)
 
   def test_real_spectrum_gives_self_adjoint_operator(self):
     with self.cached_session():
@@ -698,6 +893,21 @@ class LinearOperatorCirculant2DTestNonHermitianSpectrum(
 @test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorCirculant3DTest(test.TestCase):
   """Simple test of the 3D case.  See also the 1D and 2D tests."""
+
+  _atol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
+  _rtol = {
+      dtypes.float16: 1e-3,
+      dtypes.float32: 1e-6,
+      dtypes.float64: 1e-7,
+      dtypes.complex64: 1e-6,
+      dtypes.complex128: 1e-7
+  }
 
   @contextlib.contextmanager
   def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):

@@ -16,10 +16,6 @@
 """Helpers to manipulate a tensor graph in python.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 # pylint: disable=unused-import
 from tensorflow.python.framework.graph_util_impl import convert_variables_to_constants

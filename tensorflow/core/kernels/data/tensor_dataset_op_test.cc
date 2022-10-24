@@ -42,13 +42,14 @@ class TensorDatasetParams : public DatasetParams {
       input_names->emplace_back(
           absl::StrCat(TensorDatasetOp::kComponents, "_", i));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {{TensorDatasetOp::kToutput_types, output_dtypes_},
-                    {TensorDatasetOp::kOutputShapes, output_shapes_}};
-    return Status::OK();
+    *attr_vector = {{"Toutput_types", output_dtypes_},
+                    {"output_shapes", output_shapes_},
+                    {"metadata", ""}};
+    return OkStatus();
   }
 
   string dataset_type() const override { return TensorDatasetOp::kDatasetType; }

@@ -1,4 +1,3 @@
-# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,16 +23,11 @@ incompatible changes are not allowed. You can run the test with
 the public TF python API.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import re
 import sys
 
-import six
 import tensorflow as tf
 
 from google.protobuf import message
@@ -130,8 +124,7 @@ def _KeyToFilePath(key, api_version):
     match = matchobj.group(0)
     return '-%s' % (match.lower())
 
-  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash,
-                                six.ensure_str(key))
+  case_insensitive_key = re.sub('([A-Z]{1})', _ReplaceCapsWithDash, key)
   api_folder = (
       _API_GOLDEN_FOLDER_V2 if api_version == 2 else _API_GOLDEN_FOLDER_V1)
   if key.startswith('tensorflow.experimental.numpy'):
@@ -154,7 +147,7 @@ def _FileNameToKey(filename):
   base_filename = os.path.basename(filename)
   base_filename_without_ext = os.path.splitext(base_filename)[0]
   api_object_key = re.sub('((-[a-z]){1})', _ReplaceDashWithCaps,
-                          six.ensure_str(base_filename_without_ext))
+                          base_filename_without_ext)
   return api_object_key
 
 
@@ -190,8 +183,7 @@ def _FilterGoldenFilesByPrefix(golden_file_list, package_prefixes):
   filtered_package_prefixes = ['tensorflow.%s.' % p for p in package_prefixes]
   for f in golden_file_list:
     if any(
-        six.ensure_str(f).rsplit('/')[-1].startswith(pre)
-        for pre in filtered_package_prefixes):
+        f.rsplit('/')[-1].startswith(pre) for pre in filtered_package_prefixes):
       continue
     filtered_file_list.append(f)
   return filtered_file_list
@@ -202,7 +194,7 @@ def _FilterGoldenProtoDict(golden_proto_dict, omit_golden_symbols_map):
   if not omit_golden_symbols_map:
     return golden_proto_dict
   filtered_proto_dict = dict(golden_proto_dict)
-  for key, symbol_list in six.iteritems(omit_golden_symbols_map):
+  for key, symbol_list in omit_golden_symbols_map.items():
     api_object = api_objects_pb2.TFAPIObject()
     api_object.CopyFrom(filtered_proto_dict[key])
     filtered_proto_dict[key] = api_object

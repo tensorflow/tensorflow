@@ -20,15 +20,13 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -174,7 +172,8 @@ class TensorShapeBase : public TensorShapeRep {
   /// Construct an empty TensorShape, or an unknown rank PartialTensorShape
   TensorShapeBase();
 
-  // TODO(mihaimaruseac): Mark this explicit in a subsequent change
+  // Cannot be made explicit because we rely on conversion between proto and
+  // `TensorShapeBase` throughtout the codebase (needs bigger cleanup)
   TensorShapeBase(const TensorShapeProto& proto);
 
   // These factory methods should be used instead of the constructors that take
@@ -302,7 +301,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Returns sizes of all dimensions.
   // Returns an empty list for unknown rank PartialTensorShape.
-  gtl::InlinedVector<int64, 4> dim_sizes() const;
+  gtl::InlinedVector<int64_t, 4> dim_sizes() const;
 
   /// Return true iff the rank and all of the dimensions are well defined
   // TODO(irving): Rename to is_fully_defined now that it's fast.
@@ -310,6 +309,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// Fill `*proto` from `*this`.
   void AsProto(TensorShapeProto* proto) const;
+  TensorShapeProto AsProto() const;
 
   /// For iterating through the dimensions.
   TensorShapeIter<Shape> begin() const;
@@ -359,6 +359,29 @@ class TensorShape : public TensorShapeBase<TensorShape> {
  public:
   using TensorShapeBase<TensorShape>::TensorShapeBase;
 
+  // These factory methods should be used instead of the constructors that take
+  // an array of sizes if calling code cannot validate that the sizes specify a
+  // valid `TensorShape`.
+  // The value in `*out` is valid iff the returned value is `Status::OK`.
+  static Status BuildTensorShape(gtl::ArraySlice<int64_t> dim_sizes,
+                                 TensorShape* out) {
+    return BuildTensorShapeBase(dim_sizes, out);
+  }
+  static Status BuildTensorShape(std::initializer_list<int64_t> dim_sizes,
+                                 TensorShape* out) {
+    return BuildTensorShape(gtl::ArraySlice<int64_t>(dim_sizes), out);
+  }
+  static Status BuildTensorShape(const TensorShapeProto& proto,
+                                 TensorShape* out) {
+    return BuildTensorShapeBase(proto, out);
+  }
+
+  static StatusOr<TensorShape> BuildTensorShape(const TensorShapeProto& proto) {
+    TensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShape(proto, &out));
+    return out;
+  }
+
   /// Allow a TensorShape to be used as a PartialTensorShape without copying
   operator const PartialTensorShape&() const;  // NOLINT(runtime/explicit)
 
@@ -400,8 +423,8 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   // These CHECK fail to ease debugging.
   // REQUIRES: dims() == NDIMS
   void CheckDimsEqual(int NDIMS) const;
-  // REQUIRES: dims() >= NDIMS
-  void CheckDimsAtLeast(int NDIMS) const;
+  // REQUIRES: dims() <= NDIMS
+  void CheckDimsAtMost(int NDIMS) const;
 
   // Fill output from `*this`.
   // Helper method for common code between `AsEigenDSize()` and
@@ -510,6 +533,30 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
  public:
   PartialTensorShape() {}
   using TensorShapeBase<PartialTensorShape>::TensorShapeBase;
+
+  // These factory methods should be used instead of the constructors that take
+  // an array of sizes if calling code cannot validate that the sizes specify a
+  // valid `PartialTensorShape`.
+  // The value in `*out` is valid iff the returned value is `Status::OK`.
+  static Status BuildPartialTensorShape(gtl::ArraySlice<int64_t> dim_sizes,
+                                        PartialTensorShape* out) {
+    return BuildTensorShapeBase(dim_sizes, out);
+  }
+  static Status BuildPartialTensorShape(
+      std::initializer_list<int64_t> dim_sizes, PartialTensorShape* out) {
+    return BuildPartialTensorShape(gtl::ArraySlice<int64_t>(dim_sizes), out);
+  }
+  static Status BuildPartialTensorShape(const TensorShapeProto& proto,
+                                        PartialTensorShape* out) {
+    return BuildTensorShapeBase(proto, out);
+  }
+
+  static StatusOr<PartialTensorShape> BuildPartialTensorShape(
+      const TensorShapeProto& proto) {
+    PartialTensorShape out;
+    TF_RETURN_IF_ERROR(BuildTensorShapeBase(proto, &out));
+    return out;
+  }
 
   /// Add a dimension to the end ("inner-most"), returns a new
   /// PartialTensorShape.
@@ -622,7 +669,7 @@ Status TensorShape::AsEigenDSizesWithStatus(
 
 template <int NDIMS, typename IndexType>
 Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesWithPadding() const {
-  CheckDimsAtLeast(NDIMS);
+  CheckDimsAtMost(NDIMS);
   return AsEigenDSizesCopyAndPad<NDIMS, IndexType>();
 }
 

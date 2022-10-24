@@ -14,10 +14,6 @@
 # ==============================================================================
 """Exception types for TensorFlow errors."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import traceback
 import warnings
 
@@ -128,7 +124,7 @@ class OpError(Exception):
               self._op.name,
           )
       ]
-      curr_traceback_list = traceback.format_list(self._op.traceback)
+      curr_traceback_list = traceback.format_list(self._op.traceback or [])
       output.extend(curr_traceback_list)
       # pylint: disable=protected-access
       original_op = self._op._original_op
@@ -138,7 +134,7 @@ class OpError(Exception):
             "\n...which was originally created as op %r, defined at:\n" %
             (original_op.name,))
         prev_traceback_list = curr_traceback_list
-        curr_traceback_list = traceback.format_list(original_op.traceback)
+        curr_traceback_list = traceback.format_list(original_op.traceback or [])
 
         # Attempt to elide large common subsequences of the subsequent
         # stack traces.
@@ -221,9 +217,9 @@ class CancelledError(OpError):
   """Raised when an operation or step is cancelled.
 
   For example, a long-running operation (e.g.
-  `tf.QueueBase.enqueue` may be
+  `tf.queue.QueueBase.enqueue` may be
   cancelled by running another operation (e.g.
-  `tf.QueueBase.close`,
+  `tf.queue.QueueBase.close`,
   or by `tf.Session.close`.
   A step that is running such a long-running operation will fail by raising
   `CancelledError`.
@@ -401,9 +397,9 @@ class AbortedError(OpError):
   """The operation was aborted, typically due to a concurrent action.
 
   For example, running a
-  `tf.QueueBase.enqueue`
+  `tf.queue.QueueBase.enqueue`
   operation may raise `AbortedError` if a
-  `tf.QueueBase.close` operation
+  `tf.queue.QueueBase.close` operation
   previously ran.
 
   @@__init__
@@ -419,9 +415,9 @@ class OutOfRangeError(OpError):
   """Raised when an operation iterates past the valid input range.
 
   This exception is raised in "end-of-file" conditions, such as when a
-  `tf.QueueBase.dequeue`
+  `tf.queue.QueueBase.dequeue`
   operation is blocked on an empty queue, and a
-  `tf.QueueBase.close`
+  `tf.queue.QueueBase.close`
   operation executes.
 
   @@__init__

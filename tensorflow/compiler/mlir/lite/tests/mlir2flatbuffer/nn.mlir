@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
+func.func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
 ^bb0(%arg0: tensor<1x6x6x16xf32>):
   // CHECK:      {
   // CHECK-NEXT:   version: 3,
@@ -16,14 +16,16 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-NEXT:       name: "arg0",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 1, 1, 1, 16 ],
   // CHECK-NEXT:       buffer: 2,
   // CHECK-NEXT:       name: "avgpool",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     } ],
   // CHECK-NEXT:     inputs: [ 0 ],
   // CHECK-NEXT:     outputs: [ 1 ],
@@ -59,5 +61,5 @@ func @main(tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> {
   // CHECK-NEXT: }
 
   %0 = "tfl.average_pool_2d"(%arg0) {filter_height = 3 : i32, filter_width = 6 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 3 : i32, stride_w = 1 : i32} : (tensor<1x6x6x16xf32>) -> tensor<1x1x1x16xf32> loc("avgpool")
-  return %0 : tensor<1x1x1x16xf32>
+  func.return %0 : tensor<1x1x1x16xf32>
 }

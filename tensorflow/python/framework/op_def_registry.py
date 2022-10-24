@@ -15,10 +15,6 @@
 
 """Global registry for OpDefs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 from tensorflow.core.framework import op_def_pb2

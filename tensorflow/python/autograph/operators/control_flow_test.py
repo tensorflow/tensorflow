@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,15 +17,12 @@
 # Unfortunately pylint has false positives when nonlocal is present.
 # pylint:disable=unused-variable
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
+import io
 import re
 import sys
 
 import numpy as np
-import six
 
 from tensorflow.python.autograph.operators import control_flow
 from tensorflow.python.autograph.operators import variables as variable_operators
@@ -196,7 +192,8 @@ class ForLoopTest(testing.AutoGraphTestCase):
     self.assertOpCreated('StatelessWhile')
 
   def test_tensor_with_extra_test_object_vars(self):
-    class MutableObject(object):
+
+    class MutableObject:
       field_1 = constant_op.constant(0, dtype=dtypes.int32)
       field_2 = constant_op.constant(1, dtype=dtypes.int32)
     state = MutableObject()
@@ -459,6 +456,34 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={'shape_invariants': [(s, tensor_shape.TensorShape([None]))]})
 
     self.assertAllEqual(s, [0, 1, 2, 3, 4])
+    self.assertOpCreated('IteratorGetNextAsOptional')
+
+  def test_tf_iterator_shape_invariants_with_nested_structures(self):
+    def body(i):
+      nonlocal s
+      nonlocal t
+      s = array_ops.concat([s, [i]], 0)
+      t = Test(var=t.var + 1)
+
+    def set_state(loop_vars):
+      nonlocal s
+      nonlocal t
+      s, t = loop_vars
+
+    s = constant_op.constant([], dtype=dtypes.int64)
+    Test = collections.namedtuple('Test', ['var'])
+    t = Test(var=constant_op.constant([0], dtype=dtypes.int64))
+    control_flow.for_stmt(
+        iter(dataset_ops.Dataset.range(5)),
+        extra_test=None,
+        body=body,
+        get_state=lambda: (s, t),
+        set_state=set_state,
+        symbol_names=('s', 't'),
+        opts={'shape_invariants': [(s, tensor_shape.TensorShape([None]))]})
+
+    self.assertAllEqual(s, [0, 1, 2, 3, 4])
+    self.assertEqual(t.var, [5])
     self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_iterator_no_loop_vars(self):
@@ -771,8 +796,62 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     self.assertEqual(v, (12345,))
     self.assertOpCreated('While')
 
+  def test_tensor_failing_to_determine_placeholder(self):
+
+    class UserType:
+      pass
+
+    def body():
+      nonlocal v
+      v = UserType()
+
+    def set_state(loop_vars):
+      nonlocal v
+      v, = loop_vars
+
+    v = variable_operators.Undefined('v')
+
+    with self.assertRaisesRegex(
+        ValueError,
+        re.compile('must be defined.*tried to define.*unsupported type',
+                   re.DOTALL)):
+      control_flow.while_stmt(
+          test=lambda: constant_op.constant(True),
+          body=body,
+          get_state=lambda: (v,),
+          set_state=set_state,
+          symbol_names=('v',),
+          opts={})
+
+  def test_tensor_failing_to_stage_loop_body(self):
+
+    def body():
+      nonlocal i, s
+      i = constant_op.constant(2)
+      raise ValueError('testing')
+      s = i ** 5  # pylint: disable=unreachable
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        re.compile('must be defined.*tried to define.*testing', re.DOTALL)):
+      control_flow.while_stmt(
+          test=lambda: math_ops.equal(s, 0),
+          body=body,
+          get_state=lambda: (i, s),
+          set_state=set_state,
+          symbol_names=('i', 's'),
+          opts={})
+
   def test_tensor_with_python_state(self):
-    class MutableObject(object):
+
+    class MutableObject:
       field = constant_op.constant(0, dtype=dtypes.int32)
     state = MutableObject()
 
@@ -873,7 +952,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     with test.mock.patch.object(
         control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
       with ops.Graph().as_default():
-        out_capturer = six.StringIO()
+        out_capturer = io.StringIO()
         with test.mock.patch.object(sys, 'stdout', out_capturer):
           with test.mock.patch.object(ag_logging, 'echo_log_to_stdout', True):
             def custom_iterator():
@@ -899,7 +978,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     with test.mock.patch.object(
         control_flow, 'INEFFICIENT_UNROLL_MIN_ITERATIONS', 10):
       with ops.Graph().as_default():
-        out_capturer = six.StringIO()
+        out_capturer = io.StringIO()
         with test.mock.patch.object(sys, 'stdout', out_capturer):
           with test.mock.patch.object(ag_logging, 'echo_log_to_stdout', True):
             def body():

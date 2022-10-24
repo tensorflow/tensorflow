@@ -28,10 +28,10 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -41,14 +41,13 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 #define DEBUG_TYPE "tf-tpu-merge-variables-with-execute"
 
@@ -60,8 +59,11 @@ constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
+#define GEN_PASS_DEF_TPUMERGEVARIABLESWITHEXECUTEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class TPUMergeVariablesWithExecutePass
-    : public TF::TPUMergeVariablesWithExecutePassBase<
+    : public impl::TPUMergeVariablesWithExecutePassBase<
           TPUMergeVariablesWithExecutePass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     // We need this here because at the moment we deserialize the TPUCompileMlir
@@ -99,7 +101,7 @@ struct VariableAccessesForTPUExecute {
 // Returns true iff the read or assign op associated with `resource` can be
 // safely merged.
 //
-// `resource_ids` contains ID's of all previously accessed resources
+// `resource_ids` contains IDs of all previously accessed resources
 // `previous_unknown_resource_access` is true if we had any previous unknown
 // resource access.
 bool IsResourceSafeForMerge(
@@ -122,7 +124,7 @@ bool IsResourceSafeForMerge(
   return true;
 }
 
-// Adds ID's of resources which `op` accesses to `resource_ids`.
+// Adds IDs of resources which `op` accesses to `resource_ids`.
 // Returns true iff op accesses a resource unknown to `resource_analysis_info`
 // in which case we have to conservatively assume that any resource might be
 // accessed.
@@ -153,9 +155,9 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
     const mlir::TF::ResourceAliasAnalysis::Info& resource_analysis_info,
     bool check_device, bool check_same_region) {
   VariableAccessesForTPUExecute var_access_info;
-  Attribute device_attr = execute_launch.deviceAttr();
+  Attribute device_attr = execute_launch.getDeviceAttr();
   if (check_device && !device_attr) return var_access_info;
-  auto func = execute_launch->getParentOfType<mlir::FuncOp>();
+  auto func = execute_launch->getParentOfType<mlir::func::FuncOp>();
 
   // Track the first read op found, which is used later to check if there are
   // assign ops between it and the TPUExecute op. We will exclude reads before
@@ -511,9 +513,9 @@ LogicalResult MergeForOneTPUExecute(
 
   // Wrap in launch for device assignment.
   auto merged_execute_launch = builder->create<tf_device::LaunchOp>(
-      merged_execute.getLoc(), execute_launch.deviceAttr(),
+      merged_execute.getLoc(), execute_launch.getDeviceAttr(),
       merged_execute.getResultTypes());
-  merged_execute_launch.body().push_back(new Block);
+  merged_execute_launch.getBody().push_back(new Block);
 
   builder->setInsertionPointToEnd(&merged_execute_launch.GetBody());
   builder->create<tf_device::ReturnOp>(merged_execute.getLoc(),
@@ -557,7 +559,7 @@ bool ParentParallelExecuteWrapsSingleOp(Operation* op) {
 void TPUMergeVariablesWithExecutePass::runOnOperation() {
   ModuleOp module = getOperation();
   mlir::TF::ResourceAliasAnalysis resource_analysis(module);
-  module.walk([&](FuncOp func) {
+  module.walk([&](func::FuncOp func) {
     const auto& resource_analysis_info =
         resource_analysis.GetAnalysisForFunc(func);
     // Find all the executes first, since we will mutate the nodes around each

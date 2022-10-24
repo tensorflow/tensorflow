@@ -1,10 +1,10 @@
-// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=10,19:19,10 -emit-use-tuple-args -emit-return-tuple | FileCheck %s
+// RUN: tf-mlir-translate -mlir-tf-to-hlo-text %s -tf-input-shapes=10,19:19,10 -tf-xla-emit-use-tuple-args -tf-xla-emit-return-tuple | FileCheck %s
 
 module attributes {tf.versions = {producer = 179 : i32}} {
-  func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {mhlo.is_same_data_across_replicas}) -> tensor<10x19xf32> {
+  func.func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32> {mhlo.is_same_data_across_replicas}) -> tensor<10x19xf32> {
     %0 = "tf.Shape"(%arg0) : (tensor<10x19xf32>) -> tensor<2xi64>
     %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<2xi64>) -> tensor<10x19xf32>
-    return %1 : tensor<10x19xf32>
+    func.return %1 : tensor<10x19xf32>
   }
 }
 

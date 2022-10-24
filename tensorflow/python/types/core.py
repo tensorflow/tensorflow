@@ -14,10 +14,6 @@
 # ==============================================================================
 """Core TensorFlow types."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import textwrap
 
@@ -134,8 +130,8 @@ class GenericFunction(Callable):
 
     The arguments specified by `args` and `kwargs` follow normal function call
     rules. The returned `ConcreteFunction` has the same set of positional and
-    keyword arguments as `self`, but their types are refined to the types
-    specified by `args` and `kwargs`.
+    keyword arguments as `self`, but their types are compatible to the types
+    specified by `args` and `kwargs` (though not neccessarily equal).
 
     >>> @tf.function
     ... def f(x):
@@ -258,8 +254,8 @@ class TensorProtocol(Protocol):
 
 
 # TODO(rahulkamat): Add missing types that are convertible to Tensor.
-TensorLike = Union[Tensor, TensorProtocol, int, float, bool, str, complex,
-                   tuple, list, np.ndarray, np.generic]
+TensorLike = Union[Tensor, TensorProtocol, int, float, bool, str, bytes,
+                   complex, tuple, list, np.ndarray, np.generic]
 doc_typealias.document(
     obj=TensorLike,
     doc=textwrap.dedent("""\

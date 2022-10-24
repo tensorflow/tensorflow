@@ -74,6 +74,10 @@ struct GraphOptimizationPassOptions {
   // derived. `graph` doesn't contain all the information in the function_def,
   // e.g. function attributes.
   const FunctionDef* function_def = nullptr;
+
+  // TODO(b/176491312): Remove this if shape inference on import flag is
+  // removed. If True, allows mlir roundtrip to run shape inference on import.
+  bool shape_inference_on_tfe_dialect_import = true;
 };
 
 // Optimization passes are implemented by inheriting from

@@ -51,8 +51,7 @@ struct DevicePutResult {
 // Copies a buffer-like object to be on device.
 //
 // If `arg` is not convertible to a `PjRtBuffer` from C++, an error will be
-// returned; float0s and `_DeviceArray`s with non-trivial LazyExprs are not
-// supported yet.
+// returned; float0s are not supported yet.
 // If the value is known to be a PyBuffer object, py_buffer can be passed as
 // an optimization to avoid a Python->C++ cast.
 //
@@ -61,7 +60,6 @@ struct DevicePutResult {
 struct DevicePutOptions {
   bool squash_64bit_types = false;
   bool allow_zero_copy = true;
-  bool force_lazy_arrays = true;
 };
 StatusOr<DevicePutResult> DevicePut(pybind11::handle arg, PjRtDevice* to_device,
                                     const DevicePutOptions& options);

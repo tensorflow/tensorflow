@@ -2,7 +2,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -25,6 +25,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
@@ -79,12 +80,13 @@ tf_cc_test(
     ],
     data = [
         "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
     deps = [
         ":op_signature",
         "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:model_builder",
-        "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],
 )

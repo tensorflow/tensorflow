@@ -14,10 +14,6 @@
 # =============================================================================
 # pylint: disable=g-classes-have-attributes
 """Contains a shim to allow using TF1 get_variable code in TF2."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 
 from tensorflow.python.eager import context

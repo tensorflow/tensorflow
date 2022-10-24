@@ -14,17 +14,11 @@
 # ==============================================================================
 """Unit tests for TensorFlow "Eager" Mode's Tensor class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import re
 import sys
-import unittest
 
 import numpy as np
-import six
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
@@ -174,6 +168,23 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float32, actual.dtype)
     self.assertAllEqual([2, 2], actual.shape.as_list())
 
+  def testNumpyArrayInterface(self):
+
+    class ArrayAsArrayInterface:
+      """Simple class that wraps an np.array as an __array_interface__."""
+
+      def __init__(self, array):
+        self.array = array
+
+      @property
+      def __array_interface__(self):
+        return self.array.__array_interface__
+
+    expected = np.array([[1.0, 2.0], [3.0, 4.0]], np.float32)
+    array_interface = ArrayAsArrayInterface(expected)
+    actual = _create_tensor(array_interface)
+    self.assertAllEqual(expected, actual)
+
   def testFloatDowncast(self):
     # Unless explicitly specified, float64->float32
     t = _create_tensor(3.0)
@@ -189,10 +200,6 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     self.assertFalse(bool(_create_tensor([0.])))
     self.assertTrue(bool(_create_tensor([1])))
     self.assertTrue(bool(_create_tensor([1.])))
-
-  @unittest.skipUnless(six.PY2, "long has been removed in PY3")
-  def testLong(self):
-    self.assertEqual(long(_create_tensor(long(42))), 42)
 
   def testIndex(self):
     self.assertEqual([42][_create_tensor(0)], 42)
@@ -461,17 +468,32 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   def testEagerTensorFormatForResource(self):
     t = resource_variable_ops.VarHandleOp(shape=[], dtype=dtypes.float32)
-    self.assertEqual(f"{t}", "<Resource Tensor>")
-    self.assertEqual(
-        str(t), "tf.Tensor(<Resource Tensor>, shape=(), dtype=resource)")
-    self.assertEqual(f"{t!s}",
-                     "tf.Tensor(<Resource Tensor>, shape=(), dtype=resource)")
-    self.assertEqual(
+
+    # type is compiler-depdendent, as it comes from demangling.
+    handle_str = (f"<ResourceHandle("
+                  f"name=\"\", "
+                  f"device=\"{t.device}\", "
+                  f"container=\"localhost\", "
+                  f"type=\"@@tensorflow@@Var@@\")>")
+
+    def make_regex(s):
+      return re.escape(s).replace("@@", ".*")
+
+    self.assertRegex(f"{t}", make_regex(handle_str))
+    self.assertRegex(
+        str(t),
+        make_regex(f"tf.Tensor({handle_str}, shape=(), dtype=resource)"))
+    self.assertRegex(
+        f"{t!s}",
+        make_regex(f"tf.Tensor({handle_str}, shape=(), dtype=resource)"))
+    self.assertRegex(
         repr(t),
-        "<tf.Tensor: shape=(), dtype=resource, value=<Resource Tensor>>")
-    self.assertEqual(
+        make_regex(
+            f"<tf.Tensor: shape=(), dtype=resource, value={handle_str}>"))
+    self.assertRegex(
         f"{t!r}",
-        "<tf.Tensor: shape=(), dtype=resource, value=<Resource Tensor>>")
+        make_regex(
+            f"<tf.Tensor: shape=(), dtype=resource, value={handle_str}>"))
 
   def testEagerTensorFormatForVariant(self):
     t = list_ops.tensor_list_reserve(
@@ -484,6 +506,24 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         repr(t), "<tf.Tensor: shape=(), dtype=variant, value=<TensorList>>")
     self.assertEqual(
         f"{t!r}", "<tf.Tensor: shape=(), dtype=variant, value=<TensorList>>")
+
+  def testNumpyTooManyDimensions(self):
+    t = constant_op.constant(1., shape=[1] * 33)
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        "Cannot convert tensor with 33 dimensions to NumPy array. NumPy arrays "
+        "can have at most 32 dimensions"):
+      t.numpy()
+
+  def testNumpyDimsTooBig(self):
+    # Creating a Numpy array fails in some cases if the product of non-zero
+    # dimensions is very big, even if the shape also has a zero in it.
+    t = array_ops.ones((0, 2**31, 2**31))
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        r"Failed to create numpy array from tensor of shape "
+        r"\[0, 2147483648, 2147483648\]. Numpy error.*array is too big"):
+      t.numpy()
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

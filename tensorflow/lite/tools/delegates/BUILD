@@ -118,10 +118,7 @@ cc_library(
         ":delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
-        "//tensorflow:android_arm": [
-            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
-        ],
-        "//tensorflow:android_arm64": [
+        "//tensorflow:arm_any": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],

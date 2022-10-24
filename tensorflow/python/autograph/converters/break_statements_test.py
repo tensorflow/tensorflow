@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for break_statements module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.converters import break_statements
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.pyct import anno

@@ -30,7 +30,7 @@ namespace {
 class ConversionTest : public ::testing::Test {
  protected:
   void CheckDelegateEnum(Delegate input, proto::Delegate output) {
-    settings_.tflite_settings.reset(new TFLiteSettingsT());
+    settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
     settings_.tflite_settings->delegate = input;
     const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
     EXPECT_EQ(output, compute.tflite_settings().delegate());
@@ -43,8 +43,9 @@ class ConversionTest : public ::testing::Test {
   }
   void CheckNNAPIExecutionPreference(NNAPIExecutionPreference input,
                                      proto::NNAPIExecutionPreference output) {
-    settings_.tflite_settings.reset(new TFLiteSettingsT());
-    settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+    settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+    settings_.tflite_settings->nnapi_settings =
+        std::make_unique<NNAPISettingsT>();
     settings_.tflite_settings->nnapi_settings->execution_preference = input;
     const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
     EXPECT_EQ(
@@ -53,16 +54,17 @@ class ConversionTest : public ::testing::Test {
   }
   void CheckNNAPIExecutionPriority(NNAPIExecutionPriority input,
                                    proto::NNAPIExecutionPriority output) {
-    settings_.tflite_settings.reset(new TFLiteSettingsT());
-    settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+    settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+    settings_.tflite_settings->nnapi_settings =
+        std::make_unique<NNAPISettingsT>();
     settings_.tflite_settings->nnapi_settings->execution_priority = input;
     const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
     EXPECT_EQ(output,
               compute.tflite_settings().nnapi_settings().execution_priority());
   }
   void CheckGPUBackend(GPUBackend input, proto::GPUBackend output) {
-    settings_.tflite_settings.reset(new TFLiteSettingsT());
-    settings_.tflite_settings->gpu_settings.reset(new GPUSettingsT());
+    settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+    settings_.tflite_settings->gpu_settings = std::make_unique<GPUSettingsT>();
     settings_.tflite_settings->gpu_settings->force_backend = input;
     const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
     EXPECT_EQ(output, compute.tflite_settings().gpu_settings().force_backend());
@@ -80,6 +82,7 @@ TEST_F(ConversionTest, Delegate) {
   CheckDelegateEnum(Delegate_EDGETPU, proto::Delegate::EDGETPU);
   CheckDelegateEnum(Delegate_EDGETPU_CORAL, proto::Delegate::EDGETPU_CORAL);
   CheckDelegateEnum(Delegate_XNNPACK, proto::Delegate::XNNPACK);
+  CheckDelegateEnum(Delegate_CORE_ML, proto::Delegate::CORE_ML);
 }
 
 TEST_F(ConversionTest, ExecutionPreference) {
@@ -102,8 +105,9 @@ TEST_F(ConversionTest, ModelIdentifier) {
 }
 
 TEST_F(ConversionTest, NNAPISettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->nnapi_settings =
+      std::make_unique<NNAPISettingsT>();
   NNAPISettingsT* input_settings =
       settings_.tflite_settings->nnapi_settings.get();
   input_settings->accelerator_name = "a";
@@ -124,7 +128,7 @@ TEST_F(ConversionTest, NNAPISettings) {
   EXPECT_FALSE(output_settings.fallback_settings()
                    .allow_automatic_fallback_on_execution_error());
 
-  input_settings->fallback_settings.reset(new FallbackSettingsT());
+  input_settings->fallback_settings = std::make_unique<FallbackSettingsT>();
   input_settings->fallback_settings
       ->allow_automatic_fallback_on_compilation_error = true;
   compute = ConvertFromFlatbuffer(settings_);
@@ -152,8 +156,9 @@ TEST_F(ConversionTest, NNAPISettings) {
 }
 
 TEST_F(ConversionTest, NNAPIAllowDynamicDimensions) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->nnapi_settings =
+      std::make_unique<NNAPISettingsT>();
   NNAPISettingsT* input_settings =
       settings_.tflite_settings->nnapi_settings.get();
 
@@ -169,8 +174,9 @@ TEST_F(ConversionTest, NNAPIAllowDynamicDimensions) {
 }
 
 TEST_F(ConversionTest, NNAPIBurstComputation) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->nnapi_settings.reset(new NNAPISettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->nnapi_settings =
+      std::make_unique<NNAPISettingsT>();
   NNAPISettingsT* input_settings =
       settings_.tflite_settings->nnapi_settings.get();
 
@@ -214,9 +220,28 @@ TEST_F(ConversionTest, NNAPIExecutionPriority) {
       proto::NNAPIExecutionPriority::NNAPI_PRIORITY_UNDEFINED);
 }
 
+TEST_F(ConversionTest, NNAPISupportLibraryHandle) {
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->nnapi_settings =
+      std::make_unique<NNAPISettingsT>();
+  NNAPISettingsT* input_settings =
+      settings_.tflite_settings->nnapi_settings.get();
+
+  proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  proto::NNAPISettings output_settings =
+      compute.tflite_settings().nnapi_settings();
+  EXPECT_EQ(output_settings.support_library_handle(), 0);
+
+  input_settings->support_library_handle = std::numeric_limits<int64_t>::max();
+  compute = ConvertFromFlatbuffer(settings_);
+  output_settings = compute.tflite_settings().nnapi_settings();
+  EXPECT_EQ(output_settings.support_library_handle(),
+            std::numeric_limits<int64_t>::max());
+}
+
 TEST_F(ConversionTest, GPUSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->gpu_settings.reset(new GPUSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->gpu_settings = std::make_unique<GPUSettingsT>();
   GPUSettingsT* input_settings = settings_.tflite_settings->gpu_settings.get();
 
   input_settings->is_precision_loss_allowed = true;
@@ -243,8 +268,8 @@ TEST_F(ConversionTest, GPUBacked) {
 }
 
 TEST_F(ConversionTest, GPUInferencePriority) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->gpu_settings.reset(new GPUSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->gpu_settings = std::make_unique<GPUSettingsT>();
   GPUSettingsT* input_settings = settings_.tflite_settings->gpu_settings.get();
 
   input_settings->inference_priority1 =
@@ -265,8 +290,8 @@ TEST_F(ConversionTest, GPUInferencePriority) {
 }
 
 TEST_F(ConversionTest, GPUInferencePreference) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->gpu_settings.reset(new GPUSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->gpu_settings = std::make_unique<GPUSettingsT>();
   GPUSettingsT* input_settings = settings_.tflite_settings->gpu_settings.get();
 
   input_settings->inference_preference =
@@ -286,8 +311,9 @@ TEST_F(ConversionTest, GPUInferencePreference) {
 }
 
 TEST_F(ConversionTest, HexagonSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->hexagon_settings.reset(new HexagonSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->hexagon_settings =
+      std::make_unique<HexagonSettingsT>();
   HexagonSettingsT* input_settings =
       settings_.tflite_settings->hexagon_settings.get();
   input_settings->debug_level = 1;
@@ -304,8 +330,9 @@ TEST_F(ConversionTest, HexagonSettings) {
 }
 
 TEST_F(ConversionTest, EdgeTpuSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->edgetpu_settings.reset(new EdgeTpuSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->edgetpu_settings =
+      std::make_unique<EdgeTpuSettingsT>();
   EdgeTpuSettingsT* input_settings =
       settings_.tflite_settings->edgetpu_settings.get();
 
@@ -336,7 +363,7 @@ TEST_F(ConversionTest, EdgeTpuSettings) {
   const std::string kDevicePath = "/dev/abrolhos";
   constexpr int kChipFamily = 1;
 
-  input_settings->edgetpu_device_spec.reset(new EdgeTpuDeviceSpecT());
+  input_settings->edgetpu_device_spec = std::make_unique<EdgeTpuDeviceSpecT>();
   EdgeTpuDeviceSpecT* input_spec = input_settings->edgetpu_device_spec.get();
   input_spec->platform_type = kPlatformType;
   input_spec->num_chips = kNumChips;
@@ -382,19 +409,47 @@ TEST_F(ConversionTest, EdgeTpuSettings) {
 }
 
 TEST_F(ConversionTest, XNNPackSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->xnnpack_settings.reset(new XNNPackSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->xnnpack_settings =
+      std::make_unique<XNNPackSettingsT>();
   XNNPackSettingsT* input_settings =
       settings_.tflite_settings->xnnpack_settings.get();
 
   input_settings->num_threads = 2;
+  input_settings->flags =
+      tflite::XNNPackFlags::XNNPackFlags_TFLITE_XNNPACK_DELEGATE_FLAG_QS8_QU8;
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(compute.tflite_settings().xnnpack_settings().num_threads(), 2);
+  EXPECT_EQ(compute.tflite_settings().xnnpack_settings().flags(), 3);
+}
+
+TEST_F(ConversionTest, CoreMLSettings) {
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->coreml_settings =
+      std::make_unique<CoreMLSettingsT>();
+  CoreMLSettingsT* input_settings =
+      settings_.tflite_settings->coreml_settings.get();
+
+  input_settings->enabled_devices =
+      CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+  input_settings->coreml_version = 3;
+  input_settings->max_delegated_partitions = 10;
+  input_settings->min_nodes_per_partition = 4;
+  const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
+  EXPECT_EQ(compute.tflite_settings().coreml_settings().enabled_devices(),
+            proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE);
+  EXPECT_EQ(compute.tflite_settings().coreml_settings().coreml_version(), 3);
+  EXPECT_EQ(
+      compute.tflite_settings().coreml_settings().max_delegated_partitions(),
+      10);
+  EXPECT_EQ(
+      compute.tflite_settings().coreml_settings().min_nodes_per_partition(), 4);
 }
 
 TEST_F(ConversionTest, CoralSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->coral_settings.reset(new CoralSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->coral_settings =
+      std::make_unique<CoralSettingsT>();
   CoralSettingsT* input_settings =
       settings_.tflite_settings->coral_settings.get();
 
@@ -413,8 +468,8 @@ TEST_F(ConversionTest, CoralSettings) {
 }
 
 TEST_F(ConversionTest, CPUSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->cpu_settings.reset(new CPUSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->cpu_settings = std::make_unique<CPUSettingsT>();
 
   settings_.tflite_settings->cpu_settings->num_threads = 2;
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
@@ -422,33 +477,42 @@ TEST_F(ConversionTest, CPUSettings) {
 }
 
 TEST_F(ConversionTest, MaxDelegatedPartitions) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
   settings_.tflite_settings->max_delegated_partitions = 2;
   const proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(compute.tflite_settings().max_delegated_partitions(), 2);
 }
 
 TEST_F(ConversionTest, MiniBenchmarkSettings) {
-  settings_.tflite_settings.reset(new TFLiteSettingsT());
-  settings_.tflite_settings->cpu_settings.reset(new CPUSettingsT());
+  settings_.tflite_settings = std::make_unique<TFLiteSettingsT>();
+  settings_.tflite_settings->cpu_settings = std::make_unique<CPUSettingsT>();
   settings_.tflite_settings->cpu_settings->num_threads = 2;
   settings_.model_identifier_for_statistics = "id";
   settings_.model_namespace_for_statistics = "ns";
-  settings_.settings_to_test_locally.reset(new MinibenchmarkSettingsT());
+  settings_.settings_to_test_locally =
+      std::make_unique<MinibenchmarkSettingsT>();
   MinibenchmarkSettingsT* mini_settings =
       settings_.settings_to_test_locally.get();
-  mini_settings->model_file.reset(new ModelFileT());
+  mini_settings->model_file = std::make_unique<ModelFileT>();
   mini_settings->model_file->filename = "test_model";
-  mini_settings->storage_paths.reset(new BenchmarkStoragePathsT());
+  mini_settings->storage_paths = std::make_unique<BenchmarkStoragePathsT>();
   mini_settings->storage_paths->storage_file_path = "/data/local/tmp";
   std::unique_ptr<TFLiteSettingsT> xnnpack(new TFLiteSettingsT());
-  xnnpack->xnnpack_settings.reset(new XNNPackSettingsT());
+  xnnpack->xnnpack_settings = std::make_unique<XNNPackSettingsT>();
   xnnpack->xnnpack_settings->num_threads = 2;
   std::unique_ptr<TFLiteSettingsT> hexagon(new TFLiteSettingsT());
-  hexagon->hexagon_settings.reset(new HexagonSettingsT());
+  hexagon->hexagon_settings = std::make_unique<HexagonSettingsT>();
   hexagon->hexagon_settings->powersave_level = 3;
+  std::unique_ptr<TFLiteSettingsT> coreml(new TFLiteSettingsT());
+  coreml->coreml_settings = std::make_unique<CoreMLSettingsT>();
+  coreml->coreml_settings->enabled_devices =
+      CoreMLSettings_::EnabledDevices_DEVICES_WITH_NEURAL_ENGINE;
+  coreml->coreml_settings->coreml_version = 3;
+  coreml->coreml_settings->max_delegated_partitions = 10;
+  coreml->coreml_settings->min_nodes_per_partition = 4;
   mini_settings->settings_to_test.emplace_back(std::move(xnnpack));
   mini_settings->settings_to_test.emplace_back(std::move(hexagon));
+  mini_settings->settings_to_test.emplace_back(std::move(coreml));
 
   proto::ComputeSettings compute = ConvertFromFlatbuffer(settings_);
   EXPECT_EQ(2, compute.tflite_settings().cpu_settings().num_threads());
@@ -460,13 +524,28 @@ TEST_F(ConversionTest, MiniBenchmarkSettings) {
   EXPECT_EQ("test_model", mini_output.model_file().filename());
   EXPECT_EQ("/data/local/tmp", mini_output.storage_paths().storage_file_path());
 
-  EXPECT_EQ(2, mini_output.settings_to_test_size());
+  EXPECT_EQ(3, mini_output.settings_to_test_size());
   EXPECT_EQ(
       2, mini_output.settings_to_test().at(0).xnnpack_settings().num_threads());
   EXPECT_EQ(3, mini_output.settings_to_test()
                    .at(1)
                    .hexagon_settings()
                    .powersave_level());
+
+  EXPECT_EQ(
+      proto::CoreMLSettings::DEVICES_WITH_NEURAL_ENGINE,
+      mini_output.settings_to_test().at(2).coreml_settings().enabled_devices());
+  EXPECT_EQ(
+      3,
+      mini_output.settings_to_test().at(2).coreml_settings().coreml_version());
+  EXPECT_EQ(10, mini_output.settings_to_test()
+                    .at(2)
+                    .coreml_settings()
+                    .max_delegated_partitions());
+  EXPECT_EQ(4, mini_output.settings_to_test()
+                   .at(2)
+                   .coreml_settings()
+                   .min_nodes_per_partition());
 
   compute =
       ConvertFromFlatbuffer(settings_, /*skip_mini_benchmark_settings=*/true);
@@ -478,7 +557,8 @@ TEST_F(ConversionTest, MiniBenchmarkSettings) {
 
 TEST_F(ConversionTest, BestAccelerationDecisionEvent) {
   event_.is_log_flushing_event = true;
-  event_.best_acceleration_decision.reset(new BestAccelerationDecisionT());
+  event_.best_acceleration_decision =
+      std::make_unique<BestAccelerationDecisionT>();
   event_.best_acceleration_decision->number_of_source_events = 4;
   event_.best_acceleration_decision->min_inference_time_us = 3000;
 
@@ -489,15 +569,16 @@ TEST_F(ConversionTest, BestAccelerationDecisionEvent) {
   EXPECT_EQ(3000, best_decision.min_inference_time_us());
   EXPECT_FALSE(best_decision.has_min_latency_event());
 
-  event_.best_acceleration_decision->min_latency_event.reset(
-      new BenchmarkEventT());
+  event_.best_acceleration_decision->min_latency_event =
+      std::make_unique<BenchmarkEventT>();
   auto* min_event = event_.best_acceleration_decision->min_latency_event.get();
   min_event->event_type = BenchmarkEventType_END;
-  min_event->tflite_settings.reset(new TFLiteSettingsT());
+  min_event->tflite_settings = std::make_unique<TFLiteSettingsT>();
   min_event->tflite_settings->delegate = Delegate_XNNPACK;
-  min_event->tflite_settings->xnnpack_settings.reset(new XNNPackSettingsT());
+  min_event->tflite_settings->xnnpack_settings =
+      std::make_unique<XNNPackSettingsT>();
   min_event->tflite_settings->xnnpack_settings->num_threads = 2;
-  min_event->result.reset(new BenchmarkResultT());
+  min_event->result = std::make_unique<BenchmarkResultT>();
   min_event->result->initialization_time_us.push_back(100);
   min_event->result->initialization_time_us.push_back(110);
   min_event->result->inference_time_us.push_back(3000);
@@ -530,7 +611,8 @@ TEST_F(ConversionTest, BestAccelerationDecisionEvent) {
 }
 
 TEST_F(ConversionTest, BenchmarkInitializationEvent) {
-  event_.initialization_failure.reset(new BenchmarkInitializationFailureT());
+  event_.initialization_failure =
+      std::make_unique<BenchmarkInitializationFailureT>();
   event_.initialization_failure->initialization_status = 101;
 
   proto::MiniBenchmarkEvent proto_event = ConvertFromFlatbuffer(event_);
@@ -539,8 +621,8 @@ TEST_F(ConversionTest, BenchmarkInitializationEvent) {
 }
 
 TEST_F(ConversionTest, BenchmarkError) {
-  event_.benchmark_event.reset(new BenchmarkEventT());
-  event_.benchmark_event->error.reset(new BenchmarkErrorT());
+  event_.benchmark_event = std::make_unique<BenchmarkEventT>();
+  event_.benchmark_event->error = std::make_unique<BenchmarkErrorT>();
   auto* error = event_.benchmark_event->error.get();
   error->stage = BenchmarkStage_INITIALIZATION;
   error->exit_code = 123;
@@ -575,8 +657,8 @@ TEST_F(ConversionTest, BenchmarkError) {
 }
 
 TEST_F(ConversionTest, BenchmarkMetric) {
-  event_.benchmark_event.reset(new BenchmarkEventT());
-  event_.benchmark_event->result.reset(new BenchmarkResultT());
+  event_.benchmark_event = std::make_unique<BenchmarkEventT>();
+  event_.benchmark_event->result = std::make_unique<BenchmarkResultT>();
   std::unique_ptr<BenchmarkMetricT> metric(new BenchmarkMetricT());
   metric->name = "test";
   metric->values.push_back(1.234);

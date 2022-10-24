@@ -1,7 +1,7 @@
 path: "tensorflow.__internal__.tracking.TrackableDataStructure"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.tracking.data_structures.TrackableDataStructure\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.data_structures.TrackableDataStructure\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "layers"

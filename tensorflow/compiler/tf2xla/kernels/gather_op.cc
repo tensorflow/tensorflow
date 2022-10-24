@@ -84,7 +84,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
 
     *gather_output =
         xla::Broadcast(XlaHelpers::Zero(builder, dtype), out_shape.dim_sizes());
-    return Status::OK();
+    return OkStatus();
   }
 
   for (int64_t i = 0; i < num_index_dims; ++i) {
@@ -150,7 +150,7 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   }
 
   *gather_output = xla::Gather(input, indices, dim_numbers, slice_sizes);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
@@ -160,7 +160,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   auto indices = context->Input(1);
   auto indices_shape = context->InputShape(1);
 
-  absl::optional<int64_t> axis;
+  std::optional<int64_t> axis;
   if (context->num_inputs() == 3) {
     const TensorShape axis_shape = context->InputShape(2);
     if (!TensorShapeUtils::IsScalar(axis_shape)) {
@@ -176,9 +176,12 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
     const auto params_dims = input_shape.dims();
     if (-params_dims > axis_input || axis_input >= params_dims) {
-      return errors::InvalidArgument("Expected axis in the range [",
-                                     -params_dims, ", ", params_dims,
-                                     "), but got ", axis_input);
+      // Check that params has rank of at least axis + 1.
+      const auto min_params_rank =
+          axis_input < 0 ? -axis_input : axis_input + 1;
+      return errors::InvalidArgument("Shape must be at least rank ",
+                                     min_params_rank, " but is rank ",
+                                     params_dims);
     }
     if (axis_input < 0) {
       axis_input += params_dims;
@@ -230,7 +233,7 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
                   /*indices_are_nd=*/false, context->expected_output_dtype(0),
                   index_type, context->builder(), gather_output));
   }
-  return Status::OK();
+  return OkStatus();
 }
 class GatherOp : public XlaOpKernel {
  public:

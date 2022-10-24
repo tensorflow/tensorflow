@@ -1,17 +1,4 @@
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_cloud", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "tf_protos_grappler")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 
@@ -61,7 +48,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/public:session.h",
         "//tensorflow/core/public:session_options.h",
     ],
-    module_name = "_pywrap_cost_analyzer",
     deps = [
         ":cost_analyzer_headers",
         "//tensorflow/core:framework_headers_lib",
@@ -94,7 +80,6 @@ tf_python_pybind_extension(
         "model_analyzer.h",
         "//tensorflow/core/grappler:pywrap_required_hdrs",
     ],
-    module_name = "_pywrap_model_analyzer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -127,7 +112,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
-    module_name = "_pywrap_tf_item",
     deps = [
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
@@ -203,7 +187,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/costs:pywrap_required_hdrs",
         "//tensorflow/core/grappler/utils:pywrap_required_hdrs",
     ],
-    module_name = "_pywrap_tf_cluster",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -265,7 +248,6 @@ tf_python_pybind_extension(
         "//tensorflow/core/grappler/optimizers:pywrap_required_hdrs",
         "//tensorflow/core/grappler/verifiers:pywrap_required_hdrs",
     ],
-    module_name = "_pywrap_tf_optimizer",
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -517,10 +499,36 @@ cuda_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "remapper_test",
+    size = "medium",
+    srcs = [
+        "remapper_test.py",
+    ],
+    python_version = "PY3",
+    tags = ["grappler"],
+    # This test analyzes the graph, but XLA changes the names of nodes.
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//third_party/py/numpy",
+    ],
+)
+
 tf_python_pybind_extension(
     name = "_pywrap_graph_analyzer",
     srcs = ["graph_analyzer_tool_wrapper.cc"],
-    module_name = "_pywrap_graph_analyzer",
     deps = [
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
         "@pybind11",

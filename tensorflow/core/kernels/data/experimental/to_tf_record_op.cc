@@ -45,7 +45,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       return errors::InvalidArgument(argument_name, " must be a scalar");
     }
     *output = argument_t->scalar<T>()();
-    return Status::OK();
+    return OkStatus();
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
@@ -69,7 +69,7 @@ class ToTFRecordOp : public AsyncOpKernel {
                                                     &compression_type));
     std::unique_ptr<WritableFile> file;
     TF_RETURN_IF_ERROR(ctx->env()->NewWritableFile(filename, &file));
-    auto writer = absl::make_unique<io::RecordWriter>(
+    auto writer = std::make_unique<io::RecordWriter>(
         file.get(),
         io::RecordWriterOptions::CreateRecordWriterOptions(compression_type));
 
@@ -87,6 +87,7 @@ class ToTFRecordOp : public AsyncOpKernel {
     IteratorContext iter_ctx(std::move(params));
     DatasetBase* finalized_dataset;
     TF_RETURN_IF_ERROR(FinalizeDataset(ctx, dataset, &finalized_dataset));
+    core::ScopedUnref unref(finalized_dataset);
 
     std::unique_ptr<IteratorBase> iterator;
     TF_RETURN_IF_ERROR(finalized_dataset->MakeIterator(
@@ -117,7 +118,7 @@ class ToTFRecordOp : public AsyncOpKernel {
       }
       components.clear();
     } while (!end_of_sequence);
-    return Status::OK();
+    return OkStatus();
   }
 
   BackgroundWorker background_worker_;

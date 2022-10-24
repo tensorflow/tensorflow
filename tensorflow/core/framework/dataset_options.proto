@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tensorflow.data;
 
+import "tensorflow/core/framework/model.proto";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/dataset_options_go_proto";
 
 // Represents the type of auto-sharding we enable.
@@ -25,7 +27,7 @@ enum AutoShardPolicy {
   OFF = -1;
 }
 
-// next: 4
+// next: 5
 message AutotuneOptions {
   // Whether to automatically tune performance knobs.
   oneof optional_enabled {
@@ -43,6 +45,32 @@ message AutotuneOptions {
   oneof optional_ram_budget {
     int64 ram_budget = 3;
   }
+
+  // When autotuning is enabled (through autotune), determines the algorithm to
+  // use. If not explicitly set by user, autotuning will follow HILL_CLIMB
+  // algorithm but has more flexibility to tune parameters more aggressively,
+  // in which case the behavior is implementation specific and may change over
+  // time.
+  oneof optional_autotune_algorithm {
+    model.AutotuneAlgorithm autotune_algorithm = 4;
+  }
+}
+
+// next: 2
+message CardinalityOptions {
+  enum ComputeLevel {
+    CARDINALITY_COMPUTE_UNSPECIFIED = 0;
+    // Cardinality will only be computed if it can be determined in a cheap
+    // manner (ie. without reading from file sources). If the cardinality would
+    // be nontrivial to compute, Cardinality() will return UNKNOWN_CARDINALITY.
+    CARDINALITY_COMPUTE_LOW = 1;
+    // Moderate effort will be made to determine cardinality, such as reading
+    // index data from source files. If significant work is needed to compute
+    // cardinality (e.g. reading entire source file contents or executing user
+    // defined functions), Cardinality() will return UNKNOWN_CARDINALITY.
+    CARDINALITY_COMPUTE_MODERATE = 2;
+  }
+  ComputeLevel compute_level = 1;
 }
 
 // next: 3
@@ -54,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 18
+// next: 20
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -111,6 +139,15 @@ message OptimizationOptions {
   // Whether to fuse shuffle and repeat transformations.
   oneof optional_shuffle_and_repeat_fusion {
     bool shuffle_and_repeat_fusion = 17;
+  }
+  // Whether to parallelize stateless filter transformations.
+  oneof optional_filter_parallelization {
+    bool filter_parallelization = 18;
+  }
+  // Whether to inject 'Prefetch' as the last transformation. Only takes effect
+  // if the last transformation is synchronous; otherwise does nothing.
+  oneof optional_inject_prefetch {
+    bool inject_prefetch = 19;
   }
 }
 

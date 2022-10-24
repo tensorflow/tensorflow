@@ -32,7 +32,7 @@ TEST(FunctionOptimizationPassRegistry, NoPassSet) {
       device_set, config_proto, /*graph=*/nullptr, /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
-  EXPECT_EQ(status, Status::OK());
+  EXPECT_EQ(status, OkStatus());
 }
 
 }  // namespace tensorflow

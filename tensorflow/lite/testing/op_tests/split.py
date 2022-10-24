@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for split."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
@@ -40,7 +36,7 @@ def make_split_tests(options):
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
     out = tf.split(input_tensor, parameters["num_or_size_splits"],
                    parameters["axis"])
-    return [input_tensor], [out[0]]
+    return [input_tensor], out
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [

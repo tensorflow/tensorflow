@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -95,6 +95,15 @@ class CholeskyOpGpu : public AsyncOpKernel {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
     const int64_t n = input.dim_size(ndims - 1);
+#if GOOGLE_CUDA
+    cublasFillMode_t fill = CUBLAS_FILL_MODE_UPPER;
+#elif TENSORFLOW_USE_ROCM
+#if TF_ROCM_VERSION >= 40500
+    hipsolverFillMode_t fill = HIPSOLVER_FILL_MODE_UPPER;
+#else
+    rocblas_fill fill = rocblas_fill_upper;
+#endif
+#endif
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
@@ -115,7 +124,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     }
 
     // Allocate output.
-    std::unique_ptr<CudaSolver> solver = std::make_unique<CudaSolver>(context);
+    std::unique_ptr<GpuSolver> solver = std::make_unique<GpuSolver>(context);
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(context,
                          context->forward_input_or_allocate_output(
@@ -157,11 +166,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
       }
       dev_info.push_back(
           solver->GetDeviceLapackInfo(batch_size, "potrfBatched"));
-      OP_REQUIRES_OK_ASYNC(context,
-                           solver->PotrfBatched(CUBLAS_FILL_MODE_UPPER, n,
-                                                output_reshaped_ptrs_base, n,
-                                                &dev_info.back(), batch_size),
-                           done);
+      OP_REQUIRES_OK_ASYNC(
+          context,
+          solver->PotrfBatched(fill, n, output_reshaped_ptrs_base, n,
+                               &dev_info.back(), batch_size),
+          done);
       // TODO(rmlarsen): We have to clear the upper triangle of the output
       // due to a bug in potrfBatched. Remove this workaround once the bug
       // is fixed.
@@ -177,11 +186,11 @@ class CholeskyOpGpu : public AsyncOpKernel {
 
       dev_info.push_back(solver->GetDeviceLapackInfo(batch_size, "potrf"));
       for (int batch = 0; batch < batch_size; ++batch) {
-        OP_REQUIRES_OK_ASYNC(context,
-                             solver->Potrf(CUBLAS_FILL_MODE_UPPER, n,
-                                           &output_reshaped(batch, 0, 0), n,
-                                           &dev_info.back()(batch)),
-                             done);
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            solver->Potrf(fill, n, &output_reshaped(batch, 0, 0), n,
+                          &dev_info.back()(batch)),
+            done);
       }
 
 #if CUDA_VERSION >= 9020
@@ -216,8 +225,8 @@ class CholeskyOpGpu : public AsyncOpKernel {
       }
       done();
     };
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 };
 

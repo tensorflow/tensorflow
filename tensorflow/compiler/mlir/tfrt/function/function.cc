@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -66,7 +66,8 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
     pass_options.skip_fold_transpose_in_ops = true;
   }
   pass_options.enable_optimizer = options.enable_optimizer;
-  pass_options.target_tpurt = true;
+  // Use TFRT TPU OpKernel for training.
+  pass_options.target_tpurt = false;
   pass_options.tpu_use_core_selector = options.tpu_use_core_selector;
   pass_options.tpu_use_bundled_transfer = options.tpu_use_bundled_transfer;
   pass_options.tpu_lower_to_fallback = options.tpu_lower_to_fallback;
@@ -91,7 +92,7 @@ Status CompileTFMLIRToBEF(const TfrtFunctionCompileOptions& options,
     return diag_handler.Combine(
         tensorflow::errors::Internal("failed to convert MLIR to BEF."));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

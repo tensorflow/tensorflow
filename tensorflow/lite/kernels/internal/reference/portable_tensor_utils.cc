@@ -227,6 +227,41 @@ void PortableSparseMatrixBatchVectorMultiplyAccumulate1x4(
   }
 }
 
+void PortableSparseMatrixBatchVectorMultiplyAccumulate1x16(
+    const int8_t* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const int8_t* __restrict__ vector, const int32_t* __restrict__ bias_vector,
+    int n_batch, const int32_t input_offset, const int32_t output_multiplier,
+    const int32_t output_shift, const int32_t output_offset,
+    const int32_t output_activation_min, const int32_t output_activation_max,
+    int8_t* __restrict__ result) {
+  const int kBlockSize = 16;
+  TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
+  for (int batch = 0; batch < n_batch; ++batch) {
+    const int8_t* matrix_ptr = matrix;
+    for (int row = 0; row < m_rows; ++row) {
+      int32_t dot_prod = 0;
+      const int8_t* vector_in_batch = vector + batch * m_cols;
+      for (int i = segments[row]; i < segments[row + 1]; ++i) {
+        const int block_start_index = indices[i] * kBlockSize;
+        const int8_t* vector_block_in_batch_ptr =
+            vector_in_batch + block_start_index;
+        for (int c = 0; c < kBlockSize; c++) {
+          dot_prod += *matrix_ptr * *vector_block_in_batch_ptr++;
+          dot_prod += *matrix_ptr++ * input_offset;
+        }
+      }
+      const int32_t bias_value = bias_vector != nullptr ? bias_vector[row] : 0;
+      dot_prod = MultiplyByQuantizedMultiplier(dot_prod + bias_value,
+                                               output_multiplier, output_shift);
+      dot_prod += output_offset;
+      result[batch * m_rows + row] =
+          static_cast<int8_t>(ActivationFunctionWithMinMax(
+              dot_prod, output_activation_min, output_activation_max));
+    }
+  }
+}
+
 void PortableSparseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ matrix, const uint8_t* __restrict__ ledger,
     int m_rows, int m_cols, const float* __restrict__ vector, int n_batch,

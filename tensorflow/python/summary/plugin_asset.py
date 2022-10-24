@@ -26,13 +26,7 @@ returns a dictionary of asset contents. The tf.compat.v1.summary.FileWriter
 TensorBoard can retrieve them.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
-
-import six
 
 from tensorflow.python.framework import ops
 
@@ -109,8 +103,7 @@ def get_all_plugin_assets(graph=None):
   return out
 
 
-@six.add_metaclass(abc.ABCMeta)
-class PluginAsset(object):
+class PluginAsset(metaclass=abc.ABCMeta):
   """This abstract base class allows TensorBoard to serialize assets to disk.
 
   Plugin authors are expected to extend the PluginAsset class, so that it:

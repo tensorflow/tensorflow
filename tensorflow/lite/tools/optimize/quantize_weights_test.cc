@@ -134,7 +134,8 @@ class QuantizeWeightsTest : public testing::Test {
 TEST_F(QuantizeWeightsTest, QuantizationSucceeds) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
-  auto status = QuantizeWeights(&builder, model_, 0);
+  auto status =
+      QuantizeWeights(&builder, model_, 0, QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -148,7 +149,8 @@ TEST_F(QuantizeWeightsTest, WeightsMinNumElements) {
   // happen, i.e. the original model is the same size as the old one.
   flatbuffers::FlatBufferBuilder builder;
   const uint64_t kWeightsMinNumElements = 1000000;
-  EXPECT_EQ(QuantizeWeights(&builder, model_, kWeightsMinNumElements),
+  EXPECT_EQ(QuantizeWeights(&builder, model_, kWeightsMinNumElements,
+                            QuantizerType::OLD_QUANTIZER),
             kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -178,7 +180,8 @@ TEST_F(QuantizeWeightsTest, WeightsMinNumElements) {
 TEST_F(QuantizeWeightsTest, HybridConv) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
-  auto status = QuantizeWeights(&builder, model_, 0);
+  auto status =
+      QuantizeWeights(&builder, model_, 0, QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -234,7 +237,8 @@ TEST_F(QuantizeWeightsTest, DequantizeConv) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = internal::QuantizeWeights(&builder, model_, 0,
-                                          /*use_hybrid_evaluation=*/false);
+                                          /*use_hybrid_evaluation=*/false,
+                                          QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -293,7 +297,8 @@ TEST_F(QuantizeWeightsTest, DequantizeConvFloat16) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = tflite::optimize::QuantizeWeights(
-      &builder, model_, BufferType::QUANTIZED_FLOAT16);
+      &builder, model_, BufferType::QUANTIZED_FLOAT16,
+      kUseUpdatedHybridSchemeDefault, QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -351,7 +356,8 @@ TEST_F(QuantizeWeightsTest, DequantizeConvFloat16) {
 TEST_F(QuantizeWeightsTest, SharedWeights_Hybrid) {
   LoadSharedWeightsModel();
   flatbuffers::FlatBufferBuilder builder;
-  auto status = QuantizeWeights(&builder, model_, 0);
+  auto status =
+      QuantizeWeights(&builder, model_, 0, QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -385,7 +391,8 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
   LoadSharedWeightsModel();
   flatbuffers::FlatBufferBuilder builder;
   auto status = internal::QuantizeWeights(&builder, model_, 0,
-                                          /*use_hybrid_evaluation*/ false);
+                                          /*use_hybrid_evaluation*/ false,
+                                          QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -426,7 +433,8 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
 TEST_F(QuantizeWeightsTest, VerifyGatherQuantization) {
   LoadGatherTestModel();
   flatbuffers::FlatBufferBuilder builder;
-  auto status = QuantizeWeights(&builder, model_, 0);
+  auto status =
+      QuantizeWeights(&builder, model_, 0, QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -464,7 +472,8 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationDequantize) {
   };
 
   flatbuffers::FlatBufferBuilder builder;
-  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map);
+  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map,
+                                QuantizerType::OLD_QUANTIZER);
   ASSERT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -511,7 +520,8 @@ TEST_F(QuantizeWeightsTest, VerifyCustomOpQuantizationHybrid) {
   };
 
   flatbuffers::FlatBufferBuilder builder;
-  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map);
+  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map,
+                                QuantizerType::OLD_QUANTIZER);
   ASSERT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -543,7 +553,9 @@ TEST_F(QuantizeWeightsTest, VerifyUpdatedHybridSchemeFalseQuantizationHybrid) {
   LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
   const CustomOpMap custom_op_map;
-  auto status = QuantizeWeights(&builder, model_, 0, custom_op_map, false);
+  auto status = QuantizeWeights(
+      &builder, model_, 0, custom_op_map, /*use_updated_hybrid_scheme=*/false,
+      /*op_denylist=*/{}, QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
@@ -597,7 +609,8 @@ TEST_F(QuantizeWeightsTest, DequantizeConvBlocklisted) {
   const CustomOpMap custom_op_map;
   auto status = QuantizeWeights(&builder, model_, 0, custom_op_map,
                                 /*use_updated_hybrid_scheme=*/true,
-                                {BuiltinOperator_CONV_2D});
+                                /*op_denylist*/ {BuiltinOperator_CONV_2D},
+                                QuantizerType::OLD_QUANTIZER);
   EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();

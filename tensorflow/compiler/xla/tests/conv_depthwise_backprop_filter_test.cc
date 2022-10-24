@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
@@ -27,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-string GetFloatDataType(bool use_bfloat16) {
+std::string GetFloatDataType(bool use_bfloat16) {
   return use_bfloat16 ? "bf16" : "f32";
 }
 
@@ -117,12 +118,12 @@ static std::vector<BatchGroupedConvolution2DSpec> GetConv2DTestCases(
   return config_set;
 }
 
-string BatchGroupedConvolution2DTestDataToString(
+std::string BatchGroupedConvolution2DTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<BatchGroupedConvolution2DSpec, bool>>& data) {
   const auto& spec = ::testing::get<0>(data.param);
-  const string data_type = GetFloatDataType(::testing::get<1>(data.param));
-  string str = absl::StrCat(
+  const std::string data_type = GetFloatDataType(::testing::get<1>(data.param));
+  std::string str = absl::StrCat(
       "activation_dims_", absl::StrJoin(spec.activation_dims, "x"),
       "_kernel_dims_", absl::StrJoin(spec.kernel_dims, "x"),
       "_activation_layout_",
@@ -135,11 +136,11 @@ string BatchGroupedConvolution2DTestDataToString(
   return str;
 }
 
-string BuildHloTextBatchGroupedConvolution2D(
+std::string BuildHloTextBatchGroupedConvolution2D(
     const BatchGroupedConvolution2DSpec& spec, bool use_bfloat16,
     bool scheduled = false) {
-  const string data_type = GetFloatDataType(use_bfloat16);
-  const string scheduled_tag = scheduled ? ",is_scheduled=true" : "";
+  const std::string data_type = GetFloatDataType(use_bfloat16);
+  const std::string scheduled_tag = scheduled ? ",is_scheduled=true" : "";
   return absl::StrFormat(
       R"(
     HloModule TensorFlowDepthwiseConv %s
@@ -176,7 +177,7 @@ XLA_TEST_P(BatchGroupedConvolution2DTest, DoIt) {
   }
 #endif
 
-  const string hlo_text = BuildHloTextBatchGroupedConvolution2D(
+  const std::string hlo_text = BuildHloTextBatchGroupedConvolution2D(
       spec, use_bfloat16, /*scheduled=*/false);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0.01, 0.01}));

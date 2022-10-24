@@ -14,12 +14,7 @@
 # ==============================================================================
 """Functional tests for slice op."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -39,7 +34,7 @@ class SliceTest(test.TestCase):
 
   def testEmpty(self):
     inp = np.random.rand(4, 4).astype("f")
-    for k in xrange(4):
+    for k in range(4):
       with self.cached_session():
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.float32)
         slice_t = a[2, k:k]
@@ -48,7 +43,7 @@ class SliceTest(test.TestCase):
 
   def testInt32(self):
     inp = np.random.rand(4, 4).astype("i")
-    for k in xrange(4):
+    for k in range(4):
       with self.cached_session():
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.int32)
         slice_t = a[2, k:k]
@@ -341,9 +336,9 @@ class SliceTest(test.TestCase):
     # the grads into the right location to compare against TensorFlow.
     np_ans = np.zeros(input_shape)
     slices = []
-    for i in xrange(len(input_shape)):
+    for i in range(len(input_shape)):
       slices.append(slice(slice_begin[i], slice_begin[i] + slice_size[i]))
-    np_ans[slices] = grads
+    np_ans[tuple(slices)] = grads
 
     self.assertAllClose(np_ans, result)
 
@@ -366,9 +361,9 @@ class SliceTest(test.TestCase):
     # the grads into the right location to compare against TensorFlow.
     np_ans = np.zeros(input_shape)
     slices = []
-    for i in xrange(len(input_shape)):
+    for i in range(len(input_shape)):
       slices.append(slice(slice_begin[i], slice_begin[i] + slice_size[i]))
-    np_ans[slices] = grads
+    np_ans[tuple(slices)] = grads
 
     self.assertAllClose(np_ans, result)
 
@@ -465,7 +460,7 @@ class SliceTest(test.TestCase):
       # unintended behavior is prevented.
       c = constant_op.constant(5.0)
       with self.assertRaisesRegex(errors_impl.OperatorNotAllowedInGraphError,
-                                  "iterating over `tf.Tensor`"):
+                                  "Iterating over a symbolic `tf.Tensor`"):
         for _ in c:
           pass
 

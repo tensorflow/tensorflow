@@ -21,10 +21,6 @@
   systems (e.g. GCE, AWS, etc...).
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver

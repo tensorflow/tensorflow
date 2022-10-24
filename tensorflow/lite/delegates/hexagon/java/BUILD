@@ -1,5 +1,5 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
-load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
+load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary", "tflite_jni_linkopts")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 
 package(
@@ -11,6 +11,10 @@ package(
 # The Hexagon backend-related targets are intentionally not included in BUILD.bazel.
 tflite_jni_binary(
     name = "libtensorflowlite_hexagon_jni.so",
+    linkopts = tflite_jni_linkopts() + select({
+        "//tensorflow:android": ["-ldl"],
+        "//conditions:default": [],
+    }),
     linkscript = "//tensorflow/lite/delegates/hexagon:version_script.lds",
     tags = [
         "manual",

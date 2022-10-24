@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
@@ -53,6 +54,9 @@ int GetInputMaxDims(const OpSignature& op_sig) {
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
+      if (op_sig.ext_options.conv_2d.is_grouped_convolution) {
+        return 6;
+      }
       // If the op has signed int16 op_sig.inputs and op_sig.outputs, its
       // version 4.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 &&
@@ -67,6 +71,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
           op_sig.inputs.at(1).type == kTfLiteInt8 &&
           op_sig.outputs.at(0).type == kTfLiteInt8) {
         return 3;
+      }
+      // If the op has signed int8 and int4 op_sig.inputs and op_sig.outputs,
+      // its version 7.
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 &&
+          op_sig.inputs.at(1).type == kTfLiteInt4 &&
+          op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 7;
       }
       // If the op is a signed int8 hybrid operation, we need to return
       // version 2 or 5 if per channel.
@@ -228,6 +239,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     }
 
     case BuiltinOperator_MUL:
+      // Version 6 supports complex32 inputs
+      if (op_sig.inputs.at(0).type == kTfLiteComplex64) {
+        return 6;
+      }
       // Version 5 supports int64 inputs
       if (op_sig.inputs.at(0).type == kTfLiteInt64) {
         return 5;
@@ -372,6 +387,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4) {
+        return 6;
+      }
       // Version 3 supports signed int16 input types.
       if (op_sig.inputs.at(0).type == kTfLiteInt16 ||
           op_sig.inputs.at(0).type == kTfLiteFloat16) {
@@ -381,6 +399,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         if (op_sig.ext_options.dequantize.is_per_channel_quantized) {
           return 5;
         }
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_QUANTIZE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt4 ||
+          op_sig.outputs.at(0).type == kTfLiteInt4) {
+        return 4;
+      }
+      if (op_sig.ext_options.quantize.is_per_channel_quantized) {
+        return 3;
+      }
+      if (op_sig.outputs.at(0).type == kTfLiteInt16) {
         return 2;
       }
       return 1;
@@ -504,6 +535,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TILE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 3;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteString) {
         return 2;
       }
@@ -750,18 +784,35 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
     }
 
+    case BuiltinOperator_ARG_MAX:
+    case BuiltinOperator_ARG_MIN:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_SELECT: {
+      if (op_sig.inputs.at(0).dims.size() == 5 ||
+          op_sig.inputs.at(1).dims.size() == 5 ||
+          op_sig.inputs.at(2).dims.size() == 5)
+        return 3;
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+    }
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_SUM:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_TOPK_V2:
-    case BuiltinOperator_ARG_MAX:
-    case BuiltinOperator_ARG_MIN:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
     case BuiltinOperator_LESS_EQUAL:
-    case BuiltinOperator_SELECT:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_DEPTH_TO_SPACE:
@@ -788,6 +839,27 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 3;
       }
       return 2;
+    case BuiltinOperator_CAST:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt16 ||
+          op_sig.outputs.at(0).type == kTfLiteUInt16) {
+        return 4;
+      } else if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+                 op_sig.outputs.at(0).type == kTfLiteInt8) {
+        return 3;
+      } else if (op_sig.inputs.at(0).type == kTfLiteUInt32 ||
+                 op_sig.outputs.at(0).type == kTfLiteUInt32) {
+        return 2;
+      }
+      return 1;
+    case BuiltinOperator_WHERE:
+      if (op_sig.inputs.at(0).type == kTfLiteBool) return 1;
+      return 2;
+    case BuiltinOperator_GELU:
+      if (op_sig.inputs.at(0).type == kTfLiteInt8 ||
+          op_sig.inputs.at(0).type == kTfLiteUInt8) {
+        return 2;
+      }
+      return 1;
     default:
       return 1;
   }

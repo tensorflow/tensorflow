@@ -141,6 +141,11 @@ class Pooling3DOp : public UnaryOp<T> {
     OP_REQUIRES(context, ksize_.size() == 5,
                 errors::InvalidArgument("Sliding window ksize field must "
                                         "specify 5 dimensions"));
+    bool non_negative =
+        std::all_of(ksize_.begin(), ksize_.end(), [](int k) { return k > 0; });
+    OP_REQUIRES(context, non_negative,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "have non-negative dimensions"));
     OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
     OP_REQUIRES(context, stride_.size() == 5,
                 errors::InvalidArgument("Sliding window stride field must "
@@ -250,16 +255,12 @@ struct LaunchMaxPooling3dGradOp<CPUDevice, T> {
           dst.FillIndicesAndSizes<5>(tensor_in.shape(), &dst_indices,
                                      &dst_sizes);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-          Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
-#else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
                            Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
           bcast.set(3, psize);
-#endif
 
           // Slice from tensor_in.
           Eigen::Tensor<T, 5, Eigen::RowMajor> tensor_in_slice(dst_sizes);
@@ -361,6 +362,19 @@ class MaxPooling3dGradOp : public OpKernel {
 
     OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
                                             padding_, &out, &padding));
+
+    const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
+    const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
+    TensorShape out_shape = ShapeFromFormat(data_format_, in_batch,
+                                            {{out[2], out[1], out[0]}}, depth);
+    OP_REQUIRES(
+        context, tensor_out.shape() == out_shape,
+        errors::InvalidArgument("Expected orig_output shape to be ", out_shape,
+                                ", but got ", tensor_out.shape()));
+    OP_REQUIRES(context, out_backprop.shape() == out_shape,
+                errors::InvalidArgument("Expected grad shape to be ", out_shape,
+                                        ", but got ", out_backprop.shape()));
+
     LaunchMaxPooling3dGradOp<Device, T>::launch(
         context, tensor_in, tensor_out, out_backprop, window, stride, out,
         padding, data_format_, input_backprop);
@@ -436,16 +450,12 @@ struct LaunchAvgPooling3dGradOp<CPUDevice, T> {
           src.FillIndicesAndSizes<5>(out_backprop.shape(), &src_indices,
                                      &src_sizes);
           dst.FillIndicesAndSizes<5>(tensor_in_shape, &dst_indices, &dst_sizes);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-          Eigen::array<int, 5> bcast = {1, csize, rsize, psize, 1};
-#else
           Eigen::IndexList<Eigen::type2index<1>, int, int, int,
                            Eigen::type2index<1>>
               bcast;
           bcast.set(1, csize);
           bcast.set(2, rsize);
           bcast.set(3, psize);
-#endif
           Eigen::Tensor<T, 5, Eigen::RowMajor> slices(src_sizes);
           slices.device(context->eigen_cpu_device()) =
               out_backprop.tensor<T, 5>().slice(src_indices, src_sizes);
@@ -513,7 +523,7 @@ class AvgPooling3dGradOp : public OpKernel {
     TensorShape output_shape;
     auto shape_vec = tensor_in_shape.vec<int32>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
-      output_shape.AddDim(shape_vec(i));
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
 
     Tensor* output;
@@ -707,6 +717,14 @@ class MaxPooling3dGradGradOp : public OpKernel {
     Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) return;  // params is invalid
+    OP_REQUIRES(context, tensor_out.shape() == params.forward_output_shape(),
+                errors::InvalidArgument("Expected orig_output shape to be ",
+                                        params.forward_output_shape(),
+                                        ", but got ", tensor_out.shape()));
+    OP_REQUIRES(
+        context, out_grad_backprop.shape() == tensor_in.shape(),
+        errors::InvalidArgument("Expected grad shape to be ", tensor_in.shape(),
+                                ", but got ", out_grad_backprop.shape()));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(

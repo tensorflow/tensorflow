@@ -14,10 +14,6 @@
 # =============================================================================
 """Tests for tensorflow.python.framework.meta_graph.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 import os.path
 import random

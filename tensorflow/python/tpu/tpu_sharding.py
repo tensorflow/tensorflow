@@ -14,11 +14,6 @@
 # =============================================================================
 """Helper library for sharding during TPU compilation."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import tensor_shape
 
@@ -88,7 +83,7 @@ class ShardingPolicy(object):
         self._number_of_shards = number_of_shards
       else:
         raise ValueError(
-            "Can't set sharding policy to use {number_of_shards} shards; "
+            f"Can't set sharding policy to use {number_of_shards} shards; "
             "value must be > 0")
 
   @property
@@ -297,7 +292,7 @@ class ShardingPolicy(object):
           f"Shapes {shapes} is length {len(shapes)} but must be a list of "
           f"length number_of_shards={self.number_of_shards}")
     unsharded_shapes = [self._unshard_shape(s) for s in shapes]
-    for i in xrange(self.number_of_shards - 1):
+    for i in range(self.number_of_shards - 1):
       if not unsharded_shapes[i].is_compatible_with(
           unsharded_shapes[self.number_of_shards - 1]):
         raise ValueError(

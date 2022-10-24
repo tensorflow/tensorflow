@@ -45,7 +45,7 @@ class ExhaustiveF64UnaryTest : public ExhaustiveUnaryTest<F64>,
               << input_size;
     absl::Span<double> input_arr = (*input_literal)[0].data<double>();
 
-    uint64 i = 0;
+    uint64_t i = 0;
     for (auto bits : fp_values) {
       input_arr[i] = this->ConvertAndReplaceKnownIncorrectValueWith(bits, 1);
       ++i;

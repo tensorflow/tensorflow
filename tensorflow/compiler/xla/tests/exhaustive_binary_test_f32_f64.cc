@@ -58,7 +58,7 @@ class Exhaustive32BitOrMoreBinaryTest
     absl::Span<NativeT> input_arr_0 = (*input_literals)[0].data<NativeT>();
     absl::Span<NativeT> input_arr_1 = (*input_literals)[1].data<NativeT>();
 
-    uint64 i = 0;
+    uint64_t i = 0;
     for (auto src0 : values_0) {
       for (auto src1 : values_1) {
         input_arr_0[i] = ConvertAndReplaceKnownIncorrectValueWith(src0, 1);

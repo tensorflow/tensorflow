@@ -15,10 +15,6 @@
 """Indexed slices."""
 
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import warnings
 
@@ -27,6 +23,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
@@ -54,6 +51,17 @@ tensor_spec = LazyLoader(
 tensor_util = LazyLoader(
     "tensor_util", globals(),
     "tensorflow.python.framework.tensor_util")
+
+
+class IndexedSlicesCompositeTensorGradient(
+    composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient for IndexedSlices."""
+
+  def get_gradient_components(self, value):
+    return value
+
+  def replace_gradient_components(self, value, component_grads):
+    return component_grads
 
 
 # TODO(mdan): Should IndexedSlices be a "tensor"?
@@ -164,6 +172,8 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
+
+  __composite_gradient__ = IndexedSlicesCompositeTensorGradient()
 
   @property
   def _type_spec(self):
@@ -323,8 +333,9 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   elif isinstance(value, internal.NativeObject):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
-          "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
-          (dtypes.as_dtype(dtype).name, value.dtype.name, str(value)))
+          "Incompatible tensor conversion requested to `dtype` "
+          f"{dtypes.as_dtype(dtype).name} for `value` ({value}) with dtype"
+          f" {value.dtype.name}.")
     return value
   else:
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
@@ -358,7 +369,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
       value.
   """
   if not isinstance(values, collections_abc.Iterable):
-    raise TypeError("values must be iterable.")
+    raise TypeError("Argument `values` must be iterable.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -423,12 +434,12 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
   _ = as_ref
   if dtype and not dtype.is_compatible_with(value.dtype):
     raise ValueError(
-        "Tensor conversion requested dtype %s for IndexedSlices with dtype %s" %
-        (dtype.name, value.dtype.name))
+        f"Incompatible tensor conversion requested to `dtype` {dtype.name} for "
+        f"IndexedSlices ({value}) with dtype {value.dtype.name}")
   if value.dense_shape is None:
     raise ValueError(
-        "Tensor conversion requested for IndexedSlices without dense_shape: %s"
-        % str(value))
+        "Tensor conversion requested for IndexedSlices for argument `value` "
+        f"without dense_shape: {value!s}")
   # TODO(mrry): Consider adding static shape information to
   # IndexedSlices, to avoid using numpy here.
   if not context.executing_eagerly():
@@ -440,13 +451,6 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "Converting sparse IndexedSlices to a dense Tensor with %d "
             "elements. This may consume a large amount of memory." %
             num_elements)
-    else:
-      if value.dense_shape.op.type != "VariableShape":
-        # VariableShape may hide static shapes behind a resource handle
-        # producing a warning that isn't that useful to users.
-        warnings.warn(
-            "Converting sparse IndexedSlices(%s) to a dense Tensor of unknown "
-            "shape. This may consume a large amount of memory." % value)
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 

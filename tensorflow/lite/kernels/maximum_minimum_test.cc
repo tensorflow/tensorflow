@@ -88,7 +88,7 @@ void TestModel(tflite::BuiltinOperator op, const TensorData& input1,
   }
   m->SetInput1(input1_values);
 
-  m->Invoke();
+  ASSERT_EQ(m->Invoke(), kTfLiteOk);
   EXPECT_THAT(m->GetOutputShape(), ElementsAreArray(output.shape));
   EXPECT_THAT(m->GetOutput(), ElementsAreArray(output_values));
 }

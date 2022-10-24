@@ -37,10 +37,6 @@ bazel-bin/tensorflow/python/tools/strip_unused \
 You can also look at strip_unused_test.py for an example of how to use it.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 

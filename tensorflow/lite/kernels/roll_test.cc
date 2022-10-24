@@ -110,7 +110,7 @@ TYPED_TEST(RollOpTest, Roll1D) {
       /*shift=*/{3}, /*axis=*/{0},
       /*output=*/{GetTensorType<TypeParam>(), {}, 0, 31.875});
   m.SetInput<TypeParam>({0, 1, 2, 3, 4, 5, 6, 7, 8, 9});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<TypeParam>(),
               ElementsAreArray({7, 8, 9, 0, 1, 2, 3, 4, 5, 6}));
 }
@@ -123,7 +123,7 @@ TYPED_TEST(RollOpTest, Roll3D) {
   m.SetInput<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
                          11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
                          22, 23, 24, 25, 26, 27, 28, 29, 30, 31});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<TypeParam>(),
               ElementsAreArray({10, 11, 8,  9,  14, 15, 12, 13, 2,  3,  0,
                                 1,  6,  7,  4,  5,  26, 27, 24, 25, 30, 31,
@@ -138,7 +138,7 @@ TYPED_TEST(RollOpTest, Roll3DNegativeShift) {
   m.SetInput<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
                          11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
                          22, 23, 24, 25, 26, 27, 28, 29, 30, 31});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<TypeParam>(),
               ElementsAreArray({9,  10, 11, 8,  13, 14, 15, 12, 1,  2,  3,
                                 0,  5,  6,  7,  4,  25, 26, 27, 24, 29, 30,
@@ -153,7 +153,7 @@ TYPED_TEST(RollOpTest, DuplicatedAxis) {
   m.SetInput<TypeParam>({0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
                          11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
                          22, 23, 24, 25, 26, 27, 28, 29, 30, 31});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<TypeParam>(),
               ElementsAreArray({12, 13, 14, 15, 0,  1,  2,  3,  4,  5,  6,
                                 7,  8,  9,  10, 11, 28, 29, 30, 31, 16, 17,
@@ -168,7 +168,7 @@ TEST(RollOpTest, Roll3DTring) {
                     "8",  "9",  "10", "11", "12", "13", "14", "15",
                     "16", "17", "18", "19", "20", "21", "22", "23",
                     "24", "25", "26", "27", "28", "29", "30", "31"});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput<std::string>(),
       ElementsAreArray({"11", "8",  "9",  "10", "15", "12", "13", "14",
@@ -185,7 +185,7 @@ TEST(RollOpTest, BoolRoll3D) {
                     false, false, false, true,  false, false, true,  true,
                     false, false, true,  false, false, false, true,  false,
                     false, true,  true,  false, false, true,  false, false});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<bool>(),
               ElementsAreArray({false, false, true,  false, false, true,  true,
                                 false, false, false, true,  true,  false, false,

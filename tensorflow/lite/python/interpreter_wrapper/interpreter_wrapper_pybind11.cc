@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
+#include <string>
+
 #include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -94,7 +97,9 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           [](InterpreterWrapper& self, int subgraph_index) {
             return tensorflow::PyoOrThrow(self.AllocateTensors(subgraph_index));
           },
-          py::arg("subgraph_index") = 0)
+          // LINT.IfChange
+          py::arg("subgraph_index") = -1)
+          // LINT.ThenChange(//tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.cc)
       .def(
           "Invoke",
           [](InterpreterWrapper& self, int subgraph_index) {

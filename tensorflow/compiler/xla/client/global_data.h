@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -55,7 +54,8 @@ class GlobalData {
   GlobalDataHandle handle_;   // Handle being wrapped.
   ServiceInterface* parent_;  // Service used to unregister handle_.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GlobalData);
+  GlobalData(const GlobalData&) = delete;
+  GlobalData& operator=(const GlobalData&) = delete;
 };
 
 }  // namespace xla

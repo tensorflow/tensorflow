@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_TEST_TARGET_TRIPLE_HELPER_H_
-#define TENSORFLOW_TEST_TARGET_TRIPLE_HELPER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TEST_TARGET_TRIPLE_HELPER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TEST_TARGET_TRIPLE_HELPER_H_
 
 #if defined(__aarch64__)
 static const char kTargetCpuForHost[] = "aarch64";
-static const char kTargetTripleForHost[] = "aarch64-unknown-linux-gnu",
+static const char kTargetTripleForHost[] = "aarch64-unknown-linux-gnu";
 #elif (defined(__powerpc__) || \
        defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
 static const char kTargetCpuForHost[] = "ppc";
@@ -31,4 +31,4 @@ static const char kTargetCpuForHost[] = "";
 static const char kTargetTripleForHost[] = "x86_64-pc-linux";
 #endif
 
-#endif
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TEST_TARGET_TRIPLE_HELPER_H_

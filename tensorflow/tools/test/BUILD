@@ -12,7 +12,10 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["run_and_gather_logs_lib.py"])
+exports_files([
+    "run_and_gather_logs_lib.py",
+    "run_and_gather_logs.py",
+])
 
 py_library(
     name = "system_info_lib",
@@ -92,7 +95,7 @@ py_library(
 #    ],
 #    args = [
 #        "--test_name=" + "//tensorflow/core/kernels:cast_op_test",
-#        "--test_args=" + "'--benchmarks=BM_cpu_float'",
+#        "--test_args=" + "'--benchmark_filter=BM_cpu_float'",
 #    ],
 #    data = [
 #        "//tensorflow/core/kernels:cast_op_test",
@@ -107,7 +110,7 @@ tf_cc_logged_benchmark(
 
 tf_py_logged_benchmark(
     name = "rnn_op_benchmark",
-    target = "//tensorflow/python/kernel_tests:rnn_test",
+    target = "//tensorflow/python/kernel_tests/nn_ops:rnn_test",
 )
 
 tf_py_logged_benchmark(

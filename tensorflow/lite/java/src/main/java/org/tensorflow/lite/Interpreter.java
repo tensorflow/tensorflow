@@ -81,8 +81,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
 
   /** An options class for controlling runtime interpreter behavior. */
   public static class Options extends InterpreterImpl.Options {
-    public Options() {
-    }
+    public Options() {}
 
     public Options(InterpreterApi.Options options) {
       super(options);
@@ -124,6 +123,12 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
       return this;
     }
 
+    @Override
+    public Options addDelegateFactory(DelegateFactory delegateFactory) {
+      super.addDelegateFactory(delegateFactory);
+      return this;
+    }
+
     /**
      * Advanced: Set if buffer handle output is allowed.
      *
@@ -147,28 +152,24 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     }
 
     /**
-     * Experimental: Enable an optimized set of floating point CPU kernels (provided by XNNPACK).
+     * Experimental: Disable an optimized set of CPU kernels (provided by XNNPACK).
      *
-     * <p>Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided
-     * via the XNNPACK delegate. Currently, this is restricted to a subset of floating point
-     * operations. Eventually, we plan to enable this by default, as it can provide significant
-     * peformance benefits for many classes of floating point models. See
+     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
+     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
+     * See
      * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
      * for more details.
-     *
-     * <p>Things to keep in mind when enabling this flag:
-     *
-     * <ul>
-     *   <li>Startup time and resize time may increase.
-     *   <li>Baseline memory consumption may increase.
-     *   <li>May be ignored if another delegate (eg NNAPI) have been applied.
-     *   <li>Quantized models will not see any benefit.
-     * </ul>
      *
      * <p>WARNING: This is an experimental interface that is subject to change.
      */
     public Options setUseXNNPACK(boolean useXNNPACK) {
       this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
+    @Override
+    public Options setRuntime(InterpreterApi.Options.TfLiteRuntime runtime) {
+      super.setRuntime(runtime);
       return this;
     }
   }
@@ -279,7 +280,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied input name and signature method name.
+   * Gets the Tensor associated with the provided input name and signature method name.
    *
    * <p>WARNING: This is an experimental API and subject to change.
    *
@@ -334,7 +335,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
   }
 
   /**
-   * Gets the Tensor associated with the provdied output name in specifc signature method.
+   * Gets the Tensor associated with the provided output name in specific signature method.
    *
    * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
    * is executed. If you need updated details *before* running inference (e.g., after resizing an
@@ -397,6 +398,6 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
     wrapper.setCancelled(cancelled);
   }
 
-  NativeInterpreterWrapperExperimental wrapperExperimental;
-  String[] signatureKeyList;
+  private final NativeInterpreterWrapperExperimental wrapperExperimental;
+  private final String[] signatureKeyList;
 }

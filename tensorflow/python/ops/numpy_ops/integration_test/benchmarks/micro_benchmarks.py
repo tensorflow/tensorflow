@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-# Lint as: python3
 r"""Micro benchmark.
 
 bazel run -c opt --config=cuda \
@@ -20,10 +19,6 @@ bazel run -c opt --config=cuda \
   --number=100 --repeat=100 \
   --benchmarks=.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import time
 

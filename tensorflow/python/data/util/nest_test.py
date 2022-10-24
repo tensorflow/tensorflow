@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for utilities working with arbitrarily nested structures."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import numpy as np
 from absl.testing import parameterized
@@ -61,7 +57,7 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegex(ValueError, "Structure is a scalar"):
+    with self.assertRaisesRegex(ValueError, "Argument `structure` is a scalar"):
       nest.pack_sequence_as("scalar", [4, 5])
 
     with self.assertRaisesRegex(TypeError, "flat_sequence"):
@@ -165,21 +161,21 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual([rt, rt, rt], nest.flatten(dict_of_values))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testIsSequence(self):
-    self.assertFalse(nest.is_sequence("1234"))
-    self.assertFalse(nest.is_sequence([1, 3, [4, 5]]))
-    self.assertTrue(nest.is_sequence(((7, 8), (5, 6))))
-    self.assertFalse(nest.is_sequence([]))
-    self.assertFalse(nest.is_sequence(set([1, 2])))
+  def testIsNested(self):
+    self.assertFalse(nest.is_nested("1234"))
+    self.assertFalse(nest.is_nested([1, 3, [4, 5]]))
+    self.assertTrue(nest.is_nested(((7, 8), (5, 6))))
+    self.assertFalse(nest.is_nested([]))
+    self.assertFalse(nest.is_nested(set([1, 2])))
     ones = array_ops.ones([2, 3])
-    self.assertFalse(nest.is_sequence(ones))
-    self.assertFalse(nest.is_sequence(math_ops.tanh(ones)))
-    self.assertFalse(nest.is_sequence(np.ones((4, 5))))
-    self.assertTrue(nest.is_sequence({"foo": 1, "bar": 2}))
+    self.assertFalse(nest.is_nested(ones))
+    self.assertFalse(nest.is_nested(math_ops.tanh(ones)))
+    self.assertFalse(nest.is_nested(np.ones((4, 5))))
+    self.assertTrue(nest.is_nested({"foo": 1, "bar": 2}))
     self.assertFalse(
-        nest.is_sequence(sparse_tensor.SparseTensorValue([[0]], [0], [1])))
+        nest.is_nested(sparse_tensor.SparseTensorValue([[0]], [0], [1])))
     self.assertFalse(
-        nest.is_sequence(ragged_factory_ops.constant_value([[[0]], [[1]]])))
+        nest.is_nested(ragged_factory_ops.constant_value([[[0]], [[1]]])))
 
   @combinations.generate(test_base.default_test_combinations())
   def testAssertSameStructure(self):
@@ -308,8 +304,8 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     inp_ab2 = {"a": (1, 1), "b": (2, 2)}
     expected_message = (
         "The two structures don't have the same sequence type. Input structure "
-        "has type <(type|class) 'tuple'>, while shallow structure has type "
-        "<(type|class) 'dict'>.")
+        "has type 'tuple', while shallow structure has type "
+        "'dict'.")
     with self.assertRaisesRegex(TypeError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
@@ -398,7 +394,7 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_tree = "input_tree"
     shallow_tree = ("shallow_tree",)
     expected_message = ("If shallow structure is a sequence, input must also "
-                        "be a sequence. Input has type: <(type|class) 'str'>.")
+                        "be a sequence. Input has type: 'str'.")
     with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
@@ -415,7 +411,7 @@ class NestTest(test_base.DatasetTestBase, parameterized.TestCase):
     input_tree = 0
     shallow_tree = (9,)
     expected_message = ("If shallow structure is a sequence, input must also "
-                        "be a sequence. Input has type: <(type|class) 'int'>.")
+                        "be a sequence. Input has type: 'int'.")
     with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)

@@ -13,11 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Operations for embeddings."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -172,14 +167,14 @@ def _embedding_lookup_and_transform(params,
         # if we already know the full shape statically.
         dim_0_size = tensor_shape.Dimension(
             tensor_shape.dimension_value(params[0].get_shape()[0]))
-        for p in xrange(1, np):
+        for p in range(1, np):
           dim_0_size += tensor_shape.Dimension(
               tensor_shape.dimension_value(params[p].get_shape()[0]))
         if dim_0_size.value:
           num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
         else:
           dim_0_sizes = []
-          for p in xrange(np):
+          for p in range(np):
             param_p_dim = tensor_shape.dimension_value(params[p].get_shape()[0])
             if param_p_dim is not None:
               dim_0_sizes.append(param_p_dim)
@@ -214,7 +209,7 @@ def _embedding_lookup_and_transform(params,
                                                  p_assignments, np)
       # Do np separate lookups, finding embeddings for plist[p] in params[p]
       partitioned_result = []
-      for p in xrange(np):
+      for p in range(np):
         pids = gather_ids[p]
         with ops.device_v2(None):
           with _colocate_with(params[p]):

@@ -17,13 +17,13 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
@@ -31,12 +31,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/session_options.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 #define DEBUG_TYPE "run-tf-graph-optimization"
 
 namespace tensorflow {
-
+namespace {
 // Creates a pass to convert MLIR to Graph, run user-specified Graph
 // Optimization Passes and convert back to MLIR.
 // Constraints: This pass expects that all operations in the MLIR module either
@@ -49,6 +48,8 @@ class GraphOptPass
   }
 
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(GraphOptPass)
+
   explicit GraphOptPass(std::vector<tensorflow::GraphOptimizationPass*> passes)
       : passes_(std::move(passes)) {}
 
@@ -58,6 +59,7 @@ class GraphOptPass
   // The passes to run on the module.
   std::vector<GraphOptimizationPass*> passes_;
 };
+}  // anonymous namespace
 
 void GraphOptPass::runOnOperation() {
   mlir::ModuleOp module_in = getOperation();
@@ -67,7 +69,7 @@ void GraphOptPass::runOnOperation() {
   FunctionLibraryDefinition flib_def(OpRegistry::Global(),
                                      FunctionDefLibrary());
   GraphExportConfig confs;
-  auto graph = absl::make_unique<Graph>(flib_def);
+  auto graph = std::make_unique<Graph>(flib_def);
   Status status = ConvertMlirToGraph(module_in, confs, &graph, &flib_def);
   if (!status.ok()) {
     mlir::emitError(mlir::UnknownLoc::get(&ctx)) << status.error_message();
@@ -105,7 +107,7 @@ void GraphOptPass::runOnOperation() {
         << module_or_status.status().error_message();
     return signalPassFailure();
   }
-  auto module_out = std::move(module_or_status).ValueOrDie();
+  auto module_out = std::move(module_or_status).value();
 
   // We cannot replace the module in a ModulePass. So we simply copy the
   // operation list from module_out to module_in.
@@ -193,4 +195,8 @@ tensorflow::CreateTensorFlowGraphOptimizationPass(
   return std::make_unique<GraphOptByNamePass>(pass_names);
 }
 
-static mlir::PassRegistration<tensorflow::GraphOptByNamePass> pass;
+void tensorflow::RegisterGraphOptimizationPasses() {
+  ::mlir::registerPass([]() -> std::unique_ptr<::mlir::Pass> {
+    return std::make_unique<GraphOptByNamePass>();
+  });
+}

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_INVARIANT_CODE_MOTION_H_
 
+#include "tensorflow/compiler/xla/service/compile_time_cap.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -53,7 +54,7 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   explicit WhileLoopInvariantCodeMotion(
       bool hoist_constants = false, bool hoist_reshapes = false,
       bool hoist_other = true,
-      absl::optional<float> hoist_size_inflation_ratio = absl::nullopt,
+      std::optional<float> hoist_size_inflation_ratio = std::nullopt,
       ShapeSizeFunction shape_size_function = ShapeUtil::ByteSizeOfElements)
       : hoist_constants_(hoist_constants),
         hoist_reshapes_(hoist_reshapes),
@@ -65,17 +66,20 @@ class WhileLoopInvariantCodeMotion : public HloModulePass {
   absl::string_view name() const override {
     return "while-loop-invariant-code-motion";
   }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   bool NotWorthHoistingIndividually(const HloInstruction& instruction);
   StatusOr<bool> TryHoistingInvariantInstructionsFromWhileBody(
-      HloInstruction* while_instr);
+      HloInstruction* while_instr, BoundNonLinearCompilerAnalysis* allowance);
 
   bool hoist_constants_;
   bool hoist_reshapes_;
   bool hoist_other_;
-  absl::optional<float> hoist_size_inflation_ratio_;
+  std::optional<float> hoist_size_inflation_ratio_;
   ShapeSizeFunction shape_size_function_;
 };
 }  // namespace xla

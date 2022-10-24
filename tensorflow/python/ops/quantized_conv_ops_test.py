@@ -14,14 +14,12 @@
 # ==============================================================================
 """Functional tests for quantized convolutional operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
@@ -200,6 +198,71 @@ class Conv2DTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
+  def _testBadInputSize(self,
+                        tin=None,
+                        tfilter=None,
+                        min_input=None,
+                        max_input=None,
+                        min_filter=None,
+                        max_filter=None,
+                        error_regex=""):
+    strides = [1, 1, 1, 1]
+    padding = "SAME"
+    if tin is None:
+      tin = math_ops.cast(
+          constant_op.constant(1, shape=[1, 2, 3, 3]), dtype=dtypes.quint8)
+
+    if tfilter is None:
+      tfilter = math_ops.cast(
+          constant_op.constant(1, shape=[1, 2, 3, 3]), dtype=dtypes.quint8)
+
+    if min_input is None:
+      min_input = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+
+    if max_input is None:
+      max_input = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+
+    if min_filter is None:
+      min_filter = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+
+    if max_filter is None:
+      max_filter = constant_op.constant(0, shape=[], dtype=dtypes.float32)
+
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                error_regex):
+      self.evaluate(
+          nn_ops.quantized_conv2d(
+              tin,
+              tfilter,
+              out_type=dtypes.qint32,
+              strides=strides,
+              padding=padding,
+              min_input=min_input,
+              max_input=max_input,
+              min_filter=min_filter,
+              max_filter=max_filter))
+
+  def testBadInputSizes(self):
+    self._testBadInputSize(
+        tin=math_ops.cast(
+            constant_op.constant(1, shape=[1, 2]), dtype=dtypes.quint8),
+        error_regex="must be rank 4")
+    self._testBadInputSize(
+        tfilter=math_ops.cast(
+            constant_op.constant(1, shape=[1, 2]), dtype=dtypes.quint8),
+        error_regex="must be rank 4")
+    self._testBadInputSize(
+        min_input=constant_op.constant(0, shape=[1], dtype=dtypes.float32),
+        error_regex="must be rank 0")
+    self._testBadInputSize(
+        max_input=constant_op.constant(0, shape=[1], dtype=dtypes.float32),
+        error_regex="must be rank 0")
+    self._testBadInputSize(
+        min_filter=constant_op.constant(0, shape=[1], dtype=dtypes.float32),
+        error_regex="must be rank 0")
+    self._testBadInputSize(
+        max_filter=constant_op.constant(0, shape=[1], dtype=dtypes.float32),
+        error_regex="must be rank 0")
 
 if __name__ == "__main__":
   test.main()

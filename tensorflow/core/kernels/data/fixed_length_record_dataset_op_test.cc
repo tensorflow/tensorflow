@@ -63,12 +63,13 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
                     FixedLengthRecordDatasetOp::kFooterBytes,
                     FixedLengthRecordDatasetOp::kBufferSize,
                     FixedLengthRecordDatasetOp::kCompressionType};
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
-    *attr_vector = {};
-    return Status::OK();
+    attr_vector->clear();
+    attr_vector->emplace_back("metadata", "");
+    return OkStatus();
   }
 
   string dataset_type() const override {
@@ -106,7 +107,7 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
           WriteDataToFile(filenames[i], contents[i].data(), params));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Test case 1: multiple fixed-length record files with ZLIB compression.

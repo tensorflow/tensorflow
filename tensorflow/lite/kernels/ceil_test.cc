@@ -50,7 +50,7 @@ class CeilOpModel : public SingleOpModel {
 TEST(CeilOpTest, SingleDim) {
   CeilOpModel model({2}, TensorType_FLOAT32);
   model.PopulateTensor<float>(model.input(), {8.5, 0.0});
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(), ElementsAreArray({9, 0}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));
 }
@@ -69,7 +69,7 @@ TEST(CeilOpTest, MultiDims) {
                                                  -9.9999,
                                                  -0.5,
                                              });
-  model.Invoke();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutput(),
               ElementsAreArray({1, 9, 1, 10, 1, 0, -8, 0, -9, 0}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 5}));

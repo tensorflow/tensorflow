@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/py_utils.h"
 
+#include <string>
+
 #include "tensorflow/core/data/service/credentials_factory.h"
 
 namespace tensorflow {
@@ -34,6 +36,8 @@ std::string DefaultProtocol() {
 #endif  // PLATFORM_GOOGLE
   return "grpc";
 }
+
+std::string DefaultDataTransferProtocol() { return "grpc"; }
 
 }  // namespace data
 }  // namespace tensorflow

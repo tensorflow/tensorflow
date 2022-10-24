@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace {
 
 TEST(TextLiteralReaderTest, ReadsR3File) {
-  string contents = R"(f32[1,2,3]
+  std::string contents = R"(f32[1,2,3]
 (0,0,0): 42.5
 (0,0,1): 43.5
 (0,0,2): 44.5
@@ -37,12 +37,11 @@ TEST(TextLiteralReaderTest, ReadsR3File) {
 (0,1,2): 47.5
 )";
 
-  string fname = tensorflow::testing::TmpDir() + "/ReadsR3File.data.txt";
+  std::string fname = tsl::testing::TmpDir() + "/ReadsR3File.data.txt";
   EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, contents)
-          .ok());
+      tsl::WriteStringToFile(tsl::Env::Default(), fname, contents).ok());
 
-  Literal literal = TextLiteralReader::ReadPath(fname).ConsumeValueOrDie();
+  Literal literal = TextLiteralReader::ReadPath(fname).value();
   EXPECT_TRUE(
       ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {1, 2, 3}), literal.shape()));
   EXPECT_EQ(42.5, literal.Get<float>({0, 0, 0}));

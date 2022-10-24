@@ -63,8 +63,8 @@ Status CreateDeviceMgr(Env* env, std::unique_ptr<DeviceMgr>* device_mgr) {
   }
   TF_RETURN_IF_ERROR(
       device_factory->CreateDevices(session_options, kTaskSpec, &devices));
-  *device_mgr = absl::make_unique<DynamicDeviceMgr>(std::move(devices));
-  return Status::OK();
+  *device_mgr = std::make_unique<DynamicDeviceMgr>(std::move(devices));
+  return OkStatus();
 }
 
 void DeviceSetFromDeviceMgr(const DeviceMgr& device_mgr,
@@ -111,14 +111,14 @@ Status ConstructDistributedInitializationGraph(absl::string_view job_name,
   TF_RETURN_IF_ERROR(
       ConvertGraphDefToGraph({}, graph->ToGraphDefDebug(), graph_to_run));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status InitializeFromSession(absl::string_view session_target,
                              const Graph* graph_to_run,
                              std::vector<Tensor>* outputs) {
   tensorflow::SessionOptions s_opts;
-  s_opts.target = session_target;
+  s_opts.target = std::string(session_target);
 
   std::unique_ptr<tensorflow::Session> sess(tensorflow::NewSession(s_opts));
 
@@ -129,7 +129,7 @@ Status InitializeFromSession(absl::string_view session_target,
   TF_RETURN_IF_ERROR(
       sess->Run({}, {"InitializeTPUSystemGlobally:0"}, {}, outputs));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -143,7 +143,7 @@ Status InitializeTPUSystemGlobally(absl::string_view job_name,
   absl::MutexLock lock(&global_init_tpu_mutex);
   if (global_tpu_topology != nullptr) {
     *tpu_topology = *global_tpu_topology;
-    return Status::OK();
+    return OkStatus();
   }
 
   std::unique_ptr<Graph> graph_to_run(new Graph(OpRegistry::Global()));
@@ -190,7 +190,7 @@ Status InitializeTPUSystemGlobally(absl::string_view job_name,
   }
 
   *tpu_topology = *global_tpu_topology;
-  return Status::OK();
+  return OkStatus();
 }
 
 // NOTE: Session would have been the obvious first choice to run the graph

@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TAC_MODULE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_TAC_MODULE_H_
 
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/experimental/tac/hardwares/target_hardware.h"
@@ -48,6 +51,10 @@ class TacModule {
     // This will output different alternative subgraphs in mlir format for debug
     // purpose.
     bool debug_mode = false;
+    // Whether to enable inliner passes or not.
+    bool enable_inliner = false;
+    // Whether to legalize ops to TFLite ops before exporting.
+    bool legalize_to_tflite_ops = false;
   };
 
   virtual ~TacModule() {}

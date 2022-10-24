@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 licenses(["notice"])
@@ -44,6 +44,7 @@ py_binary(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
     ],
 )
 
@@ -54,5 +55,6 @@ py_binary(
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "@absl_py//absl:app",
     ],
 )

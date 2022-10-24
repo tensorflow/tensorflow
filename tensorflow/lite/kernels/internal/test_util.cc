@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/test_util.h"
 
+#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <iterator>
+#include <random>
 
 namespace tflite {
 
@@ -103,7 +106,7 @@ float ExponentialRandomPositiveFloat(float percentile, float percentile_val,
   return val;
 }
 
-void FillRandom(std::vector<float>* vec, float min, float max) {
+void FillRandomFloat(std::vector<float>* vec, float min, float max) {
   std::uniform_real_distribution<float> dist(min, max);
   // TODO(b/154540105): use std::ref to avoid copying the random engine.
   auto gen = std::bind(dist, RandomEngine());

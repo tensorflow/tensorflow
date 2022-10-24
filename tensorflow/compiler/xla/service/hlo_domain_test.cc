@@ -13,16 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <string>
+#include <utility>
+
 #include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_isolator.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
+#include "tensorflow/compiler/xla/service/hlo_domain_verifier.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/service/sharding_propagation.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -69,10 +75,10 @@ class HloDomainTest : public HloTestBase {
 // HLO instructions with the same metadata().op_name() values.
 class OpNameMetadata : public DomainMetadata {
  public:
-  explicit OpNameMetadata(string opname) : opname_(std::move(opname)) {}
+  explicit OpNameMetadata(std::string opname) : opname_(std::move(opname)) {}
 
   std::unique_ptr<DomainMetadata> Clone() const override {
-    return absl::make_unique<OpNameMetadata>(opname_);
+    return std::make_unique<OpNameMetadata>(opname_);
   }
 
   absl::string_view Kind() const override { return KindName(); }
@@ -87,14 +93,14 @@ class OpNameMetadata : public DomainMetadata {
     return opname_ == other_ptr->opname_;
   }
 
-  string ToString() const override { return opname_; }
+  std::string ToString() const override { return opname_; }
 
   static absl::string_view KindName() { return "opname"; }
 
-  size_t Hash() const override { return std::hash<string>()(opname_); }
+  size_t Hash() const override { return std::hash<std::string>()(opname_); }
 
  private:
-  string opname_;
+  std::string opname_;
 };
 
 // Creator function for OpNameMetadata domains.
@@ -106,9 +112,9 @@ class OpNameDomainCreator {
       return nullptr;
     }
     std::unique_ptr<DomainMetadata> operand_side_metadata =
-        absl::make_unique<OpNameMetadata>(root->metadata().op_name());
+        std::make_unique<OpNameMetadata>(root->metadata().op_name());
     std::unique_ptr<DomainMetadata> user_side_metadata =
-        absl::make_unique<OpNameMetadata>(instruction->metadata().op_name());
+        std::make_unique<OpNameMetadata>(instruction->metadata().op_name());
     return operand->parent()->AddInstruction(HloInstruction::CreateDomain(
         operand->shape(), operand, std::move(operand_side_metadata),
         std::move(user_side_metadata)));
@@ -118,7 +124,128 @@ class OpNameDomainCreator {
 Status OpNameDomainNormalizer(const DomainMetadata::Domain& domain,
                               const DomainMetadata* metadata) {
   // Nothing to do for the particular use this test make of the OpName domains.
-  return Status::OK();
+  return OkStatus();
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInlining) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%add_block {
+  l = f32[4] parameter(0)
+  r = f32[4] parameter(1)
+  ROOT m = f32[4] add(l, r), sharding={maximal device=1}
+}
+
+ENTRY entry {
+  p0 = (f32[4], f32[4]) parameter(0)
+  a = f32[4] get-tuple-element(p0), index=0
+  b = f32[4] get-tuple-element(p0), index=1
+  c = f32[4] call(f32[4] a, f32[4] b), to_apply=%add_block
+  d = f32[4] subtract(a, b), sharding={maximal device=1}
+  e = f32[4] multiply(c, d), sharding={maximal device=1}
+  ROOT f = (f32[4], f32[4], f32[4]) tuple(c, d, e)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  CallInliner call_inliner(/*single_call_site=*/false,
+                           /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "m.1", "b"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "d", "a"));
+  EXPECT_TRUE(HasDomainEdge(module.get(), "d", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingMetadata::NormalizeShardingDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "m.1", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "d", "a"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "d", "b"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "m.1"));
+  EXPECT_FALSE(HasDomainEdge(module.get(), "e", "d"));
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInliningDomain) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+%fn {
+  arg = f32[4] parameter(0)
+}
+
+ENTRY entry {
+  p = f32[4] parameter(0), sharding={maximal device=0}
+  domain.0 = f32[4] domain(p), domain={kind="sharding", entry={}, exit={maximal device=0}}
+  a = f32[4] call(domain.0), to_apply=fn
+  domain.1 = f32[4] domain(a), domain={kind="sharding", entry={maximal device=0}, exit={}}
+  ROOT b = f32[4] copy(domain.1), sharding={maximal device=0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  LOG(INFO) << "Original module:\n" << module->ToString();
+
+  CallInliner call_inliner(/*single_call_site=*/false,
+                           /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool inlined, call_inliner.Run(module.get()));
+  EXPECT_TRUE(inlined);
+
+  // Instruction "a" has been inlined and no longer exists.
+  EXPECT_EQ(nullptr, FindInstruction(module.get(), "a"));
+  // Inlined instruction "arg" which is a domain instruction, which should have
+  // been removed since its user and operand share the same sharding.
+  EXPECT_EQ(nullptr, FindInstruction(module.get(), "arg"));
+  // Verify there's no domain between "b" and "p" which share the same sharding.
+  EXPECT_FALSE(HasDomainEdge(module.get(), "b", "p"));
+}
+
+TEST_F(HloDomainTest, CheckDomainWithCallInliningDomainWithDomainsInFunc) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule inline_module
+
+  add_func {
+    arg.0 = f32[2] parameter(0), sharding={devices=[2]0,1}
+    domain.arg.0 = f32[2] domain(arg.0), domain={kind="sharding", entry={}, exit={devices=[2]0,1}}
+    arg.1 = f32[2] parameter(1), sharding={replicated}
+    domain.arg.1 = f32[2] domain(arg.1), domain={kind="sharding", entry={}, exit={replicated}}
+    add = f32[2] add(domain.arg.0, domain.arg.1), sharding={devices=[2]0,1}
+    ROOT domain.add = f32[2] domain(add), domain={kind="sharding", entry={devices=[2]0,1}, exit={}}
+  }
+
+  ENTRY inline {
+    arg.0 = f32[2] parameter(0), sharding={devices=[2]0,1}
+    domain.arg.0 = f32[2] domain(arg.0), domain={kind="sharding", entry={}, exit={devices=[2]0,1}}
+    arg.1 = f32[2] parameter(1), sharding={devices=[2]0,1}
+    domain.arg.1 = f32[2] domain(arg.1), domain={kind="sharding", entry={}, exit={replicated}}
+    result = f32[2] call(domain.arg.0, domain.arg.1), to_apply=add_func
+    domain.result = f32[2] domain(result), domain={kind="sharding", entry={devices=[2]0,1}, exit={}}
+    ROOT tuple = (f32[2]) tuple(result)
+  })"));
+
+  CallInliner call_inliner(/*single_call_site=*/false, /*update_domain=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  // Verify that inlining produces valid domains.
+  HloDomainVerifier verifier({"sharding"});
+  TF_EXPECT_OK(verifier.Run(module.get()).status());
 }
 
 TEST_F(HloDomainTest, CheckDomainLinks) {
@@ -196,10 +323,13 @@ ENTRY entry {
   p0 = (f32[4]) parameter(0)
   a = f32[4] get-tuple-element(p0), index=0
   token0 = token[] after-all()
-  b = (f32[4], u32[], token[]) send(a, token0), channel_id=1, sharding={maximal device=0}
+  b = (f32[4], u32[], token[]) send(a, token0), channel_id=1,
+             sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
   c = token[] send-done(b), channel_id=1, sharding={maximal device=0}
-  d = (f32[4], u32[], token[]) recv(token0), channel_id=2, sharding={maximal device=0}
-  e = (f32[4], token[]) recv-done(d), channel_id=2, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) recv(token0), channel_id=2,
+             sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
+  e = (f32[4], token[]) recv-done(d), channel_id=2,
+             sharding={{maximal device=0},{maximal device=0}}
   e_element = f32[4] get-tuple-element(e), index=0, sharding={maximal device=0}
   f = f32[4] add(a, e_element)
   g = f32[4] subtract(a, e_element)
@@ -236,11 +366,14 @@ HloModule Module
 
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=-1}
-  a = (f32[4], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=-1}
-  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=-1}
+  a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
+        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
+  b = (f32[4], token[]) recv-done(a), channel_id=1,
+        sharding={{maximal device=-1},{maximal device=-1}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=-1}
   c = f32[4] add(b_element, b_element), sharding={maximal device=-1}
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, sharding={maximal device=-1}
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, 
+        sharding={{maximal device=-1},{maximal device=-1},{maximal device=-1}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=-1}
 }
 )";
@@ -260,11 +393,14 @@ HloModule Module
 
 ENTRY entry {
   token0 = token[] after-all(), sharding={maximal device=0}
-  a = (f32[4], u32[], token[]) recv(token0), channel_id=1, sharding={maximal device=0}
-  b = (f32[4], token[]) recv-done(a), channel_id=1, sharding={maximal device=0}
+  a = (f32[4], u32[], token[]) recv(token0), channel_id=1,
+       sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
+  b = (f32[4], token[]) recv-done(a), channel_id=1,
+       sharding={{maximal device=0},{maximal device=0}}
   b_element = f32[4] get-tuple-element(b), index=0, sharding={maximal device=0}
   c = f32[4] add(b_element, b_element)
-  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2, sharding={maximal device=0}
+  d = (f32[4], u32[], token[]) send(c, token0), channel_id=2,
+        sharding={{maximal device=0},{maximal device=0},{maximal device=0}}
   ROOT e = token[] send-done(d), channel_id=2, sharding={maximal device=0}
 }
 )";
@@ -440,7 +576,7 @@ HloModule Module
 ENTRY entry {
   %param = f32[1] parameter(0), sharding={maximal device=0}
   %tuple = (f32[1]) tuple(%param),
-    sharding={maximal device=1}
+    sharding={{maximal device=1}}
   ROOT %gte = f32[1] get-tuple-element(%tuple), index=0,
     sharding={maximal device=1}
 })";
@@ -477,8 +613,8 @@ ENTRY entry {
 TEST_F(HloDomainTest, DumpParseNullSharding) {
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {});
-  auto sharding_md_0 = absl::make_unique<ShardingMetadata>(nullptr);
-  auto sharding_md_1 = absl::make_unique<ShardingMetadata>(nullptr);
+  auto sharding_md_0 = std::make_unique<ShardingMetadata>(nullptr);
+  auto sharding_md_1 = std::make_unique<ShardingMetadata>(nullptr);
   HloInstruction* param =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p"));
   HloInstruction* domain = builder.AddInstruction(HloInstruction::CreateDomain(
@@ -692,6 +828,38 @@ ENTRY entry {
 
   EXPECT_TRUE(tuple1->has_sharding());
   EXPECT_EQ(tuple0->sharding(), tuple1->sharding());
+}
+
+// Test HloDomainRemover with ShardingPropagation::NormalizeDomain to generate
+// correct shardings after removing doman instruction after tuple instructions
+// with the same sharding for every tuple element.
+TEST_F(HloDomainTest, DomainTupleSameSharding) {
+  const char* const hlo_string = R"(
+HloModule Module
+
+ENTRY entry {
+  p0 = u32[2]{0} parameter(0), sharding={devices=[2]0,1}
+  p1 = u32[2]{0} parameter(1), sharding={devices=[2]0,1}
+  tuple.0 = (u32[2]{0}, u32[2]{0}) tuple(p0, p1), sharding={{devices=[2]0,1}, {devices=[2]0,1}}
+  get-tuple-element.0 = u32[2]{0} get-tuple-element(tuple.0), index=0
+  get-tuple-element.1 = u32[2]{0} get-tuple-element(tuple.0), index=1
+  ROOT add = u32[2]{0} add(get-tuple-element.0, get-tuple-element.1)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloDomainIsolator isolator([]() { return ShardingDomainCreator{}; });
+  TF_ASSERT_OK_AND_ASSIGN(bool isolator_changed, isolator.Run(module.get()));
+  EXPECT_TRUE(isolator_changed);
+
+  HloDomainRemover remover(ShardingMetadata::KindName(),
+                           ShardingPropagation::NormalizeDomain);
+  TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
+  EXPECT_TRUE(remover_changed);
+  auto tuple0 = FindInstruction(module.get(), "tuple.0");
+  EXPECT_TRUE(tuple0->has_sharding());
+  EXPECT_TRUE(tuple0->sharding().IsTuple());
+  EXPECT_EQ(tuple0->sharding().tuple_elements().size(), 2);
 }
 
 }  // namespace

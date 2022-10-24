@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Ftrl-proximal for TensorFlow."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

@@ -123,10 +123,6 @@ NOTE: Functions prefixed with "_" indicate experimental or private parts of
 the API subject to change, and should not be relied upon!
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import collections
 import math
@@ -158,10 +154,10 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -3163,7 +3159,8 @@ def _raise_shared_embedding_column_error():
                    '`DenseFeatures` or `LinearModel` instead.')
 
 
-class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
+class SharedEmbeddingColumnCreator(autotrackable.AutoTrackable):
+  """Class that creates a `SharedEmbeddingColumn`."""
 
   def __init__(self,
                dimension,
@@ -3355,7 +3352,7 @@ class SharedEmbeddingColumn(
 def _check_shape(shape, key):
   """Returns shape if it's valid, raises error otherwise."""
   assert shape is not None
-  if not nest.is_sequence(shape):
+  if not nest.is_nested(shape):
     shape = [shape]
   shape = tuple(shape)
   for dimension in shape:

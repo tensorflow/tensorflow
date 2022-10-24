@@ -20,10 +20,6 @@ The neural network in this demo is larged based on the tutorial at:
 But modifications are made so that problematic numerical values (infs and nans)
 appear in nodes of the graph during training.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 import tempfile
@@ -214,9 +210,10 @@ def main(_):
         "The --debug and --tensorboard_debug_address flags are mutually "
         "exclusive.")
   if FLAGS.debug:
-    config_file_path = (
-        tempfile.mktemp(".tfdbg_config")
-        if FLAGS.use_random_config_path else None)
+    if FLAGS.use_random_config_path:
+      _, config_file_path = tempfile.mkstemp(".tfdbg_config")
+    else:
+      config_file_path = None
     sess = tf_debug.LocalCLIDebugWrapperSession(
         sess, ui_type=FLAGS.ui_type, config_file_path=config_file_path)
   elif FLAGS.tensorboard_debug_address:

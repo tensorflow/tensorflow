@@ -16,6 +16,8 @@ limitations under the License.
 
 #include <fstream>
 #include <map>
+#include <string>
+#include <unordered_map>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -34,16 +36,16 @@ TEST(InputGeneratorTest, LoadModel) {
 
 TEST(InputGeneratorTest, ReadWriteSimpleFile) {
   InputGenerator input_generator;
-  ASSERT_EQ(input_generator.ReadInputsFromFile(
-                "tensorflow/lite/testdata/test_input.csv"),
-            kTfLiteOk);
+  ASSERT_EQ(
+      input_generator.ReadInputsFromFile("tensorflow/lite/testing/"
+                                         "kernel_test/testdata/test_input.csv"),
+      kTfLiteOk);
 
-  std::vector<string> inputs;
   std::string content = "1";
   for (int i = 0; i < 1 * 8 * 8 * 3 - 1; i++) {
     content.append(",1");
   }
-  inputs.push_back(content);
+  std::vector<std::pair<string, string>> inputs = {{"a", content}};
   ASSERT_EQ(input_generator.GetInputs(), inputs);
 
   auto output_filename = ::testing::TempDir() + "/out.csv";
@@ -52,7 +54,9 @@ TEST(InputGeneratorTest, ReadWriteSimpleFile) {
   std::ifstream in(output_filename);
   std::string out;
   std::getline(in, out, '\n');
-  ASSERT_EQ(out, content);
+  std::string expected_out = "a:";
+  expected_out.append(content);
+  ASSERT_EQ(out, expected_out);
 }
 
 TEST(InputGeneratorTest, GenerateUniformInput) {

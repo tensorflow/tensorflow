@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <set>
 #include <string>
 #include <tuple>
@@ -106,7 +107,7 @@ TEST_F(HloShardingTest, ProtoRoundTrip) {
   *replicated->add_metadata() = GetMetadata("c");
   auto* manual = proto.add_tuple_shardings();
   manual->set_type(OpSharding::MANUAL);
-  HloSharding sharding = HloSharding::FromProto(proto).ConsumeValueOrDie();
+  HloSharding sharding = HloSharding::FromProto(proto).value();
   EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
 }
 
@@ -171,8 +172,7 @@ TEST_F(HloShardingTest, NestedTuple) {
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
   *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
   *proto.add_tuple_shardings() = tiled_sharding.ToProto();
-  HloSharding tuple_sharding =
-      HloSharding::FromProto(proto).ConsumeValueOrDie();
+  HloSharding tuple_sharding = HloSharding::FromProto(proto).value();
 
   ShapeTree<HloSharding> shape_tree =
       tuple_sharding.GetAsShapeTree(nested_tuple_shape);
@@ -189,9 +189,16 @@ TEST_F(HloShardingTest, NestedTuple) {
                                            /*num_devices=*/5));
 }
 
+TEST_F(HloShardingTest, NormalizeTrivialSubgroupToManual) {
+  HloSharding sharding =
+      HloSharding::Subgroup(MakeArray({1, 2, 1}, {0, 1}),
+                            {OpSharding::MANUAL, OpSharding::REPLICATED});
+  EXPECT_TRUE(sharding.IsManual());
+}
+
 TEST_F(HloShardingTest, Hash) {
   auto hash_compare_equal = [](const HloSharding& a, const HloSharding& b) {
-    if (a.Hash() != b.Hash()) {
+    if (absl::HashOf(a) != absl::HashOf(b)) {
       return false;
     }
     return a == b;

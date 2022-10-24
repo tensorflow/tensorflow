@@ -33,6 +33,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -58,21 +59,20 @@ class DelegateProviders {
  public:
   DelegateProviders() : delegate_list_util_(&params_) {
     delegate_list_util_.AddAllDelegateParams();
+    delegate_list_util_.AppendCmdlineFlags(flags_);
+
+    // Remove the "help" flag to avoid printing "--help=false"
+    params_.RemoveParam("help");
+    delegate_list_util_.RemoveCmdlineFlag(flags_, "help");
   }
 
   // Initialize delegate-related parameters from parsing command line arguments,
   // and remove the matching arguments from (*argc, argv). Returns true if all
   // recognized arg values are parsed correctly.
   bool InitFromCmdlineArgs(int* argc, const char** argv) {
-    std::vector<tflite::Flag> flags;
-    delegate_list_util_.AppendCmdlineFlags(&flags);
-
-    const bool parse_result = Flags::Parse(argc, argv, flags);
-    if (!parse_result) {
-      std::string usage = Flags::Usage(argv[0], flags);
-      LOG(ERROR) << usage;
-    }
-    return parse_result;
+    // Note if '--help' is in argv, the Flags::Parse return false,
+    // see the return expression in Flags::Parse.
+    return Flags::Parse(argc, argv, flags_);
   }
 
   // According to passed-in settings `s`, this function sets corresponding
@@ -85,7 +85,7 @@ class DelegateProviders {
     // setting 'gl_backend' to true means using the GPU delegate.
     if (s.gl_backend) {
       if (!params_.HasParam("use_gpu")) {
-        LOG(WARN) << "GPU deleate execution provider isn't linked or GPU "
+        LOG(WARN) << "GPU delegate execution provider isn't linked or GPU "
                      "delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_gpu", true);
@@ -101,7 +101,7 @@ class DelegateProviders {
     // Parse settings related to NNAPI delegate.
     if (s.accel) {
       if (!params_.HasParam("use_nnapi")) {
-        LOG(WARN) << "NNAPI deleate execution provider isn't linked or NNAPI "
+        LOG(WARN) << "NNAPI delegate execution provider isn't linked or NNAPI "
                      "delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_nnapi", true);
@@ -112,7 +112,7 @@ class DelegateProviders {
     // Parse settings related to Hexagon delegate.
     if (s.hexagon_delegate) {
       if (!params_.HasParam("use_hexagon")) {
-        LOG(WARN) << "Hexagon deleate execution provider isn't linked or "
+        LOG(WARN) << "Hexagon delegate execution provider isn't linked or "
                      "Hexagon delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_hexagon", true);
@@ -123,11 +123,11 @@ class DelegateProviders {
     // Parse settings related to XNNPACK delegate.
     if (s.xnnpack_delegate) {
       if (!params_.HasParam("use_xnnpack")) {
-        LOG(WARN) << "XNNPACK deleate execution provider isn't linked or "
+        LOG(WARN) << "XNNPACK delegate execution provider isn't linked or "
                      "XNNPACK delegate isn't supported on the platform!";
       } else {
         params_.Set<bool>("use_xnnpack", true);
-        params_.Set<bool>("num_threads", s.number_of_threads);
+        params_.Set<int32_t>("num_threads", s.number_of_threads);
       }
     }
   }
@@ -139,6 +139,10 @@ class DelegateProviders {
     return delegate_list_util_.CreateAllRankedDelegates();
   }
 
+  std::string GetHelpMessage(const std::string& cmdline) const {
+    return Flags::Usage(cmdline, flags_);
+  }
+
  private:
   // Contain delegate-related parameters that are initialized from command-line
   // flags.
@@ -146,6 +150,9 @@ class DelegateProviders {
 
   // A helper to create TfLite delegates.
   ProvidedDelegateList delegate_list_util_;
+
+  // Contains valid flags
+  std::vector<tflite::Flag> flags_;
 };
 
 // Takes a file name, and loads a list of labels from it, one per line, and
@@ -180,11 +187,11 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e,
   //      5.352, Node   5, OpCode   4, DEPTHWISE_CONV_2D
 
   LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
-            << (e->end_timestamp_us - e->begin_timestamp_us) / 1000.0
-            << ", Subgraph " << std::setw(3) << std::setprecision(3)
-            << subgraph_index << ", Node " << std::setw(3)
-            << std::setprecision(3) << op_index << ", OpCode " << std::setw(3)
-            << std::setprecision(3) << registration.builtin_code << ", "
+            << (e->elapsed_time) / 1000.0 << ", Subgraph " << std::setw(3)
+            << std::setprecision(3) << subgraph_index << ", Node "
+            << std::setw(3) << std::setprecision(3) << op_index << ", OpCode "
+            << std::setw(3) << std::setprecision(3) << registration.builtin_code
+            << ", "
             << EnumNameBuiltinOperator(
                    static_cast<BuiltinOperator>(registration.builtin_code));
 }
@@ -304,17 +311,15 @@ void RunInference(Settings* settings,
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-  auto profiler = absl::make_unique<profiling::Profiler>(
+  auto profiler = std::make_unique<profiling::Profiler>(
       settings->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
 
   if (settings->profiling) profiler->StartProfiling();
-  if (settings->loop_count > 1) {
-    for (int i = 0; i < settings->number_of_warmup_runs; i++) {
-      if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(ERROR) << "Failed to invoke tflite!";
-        exit(-1);
-      }
+  for (int i = 0; i < settings->number_of_warmup_runs; i++) {
+    if (interpreter->Invoke() != kTfLiteOk) {
+      LOG(ERROR) << "Failed to invoke tflite!";
+      exit(-1);
     }
   }
 
@@ -390,27 +395,33 @@ void RunInference(Settings* settings,
     const int index = result.second;
     LOG(INFO) << confidence << ": " << index << " " << labels[index];
   }
+
+  // Destory the interpreter earlier than delegates objects.
+  interpreter.reset();
 }
 
-void display_usage() {
+void display_usage(const DelegateProviders& delegate_providers) {
   LOG(INFO)
-      << "label_image\n"
-      << "--accelerated, -a: [0|1], use Android NNAPI or not\n"
-      << "--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or not\n"
-      << "--count, -c: loop interpreter->Invoke() for certain times\n"
-      << "--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
-      << "--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android\n"
-      << "--input_mean, -b: input mean\n"
-      << "--input_std, -s: input standard deviation\n"
-      << "--image, -i: image_name.bmp\n"
-      << "--labels, -l: labels for the model\n"
-      << "--tflite_model, -m: model_name.tflite\n"
-      << "--profiling, -p: [0|1], profiling or not\n"
-      << "--num_results, -r: number of results to show\n"
-      << "--threads, -t: number of threads\n"
-      << "--verbose, -v: [0|1] print more information\n"
-      << "--warmup_runs, -w: number of warmup runs\n"
-      << "--xnnpack_delegate, -x [0:1]: xnnpack delegate\n";
+      << "\n"
+      << delegate_providers.GetHelpMessage("label_image")
+      << "\t--accelerated, -a: [0|1] use Android NNAPI or not\n"
+      << "\t--allow_fp16, -f: [0|1], allow running fp32 models with fp16 or "
+         "not\n"
+      << "\t--count, -c: loop interpreter->Invoke() for certain times\n"
+      << "\t--gl_backend, -g: [0|1]: use GL GPU Delegate on Android\n"
+      << "\t--hexagon_delegate, -j: [0|1]: use Hexagon Delegate on Android\n"
+      << "\t--input_mean, -b: input mean\n"
+      << "\t--input_std, -s: input standard deviation\n"
+      << "\t--image, -i: image_name.bmp\n"
+      << "\t--labels, -l: labels for the model\n"
+      << "\t--tflite_model, -m: model_name.tflite\n"
+      << "\t--profiling, -p: [0|1], profiling or not\n"
+      << "\t--num_results, -r: number of results to show\n"
+      << "\t--threads, -t: number of threads\n"
+      << "\t--verbose, -v: [0|1] print more information\n"
+      << "\t--warmup_runs, -w: number of warmup runs\n"
+      << "\t--xnnpack_delegate, -x [0:1]: xnnpack delegate\n"
+      << "\t--help, -h: Print this help message\n";
 }
 
 int Main(int argc, char** argv) {
@@ -418,6 +429,7 @@ int Main(int argc, char** argv) {
   bool parse_result = delegate_providers.InitFromCmdlineArgs(
       &argc, const_cast<const char**>(argv));
   if (!parse_result) {
+    display_usage(delegate_providers);
     return EXIT_FAILURE;
   }
 
@@ -443,14 +455,14 @@ int Main(int argc, char** argv) {
         {"gl_backend", required_argument, nullptr, 'g'},
         {"hexagon_delegate", required_argument, nullptr, 'j'},
         {"xnnpack_delegate", required_argument, nullptr, 'x'},
+        {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
-    c = getopt_long(argc, argv,
-                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:", long_options,
-                    &option_index);
+    c = getopt_long(argc, argv, "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:h",
+                    long_options, &option_index);
 
     /* Detect the end of the options. */
     if (c == -1) break;
@@ -520,7 +532,7 @@ int Main(int argc, char** argv) {
       case 'h':
       case '?':
         /* getopt_long already printed an error message. */
-        display_usage();
+        display_usage(delegate_providers);
         exit(-1);
       default:
         exit(-1);

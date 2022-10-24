@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for metrics collecting in coordinator."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import time
 from tensorflow.python.distribute import multi_worker_test_base

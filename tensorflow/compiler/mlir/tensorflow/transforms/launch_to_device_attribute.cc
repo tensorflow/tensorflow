@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -22,16 +23,19 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
 namespace {
 constexpr char kDeviceAttr[] = "device";
 
+#define GEN_PASS_DEF_LAUNCHTODEVICEATTRIBUTEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
+
 struct LaunchToDeviceAttributePass
-    : public LaunchToDeviceAttributePassBase<LaunchToDeviceAttributePass> {
-  void runOnFunction() override;
+    : public impl::LaunchToDeviceAttributePassBase<
+          LaunchToDeviceAttributePass> {
+  void runOnOperation() override;
 };
 
 // Assign all ops in region with specified device from launch.
@@ -43,20 +47,20 @@ LogicalResult AssignDevicesInRegion(const Dialect* tf_dialect,
 
     auto device_attr = op->getAttr(kDeviceAttr);
     if (!device_attr) {
-      op->setAttr(kDeviceAttr, launch.deviceAttr());
+      op->setAttr(kDeviceAttr, launch.getDeviceAttr());
       return WalkResult::advance();
     }
 
     if (auto device_str_attr = device_attr.dyn_cast<StringAttr>()) {
       if (device_str_attr.getValue().empty()) {
-        op->setAttr(kDeviceAttr, launch.deviceAttr());
+        op->setAttr(kDeviceAttr, launch.getDeviceAttr());
         return WalkResult::advance();
-      } else if (device_str_attr.getValue() != launch.device()) {
+      } else if (device_str_attr.getValue() != launch.getDevice()) {
         return launch.emitOpError()
                << "inner op has conflicting 'device' attribute, "
                   "got '"
                << device_str_attr.getValue() << "' but expected '"
-               << launch.device() << "'";
+               << launch.getDevice() << "'";
       }
     } else {
       return launch.emitOpError()
@@ -75,7 +79,7 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   launch.replaceAllUsesWith(launch.GetBody().getTerminator()->getOperands());
 
   // For all inner ops, assign the launch device as a `device` attribute.
-  if (failed(AssignDevicesInRegion(tf_dialect, launch, launch.body())))
+  if (failed(AssignDevicesInRegion(tf_dialect, launch, launch.getBody())))
     return failure();
 
   // Move all inner ops of the launch to the block containing the launch.
@@ -90,7 +94,7 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
   return success();
 }
 
-void LaunchToDeviceAttributePass::runOnFunction() {
+void LaunchToDeviceAttributePass::runOnOperation() {
   const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";
@@ -109,7 +113,8 @@ void LaunchToDeviceAttributePass::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

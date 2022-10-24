@@ -31,24 +31,26 @@ class GpuInstructionFusion : public InstructionFusion {
 
   static bool IsExpensive(const HloInstruction& instruction);
 
-  bool ShouldFuse(HloInstruction* consumer, int64_t operand_index) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
+    fusion_node_evaluations_.clear();
+    return InstructionFusion::Run(module, execution_threads);
+  }
 
-  bool ShouldFuseIntoMultiOutput(HloInstruction* consumer,
-                                 int64_t operand_index) override;
+ protected:
+  FusionDecision ShouldFuse(HloInstruction* consumer,
+                            int64_t operand_index) override;
 
   HloInstruction::FusionKind ChooseKind(
       const HloInstruction* producer, const HloInstruction* consumer) override;
 
-  StatusOr<bool> Run(HloModule* module) override {
-    fusion_node_evaluations_.clear();
-    return InstructionFusion::Run(module);
-  }
-
  private:
   // This method is called by ShouldFuse() to do all the computationally
   // inexpensive checks whether we should fuse the operand into 'consumer'.
-  bool ShouldFuseInexpensiveChecks(HloInstruction* consumer,
-                                   int64_t operand_index);
+  FusionDecision ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                             int64_t operand_index);
 
   HloInstruction* FuseInstruction(HloInstruction* fusion_instruction,
                                   HloInstruction* producer) override;

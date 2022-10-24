@@ -17,8 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BFLOAT16_PROPAGATION_H_
 
 #include <memory>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -28,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -70,7 +67,10 @@ class BFloat16Propagation : public HloModulePass {
 
   // Runs the pass on the given module. Returns whether the module was changed
   // (precision reductions were added).
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Returns whether we should avoid changing the precision of inst regardless
   // of the producers and users.
@@ -135,7 +135,9 @@ class BFloat16Propagation : public HloModulePass {
   // Adjusts the output shapes of HloInstructions such that if two
   // HloInstructions have aliasing buffers in their outputs, they must have the
   // same precision.
-  void ResolveInconsistencyOfAliasingBuffers(HloModule* module);
+  void ResolveInconsistencyOfAliasingBuffers(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Resolves inconsistency of aliasing buffers for the given computation, and
   // recursively runs on a while instruction's condition and body until a fixed
@@ -157,15 +159,21 @@ class BFloat16Propagation : public HloModulePass {
 
   // Resolves inconsistencies introduced by this pass for fusions with
   // tuple-type output.
-  Status ResolveInconsistentFusions(HloModule* module);
+  Status ResolveInconsistentFusions(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Converts the literals in kConstant HLOs which have their types changed to
   // BF16 by this pass.
-  Status ResolveConvertedConstants(HloModule* module);
+  Status ResolveConvertedConstants(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // Skips no-op conversions (same source and target shapes) that can be
   // produced this pass, i.e., replaces them in their uses with their operands.
-  Status SkipNoopConversions(HloModule* module);
+  Status SkipNoopConversions(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   // ***************************
   // Functions called and state used by two or more passes.

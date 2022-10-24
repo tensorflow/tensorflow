@@ -17,10 +17,6 @@
 A separate file from forwardprop.py so that functions can use these utilities.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import contextlib
 

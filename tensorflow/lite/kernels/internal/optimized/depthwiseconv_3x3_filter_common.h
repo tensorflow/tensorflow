@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_3X3_FILTER_COMMON_H_
 
+#include <algorithm>
+
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -129,16 +131,14 @@ inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
                                      int8x16_t rhs, const int lane) {
   switch (lane) {
     case 0:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 0);
+      return vdotq_lane_s32(acc, lhs, vget_low_s8(rhs), 0);
     case 1:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 1);
+      return vdotq_lane_s32(acc, lhs, vget_low_s8(rhs), 1);
     case 2:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            0);
+      return vdotq_lane_s32(acc, lhs, vget_high_s8(rhs), 0);
     case 3:
     default:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            1);
+      return vdotq_lane_s32(acc, lhs, vget_high_s8(rhs), 1);
   }
 }
 

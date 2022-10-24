@@ -14,15 +14,11 @@
 # ========================================================================
 """Utilities to handle tensor tracer parameters."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import os
 import os.path
 import re
-
+from absl import flags
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -35,6 +31,7 @@ TRACE_MODE_NAN_INF = 'nan-inf'
 TRACE_MODE_NORM = 'norm'
 TRACE_MODE_MAX_ABS = 'max-abs'
 TRACE_MODE_SUMMARY = 'summary'
+TRACE_MODE_HISTORY = 'history'
 # summary mode to collects a finite set of signatures for each traced tensor,
 # (such as norm, max, min, mean) and dumps it using tb summaries.
 
@@ -73,13 +70,21 @@ FLAG_NAME_INSPECT_TRACE = 'inspect_trace'
 FLAG_NAME_FINGERPRINT_DIR = 'use_fingerprint_subdirectory'
 FLAG_FLUSH_SUMMARY = 'flush_summaries'
 
-# TODO(ckluk): This summary mode is only meaningful in TTv2. We should move
-#              this over to tensor_tracer_v2_flags.py.
-# Flag used in v2 only.
-FLAG_SUMMARY_MODE_TYPE = 'summary_mode'
-UI_MODE = 'ui'
-TEXT_MODE = 'text'
-SAFE_MODE = 'safe'
+
+VALID_FLAG_NAMES = [
+    FLAG_NAME_ENABLE, FLAG_NAME_TRACE_MODE,
+    FLAG_NAME_TRACE_SCALAR_OPS,
+    FLAG_NAME_SUBMODE, FLAG_NAME_EXCLUDED_OPNAMES,
+    FLAG_NAME_EXCLUDED_OPTYPES, FLAG_NAME_INCLUDED_OPNAMES,
+    FLAG_NAME_INCLUDED_OPTYPES, FLAG_NAME_TRACE_DIR,
+    FLAG_NAME_REPORT_FILE,
+    FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
+    FLAG_NAME_OP_RANGE,
+    FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
+    FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
+    FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
+    FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY,
+]
 
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
@@ -91,6 +96,7 @@ _TT_NORM = 'norm'
 _TT_MAX = 'max'
 _TT_MAX_ABS = 'max-abs'
 _TT_MIN = 'min'
+_TT_SPARSITY = 'sparsity'
 _TT_MEAN = 'mean'
 _TT_VAR = 'var'
 _TT_SIZE = 'size'
@@ -99,13 +105,29 @@ TT_SUMMARY_NORM = '%s_%s' % (_TT_PREFIX, _TT_NORM)
 TT_SUMMARY_MAX = '%s_%s' % (_TT_PREFIX, _TT_MAX)
 TT_SUMMARY_MAX_ABS = '%s_%s' % (_TT_PREFIX, _TT_MAX_ABS)
 TT_SUMMARY_MIN = '%s_%s' % (_TT_PREFIX, _TT_MIN)
+TT_SUMMARY_SPARSITY = '%s_%s' % (_TT_PREFIX, _TT_SPARSITY)
 TT_SUMMARY_MEAN = '%s_%s' % (_TT_PREFIX, _TT_MEAN)
 TT_SUMMARY_VAR = '%s_%s' % (_TT_PREFIX, _TT_VAR)
 TT_SUMMARY_SIZE = '%s_%s' % (_TT_PREFIX, _TT_SIZE)
 
 TT_SUMMARY_SIGNATURES = (TT_SUMMARY_NORM, TT_SUMMARY_MAX, TT_SUMMARY_MIN,
-                         TT_SUMMARY_MEAN, TT_SUMMARY_VAR, TT_SUMMARY_SIZE,
-                         TT_SUMMARY_MAX_ABS)
+                         TT_SUMMARY_SPARSITY, TT_SUMMARY_MEAN, TT_SUMMARY_VAR,
+                         TT_SUMMARY_SIZE, TT_SUMMARY_MAX_ABS)
+
+FLAGS = flags.FLAGS
+
+DELTA_THRESHOLD = flags.DEFINE_float(
+    'delta_threshold',
+    default=0.5,
+    help=('Log if history based diff crosses this threshold.'))
+TT_CHECK_FILTER = flags.DEFINE_bool(
+    'tt_check_filter',
+    default=False,
+    help='Terminate early to check op name filtering.')
+TT_SINGLE_CORE_SUMMARIES = flags.DEFINE_bool(
+    'tt_single_core_summaries',
+    default=False,
+    help='Report single core metric and avoid aggregation.')
 
 
 class TTParameters(object):
@@ -135,6 +157,7 @@ class TTParameters(object):
     self.trace_scalar_ops = self.is_flag_on(FLAG_NAME_TRACE_SCALAR_OPS)
     self.use_compact_trace = self.trace_mode in (TRACE_MODE_NAN_INF,
                                                  TRACE_MODE_NORM,
+                                                 TRACE_MODE_HISTORY,
                                                  TRACE_MODE_MAX_ABS,
                                                  TRACE_MODE_SUMMARY)
     self.use_temp_cache_var = self.is_flag_on(FLAG_NAME_TEMP_CACHE_VAR)
@@ -147,10 +170,15 @@ class TTParameters(object):
                                                 _TT_DEFAULT_TRACE_LEVEL)
     self.summary_signatures = self._get_summary_signatures()
     self.collect_summary_per_core = self.is_flag_on(FLAG_NAME_SUMMARY_PER_CORE)
+    # TODO(b/199284834): Will be resolved with referenced bug.
+    if self.collect_summary_per_core:
+      logging.warning('Aggregate signatures are approximate for mean, variance'
+                      ' and sparsity.')
     self.flush_summaries_with_outside_compile = self.is_flag_on(
         FLAG_FLUSH_SUMMARY)
-    self.summary_mode = self._get_summary_mode()
-    self._check_flag_errors()
+    # Do not produce errors or warnings if Tensor Tracer is not enabled.
+    if self.is_enabled():
+      self._check_flag_errors()
 
   def _check_flag_errors(self):
     if self.trace_mode in (TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY):
@@ -203,7 +231,8 @@ class TTParameters(object):
     valid_trace_modes = [
         TRACE_MODE_NAN_INF, TRACE_MODE_PART_TENSOR, TRACE_MODE_FULL_TENSOR,
         TRACE_MODE_NORM, TRACE_MODE_MAX_ABS,
-        TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY
+        TRACE_MODE_SUMMARY, TRACE_MODE_FULL_TENSOR_SUMMARY,
+        TRACE_MODE_HISTORY
     ]
     if trace_mode not in valid_trace_modes:
       raise ValueError('Invalid trace mode "%s" given to the Tensor_Tracer.'
@@ -230,11 +259,11 @@ class TTParameters(object):
     return submode
 
   @staticmethod
-  def match_next_flag(flags, pos):
+  def match_next_flag(tt_flags, pos):
     """Returns the match for the next TensorTracer flag.
 
     Args:
-       flags: a string that contains the flags.
+       tt_flags: a string that contains the flags.
        pos: where in flags to start the search.
 
     Returns:
@@ -243,16 +272,16 @@ class TTParameters(object):
        has a value.
     """
 
-    match = _FLAG_DOUBLE_QUOTE_PAT.match(flags, pos)
+    match = _FLAG_DOUBLE_QUOTE_PAT.match(tt_flags, pos)
     if match:
       return match, True
-    match = _FLAG_SINGLE_QUOTE_PAT.match(flags, pos)
+    match = _FLAG_SINGLE_QUOTE_PAT.match(tt_flags, pos)
     if match:
       return match, True
-    match = _FLAG_NO_QUOTE_PAT.match(flags, pos)
+    match = _FLAG_NO_QUOTE_PAT.match(tt_flags, pos)
     if match:
       return match, True
-    match = _FLAG_NO_EQUAL_PAT.match(flags, pos)
+    match = _FLAG_NO_EQUAL_PAT.match(tt_flags, pos)
     if match:
       # The flag is found but is not given a value.
       return match, False
@@ -261,20 +290,6 @@ class TTParameters(object):
 
   def _validate_flag_names(self):
     """Validates if the TensorTrace flags passed are valid."""
-    valid_flag_names = [
-        FLAG_NAME_ENABLE, FLAG_NAME_TRACE_MODE,
-        FLAG_NAME_TRACE_SCALAR_OPS,
-        FLAG_NAME_SUBMODE, FLAG_NAME_EXCLUDED_OPNAMES,
-        FLAG_NAME_EXCLUDED_OPTYPES, FLAG_NAME_INCLUDED_OPNAMES,
-        FLAG_NAME_INCLUDED_OPTYPES, FLAG_NAME_TRACE_DIR,
-        FLAG_NAME_REPORT_FILE,
-        FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
-        FLAG_NAME_OP_RANGE,
-        FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
-        FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
-        FLAG_NAME_TEMP_CACHE_VAR, FLAG_NAME_FINGERPRINT_DIR,
-        FLAG_NAME_INSPECT_TRACE, FLAG_FLUSH_SUMMARY, FLAG_SUMMARY_MODE_TYPE
-    ]
     tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:
       return
@@ -284,11 +299,11 @@ class TTParameters(object):
       if not match:
         break
       flag_name = match.group(1)
-      if flag_name not in valid_flag_names:
+      if flag_name not in VALID_FLAG_NAMES:
         raise ValueError(
             'The flag name "%s" passed via the environment variable "%s" '
             'is invalid. Valid flag names are:'
-            '\n%s' % (flag_name, FLAGS_ENV_VAR, valid_flag_names))
+            '\n%s' % (flag_name, FLAGS_ENV_VAR, VALID_FLAG_NAMES))
       pos = match.end()
 
   def _supported_signatures(self):
@@ -323,7 +338,11 @@ class TTParameters(object):
 
   def get_signature_to_agg_fn_map(self):
     """Returns a map that contains the aggregate function for each signature."""
+    # TODO(b/199284834): Aggregations are not accurate for mean and sparsity if
+    # cores have a different number of elements. Variance uses the maximal core
+    # variance.
     return {TRACE_MODE_NORM: linalg_ops.norm,
+            TRACE_MODE_HISTORY: math_ops.reduce_max,
             TRACE_MODE_MAX_ABS: math_ops.reduce_max,
             TRACE_MODE_NAN_INF: math_ops.reduce_max,
             TT_SUMMARY_NORM: linalg_ops.norm,
@@ -332,6 +351,8 @@ class TTParameters(object):
                 lambda t, axis=0: math_ops.reduce_max(math_ops.abs(t),  # pylint: disable=g-long-lambda
                                                       axis=axis),
             TT_SUMMARY_MIN: math_ops.reduce_min,
+            # Exact if each part has the same number of values.
+            TT_SUMMARY_SPARSITY: math_ops.reduce_mean,
             TT_SUMMARY_MEAN: math_ops.reduce_mean,
             TT_SUMMARY_VAR: math_ops.reduce_max,  # Simply reduce max variance.
             TT_SUMMARY_SIZE: math_ops.reduce_sum}
@@ -428,7 +449,8 @@ class TTParameters(object):
       if flag_name == wanted_flag_name:
         return True, flag_value
       pos = match.end()
-    raise RuntimeError('Should not reach here.')
+    raise RuntimeError('Invalid tensor tracer flag. Could not recognize %s.' %
+                       flag_name)
 
   def _flag_value_to_re_list(self, flag_name):
     """Converts list of strings to compiled RE."""
@@ -479,17 +501,3 @@ class TTParameters(object):
     """
 
     return self.is_flag_on(FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR)
-
-  def _get_summary_mode(self):
-    """Returns the summary mode after checking if it is valid."""
-
-    found, summary_mode = self.get_flag_value(FLAG_SUMMARY_MODE_TYPE)
-    if not found:
-      summary_mode = UI_MODE
-
-    valid_summary_modes = [UI_MODE, TEXT_MODE, SAFE_MODE]
-    if summary_mode not in valid_summary_modes:
-      raise ValueError('Invalid summary mode "%s" given to the Tensor_Tracer.'
-                       'Valid submodes are: %s'%(summary_mode,
-                                                 valid_summary_modes))
-    return summary_mode

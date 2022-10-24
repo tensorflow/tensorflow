@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler.h"
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
@@ -94,7 +97,7 @@ class DefaultTensorTie : public TensorTie {
                           ObjectManager* objects,
                           std::unique_ptr<TensorTie>* tie) {
     auto tie_impl =
-        absl::make_unique<DefaultTensorTie>(def, TensorObject{}, objects);
+        std::make_unique<DefaultTensorTie>(def, TensorObject{}, objects);
     RETURN_IF_ERROR(tie_impl->Init(converter_builder));
     *tie = std::move(tie_impl);
     return absl::OkStatus();
@@ -109,7 +112,7 @@ class DefaultTensorTie : public TensorTie {
     }
 
     auto tie_impl =
-        absl::make_unique<DefaultTensorTie>(def, internal_object, nullptr);
+        std::make_unique<DefaultTensorTie>(def, internal_object, nullptr);
     RETURN_IF_ERROR(tie_impl->Init(converter_builder));
     *tie = std::move(tie_impl);
     return absl::OkStatus();
@@ -146,7 +149,7 @@ class DefaultTensorTie : public TensorTie {
     if (!IsObjectInitialized(internal_obj_)) {
       if (def().external_def.object_def.object_type ==
           gpu::ObjectType::OPENGL_SSBO) {
-        auto ssbo = absl::get_if<OpenGlBuffer>(&obj);
+        auto ssbo = std::get_if<OpenGlBuffer>(&obj);
         GlBuffer buffer;
         RETURN_IF_ERROR(WrapSSBO(*ssbo, &buffer));
         RETURN_IF_ERROR(objects_->RegisterBuffer(def().id, std::move(buffer)));
@@ -295,7 +298,7 @@ class TwoStepTensorTie : public TensorTie {
                           TensorObjectConverterBuilder* converter_builder,
                           ObjectManager* objects,
                           std::unique_ptr<TensorTie>* tie) {
-    auto tie_impl = absl::make_unique<TwoStepTensorTie>(def);
+    auto tie_impl = std::make_unique<TwoStepTensorTie>(def);
     RETURN_IF_ERROR(tie_impl->Init(converter_builder, objects));
     *tie = std::move(tie_impl);
     return absl::OkStatus();
@@ -569,15 +572,15 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
     auto compiler = NewCompiler(kernels.get(), gpu_info_, compiler_options);
     auto workgroup_calculator = NewDefaultWorkgroupsCalculator(*gpu_info_);
-    auto external_objects = absl::make_unique<ObjectManager>();
+    auto external_objects = std::make_unique<ObjectManager>();
     std::vector<GlShader> shaders;
     absl::flat_hash_map<std::string, size_t> shader_to_index;
     RuntimeOptions runtime_options;
     auto runtime =
-        absl::make_unique<Runtime>(runtime_options, *gpu_info_,
-                                   env_options_.queue, external_objects.get());
+        std::make_unique<Runtime>(runtime_options, *gpu_info_,
+                                  env_options_.queue, external_objects.get());
     Runtime* runtime_ptr = runtime.get();
-    auto runner_impl = absl::make_unique<InferenceRunnerImpl>(
+    auto runner_impl = std::make_unique<InferenceRunnerImpl>(
         std::move(runtime), std::move(external_objects));
     RETURN_IF_ERROR(runner_impl->Initialize(inputs_, outputs_, &tie_factory_));
     RETURN_IF_ERROR(
@@ -685,11 +688,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     }
     InferenceOptions resolved_options = options;
     ResolveAutoPriority(&resolved_options);
-    if (!IsBatchMatchesForAllValues(model)) {
-      return absl::InvalidArgumentError(
-          "Only identical batch dimension is supported");
-    }
-    auto builder_impl = absl::make_unique<InferenceBuilderImpl>(
+    RETURN_IF_ERROR(CheckBatchSizeForAllValues(model));
+    auto builder_impl = std::make_unique<InferenceBuilderImpl>(
         env_options_, resolved_options, std::move(model), &gpu_info_);
     RETURN_IF_ERROR(builder_impl->Initialize());
     *builder = std::move(builder_impl);
@@ -714,7 +714,7 @@ absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties) {
-  auto env_impl = absl::make_unique<InferenceEnvironmentImpl>(options);
+  auto env_impl = std::make_unique<InferenceEnvironmentImpl>(options);
   absl::Status status = env_impl->Init();
   if (properties) {
     *properties = env_impl->properties();

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -65,15 +66,15 @@ absl::Status Winograd4x4To36TileX6Test(TestExecutionEnvironment* env) {
     }
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
         eps *= 4.0f;
       }
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
@@ -84,7 +85,7 @@ absl::Status Winograd4x4To36TileX6Test(TestExecutionEnvironment* env) {
           CreateWinograd4x4To36TileX6(env->GetGpuInfo(), op_def, padding);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<Winograd4x4To36TileX6>(std::move(operation)),
+          std::make_unique<Winograd4x4To36TileX6>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -137,15 +138,15 @@ absl::Status Winograd36To4x4Tile4x1Test(TestExecutionEnvironment* env) {
     }
   }
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
         eps *= 4.0f;
       }
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
@@ -153,7 +154,7 @@ absl::Status Winograd36To4x4Tile4x1Test(TestExecutionEnvironment* env) {
           CreateWinograd36To4x4Tile4x1(env->GetGpuInfo(), op_def, biases);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<Winograd36To4x4Tile4x1>(std::move(operation)),
+          std::make_unique<Winograd36To4x4Tile4x1>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -200,25 +201,25 @@ absl::Status Winograd4x4To36Test(TestExecutionEnvironment* env) {
     }
   }
 
-  for (auto storage :
-       {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
         eps *= 4.0f;
       }
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Padding2D padding;
       padding.prepended = HW(1, 1);
       padding.appended = HW(1, 1);
-      Winograd4x4To36 operation = CreateWinograd4x4To36(op_def, padding);
+      Winograd4x4To36 operation =
+          CreateWinograd4x4To36(op_def, padding, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Winograd4x4To36>(std::move(operation)),
+          src_tensor, std::make_unique<Winograd4x4To36>(std::move(operation)),
           BHWC(1, 36, 1, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }
@@ -271,22 +272,21 @@ absl::Status Winograd36To4x4Test(TestExecutionEnvironment* env) {
     }
   }
 
-  for (auto storage :
-       {TensorStorageType::BUFFER, TensorStorageType::IMAGE_BUFFER}) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       if (!env->GetGpuInfo().IsRoundToNearestSupported()) {
         eps *= 4.0f;
       }
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Winograd36To4x4 operation = CreateWinograd36To4x4(op_def, biases);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Winograd36To4x4>(std::move(operation)),
+          src_tensor, std::make_unique<Winograd36To4x4>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(dst_ref.data, dst_tensor.data, eps));
     }

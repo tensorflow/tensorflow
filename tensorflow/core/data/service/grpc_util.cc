@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/grpc_util.h"
 
+#include <algorithm>
+#include <functional>
+#include <string>
+
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
@@ -48,8 +53,7 @@ Status Retry(const std::function<Status()>& f,
              const std::string& description, int64_t deadline_micros) {
   Status s = f();
   for (int num_retries = 0;; ++num_retries) {
-    if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
-        !errors::IsCancelled(s)) {
+    if (!IsPreemptedError(s)) {
       return s;
     }
     int64_t now_micros = EnvTime::NowMicros();

@@ -33,7 +33,8 @@ public final class TensorFlowLiteNoNativeLibTest {
       fail();
     } catch (UnsatisfiedLinkError e) {
       assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
-      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni in java.library.path");
+      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni");
+      assertThat(e).hasMessageThat().contains("in java.library.path");
     }
   }
 
@@ -44,7 +45,33 @@ public final class TensorFlowLiteNoNativeLibTest {
       fail();
     } catch (UnsatisfiedLinkError e) {
       assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
-      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni in java.library.path");
+      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni");
+      assertThat(e).hasMessageThat().contains("in java.library.path");
+    }
+  }
+
+  @Test
+  public void testInterpreterApi() {
+    try {
+      InterpreterApi.create(new File("path/does/not/matter.tflite"), null);
+      fail();
+    } catch (UnsatisfiedLinkError e) {
+      assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
+      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni");
+      assertThat(e).hasMessageThat().contains("in java.library.path");
+    }
+  }
+
+  @Test
+  @SuppressWarnings("deprecation") // This is a test of the deprecated InterpreterFactory class.
+  public void testInterpreterFactory() {
+    try {
+      new InterpreterFactory().create(new File("path/does/not/matter.tflite"), null);
+      fail();
+    } catch (UnsatisfiedLinkError e) {
+      assertThat(e).hasMessageThat().contains("Failed to load native TensorFlow Lite methods");
+      assertThat(e).hasMessageThat().contains("no tensorflowlite_jni");
+      assertThat(e).hasMessageThat().contains("in java.library.path");
     }
   }
 }

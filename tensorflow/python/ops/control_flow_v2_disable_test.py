@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests that TF2_BEHAVIOR=1 and TF_ENABLE_CONTROL_FLOW_V2=0 disables cfv2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 os.environ["TF2_BEHAVIOR"] = "1"
 os.environ["TF_ENABLE_CONTROL_FLOW_V2"] = "0"

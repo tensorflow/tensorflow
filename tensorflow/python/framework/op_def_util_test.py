@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.ops.op_def_library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 import numpy as np
@@ -64,6 +60,14 @@ class OpDefUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("list(int)", (1, 2.3), [1, 2]),
       ("list(float)", (1, 2.3), [1.0, 2.3]),
       ("list(bool)", [True, False], [True, False]),
+      ("list(type)", [dtypes.int32, dtypes.bool], [dtypes.int32, dtypes.bool]),
+      ("list(shape)", [tensor_shape.TensorShape([3]), [4, 5]],
+       [tensor_shape.TensorShape([3]), tensor_shape.TensorShape([4, 5])]),
+      ("list(tensor)",
+       [tensor_pb2.TensorProto(dtype=types_pb2.DataType.DT_FLOAT),
+        "dtype: DT_INT32"],
+       [tensor_pb2.TensorProto(dtype=types_pb2.DataType.DT_FLOAT),
+        tensor_pb2.TensorProto(dtype=types_pb2.DataType.DT_INT32)]),
   ])  # pyformat: disable
   def testConvert(self, attr_type, value, expected):
     result = _op_def_util.ConvertPyObjectToAttributeType(value, attr_type)

@@ -49,7 +49,7 @@ uint64 MergedOpFingerprint(absl::Span<Node* const> ops) {
 Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
                          Graph* graph) {
   int num_var_handles(nodes.size());
-  if (num_var_handles <= 1) return Status::OK();
+  if (num_var_handles <= 1) return OkStatus();
 
   std::vector<string> containers(num_var_handles);
   std::vector<string> names(num_var_handles);
@@ -74,9 +74,7 @@ Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
   builder.Device(device);
   NodeDef node_def;
   TF_RETURN_IF_ERROR(builder.Finalize(&node_def));
-  Status status;
-  Node* node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(node_def));
   node->set_assigned_device_name(device);
 
   graph->AddControlEdge(graph->source_node(), node);
@@ -90,13 +88,13 @@ Status MergeVarHandleOps(const string& device, absl::Span<Node* const> nodes,
       graph->AddEdge(node, t.second < 0 ? -1 : i, t.first, t.second);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MergeReadVariableOps(Node* handle_op, Node* control_node,
                             absl::Span<Node* const> nodes, Graph* graph) {
   int num_reads(nodes.size());
-  if (num_reads <= 1) return Status::OK();
+  if (num_reads <= 1) return OkStatus();
 
   DataTypeVector dtypes(num_reads);
   for (int i = 0; i < num_reads; ++i) {
@@ -109,9 +107,7 @@ Status MergeReadVariableOps(Node* handle_op, Node* control_node,
   AddNodeAttr("N", num_reads, &node_def);
   AddNodeAttr("dtypes", dtypes, &node_def);
   node_def.set_device(handle_op->requested_device());
-  Status status;
-  Node* node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
+  TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(node_def));
   node->set_assigned_device_name(handle_op->assigned_device_name());
   if (control_node) graph->AddControlEdge(control_node, node);
   for (int i = 0; i < num_reads; ++i) {
@@ -128,7 +124,7 @@ Status MergeReadVariableOps(Node* handle_op, Node* control_node,
       graph->AddEdge(node, t.second < 0 ? -1 : i, t.first, t.second);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -198,7 +194,7 @@ Status VariableMergerPass::Run(const GraphOptimizationPassOptions& options) {
   }
 
   VLOG(1) << DumpGraphToFile("variable_merger_pass_after", *graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

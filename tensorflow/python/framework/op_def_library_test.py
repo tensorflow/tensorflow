@@ -15,15 +15,15 @@
 
 """Tests for tensorflow.python.ops.op_def_library."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from google.protobuf import text_format
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import function as eager_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_library
+from tensorflow.python.framework import op_def_library_pybind
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -32,6 +32,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.util import compat
 
 
+@test_util.add_graph_building_optimization_tests
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def Tensor(self, t, name="in"):
@@ -70,44 +71,41 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Simple", a="Bad string")
-      self.assertTrue(
+      self.assertIn(
           "Expected int32 passed to parameter 'a' of op 'Simple', "
-          "got 'Bad string' of type 'str' instead." in str(cm.exception))
+          "got 'Bad string' of type 'str' instead.", str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Simple", a=self.Tensor(dtypes.string))
-      self.assertTrue(
+      self.assertIn(
           "Input 'a' of 'Simple' Op has type string "
-          "that does not match expected type of int32." in str(cm.exception))
+          "that does not match expected type of int32.", str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Simple", a=6, extra="bogus")
-      self.assertTrue(
-          "apply_op() got unexpected keyword arguments: extra"
-          in str(cm.exception))
+      self.assertIn("Simple got unexpected keyword arguments: extra",
+                    str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op(
             "Simple", a=6, extra1="bogus", extra2="also_bogus")
-      self.assertTrue(
-          "apply_op() got unexpected keyword arguments: extra1, "
-          "extra2" in str(cm.exception))
+      self.assertIn(
+          "Simple got unexpected keyword arguments: extra1, "
+          "extra2", str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Simple")
-      self.assertTrue(
-          "No argument for input a" in str(cm.exception))
+      self.assertIn("No argument for input a", str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Simple", wrong=7)
-      self.assertTrue(
-          "No argument for input a" in str(cm.exception))
+      self.assertIn("No argument for input a", str(cm.exception))
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Simple", a={"label": 1})
-      self.assertTrue(
+      self.assertIn(
           "Expected int32 passed to parameter 'a' of op 'Simple', "
-          "got {'label': 1} of type 'dict' instead." in str(cm.exception))
+          "got {'label': 1} of type 'dict' instead.", str(cm.exception))
 
   def testReservedInput(self):
     with ops.Graph().as_default():
@@ -141,8 +139,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Polymorphic", a="s", T=dtypes.string)
-      self.assertEqual(str(cm.exception),
-                       "Should not specify value for inferred attr 'T'.")
+      self.assertEqual(
+          str(cm.exception),
+          "Should not specify value for inferred attr 'T' for "
+          "Polymorphic.")
 
   def testPolymorphicOut(self):
     with ops.Graph().as_default():
@@ -162,8 +162,8 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("PolymorphicOut")
-      self.assertEqual(str(cm.exception),
-                       "No argument for attr T")
+      self.assertEqual(
+          str(cm.exception), "No argument found for attr T for PolymorphicOut")
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("PolymorphicOut", T=None)
@@ -309,7 +309,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("OutTypeList", T=dtypes.int32)
-      self.assertEqual(str(cm.exception), "Expected list for attr T")
+      self.assertEqual(
+          str(cm.exception), "Expected list for attr T, obtained "
+          "DType instead.")
 
   def testTypeListRestrict(self):
     with ops.Graph().as_default():
@@ -374,7 +376,9 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
       with self.assertRaises(TypeError) as cm:
         op_def_library.apply_op("Attr")
-      self.assertEqual(str(cm.exception), "No argument for attr a")
+      self.assertEqual(
+          str(cm.exception), "No argument found for attr a for "
+          "Attr")
 
   def testAttrFloat(self):
     with ops.Graph().as_default():
@@ -1328,17 +1332,17 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       for n_a in [0, 1, 3]:
         a = op_def_library.apply_op("SimpleStruct", n_a=n_a)
-        self.assertTrue(isinstance(a, list))
+        self.assertIsInstance(a, list)
         self.assertEqual(n_a, len(a))
 
   def testStructuredOutputListAndSingle(self):
     with ops.Graph().as_default():
       for n_a in [0, 1, 3]:
         a, b = op_def_library.apply_op("MixedStruct", n_a=n_a)
-        self.assertTrue(isinstance(a, list))
+        self.assertIsInstance(a, list)
         self.assertEqual(n_a, len(a))
         self.assertTrue(all(x.dtype == dtypes.int32 for x in a))
-        self.assertTrue(isinstance(b, ops.Tensor))
+        self.assertIsInstance(b, ops.Tensor)
         self.assertEqual(dtypes.float32, b.dtype)
 
   def testStructuredOutputMultipleLists(self):
@@ -1358,6 +1362,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
             self.assertEqual(t_c, [x.dtype for x in c])
 
 
+@test_util.add_graph_building_optimization_tests
 class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
 
   def testNoGraph(self):
@@ -1377,7 +1382,26 @@ class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
       b = op_def_library.apply_op("Simple", a=4)
     with self.assertRaises(ValueError) as cm:
       op_def_library.apply_op("Binary", a=a, b=b)
-    self.assertTrue("must be from the same graph" in str(cm.exception))
+    self.assertIn("must be from the same graph", str(cm.exception))
+
+
+class OpDefLibraryPybindTest(test_util.TensorFlowTestCase):
+
+  def testPybind(self):
+    x = constant_op.constant(32, dtype=dtypes.float32)
+    y = constant_op.constant(32, dtype=dtypes.float32)
+
+    attrs, inputs, input_types, output_structure = (
+        op_def_library_pybind.process_inputs("AddV2", 1, {
+            "x": x,
+            "y": y
+        }))
+
+    proto = text_format.Parse("type: DT_FLOAT", attr_value_pb2.AttrValue())
+    self.assertEqual(attrs, {"T": proto})
+    self.assertEqual(inputs, [x, y])
+    self.assertEqual(input_types, [dtypes.float32, dtypes.float32])
+    self.assertEqual(output_structure, [None])
 
 
 if __name__ == "__main__":

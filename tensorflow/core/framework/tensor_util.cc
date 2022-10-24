@@ -116,7 +116,7 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
@@ -178,7 +178,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64_t>& sizes,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 namespace internal {
@@ -232,23 +232,24 @@ bool CompressTensorContent(float min_compression_ratio,
     return false;
   }
   // Copy values to truncated repeated field.
-  if (sizeof(FieldType) == sizeof(T)) {
+  if constexpr (sizeof(FieldType) == sizeof(T)) {
     FieldType* dst_ptr =
         TypeHelper::AppendUninitialized(new_num_values, tensor);
     port::CopySubrangeToArray(tensor->tensor_content(), 0,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(dst_ptr));
     tensor->clear_tensor_content();
-  } else if (sizeof(T) > 1) {
+  } else if constexpr (sizeof(T) > 1) {
     // Copy raw bytes to temp array first, then cast.
-    gtl::InlinedVector<T, 64> tmp(new_num_values);
+    gtl::InlinedVector<T, 64> tmp;
+    if (new_num_values >= tmp.max_size()) return false;
+    tmp.resize(new_num_values);
+
     port::CopySubrangeToArray(tensor->tensor_content(), 0,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(tmp.data()));
     tensor->clear_tensor_content();
-    const T* begin = tmp.begin();
-    const T* end = tmp.end();
-    TypeHelper::AddValues(begin, end, tensor);
+    TypeHelper::AddValues(tmp.begin(), tmp.end(), tensor);
   } else {
     // Copy and cast, one byte at a time.
     for (int64_t i = 0; i < new_num_values; ++i) {
@@ -279,6 +280,36 @@ inline bool PackedValuesNotEqual(const std::complex<RealType>& a,
          PackedValuesNotEqual(a.imag(), b.imag());
 }
 
+// Integer can't be negative zero.
+template <typename T,
+          typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+static bool IsNegativeZero(T value) {
+  return false;
+}
+
+template <typename T,
+          typename std::enable_if<!std::is_integral<T>::value>::type* = nullptr>
+static bool IsNegativeZero(T value) {
+  return value == T(0) && std::signbit(value);
+}
+
+template <typename T>
+static bool IsNegativeZero(std::complex<T> value) {
+  return IsNegativeZero(value.real()) || IsNegativeZero(value.imag());
+}
+
+static bool IsNegativeZero(Eigen::QUInt8 value) { return false; }
+static bool IsNegativeZero(Eigen::QInt8 value) { return false; }
+static bool IsNegativeZero(Eigen::QUInt16 value) { return false; }
+static bool IsNegativeZero(Eigen::QInt16 value) { return false; }
+static bool IsNegativeZero(Eigen::QInt32 value) { return false; }
+static bool IsNegativeZero(Eigen::half value) {
+  return IsNegativeZero<float>(value);
+}
+static bool IsNegativeZero(Eigen::bfloat16 value) {
+  return IsNegativeZero<float>(value);
+}
+
 template <typename T>
 bool CompressRepeatedField(float min_compression_ratio,
                            const TensorShape& shape, TensorProto* tensor) {
@@ -304,7 +335,7 @@ bool CompressRepeatedField(float min_compression_ratio,
 
   // Detect all zeroes tensors: this is default value and the content can be
   // erased entirely.
-  if (last_index == 0 && last_value == T(0)) {
+  if (last_index == 0 && last_value == T(0) && !IsNegativeZero(last_value)) {
     TypeHelper::Truncate(0, tensor);
     return true;
   }

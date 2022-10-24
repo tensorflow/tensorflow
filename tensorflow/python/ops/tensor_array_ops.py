@@ -15,10 +15,6 @@
 """TensorArray: a dynamically sized array of Tensors."""
 # Mixture of pep8 and non-pep8 names, so disable pylint bad-name
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 import traceback
@@ -49,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
 # fact built to wrap these methods.
 # pylint: disable=protected-access
-class _GraphTensorArray(object):
+class _GraphTensorArray:
   """Graph-mode implementation of TensorArray."""
 
   def __init__(self,
@@ -392,7 +388,7 @@ class _GraphTensorArray(object):
         handle=self._handle, name=name)
 
 
-class _GraphTensorArrayV2(object):
+class _GraphTensorArrayV2:
   """Graph-mode implementation of TensorArray backed by TensorLists.
 
   The backing tensor of this TensorArray is a TensorList variant tensor which is
@@ -661,7 +657,7 @@ class _GraphTensorArrayV2(object):
 # pylint: enable=protected-access
 
 
-class _EagerTensorArray(object):
+class _EagerTensorArray:
   """Eager-compatible implementation of TensorArray."""
 
   def __init__(self,
@@ -958,12 +954,19 @@ class _EagerTensorArray(object):
 # pylint: disable=protected-access
 # pylint:disable=line-too-long
 @tf_export("TensorArray")
-class TensorArray(object):
-  """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
+class TensorArray:
+  """Class wrapping dynamic-sized, per-time-step, Tensor arrays.
 
   This class is meant to be used with dynamic iteration primitives such as
   `while_loop` and `map_fn`.  It supports gradient back-propagation via special
   "flow" control flow dependencies.
+
+  Note that although the array can be read multiple times and positions can be
+  overwritten, behavior may be undefined when storing multiple references to
+  the same array and clear_after_read is False. In particular, avoid using
+  methods like concat() to convert an intermediate TensorArray to a Tensor,
+  then further modifying the TensorArray, particularly if you need to backprop
+  through it later.
 
   Example 1: Plain reading and writing.
 
@@ -1366,6 +1369,41 @@ class TensorArraySpec(type_spec.TypeSpec):
     self._dynamic_size = dynamic_size
     self._infer_shape = infer_shape
 
+  def is_subtype_of(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, TensorArraySpec) and
+            self._dtype == other._dtype and
+            self._dynamic_size == other._dynamic_size)
+
+  def most_specific_common_supertype(self, others):
+    """Returns the most specific supertype of `self` and `others`.
+
+    Args:
+      others: A Sequence of `TypeSpec`.
+
+    Returns `None` if a supertype does not exist.
+    """
+    # pylint: disable=protected-access
+    if not all(isinstance(other, TensorArraySpec) for other in others):
+      return False
+
+    common_shape = self._element_shape.most_specific_common_supertype(
+        other._element_shape for other in others)
+    if common_shape is None:
+      return None
+
+    if not all(self._dtype == other._dtype for other in others):
+      return None
+
+    if not all(self._dynamic_size == other._dynamic_size for other in others):
+      return None
+
+    infer_shape = self._infer_shape and all(
+        other._infer_shape for other in others)
+
+    return TensorArraySpec(common_shape, self._dtype, self._dynamic_size,
+                           infer_shape)
+
   def is_compatible_with(self, other):
     # pylint: disable=protected-access
     if not isinstance(other, type_spec.TypeSpec):
@@ -1376,15 +1414,6 @@ class TensorArraySpec(type_spec.TypeSpec):
             self._dtype.is_compatible_with(other._dtype) and
             self._element_shape.is_compatible_with(other._element_shape) and
             self._dynamic_size == other._dynamic_size)
-
-  def most_specific_compatible_type(self, other):
-    # pylint: disable=protected-access
-    if not self.is_compatible_with(other):
-      raise ValueError(f"Type `{self}` is not compatible with `{other}`.")
-    infer_shape = self._infer_shape and other._infer_shape
-    return TensorArraySpec(
-        self._element_shape.most_specific_compatible_shape(
-            other._element_shape), self._dtype, self._dynamic_size, infer_shape)
 
   def _serialize(self):
     return (self._element_shape, self._dtype, self._dynamic_size,

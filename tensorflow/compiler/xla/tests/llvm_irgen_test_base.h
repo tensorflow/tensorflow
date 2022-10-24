@@ -36,13 +36,15 @@ class LlvmIrGenTestBase : public CodegenTestBase {
   // optimizations are applied; otherwise, the IR before optimizations is
   // matched.
   void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
-                          const string& pattern, bool match_optimized_ir);
+                          const std::string& pattern, bool match_optimized_ir,
+                          bool run_optimization_passes = true);
 
   // A thin wrapper around CompileAndVerifyIr that parses `hlo_text` to create
   // an HLO module.
-  void CompileAndVerifyIr(const string& hlo_text,
-                          const string& expected_llvm_ir,
-                          bool match_optimized_ir = false);
+  void CompileAndVerifyIr(const std::string& hlo_text,
+                          const std::string& expected_llvm_ir,
+                          bool match_optimized_ir = false,
+                          bool run_optimization_passes = true);
 
   // Compiles the given HLO module to LLVM IR and verifies the IR matches the
   // given pattern. `pattern` is in the FileCheck pattern matching syntax
@@ -55,23 +57,8 @@ class LlvmIrGenTestBase : public CodegenTestBase {
   // matched.
   void CompileAheadOfTimeAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
                                      const AotCompilationOptions& options,
-                                     const string& pattern,
+                                     const std::string& pattern,
                                      bool match_optimized_ir);
-
-  // Compiles the given `hlo` with optimizations, and verifies that optimized
-  // HLO matches the given FileCheck pattern.
-  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
-                         bool print_operand_shape = false);
-
-  // LikeMatchOptimizedHlo, but checks operand shapes as well.
-  void MatchOptimizedHloWithShapes(absl::string_view hlo,
-                                   absl::string_view pattern) {
-    MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
-  }
-
-  // Compiles and returns module with optimizations from a given HLO.
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      absl::string_view hlo);
 
  private:
   LLVMCompiler* GetLLVMCompiler();
@@ -79,7 +66,7 @@ class LlvmIrGenTestBase : public CodegenTestBase {
   void SetIrHook(bool match_optimized_ir);
   void ResetIrHook();
 
-  string ir_;
+  std::string ir_;
   Status IrHook(const llvm::Module& module);
 };
 

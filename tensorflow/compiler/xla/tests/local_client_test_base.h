@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -31,15 +32,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/manifest_checking_test.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -47,10 +45,9 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
  public:
   explicit TestAllocator(se::Platform* platform)
       : se::StreamExecutorMemoryAllocator(
-            platform, PlatformUtil::GetStreamExecutors(platform).ValueOrDie()) {
-  }
+            platform, PlatformUtil::GetStreamExecutors(platform).value()) {}
 
-  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64_t size,
                                             bool retry_on_failure,
                                             int64_t memory_space) override;
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
@@ -64,15 +61,16 @@ class TestAllocator : public se::StreamExecutorMemoryAllocator {
   int64_t deallocation_count(int device_ordinal) const;
 
  private:
-  mutable tensorflow::mutex count_mutex_;
+  mutable absl::Mutex count_mutex_;
 
   // Global counts of allocations and deallocations.
-  int64_t allocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
-  int64_t deallocation_count_ TF_GUARDED_BY(count_mutex_) = 0;
+  int64_t allocation_count_ ABSL_GUARDED_BY(count_mutex_) = 0;
+  int64_t deallocation_count_ ABSL_GUARDED_BY(count_mutex_) = 0;
 
   // Per-device counts of allocations and deallocations.
-  std::map<int, int64_t> device_allocation_count_ TF_GUARDED_BY(count_mutex_);
-  std::map<int, int64_t> device_deallocation_count_ TF_GUARDED_BY(count_mutex_);
+  std::map<int, int64_t> device_allocation_count_ ABSL_GUARDED_BY(count_mutex_);
+  std::map<int, int64_t> device_deallocation_count_
+      ABSL_GUARDED_BY(count_mutex_);
 };
 
 // A base class for tests which exercise the LocalClient interface.
@@ -126,7 +124,7 @@ class LocalClientTestBase : public ManifestCheckingTest {
   // as the allocator.
   ExecutableRunOptions DefaultExecutableRunOptions() const;
 
-  string TestName() const {
+  std::string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
@@ -48,7 +47,7 @@ void init_ops(py::module& m) {
       .def("create",
            [](mlir::Location loc) { return mlir::ModuleOp::create(loc); })
       .def("push_back",
-           [](mlir::ModuleOp& m, mlir::FuncOp f) { m.push_back(f); })
+           [](mlir::ModuleOp& m, mlir::func::FuncOp f) { m.push_back(f); })
       .def("dump", &mlir::ModuleOp::dump)
       .def("getAsStr", [](mlir::ModuleOp& m) {
         std::string str;
@@ -57,30 +56,30 @@ void init_ops(py::module& m) {
         return os.str();
       });
 
-  py::class_<mlir::FuncOp>(m, "FuncOp")
+  py::class_<mlir::func::FuncOp>(m, "FuncOp")
       .def("create",
            [](mlir::Location location, std::string name,
               mlir::FunctionType type) {
-             auto func = mlir::FuncOp::create(location, name, type);
+             auto func = mlir::func::FuncOp::create(location, name, type);
              func.addEntryBlock();
              return func;
            })
       .def(
           "getBody",
-          [](mlir::FuncOp& f) -> mlir::Region& { return f.getBody(); },
+          [](mlir::func::FuncOp& f) -> mlir::Region& { return f.getBody(); },
           py::return_value_policy::reference)
       .def("getArguments",
-           [](mlir::FuncOp& f) { return f.getArguments().vec(); })
-      .def("getName", [](mlir::FuncOp& f) { return f.getName().str(); })
-      .def("getType", &mlir::FuncOp::getType);
+           [](mlir::func::FuncOp& f) { return f.getArguments().vec(); })
+      .def("getName", [](mlir::func::FuncOp& f) { return f.getName().str(); })
+      .def("getType", &mlir::func::FuncOp::getFunctionType);
 
-  py::class_<mlir::ReturnOp>(m, "ReturnOp")
+  py::class_<mlir::func::ReturnOp>(m, "ReturnOp")
       .def("create",
            [](mlir::OpBuilder& opb, mlir::Location loc,
               std::vector<mlir::Value> values) -> mlir::Operation* {
              return opb
-                 .create<mlir::ReturnOp>(loc,
-                                         mlir::ArrayRef<mlir::Value>(values))
+                 .create<mlir::func::ReturnOp>(
+                     loc, mlir::ArrayRef<mlir::Value>(values))
                  .getOperation();
            });
 

@@ -30,6 +30,7 @@ bool BFloat16Support::SupportsBF16Operand(const HloInstruction& hlo,
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
       CHECK_EQ(operand_index, 0);
@@ -49,6 +50,7 @@ bool BFloat16Support::SupportsBF16Output(const HloInstruction& hlo) const {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kConvert:
       return hlo.shape().element_type() == BF16;
@@ -67,6 +69,7 @@ bool BFloat16Support::SupportsMixedPrecisions(const HloInstruction& hlo) const {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTuple:
     case HloOpcode::kWhile:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     default:
       break;
@@ -98,6 +101,7 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kSort:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
+    case HloOpcode::kOptimizationBarrier:
       return true;
     case HloOpcode::kBitcast:
       return hlo.shape().element_type() ==
@@ -109,7 +113,6 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kGather:
       return operand_index == 0;
     case HloOpcode::kSelect:
-    case HloOpcode::kTupleSelect:
       return operand_index == 1 || operand_index == 2;
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow: {

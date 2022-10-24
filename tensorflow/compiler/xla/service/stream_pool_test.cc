@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace {
@@ -27,9 +27,9 @@ class StreamPoolTest : public ::testing::Test {
  protected:
   std::unique_ptr<se::StreamExecutor> NewStreamExecutor() {
     se::Platform* platform =
-        se::MultiPlatformManager::PlatformWithName("Host").ConsumeValueOrDie();
+        se::MultiPlatformManager::PlatformWithName("Host").value();
     se::StreamExecutorConfig config(/*ordinal=*/0);
-    return platform->GetUncachedExecutor(config).ConsumeValueOrDie();
+    return platform->GetUncachedExecutor(config).value();
   }
 };
 

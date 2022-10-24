@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.python_api_dispatcher."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import numpy as np
 
@@ -65,6 +61,14 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(ragged_checker.Check(t), NO_MATCH)
       self.assertEqual(ragged_checker.cost(), 1)
       self.assertEqual(repr(ragged_checker), '<PyTypeChecker RaggedTensor>')
+
+    with self.subTest('int or float checker'):
+      int_checker = dispatch.MakeInstanceChecker(int, float)
+      self.assertEqual(int_checker.Check(3), MATCH)
+      self.assertEqual(int_checker.Check(3.0), MATCH)
+      self.assertEqual(int_checker.Check(t), NO_MATCH)
+      self.assertEqual(int_checker.cost(), 2)
+      self.assertEqual(repr(int_checker), '<PyTypeChecker int, float>')
 
     with self.subTest('subclasses'):
 
@@ -168,6 +172,8 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
     e = []
     f = (1, 2, 3)
     g = (rt,)
+    h = {1: 2, 3: 4}
+    i = np.array([1, 2, 3])
 
     with self.subTest('List[int]'):
       checker = dispatch.MakeListChecker(int_checker)
@@ -177,9 +183,11 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       self.assertEqual(checker.Check(d), NO_MATCH)
       self.assertEqual(checker.Check(e), MATCH)
       self.assertEqual(checker.Check(f), MATCH)
-      self.assertEqual(checker.Check(iter(a)), MATCH)
+      self.assertEqual(checker.Check(iter(a)), NO_MATCH)
       self.assertEqual(checker.Check(iter(b)), NO_MATCH)
-      self.assertEqual(checker.Check(reversed(e)), MATCH)
+      self.assertEqual(checker.Check(reversed(e)), NO_MATCH)
+      self.assertEqual(checker.Check(h), NO_MATCH)
+      self.assertEqual(checker.Check(i), NO_MATCH)
       self.assertEqual(checker.cost(), 10)
       self.assertEqual(repr(checker), '<PyTypeChecker List[int]>')
 
@@ -212,7 +220,7 @@ class PythonTypeCheckerTest(test_util.TensorFlowTestCase):
       checker = dispatch.MakeListChecker(
           dispatch.MakeUnionChecker([int_checker, np_int_checker]))
       self.assertEqual(checker.Check(a), MATCH)
-      self.assertEqual(checker.Check(np.array(a)), MATCH)
+      self.assertEqual(checker.Check(np.array(a)), NO_MATCH)
       self.assertEqual(checker.Check(np.array(a) * 1.5), NO_MATCH)
 
   def testRegisterDispatchableType(self):

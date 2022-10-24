@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.data.util.options.OptionsBase\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "autotune_algorithm"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "cpu_budget"
     mtype: "<type \'property\'>"
   }

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Gradients for operators defined in tensor_array_ops.py."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -73,11 +69,11 @@ def _GetGradSource(op_or_tensor):
   if not grad_pos:
     raise ValueError(
         "Expected op/tensor name to start with gradients (excluding scope)"
-        ", got: {}. This means that a tf.gradients op with this op in its "
-        "dependency path has a custom name that does not start with "
-        "'gradients'. Please make sure all calls to tf.gradients that have "
-        "non-empty 'name' arguments use names that start with "
-        "'gradients'.".format(op_or_tensor.name))
+        f", got: {op_or_tensor.name}. This means that a tf.gradients op with "
+        "this op in its dependency path has a custom name that does not start "
+        "with 'gradients'. Please make sure all calls to tf.gradients that "
+        "have non-empty `name` arguments use names that start with "
+        "'gradients'.")
   return "/".join(name_tokens[:grad_pos[-1] + 1])
 
 

@@ -3,8 +3,8 @@ tf_class {
   is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator_lower_triangular.LinearOperatorLowerTriangular\'>"
   is_instance: "<class \'tensorflow.python.ops.linalg.linear_operator.LinearOperator\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
@@ -77,6 +77,10 @@ tf_class {
   }
   member {
     name: "trainable_variables"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "tril"
     mtype: "<type \'property\'>"
   }
   member {

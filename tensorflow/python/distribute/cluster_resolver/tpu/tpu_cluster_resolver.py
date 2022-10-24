@@ -14,13 +14,10 @@
 # ==============================================================================
 """Implementation of Cluster Resolvers for Cloud TPUs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import re
 
+from tensorflow.core.protobuf.tpu import topology_pb2
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.framework import config as framework_config
 from tensorflow.python.framework import errors
@@ -221,6 +218,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     else:
       self._coordinator_address = coordinator_address
 
+    self._tpu_topology = None
+
   def __enter__(self):
     self._cloud_tpu_client.enter()
 
@@ -396,6 +395,18 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
                   device_details.device_map)
       }
     return {'TPU': 0}
+
+  def set_tpu_topology(self, serialized_tpu_topology):
+    """Sets the tpu topology info stored in this resolver."""
+    self._tpu_topology = topology_pb2.TopologyProto()
+    self._tpu_topology.ParseFromString(serialized_tpu_topology)
+
+  @property
+  def tpu_hardware_feature(self):
+    """Returns the tpu topology info stored."""
+    if self._tpu_topology is None:
+      return self._tpu_topology
+    return self._tpu_topology.tpu_hardware_feature
 
   @property
   def environment(self):

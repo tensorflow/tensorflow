@@ -44,7 +44,7 @@ Status CustomDeviceTensorHandle::NumElements(int64_t* num_elements) const {
     }
     *num_elements *= dim;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 const char* CustomDeviceTensorHandle::DeviceType(Status* status) const {

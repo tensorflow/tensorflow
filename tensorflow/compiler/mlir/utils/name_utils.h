@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Location.h"  // from @llvm-project
 
 namespace mlir {
@@ -27,7 +26,7 @@ namespace mlir {
 // name to '.'.
 void LegalizeNodeName(std::string& name);
 
-// Creates a TensorFlow node name from a location.
+// Returns the TensorFlow node name associated with a location.
 std::string GetNameFromLoc(Location loc);
 
 }  // namespace mlir

@@ -16,13 +16,14 @@ limitations under the License.
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
+
 #include <array>
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_3d.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
-#include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -105,20 +106,14 @@ void DnnPooling3dOp<T>::Compute(OpKernelContext* context,
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  bool status =
-      stream
-          ->ThenPoolForward(pooling_desc, input_desc, input_data, output_desc,
-                            &output_data, &scratch_allocator)
-          .ok();
+  OP_REQUIRES_OK(context, stream->ThenPoolForward(
+                              pooling_desc, input_desc, input_data, output_desc,
+                              &output_data, &scratch_allocator));
 #else
-  bool status = stream
-                    ->ThenPoolForward(pooling_desc, input_desc, input_data,
-                                      output_desc, &output_data)
-                    .ok();
+  OP_REQUIRES_OK(context,
+                 stream->ThenPoolForward(pooling_desc, input_desc, input_data,
+                                         output_desc, &output_data));
 #endif
-
-  OP_REQUIRES(context, status,
-              errors::Internal("dnn PoolForward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
@@ -247,23 +242,17 @@ void DnnPooling3dGradOp<T>::Compute(
   );
 
   DnnScratchAllocator scratch_allocator(PoolingScratchSize, context);
-  bool status = stream
-                    ->ThenPoolBackward(pooling_desc, orig_input_desc,
-                                       orig_input_data, orig_output_desc,
-                                       orig_output_data, output_backprop_data,
-                                       &input_backprop_data, &scratch_allocator)
-                    .ok();
+  OP_REQUIRES_OK(context,
+                 stream->ThenPoolBackward(
+                     pooling_desc, orig_input_desc, orig_input_data,
+                     orig_output_desc, orig_output_data, output_backprop_data,
+                     &input_backprop_data, &scratch_allocator));
 #else
-  bool status =
-      stream
-          ->ThenPoolBackward(pooling_desc, orig_input_desc, orig_input_data,
-                             orig_output_desc, orig_output_data,
-                             output_backprop_data, &input_backprop_data)
-          .ok();
+  OP_REQUIRES_OK(context, stream->ThenPoolBackward(
+                              pooling_desc, orig_input_desc, orig_input_data,
+                              orig_output_desc, orig_output_data,
+                              output_backprop_data, &input_backprop_data));
 #endif
-
-  OP_REQUIRES(context, status,
-              errors::Internal("dnn PoolBackward launch failed"));
 
   if (data_format == FORMAT_NHWC) {
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };

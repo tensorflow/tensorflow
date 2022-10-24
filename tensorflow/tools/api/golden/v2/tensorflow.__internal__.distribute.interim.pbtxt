@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.distribute.interim"
+tf_module {
+  member_method {
+    name: "maybe_merge_call"
+    argspec: "args=[\'fn\', \'strategy\'], varargs=args, keywords=kwargs, defaults=None"
+  }
+}

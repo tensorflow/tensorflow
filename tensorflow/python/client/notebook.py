@@ -26,10 +26,6 @@ Press "a" in command mode to insert cell above or "b" to insert cell below.
 
 Your root notebooks directory is FLAGS.notebook_dir
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import os
 import socket

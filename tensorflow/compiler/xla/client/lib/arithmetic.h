@@ -27,8 +27,8 @@ namespace xla {
 using XlaOpGenerator = std::function<XlaOp(XlaOp, XlaOp)>;
 
 // Creates a scalar computation based on a lambda and returns it.
-XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
-                                       XlaBuilder* builder,
+XlaComputation CreateScalarComputation(const std::string& name,
+                                       PrimitiveType type, XlaBuilder* builder,
                                        XlaOpGenerator generator);
 
 // Creates a scalar add computation and returns it.
@@ -77,24 +77,15 @@ XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
 XlaOp Any(XlaOp predicates);
 
 // Returns the argmax of `input` along `axis`. `output_type` is the type to
-// use for the output. The `tie_low` argument drives the index selection is case
-// of same values. If `true` (default behavior) the lowest index will be
-// returned, otherwise the higher. The tie_low argument only applies if `stable`
-// is true or using the ArgMaxTwoPass.
-XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis,
-             bool stable = false, bool tie_low = true);
-XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
-                    bool tie_low = true);
+// use for the output. In case of ties always prefers smaller index.
+XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
 
 // Returns the argmin of `input` along `axis`. `output_type` is the type to
-// use for the output. The `tie_low` argument drives the index selection is case
-// of same values. If `true` (default behavior) the lowest index will be
-// returned, otherwise the higher. The tie_low argument only applies if `stable`
-// is true or using the ArgMinTwoPass.
-XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis,
-             bool stable = false, bool tie_low = true);
-XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis,
-                    bool tie_low = true);
+// use for the output. In case of ties always prefers smaller index.
+XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
+
+// Dispatch to ArgMin or ArgMax above, depending on bool.
+XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min);
 
 }  // namespace xla
 

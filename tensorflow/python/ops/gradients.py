@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implements the graph generation for computation of gradients."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.eager import function
 from tensorflow.python.eager.backprop import GradientTape

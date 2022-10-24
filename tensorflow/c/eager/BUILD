@@ -8,15 +8,7 @@ load(
     "tf_cuda_cc_test",
     "tf_cuda_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "internal_tfrt_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "internal_tfrt_deps")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -64,6 +56,8 @@ tf_cuda_library(
             "@com_google_absl//absl/types:variant",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
+            "//tensorflow/c:tf_buffer",
+            "//tensorflow/c:tf_buffer_internal",
             "//tensorflow/c:tf_status_internal",
             "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",
@@ -102,6 +96,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime:worker_interface",
         "//tensorflow/core:gpu_runtime",
+        "@com_google_absl//absl/strings:str_format",
     ] + internal_tfrt_deps(),
     alwayslink = 1,
 )
@@ -136,7 +131,7 @@ filegroup(
         "tfe_tensorhandle_internal.h",
     ],
     visibility = [
-        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/function:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )
@@ -151,13 +146,10 @@ cc_library(
     deps = [
         ":c_api",
         ":tfe_cancellation_manager_internal",
-        ":tfe_context_internal",
         ":tfe_executor_internal",
         ":tfe_monitoring_internal",
         ":tfe_op_attrs_internal",
-        ":tfe_op_internal",
         ":tfe_tensor_debug_info_internal",
-        ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_api_internal",
     ],
 )
@@ -536,9 +528,7 @@ cc_library(
 cc_library(
     name = "tfe_executor_internal",
     hdrs = ["tfe_executor_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/common_runtime/eager:eager_executor",
     ],
@@ -547,9 +537,7 @@ cc_library(
 cc_library(
     name = "tfe_monitoring_internal",
     hdrs = ["tfe_monitoring_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
@@ -559,9 +547,7 @@ cc_library(
 cc_library(
     name = "tfe_op_attrs_internal",
     hdrs = ["tfe_op_attrs_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         ":abstract_op_attrs",
         "//tensorflow/c:conversion_macros",
@@ -585,9 +571,7 @@ cc_library(
 cc_library(
     name = "tfe_tensor_debug_info_internal",
     hdrs = ["tfe_tensor_debug_info_internal.h"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
+    visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core:lib",
     ],
@@ -681,6 +665,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         # copybara:uncomment_begin
         # "//tensorflow/core/tfrt/eager:c_api_tfrt",
         # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
@@ -693,7 +678,7 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["c_api_remote_test_util.cc"],
     hdrs = ["c_api_remote_test_util.h"],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
     deps = [
         ":c_api",
         ":c_api_internal",
@@ -768,6 +753,7 @@ tf_cuda_cc_test(
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check="],
     tags = [
+        "no_oss",  # TODO(b/200848572)
         "no_windows",
         "noasan",  # leaks gRPC server instances
     ],
@@ -1009,6 +995,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/config:flag_defs",
+        "//tensorflow/core/config:flags",
     ],
 )
 

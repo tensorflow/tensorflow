@@ -23,13 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
 class TriangularExpanderTest : public HloTestBase,
-                               public ::testing::WithParamInterface<int32> {};
+                               public ::testing::WithParamInterface<int32_t> {};
 
 TEST_P(TriangularExpanderTest, TestBlockSize) {
   auto block_size = GetParam();

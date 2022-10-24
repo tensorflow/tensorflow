@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_CONV_DEPTHWISE_COMMON_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_CONV_DEPTHWISE_COMMON_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
 namespace xla {
-string GetFloatDataType(bool use_bfloat16);
+std::string GetFloatDataType(bool use_bfloat16);
 
 struct DepthwiseConvolution2DSpec {
   int64_t output_feature = -1, window = -1, stride = -1, pad = -1,
@@ -41,11 +42,11 @@ struct DepthwiseConvolution2DSpec {
   std::vector<int64_t> output_layout;
 };
 
-string DepthwiseConvolution2DTestDataToString(
+std::string DepthwiseConvolution2DTestDataToString(
     const ::testing::TestParamInfo<
         ::testing::tuple<DepthwiseConvolution2DSpec, bool>>& data);
 
-string BuildHloTextDepthwiseConvolution2D(
+std::string BuildHloTextDepthwiseConvolution2D(
     const DepthwiseConvolution2DSpec& spec, bool use_bfloat16,
     bool is_scheduled = false);
 

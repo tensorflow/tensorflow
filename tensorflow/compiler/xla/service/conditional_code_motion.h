@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_CODE_MOTION_H_
 
+#include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -36,13 +38,23 @@ namespace conditional_opt {
 // inside branches.
 class Boundary {
  public:
-  enum class Position { kInsideBranch, kOutsideBranch, kUndefined };
+  enum class Position {
+    kInsideBranch,
+    kOutsideBranchUser,
+    kOutsideBranchOperand,
+    kUndefined
+  };
   Boundary() : position_(Position::kUndefined) {}
   explicit Boundary(Position p) : position_(p) {}
   std::vector<HloInstruction*>& mutable_operands() { return operands_; }
   const std::vector<HloInstruction*>& operands() const { return operands_; }
   bool IsInsideBranch() const { return position_ == Position::kInsideBranch; }
-  bool IsOutsideBranch() const { return position_ == Position::kOutsideBranch; }
+  bool IsOutsideBranchUser() const {
+    return position_ == Position::kOutsideBranchUser;
+  }
+  bool IsOutsideBranchOperand() const {
+    return position_ == Position::kOutsideBranchOperand;
+  }
   Position GetPosition() const { return position_; }
   bool IsEmpty() const { return operands_.empty(); }
   std::string ToString() const {
@@ -52,8 +64,12 @@ class Boundary {
     }
     return res;
   }
-  bool operator==(const Boundary& that) {
-    return ContainersEqual(operands_, that.operands_);
+  bool operator==(const Boundary& that) const {
+    return absl::c_equal(operands_, that.operands_);
+  }
+  template <typename H>
+  friend H AbslHashValue(H h, const Boundary& boundary) {
+    return H::combine(std::move(h), boundary.operands_);
   }
 
  private:
@@ -84,7 +100,7 @@ class ConditionalCodeMotion : public HloModulePass {
   // during identical comparison. Otherwise, layout is ignored.
   // The search configuration is a single integer but is split into four parts:
   // (sign, n, m, p), where n,m,p each occupy 8 bits and together make the 24
-  // bits at the end of the int32. For the sign part, if search_config is <0,
+  // bits at the end of the int32_t. For the sign part, if search_config is <0,
   // the reuse_config_ cost model is modified (tuned); if search_config is >0,
   // the move_config_ cost model is modified (tuned); if search_config == 0,
   // the default cost model is used with no tuning. When tuning, the entries in
@@ -142,15 +158,15 @@ class ConditionalCodeMotion : public HloModulePass {
     return config;
   }
 
-  static int16 flip_start(int64_t search_config) {
+  static int16_t flip_start(int64_t search_config) {
     return (search_config >> kStartPos) & kValueMask;
   }
 
-  static int16 flip_stride(int64_t search_config) {
+  static int16_t flip_stride(int64_t search_config) {
     return (search_config >> kStridePos) & kValueMask;
   }
 
-  static int16 DecrementMaxFlip(int64_t* search_config) {
+  static int16_t DecrementMaxFlip(int64_t* search_config) {
     const int16_t max_flip = ((*search_config) >> kMaxPos) & kValueMask;
     // Decrement flip count so we can stop if it reaches 0.
     if (max_flip > 0) {
@@ -160,12 +176,15 @@ class ConditionalCodeMotion : public HloModulePass {
   }
 
   absl::string_view name() const override { return "conditional-code-motion"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Optimization decision for each boundary of the conditional instruction.
   class Decision {
    public:
-    enum class Direction : uint8 {
+    enum class Direction : uint8_t {
       kMoveOutOfBranch,
       kMoveIntoBranch,
       kNoChange
@@ -204,9 +223,10 @@ class ConditionalCodeMotion : public HloModulePass {
   StatusOr<bool> MoveInstructionOut(HloInstruction* conditional,
                                     std::vector<Boundary>& to_move_out,
                                     std::vector<Boundary>& new_boundaries);
-  StatusOr<bool> MoveInstructionIn(HloInstruction* conditional,
-                                   std::vector<Boundary>& to_move_in,
-                                   std::vector<Boundary>& new_boundaries);
+  StatusOr<bool> MoveUserInstructionsIn(HloInstruction* conditional,
+                                        std::vector<Boundary>& to_move_in);
+  StatusOr<bool> MoveOperandInstructionsIn(HloInstruction* conditional,
+                                           std::vector<Boundary>& to_move_in);
   void SetDefaultMoveConfig();
 };
 }  // namespace conditional_opt

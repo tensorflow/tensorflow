@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_OP_CONTEXT_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_OP_CONTEXT_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 
@@ -29,7 +30,11 @@ struct OpContext {
   std::string device_name;
   OpInfo op_info;
   const FunctionDefLibrary* function_library;  // Not owned.
-
+  // This map is used to stash meta attributes so that they may be
+  // communicated, for instance, from the scheduler that creates them to the
+  // CostEstimator or EventCostManager that uses them.
+  absl::flat_hash_map<std::string, absl::variant<int64_t, std::string>>
+      op_meta_attributes;
   OpContext() { function_library = nullptr; }
 };
 

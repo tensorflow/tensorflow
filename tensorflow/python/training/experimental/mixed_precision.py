@@ -14,10 +14,6 @@
 # ==============================================================================
 """Contains functions to use mixed precision with the graph rewrite."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.framework import config
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import optimizer
@@ -27,38 +23,44 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-# A mapping between optimizers and the corresponding wrapper class that will be
-# used for mixed precision.
+# A mapping between optimizers and (wrapper_fn, wrapper_cls) pairs. wrapper_cls
+# is a loss scale optimizer class, and wrapper_fn is a function that takes in
+# an optimizer and LossScale and returns a wrapper_cls instance.
 _REGISTERED_WRAPPER_OPTIMIZER_CLS = {
     optimizer.Optimizer:
-        loss_scale_optimizer_v1.MixedPrecisionLossScaleOptimizer,
+        (loss_scale_optimizer_v1.MixedPrecisionLossScaleOptimizer,) * 2,
 }
 
 
 @tf_export('__internal__.mixed_precision.register_loss_scale_wrapper', v1=[])
-def register_loss_scale_wrapper(optimizer_cls, wrapper_cls):
+def register_loss_scale_wrapper(optimizer_cls, wrapper_fn, wrapper_cls=None):
   """Registers a loss scale optimizer wrapper.
 
   `tf.compat.v1.mixed_precision.enable_mixed_precision_graph_rewrite`
   automatically wraps an optimizer with an optimizer wrapper that performs loss
-  scaling. This function registers a `(base_optimizer, wrapper_optimizer)` pair
+  scaling. This function registers a
+  `(base_cls, wrapper_fn, wrapper_cls)` triple
   that is used by `enable_mixed_precision_graph_rewrite`, where
-  `wrapper_optimizer` wraps a `base_optimizer` and applies loss scaling.
+  `wrapper_fn` is called to create a `wrapper_cls` instance that wraps an
+  `optimizer_cls` instance.
 
   Args:
     optimizer_cls: A base optimizer class, e.g. `tf.keras.optimizers.Optimizer`.
-    wrapper_cls: A wrapper that wraps `optimizer_cls` and applies loss scaling,
-      e.g. `tf.compat.v1.keras.mixed_precision.LossScaleOptimizer`. The
-      constructor should take two arguments: The inner optimizer and a
-      `tf.compat.v1.mixed_precision.LossScale`.
+    wrapper_fn: A function that takes in arguments "optimizer" and
+      "loss_scale", and returns a loss scale optimizer of type "wrapper_cls"
+      that wraps "optimizer".
+    wrapper_cls: A loss scale optimizer class. Defaults to `wrapper_fn`, in
+      which case `wrapper_fn` should be a loss scale optimizer class whose
+      constructor takes in arguments "optimizer" and "loss_scale".
   """
-  _REGISTERED_WRAPPER_OPTIMIZER_CLS[optimizer_cls] = wrapper_cls
+  _REGISTERED_WRAPPER_OPTIMIZER_CLS[optimizer_cls] = (
+      wrapper_fn, wrapper_cls or wrapper_fn)
 
 
 def _wrap_optimizer(opt, loss_scale):
   """Wraps an optimizer with a LossScaleOptimizer."""
 
-  for wrapper_optimizer in _REGISTERED_WRAPPER_OPTIMIZER_CLS.values():
+  for _, wrapper_optimizer in _REGISTERED_WRAPPER_OPTIMIZER_CLS.values():
     if isinstance(opt, wrapper_optimizer):
       raise ValueError('"opt" must not already be an instance of a {cls}. '
                        '`enable_mixed_precision_graph_rewrite` will '
@@ -66,9 +68,10 @@ def _wrap_optimizer(opt, loss_scale):
                        '{cls}.'
                        .format(cls=wrapper_optimizer.__name__))
 
-  for optimizer_cls, wrapper_cls in _REGISTERED_WRAPPER_OPTIMIZER_CLS.items():
+  for optimizer_cls, (wrapper_fn, _) in (
+      _REGISTERED_WRAPPER_OPTIMIZER_CLS.items()):
     if isinstance(opt, optimizer_cls):
-      return wrapper_cls(opt, loss_scale)
+      return wrapper_fn(opt, loss_scale)
 
   raise ValueError('"opt" must be an instance of a tf.train.Optimizer or a '
                    'tf.keras.optimizers.Optimizer, but got: %s' % opt)

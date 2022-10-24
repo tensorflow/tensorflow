@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks for autotuning performance knobs."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 import numpy as np
 

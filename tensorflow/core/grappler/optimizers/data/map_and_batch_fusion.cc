@@ -99,7 +99,7 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
       graph_utils::CopyAttribute(key, map_node, &new_node);
     }
   }
-
+  graph_utils::MaybeSetFusedMetadata(map_node, batch_node, &new_node);
   return new_node;
 }
 
@@ -139,7 +139,7 @@ Status MapAndBatchFusion::OptimizeAndCollectStats(Cluster* cluster,
   }
 
   TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_OPTIMIZER_AS(MapAndBatchFusion, "map_and_batch_fusion");

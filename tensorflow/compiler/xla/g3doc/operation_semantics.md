@@ -345,10 +345,11 @@ See also
 [`XlaBuilder::BitcastConvertType`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
 Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
-operation from a data shape to a target shape. The dimensions must match, and
-the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
-via bitcast routine. Bitcast is implemented as a low-level cast, so machines
-with different floating-point representations will give different results.
+operation from a data shape to a target shape. The input and output size must
+match: e.g. `s32` elements become `f32` elements via bitcast routine, and one
+`s32` element will become four `s8` elements. Bitcast is implemented as a
+low-level cast, so machines with different floating-point representations will
+give different results.
 
 <b> `BitcastConvertType(operand, new_element_type)` </b>
 
@@ -357,9 +358,42 @@ Arguments          | Type            | Semantics
 `operand`          | `XlaOp`         | array of type T with dims D
 `new_element_type` | `PrimitiveType` | type U
 
-The dimensions of the operand and the target shape must match. The bit-width of
-the source and destination element types must be equal. The source
-and destination element types must not be tuples.
+The dimensions of the operand and the target shape must match, apart from the
+last dimension which will change by the ratio of the primitive size before and
+after the conversion.
+
+The source and destination element types must not be tuples.
+
+### Bitcast-converting to primitive type of different width
+
+`BitcastConvert` HLO instruction supports the case where the size of the output
+element type `T'` is not equal to the size of the input element `T`. As the
+whole operation is conceptually a bitcast and does not change the underlying
+bytes, the shape of the output element has to change. For `B = sizeof(T), B' =
+sizeof(T')`, there are two possible cases.
+
+First, when `B > B'`, the output shape gets a new minor-most dimension of size
+`B/B'`. For example:
+
+```
+  f16[10,2]{1,0} %output = f16[10,2]{1,0} bitcast-convert(f32[10]{0} %input)
+```
+
+The rule remains the same for effective scalars:
+
+```
+  f16[2]{0} %output = f16[2]{0} bitcast-convert(f32[] %input)
+```
+
+Alternatively, for `B' > B` the instruction requires the last logical dimension
+of the input shape to be equal to `B'/B`, and this dimension is dropped during
+the conversion:
+
+```
+  f32[10]{0} %output = f32[10]{0} bitcast-convert(f16[10,2]{1,0} %input)
+```
+
+Note that conversions between different bitwidths are not elementwise.
 
 ## Broadcast
 
@@ -1356,6 +1390,9 @@ using the comparison operator of the element type of `operand`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
+<b>`Round(operand)`</b> Element-wise rounding, ties away from zero.
+
+<b>`RoundNearestEven(operand)`</b> Element-wise rounding, ties to nearest even.
 
 Arguments | Type    | Semantics
 --------- | ------- | ---------------------------
@@ -1468,7 +1505,7 @@ as `batch_dims`.
 The output is an array of rank `batch_dims.size` + `offset_dims.size`.
 
 The `operand.rank` must equal the sum of `offset_dims.size` and
-`collapsed_slice_dims`. Also, `slice_sizes.size` has to be equal to
+`collapsed_slice_dims.size`. Also, `slice_sizes.size` has to be equal to
 `operand.rank`.
 
 If `index_vector_dim` is equal to `start_indices.rank` we implicitly consider
@@ -1520,10 +1557,11 @@ calculated as follows:
 4.  `In` is `O`<sub>`in`</sub> + `S`<sub>`in`</sub> where + is element-wise
     addition.
 
-`remapped_offset_dims` is a monotonic function with domain [`0`, `offset.size`)
-and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So if, e.g.,
-`offset.size` is `4`, `operand.rank` is `6` and `collapsed_slice_dims` is {`0`,
-`2`} then `remapped_offset_dims` is {`0`→`1`, `1`→`3`, `2`→`4`, `3`→`5`}.
+`remapped_offset_dims` is a monotonic function with domain [`0`,
+`offset_dims.size`) and range [`0`, `operand.rank`) \ `collapsed_slice_dims`. So
+if, e.g., `offset_dims.size` is `4`, `operand.rank` is `6` and
+`collapsed_slice_dims` is {`0`, `2`} then `remapped_offset_dims` is {`0`→`1`,
+`1`→`3`, `2`→`4`, `3`→`5`}.
 
 If `indices_are_sorted` is set to true then XLA can assume that `start_indices`
 are sorted (in ascending `start_index_map` order) by the user. If they are not
@@ -1631,8 +1669,8 @@ the formal description) and "Offset Mapping" (`remapped_offset_dims` in the
 formal description) into [`X`,`0`] and [`0`,`O`<sub>`0`</sub>] respectively,
 adding up to [`X`,`O`<sub>`0`</sub>]. In other words, the output index
 [`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`O`<sub>`0`</sub>] maps to the input index
-[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`X`] which gives us
-the semantics for `tf.gather_nd`.
+[`GatherIndices`[`G`<sub>`0`</sub>,`G`<sub>`1`</sub>,`0`],`O`<sub>`0`</sub>]
+which gives us the semantics for `tf.gather_nd`.
 
 `slice_sizes` for this case is `[1,11]`.  Intuitively this means that every
 index `X` in the gather indices array picks an entire row and the result is the
@@ -1758,19 +1796,39 @@ Infeed of the device.
 
 ## Iota
 
-<b> `Iota()` </b>
+See also
+[`XlaBuilder::Iota`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+<b> `Iota(shape, iota_dimension)` </b>
 
 Builds a constant literal on device rather than a potentially large host
-transfer. Creates a rank 1 array of values starting at zero and incrementing by
-one. For floating-point types, the produced array is equivalent to
-`ConvertElementType(Iota(...))` where the `Iota` is of integral type and the
-conversion is to the floating-point type.
+transfer. Creates an array that has specified shape and holds values starting at
+zero and incrementing by one along the specified dimension. For floating-point
+types, the produced array is equivalent to `ConvertElementType(Iota(...))` where
+the `Iota` is of integral type and the conversion is to the floating-point type.
 
-Arguments        | Type            | Semantics
----------------- | --------------- | ------------------------------------
-`type`           | `PrimitiveType` | type U
-`size`           | `int64`         | The number of elements in the array.
-`iota_dimension` | `int64`         | The dimension to increment along.
+Arguments        | Type    | Semantics
+---------------- | ------- | --------------------------------------
+`shape`          | `Shape` | Shape of the array created by `Iota()`
+`iota_dimension` | `int64` | The dimension to increment along.
+
+For example, `Iota(s32[4, 8], 0)` returns
+
+```
+  [[0, 0, 0, 0, 0, 0, 0, 0 ],
+   [1, 1, 1, 1, 1, 1, 1, 1 ],
+   [2, 2, 2, 2, 2, 2, 2, 2 ],
+   [3, 3, 3, 3, 3, 3, 3, 3 ]]
+```
+
+`Iota(s32[4, 8], 1)` returns
+
+```
+  [[0, 1, 2, 3, 4, 5, 6, 7 ],
+   [0, 1, 2, 3, 4, 5, 6, 7 ],
+   [0, 1, 2, 3, 4, 5, 6, 7 ],
+   [0, 1, 2, 3, 4, 5, 6, 7 ]]
+```
 
 ## Map
 
@@ -1800,6 +1858,13 @@ with S.
 For example: `Map(op1, op2, op3, computation, par1)` maps `elem_out <-
 computation(elem1, elem2, elem3, par1)` at each (multi-dimensional) index in the
 input arrays to produce the output array.
+
+## OptimizationBarrier
+
+Blocks any optimization pass from moving computations across the barrier.
+
+Ensures that all inputs are evaluated before any operators that depend on the
+barrier's outputs.
 
 ## Pad
 
@@ -1903,21 +1968,17 @@ Applies a reduction function to one or more arrays in parallel.
 Where:
 
 *   N is required to be greater or equal to 1.
+*   The computation has to be "roughly" associative (see below).
 *   All input arrays must have the same dimensions.
+*   All initial values have to form an identity under `computation`.
 *   If `N = 1`, `Collate(T)` is `T`.
 *   If `N > 1`, `Collate(T_0, ..., T_{N-1})` is a tuple of `N` elements of type
     `T`.
 
-The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
-`T_i`, the dimensions of which are described below.
-
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`. The
-initial value used for every reduction is `init_value`, and it may be inserted
-anywhere during computation by the back-end. It is required that `init_value` is
-an identity of the reduction function (for example, `0` for addition) or
-undefined behavior will occur. The applied `computation` is always passed the
-`init_value` on the left-hand side.
+The rank of each returned array is `rank(operand) - len(dimensions)`. The output
+of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type `T_i`, the
+dimensions of which are described below.
 
 Different backends are allowed to reassociate the reduction computation.  This
 can lead to numerical differences, as some reduction functions like addition are
@@ -1925,9 +1986,11 @@ not associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses.
 
-As an example, when reducing across one dimension in a single 1D array with
-values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
-then that could be computed as
+### Examples
+
+When reducing across one dimension in a single 1D array with values `[10, 11,
+12, 13]`, with reduction function `f` (this is `computation`) then that could be
+computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
 
@@ -2198,7 +2261,7 @@ XlaComputation max;
   auto y = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "y");
   auto x = builder.Parameter(1, ShapeUtil::MakeShape(F32, {}), "x");
   builder.Max(y, x);
-  max = builder.Build().ConsumeValueOrDie();
+  max = builder.Build().value();
 }
 
 // Create a ReduceWindow computation with the max reduction computation.
@@ -2442,26 +2505,37 @@ Available values for `algorithm`:
 
 ## Scatter
 
-The XLA scatter operation generates a result which is the value of the input
-array `operand`, with several slices (at indices specified by `scatter_indices`)
-updated with the values in `updates` using `update_computation`.
+The XLA scatter operation generates a sequence of results which are the values
+of the input array `operands`, with several slices (at indices specified by
+`scatter_indices`) updated with the sequence of values in `updates` using
+`update_computation`.
 
 See also
 [`XlaBuilder::Scatter`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
 
-<b> `scatter(operand, scatter_indices, updates, update_computation, index_vector_dim, update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims)` </b>
+<b> `scatter(operands..., scatter_indices, updates..., update_computation,
+index_vector_dim, update_window_dims, inserted_window_dims,
+scatter_dims_to_operand_dims)` </b>
 
-Arguments                      | Type                | Semantics
------------------------------- | ------------------- | ---------
-`operand`                      | `XlaOp`             | Array to be scattered into.
-`scatter_indices`              | `XlaOp`             | Array containing the starting indices of the slices that must be scattered to.
-`updates`                      | `XlaOp`             | Array containing the values that must be used for scattering.
-`update_computation`           | `XlaComputation`    | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `(T, T) -> T`.
-`index_vector_dim`             | `int64`             | The dimension in `scatter_indices` that contains the starting indices.
-`update_window_dims`           | `ArraySlice<int64>` | The set of dimensions in `updates` shape that are _window dimensions_.
-`inserted_window_dims`         | `ArraySlice<int64>` | The set of _window dimensions_ that must be inserted into `updates` shape.
-`scatter_dims_to_operand_dims` | `ArraySlice<int64>` | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
-`indices_are_sorted`           | `bool`              | Whether the indices are guaranteed to be sorted by the caller.
+Arguments                      | Type                  | Semantics
+------------------------------ | --------------------- | ---------
+`operands`                     | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N` to be scattered into.
+`scatter_indices`              | `XlaOp`               | Array containing the starting indices of the slices that must be scattered to.
+`updates`                      | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`. `updates[i]` contains the values that must be used for scattering `operands[i]`.
+`update_computation`           | `XlaComputation`      | Computation to be used for combining the existing values in the input array and the updates during scatter. This computation should be of type `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`.
+`index_vector_dim`             | `int64`               | The dimension in `scatter_indices` that contains the starting indices.
+`update_window_dims`           | `ArraySlice<int64>`   | The set of dimensions in `updates` shape that are *window dimensions*.
+`inserted_window_dims`         | `ArraySlice<int64>`   | The set of *window dimensions* that must be inserted into `updates` shape.
+`scatter_dims_to_operand_dims` | `ArraySlice<int64>`   | A dimensions map from the scatter indices to the operand index space. This array is interpreted as mapping `i` to `scatter_dims_to_operand_dims[i]` . It has to be one-to-one and total.
+`indices_are_sorted`           | `bool`                | Whether the indices are guaranteed to be sorted by the caller.
+
+Where:
+
+* N is required to be greater or equal to 1.
+* `operands`[`0`], ..., `operands`[`N-1`] must all have the same dimensions.
+* `updates`[`0`], ..., `updates`[`N-1`] must all have the same dimensions.
+* If `N = 1`, `Collate(T)` is `T`.
+* If `N > 1`, `Collate(T_0, ..., T_N)` is a tuple of `N` elements of type `T`.
 
 If `index_vector_dim` is equal to `scatter_indices.rank` we implicitly consider
 `scatter_indices` to have a trailing `1` dimension.
@@ -2472,10 +2546,11 @@ order.
 
 The arguments of scatter should follow these constraints:
 
--   `updates` array must be of rank `update_window_dims.size +
+-   Each `updates` array must be of rank `update_window_dims.size +
     scatter_indices.rank - 1`.
 
--   Bounds of dimension `i` in `updates` must conform to the following:
+-   Bounds of dimension `i` in each `updates` array must conform to the
+    following:
 
     -   If `i` is present in `update_window_dims` (i.e. equal to
         `update_window_dims`[`k`] for some `k`), then the bound of dimension `i`
@@ -2501,11 +2576,12 @@ The arguments of scatter should follow these constraints:
     `inserted_window_dims.size`.
 
 -   `scatter_dims_to_operand_dims.size` must be equal to
-    `scatter_indices`[`index_vector_dim`], and its values must be in the range
-    `[0, operand.rank)`.
+    `scatter_indices.shape.dims`[`index_vector_dim`], and its values must be in
+    the range `[0, operand.rank)`.
 
-For a given index `U` in the `updates` array, the corresponding index `I` in the
-`operand` array into which this update has to be applied is computed as follows:
+For a given index `U` in each `updates` array, the corresponding index `I` in
+the corresponding `operands` array into which this update has to be applied is
+computed as follows:
 
 1.  Let `G` = { `U`[`k`] for `k` in `update_scatter_dims` }. Use `G` to look up
     an index vector `S` in the `scatter_indices` array such that `S`[`i`] =
@@ -2516,9 +2592,9 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
     1.  `S`<sub>`in`</sub>[`scatter_dims_to_operand_dims`[`k`]] = `S`[`k`] if
         `k` < `scatter_dims_to_operand_dims.size`.
     2.  `S`<sub>`in`</sub>[`_`] = `0` otherwise.
-3.  Create an index `W`<sub>`in`</sub> into `operand` by scattering the indices
-    at `update_window_dims` in `U` according to `inserted_window_dims`. More
-    formally:
+3.  Create an index `W`<sub>`in`</sub> into each `operands` array by scattering
+    the indices at `update_window_dims` in `U` according to
+    `inserted_window_dims`. More formally:
     1.  `W`<sub>`in`</sub>[`window_dims_to_operand_dims`(`k`)] = `U`[`k`] if `k`
         is in `update_window_dims`, where `window_dims_to_operand_dims` is the
         monotonic function with domain [`0`, `update_window_dims.size`) and
@@ -2532,15 +2608,17 @@ For a given index `U` in the `updates` array, the corresponding index `I` in the
 
 In summary, the scatter operation can be defined as follows.
 
--   Initialize `output` with `operand`, i.e. for all indices `O` in the
-    `operand` array: \
-    `output`[`O`] = `operand`[`O`]
--   For every index `U` in the `updates` array and the corresponding index `O`
-    in the `operand` array, if `O` is a valid index for `output`: \
-    `output`[`O`] = `update_computation`(`output`[`O`], `updates`[`U`])
+-   Initialize `output` with `operands`, i.e. for all indices `J`, for all
+    indices `O` in the `operands`[`J`] array: \
+    `output`[`J`][`O`] = `operands`[`J`][`O`]
+-   For every index `U` in the `updates`[`J`] array and the corresponding index
+    `O` in the `operand`[`J`] array, if `O` is a valid index for `output`: \
+    `(output`[`0`][`O`], ..., `output`[`N-1`][`O`])
+    =`update_computation`(`output`[`0`][`O`], ...,
+    ,`output`[`N-1`][`O`],`updates`[`0`][`U`], ...,`updates`[`N-1`][`U`])
 
 The order in which updates are applied is non-deterministic. So, when multiple
-indices in `updates` refer to the same index in `operand`, the corresponding
+indices in `updates` refer to the same index in `operands`, the corresponding
 value in `output` will be non-deterministic.
 
 Note that the first parameter that is passed into the `update_computation` will
@@ -2754,7 +2832,7 @@ rank as the input and contains the values inside a bounding box within the input
 array where the dimensions and indices of the bounding box are given as
 arguments to the slice operation.
 
-<b> `Slice(operand, start_indices, limit_indices)` </b>
+<b> `Slice(operand, start_indices, limit_indices, strides)` </b>
 
 | Arguments       | Type                | Semantics                            |
 | --------------- | ------------------- | ------------------------------------ |
@@ -2853,8 +2931,9 @@ tuple `([1, 3], [50, 42], [1.1, -3.0])`.
 
 If `is_stable` is set to true, the sort is guaranteed to be stable, that is, if
 there are elements which are considered to be equal by the comparator, the
-relative order of the equal values is preserved. By default, `is_stable` is set
-to false.
+relative order of the equal values is preserved. Two elements `e1` and `e2` are
+equal if and only if `comparator(e1, e2) = comparator(e2, e1) = false`. By
+default, `is_stable` is set to false.
 
 ## Transpose
 

@@ -4,18 +4,18 @@
 // with its attr field populated with nested attributes.
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 458 : i32}} {
-  func @main() {
+  func.func @main() {
     tf_executor.graph {
       %control = tf_executor.island wraps "tf.NoOp"() {_f = #tf_type.func<@callee, {attr2 = true, attr3 = 8.0 : f32}>} : () -> ()
       tf_executor.fetch
     }
-    return
+    func.return
   }
-  func @callee() {
+  func.func @callee() {
     tf_executor.graph {
       tf_executor.fetch
     }
-    return
+    func.return
   }
 }
 

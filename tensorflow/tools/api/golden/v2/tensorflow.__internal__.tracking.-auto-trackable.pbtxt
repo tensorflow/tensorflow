@@ -1,7 +1,7 @@
 path: "tensorflow.__internal__.tracking.AutoTrackable"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.autotrackable.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

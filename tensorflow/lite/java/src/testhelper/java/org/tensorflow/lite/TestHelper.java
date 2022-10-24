@@ -62,7 +62,7 @@ public class TestHelper {
    */
   public static String getInputDataType(Interpreter interpreter, int index) {
     if (interpreter != null && interpreter.wrapper != null) {
-      return interpreter.wrapper.getInputTensor(index).dataType().toStringName();
+      return DataTypeUtils.toStringName(interpreter.wrapper.getInputTensor(index).dataType());
     } else {
       throw new IllegalArgumentException(
           "Interpreter has not initialized;" + " Failed to get input data type.");
@@ -81,7 +81,7 @@ public class TestHelper {
    */
   public static String getOutputDataType(Interpreter interpreter, int index) {
     if (interpreter != null && interpreter.wrapper != null) {
-      return interpreter.wrapper.getOutputTensor(index).dataType().toStringName();
+      return DataTypeUtils.toStringName(interpreter.wrapper.getOutputTensor(index).dataType());
     } else {
       throw new IllegalArgumentException(
           "Interpreter has not initialized;" + " Failed to get output data type.");

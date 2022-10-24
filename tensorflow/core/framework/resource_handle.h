@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
-#define TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_
 
 #include <string>
 
@@ -45,6 +45,11 @@ class ResourceHandle {
   ResourceHandle();
   ResourceHandle(const ResourceHandleProto& proto);
   ~ResourceHandle();
+
+  // Use this factory method if the `proto` comes from user controlled input, to
+  // prevent a denial of service.
+  static Status BuildResourceHandle(const ResourceHandleProto& proto,
+                                    ResourceHandle* out);
 
   // Unique name for the device containing the resource.
   const std::string& device() const { return device_; }
@@ -91,7 +96,7 @@ class ResourceHandle {
 
   // Conversion to and from ResourceHandleProto
   void AsProto(ResourceHandleProto* proto) const;
-  void FromProto(const ResourceHandleProto& proto);
+  Status FromProto(const ResourceHandleProto& proto);
 
   // Serialization via ResourceHandleProto
   std::string SerializeAsString() const;
@@ -99,7 +104,7 @@ class ResourceHandle {
 
   std::string DebugString() const;
 
-  std::string SummarizeValue() const { return "Resource Tensor"; }
+  std::string SummarizeValue() const;
 
   // GUID for anonymous resources. Resources with this shared_name will have
   // their shared_name replaced with a GUID at creation time
@@ -122,17 +127,16 @@ class ResourceHandle {
   //
   // For those familiar with `ResourceMgr`, when you create a handle by the
   // `MakeResourceHandle` function in resource_mgr.h, the handle doesn't hold a
-  // pointer to the resource, and the resource is owned by the resource manager
-  // and needs to be manually deleted by calling `ResourceMgr::Delete`. In
-  // contrast, a handle created by this function doesn't interact with
-  // `ResourceMgr` at all, and the resource shouldn't be registered in any
-  // resource manager (otherwise the resource manager will prevent the resource
-  // from being automatically deleted).
+  // strong reference to the resource, and the resource is owned by the
+  // resource manager whose strong reference must be manually deleted by
+  // calling `ResourceMgr::Delete`. In contrast, a handle created by this
+  // function holds a strong reference to the resource. The resource manager
+  // does not hold a strong reference to the resource.
   template <typename T>
   static ResourceHandle MakeRefCountingHandle(
       T* resource, const string& device_name,
-      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-      const absl::optional<ManagedStackTrace>& definition_stack_trace) {
+      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+      const absl::optional<ManagedStackTrace>& definition_stack_trace = {}) {
     return MakeRefCountingHandle(resource, device_name, TypeIndex::Make<T>(),
                                  dtypes_and_shapes, definition_stack_trace);
   }
@@ -140,8 +144,8 @@ class ResourceHandle {
   static ResourceHandle MakeRefCountingHandle(
       ResourceBase* resource, const string& device_name,
       const TypeIndex& type_index,
-      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes,
-      const absl::optional<ManagedStackTrace>& definition_stack_trace);
+      const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes = {},
+      const absl::optional<ManagedStackTrace>& definition_stack_trace = {});
 
   // Pointer to the resource.
   const core::IntrusivePtr<ResourceBase>& resource() const { return resource_; }
@@ -153,6 +157,10 @@ class ResourceHandle {
     TF_RETURN_IF_ERROR(ValidateType<T>());
     return down_cast<T*>(resource_.get());
   }
+
+  // Returns True if the resource handle is ref-counting.
+  // See MakeRefCountingHandle.
+  bool IsRefCounting() const { return resource_.get() != nullptr; }
 
   // Validates that the resource type in `handle` is `T`.
   template <typename T>
@@ -173,8 +181,6 @@ class ResourceHandle {
   std::string maybe_type_name_;
   std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes_;
   absl::optional<ManagedStackTrace> definition_stack_trace_;
-
- private:
   // A smart pointer to the actual resource. When this field is not empty, the
   // handle is in a "ref-counting" mode, owning the resource; otherwise it's in
   // a "weak-ref" mode, only containing the name of the resource (conceptually a
@@ -196,4 +202,4 @@ bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_RESOURCE_HANDLE_H_

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for a little bit of strategy_combinations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python import tf2
@@ -189,7 +185,8 @@ class V2StrategyTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(strategy=strategy_combinations.tpu_strategies))
   def testTPU(self, strategy):
-    self.assertIsInstance(strategy, tpu_strategy.TPUStrategy)
+    self.assertIsInstance(
+        strategy, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2))
 
   @combinations.generate(
       combinations.combine(strategy=[

@@ -24,8 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -44,7 +43,7 @@ class HloModuleDceTest : public HloTestBase {
   // 'computation' passes through its tuple element at 'tuple_index' from
   // parameter to root instruction.
   bool WhileBodyHasPassThroughTupleElement(const HloComputation* computation,
-                                           const string& while_name,
+                                           const std::string& while_name,
                                            const int64_t tuple_index) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kWhile &&
@@ -106,10 +105,10 @@ TEST_F(HloModuleDceTest, WhileWithLiveOutputs) {
     ROOT while = (s32[], s32[3]{0}) while(tuple.1), condition=
       SimpleLoop.condition, body=SimpleLoop.body
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 0));
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
@@ -146,10 +145,10 @@ TEST_F(HloModuleDceTest, WhileWithUnusedSideEffectingTupleElement) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.4 = s32[] get-tuple-element(while), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 0));
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
@@ -184,13 +183,13 @@ TEST_F(HloModuleDceTest, OneWhileWithDeadTupleElement) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.4 = s32[] get-tuple-element(while), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
   // While tuple element {1} should not be pass-through before ModuleDCE.
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 1));
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 0));
   // While tuple element {1} should now be pass-through after ModuleDCE.
@@ -228,13 +227,13 @@ TEST_F(HloModuleDceTest, OneWhileWithTupleElementUsedByCond) {
       SimpleLoop.condition, body=SimpleLoop.body
     ROOT get-tuple-element.4 = s32[] get-tuple-element(while), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
   // While tuple element {1} should not be pass-through before ModuleDCE.
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 1));
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 0));
   // While tuple element {1} still be pass-through after ModuleDCE.
@@ -274,7 +273,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
   SimpleLoop.condition1 {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
-    constant.4 = s32[] constant(5)
+    constant.4 = s32[] constant(10)
     ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {
@@ -289,7 +288,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
       SimpleLoop.condition1, body=SimpleLoop.body1
     ROOT get-tuple-element.8 = s32[] get-tuple-element(while.2), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
   // Before HloModuleDCE while.1 and while.2 should not have pass-thru elements.
@@ -297,7 +296,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElement) {
                                                    "while.1", 1));
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while.2", 1));
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
   // After HloModuleDCE while.1 and while.2 should have deleted tuple elements,
   // after being modified to pass through unused tuple element {1}.
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
@@ -342,7 +341,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
   SimpleLoop.condition1 {
     loop_var.4 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.6 = s32[] get-tuple-element(loop_var.4), index=0
-    constant.4 = s32[] constant(5)
+    constant.4 = s32[] constant(10)
     ROOT less-than.1 = pred[] compare(get-tuple-element.6, constant.4), direction=LT
   }
   ENTRY SimpleLoop {
@@ -357,7 +356,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
       SimpleLoop.condition1, body=SimpleLoop.body1
     ROOT get-tuple-element.8 = s32[] get-tuple-element(while.2), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
   // Before HloModuleDCE while.1{0} and while.2{1} should not be pass-thru.
@@ -365,7 +364,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadTupleElementSwizzled) {
                                                    "while.1", 0));
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while.2", 1));
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
   // After HloModuleDCE while.1{0} and while.2{1} not be pass-thru elements.
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while.1", 1));
@@ -404,10 +403,10 @@ TEST_F(HloModuleDceTest, WhileWithOutfeed) {
       body=WhileBody
     ROOT rtuple = () tuple()
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 0));
 }
@@ -441,11 +440,11 @@ TEST_F(HloModuleDceTest, WhileWithOnlyLoopVariableBumping) {
       body=WhileBody
     ROOT get-tuple-element.4 = s32[] get-tuple-element(while), index=1
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
   // Expect TRUE because while loop simplifier will remove dead tuple element.
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                    "while", 0));
 }
@@ -494,7 +493,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadWhileLoop) {
       SimpleLoop.condition1, body=SimpleLoop.body1
     ROOT get-tuple-element.8 = s32[] get-tuple-element(while.2), index=0
   })")
-                    .ValueOrDie();
+                    .value();
 
   HloModuleDCE dce;
   // Before HloModuleDCE while.1 and while.2 should have pass-thru elements.
@@ -502,7 +501,7 @@ TEST_F(HloModuleDceTest, TwoWhilesWithDeadWhileLoop) {
                                                   "while.1", 1));
   EXPECT_TRUE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),
                                                   "while.2", 1));
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
   // After HloModuleDCE while.1 and while.2 should have deleted tuple elements,
   // after being modified to pass through unused tuple element {1}.
   EXPECT_FALSE(WhileBodyHasPassThroughTupleElement(module->entry_computation(),

@@ -183,7 +183,7 @@ struct TransposeMicroKernel<uint8_t, /*bs=*/16> {
   }
 };
 
-// TODO(phawkins): add an 4x4 uint16 transpose kernel.
+// TODO(phawkins): add an 4x4 uint16_t transpose kernel.
 
 template <>
 struct TransposeMicroKernel<uint16_t, /*bs=*/8> {

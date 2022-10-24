@@ -42,7 +42,7 @@ import functools
 # pylint: disable=g-import-not-at-top
 from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
-from tensorflow.lite.python.metrics_wrapper import converter_error_data_pb2
+from tensorflow.lite.python.metrics import converter_error_data_pb2
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
@@ -203,6 +203,10 @@ class _Compatible:
         # Log the first line of ConveterError.errors.error_message only
         # since the seond line is "Error code: xxxx"
         self._log(err.error_message.splitlines()[0])
+        self._log(self._get_location_string(err.location) + "\n")
+      else:
+        # Log other errors.
+        self._log(f"{_AUTHORING_ERROR_HDR}: {err.error_message}")
         self._log(self._get_location_string(err.location) + "\n")
 
     if custom_ops:

@@ -19,9 +19,13 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -85,6 +89,41 @@ string TaskNameFromDeviceName(const string& device_name) {
   string task_name;
   CHECK(DeviceNameUtils::GetTaskName(parsed_device, &task_name));
   return task_name;
+}
+
+struct RankFormatter {
+  void operator()(std::string* out, CollGroupMember m) const {
+    out->append(std::to_string(m.rank));
+  }
+};
+
+Status CheckUserSpecifiedRanks(const std::vector<CollGroupMember> members) {
+  absl::flat_hash_set<int> user_ranks = {};
+  bool at_least_one_member_with_no_rank = false;
+  bool at_least_one_member_with_user_rank = false;
+  for (const auto& m : members) {
+    if (m.rank == -1) {
+      at_least_one_member_with_no_rank = true;
+    } else {
+      at_least_one_member_with_user_rank = true;
+      user_ranks.insert(m.rank);
+    }
+  }
+
+  auto received_ranks = absl::StrJoin(members, ",", RankFormatter());
+  if (at_least_one_member_with_no_rank && at_least_one_member_with_user_rank) {
+    return errors::InvalidArgument(
+        "Only part of the group members have user given rank specified.",
+        "Received ranks: ", received_ranks);
+  }
+
+  if (at_least_one_member_with_user_rank &&
+      user_ranks.size() < members.size()) {
+    return errors::InvalidArgument(
+        "Duplicate ranks specified for group members. Received ranks: ",
+        received_ranks);
+  }
+  return OkStatus();
 }
 }  // namespace
 
@@ -173,7 +212,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       // Insert device if not already present.
       auto it = gr->incarnations_by_device_name.find(device.name());
       if (it == gr->incarnations_by_device_name.end()) {
-        if (gr->group.devices.size() == gr->group.group_size) {
+        if (gr->group.members.size() == gr->group.group_size) {
           // The group is already full.
           gr->status =
               errors::Internal("Device ", device.name(),
@@ -182,18 +221,29 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
         } else {
           // This is a new device that has not yet joined the group.
           gr->incarnations_by_device_name[device.name()] = device.incarnation();
-          gr->group.devices.push_back(device);
+          CollGroupMember member;
+          member.device = device;
+          if (group_params->user_specified_rank == -1 ||
+              (group_params->user_specified_rank >= 0 &&
+               group_params->user_specified_rank < gr->group.group_size)) {
+            member.rank = group_params->user_specified_rank;
+          } else {
+            gr->status = errors::InvalidArgument(
+                "User Provided rank is invalid. It should be between [0, "
+                "group_size)");
+          }
+          gr->group.members.push_back(std::move(member));
           new_device = true;
           if (VLOG_IS_ON(1)) {
             string dev_buf;
-            for (const auto& d : gr->group.devices) {
-              strings::StrAppend(&dev_buf, ",", d.name());
+            for (const auto& m : gr->group.members) {
+              strings::StrAppend(&dev_buf, ",", m.device.name());
             }
             VLOG(1) << "CompleteGroupLocal group_key=" << gr->group.group_key
                     << " group_size=" << gr->group.group_size << " (current"
                     << " devices)=(" << dev_buf << ") (number of"
                     << " devices pending)="
-                    << (gr->group.group_size - gr->group.devices.size());
+                    << (gr->group.group_size - gr->group.members.size());
           }
         }
       } else {
@@ -211,15 +261,19 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     if (gr->status.ok()) {
       // If the group is not yet complete, queue to wait for it.
       VLOG(2) << "group_size " << gr->group.group_size << " set size "
-              << gr->group.devices.size() << " gr " << gr;
+              << gr->group.members.size() << " gr " << gr;
 
-      if (gr->group.devices.size() < gr->group.group_size) {
+      if (gr->group.members.size() < gr->group.group_size) {
         gr->pending_done.push_back(std::move(done));
         gr->pending_params.push_back(group_params);
         return;
       }
-      CHECK_EQ(gr->group.devices.size(), gr->group.group_size);
+      CHECK_EQ(gr->group.members.size(), gr->group.group_size);
       // We get a full group. Fill in remaining fields in gr->group.
+      auto st = CheckUserSpecifiedRanks(gr->group.members);
+      if (!st.ok()) {
+        gr->status = st;
+      }
       if (new_device) {
         FinishGroup(gr);
       }
@@ -256,16 +310,16 @@ typedef std::unordered_map<string, TaskDeviceMap> GlobalDeviceMap;
 // Create a populated GlobalDeviceMap from CollInstanceParams and localities.
 GlobalDeviceMap BuildDevRecs(const CollGroupParams& gp) {
   GlobalDeviceMap gdm;
-  CHECK_EQ(gp.devices.size(), gp.task_names.size());
-  for (int i = 0; i < gp.devices.size(); ++i) {
-    TaskDeviceMap& tdm = gdm[gp.task_names[i]];
-    DevRec* dr = &tdm[gp.devices[i].name()];
-    dr->task = gp.task_names[i];
-    dr->device = gp.devices[i].name();
+  CHECK_EQ(gp.members.size(), gp.members.size());
+  for (int i = 0; i < gp.members.size(); ++i) {
+    TaskDeviceMap& tdm = gdm[gp.members[i].task];
+    DevRec* dr = &tdm[gp.members[i].device.name()];
+    dr->task = gp.members[i].task;
+    dr->device = gp.members[i].device.name();
     dr->original_rank = i;
     dr->local_rank = 0;   // Will be populated later by OrderTaskDeviceMap.
     dr->global_rank = 0;  // Will be populated later by EstablishGlobalRank.
-    dr->locality = &gp.devices[i].locality();
+    dr->locality = &gp.members[i].device.locality();
   }
   return gdm;
 }
@@ -393,16 +447,14 @@ GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
     TaskDeviceMap& tdm = iter.second;
     OrderTaskDeviceMap(gpu_ring_order, &tdm);
   }
-  // Connect the global rank order by the order in which tasks first appear.
-  std::set<string> ordered_tasks;
+  // Connect the global rank order by the lexicographical order of the tasks.
+  std::set<string> tasks;
+  for (const CollGroupMember& member : gp.members) {
+    tasks.insert(member.task);
+  }
   int next_rank = 0;
-  for (int i = 0; i < gp.task_names.size(); ++i) {
-    const string& task_name = gp.task_names[i];
-    if (ordered_tasks.find(task_name) != ordered_tasks.end()) {
-      continue;
-    }
-    ordered_tasks.insert(task_name);
-    TaskDeviceMap* tdm = &gdm[task_name];
+  for (const string& task : tasks) {
+    TaskDeviceMap* tdm = &gdm[task];
     for (auto& it : *tdm) {
       it.second.global_rank = it.second.local_rank + next_rank;
     }
@@ -416,19 +468,9 @@ GlobalDeviceMap EstablishGlobalRank(const CollGroupParams& gp,
 // be sorted.
 void SetDevPerTask(CollGroupParams* gp) {
   gp->num_devices_per_task.clear();
-  const string* last_task_name = &gp->task_names[0];
-  int count = 0;
-  for (const string& task_name : gp->task_names) {
-    if (task_name == *last_task_name) {
-      ++count;
-    } else {
-      gp->num_devices_per_task[*last_task_name] = count;
-      count = 1;
-      last_task_name = &task_name;
-    }
+  for (const CollGroupMember& member : gp->members) {
+    gp->num_devices_per_task[member.task]++;
   }
-  gp->num_devices_per_task[*last_task_name] = count;
-
   gp->same_num_devices_per_task = false;
   int dev_per_task = -1;
   for (const auto& task_dev : gp->num_devices_per_task) {
@@ -444,18 +486,13 @@ void SetDevPerTask(CollGroupParams* gp) {
 }  // namespace
 
 void CollectiveParamResolverLocal::FinishGroup(GroupRec* gr) {
-  // Sort devices lexicographically first.
-  std::sort(gr->group.devices.begin(), gr->group.devices.end(),
-            [](const DeviceAttributes& lhs, const DeviceAttributes& rhs) {
-              return lhs.name() < rhs.name();
-            });
-  // Build task_names, which is needed by CompleteDefaultRanking.
-  gr->group.task_names.reserve(gr->group.devices.size());
-  for (const DeviceAttributes& device : gr->group.devices) {
-    gr->group.task_names.push_back(TaskNameFromDeviceName(device.name()));
+  // Populate group member task and is_local.
+  for (CollGroupMember& member : gr->group.members) {
+    member.task = TaskNameFromDeviceName(member.device.name());
+    member.is_local = member.task == task_name_;
   }
-  // Establish the final order of gp->devices and gp->task_names by
-  // considering localities of all devices.
+  // Establish the order of the members by considering localities of all
+  // devices.
   CompleteDefaultRanking(&gr->group);
   SetDevPerTask(&gr->group);
   gr->group.num_tasks =
@@ -475,7 +512,7 @@ void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
   }
   {
     mutex_lock l(gr->mu);
-    if (gr->group.devices.size() == gr->group.group_size) {
+    if (gr->group.members.size() == gr->group.group_size) {
       // The group is already complete. There's no need to cancel.
       return;
     }
@@ -488,21 +525,16 @@ void CollectiveParamResolverLocal::CancelGroup(int32 group_key) {
   }
 }
 
-void CollectiveParamResolverLocal::CompleteTaskIsLocal(const string& task_name,
-                                                       CollectiveParams* cp) {
-  cp->task.is_local.resize(cp->group.group_size, false);
-  for (int i = 0; i < cp->group.group_size; ++i) {
-    cp->task.is_local[i] = (cp->group.task_names[i] == task_name);
-  }
-}
-
 void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
                                                   CollectiveParams* cp) {
-  CHECK_EQ(cp->group.group_size, cp->group.devices.size()) << cp->ToString();
+  CHECK_EQ(cp->group.group_size, cp->group.members.size()) << cp->ToString();
   for (int i = 0; i < cp->group.group_size; ++i) {
-    if (cp->group.devices[i].name() == device) {
+    if (cp->group.members[i].device.name() == device) {
       cp->default_rank = i;
-      break;
+    }
+    // Set member rank to default rank if not user specified.
+    if (cp->group.members[i].rank == -1) {
+      cp->group.members[i].rank = i;
     }
   }
 }
@@ -511,12 +543,6 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const CollectiveParams* cp, InstanceRec* ir) {
   ir->shared->instance = cp->instance;
   ir->shared->default_rank = -1;
-
-  // Set is_local and task_names in *shared prior to invoking
-  // GetDeviceAttributesAsync.  In a distributed context this function can be
-  // called by a derived class, some of the devices may be non-local and
-  // GetDeviceAttributesAsync will use those fields to launch RPCs.
-  CompleteTaskIsLocal(task_name_, ir->shared);
 }
 
 // NOTE(ayushd): The DeviceLocality objects in attributes will have LocalLinks
@@ -524,30 +550,48 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
 // TensorFlow runtime.  This set of devices may be a superset of the devices
 // participating in this instance of collectives.
 void CollectiveParamResolverLocal::CompleteDefaultRanking(CollGroupParams* gp) {
+  // Sort gp->member to avoid indeterminism.
+  std::sort(gp->members.begin(), gp->members.end(),
+            [](const CollGroupMember& lhs, const CollGroupMember& rhs) {
+              DeviceNameUtils::ParsedName lhs_device_name, rhs_device_name;
+              if (DeviceNameUtils::ParseFullName(lhs.device.name(),
+                                                 &lhs_device_name) &&
+                  DeviceNameUtils::ParseFullName(rhs.device.name(),
+                                                 &rhs_device_name)) {
+                if (lhs_device_name.job == rhs_device_name.job) {
+                  if (lhs_device_name.task == rhs_device_name.task) {
+                    return lhs_device_name.id < rhs_device_name.id;
+                  } else {
+                    return lhs_device_name.task < rhs_device_name.task;
+                  }
+                } else {
+                  return lhs_device_name.job < rhs_device_name.job;
+                }
+              }
+              return lhs.device.name() < rhs.device.name();
+            });
   // Establish an instance-specific default rank order for devices
   // based on localities.  This rank order should be a good ring
   // order, if possible.
   GlobalDeviceMap gdm = EstablishGlobalRank(*gp, gpu_ring_order_);
   // Reflect the new global ranking on shared
-  std::vector<DeviceAttributes> new_devices(gp->group_size);
-  std::vector<string> new_task_names(gp->group_size);
+  std::vector<CollGroupMember> new_members(gp->group_size);
   for (const auto& git : gdm) {
     const TaskDeviceMap& tdm = git.second;
     for (const auto& tit : tdm) {
       const DevRec& dr = tit.second;
-      new_devices[dr.global_rank] = gp->devices[dr.original_rank];
-      new_task_names[dr.global_rank] = gp->task_names[dr.original_rank];
+      new_members[dr.global_rank] = std::move(gp->members[dr.original_rank]);
     }
   }
 
   if (VLOG_IS_ON(2)) {
     string buf;
-    for (const auto& d : new_devices) strings::StrAppend(&buf, "\n", d.name());
+    for (const auto& m : new_members)
+      strings::StrAppend(&buf, "\n", m.device.name());
     VLOG(2) << "Optimized device order for group " << gp->group_key << ": "
             << buf;
   }
-  gp->devices = std::move(new_devices);
-  gp->task_names = std::move(new_task_names);
+  gp->members = std::move(new_members);
 }
 
 CollectiveParamResolverLocal::InstanceRec*
@@ -589,19 +633,53 @@ CollectiveParamResolverLocal::GetOrCreateInstanceRec(CollectiveParams* cp,
   return irec;
 }
 
+Status CollectiveParamResolverLocal::LookupGroup(int32_t group_key,
+                                                 CollGroupParams* group) {
+  mutex_lock l(group_mu_);
+  auto group_rec = group_table_.find(group_key);
+  if (group_rec == group_table_.end()) {
+    return errors::InvalidArgument("Group ", group_key,
+                                   " is not "
+                                   "initialized. Please call group "
+                                   "initialization op first before invoking "
+                                   "collective op.");
+  }
+  mutex_lock lock(group_rec->second->mu);
+  if (!group_rec->second->status.ok()) {
+    return errors::FailedPrecondition(
+        "Failed to run collective due to "
+        "unsuccessful group initialization. "
+        "Group initialization failed with error ",
+        group_rec->second->status.ToString());
+  }
+  *group = group_rec->second->group;
+  return OkStatus();
+}
+
 void CollectiveParamResolverLocal::CompleteParamsAsync(
     const DeviceAttributes& device, CollectiveParams* cp,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
   VLOG(1) << "CompleteParams local " << device.name() << " for " << cp << ": "
           << cp->ToString();
-  CompleteGroupLocal(device, &cp->group, cancel_mgr,
-                     [this, device, cp, done](const Status& s) {
-                       if (s.ok()) {
-                         CompleteInstanceLocal(device.name(), cp, done);
-                       } else {
-                         done(s);
-                       }
-                     });
+  if (cp->run_group_initialization) {
+    CompleteGroupLocal(device, &cp->group, cancel_mgr,
+                       [this, device, cp, done](const Status& s) {
+                         if (s.ok()) {
+                           CompleteInstanceLocal(device.name(), cp, done);
+                         } else {
+                           done(s);
+                         }
+                       });
+  } else {
+    // For Collective V3 ops, group is already initialized. Fetch attributes
+    // for the already initialized group to pass to Insitance initialization.
+    const auto s = LookupGroup(cp->group.group_key, &cp->group);
+    if (s.ok()) {
+      CompleteInstanceLocal(device.name(), cp, done);
+    } else {
+      done(s);
+    }
+  }
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceAsync(
@@ -626,6 +704,7 @@ void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
   CollectiveImplementationInterface* col_impl;
   bool use_nccl =
       (nccl_ || cp->instance.impl_details.communication_hint == "nccl") &&
+      cp->group.device_type == DEVICE_GPU &&
       CollectiveRegistry::LookupParamResolverInstance("NcclReduce", &col_impl)
           .ok();
   cp->instance.impl_details.collective_name = GetCollectiveName(cp, use_nccl);
@@ -688,7 +767,6 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
   // Populate the fields common across task.
   AssignCollectiveType(cp);
   SetDefaultRank(device, cp);
-  CompleteTaskIsLocal(task_name_, cp);
 
   CollectiveImplementationInterface* col_impl;
   status = CollectiveRegistry::LookupParamResolverInstance(

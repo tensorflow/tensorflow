@@ -56,7 +56,7 @@ class NegOpModel : public SingleOpModel {
 TEST(NegOpModel, NegFloat) {
   NegOpModel m({TensorType_FLOAT32, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
   m.SetInput<float>({-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f}));
 }
@@ -64,14 +64,14 @@ TEST(NegOpModel, NegFloat) {
 TEST(NegOpModel, NegInt32) {
   NegOpModel m({TensorType_INT32, {2, 3}}, {TensorType_INT32, {2, 3}});
   m.SetInput<int32_t>({-2, -1, 0, 1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({2, 1, 0, -1, -2, -3}));
 }
 
 TEST(NegOpModel, NegInt64) {
   NegOpModel m({TensorType_INT64, {2, 3}}, {TensorType_INT64, {2, 3}});
   m.SetInput<int64_t>({-2, -1, 0, 1, 2, 3});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({2, 1, 0, -1, -2, -3}));
 }
 

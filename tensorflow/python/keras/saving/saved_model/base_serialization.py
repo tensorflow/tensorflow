@@ -14,15 +14,10 @@
 # ==============================================================================
 """Helper classes that list&validate all attributes to serialize to SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 
 from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.keras.saving.saved_model import utils
-from tensorflow.python.training.tracking import tracking
 
 
 class SavedModelSaver(object, metaclass=abc.ABCMeta):
@@ -52,52 +47,14 @@ class SavedModelSaver(object, metaclass=abc.ABCMeta):
     # object is in the python property)
     return json_utils.Encoder().encode(self.python_properties)
 
-  def list_extra_dependencies_for_serialization(self, serialization_cache):
-    """Lists extra dependencies to serialize to SavedModel.
-
-    By overriding this method, extra dependencies can be attached to the
-    serialized Layer. For example, this is used to save the list of `variables`
-    and `trainable_variables`, which are python properties in a Layer object,
-    but are represented as a static list in the SavedModel.
-
-    Args:
-      serialization_cache: A dictionary shared between all objects in the same
-        object graph. This object is passed to both
-        `_list_extra_dependencies_for_serialization` and
-        `_list_functions_for_serialization`.
-
-    Returns:
-      A dictionary mapping attribute names to trackable objects. The entire list
-      of attributes are listed in the `saved_model._LayerAttributes` class.
-    """
+  def trackable_children(self, serialization_cache):
+    """Lists all Trackable children connected to this object."""
     if not utils.should_save_traces():
       return {}
 
-    return self.objects_to_serialize(serialization_cache)
-
-  def list_functions_for_serialization(self, serialization_cache):
-    """Lists extra functions to serialize to the SavedModel.
-
-    Args:
-      serialization_cache: Dictionary passed to all objects in the same object
-        graph during serialization.
-
-    Returns:
-        A dictionary mapping attribute names to `Function` or
-        `ConcreteFunction`.
-    """
-    if not utils.should_save_traces():
-      return {}
-
-    fns = self.functions_to_serialize(serialization_cache)
-
-    # The parent AutoTrackable class saves all user-defined tf.functions, and
-    # returns them in _list_functions_for_serialization(). Add these functions
-    # to the dict.
-    fns.update(
-        tracking.AutoTrackable._list_functions_for_serialization(  # pylint:disable=protected-access
-            self.obj, serialization_cache))
-    return fns
+    children = self.objects_to_serialize(serialization_cache)
+    children.update(self.functions_to_serialize(serialization_cache))
+    return children
 
   @abc.abstractproperty
   def python_properties(self):

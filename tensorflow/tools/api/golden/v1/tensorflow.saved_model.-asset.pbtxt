@@ -1,7 +1,7 @@
 path: "tensorflow.saved_model.Asset"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.tracking.tracking.Asset\'>"
-  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.trackable.asset.Asset\'>"
+  is_instance: "<class \'tensorflow.python.trackable.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "asset_path"

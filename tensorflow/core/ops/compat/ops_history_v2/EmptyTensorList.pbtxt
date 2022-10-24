@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "EmptyTensorList"
   input_arg {
     name: "element_shape"
@@ -45,6 +45,45 @@ op {
       args {
         type_id: TFT_VAR
         s: "element_dtype"
+      }
+    }
+  }
+  attr {
+    name: "element_dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
+  name: "EmptyTensorList"
+  input_arg {
+    name: "element_shape"
+    type_attr: "shape_type"
+  }
+  input_arg {
+    name: "max_num_elements"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+    experimental_full_type {
+      type_id: TFT_ARRAY
+      args {
+        type_id: TFT_TENSOR
+        args {
+          type_id: TFT_VAR
+          s: "element_dtype"
+        }
       }
     }
   }

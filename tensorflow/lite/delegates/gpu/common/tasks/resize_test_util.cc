@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/resize_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -35,18 +36,18 @@ absl::Status ResizeBilinearAlignedTest(TestExecutionEnvironment* env) {
   attr.new_shape = HW(4, 4);
   attr.align_corners = true;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {0.0f, 0.666667f, 1.33333f, 2.0f, 1.0f, 1.66667f, 2.33333f, 3.0f,
@@ -67,18 +68,18 @@ absl::Status ResizeBilinearNonAlignedTest(TestExecutionEnvironment* env) {
   attr.new_shape = HW(4, 4);
   attr.align_corners = false;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 0.75f, 1.5f, 2.0f, 1.5f, 2.25f, 3.0f, 3.5f, 3.0f,
@@ -100,18 +101,18 @@ absl::Status ResizeBilinearWithoutHalfPixelTest(TestExecutionEnvironment* env) {
   attr.align_corners = false;
   attr.half_pixel_centers = false;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({1.0f, 1.666666f, 2.0f, 2.333333f, 3.0f,
                                      3.333333f, 3.0f, 3.666666f, 4.0f},
@@ -132,18 +133,18 @@ absl::Status ResizeBilinearWithHalfPixelTest(TestExecutionEnvironment* env) {
   attr.align_corners = false;
   attr.half_pixel_centers = true;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f, 1.5f, 2.0f, 2.0f, 2.5f, 3.0f, 3.0f, 3.5f, 4.0f},
@@ -164,18 +165,18 @@ absl::Status ResizeNearestTest(TestExecutionEnvironment* env) {
   attr.new_shape = HW(2, 4);
   attr.type = SamplingType::NEAREST;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 2, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f, 1.0f, 2.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f},
@@ -196,18 +197,18 @@ absl::Status ResizeNearestAlignCornersTest(TestExecutionEnvironment* env) {
   attr.new_shape = HW(3, 3);
   attr.type = SamplingType::NEAREST;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},
@@ -228,18 +229,18 @@ absl::Status ResizeNearestHalfPixelCentersTest(TestExecutionEnvironment* env) {
   attr.new_shape = HW(3, 3);
   attr.type = SamplingType::NEAREST;
 
-  for (auto storage : env->GetSupportedStorages()) {
-    for (auto precision : env->GetSupportedPrecisions()) {
+  for (auto precision : env->GetSupportedPrecisions()) {
+    auto data_type = DeduceDataTypeFromPrecision(precision);
+    for (auto storage : env->GetSupportedStorages(data_type)) {
       const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
-      auto data_type = DeduceDataTypeFromPrecision(precision);
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
@@ -48,8 +47,11 @@ auto* auto_outside_compilation_gauge =
         "/tensorflow/core/use_auto_outside_compilation",
         "Tracks if auto outside compilation is enabled");
 
+#define GEN_PASS_DEF_MARKOPSFOROUTSIDECOMPILATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct MarkOpsForOutsideCompilation
-    : public TF::MarkOpsForOutsideCompilationPassBase<
+    : public impl::MarkOpsForOutsideCompilationPassBase<
           MarkOpsForOutsideCompilation> {
   void runOnOperation() override;
 };
@@ -58,9 +60,9 @@ struct MarkOpsForOutsideCompilation
 // TODO(b/161726307): Move or import the relevant patterns to LowerTF pass and
 // remove this.
 void AddCanonicalizationPatterns(MLIRContext* context,
-                                 OwningRewritePatternList* patterns) {
-  for (auto* op : context->getRegisteredOperations())
-    op->getCanonicalizationPatterns(*patterns, context);
+                                 RewritePatternSet* patterns) {
+  for (auto op : context->getRegisteredOperations())
+    op.getCanonicalizationPatterns(*patterns, context);
 }
 
 // Adds the list of ops that are supported on TPU through constant folding which
@@ -116,6 +118,8 @@ void AddSupportedFunctionalOps(MLIRContext* context,
       OperationName(TF::InplaceAddOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::WhileRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::XlaCallModuleOp::getOperationName(), context));
   supported_ops->insert(
       OperationName(TF::XlaReduceOp::getOperationName(), context));
   supported_ops->insert(
@@ -234,8 +238,7 @@ bool IsSupportedOp(Operation& op,
   // compile it ever for performance reasons.
   if (llvm::isa<TF::AssertOp>(op)) return true;
   return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+         (MatchesPattern(op, supported_ops) || mhlo::HasTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.
@@ -393,7 +396,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
-  OwningRewritePatternList patterns(&getContext());
+  RewritePatternSet patterns(&getContext());
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   TF::PopulateTFLoweringBeforeHLOPatterns(module.getContext(), &patterns);
   TF::PopulateLoweringQuantizedPatterns(module.getContext(), &patterns);
@@ -407,7 +410,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   PatternApplicator(std::move(patterns))
       .walkAllPatterns([&](const Pattern& pattern) {
         Optional<OperationName> root_kind = pattern.getRootKind();
-        if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
+        if (root_kind.has_value()) supported_ops.insert(root_kind.getValue());
       });
   AddSupportedFunctionalOps(module.getContext(), &supported_ops);
   AddSupportedOpsUsingFolding(module.getContext(), &supported_ops);

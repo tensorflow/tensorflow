@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.window()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -250,6 +246,12 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(
         dataset,
         expected_output=[[[y + 30 * x for y in range(30)] for x in range(3)]])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    dataset = dataset_ops.Dataset.from_tensors(42).window(
+        1, name="window").flat_map(lambda x: x)
+    self.assertDatasetProduces(dataset, [42])
 
 
 class WindowCheckpointTest(checkpoint_test_base.CheckpointTestBase,

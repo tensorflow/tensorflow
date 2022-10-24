@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tensorflow.python.framework.composite_tensor."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 import sys
 import weakref
@@ -28,7 +24,7 @@ import numpy as np
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
@@ -83,13 +79,20 @@ class CT(composite_tensor.CompositeTensor):
 
 
 # Another test CompositeTensor class.  `tf.nest` should treat different CT
-# classes as different structure types (e.g. for assert_same_structure).
+# classes without common supertypes as different structure types
+# (e.g. for assert_same_structure).
 class CTSpec2(CTSpec):
   pass
 
 
 class CT2(CT):
   _type_spec_class = CTSpec2
+
+
+# CompositeTensors with a common supertype are considered to be the same
+# structure by tf.nest (e.g. for assert_same_structure).
+class CT3(CT):
+  _type_spec_class = CTSpec
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -201,6 +204,10 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       {'s1': CT(['a', 'b', 'c']), 's2': CT(['d', 'e', 'f'])},
       {'s1': [1, CT([10]), CT(200, metadata='xyz')],
        's2': [8, CT([55]), CT(100, metadata='xyz')]},
+      {'s1': CT('abc'), 's2': CT3('xyz')},
+      {'s1': CT(['a', 'b', 'c']), 's2': CT3(['d', 'e', 'f'])},
+      {'s1': [1, CT([10]), CT(200, metadata='xyz')],
+       's2': [8, CT([55]), CT3(100, metadata='xyz')]},
   ])  # pyformat: disable
   def testNestAssertSameStructure(self, s1, s2, expand_composites=True):
     nest.assert_same_structure(s1, s2, expand_composites=expand_composites)
@@ -216,7 +223,7 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       {'s1': CT(['a', 'b', 'c']), 's2': CT(['d', 'e'])},
       {'s1': [1, CT(['a']), CT('b', metadata='xyz')],
        's2': [8, CT([55, 66]), CT(100, metadata='abc')]},
-      {'s1': CT(0), 's2': CT2(0), 'error': TypeError},
+      {'s1': CT(0), 's2': CT2(0)},
   ])  # pyformat: disable
   def testNestAssertSameStructureCompositeMismatch(self,
                                                    s1,
@@ -378,12 +385,12 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters([
-      ('IndexedSlicesNoDenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesNoDenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]))),
-      ('IndexedSlicesInt32DenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesInt32DenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([1, 2, 3]), constant_op.constant([2, 8, 4]),
           constant_op.constant([10], dtypes.int32))),
-      ('IndexedSlicesInt64DenseShape', lambda: ops.IndexedSlices(
+      ('IndexedSlicesInt64DenseShape', lambda: indexed_slices.IndexedSlices(
           constant_op.constant([[1, 2], [3, 4]]), constant_op.constant([2, 8]),
           constant_op.constant([10, 2], dtypes.int64))),
       ('RaggedTensorRaggedRank1',
@@ -394,7 +401,7 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        lambda: sparse_tensor.SparseTensor([[3], [7]], ['a', 'b'], [10])),
       ('Nested structure', lambda: {
           'a':
-              ops.IndexedSlices(
+              indexed_slices.IndexedSlices(
                   constant_op.constant([1, 2, 3]),
                   constant_op.constant([2, 8, 4])),
           'b': [
@@ -408,6 +415,14 @@ class CompositeTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     spec = nest.map_structure(type_spec.type_spec_from_value, value,
                               expand_composites=False)
     nest.assert_same_structure(value, spec, expand_composites=True)
+
+  def testConvertVariablesToTensors(self):
+    ct = CT(1)
+    result = ct._convert_variables_to_tensors()
+    self.assertIs(result, ct)
+
+    result2 = composite_tensor.convert_variables_to_tensors(ct)
+    self.assertIs(result2, ct)
 
 
 if __name__ == '__main__':

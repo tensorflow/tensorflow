@@ -194,11 +194,11 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
       const GpuDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size, \
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
-#define REGISTER_GPU64(T)                                              \
-  template void ConcatGPUImpl<T, int64>(                               \
-      const Eigen::GpuDevice& d,                                       \
-      const GpuDeviceArrayStruct<const T*>& input_ptrs,                \
-      const GpuDeviceArrayStruct<int64>& ptr_offsets, bool fixed_size, \
+#define REGISTER_GPU64(T)                                                \
+  template void ConcatGPUImpl<T, int64>(                                 \
+      const Eigen::GpuDevice& d,                                         \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs,                  \
+      const GpuDeviceArrayStruct<int64_t>& ptr_offsets, bool fixed_size, \
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_GPUCONCAT32);  // int32 Needed for TensorLists.

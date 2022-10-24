@@ -14,23 +14,18 @@
 # ==============================================================================
 """Companion classes for mid level API for TPU Embeddings in TF2."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
-
 import abc
 import math
 import typing
 from typing import Any, Dict, Callable, List, Optional, Text, Tuple, TypeVar, Union
 
 from absl import logging
-import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.framework import ops
+from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
@@ -46,8 +41,7 @@ SlotVarCreationFnType = Callable[
 ClipValueType = Union[Tuple[float, float], float]
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _Optimizer(object):
+class _Optimizer(metaclass=abc.ABCMeta):
   """Base class for all optimizers, with common parameters."""
 
   def __init__(
@@ -166,6 +160,18 @@ class _Optimizer(object):
         slots[slot] = variable_creator(slot, initializer)
       return slots
 
+  def __eq__(self, other: Any) -> Union[Any, bool]:
+    if isinstance(other, self.__class__):
+      return all([
+          attr1 == attr2
+          for attr1, attr2 in zip(self.__dict__.items(), other.__dict__.items())
+      ])
+    else:
+      return False
+
+  def __hash__(self) -> int:
+    return hash(tuple(self.__dict__.items()))
+
 
 @tf_export("tpu.experimental.embedding.SGD")
 class SGD(_Optimizer):
@@ -216,6 +222,7 @@ class SGD(_Optimizer):
 
   def __init__(self,
                learning_rate: Union[float, Callable[[], float]] = 0.01,
+               use_gradient_accumulation: bool = True,
                clip_weight_min: Optional[float] = None,
                clip_weight_max: Optional[float] = None,
                weight_decay_factor: Optional[float] = None,
@@ -226,6 +233,8 @@ class SGD(_Optimizer):
     Args:
       learning_rate: The learning rate. It should be a floating point value or a
         callable taking no arguments for a dynamic learning rate.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster.
       clip_weight_min: the minimum value to clip by; None means -infinity.
       clip_weight_max: the maximum value to clip by; None means +infinity.
       weight_decay_factor: amount of weight decay to apply; None means that the
@@ -243,12 +252,9 @@ class SGD(_Optimizer):
         'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
         information on gradient accumulation and its impact on tpu embeddings.
     """
-    use_gradient_accumulation = clipvalue is not None
-
-    super(SGD, self).__init__(
-        learning_rate, use_gradient_accumulation, clip_weight_min,
-        clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate, clipvalue)
+    super().__init__(learning_rate, use_gradient_accumulation, clip_weight_min,
+                     clip_weight_max, weight_decay_factor,
+                     multiply_weight_decay_factor_by_learning_rate, clipvalue)
 
   def _slot_names(self) -> List[Text]:
     return []
@@ -258,7 +264,7 @@ class SGD(_Optimizer):
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
-    super(SGD, self)._set_optimization_parameters(parameters)
+    super()._set_optimization_parameters(parameters)
     parameters.stochastic_gradient_descent.SetInParent()
 
   def _load(self) -> Callable[..., ops.Operation]:
@@ -352,11 +358,10 @@ class Adagrad(_Optimizer):
         max) to set a separate maximum or minimum. If one of the two entries is
         None, then there will be no clipping that direction.
     """
-    super(Adagrad, self).__init__(
-        learning_rate, use_gradient_accumulation, clip_weight_min,
-        clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate, clipvalue,
-        slot_variable_creation_fn)
+    super().__init__(learning_rate, use_gradient_accumulation, clip_weight_min,
+                     clip_weight_max, weight_decay_factor,
+                     multiply_weight_decay_factor_by_learning_rate, clipvalue,
+                     slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
       raise ValueError(
           f"Argument `initial_accumulator_value` must be a positive float. "
@@ -371,7 +376,7 @@ class Adagrad(_Optimizer):
 
   def _set_optimization_parameters(
       self, parameters: optimization_parameters_pb2.OptimizationParameters):
-    super(Adagrad, self)._set_optimization_parameters(parameters)
+    super()._set_optimization_parameters(parameters)
     parameters.adagrad.SetInParent()
 
   def _load(self) -> Callable[..., ops.Operation]:
@@ -379,6 +384,136 @@ class Adagrad(_Optimizer):
 
   def _retrieve(self) -> Callable[..., core.Tensor]:
     return tpu_ops.retrieve_tpu_embedding_adagrad_parameters
+
+
+@tf_export("tpu.experimental.embedding.AdagradMomentum")
+class AdagradMomentum(_Optimizer):
+  """Optimization parameters for Adagrad + Momentum with TPU embeddings.
+
+  Pass this to `tf.tpu.experimental.embedding.TPUEmbedding` via the `optimizer`
+  argument to set the global optimizer and its parameters:
+
+  ```python
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      ...
+      optimizer=tf.tpu.experimental.embedding.AdagradMomentum(0.1))
+  ```
+
+  This can also be used in a `tf.tpu.experimental.embedding.TableConfig` as the
+  optimizer parameter to set a table specific optimizer. This will override the
+  optimizer and parameters for global embedding optimizer defined above:
+
+  ```python
+  table_one = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...,
+      optimizer=tf.tpu.experimental.embedding.AdagradMomentum(0.2))
+  table_two = tf.tpu.experimental.embedding.TableConfig(
+      vocabulary_size=...,
+      dim=...)
+
+  feature_config = (
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_one),
+      tf.tpu.experimental.embedding.FeatureConfig(
+          table=table_two))
+
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=...
+      optimizer=tf.tpu.experimental.embedding.AdagradMomentum(0.1))
+  ```
+
+  In the above example, the first feature will be looked up in a table that has
+  a learning rate of 0.2 while the second feature will be looked up in a table
+  that has a learning rate of 0.1.
+
+  See 'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for a
+  complete description of these parameters and their impacts on the optimizer
+  algorithm.
+  """
+
+  def __init__(
+      self,
+      learning_rate: Union[float, Callable[[], float]] = 0.001,
+      momentum: float = 0.0,
+      use_nesterov: bool = False,
+      exponent: float = 2,
+      beta2: float = 1,
+      epsilon: float = 1e-10,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
+      clipvalue: Optional[ClipValueType] = None):
+    """Optimization parameters for Adagrad + Momentum.
+
+    Args:
+      learning_rate: The learning rate. It should be a floating point value or a
+        callable taking no arguments for a dynamic learning rate.
+      momentum: Moving average parameter for the momentum accumulator.
+      use_nesterov: Whether to use the Nesterov variant of momentum. See
+        Sutskever et al., 2013.
+      exponent: Exponent for the Adagrad accumulator.
+      beta2: Moving average parameter for the Adagrad accumulator.
+      epsilon: initial accumulator for Adagrad accumulator.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+      slot_variable_creation_fn: If you wish do directly control the creation of
+        the slot variables, set this to a callable taking three parameters: a
+          table variable, a list of slot names to create for it, and a list of
+          initializers. This function should return a dict with the slot names
+          as keys and the created variables as values with types matching the
+          table variable. When set to None (the default), uses the built-in
+          variable creation.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tuple of scalar values (min,
+        max) to set a separate maximum or minimum. If one of the two entries is
+        None, then there will be no clipping that direction.
+    """
+    super().__init__(learning_rate, use_gradient_accumulation, clip_weight_min,
+                     clip_weight_max, weight_decay_factor,
+                     multiply_weight_decay_factor_by_learning_rate, clipvalue,
+                     slot_variable_creation_fn)
+    if epsilon <= 0:
+      raise ValueError("Adagrad momentum: epsilon must be positive")
+    if exponent <= 0:
+      raise ValueError("Adagrad momentum: Precondition exponent must >0")
+    self.momentum = momentum
+    self.use_nesterov = use_nesterov
+    self.exponent = exponent
+    self.beta2 = beta2
+    self.epsilon = epsilon
+
+  def _slot_names(self) -> List[Text]:
+    return ["accumulators", "momenta"]
+
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
+    return [init_ops_v2.Constant(), init_ops_v2.Constant()]
+
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+    super()._set_optimization_parameters(parameters)
+    parameters.adagrad_momentum.SetInParent()
+    parameters.adagrad_momentum.momentum = self.momentum
+    parameters.adagrad_momentum.use_nesterov = self.use_nesterov
+    parameters.adagrad_momentum.exponent = self.exponent
+    parameters.adagrad_momentum.beta2 = self.beta2
+    parameters.adagrad_momentum.epsilon = self.epsilon
+
+  def _load(self) -> Callable[..., ops.Operation]:
+    return tpu_ops.load_tpu_embedding_adagrad_momentum_parameters
+
+  def _retrieve(self) -> Callable[..., core.Tensor]:
+    return tpu_ops.retrieve_tpu_embedding_adagrad_momentum_parameters
 
 
 @tf_export("tpu.experimental.embedding.FTRL")
@@ -691,8 +826,72 @@ class Adam(_Optimizer):
     return tpu_ops.retrieve_tpu_embedding_adam_parameters
 
 
+@tf_export("tpu.experimental.embedding.QuantizationConfig")
+class QuantizationConfig:
+  """Settings for simulated quantization of the tpu embedding table.
+
+  When simulated quantization is enabled, the results of the embedding lookup
+  are clipped and quantized according to the settings here before the combiner
+  is applied.
+
+  For example, to quantize `input` the following is done:
+  ```python
+  if input < lower
+    input = lower
+  if input > upper
+    input = upper
+  quantum = (upper - lower) / (num_buckets - 1)
+  input = math.floor((input - lower) / quantum + 0.5) * quantium + lower
+  ```
+
+  See tensorflow/core/protobuf/tpu/optimization_parameters.proto for more
+  details.
+
+  NOTE: This does not change the storage type of the embedding table, that will
+  continue to be float32 as will the saved variable in the checkpoint. You will
+  have to manually quantize the variable (typically with the same algorithm and
+  settings as above) manually.
+  """
+
+  def __init__(self, num_buckets: int, lower: float, upper: float):
+    """Simulated quantizaiton configuration.
+
+    Args:
+      num_buckets: The number of quantization buckets, must be atleast 2.
+      lower: The lower bound for the quantization range.
+      upper: The upper bound for the quantization range.
+
+    Returns:
+      `QuantizationConfig`.
+
+    Raises:
+      ValueError: if `num_buckets` is less than 2.
+    """
+    if num_buckets < 2:
+      raise ValueError(f"num_buckets is {num_buckets}, must be at least 2 for "
+                       f"simulated quantization.")
+
+    self.num_buckets = num_buckets
+    self.lower = lower
+    self.upper = upper
+
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
+    parameters.simulated_quantization.enabled = True
+    parameters.simulated_quantization.num_buckets = self.num_buckets
+    parameters.simulated_quantization.clipping_limits.lower.value = self.lower
+    parameters.simulated_quantization.clipping_limits.upper.value = self.upper
+
+  def __repr__(self):
+    return ("QuantizationConfig(num_buckets={num_buckets!r}, lower={lower!r}, "
+            "upper={upper!r})".format(
+                num_buckets=self.num_buckets,
+                lower=self.lower,
+                upper=self.upper))
+
+
 @tf_export("tpu.experimental.embedding.TableConfig")
-class TableConfig(object):
+class TableConfig:
   """Configuration data for one embedding table.
 
   This class holds the configuration data for a single embedding table. It is
@@ -731,10 +930,11 @@ class TableConfig(object):
   def __init__(self,
                vocabulary_size: int,
                dim: int,
-               initializer: Optional[Callable[[Any], None]],
+               initializer: Optional[Callable[[Any], None]] = None,
                optimizer: Optional[_Optimizer] = None,
                combiner: Text = "mean",
-               name: Optional[Text] = None):
+               name: Optional[Text] = None,
+               quantization_config: QuantizationConfig = None):
     """Embedding table configuration.
 
     Args:
@@ -756,6 +956,9 @@ class TableConfig(object):
         with bag-of-words columns. For more information, see
         `tf.nn.embedding_lookup_sparse`.
       name: An optional string used to name the table. Useful for debugging.
+      quantization_config: The simulated quantization config. An instance of
+        `tf.tpu.experimental.embedding.QuantizationConfig`. See the class for
+        more documentation.
 
     Returns:
       `TableConfig`.
@@ -795,6 +998,7 @@ class TableConfig(object):
     self.optimizer = optimizer
     self.combiner = combiner
     self.name = name
+    self.quantization_config = quantization_config
 
   def __repr__(self):
     # If using the default initializer, just print "None" for clarity.
@@ -804,24 +1008,55 @@ class TableConfig(object):
       # PY2 type checking can't infer type of initializer even after if.
       initializer = typing.cast(init_ops_v2.TruncatedNormal, initializer)
       if (initializer.mean == 0.0
-          and math.isclose(initializer.stddev, 1/math.sqrt(self.dim))):  # pytype: disable=module-attr (math.isclose not in PY2)
+          and math.isclose(initializer.stddev, 1/math.sqrt(self.dim))):
         initializer = None
 
-    return (
-        "TableConfig(vocabulary_size={vocabulary_size!r}, dim={dim!r}, "
-        "initializer={initializer!r}, optimizer={optimizer!r}, "
-        "combiner={combiner!r}, name={name!r})".format(
-            vocabulary_size=self.vocabulary_size,
-            dim=self.dim,
-            initializer=initializer,
-            optimizer=self.optimizer,
-            combiner=self.combiner,
-            name=self.name,)
-    )
+    return ("TableConfig(vocabulary_size={vocabulary_size!r}, dim={dim!r}, "
+            "initializer={initializer!r}, optimizer={optimizer!r}, "
+            "combiner={combiner!r}, name={name!r}, "
+            "quantization_config={quantization!r})".format(
+                vocabulary_size=self.vocabulary_size,
+                dim=self.dim,
+                initializer=initializer,
+                optimizer=self.optimizer,
+                combiner=self.combiner,
+                name=self.name,
+                quantization=self.quantization_config,
+            ))
+
+  def _set_table_descriptor(
+      self,
+      table_descriptor: tpu_embedding_configuration_pb2
+      .TPUEmbeddingConfiguration.TableDescriptor,
+      num_hosts: int,
+      learning_rate_index: Dict[Callable[[], Any], int]):
+    """Set the table descriptor from the table data."""
+    table_descriptor.name = self.name
+
+    # For small tables, we pad to the number of hosts so that at least one
+    # id will be assigned to each host.
+    table_descriptor.vocabulary_size = max(self.vocabulary_size, num_hosts)
+    table_descriptor.dimension = self.dim
+
+    parameters = table_descriptor.optimization_parameters
+
+    # We handle the learning rate separately here and don't allow the
+    # optimization class to handle this, as it doesn't know about dynamic
+    # rates.
+    if callable(self.optimizer.learning_rate):
+      parameters.learning_rate.dynamic.tag = (
+          learning_rate_index[self.optimizer.learning_rate])
+    else:
+      parameters.learning_rate.constant = self.optimizer.learning_rate
+
+    # Use optimizer to handle the rest of the parameters.
+    self.optimizer._set_optimization_parameters(parameters)  # pylint: disable=protected-access
+    if self.quantization_config:
+      self.quantization_config._set_quantization_parameters(parameters)  # pylint: disable=protected-access
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
-class FeatureConfig(object):
+class FeatureConfig:
   """Configuration data for one embedding feature.
 
   This class holds the configuration data for a single embedding feature. The
@@ -852,6 +1087,15 @@ class FeatureConfig(object):
   features will be looked up in the first table and the third feature will be
   looked up in the second table.
 
+  You can also specify the output shape for each feature. The output shape
+  should be the expected activation shape excluding the table dimension. For
+  dense and sparse tensor, the output shape should be the same as the input
+  shape excluding the last dimension. For ragged tensor, the output shape can
+  mismatch the input shape.
+
+  NOTE: The `max_sequence_length` will be only used when the input tensor has
+  rank 2 and the `output_shape` is not set in the feature config.
+
   When feeding features into `embedding.enqueue` they can be `tf.Tensor`s,
   `tf.SparseTensor`s or `tf.RaggedTensor`s. When the argument
   `max_sequence_length` is 0, the default, you should expect a output of
@@ -865,6 +1109,7 @@ class FeatureConfig(object):
                table: TableConfig,
                max_sequence_length: int = 0,
                validate_weights_and_indices: bool = True,
+               output_shape: Optional[Union[List[int], TensorShape]] = None,
                name: Optional[Text] = None):
     """Feature configuration.
 
@@ -875,9 +1120,14 @@ class FeatureConfig(object):
         the corresponding maximum sequence length. If the sequence is longer
         than this, it will be truncated. If 0, the feature is not a sequence
         feature.
-      validate_weights_and_indices: If true, uses safe_embedding_lookup
-        during serving which ensures there are no empty rows and all weights
-        and ids are positive at the expense of extra compute cost.
+      validate_weights_and_indices: If true, uses safe_embedding_lookup during
+        serving which ensures there are no empty rows and all weights and ids
+        are positive at the expense of extra compute cost.
+      output_shape: Optional argument to config the output shape of the feature
+        activation. If provided, the feature feeding to the `embedding.enqueue`
+        has to match the shape (for ragged tensor, the input shape and output
+        shape can mismatch). If not provided, the shape can be either provided
+        to the `embedding.build` or auto detected at the runtime.
       name: An optional name for the feature, useful for debugging.
 
     Returns:
@@ -900,6 +1150,7 @@ class FeatureConfig(object):
     self.table = table
     self.max_sequence_length = max_sequence_length
     self.name = name
+    self.output_shape = TensorShape(output_shape)
 
     if not isinstance(
         validate_weights_and_indices, bool):

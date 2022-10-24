@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
 
+#include <algorithm>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -43,7 +45,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   (void)im2col_data;   // only used in optimized code.
   (void)im2col_shape;  // only used in optimized code.
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int input_depth = input_shape.Dims(3);
   const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
@@ -52,14 +54,20 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
+  const int filter_input_depth = filter_shape.Dims(3);
+  const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
+  const int filters_per_group = output_depth / groups;
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       const int in_y_origin = (out_y * stride_height) - pad_height;
       for (int out_x = 0; out_x < output_width; ++out_x) {
         const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          auto group = out_channel / filters_per_group;
           float total = 0.f;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + dilation_height_factor * filter_y;
@@ -74,10 +82,11 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
               if (!is_point_inside_image) {
                 continue;
               }
-
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                float input_value = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
+              for (int in_channel = 0; in_channel < filter_input_depth;
+                   ++in_channel) {
+                float input_value =
+                    input_data[Offset(input_shape, batch, in_y, in_x,
+                                      in_channel + group * filter_input_depth)];
                 float filter_value = filter_data[Offset(
                     filter_shape, out_channel, filter_y, filter_x, in_channel)];
                 total += (input_value * filter_value);
@@ -126,7 +135,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int input_depth = input_shape.Dims(3);
   const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
@@ -135,6 +144,10 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   const int input_width = input_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
+  const int filter_input_depth = filter_shape.Dims(3);
+  const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
+  const int filters_per_group = output_depth / groups;
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
@@ -143,6 +156,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
       for (int out_x = 0; out_x < output_width; ++out_x) {
         const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          auto group = out_channel / filters_per_group;
           int32_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             const int in_y = in_y_origin + dilation_height_factor * filter_y;
@@ -158,9 +172,11 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
                 continue;
               }
 
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
-                                                      in_x, in_channel)];
+              for (int in_channel = 0; in_channel < filter_input_depth;
+                   ++in_channel) {
+                int32_t input_val =
+                    input_data[Offset(input_shape, batch, in_y, in_x,
+                                      in_channel + group * filter_input_depth)];
                 int32_t filter_val = filter_data[Offset(
                     filter_shape, out_channel, filter_y, filter_x, in_channel)];
                 acc +=
@@ -206,7 +222,7 @@ inline void HybridConvPerChannel(
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
   const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
+  const int input_depth = input_shape.Dims(3);
   const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
@@ -215,18 +231,24 @@ inline void HybridConvPerChannel(
   const int input_width = input_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
   const int filter_width = filter_shape.Dims(2);
+  const int filter_input_depth = filter_shape.Dims(3);
+  const int groups = input_depth / filter_input_depth;
+  TFLITE_DCHECK_EQ(input_depth % filter_input_depth, 0);
+  const int filters_per_group = output_depth / groups;
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          auto group = out_channel / filters_per_group;
           const int in_x_origin = (out_x * stride_width) - pad_width;
           const int in_y_origin = (out_y * stride_height) - pad_height;
           int32_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
+              for (int in_channel = 0; in_channel < filter_input_depth;
+                   ++in_channel) {
                 const int in_x = in_x_origin + dilation_width_factor * filter_x;
                 const int in_y =
                     in_y_origin + dilation_height_factor * filter_y;
@@ -235,7 +257,8 @@ inline void HybridConvPerChannel(
                 if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                     (in_y < input_height)) {
                   int32_t input_val = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
+                      input_shape, batch, in_y, in_x,
+                      in_channel + group * filter_input_depth)];
                   int32_t filter_val =
                       filter_data[Offset(filter_shape, out_channel, filter_y,
                                          filter_x, in_channel)];

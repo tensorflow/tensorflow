@@ -51,6 +51,11 @@ tflite::TensorType ConvertTypeToTensorType(mlir::Type type) {
     switch (itype.getWidth()) {
       case 1:
         return tflite::TensorType_BOOL;
+      case 4:
+        if (itype.isUnsigned())
+          llvm_unreachable("invalid unsigned 4bit integer Type in conversion");
+        else
+          return tflite::TensorType_INT4;
       case 8:
         if (itype.isUnsigned())
           return tflite::TensorType_UINT8;
@@ -82,6 +87,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return builder.getF64Type();
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
+    case tflite::TensorType_UINT16:
+      return builder.getIntegerType(16, /*isSigned=*/false);
     case tflite::TensorType_UINT32:
       return builder.getIntegerType(32, /*isSigned=*/false);
     case tflite::TensorType_UINT8:
@@ -98,6 +105,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return mlir::ComplexType::get(builder.getF32Type());
     case tflite::TensorType_COMPLEX128:
       return mlir::ComplexType::get(builder.getF64Type());
+    case tflite::TensorType_INT4:
+      return builder.getIntegerType(4);
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
     case tflite::TensorType_UINT64:
@@ -123,6 +132,9 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_FLOAT;
     case tflite::TensorType_FLOAT64:
       return tensorflow::DT_DOUBLE;
+    // TODO(b/246806634): Tensorflow DT_INT4 type doesn't exist yet
+    case tflite::TensorType_INT4:
+      return tensorflow::DT_INT8;
     case tflite::TensorType_INT8:
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT16:
@@ -137,6 +149,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_STRING;
     case tflite::TensorType_UINT8:
       return tensorflow::DT_UINT8;
+    case tflite::TensorType_UINT16:
+      return tensorflow::DT_UINT16;
     case tflite::TensorType_UINT64:
       return tensorflow::DT_UINT64;
     case tflite::TensorType_RESOURCE:

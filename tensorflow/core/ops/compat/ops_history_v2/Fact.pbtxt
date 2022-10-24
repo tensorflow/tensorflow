@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "Fact"
   output_arg {
     name: "fact"

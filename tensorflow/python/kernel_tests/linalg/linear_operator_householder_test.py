@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from tensorflow.python.framework import config
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
@@ -35,6 +32,13 @@ CheckTapeSafeSkipOptions = linear_operator_test_util.CheckTapeSafeSkipOptions
 class LinearOperatorHouseholderTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
+
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
+  def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
 
   @staticmethod
   def operator_shapes_infos():
@@ -103,6 +107,13 @@ class LinearOperatorHouseholderTest(
             # Trace hard-coded.
             CheckTapeSafeSkipOptions.TRACE,
         ])
+
+  def test_convert_variables_to_tensors(self):
+    reflection_axis = variables_module.Variable([1., 3., 5., 8.])
+    operator = householder.LinearOperatorHouseholder(reflection_axis)
+    with self.cached_session() as sess:
+      sess.run([reflection_axis.initializer])
+      self.check_convert_variables_to_tensors(operator)
 
 
 if __name__ == "__main__":

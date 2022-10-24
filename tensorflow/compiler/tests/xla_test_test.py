@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the XLATestCase test fixture base class."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.platform import test
 

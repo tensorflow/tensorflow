@@ -28,10 +28,6 @@ to the regular expression is executed.
 e.g. --benchmarks=".*MatMul.*" will run all matmul related benchmarks.
 
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from tensorflow.python.eager import context

@@ -27,7 +27,9 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
+StatusOr<bool> AllReduceSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(
       auto replication,
       HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
@@ -51,7 +53,21 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     return replica_group_size;
   };
 
-  for (auto computation : module->computations()) {
+  bool changed = false;
+  for (auto computation : module->computations(execution_threads)) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+      // AllGather and ReduceScatter with the same input and output shape
+      if ((inst->opcode() == HloOpcode::kAllGather ||
+           inst->opcode() == HloOpcode::kReduceScatter) &&
+          ShapeUtil::Compatible(inst->shape(), inst->operand(0)->shape())) {
+        changed = true;
+        TF_RETURN_IF_ERROR(
+            computation->ReplaceInstruction(inst, inst->mutable_operand(0)));
+      }
+    }
+  }
+
+  for (auto computation : module->computations(execution_threads)) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (!inst->shape().IsArray()) {
         // We currently do not change tuple-shaped all-reduce.
@@ -74,8 +90,6 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     }
   }
 
-  bool changed = false;
-
   for (auto all_reduce_and_group_size : all_reduces_to_replace) {
     auto all_reduce = all_reduce_and_group_size.first;
     const int64_t replica_group_size = all_reduce_and_group_size.second;
@@ -96,7 +110,7 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
         //   broadcast(convert_to_matching_type(s32 group size))
         auto multiplier =
             all_reduce->parent()->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<int32>(replica_group_size)));
+                LiteralUtil::CreateR0<int32_t>(replica_group_size)));
         if (all_reduce->shape().element_type() != S32) {
           multiplier = all_reduce->parent()->AddInstruction(
               HloInstruction::CreateConvert(

@@ -169,7 +169,7 @@ class SharedBatchSchedulerTest
               (*output_tasks)[i] = std::make_unique<FakeTask>(task_sizes[i]);
             }
 
-            return Status::OK();
+            return OkStatus();
           };
     }
     return nullptr;
@@ -837,7 +837,7 @@ void CreateQueues() {
     });
     busy_waiter.join();
     notifier.join();
-    return Status::OK();
+    return OkStatus();
   };
 
   internal::Queue<FakeTask>::ProcessBatchCallback process_batch_callback =
@@ -888,8 +888,8 @@ void BM_QueueSchedule(::testing::benchmark::State& state) {
   const int queue_index = state.range(1);
   Queue* queue = (*queues)[queue_index].get();
 
-  const string label =
-      strings::StrCat(state.threads, "-Threads", (*queue_labels)[queue_index]);
+  const string label = strings::StrCat(state.threads(), "-Threads",
+                                       (*queue_labels)[queue_index]);
   state.SetLabel(label);
   for (auto s : state) {
     for (int i = 0; i < state.range(0); i++) {

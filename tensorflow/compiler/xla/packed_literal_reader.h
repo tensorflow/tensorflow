@@ -22,8 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -33,7 +32,7 @@ class PackedLiteralReader {
  public:
   // Ownership of file is passed to this instance -- this instance takes
   // responsibility for closing it.
-  explicit PackedLiteralReader(tensorflow::RandomAccessFile* file);
+  explicit PackedLiteralReader(tsl::RandomAccessFile* file);
   ~PackedLiteralReader();
 
   // Yields the next packed literal with shape "shape" as read from the
@@ -48,10 +47,11 @@ class PackedLiteralReader {
   bool IsExhausted() const;
 
  private:
-  tensorflow::RandomAccessFile* file_;  // We own and close in our destructor
-  uint64 offset_;                       // Next file offset to read from
+  tsl::RandomAccessFile* file_;  // We own and close in our destructor
+  uint64_t offset_;              // Next file offset to read from
 
-  TF_DISALLOW_COPY_AND_ASSIGN(PackedLiteralReader);
+  PackedLiteralReader(const PackedLiteralReader&) = delete;
+  PackedLiteralReader& operator=(const PackedLiteralReader&) = delete;
 };
 
 }  // namespace xla

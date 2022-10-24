@@ -24,11 +24,11 @@ limitations under the License.
 namespace tensorflow {
 
 TEST(Status, OK) {
-  EXPECT_EQ(Status::OK().code(), error::OK);
-  EXPECT_EQ(Status::OK().error_message(), "");
-  TF_EXPECT_OK(Status::OK());
-  TF_ASSERT_OK(Status::OK());
-  EXPECT_EQ(Status::OK(), Status());
+  EXPECT_EQ(OkStatus().code(), error::OK);
+  EXPECT_EQ(OkStatus().error_message(), "");
+  TF_EXPECT_OK(OkStatus());
+  TF_ASSERT_OK(OkStatus());
+  EXPECT_EQ(OkStatus(), Status());
   Status s;
   EXPECT_TRUE(s.ok());
 }
@@ -73,7 +73,7 @@ TEST(Status, MoveAssign) {
 
 TEST(Status, Update) {
   Status s;
-  s.Update(Status::OK());
+  s.Update(OkStatus());
   ASSERT_TRUE(s.ok());
   Status a(errors::InvalidArgument("Invalid"));
   s.Update(a);
@@ -81,12 +81,12 @@ TEST(Status, Update) {
   Status b(errors::Internal("Internal"));
   s.Update(b);
   ASSERT_EQ(s.ToString(), a.ToString());
-  s.Update(Status::OK());
+  s.Update(OkStatus());
   ASSERT_EQ(s.ToString(), a.ToString());
   ASSERT_FALSE(s.ok());
 }
 
-TEST(Status, EqualsOK) { ASSERT_EQ(Status::OK(), Status()); }
+TEST(Status, EqualsOK) { ASSERT_EQ(OkStatus(), Status()); }
 
 TEST(Status, EqualsSame) {
   Status a(errors::InvalidArgument("Invalid"));
@@ -114,10 +114,10 @@ TEST(Status, EqualsDifferentMessage) {
 
 TEST(StatusGroup, OKStatusGroup) {
   StatusGroup c;
-  c.Update(Status::OK());
-  c.Update(Status::OK());
-  ASSERT_EQ(c.as_summary_status(), Status::OK());
-  ASSERT_EQ(c.as_concatenated_status(), Status::OK());
+  c.Update(OkStatus());
+  c.Update(OkStatus());
+  ASSERT_EQ(c.as_summary_status(), OkStatus());
+  ASSERT_EQ(c.as_concatenated_status(), OkStatus());
 }
 
 TEST(StatusGroup, AggregateWithSingleErrorStatus) {
@@ -178,7 +178,7 @@ TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
 TEST(Status, InvalidPayloadGetsIgnored) {
   Status s = Status();
   s.SetPayload("Invalid", "Invalid Val");
-  ASSERT_EQ(s.GetPayload("Invalid"), tensorflow::StringPiece());
+  ASSERT_FALSE(s.GetPayload("Invalid").has_value());
   bool is_err_erased = s.ErasePayload("Invalid");
   ASSERT_EQ(is_err_erased, false);
 }
@@ -186,9 +186,9 @@ TEST(Status, InvalidPayloadGetsIgnored) {
 TEST(Status, SetPayloadSetsOrUpdatesIt) {
   Status s(error::INTERNAL, "Error message");
   s.SetPayload("Error key", "Original");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Original"));
+  ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Original"));
   s.SetPayload("Error key", "Updated");
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece("Updated"));
+  ASSERT_EQ(s.GetPayload("Error key"), absl::Cord("Updated"));
 }
 
 TEST(Status, ErasePayloadRemovesIt) {
@@ -199,61 +199,13 @@ TEST(Status, ErasePayloadRemovesIt) {
   ASSERT_EQ(is_err_erased, true);
   is_err_erased = s.ErasePayload("Error key");
   ASSERT_EQ(is_err_erased, false);
-  ASSERT_EQ(s.GetPayload("Error key"), tensorflow::StringPiece());
-}
-
-TEST(Status, GetAllPayloads) {
-  Status s_error(error::INTERNAL, "Error message");
-  s_error.SetPayload("Error key", "foo");
-  auto payloads_error_status = s_error.GetAllPayloads();
-  ASSERT_EQ(payloads_error_status.size(), 1);
-  ASSERT_EQ(payloads_error_status["Error key"], "foo");
-
-  Status s_ok = Status();
-  auto payloads_ok_status = s_ok.GetAllPayloads();
-  ASSERT_TRUE(payloads_ok_status.empty());
-}
-
-TEST(Status, OKStatusReplaceAllPayloadsFromErrorStatus) {
-  // An OK status will should not change after ReplaceAllPayloads() calls.
-  Status s_error(error::INTERNAL, "Error message");
-  s_error.SetPayload("Error key", "foo");
-  Status s_ok = Status();
-
-  s_ok.ReplaceAllPayloads(s_error.GetAllPayloads());
-  auto payloads_ok_status = s_ok.GetAllPayloads();
-  ASSERT_TRUE(payloads_ok_status.empty());
-}
-
-TEST(Status, ErrorStatusReplaceAllPayloadsFromOKStatus) {
-  // An ReplaceAllPayloads() call should not take effect from empty inputs.
-  Status s_error(error::INTERNAL, "Error message");
-  s_error.SetPayload("Error key", "foo");
-  Status s_ok = Status();
-
-  s_error.ReplaceAllPayloads(s_ok.GetAllPayloads());
-  ASSERT_EQ(s_error.GetPayload("Error key"), "foo");
-}
-
-TEST(Status, ErrorStatusReplaceAllPayloadsFromErrorStatus) {
-  Status s_error1(error::INTERNAL, "Error message");
-  s_error1.SetPayload("Error key 1", "foo");
-  s_error1.SetPayload("Error key 2", "bar");
-  Status s_error2(error::INTERNAL, "Error message");
-  s_error2.SetPayload("Error key", "bar");
-  ASSERT_EQ(s_error2.GetPayload("Error key"), "bar");
-
-  s_error2.ReplaceAllPayloads(s_error1.GetAllPayloads());
-  ASSERT_EQ(s_error2.GetPayload("Error key 1"), "foo");
-  ASSERT_EQ(s_error2.GetPayload("Error key 2"), "bar");
-  auto payloads_error_status = s_error2.GetAllPayloads();
-  ASSERT_EQ(payloads_error_status.size(), 2);
+  ASSERT_FALSE(s.GetPayload("Error key").has_value());
 }
 
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
   tensorflow::Status s = (state.max_iterations < 0)
                              ? errors::InvalidArgument("Invalid")
-                             : Status::OK();
+                             : OkStatus();
   for (auto i : state) {
     TF_CHECK_OK(s);
   }

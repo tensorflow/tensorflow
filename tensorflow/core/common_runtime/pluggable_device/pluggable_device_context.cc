@@ -50,10 +50,10 @@ void PluggableDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
 
 Status PluggableDeviceContext::ThenExecute(Device* device, se::Stream* stream,
                                            std::function<void()> func) {
-  const DeviceBase::GpuDeviceInfo* device_info =
-      device->tensorflow_gpu_device_info();
+  const DeviceBase::AcceleratorDeviceInfo* device_info =
+      device->tensorflow_accelerator_device_info();
   device_info->event_mgr->ThenExecute(stream, func);
-  return Status::OK();
+  return OkStatus();
 }
 
 bool PluggableDeviceContext::IsPluggableDevice() { return true; }

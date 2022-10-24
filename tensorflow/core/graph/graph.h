@@ -266,7 +266,15 @@ class Node {
   // property of the node (stored in props_).
   void UpdateProperties();
 
+  // Erases type information from the node.
+  void ClearTypeInfo();
+
+  // Called after an incident non-control edge has changed. Does nothing if not
+  // all input edges are defined.
+  void RunForwardTypeInference();
+
  private:
+  // TODO(mdan): Drop this.
   friend class Graph;
   Node();
 
@@ -542,6 +550,9 @@ class Graph {
   // Returns nullptr and sets *status on error.
   Node* AddNode(NodeDef node_def, Status* status);
 
+  // Same as above, but using StatusOr. This method is always preferred.
+  StatusOr<Node*> AddNode(NodeDef node_def);
+
   // Copies *node, which may belong to another graph, to a new node,
   // which is returned.  Does not copy any edges.  *this owns the
   // returned instance.
@@ -553,6 +564,10 @@ class Graph {
   void RemoveNode(Node* node);
 
   void Copy(const Graph& src);
+
+  // Removes all nodes from this graph, including all edges from or to them.
+  // No Node* references to the Graph are valid post.
+  void Clear();
 
   // Adds an edge that connects the xth output of `source` to the yth input of
   // `dest` and returns it. Does not update dest's NodeDef.
@@ -737,10 +752,6 @@ class Graph {
     return construction_context_;
   }
 
-  void SetNodeType(StringPiece name, const FullTypeDef& type);
-
-  void NodeType(StringPiece name, FullTypeDef** result);
-
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -766,29 +777,6 @@ class Graph {
   // Map from node ids to allocated nodes.  nodes_[id] may be nullptr if
   // the node with that id was removed from the graph.
   std::vector<Node*> nodes_;
-
-  // Types table.
-  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
-  std::unordered_set<TypeRef, TypeHasher> types_;
-
-  // Experimental.
-  // Map from node node names to their outputs' FullType. Typically, the values
-  // in this map are identical to those in types_, but that is not enforced or
-  // guaranteed.
-  //
-  // The full type specification combines a Tensor's dtype, tensor_shape,
-  // variant_val, etc. into a unified representation.
-  // This definition may only contain concrete types (for example,
-  // Tensor<TypeVar<'T'>> is not a valid node type).
-  //
-  // Presently, FullType duplicates any information found in `dtype`. When set,
-  // it is always consistent with `dtype`. Eventually, `dtype` will be merged
-  // with FullType.
-  //
-  // For example, if a TensorProto has `dtype=DT_INT32`, then
-  // `full_type=FT_TENSOR[FT_INT32]`.
-  // TODO(mdan): Do not store these here. Instead, keep in a GraphDef field.
-  std::unordered_map<string, TypeRef> node_name_to_out_type_;
 
   // Number of nodes alive.
   int64_t num_nodes_ = 0;

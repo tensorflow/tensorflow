@@ -44,6 +44,7 @@ class StepStatsCollector;
 class RendezvousMgrInterface;
 class DeviceMgr;
 class WorkerSession;
+class CoordinationServiceAgent;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -75,9 +76,10 @@ class GraphMgr {
   // Registers a graph. Fills in "handle". The registered graph retains a
   // reference to cluster_flr to do cross process function calls.
   Status Register(const string& handle, const GraphDef& gdef,
-                  WorkerSession* session, const GraphOptions& graph_options,
+                  const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
                   const ConfigProto& config_proto, int64_t collective_graph_key,
+                  WorkerSession* session,
                   DistributedFunctionLibraryRuntime* cluster_flr,
                   string* graph_handle);
 
@@ -88,11 +90,12 @@ class GraphMgr {
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64_t step_id,
-                    WorkerSession* session, const ExecutorOpts& opts,
-                    StepStatsCollector* collector,
+                    const ExecutorOpts& opts, const NamedTensors& in,
+                    WorkerSession* session, StepStatsCollector* collector,
                     MutableRunGraphResponseWrapper* response,
                     CancellationManager* cancellation_manager,
-                    const NamedTensors& in, StatusCallback done);
+                    CoordinationServiceAgent* coordination_service_agent,
+                    StatusCallback done);
 
   Status SendInputs(const int64_t step_id, const NamedTensors& in);
   Status RecvOutputs(const int64_t step_id, NamedTensors* out);
@@ -167,7 +170,9 @@ class GraphMgr {
       const string& handle, int64_t step_id, Item* item, Rendezvous* rendezvous,
       CollectiveExecutor::Handle* ce_handle, StepStatsCollector* collector,
       CostGraphDef* cost_graph, CancellationManager* cancellation_manager,
-      WorkerSession* session, int64_t start_time_usecs, StatusCallback done);
+      WorkerSession* session, int64_t start_time_usecs,
+      CoordinationServiceAgent* coordination_service_agent,
+      StatusCallback done);
 
   // Don't attempt to process cost models unless explicitly requested for at
   // least one of the items.
@@ -177,9 +182,10 @@ class GraphMgr {
                       CostGraphDef* cost_graph);
 
   Status InitItem(const string& handle, const GraphDef& gdef,
-                  WorkerSession* session, const GraphOptions& graph_options,
+                  const GraphOptions& graph_options,
                   const DebugOptions& debug_options,
                   const ConfigProto& config_proto, int64_t collective_graph_key,
+                  WorkerSession* session,
                   DistributedFunctionLibraryRuntime* cluster_flr, Item* item);
 
   Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,

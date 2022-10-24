@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for relu1."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data

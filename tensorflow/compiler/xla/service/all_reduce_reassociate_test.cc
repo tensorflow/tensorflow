@@ -34,7 +34,7 @@ class AllReduceSimplifierTest : public HloTestBase {
     if (!changed.ok()) {
       return changed.status();
     }
-    EXPECT_EQ(changed.ValueOrDie(), expect_change);
+    EXPECT_EQ(changed.value(), expect_change);
     return StatusOr<std::unique_ptr<HloModule>>(std::move(module));
   }
 
@@ -308,6 +308,28 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           RunPass(hlo_string, /*expect_change=*/false));
+}
+
+TEST_F(AllReduceSimplifierTest, DoubleUse) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add.2 = f32[] add(a, b)
+}
+
+ENTRY main {
+  p0 = f32[8] parameter(0)
+  p1 = f32[8] parameter(1)
+  ar0 = f32[8] all-reduce(p0), replica_groups={}, to_apply=sum
+  add = f32[8] add(ar0, ar0)
+  ROOT c = f32[8] copy(add)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          RunPass(hlo_string, /*expect_change=*/true));
 }
 
 }  // namespace

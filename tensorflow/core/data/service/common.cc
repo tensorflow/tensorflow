@@ -31,6 +31,10 @@ namespace {
 constexpr const char kAuto[] = "AUTO";
 constexpr const char kAny[] = "ANY";
 constexpr const char kLocal[] = "LOCAL";
+
+constexpr const char kColocated[] = "COLOCATED";
+constexpr const char kRemote[] = "REMOTE";
+constexpr const char kHybrid[] = "HYBRID";
 }  // namespace
 
 bool IsNoShard(const ProcessingModeDef& processing_mode) {
@@ -57,7 +61,7 @@ Status ValidateProcessingMode(const ProcessingModeDef& processing_mode) {
         "specify a valid sharding policy. Please add the policy to either "
         "`IsDynamicShard` or `IsStaticShard` (i.e., auto-shard).");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<AutoShardPolicy> ToAutoShardPolicy(
@@ -111,5 +115,25 @@ std::string TargetWorkersToString(TargetWorkers target_workers) {
   }
 }
 
+StatusOr<DeploymentMode> ParseDeploymentMode(absl::string_view s) {
+  std::string str_upper = absl::AsciiStrToUpper(s);
+  if (str_upper == kColocated) {
+    return DEPLOYMENT_MODE_COLOCATED;
+  }
+  if (str_upper == kRemote) {
+    return DEPLOYMENT_MODE_REMOTE;
+  }
+  if (str_upper == kHybrid) {
+    return DEPLOYMENT_MODE_HYBRID;
+  }
+  return errors::InvalidArgument("Invalid tf.data service deployment mode: ", s,
+                                 ". Supported modes are "
+                                 "COLOCATED, REMOTE, and HYBRID.");
+}
+
+bool IsPreemptedError(const Status& status) {
+  return errors::IsAborted(status) || errors::IsCancelled(status) ||
+         errors::IsUnavailable(status);
+}
 }  // namespace data
 }  // namespace tensorflow

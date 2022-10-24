@@ -66,8 +66,8 @@ for
 To build an API object,you must provide the following information by extending
 [`BaseTaskApi`](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/cc/task/core/base_task_api.h)
 
-*   __Determine the API I/O__ - Your API should expose similar input/output
-    across different platforms. e.g `BertQuestionAnswerer` takes two strings
+*   **Determine the API I/O** - Your API should expose similar input/output
+    across different platforms. e.g. `BertQuestionAnswerer` takes two strings
     `(std::string& context, std::string& question)` as input and outputs a
     vector of possible answer and probabilities as `std::vector<QaAnswer>`. This
     is done by specifying the corresponding types in `BaseTaskApi`'s
@@ -90,8 +90,8 @@ To build an API object,you must provide the following information by extending
     }
     ```
 
-*   __Provide conversion logic between API I/O and input/output tensor of the
-    model__ - With input and output types specified, the subclasses also need to
+*   **Provide conversion logic between API I/O and input/output tensor of the
+    model** - With input and output types specified, the subclasses also need to
     implement the typed functions
     [`BaseTaskApi::Preprocess`](https://github.com/tensorflow/tflite-support/blob/5cea306040c40b06d6e0ed4e5baf6c307db7bd00/tensorflow_lite_support/cc/task/core/base_task_api.h#L74)
     and
@@ -145,7 +145,7 @@ To build an API object,you must provide the following information by extending
     }
     ```
 
-*   __Create factory functions of the API__ - A model file and a
+*   **Create factory functions of the API** - A model file and a
     [`OpResolver`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/core/api/op_resolver.h)
     are needed to initialize the
     [`tflite::Interpreter`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h).
@@ -395,7 +395,7 @@ in Swift.
 iOS API is a simple ObjC wrapper on top of native API. Build the API by
 following the steps below:
 
-*   __Define the ObjC wrapper__ - Define an ObjC class and delegate the
+*   **Define the ObjC wrapper** - Define an ObjC class and delegate the
     implementations to the corresponding native API object. Note the native
     dependencies can only appear in a .mm file due to Swift's inability to
     interop with C++.
@@ -420,7 +420,7 @@ following the steps below:
     *   .mm file
 
     ```objc
-      using BertQuestionAnswererCPP = ::tflite::task::text::qa::BertQuestionAnswerer;
+      using BertQuestionAnswererCPP = ::tflite::task::text::BertQuestionAnswerer;
 
       @implementation TFLBertQuestionAnswerer {
         // define an iVar for the native API object

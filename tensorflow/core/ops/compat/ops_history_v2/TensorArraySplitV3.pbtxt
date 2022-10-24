@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "TensorArraySplitV3"
   input_arg {
     name: "handle"

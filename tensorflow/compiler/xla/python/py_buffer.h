@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_PY_BUFFER_H_
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
-#include "absl/types/optional.h"
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
@@ -37,7 +37,7 @@ namespace xla {
 // b) to add Python-specific functionality.
 //
 // A `PyBuffer` can be used from Python without being wrapped in a Python
-// `DeviceArray` object, at the condition there is no associated LazyExpr.
+// `DeviceArray` object.
 class PyBuffer {
  public:
   // pybind11::object typed subclass for PyBuffer objects.
@@ -80,6 +80,8 @@ class PyBuffer {
 
   StatusOr<pybind11::object> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
+  std::pair<Status, bool> CopyToRemoteDevice(
+      absl::string_view serialized_descriptor) const;
 
   StatusOr<size_t> OnDeviceSizeInBytes() {
     return buffer_->GetOnDeviceSizeInBytes();
@@ -94,6 +96,21 @@ class PyBuffer {
   // This is useful because we may wish to change JAX metadata (e.g., the sticky
   // device) without copying the buffer.
   object Clone() const;
+
+  // Returns xla::InvalidArgument if the buffer has been deleted.
+  // See `PjRtFuture` for the semantics of `IsReady` and `IsKnownReady`.
+  StatusOr<bool> IsReady() {
+    if (buffer_->IsDeleted()) {
+      return InvalidArgument("DeviceArray has been deleted.");
+    }
+    return buffer_->GetReadyFuture().IsReady();
+  }
+  StatusOr<bool> IsKnownReady() {
+    if (buffer_->IsDeleted()) {
+      return InvalidArgument("DeviceArray has been deleted.");
+    }
+    return buffer_->GetReadyFuture().IsKnownReady();
+  }
 
   // Returns xla::InvalidArgument if the buffer has been deleted.
   Status BlockHostUntilReady();
@@ -125,12 +142,12 @@ class PyBuffer {
     TF_RET_CHECK(sticky_device == nullptr ||
                  sticky_device == buffer_->device());
     sticky_device_ = sticky_device;
-    return Status::OK();
+    return OkStatus();
   }
   PjRtDevice* sticky_device() const { return sticky_device_; }
 
-  void set_weak_type(absl::optional<bool> weak_type) { weak_type_ = weak_type; }
-  absl::optional<bool> weak_type() const { return weak_type_; }
+  void set_weak_type(std::optional<bool> weak_type) { weak_type_ = weak_type; }
+  std::optional<bool> weak_type() const { return weak_type_; }
 
   StatusOr<pybind11::object> AsNumPyArray(pybind11::handle this_obj);
 
@@ -175,14 +192,136 @@ class PyBuffer {
   // measure for older Python code that does not set weak_type explicitly.
   // TODO(phawkins): drop support for older jax Python versions and make
   // weak_type mandatory.
-  absl::optional<bool> weak_type_ = absl::nullopt;
+  std::optional<bool> weak_type_ = std::nullopt;
 
-  absl::optional<Shape> dynamic_shape_ = absl::nullopt;
+  std::optional<Shape> dynamic_shape_ = std::nullopt;
   // Doubly-linked list of all PyBuffers known to the client. Protected by the
   // GIL. Since multiple PyBuffers may share the same PjRtBuffer, there may be
   // duplicate PjRtBuffers in this list.
   PyBuffer* next_;
   PyBuffer* prev_;
+};
+
+// A batched version of python wrapper around a list of PjRtBuffers.
+class PyShardedBuffer {
+ public:
+  static PyShardedBuffer CreateFromPyBuffers(
+      absl::Span<const PyBuffer::object> py_buffers);
+
+  PyShardedBuffer(std::shared_ptr<PyClient> client,
+                  std::vector<std::shared_ptr<PjRtBuffer>> buffers,
+                  std::shared_ptr<Traceback> traceback, bool sticky = false)
+      : client_(std::move(client)),
+        buffers_(std::move(buffers)),
+        traceback_(std::move(traceback)),
+        sticky_(sticky) {
+    Link();
+  }
+
+  PyShardedBuffer(const PyShardedBuffer&) = delete;
+  PyShardedBuffer& operator=(const PyShardedBuffer&) = delete;
+
+  PyShardedBuffer(PyShardedBuffer&& other) {
+    other.Unlink();
+    client_ = std::move(other.client_);
+    buffers_ = std::move(other.buffers_);
+    traceback_ = std::move(other.traceback_);
+    sticky_ = other.sticky_;
+    Link();
+  }
+
+  PyShardedBuffer& operator=(PyShardedBuffer&& other) {
+    Unlink();
+    other.Unlink();
+    client_ = std::move(other.client_);
+    buffers_ = std::move(other.buffers_);
+    traceback_ = std::move(other.traceback_);
+    sticky_ = other.sticky_;
+    Link();
+    return *this;
+  }
+
+  ~PyShardedBuffer() { Unlink(); }
+
+  std::vector<PyBuffer::object> GetPyBuffers() const {
+    std::vector<PyBuffer::object> results;
+    results.reserve(buffers_.size());
+    for (const auto& pjrt_buffer : buffers_) {
+      auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+      if (sticky_) {
+        TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+      }
+      results.push_back(std::move(py_buffer));
+    }
+    return results;
+  }
+
+  PyBuffer::object GetPyBuffer(int device_id) const {
+    const auto& pjrt_buffer = buffers_.at(device_id);
+    auto py_buffer = PyBuffer::Make(client_, pjrt_buffer, traceback_);
+    if (sticky_) {
+      TF_CHECK_OK(py_buffer.buf()->set_sticky_device(pjrt_buffer->device()));
+    }
+    return py_buffer;
+  }
+
+  PrimitiveType dtype() const {
+    return buffers_.at(0)->on_device_shape().element_type();
+  }
+
+  PjRtBuffer* GetPjRtBuffer(int device_id) const {
+    return buffers_.at(device_id).get();
+  }
+
+  int num_devices() const { return buffers_.size(); }
+
+  const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
+
+  Status BlockHostUntilReady();
+
+  void Delete() {
+    for (auto& pjrt_buffer : buffers_) {
+      pjrt_buffer->Delete();
+    }
+  }
+
+ private:
+  void Link() {
+    if (!client_) return;
+
+    CHECK(PyGILState_Check());
+    next_ = client_->sharded_buffers_;
+    client_->sharded_buffers_ = this;
+    if (next_) {
+      next_->prev_ = this;
+    }
+    prev_ = nullptr;
+  }
+
+  void Unlink() {
+    if (!client_) return;
+
+    CHECK(PyGILState_Check());
+    if (client_->sharded_buffers_ == this) {
+      client_->sharded_buffers_ = next_;
+    }
+    if (prev_) {
+      prev_->next_ = next_;
+    }
+    if (next_) {
+      next_->prev_ = prev_;
+    }
+  }
+
+  friend class PyClient;
+
+  std::shared_ptr<PyClient> client_;
+  std::vector<std::shared_ptr<PjRtBuffer>> buffers_;
+  std::shared_ptr<Traceback> traceback_;
+  bool sticky_ = false;
+
+  PyShardedBuffer* next_ = nullptr;
+  PyShardedBuffer* prev_ = nullptr;
 };
 
 }  // namespace xla

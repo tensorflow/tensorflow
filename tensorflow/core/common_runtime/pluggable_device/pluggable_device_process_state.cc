@@ -70,7 +70,7 @@ int PluggableDeviceProcessState::BusIdForPluggableDevice(
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   se::StreamExecutor* se = DeviceIdUtil::ExecutorForTfDeviceId(
                                DeviceType(device_type_), platform, tf_device_id)
-                               .ValueOrDie();
+                               .value();
   int numa_node = se->GetDeviceDescription().numa_node();
   // `bus_id` must be non-negative. If the `numa_node` is unknown, use 0.
   return numa_node >= 0 ? numa_node : 0;
@@ -112,7 +112,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
                               options.experimental().use_unified_memory();
     DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
         DeviceIdUtil::ExecutorForPlatformDeviceId(platform, platform_device_id)
-            .ValueOrDie(),
+            .value(),
         platform_device_id, use_unified_memory,
         pluggable_device_visitors_[bus_id], {});
 
@@ -125,7 +125,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
     if (cplatform->UseBfcAllocator()) {
       device_allocator = new PluggableDeviceBFCAllocator(
           sub_allocator, total_bytes, options,
-          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"));
+          strings::StrCat("PluggableDevice_", tf_device_id.value(), "_bfc"),
+          cplatform->ForceMemoryGrowth());
     } else {
       device_allocator = new PluggableDeviceSimpleAllocator(sub_allocator);
     }
@@ -167,7 +168,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     if (pluggable_device_allocators_[i].allocator != nullptr) {
       se = DeviceIdUtil::ExecutorForTfDeviceId(DeviceType(device_type_),
                                                platform, TfDeviceId(i))
-               .ValueOrDie();
+               .value();
       break;
     }
   }
@@ -196,9 +197,11 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
     int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;
 
+    BFCAllocator::Options allocator_opts;
+    allocator_opts.allow_growth = true;
     Allocator* allocator = new BFCAllocator(
-        sub_allocator, pluggable_device_host_mem_limit, true /*allow_growth*/,
-        "pluggable_device_host_bfc" /*name*/);
+        absl::WrapUnique(sub_allocator), pluggable_device_host_mem_limit,
+        /*name=*/"pluggable_device_host_bfc", allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

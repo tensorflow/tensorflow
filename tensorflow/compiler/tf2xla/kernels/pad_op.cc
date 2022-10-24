@@ -110,7 +110,7 @@ class PadOp : public XlaOpKernel {
         high_pad_size = xla::ConvertElementType(high_pad_size, xla::S32);
         // Low pad has to be static.
         xla::XlaOp low_pad_size = xla::ConstantR0<int32>(
-            ctx->builder(), pad_literal.Get<int64>({i, 0}));
+            ctx->builder(), pad_literal.Get<int64_t>({i, 0}));
         xla::XlaOp input_size = xla::GetDimensionSize(input, i);
         xla::XlaOp total_size = low_pad_size + input_size + high_pad_size;
         auto size_upper_bound_status_or =
@@ -118,7 +118,7 @@ class PadOp : public XlaOpKernel {
                 total_size, xla::ValueInferenceMode::kUpperBound);
         OP_REQUIRES_OK(ctx, size_upper_bound_status_or.status());
         auto size_upper_bound =
-            size_upper_bound_status_or.ValueOrDie().Get<int32>({});
+            size_upper_bound_status_or.value().Get<int32>({});
         OP_REQUIRES(
             ctx, size_upper_bound.has_value(),
             errors::InvalidArgument(

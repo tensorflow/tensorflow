@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_OPTIMIZATION_PASS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_TRT_OPTIMIZATION_PASS_H_
 
+#include <memory>
 #include <string>
 
+#include "tensorflow/compiler/tf2tensorrt/convert/trt_parameters.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/logging.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -36,21 +40,25 @@ namespace convert {
 
 class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
  public:
+  struct ConversionParams {
+    string trt_logger_name = "DefaultLogger";
+    size_t max_batch_size = -1;
+    size_t max_workspace_size_bytes = 1 << 30;
+    TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32;
+    int minimum_segment_size = 3;
+    // Whether to create engine on conversion or execution time
+    bool is_dynamic_op = false;
+    // maximum number of cached engines
+    int max_cached_engines = 1;
+    bool use_calibration = true;
+    bool use_implicit_batch = true;
+    ProfileStrategy profile_strategy = ProfileStrategy::kRange;
+    bool allow_build_at_runtime = true;
+    bool use_explicit_precision = false;
+  };
+
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
-      : name_(name),
-        trt_logger_name_("DefaultLogger"),
-        minimum_segment_size_(3),
-        precision_mode_(TrtPrecisionMode::FP32),
-        maximum_batch_size_(-1),
-        is_dynamic_op_(false),
-        max_cached_batches_(1),
-        max_workspace_size_bytes_(256LL << 20),
-        use_calibration_(true),
-        use_implicit_batch_(true),
-        profile_strategy_(ProfileStrategy::kRange),
-        allow_build_at_runtime_(true) {
-    VLOG(1) << "Constructing " << name_;
-  }
+      : name_(name) {}
 
   string name() const override { return name_; };
 
@@ -63,23 +71,12 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
                   const grappler::GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
-  void PrintDebugInfo(grappler::Cluster* cluster,
-                      const grappler::GrapplerItem& item);
-
  private:
   const string name_;
-  string trt_logger_name_;
-  int minimum_segment_size_;
-  TrtPrecisionMode precision_mode_;
-  int maximum_batch_size_;
-  bool is_dynamic_op_;
+
+  ConversionParams params_;
+
   std::vector<int> batches_;
-  int max_cached_batches_;
-  int64_t max_workspace_size_bytes_;
-  bool use_calibration_;
-  bool use_implicit_batch_;
-  ProfileStrategy profile_strategy_;
-  bool allow_build_at_runtime_;
 };
 
 }  // namespace convert

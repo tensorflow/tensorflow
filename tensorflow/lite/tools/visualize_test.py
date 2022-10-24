@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """TensorFlow Lite Python Interface: Sanity check."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 

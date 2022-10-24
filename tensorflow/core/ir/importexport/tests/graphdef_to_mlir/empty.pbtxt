@@ -1,0 +1,4 @@
+# RUN: tfg-translate -graphdef-to-mlir %s | FileCheck %s
+
+# CHECK:      tfg.graph #tf_type.version<producer = 0, min_consumer = 0> {
+# CHECK-NEXT: }

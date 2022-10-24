@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tf 2.x profiler."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import glob
 import os
 import threading
@@ -63,18 +59,6 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     super().setUp()
     self.worker_start = threading.Event()
     self.profile_done = False
-
-  def _check_tools_pb_exist(self, logdir):
-    expected_files = [
-        'overview_page.pb',
-        'input_pipeline.pb',
-        'tensorflow_stats.pb',
-        'kernel_stats.pb',
-    ]
-    for file in expected_files:
-      path = os.path.join(logdir, 'plugins', 'profile', '*', '*{}'.format(file))
-      self.assertEqual(1, len(glob.glob(path)),
-                       'Expected one path match: ' + path)
 
   def _check_xspace_pb_exist(self, logdir):
     path = os.path.join(logdir, 'plugins', 'profile', '*', '*.xplane.pb')
@@ -158,7 +142,6 @@ class ProfilerApiTest(test_util.TensorFlowTestCase):
     model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
     profiler.stop()
     self._check_xspace_pb_exist(logdir)
-    self._check_tools_pb_exist(logdir)
 
 
 if __name__ == '__main__':

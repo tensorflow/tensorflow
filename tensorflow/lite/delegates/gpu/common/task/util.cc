@@ -16,12 +16,72 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 
 #include <cfloat>
+#include <map>
+#include <string>
+#include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
 namespace gpu {
+namespace {
+std::string GetGlslConversion(const GpuInfo& gpu_info, DataType src_type,
+                              DataType dst_type, int vec_size) {
+  if (src_type == dst_type) {
+    return "";
+  }
+  bool need_explicit_conversion = true;
+  switch (dst_type) {
+    case DataType::FLOAT32:
+    case DataType::FLOAT16:
+      if (gpu_info.IsGlslSupportsExplicitFp16()) {
+        if (src_type == dst_type) {
+          need_explicit_conversion = false;
+        }
+      } else {
+        if (src_type == DataType::FLOAT32 || src_type == DataType::FLOAT16) {
+          need_explicit_conversion = false;
+        }
+      }
+      break;
+    case DataType::INT32:
+    case DataType::INT16:
+    case DataType::INT8:
+      if (src_type == DataType::INT32 || src_type == DataType::INT16 ||
+          src_type == DataType::INT8) {
+        need_explicit_conversion = false;
+      }
+      break;
+    case DataType::UINT32:
+    case DataType::UINT16:
+    case DataType::UINT8:
+      if (src_type == DataType::UINT32 || src_type == DataType::UINT16 ||
+          src_type == DataType::UINT8) {
+        need_explicit_conversion = false;
+      }
+      break;
+    case DataType::BOOL:
+      need_explicit_conversion = true;
+      break;
+    default:
+      break;
+  }
+  if (need_explicit_conversion) {
+    return ToGlslShaderDataType(
+        dst_type, vec_size,
+        /*add_precision*/ false,
+        /*explicit_fp16*/ gpu_info.IsGlslSupportsExplicitFp16());
+  } else {
+    return "";
+  }
+}
+
+bool IsWordSymbol(char symbol) {
+  return absl::ascii_isalnum(symbol) || symbol == '_';
+}
+}  // namespace
 
 std::string MemoryTypeToCLType(MemoryType type) {
   switch (type) {
@@ -46,28 +106,6 @@ std::string MemoryTypeToMetalType(MemoryType type) {
       return "threadgroup";
   }
   return "";
-}
-
-std::string GetXStrideCorrected(const std::string& src_x,
-                                const std::string& batch_size,
-                                const std::string& stride_x,
-                                const std::string& padding_x) {
-  // int p0 = src_x / batch_size;\n";
-  // int b0 = src_x % batch_size;\n";
-  // return p0 * stride_x * batch_size + b0 + padding_x;\n";
-  return absl::Substitute("((($0) / $1) * $2 * $1 + (($0) % $1) + $3)", src_x,
-                          batch_size, stride_x, padding_x);
-}
-
-std::string GetXStrideCorrectedV2(const std::string& src_x,
-                                  const std::string& batch_size,
-                                  const std::string& stride_x,
-                                  const std::string& padding_x) {
-  // int p0 = src_x / batch_size;\n";
-  // int b0 = src_x % batch_size;\n";
-  // return (p0 * stride_x + padding_x) * batch_size + b0;\n";
-  return absl::Substitute("(((($0) / $1) * $2 + $3) * $1 + ($0) % $1)", src_x,
-                          batch_size, stride_x, padding_x);
 }
 
 float4 GetMaskForLastPlane(int channels) {
@@ -159,6 +197,146 @@ int3 GetWorkGroupsCount(const int3& grid_size, const int3& work_group_size) {
   work_groups_count.y = DivideRoundUp(grid_size.y, work_group_size.y);
   work_groups_count.z = DivideRoundUp(grid_size.z, work_group_size.z);
   return work_groups_count;
+}
+
+std::string GetTypeDeclaration(const GpuInfo& gpu_info, DataType data_type,
+                               int vec_size) {
+  if (gpu_info.IsApiOpenCl()) {
+    return ToCLDataType(data_type, vec_size);
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, vec_size);
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, vec_size, true,
+                                gpu_info.IsGlslSupportsExplicitFp16());
+  } else {
+    return "";
+  }
+}
+
+std::string GetZeroValue(const GpuInfo& gpu_info, DataType data_type,
+                         int vec_size) {
+  if (gpu_info.IsApiOpenCl()) {
+    return "(" + ToCLDataType(data_type, vec_size) + ")(0)";
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, vec_size) + "(0)";
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, vec_size, false,
+                                gpu_info.IsGlslSupportsExplicitFp16()) +
+           "(0)";
+  } else {
+    return "";
+  }
+}
+
+std::string GetOneValue(const GpuInfo& gpu_info, DataType data_type,
+                        int vec_size) {
+  if (gpu_info.IsApiOpenCl()) {
+    return "(" + ToCLDataType(data_type, vec_size) + ")(1)";
+  } else if (gpu_info.IsApiMetal()) {
+    return ToMetalDataType(data_type, vec_size) + "(1)";
+  } else if (gpu_info.IsGlsl()) {
+    return ToGlslShaderDataType(data_type, vec_size, false,
+                                gpu_info.IsGlslSupportsExplicitFp16()) +
+           "(1)";
+  } else {
+    return "";
+  }
+}
+
+std::string GetTypeConversion(const GpuInfo& gpu_info, DataType src_type,
+                              DataType dst_type, int vec_size) {
+  if (src_type != dst_type) {
+    if (gpu_info.IsApiOpenCl()) {
+      if (dst_type == DataType::BOOL && vec_size != 1) {
+        // In OpenCL for bool4 we are using uchar4
+        // From OpenCL specification for "Relational and Equality Operators":
+        //   "These functions shall return a 0 if the specified relation is
+        //   false and a -1 (i.e. all bits set) if the specified relation is
+        //   true for vector argument types."
+        // (convert_uchar4((value) != 0) & (uchar4)(1))
+        return "(convert_" + ToCLDataType(DataType::UINT8, vec_size) +
+               "(($0) != " + GetZeroValue(gpu_info, src_type, vec_size) +
+               ") & " + GetOneValue(gpu_info, DataType::UINT8, vec_size) + ")";
+      } else {
+        return "convert_" + ToCLDataType(dst_type, vec_size) + "($0)";
+      }
+    } else if (gpu_info.IsApiMetal()) {
+      return ToMetalDataType(dst_type, vec_size) + "($0)";
+    } else if (gpu_info.IsGlsl()) {
+      const std::string conversion =
+          GetGlslConversion(gpu_info, src_type, dst_type, vec_size);
+      if (!conversion.empty()) {
+        return conversion + "($0)";
+      } else {
+        return "$0";
+      }
+    }
+  }
+  return "$0";
+}
+
+std::string GetNextWord(const std::string& code, size_t first_position) {
+  size_t pos = first_position;
+  char t = code[pos];
+  while (IsWordSymbol(t)) {
+    pos++;
+    t = code[pos];
+  }
+  return code.substr(first_position, pos - first_position);
+}
+
+size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
+                            char bracket) {
+  const std::map<char, char> brackets = {
+      {'(', ')'},
+      {'{', '}'},
+      {'[', ']'},
+      {'<', '>'},
+  };
+  char b_open = bracket;
+  auto it = brackets.find(b_open);
+  if (it == brackets.end()) {
+    return -1;
+  }
+  char b_close = it->second;
+  size_t pos = first_pos;
+  int opened = 1;
+  int closed = 0;
+  while (opened != closed && pos < text.size()) {
+    if (text[pos] == b_open) {
+      opened++;
+    } else if (text[pos] == b_close) {
+      closed++;
+    }
+    pos++;
+  }
+  if (opened == closed) {
+    return pos;
+  } else {
+    return -1;
+  }
+}
+
+absl::Status ParseArgsInsideBrackets(const std::string& text,
+                                     size_t open_bracket_pos,
+                                     size_t* close_bracket_pos,
+                                     std::vector<std::string>* args) {
+  *close_bracket_pos =
+      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
+  if (*close_bracket_pos == -1) {
+    return absl::NotFoundError("Not found enclosing bracket");
+  }
+  std::string str_args = text.substr(open_bracket_pos + 1,
+                                     *close_bracket_pos - open_bracket_pos - 2);
+  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
+  args->reserve(words.size());
+  for (const auto& word : words) {
+    absl::string_view arg = absl::StripAsciiWhitespace(word);
+    if (!arg.empty()) {
+      args->push_back(std::string(arg));
+    }
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

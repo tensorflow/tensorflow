@@ -28,6 +28,7 @@ typedef struct {
   TfLiteType type;
   std::vector<int32_t> dims;
   bool is_const;
+  bool is_shape_dynamic;
 } OpSignatureTensorSpec;
 
 typedef struct {
@@ -35,11 +36,13 @@ typedef struct {
   std::vector<OpSignatureTensorSpec> inputs;
   std::vector<OpSignatureTensorSpec> outputs;
   void* builtin_data;
+  int version;
   const void* custom_initial_data;
   std::string custom_name;
   union {
     struct {
       bool is_per_channel_quantized;
+      bool is_grouped_convolution;
     } conv_2d;
     struct {
       bool is_per_channel_quantized;
@@ -63,6 +66,9 @@ typedef struct {
     struct {
       bool is_per_channel_quantized;
     } dequantize;
+    struct {
+      bool is_per_channel_quantized;
+    } quantize;
   } ext_options;
 } OpSignature;
 

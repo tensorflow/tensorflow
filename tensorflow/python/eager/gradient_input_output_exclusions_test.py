@@ -14,10 +14,6 @@
 # ==============================================================================
 """Ensures that pywrap_gradient_exclusions.cc is up-to-date."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 
 from tensorflow.python.eager import gradient_input_output_exclusions
@@ -44,7 +40,7 @@ class GradientInputOutputExclusionsTest(test.TestCase):
         sanitized_actual_contents, sanitized_expected_contents, """
 pywrap_gradient_exclusions.cc needs to be updated.
 Please regenerate using:
-bazel run tensorflow/python/eager:gradient_input_output_exclusions -- $PWD/tensorflow/python/eager/pywrap_gradient_exclusions.cc"""
+bazel run tensorflow/python/eager:gen_gradient_input_output_exclusions -- $PWD/tensorflow/python/eager/pywrap_gradient_exclusions.cc"""
     )
 
 

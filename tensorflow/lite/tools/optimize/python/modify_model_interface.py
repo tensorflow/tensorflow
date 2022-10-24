@@ -14,10 +14,6 @@
 # ==============================================================================
 r"""Modify a quantized model's interface from float to integer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import app
 from absl import flags
 
@@ -45,8 +41,9 @@ def main(_):
   input_type = mmi_constants.STR_TO_TFLITE_TYPES[FLAGS.input_type]
   output_type = mmi_constants.STR_TO_TFLITE_TYPES[FLAGS.output_type]
 
-  mmi_lib.modify_model_interface(FLAGS.input_file, FLAGS.output_file,
-                                 input_type, output_type)
+  mmi_lib.modify_model_interface(FLAGS.input_tflite_file,
+                                 FLAGS.output_tflite_file, input_type,
+                                 output_type)
 
   print('Successfully modified the model input type from FLOAT to '
         '{input_type} and output type from FLOAT to {output_type}.'.format(

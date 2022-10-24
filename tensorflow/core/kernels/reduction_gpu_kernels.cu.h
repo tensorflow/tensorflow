@@ -670,10 +670,10 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
 
     Tensor temp_storage;
     OP_REQUIRES_OK(
-        ctx,
-        ctx->allocate_temp(
-            DT_INT8, TensorShape({static_cast<int64>(num_blocks * sizeof(T))}),
-            &temp_storage));
+        ctx, ctx->allocate_temp(
+                 DT_INT8,
+                 TensorShape({static_cast<int64_t>(num_blocks * sizeof(T))}),
+                 &temp_storage));
 
     TF_CHECK_OK(GpuLaunchKernel(BlockReduceKernel<IN_T, T*, num_threads, Op>,
                                 num_blocks, num_threads, 0, cu_stream, in,
@@ -707,7 +707,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
   Tensor temp_storage;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_temp(
-               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+               DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
                &temp_storage));
 
   reduce(temp_storage.flat<int8_t>().data());  // Do reduction.
@@ -751,7 +751,7 @@ void LaunchRowReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int num_rows,
   Tensor temp_storage;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_temp(
-               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+               DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
                &temp_storage));
 
   reduce(temp_storage.flat<int8_t>().data());  // Do reduction.
@@ -786,7 +786,7 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_temp(DT_INT8,
-                                      TensorShape({static_cast<int64>(
+                                      TensorShape({static_cast<int64_t>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
     TF_CHECK_OK(GpuLaunchKernel(ColumnReduceMax16ColumnsKernel<IN_T, T*, Op>,
@@ -830,7 +830,7 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_temp(DT_INT8,
-                                      TensorShape({static_cast<int64>(
+                                      TensorShape({static_cast<int64_t>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
@@ -909,7 +909,7 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
   Tensor temp_storage;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_temp(
-               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+               DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
                &temp_storage));
 
   // Reduction
@@ -981,7 +981,7 @@ void Launch3DXZReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
   Tensor temp_storage;
   OP_REQUIRES_OK(
       ctx, ctx->allocate_temp(
-               DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+               DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
                &temp_storage));
 
   reduce(temp_storage.flat<int8_t>().data());  // Do reduction.

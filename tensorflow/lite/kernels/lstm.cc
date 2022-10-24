@@ -95,6 +95,7 @@ constexpr int kProjectionWeightsLedgerOffset = 8;
 TfLiteStatus make_ledger(const TfLiteSparsity* sparsity, TfLiteContext* context,
                          TfLiteTensor* ledger) {
   ledger->type = kTfLiteUInt8;
+  ledger->name = "Lstm_ledger";
   ledger->allocation_type = kTfLiteArenaRwPersistent;
   if (sparsity == nullptr) {
     return kTfLiteOk;
@@ -1304,7 +1305,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // This is deprecated and is only kept here for backward compatibility.
     op_data->use_layer_norm = false;
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "The LSTM Full kernel expects 20 or 24 inputs. Got %d inputs",
         node->inputs->size);
     return kTfLiteError;
@@ -1418,11 +1419,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TfLiteIntArray* scratch_buffer_size = TfLiteIntArrayCreate(2);
     scratch_buffer_size->data[0] = n_batch;
     if (use_cifg) {
-      // Reserving space for Cell, Forget, Output gates
-      scratch_buffer_size->data[1] = n_cell * 3;
-    } else {
-      // Reserving space for Input, Cell, Forget, Output gates
+      // Reserving space for Cell, Forget, Output gates and scratch accumulation
+      // buffer and an extra 16 bytes to avoid internal ruy copies.
       scratch_buffer_size->data[1] = n_cell * 4;
+    } else {
+      // Reserving space for Input, Cell, Forget, Output gates and scratch
+      // accumulation buffer and an extra 16 bytes to avoid internal ruy copies.
+      scratch_buffer_size->data[1] = n_cell * 5;
     }
     TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scratch_buffer,
                                                      scratch_buffer_size));
@@ -1609,6 +1612,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       GetTemporarySafe(context, node, kRowSums, &row_sums));
     row_sums->type = kTfLiteInt32;
+    row_sums->name = "Lstm_row_sums";
     row_sums->allocation_type = kTfLiteArenaRwPersistent;
     const int row_sums_dims[2] = {row_sums_rows, n_cell};
     if (!TfLiteIntArrayEqualsArray(row_sums->dims, 2, row_sums_dims)) {
@@ -1925,8 +1929,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           projection_weights, projection_bias, params,
           /*forward_sequence=*/true,
           /*time_major=*/true,
-          /*output_offset=*/0, scratch_buffer, output_state, cell_state,
-          output);
+          /*output_offset=*/0, scratch_buffer, output_state, cell_state, output,
+          CpuBackendContext::GetFromContext(context));
     }
     case kTfLiteUInt8:
     case kTfLiteInt8: {
@@ -2119,8 +2123,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           scratch3, scratch4, scratch5, scratch6, scratch7);
     }
     default:
-      context->ReportError(context, "Type %d is not currently supported.",
-                           input_to_output_weights->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d is not currently supported.",
+                         input_to_output_weights->type);
       return kTfLiteError;
   }
 }
@@ -2294,16 +2298,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
              activation_temp->type == kTfLiteInt16) {
     int state_scale_log2_rounded;
     if (!CheckedLog2(state_out->params.scale, &state_scale_log2_rounded)) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "The internal state of a LSTM cell must have a power-of-two scale.");
       return kTfLiteError;
     }
     const int state_integer_bits = 15 + state_scale_log2_rounded;
     if (state_integer_bits != 4) {
-      context->ReportError(context,
-                           "The only case of quantized LstmCell currently "
-                           "supported is with StateIntegerBits==4");
+      TF_LITE_KERNEL_LOG(context,
+                         "The only case of quantized LstmCell currently "
+                         "supported is with StateIntegerBits==4");
       return kTfLiteError;
     }
 
@@ -2333,8 +2337,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         GetTensorData<int16_t>(activation_temp),
         CpuBackendContext::GetFromContext(context));
   } else {
-    context->ReportError(context,
-                         "Unsupported combination of data types for LstmCell");
+    TF_LITE_KERNEL_LOG(context,
+                       "Unsupported combination of data types for LstmCell");
     return kTfLiteError;
   }
 

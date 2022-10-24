@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 
+#include "absl/base/attributes.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 #include "tensorflow/core/kernels/eigen_contraction_kernel.h"
@@ -82,7 +81,7 @@ void SingleThreadedMatMulDispatch(const void* run_options_ptr, T* out, T* lhs,
 
 }  // namespace
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulF16(
     const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
     Eigen::half* rhs, int64_t m, int64_t n, int64_t k, int32_t transpose_lhs,
@@ -91,7 +90,7 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF16(
                                             n, k, transpose_lhs, transpose_rhs);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulF32(const void* run_options_ptr,
                                                float* out, float* lhs,
                                                float* rhs, int64_t m, int64_t n,
@@ -101,7 +100,7 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF32(const void* run_options_ptr,
                                       transpose_lhs, transpose_rhs);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulF64(const void* run_options_ptr,
                                                double* out, double* lhs,
                                                double* rhs, int64_t m,
@@ -112,7 +111,7 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulF64(const void* run_options_ptr,
                                        transpose_lhs, transpose_rhs);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulC64(
     const void* run_options_ptr, std::complex<float>* out,
     std::complex<float>* lhs, std::complex<float>* rhs, int64_t m, int64_t n,
@@ -121,7 +120,7 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulC64(
       run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
 __xla_cpu_runtime_EigenSingleThreadedMatMulC128(
     const void* run_options_ptr, std::complex<double>* out,
     std::complex<double>* lhs, std::complex<double>* rhs, int64_t m, int64_t n,
@@ -130,11 +129,13 @@ __xla_cpu_runtime_EigenSingleThreadedMatMulC128(
       run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
 }
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void
-__xla_cpu_runtime_EigenSingleThreadedMatMulS32(
-    const void* run_options_ptr, tensorflow::int32* out, tensorflow::int32* lhs,
-    tensorflow::int32* rhs, int64_t m, int64_t n, int64_t k,
-    int32_t transpose_lhs, int32_t transpose_rhs) {
-  SingleThreadedMatMulDispatch<tensorflow::int32>(
-      run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void
+__xla_cpu_runtime_EigenSingleThreadedMatMulS32(const void* run_options_ptr,
+                                               int32_t* out, int32_t* lhs,
+                                               int32_t* rhs, int64_t m,
+                                               int64_t n, int64_t k,
+                                               int32_t transpose_lhs,
+                                               int32_t transpose_rhs) {
+  SingleThreadedMatMulDispatch<int32_t>(run_options_ptr, out, lhs, rhs, m, n, k,
+                                        transpose_lhs, transpose_rhs);
 }

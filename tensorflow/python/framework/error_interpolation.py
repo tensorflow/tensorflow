@@ -18,24 +18,17 @@ Exposes the function `interpolate` to interpolate messages with tags of the form
 {{type name}}.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
-import itertools
 import os
 import re
 import site
 import traceback
 
-import six
-
 from tensorflow.core.protobuf import graph_debug_info_pb2
 
 _NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
-_TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
-_INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
+_TAG_REGEX = fr"{{{{(?P<type>{_NAME_REGEX}) (?P<name>{_NAME_REGEX})}}}}"
+_INTERPOLATION_REGEX = fr"(?P<sep>.*?)(?P<tag>{_TAG_REGEX})"
 _INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
 
 _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
@@ -86,35 +79,38 @@ _EXTERNAL_FILENAME_PATTERNS = [
 
 
 def parse_message(message):
-  """Parses the message.
+  """Extract function tags and node tags from a message.
 
-  Splits the message into separators and tags. Tags are named tuples
-  representing the string {{type name}} and they are separated by
-  separators. For example, in "123{{node Foo}}456{{node Bar}}789", there are
-  two tags and three separators. The separators are the numeric characters.
+  Tags are named tuples representing the string {{type name}}. For example,
+  in "123{{node Foo}}456{{function_node Bar}}789", there are two tags: a node
+  tag and a function tag.
 
   Args:
-    message: String to parse
+    message: An error message, possibly from an OpError.
 
   Returns:
-    (list of separator strings, list of _ParseTags).
+    A tuple containing the original message with function nodes stripped,
+    function tags, and node tags.
 
-    For example, if message is "123{{node Foo}}456" then this function
-    returns (["123", "456"], [_ParseTag("node", "Foo")])
+    For example, if message is "123{{node Foo}}456{{function_node Bar}}789"
+    then this function returns ("123{{node Foo}}456789",
+    [_ParseTag("function_node", "Bar")], [_ParseTag("node", "Foo")]).
   """
-  seps = []
-  tags = []
+  error_message = []
+  func_tags = []
+  node_tags = []
   pos = 0
-  while pos < len(message):
-    match = re.match(_INTERPOLATION_PATTERN, message[pos:])
-    if match:
-      seps.append(match.group(1))
-      tags.append(_ParseTag(match.group(3), match.group(4)))
-      pos += match.end()
+  for match in re.finditer(_INTERPOLATION_PATTERN, message):
+    parsed_tag = _ParseTag(match.group("type"), match.group("name"))
+    if parsed_tag.type == "function_node":
+      error_message.append(match.group("sep"))
+      func_tags.append(parsed_tag)
     else:
-      break
-  seps.append(message[pos:])
-  return seps, tags
+      error_message.append(match.group())
+      node_tags.append(parsed_tag)
+    pos = match.end()
+  error_message.append(message[pos:])
+  return "".join(error_message), func_tags, node_tags
 
 
 def _compute_device_summary_from_list(name, device_assignment_list, prefix=""):
@@ -318,16 +314,11 @@ def create_graph_debug_info_def(func_named_operations):
   all_file_names = set()
   node_to_trace = {}
   for func_name, op in func_named_operations:
-    try:
-      op_traceback = op.traceback
-    except AttributeError:
-      # Some ops synthesized on as part of function or control flow definition
-      # do not have tracebacks.
+    if op.traceback is None:
       continue
-
     # Gets the stack trace of the operation and then the file location.
     node_name = op.name + "@" + func_name
-    node_to_trace[node_name] = _compute_useful_frames(op_traceback, 10)
+    node_to_trace[node_name] = _compute_useful_frames(op.traceback, 10)
     for frame in node_to_trace[node_name]:
       all_file_names.add(frame.filename)
 
@@ -356,7 +347,7 @@ def _compute_field_dict(op):
   r"""Return a dictionary mapping interpolation tokens to values.
 
   Args:
-    op: op.Operation object having a _traceback member.
+    op: op.Operation object.
 
   Returns:
     A dictionary mapping string tokens to string values.  The keys are shown
@@ -383,29 +374,27 @@ def _compute_field_dict(op):
                with tf.device(some_func<foo.py, 123>): <test_2.py:38>'''
     }
   """
+  # TODO(xjun): colocation and device info are not displayed. Consider
+  # removing them or using vlog.
   colocation_summary = _compute_colocation_summary_from_op(op)
   device_summary = _compute_device_assignment_summary_from_op(op)
   combined_summary = "\n".join([colocation_summary, device_summary])
 
-  # Optional traceback info.
-  try:
-    tb = op.traceback
-  except AttributeError:
+  if op.traceback is None:
     # Some ops synthesized on as part of function or control flow definition
     # do not have tracebacks.
     filename = "<unknown>"
-    lineno = 0
-    defined_at = " (defined at <unknown>)"
     definition_traceback = ""
+    lineno = 0
     line = ""
+    defined_at = "<unknown>"
   else:
-    frame = tb.last_user_frame()
+    frame = op.traceback.last_user_frame()
     filename = frame.filename
-    definition_traceback = traceback.format_list(tb.get_user_frames())
-
+    definition_traceback = traceback.format_list(op.traceback.get_user_frames())
     lineno = frame.lineno
     line = frame.line
-    defined_at = " (defined at %s:%d)" % (filename, lineno)
+    defined_at = f"{filename}:{lineno:d}"
 
   field_dict = {
       "colocations": colocation_summary,
@@ -420,134 +409,56 @@ def _compute_field_dict(op):
   return field_dict
 
 
-def _get_input_ops_for_op(op, graph):
-  """Gets the input ops for op.
-
-  We do a best effort and may not always find all input Ops.
-
-  Args:
-    op: The op node.
-    graph: The graph containing the node.
-
-  Returns:
-    A list of (ind_inp, op_inp).
-    ind_inp: index in the input list.
-    op_inp: op_inp, the input Op at ind_inp in the input list.
-  """
-  inputs = []
-  for ind_inp, name in enumerate(op.node_def.input):
-    if name.startswith("^"):
-      name = name[1:]
-    try:
-      tensor = graph.get_tensor_by_name(name)
-      op_inp = tensor.op
-    except (KeyError, ValueError):
-      try:
-        op_inp = graph.get_operation_by_name(name)
-      except KeyError:
-        continue
-    inputs.append((ind_inp, op_inp))
-
-  return inputs
-
-
-def _build_error_message(op, input_ops):
+def _build_node_error_message(op):
   """Returns the formatted error message for the given op.
 
   Args:
     op: The node.
-    input_ops: The input nodes to the 'op' node
 
   Returns:
-    The formatted error message for the given op. The error message also
-    includes the information about the input sources for the given op.
+    The formatted error message for the given op with traceback.
   """
+  node_error_message = [
+      f"Detected at node {op.name!r} defined at (most recent call last):"
+  ]
   field_dict = _compute_field_dict(op)
-  msg = "node %s\n%s\n" % (op.name, field_dict["defined_at"])
-  input_debug_info = []
-  # This stores the line numbers that we have already printed.
-  done = set()
-  done.add(field_dict["defined_at"])
-  for ind_inp, op_inp in input_ops:
-    field_dict_inp = _compute_field_dict(op_inp)
-    if field_dict_inp["defined_at"] not in done:
-      input_debug_info.append(
-          "In[%d] %s%s" % (ind_inp, op_inp.name, field_dict_inp["defined_at"]))
-      done.add(field_dict_inp["defined_at"])
-    else:
-      input_debug_info.append("In[%d] %s:" % (ind_inp, op_inp.name))
 
-  end_msg = ""
-  if input_debug_info:
-    end_msg += ("\nInput Source operations connected to node %s:\n") % (op.name)
-    end_msg += "\t\n".join(input_debug_info)
+  # Add node traceback.
+  for frame in field_dict["definition_traceback"]:
+    if "<embedded" not in frame:
+      node_error_message.extend(
+          [f"  {line}" for line in frame.split("\n") if line.strip()])
 
-  end_msg += "\n\nOperation defined at: (most recent call last)\n"
+  # Add node name.
+  node_error_message.append(f"Node: {op.name!r}")
 
-  definition_traceback = "\n".join(field_dict["definition_traceback"])
-  # Adds a prefix to differentiate from a Python Interpreter traceback.
-  end_msg += "\n".join([">>> " + s for s in definition_traceback.split("\n")])
-
-  return msg, end_msg
+  return "\n".join(node_error_message)
 
 
-def interpolate(error_message, graph):
+def interpolate(message, graph):
   """Interpolates an error message.
 
-  The error message can contain tags of the form `{{type name}}` which will be
-  replaced. For example: "{{node <name>}}" would get expanded to:
-  "node <name>(defined at <path>)".
+  The error message can contain tags of form `{{node_type node_name}}`
+  which will be parsed to identify the tf.Graph and op. If the op contains
+  traceback, the traceback will be attached to the error message.
 
   Args:
-    error_message: A string to interpolate.
+    message: A string to interpolate.
     graph: ops.Graph object containing all nodes referenced in the error
         message.
 
   Returns:
-    The string with tags of the form {{type name}} interpolated.
+    The error message string with node definition traceback.
   """
-  seps, tags = parse_message(error_message)
-  subs = []
-  end_msg = collections.defaultdict(list)
-  tagged_ops = []
-  all_ops = []
-
-  for t in tags:
+  parsed_messaged, _, node_tags = parse_message(message)
+  error_message = ["Graph execution error:", ""]
+  for tag in node_tags:
     try:
-      op = graph.get_operation_by_name(t.name)
+      op = graph.get_operation_by_name(tag.name)
     except KeyError:
-      op = None
-    if op is None:
-      tagged_ops.append((None, None))
+      continue
     else:
-      op_inps = _get_input_ops_for_op(op, graph)
-      tagged_ops.append((op, op_inps))
-      for _, op_inp in op_inps:
-        all_ops.append(op_inp)
+      error_message.append(_build_node_error_message(op))
 
-  for tag, (op, op_inps), in zip(tags, tagged_ops):
-    msg = "{{%s %s}}" % (tag.type, tag.name)
-    if op is not None:
-      if tag.type == "node":
-        msg, source_msg = _build_error_message(op, op_inps)
-        if source_msg:
-          end_msg["source_nodes"].append(source_msg)
-      elif tag.type == "colocation_node":
-        field_dict = _compute_field_dict(op)
-        msg = "node %s%s placed on device %s " % (
-            op.name, field_dict["defined_at"], field_dict["devices"])
-        end_msg["colocations"].append(field_dict["devs_and_colocs"])
-    if tag.type == "function_node":
-      msg = ""
-    subs.append(msg)
-
-  if "source_nodes" in end_msg:
-    subs.append("\n\nErrors may have originated from an input operation.")
-    subs.append("\n".join(end_msg["source_nodes"]))
-    end_msg.pop("source_nodes", None)
-  for k, messages in end_msg.items():
-    subs.append("Additional information about %s:" % k)
-    subs.append("\n".join(messages))
-
-  return "".join(
-      itertools.chain(*six.moves.zip_longest(seps, subs, fillvalue="")))
+  error_message.append(parsed_messaged.strip())
+  return "\n".join(error_message)

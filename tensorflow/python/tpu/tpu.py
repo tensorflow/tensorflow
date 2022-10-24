@@ -15,10 +15,6 @@
 
 """Library of TPU helper functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import enum
 import typing
@@ -26,12 +22,12 @@ from typing import Any, Callable, Iterable, List, Optional, Text, Tuple, Union
 
 from absl import logging
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tf2xla.python import xla as tf2xla
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2 as embedding_pb2
+from tensorflow.python import tf2
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -61,7 +57,10 @@ from tensorflow.python.types import core as core_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
+from tensorflow.python.util import traceback_utils
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
+
 
 ops.NotDifferentiable("TPUReplicatedInput")
 
@@ -131,7 +130,8 @@ def initialize_system(
     tpu_cancellation_closes_chips: Set the configuration whether
       we want to close TPU chips when a TPU execution is cancelled. If the value
       is None, the behavior will be determined by the command line flag
-      `tpu_cancellation_closes_chips` for the TPU worker.
+      `tpu_cancellation_closes_chips` for the TPU worker. WARNING: this argument
+      only applies to TFRT TPU runtime.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -327,6 +327,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def get_replicated_var_handle(self,
                                 name: Text,
+                                handle_id: Text,
                                 vars_: Union[List[core_types.Tensor],
                                              List[variables.Variable]],
                                 is_mirrored: bool = False,
@@ -338,6 +339,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     Args:
       name: The common name of the variable.
+      handle_id: Unique ID of the variable handle, used as the cache key.
       vars_: The replicated TPU variables or handles.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
@@ -349,7 +351,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     device_assignment = _enclosing_tpu_device_assignment()
     # We don't need to put device assignment as part of the replicated_vars key
     # because each TPUReplicateContext will only have one device assignment.
-    handle = self._replicated_vars.get(name)
+    handle = self._replicated_vars.get(handle_id)
     if handle is not None:
       return handle
 
@@ -398,7 +400,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
                                             is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
-    self._replicated_vars[name] = handle
+    self._replicated_vars[handle_id] = handle
     return handle
 
   def report_unsupported_operations(self) -> None:
@@ -633,7 +635,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         op._add_control_input(self.GetControlPivot())
         # pylint: enable=protected-access
     else:
-      for index in xrange(len(op.inputs)):
+      for index in range(len(op.inputs)):
         x = op.inputs[index]
         real_x = self.AddValue(x)
         if real_x is not x:
@@ -909,6 +911,7 @@ class XLAOptions(
 
 
 @tf_export(v1=["tpu.replicate"])
+@traceback_utils.filter_traceback
 def replicate(
     computation: Callable[..., Any],
     inputs: Optional[List[List[core_types.Tensor]]] = None,
@@ -1307,9 +1310,11 @@ def split_compile_and_replicate(
     return []
 
   # Checks all replicas have the same structure.
-  for i in xrange(1, num_replicas):
+  for i in range(1, num_replicas):
     nest.assert_same_structure(inputs[0], inputs[i])
 
+  # Explicitly read variables.
+  inputs = variable_utils.convert_variables_to_tensors(inputs)
   # Flatten inputs. This structure may contain None values, which will be
   # handled later.
   flat_inputs_with_nones = [
@@ -1353,7 +1358,7 @@ def split_compile_and_replicate(
       raise TypeError(
           "Supplied computation cannot be called with the specified inputs. "
           f"You specified {input_arity} inputs: {[i.name for i in inputs[0]]}, "
-          f"but the computation needs{arg_error}")
+          f"but the computation needs {arg_error}")
     else:
       raise TypeError(
           "Supplied computation cannot be called with the specified inputs. "
@@ -1408,10 +1413,10 @@ def split_compile_and_replicate(
   # Fan-in: Builds a TPUReplicatedInput node for each input.
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
-    replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
+    replicas = [flat_inputs[replica][i] for replica in range(num_replicas)]
     flat_replicated_inputs.append(
         tpu_ops.tpu_replicated_input(
-            replicas, name="input{}".format(i), index=i))
+            replicas, name="input{}".format(i)))
   if isinstance(graph, func_graph.FuncGraph):
     # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
     # object. If both outside graph and this function have a TPU cluster,
@@ -1516,6 +1521,8 @@ def split_compile_and_replicate(
       vscope.set_use_resource(saved_use_resource)
       vscope.set_custom_getter(saved_custom_getter)
 
+      outputs = variable_utils.convert_variables_to_tensors(outputs)
+
     need_spmd_partitioning = (
         xla_options.use_spmd_for_xla_partitioning and
         device_assignment is not None and
@@ -1537,10 +1544,14 @@ def split_compile_and_replicate(
       from tensorflow.python.tpu import tensor_tracer
       # pylint: enable=g-import-not-at-top
     if tensor_tracer.TensorTracer.is_enabled():
-      tt = tensor_tracer.TensorTracer()
-      output_tensors = tt.trace_tpu(ops.get_default_graph(),
-                                    output_tensors, control_deps,
-                                    num_replicas)
+      if tf2.enabled():
+        logging.warn("TF API ver >= 2.0 detected. "
+                     "Tensor Tracer v1 is not enabled.")
+      else:
+        tt = tensor_tracer.TensorTracer()
+        output_tensors = tt.trace_tpu(ops.get_default_graph(),
+                                      output_tensors, control_deps,
+                                      num_replicas)
 
     context.ExitResult(output_tensors)
   finally:
@@ -1929,6 +1940,7 @@ def split_compile_and_shard(
 
 
 @tf_export(v1=["tpu.shard"])
+@traceback_utils.filter_traceback
 def shard(
     computation: Callable[..., Any],
     inputs: Optional[List[core_types.Tensor]] = None,
@@ -2015,6 +2027,7 @@ def shard(
 
 
 @tf_export(v1=["tpu.batch_parallel"])
+@traceback_utils.filter_traceback
 def batch_parallel(
     computation: Callable[..., Any],
     inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,
@@ -2077,6 +2090,7 @@ def batch_parallel(
 
 
 @tf_export(v1=["tpu.rewrite"])
+@traceback_utils.filter_traceback
 def rewrite(
     computation: Callable[..., Any],
     inputs: Optional[List[List[Optional[core_types.Tensor]]]] = None,

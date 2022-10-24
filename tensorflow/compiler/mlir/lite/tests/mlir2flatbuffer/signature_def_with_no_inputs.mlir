@@ -10,7 +10,8 @@
 // CHECK-NEXT:      name: "StatefulPartitionedCall:1",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:      }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:    } ],
 // CHECK-NEXT:    inputs: [  ],
 // CHECK-NEXT:    outputs: [ 0 ],
@@ -39,8 +40,8 @@
 // CHECK-NEXT: }
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 12 : i32, producer = 554 : i32}, tf_saved_model.semantics} {
-  func @main() -> (tensor<5xf32> {tf_saved_model.index_path = ["start_logits"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:1"}, tf_saved_model.exported_names = ["serving_default"]} {
-    %cst = constant dense<0.000000e+00> : tensor<5xf32>
-    return %cst : tensor<5xf32>
+  func.func @main() -> (tensor<5xf32> {tf_saved_model.index_path = ["start_logits"]}) attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "StatefulPartitionedCall:1"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %cst = arith.constant dense<0.000000e+00> : tensor<5xf32>
+    func.return %cst : tensor<5xf32>
   }
 }

@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -88,6 +92,9 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   // periodically calls CleanupAll().
   void Cleanup(int64_t step_id) override;
 
+  // Remove all rendezvous instances owned by the rendezvous_mgr.
+  void CleanupAll() override;
+
  protected:
   virtual BaseRemoteRendezvous* Create(int64_t step_id,
                                        const WorkerEnv* worker_env) = 0;
@@ -119,6 +126,13 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
   // Upgrades the BaseRemoteRendezvous to full initialization.
   Status Initialize(WorkerSession* session) override;
+
+  void SetRemoteEagerContextDefault() override {
+    remote_eager_context_default_ = true;
+  }
+  bool IsRemoteEagerContextDefault() override {
+    return remote_eager_context_default_;
+  }
 
   // Forwards to local_, where the Tensor "val" will be buffered and
   // any waiting callback stored.
@@ -156,11 +170,11 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   virtual bool IsSameWorker(DeviceNameUtils::ParsedName src,
                             DeviceNameUtils::ParsedName dst);
 
-  // If aborted, aborts "call". Otherwise, adds "call" into active_.
+  // If aborted, aborts "call". Otherwise, adds "call" into calls_.
   void RegisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
 
-  // Removes "call" from active_ if "call" is in active_.
-  void DeregisterCall(BaseRecvTensorCall* call);
+  // Removes "call" from calls_ if "call" is in calls_.
+  void DeregisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
 
   WorkerSession* session();
 
@@ -172,9 +186,17 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   const int64_t step_id_;
 
  private:
+  int num_shards_;
   Rendezvous* local_;  // Owns a Ref on this object.
+  // Indicates whether this remote rendezvous instance is used as the default
+  // rendezvous for remote eager op-by-op execution. Errors in eager op-by-op
+  // execution should not abort the rendezvous since it is a context-wide
+  // instance and needs to be reused; instead, the errors are propagated through
+  // eager executors.
+  bool remote_eager_context_default_ = false;
 
   mutable mutex mu_;
+  mutable mutex calls_mu_;
 
   // Status given by StartAbort() if any.
   Status status_ TF_GUARDED_BY(mu_);
@@ -190,10 +212,32 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
   };
   std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(mu_);
 
-  typedef std::function<void()> InactiveCallback;
+  struct CallBucket {
+    mutex mu;
 
-  std::unordered_map<BaseRecvTensorCall*, InactiveCallback> active_
-      TF_GUARDED_BY(mu_);
+    absl::flat_hash_set<BaseRecvTensorCall*> calls TF_GUARDED_BY(mu);
+  };
+
+  struct PendingCalls {
+    PendingCalls(CancellationToken token, int num_calls, int num_buckets)
+        : token(token), num_calls(num_calls), buckets(num_buckets) {}
+    CancellationToken token = CancellationManager::kInvalidToken;
+    std::atomic<int> num_calls = 0;
+    std::vector<CallBucket> buckets;
+  };
+
+  // "CancellationToken" is stored here so that when there's no active
+  // RecvTensorCalls, we can de-register the callback in the cancellation
+  // manager. RecvTensorCalls are managed in multiple buckets since in large
+  // scaled distributed training, lots of Send/Recv may be triggered
+  // concurrently.
+  //
+  // Note: pointer to CancellationManager can be nullptr in certain use cases.
+  absl::flat_hash_map<CancellationManager*, std::unique_ptr<PendingCalls>>
+      calls_ TF_GUARDED_BY(calls_mu_);
+
+  // Callback for CancellationManager.
+  void CancelledByManager(CancellationManager* cm);
 
   bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(mu_) {
     return session_ != nullptr;

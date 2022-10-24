@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
@@ -9,9 +9,7 @@ package(
 )
 
 glob_lit_tests(
-    data = [
-        ":test_utilities",
-    ],
+    data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = [
         "mlir",

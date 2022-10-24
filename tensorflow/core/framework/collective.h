@@ -18,16 +18,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/intrusive_ptr.h"
 
 namespace tensorflow {
 
 class BufRendezvous;
-class CancellationManager;
 class CompleteGroupRequest;
 class CompleteGroupResponse;
 class CompleteInstanceRequest;
@@ -57,17 +59,26 @@ struct CollGroupRuntimeDetails {
   string ToString() const;
 };
 
+struct CollGroupMember {
+  DeviceAttributes device;
+  string task;
+  bool is_local;
+  // User provided rank
+  int32 rank = -1;
+};
+
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
 struct CollGroupParams {
+  // Inputs from Collective ops:
   int32 group_key;
   int32 group_size;
   DeviceType device_type;
-  // Devices in this group, in default rank order.
-  std::vector<DeviceAttributes> devices;
-  // Task name prefix of corresponding device name.
-  std::vector<string> task_names;
+  int user_specified_rank = -1;  // rank provided by the user.
+  // Generated from Collective Group Resolver:
+  // Members in this group, in default rank order.
+  std::vector<CollGroupMember> members;
   // True if every task has the same number of devices.
   bool same_num_devices_per_task = false;
   // Task -> number of devices on that task.
@@ -129,18 +140,10 @@ struct CollInstanceParams {
   std::vector<int> permutation;
 };
 
-// Data common to all instance members in the same task.
-struct CollTaskParams {
-  // True for devices that are local to the process, i.e. no RPC needed.
-  std::vector<bool> is_local;
-  string ToString() const;
-};
-
 // Unique to a single CollectiveOp node.
 struct CollectiveParams : public core::RefCounted {
   CollGroupParams group;
   CollInstanceParams instance;
-  CollTaskParams task;
 
   string name = "";        // node name used only for log or error messages
   int default_rank = -1;   // index of this op within device_names
@@ -151,6 +154,7 @@ struct CollectiveParams : public core::RefCounted {
   OpKernel* merge_op = nullptr;  // reduction only
   OpKernel* final_op = nullptr;  // reduction only
   string ToString() const;
+  bool run_group_initialization = true;
 };
 
 class CollectiveExecutor;
@@ -202,6 +206,10 @@ class ParamResolverInterface {
                                      CompleteInstanceResponse* response,
                                      CancellationManager* cancel_mgr,
                                      const StatusCallback& done) = 0;
+
+  // Looks up a group. It returns an error if the group is not ready or not
+  // found.
+  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) = 0;
 
   // Aborts the resolver. After abortion the resolver can no longer be used.
   virtual void StartAbort(const Status& s) = 0;
@@ -321,6 +329,18 @@ class CollectiveExecutor : public core::RefCounted {
         "a CollectiveExecutor has not been provided."));
   }
 
+  virtual void CompleteGroupAsync(const DeviceAttributes& device,
+                                  CollGroupParams* group_params,
+                                  CancellationManager* cancel_mgr,
+                                  StatusCallback done) {
+    return cem_->GetParamResolver()->CompleteGroupAsync(device, group_params,
+                                                        cancel_mgr, done);
+  }
+
+  virtual Status LookupGroup(int32_t group_key, CollGroupParams* group) {
+    return cem_->GetParamResolver()->LookupGroup(group_key, group);
+  }
+
   // Runs the potentially-blocking closure/expensive callback.
   virtual void RunClosure(std::function<void()> closure) = 0;
 
@@ -374,7 +394,7 @@ struct CollectiveContext {
   const DeviceMgr* dev_mgr;                      // Not owned
   OpKernelContext* op_ctx;                       // Not owned
   OpKernelContext::Params* op_params;            // Not owned
-  const CollectiveParams* col_params;            // Not owned
+  core::IntrusivePtr<const CollectiveParams> col_params;
   const string exec_key;
   const int64_t step_id;
   const Tensor* input;  // Not owned

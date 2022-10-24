@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Allocator;
 class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of
@@ -147,6 +146,11 @@ class RecordingAllocator : public Allocator {
   }
   absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
   bool ClearStats() override { return a_->ClearStats(); }
+
+  AllocatorMemoryType GetMemoryType() const override {
+    return a_->GetMemoryType();
+  }
+
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned
   ProcessState::MemDesc md_;

@@ -68,7 +68,7 @@ class MatrixBandPartOp : public OpKernel {
       if (tensor.dtype() == DT_INT32) {
         return tensor.scalar<int32>()();
       } else {
-        return tensor.scalar<int64>()();
+        return tensor.scalar<int64_t>()();
       }
     };
     const int64_t num_lower = as_int64_scalar(num_lower_in);
@@ -162,10 +162,10 @@ struct MatrixBandPartFunctor<CPUDevice, Scalar> {
               num_lower_diags < 0
                   ? 0
                   : std::min(n, std::max(int64{0}, row - num_lower_diags));
-          const int64_t band_end =
-              num_upper_diags < 0
-                  ? n
-                  : std::min(static_cast<int64>(n), row + num_upper_diags + 1);
+          const int64_t band_end = num_upper_diags < 0
+                                       ? n
+                                       : std::min(static_cast<int64_t>(n),
+                                                  row + num_upper_diags + 1);
           if (in_place) {
             if (band_start > 0) {
               std::fill(&output(batch, row, 0), &output(batch, row, band_start),

@@ -13,12 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Device function for replicated training."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.platform import tf_logging as logging
@@ -37,7 +31,7 @@ STANDARD_PS_OPS = ("Variable", "VariableV2", "AutoReloadVariable",
                    "DecisionTreeResource")
 
 
-class _RoundRobinStrategy(object):
+class _RoundRobinStrategy:
   """Returns the next ps task index for placement in round-robin order.
 
   This class is not to be used directly by users.  See instead
@@ -68,7 +62,7 @@ class _RoundRobinStrategy(object):
     return task
 
 
-class _ReplicaDeviceChooser(object):
+class _ReplicaDeviceChooser:
   """Class to choose devices for Ops in a replicated training setup.
 
   This class is not to be used directly by users.  See instead
@@ -166,7 +160,7 @@ def replica_device_setter(ps_tasks=0,
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
   with
-  tf.device(tf.compat.v1.train.replica_device_setter(cluster=cluster_spec)):
+  tf.compat.v1.device(tf.compat.v1.train.replica_device_setter(cluster=cluster_spec)):
     # Build your graph
     v1 = tf.Variable(...)  # assigned to /job:ps/task:0
     v2 = tf.Variable(...)  # assigned to /job:ps/task:1
@@ -224,7 +218,7 @@ def replica_device_setter(ps_tasks=0,
         "replica_device_setter")
   if ps_strategy is None:
     ps_strategy = _RoundRobinStrategy(ps_tasks)
-  if not six.callable(ps_strategy):
+  if not callable(ps_strategy):
     raise TypeError("ps_strategy must be callable")
   chooser = _ReplicaDeviceChooser(ps_tasks, ps_device, worker_device,
                                   merge_devices, ps_ops, ps_strategy)

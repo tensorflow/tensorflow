@@ -14,10 +14,6 @@
 # ==============================================================================
 """Class to represent a device."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python import pywrap_tfe
 
@@ -414,6 +410,11 @@ class DeviceSpecV2(object):
 
   def __hash__(self):
     return self._hash
+
+  def __repr__(self):
+    return (
+        f"<DeviceSpec(job={self.job}, replica={self.replica}, task={self.task}, "
+        f"device_type={self.device_type}, device_index={self.device_index})>")
 
 
 @tf_export(v1=["DeviceSpec"])  # pylint: disable=missing-docstring

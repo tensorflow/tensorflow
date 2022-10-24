@@ -1,9 +1,9 @@
-// RUN: tf-opt %s -pass-pipeline='builtin.func(canonicalize)' | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
 
 // Test that a constant stays inside an island after canonicalization
 
 // CHECK-LABEL: func @constant_in_island
-func @constant_in_island(%arg0 : tensor<i1>) -> tensor<f32> {
+func.func @constant_in_island(%arg0 : tensor<i1>) -> tensor<f32> {
   %0 = tf_executor.graph {
 // CHECK: tf_executor.island
 // CHECK: tf.Const{{.*}}2.0
@@ -19,5 +19,5 @@ func @constant_in_island(%arg0 : tensor<i1>) -> tensor<f32> {
     }
     tf_executor.fetch %2#0 : tensor<f32>
   }
-  return %0 : tensor<f32>
+  func.return %0 : tensor<f32>
 }

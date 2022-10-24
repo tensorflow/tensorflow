@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <numeric>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/test.h"

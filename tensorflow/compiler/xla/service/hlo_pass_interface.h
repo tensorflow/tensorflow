@@ -17,12 +17,12 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_INTERFACE_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -64,32 +64,80 @@ class HloPassInterface {
   virtual ~HloPassInterface() = default;
   virtual absl::string_view name() const = 0;
 
-  // Run the pass on the given HLO module.  Returns whether it modified the
-  // module.
-  virtual StatusOr<bool> Run(HloModule* module) = 0;
+  // Run the pass on the given HLO module with specified execution_threads.
+  // Empty execution_threads list means all execution_threads are included.
+  // Returns whether it modified the module. Note that due to C++ inheritance
+  // hides overloaded function, Run(HloModule* module) is not a member function
+  // of a subclass unless it's explicitly brought to the subclass besides
+  // implementing the virtual version, for instance,
+  //
+  //   class MyNewPass : public HloModulePass {
+  //    public:
+  //      MyNewPass();
+  //      absl::string_view name() const override { return "my-new-pass"; }
+  //
+  //      using HloPassInterface::Run;
+  //      StatusOr<bool> Run(
+  //        HloModule* module,
+  //        const absl::flat_hash_set<absl::string_view>& execution_threads)
+  //        override;
+  //   };
+  //
+  StatusOr<bool> Run(HloModule* module) {
+    return Run(module, /*execution_threads=*/{});
+  }
+  virtual StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
   // Run the pass on computation on changed computations from last iteration in
-  // given HLO module, with caller provided RunState which holds the state
-  // information across multiple iterations.
+  // given HLO module for specified execution_threads, with caller provided
+  // RunState which holds the state information across multiple iterations.
   //
   // NOTE: This is a temporary default implementation that conservatively treats
   // all computations as changed. Eventually all passes should override this
   // method instead of Run() and Run() will call into this method instead.
-  virtual Status RunOnChangedComputations(HloModule* module,
-                                          RunState* run_state) {
-    TF_ASSIGN_OR_RETURN(bool changed, Run(module));
+  virtual Status RunOnChangedComputations(
+      HloModule* module, RunState* run_state,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) {
+    TF_ASSIGN_OR_RETURN(bool changed, Run(module, execution_threads));
     if (changed) {
-      auto computations = module->computations();
+      auto computations = module->computations(execution_threads);
       run_state->changed_this_iteration.insert(computations.begin(),
                                                computations.end());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
-  // Run the pass on the given HLO module group. Returns whether it modified the
-  // module group. Ideally, the module group variant would be named "Run" as
-  // well, but C++ does not handle overloaded virtual methods well.
-  virtual StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) = 0;
+  // Run the pass on the given HLO module group for specified
+  // `execution_threads`. Empty `execution_threads` list means all execution
+  // threads are included. Returns whether it modified the module group.
+  // Ideally, the module group variant would be named "Run" as well, but C++
+  // does not handle overloaded virtual methods well.
+  //
+  // Note that due to C++ inheritance hides overloaded function,
+  // RunOnModuleGroup(HloModuleGroup* module_group) is not a member function of
+  // a subclass unless it's explicitly brought to the subclass besides
+  // implementing the virtual version, for instance,
+  //
+  //   class MyNewPass : public HloModuleGroupPass {
+  //    public:
+  //      MyNewPass();
+  //      absl::string_view name() const override { return "my-new-pass"; }
+  //
+  //      using HloPassInterface::RunOnModuleGroup;
+  //      StatusOr<bool> RunOnModuleGroup(
+  //        HloModuleGroup* module_group,
+  //        const absl::flat_hash_set<absl::string_view>& execution_threads)
+  //        override;
+  //   };
+  //
+  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) {
+    return RunOnModuleGroup(module_group, /*execution_threads=*/{});
+  }
+  virtual StatusOr<bool> RunOnModuleGroup(
+      HloModuleGroup* module_group,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) = 0;
 
   virtual bool IsPassPipeline() { return false; }
 };
@@ -99,10 +147,12 @@ class HloModulePass : public HloPassInterface {
  public:
   // Runs the pass on a module group by iterating through each module in the
   // group.
-  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override {
+  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group,
+                                  const absl::flat_hash_set<absl::string_view>&
+                                      execution_threads) override {
     bool changed = false;
     for (HloModule* module : module_group->modules()) {
-      TF_ASSIGN_OR_RETURN(bool module_changed, Run(module));
+      TF_ASSIGN_OR_RETURN(bool module_changed, Run(module, execution_threads));
       changed |= module_changed;
     }
     return changed;
@@ -121,7 +171,9 @@ class HloModulePass : public HloPassInterface {
 // on an HLO module.
 class HloModuleGroupPass : public HloPassInterface {
  public:
-  StatusOr<bool> Run(HloModule* module) override {
+  StatusOr<bool> Run(HloModule* module,
+                     const absl::flat_hash_set<absl::string_view>&
+                         execution_threads) override {
     return InternalError("Module group pass cannot be run on a module");
   }
 };

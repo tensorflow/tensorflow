@@ -16,16 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSLATE_TFRT_COMPILE_OPTIONS_H_
 
+#include <iosfwd>
+#include <ostream>
 #include <string>
 #include <vector>
 
 namespace tensorflow {
 
 enum class TfrtTpuInfraTarget {
-  kNoTpu,       // No TPU support.
-  kTpurt,       // Target TPURT dialect and kernels.
-  kTfFallback,  // Target TPU kernels in TF Fallback.
+  kNoTpu,           // No TPU support.
+  kTpurt,           // Target TPURT dialect and kernels.
+  kTfFallback,      // Target TPU kernels in TF Fallback.
+  kBridgeFallback,  // TPU support but choose kTpurt or kTfFallback depending on
+                    // whether the graph has unsupported feature in Bridge
 };
+
+std::ostream& operator<<(std::ostream& os, TfrtTpuInfraTarget tpu_target);
 
 struct TfrtCompileOptions {
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
@@ -38,10 +44,13 @@ struct TfrtCompileOptions {
 
   // If true, native ops will be used if they are implemented in TFRT. If
   // false, all ops are using fallback.
-  bool enable_native_ops = true;
+  //
+  // This option is experimental. Native ops are still under development and
+  // likely to cause performance issue when enabled.
+  bool enable_native_ops = false;
 
   // If true, run grappler passes before compiling.
-  bool enable_grappler = false;
+  bool enable_grappler = true;
 
   // Force data format for all layout sensitive operations, eg. setting it to
   // "NHWC" will changes all data format in the graph to "NHWC" by inserting
@@ -65,12 +74,25 @@ struct TfrtCompileOptions {
   // in order to saved TPU memory usage. This option is experimental.
   bool tpu_move_resource_gather_to_host = false;
 
+  // The threshold in bytes that controls whether a resource gather op on TPU
+  // should be moved to host. A negative value means there is no threshold. This
+  // option is experimental.
+  int64_t tpu_gather_table_width_threshold_bytes = -1;
+
+  // If true, fallback executeops that produce inputs to tpu program will use
+  // tpu host allocator. This options is experimental.
+  bool use_tpu_host_allocator_for_inputs = false;
+
   // If true, the compiler will try to hoist invariant ops (e.g., const ops and
   // their non-side-effecting consumers) to loading phase, which avoids the
   // runtime cost during later running.
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, tf.While's iterations will be parallelized on a best-effort
+  // basis. This is currently experimental.
+  bool enable_while_parallel_iterations = false;
 
   // A set of flags to control auto-fusion: automatic clustering of Tensorflow
   // operations and compiling outlined regions using MLIR based compilation
@@ -102,7 +124,15 @@ struct TfrtCompileOptions {
   // If true, streams with inter data depenedencies will be preferred to be
   // merged for inline execution.
   bool merge_inter_dependent_streams = false;
+
+  // Whether to enable the DecomposeResourceOpsPass.
+  bool decompose_resource_ops = true;
+
+  // Whether to compile to sync TFRT dialect.
+  bool compile_to_sync_tfrt_dialect = false;
 };
+
+std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options);
 
 }  // namespace tensorflow
 

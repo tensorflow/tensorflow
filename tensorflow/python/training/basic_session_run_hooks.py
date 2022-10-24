@@ -19,15 +19,10 @@ exported to v2 in tf.estimator namespace. See
 https://github.com/tensorflow/estimator/blob/master/tensorflow_estimator/python/estimator/hooks/basic_session_run_hooks.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import time
 
 import numpy as np
-import six
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
@@ -51,7 +46,7 @@ _HOOKS = "hooks"
 _STEPS_PER_RUN_VAR = "steps_per_run"
 
 
-class _HookTimer(object):
+class _HookTimer:
   """Base timer for determining when Hooks should trigger.
 
   Should not be instantiated directly.
@@ -459,7 +454,7 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
 
 
 @tf_export(v1=["train.CheckpointSaverListener"])
-class CheckpointSaverListener(object):
+class CheckpointSaverListener:
   """Interface for listeners that take action before or after checkpoint save.
 
   `CheckpointSaverListener` triggers only in steps when `CheckpointSaverHook` is
@@ -569,7 +564,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     self._timer = SecondOrStepTimer(
         every_secs=save_secs, every_steps=save_steps)
     self._listeners = listeners or []
-    self._steps_per_run = 1
+    # Set sufficiently high default that it never skips checking the actual
+    # global step counter -- unless the user overrides it with the right value
+    # for the steps_per_run.
+    self._steps_per_run = 1000000
     self._save_graph_def = save_graph_def
 
   def _set_steps_per_run(self, steps_per_run):
@@ -1099,7 +1097,7 @@ class ProfilerHook(session_run_hook.SessionRunHook):
 def _as_graph_element(obj):
   """Retrieves Graph element."""
   graph = ops.get_default_graph()
-  if not isinstance(obj, six.string_types):
+  if not isinstance(obj, str):
     if not hasattr(obj, "graph") or obj.graph != graph:
       raise ValueError("Passed %s should have graph attribute that is equal "
                        "to current graph %s." % (obj, graph))

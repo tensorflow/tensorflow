@@ -91,6 +91,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                             input->dims->data + input->dims->size);
       subgraph->ResizeInputTensor(i, dims);
       TfLiteTensor* subgraph_input = subgraph->tensor(subgraph->inputs()[i]);
+      if (IsDynamicTensor(input)) {
+        SetTensorToDynamic(subgraph_input);
+      }
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, subgraph_input->type);
     }
     // Note: The `Prepare` function is responsible to run `AllocateTensors` on
@@ -151,6 +154,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       cond_value ? op_data->then_subgraph_index : op_data->else_subgraph_index;
   Subgraph& active_branch_subgraph =
       *(*subgraphs)[active_branch_subgraph_index];
+
+  // We release memory of the subgraph at the end of evaluation to save memory.
+  // So it's required to call AllocateTensors() for the second run.
+  TF_LITE_ENSURE_OK(context, active_branch_subgraph.AllocateTensors());
+
   for (int i = 0; i < active_branch_subgraph.inputs().size(); ++i) {
     const TfLiteTensor* input;
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, i + 1, &input));
@@ -162,11 +170,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     TF_LITE_ENSURE_EQ(context, input->bytes, subgraph_input->bytes);
-    memcpy(subgraph_input->data.raw, input->data.raw, input->bytes);
+    TfLiteTensorCopy(input, subgraph_input);
   }
 
-  // Note: It's guaranteed that the subgraphs' `AllocateTensors` are called
-  // in `Prepare`, so we don't need to do it here again.
   TF_LITE_ENSURE_OK(context, active_branch_subgraph.Invoke());
 
   for (int tensor_index : active_branch_subgraph.outputs()) {
@@ -206,8 +212,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     TF_LITE_ENSURE_EQ(context, output->bytes, subgraph_output->bytes);
-    memcpy(output->data.raw, subgraph_output->data.raw, output->bytes);
+    TfLiteTensorCopy(subgraph_output, output);
   }
+
+  // Release memory of subgraphs to save the memory. Though it impacts latency,
+  // actual impacts looks very little, so no additional option is introduced for
+  // the feature until we find a different case.
+  Subgraph* then_subgraph = (*subgraphs)[op_data->then_subgraph_index].get();
+  Subgraph* else_subgraph = (*subgraphs)[op_data->else_subgraph_index].get();
+  TF_LITE_ENSURE_OK(context, then_subgraph->ReleaseMemory());
+  TF_LITE_ENSURE_OK(context, else_subgraph->ReleaseMemory());
+
   return kTfLiteOk;
 }
 

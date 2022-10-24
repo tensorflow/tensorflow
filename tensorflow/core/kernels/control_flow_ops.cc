@@ -210,8 +210,10 @@ void MergeOp::Compute(OpKernelContext* context) {
   for (int i = 0; i < context->num_inputs(); ++i) {
     if (context->has_input(i)) {
       if (input_seen) {
-        context->SetStatus(
-            errors::Internal("Merge can not have more than one valid input."));
+        LOG(WARNING) << "Merge op has more than one valid input. This "
+                     << "indicates that the graph doesn't use merge op "
+                     << "properly. Please check your graph. "
+                     << FormatNodeDefForError(def());
         return;
       }
       input_seen = true;

@@ -109,6 +109,10 @@ class DelegateProviderRegistrar {
   static tflite::tools::DelegateProviderRegistrar::Register<T> \
       REGISTER_DELEGATE_PROVIDER_VNAME(T);
 
+// Creates a null delegate, useful for cases where no reasonable delegate can be
+// created.
+TfLiteDelegatePtr CreateNullDelegate();
+
 // A global helper function to get all registered delegate providers.
 inline const DelegateProviderList& GetRegisteredDelegateProviders() {
   return DelegateProviderRegistrar::GetProviders();
@@ -120,9 +124,7 @@ class ProvidedDelegateList {
  public:
   struct ProvidedDelegate {
     ProvidedDelegate()
-        : provider(nullptr),
-          delegate(nullptr, [](TfLiteDelegate*) {}),
-          rank(0) {}
+        : provider(nullptr), delegate(CreateNullDelegate()), rank(0) {}
     const DelegateProvider* provider;
     TfLiteDelegatePtr delegate;
     int rank;
@@ -143,7 +145,11 @@ class ProvidedDelegateList {
   // Append command-line parsable flags to 'flags' of all registered delegate
   // providers, and associate the flag values at runtime with the contained
   // 'params_'.
-  void AppendCmdlineFlags(std::vector<Flag>* flags) const;
+  void AppendCmdlineFlags(std::vector<Flag>& flags) const;
+
+  // Removes command-line parsable flag 'name' from 'flags'
+  void RemoveCmdlineFlag(std::vector<Flag>& flags,
+                         const std::string& name) const;
 
   // Return a list of TfLite delegates based on the provided 'params', and the
   // list has been already sorted in ascending order according to the rank of

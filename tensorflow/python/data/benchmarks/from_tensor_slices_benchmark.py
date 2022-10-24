@@ -13,15 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 """Benchmarks for `tf.data.Dataset.from_tensor_slices()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_dataset_ops
@@ -33,7 +30,7 @@ class SingleThreadedFlatMapDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, map_func):
     """See `Dataset.flat_map()` for details."""
     self._input_dataset = input_dataset
-    self._map_func = dataset_ops.StructuredFunctionWrapper(
+    self._map_func = structured_function.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),
         dataset=input_dataset,

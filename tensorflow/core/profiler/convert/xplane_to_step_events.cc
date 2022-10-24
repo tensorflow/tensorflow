@@ -228,7 +228,6 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const uint64 device_id,
       switch (event_type) {
         case DEVICE_COLLECTIVES: {
           AllReduceInfo collective_ops;
-          collective_ops.set_name(string(event.Name()));
           collective_ops.set_start_time_ps(event.TimestampPs());
           collective_ops.set_end_time_ps(event.EndOffsetPs());
           // TODO(jiesun): figure out how to get size info etc.

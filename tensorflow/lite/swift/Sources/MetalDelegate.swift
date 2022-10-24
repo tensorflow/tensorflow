@@ -51,7 +51,10 @@ extension MetalDelegate {
     /// precision for a `Float32` computation. The default is `false`.
     public var isPrecisionLossAllowed = false
 
-    @available(*, deprecated: 2.4, renamed: "isPrecisionLossAllowed")
+    @available(
+      *, deprecated, message: "Deprecated since TensorFlow Lite 2.4",
+      renamed: "isPrecisionLossAllowed"
+    )
     public var allowsPrecisionLoss: Bool {
       get { return isPrecisionLossAllowed }
       set(value) { isPrecisionLossAllowed = value }

@@ -1,0 +1,35 @@
+op 	 {
+  name: "CollectiveInitializeCommunicator"
+  input_arg {
+    name: "group_key"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "rank"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "group_size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "communicator"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "communication_hint"
+    type: "string"
+    default_value {
+      s: "auto"
+    }
+  }
+  attr {
+    name: "timeout_seconds"
+    type: "float"
+    default_value {
+      f: 0
+    }
+  }
+  is_stateful: true
+  is_distributed_communication: true
+}

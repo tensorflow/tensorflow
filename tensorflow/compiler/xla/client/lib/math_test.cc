@@ -201,7 +201,7 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     }
 
     for (const auto& test :
-         std::vector<std::pair<std::function<XlaOp(XlaOp)>, string>>({
+         std::vector<std::pair<std::function<XlaOp(XlaOp)>, std::string>>({
              {IsFinite, "is_finite"},
              {IsInf, "is_inf"},
              {IsPosInf, "is_pos_inf"},
@@ -228,7 +228,7 @@ XLA_TEST_F(MathTest, SqrtF32) {
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
 
   std::unique_ptr<GlobalData> zero_data =
-      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+      client_->TransferToServer(zero_literal).value();
 
   XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
   Sqrt(zero);
@@ -241,7 +241,7 @@ XLA_TEST_F(MathTest, SqrtF64) {
   Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F64);
 
   std::unique_ptr<GlobalData> zero_data =
-      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+      client_->TransferToServer(zero_literal).value();
 
   XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
   Sqrt(zero);
@@ -311,13 +311,22 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
-XLA_TEST_F(MathTest, CbrtSixValues) {
+XLA_TEST_F(MathTest, CbrtSixF32Values) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
   Cbrt(x);
 
   std::vector<float> expected = {2, 1, 16, -4, 1.2, 11};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.001));
+}
+
+XLA_TEST_F(MathTest, CbrtSixF64Values) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<double>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
+  Cbrt(x);
+
+  std::vector<double> expected = {2, 1, 16, -4, 1.2, 11};
+  ComputeAndCompareR1<double>(&builder, expected, {}, ErrorSpec(0.001));
 }
 
 XLA_TEST_F(MathTest, SinhSmallValues) {

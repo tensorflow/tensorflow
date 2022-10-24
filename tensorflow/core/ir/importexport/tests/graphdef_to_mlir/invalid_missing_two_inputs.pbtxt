@@ -1,0 +1,62 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Non-existent input invalid_1 in node Merge
+# CHECK: Non-existent input invalid_2 in node Merge_2
+
+node {
+  name: "Merge"
+  op: "Merge"
+  input: "invalid_1"
+  input: "Const_3"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "Merge_2"
+  op: "Merge"
+  input: "invalid_2"
+  input: "Const_3"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+}
+node {
+  name: "Const_3"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_DOUBLE
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_DOUBLE
+        tensor_shape {
+        }
+        double_val: 0.1234
+      }
+    }
+  }
+}

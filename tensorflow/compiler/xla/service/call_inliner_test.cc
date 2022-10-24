@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -31,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -150,20 +149,20 @@ TEST_F(CallInlinerTest, InlineWithEmptyComputation) {
   HloComputation::Builder empty(TestName() + ".empty");
   empty.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
   empty.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   HloComputation* empty_computation =
       module->AddEmbeddedComputation(empty.Build());
 
   HloComputation::Builder empty2(TestName() + ".empty");
   empty2.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "A"));
   empty2.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   HloComputation* empty2_computation =
       module->AddEmbeddedComputation(empty2.Build());
 
   HloComputation::Builder entry("entry");
   auto zero = entry.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   // The order of the call chain are crafted to test a specific pattern such
   // that the third call instruction will be flattened before the second one
   // (which makes the second call instruction dead before it is flattened).
@@ -226,7 +225,7 @@ TEST_F(CallInlinerTest, InlineSingleUseCalleesOnly) {
     ROOT tuple = ((), (), ()) tuple(a, b, c)
   })";
 
-  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
   CallInliner call_inliner(/*single_call_site=*/true);
   TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
   ASSERT_TRUE(mutated);

@@ -62,7 +62,9 @@ void RandomSeedGenerator::Reset() {
 
 AnonymousSeedGeneratorHandleOp::AnonymousSeedGeneratorHandleOp(
     OpKernelConstruction* ctx)
-    : AnonymousResourceOp<SeedGeneratorManager>(ctx) {}
+    : AnonymousResourceOp<SeedGeneratorManager>(ctx,
+                                                /* ref_counting */ true,
+                                                /* return_deleter */ true) {}
 
 void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
   int64_t seed;
@@ -71,7 +73,7 @@ void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kSeed2, &seed2));
   // Seeds will be consumed by `CreateResource`, which is called via `Compute`.
   mutex_lock l(mu_);
-  seeds_ = absl::make_unique<RandomSeeds>(seed, seed2);
+  seeds_ = std::make_unique<RandomSeeds>(seed, seed2);
   OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, kReshuffle, &reshuffle_));
   AnonymousResourceOp<SeedGeneratorManager>::Compute(ctx);
 }
@@ -89,7 +91,7 @@ Status AnonymousSeedGeneratorHandleOp::CreateResource(
     *manager = new SeedGeneratorManager(new FixedSeedGenerator(*seeds_));
   }
   seeds_ = nullptr;
-  return Status::OK();
+  return OkStatus();
 }
 
 void DeleteSeedGeneratorOp::Compute(OpKernelContext* ctx) {

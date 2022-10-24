@@ -523,6 +523,7 @@ Status ConcatGradHelper(const Scope& scope, const Operation& op,
     return errors::Internal("Invalid input index");
   }
   std::vector<Output> inputs;
+  inputs.reserve(end_value_index - start_value_index);
   for (int i = start_value_index; i < end_value_index; ++i) {
     inputs.push_back(op.input(i));
   }

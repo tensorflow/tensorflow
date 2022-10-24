@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for TFRT migration."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 
 def enabled():
   """Returns true if TFRT should be enabled."""

@@ -101,7 +101,7 @@ class HloOrdering {
   // Return the call graph of the module used to compute ordering.
   const CallGraph& call_graph() const { return *call_graph_; }
 
-  virtual string ToString() const = 0;
+  virtual std::string ToString() const = 0;
 
  protected:
   // Returns true if instruction 'a' executes before instruction 'b'.
@@ -142,7 +142,7 @@ class PredecessorHloOrdering : public HloOrdering {
 
  protected:
   explicit PredecessorHloOrdering(const HloModule* module);
-  string ToStringHelper(const string& name) const;
+  std::string ToStringHelper(const std::string& name) const;
 
   bool ExecutesBeforeInSameComputation(const HloInstruction* a,
                                        const HloInstruction* b) const override;
@@ -181,7 +181,7 @@ class DependencyHloOrdering : public PredecessorHloOrdering {
   explicit DependencyHloOrdering(const HloModule* module);
   ~DependencyHloOrdering() override = default;
 
-  string ToString() const override;
+  std::string ToString() const override;
 };
 
 // An HLO ordering based on a total order of instructions in each computation.
@@ -219,7 +219,7 @@ class SequentialHloOrdering : public HloOrdering {
   const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override;
 
-  string ToString() const override;
+  std::string ToString() const override;
 
  protected:
   void Initialize();

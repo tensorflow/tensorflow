@@ -5,12 +5,12 @@
 // CHECK: Some ops are not supported by the native TFLite runtime
 // CHECK: tf.Div(tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>) : {name = "div"}
 
-func @main(tensor<4xf32>) -> tensor<4xf32> {
+func.func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):
   %0 = "tfl.pseudo_const" () {name = "Const", value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32>
   %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE", name = "mul"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // tf.div is the result of conversion to a Flex TF op
   %2 = "tf.Div"(%1, %0) {name = "div"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   %3 = "tfl.exp"(%2) {name = "exp"} : (tensor<4xf32>) -> tensor<4xf32>
-  return %3 : tensor<4xf32>
+  func.return %3 : tensor<4xf32>
 }

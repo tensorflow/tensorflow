@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_gpu_tests_tags")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
@@ -33,6 +33,12 @@ exports_files(srcs = ["database.fbs"])
 
 flatbuffer_java_library(
     name = "database_fbs_java",
+    srcs = ["database.fbs"],
+    package_prefix = "org.tensorflow",
+)
+
+flatbuffer_android_library(
+    name = "database_fbs_android",
     srcs = ["database.fbs"],
     package_prefix = "org.tensorflow",
 )
@@ -144,7 +150,10 @@ cc_test(
     ],
 )
 
-exports_files(["gpu_compatibility.bin"])
+exports_files([
+    "database.fbs",
+    "gpu_compatibility.bin",
+])
 
 genrule(
     name = "gpu_compatibility_binary",
@@ -175,24 +184,25 @@ cc_library(
 )
 
 cc_library(
+    name = "gpu_compatibility_binary_embed",
+    srcs = [":gpu_compatibility_binary.cc"],
+    hdrs = [":gpu_compatibility_binary.h"],
+)
+
+cc_library(
     name = "gpu_compatibility",
-    srcs = [
-        "gpu_compatibility.cc",
-        "gpu_compatibility_binary.cc",
-        "gpu_compatibility_binary.h",
-    ],
-    hdrs = [
-        "gpu_compatibility.h",
-    ],
+    srcs = ["gpu_compatibility.cc"],
+    hdrs = ["gpu_compatibility.h"],
     deps = [
         ":canonicalize_value",
         ":android_info",
         ":database_fbs",
         ":devicedb",
+        ":gpu_compatibility_binary_embed",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ] + tflite_extra_gles_deps(),
 )

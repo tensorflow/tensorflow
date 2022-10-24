@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -28,8 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
-
-constexpr char kTpuReplicateAttr[] = "_tpu_replicate";
 
 // Returns the ops that should use node name if shared_name is empty.
 const llvm::StringSet<>& GetOpsUsingNodeName() {
@@ -121,95 +120,26 @@ Status GenerateResourceSharedNameIfEmpty(
     }
   }
 
-  return tensorflow::Status::OK();
+  return OkStatus();
 }
 
-// The static device manager is used to avoid creating the new device every time
-// RunGrappler() is called. In addition, the optimized graph may contain tensor
-// protos that are only valid when the corresponding device is alive.
-static const DeviceMgr* GetStaticDeviceMgr() {
-  static const auto* const device_mgr = []() -> const DeviceMgr* {
-    std::vector<std::unique_ptr<Device>> devices;
-    // Only CPU device is used so instead of calling DeviceFactory::AddDevices()
-    // with dummy session config, which will conflict with user defined options
-    // and create unwanted devices, call cpu_factory->CreateDevices() to get CPU
-    // only devices.
-    DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
-    SessionOptions options;
-    auto status = cpu_factory->CreateDevices(
-        options, "/job:localhost/replica:0/task:0", &devices);
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to create devices for Grappler: " << status;
-      return nullptr;
-    }
-
-    return new StaticDeviceMgr(std::move(devices));
-  }();
-
-  return device_mgr;
-}
-
-stream_executor::port::StatusOr<GraphDef> RunGrappler(
-    const MetaGraphDef& meta_graph_def) {
-  ConfigProto config_proto;
-  // Avoid grappler logic that lowers to v1 control flow.
-  config_proto.mutable_experimental()->set_use_tfrt(true);
-  config_proto.mutable_graph_options()
-      ->mutable_optimizer_options()
-      ->set_do_function_inlining(false);
-  // Do not skip grappler optimization even for small graphs.
-  config_proto.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_min_graph_nodes(-1);
-  // Disable function inlining because it may cause restore graphs to be removed
-  // as we optimize all graphs together.
-  config_proto.mutable_graph_options()
-      ->mutable_rewrite_options()
-      ->set_function_optimization(RewriterConfig::OFF);
-
-  grappler::ItemConfig item_config;
-  item_config.ignore_user_placement = false;
-  std::unique_ptr<grappler::GrapplerItem> item =
-      grappler::GrapplerItemFromMetaGraphDef("graph", meta_graph_def,
-                                             item_config);
-  if (!item) {
-    return tensorflow::errors::Internal(
-        "Failed to create grappler item from MetaGraphDef.");
-  }
-
-  const auto* device_mgr = GetStaticDeviceMgr();
-  if (!device_mgr) {
-    return tensorflow::errors::Internal(
-        "Failed to get devices in RunGrappler().");
-  }
-
-  DeviceSet dev_set;
-  for (auto* d : device_mgr->ListDevices()) dev_set.AddDevice(d);
-  grappler::VirtualCluster cluster(&dev_set);
-  Device* cpu_device = device_mgr->HostCPU();
-
-  GraphDef output_graph_def;
-  TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-      std::move(*item), config_proto, cpu_device, &cluster, &output_graph_def));
-
-  return output_graph_def;
+bool IsCompiledNode(const Node* n) {
+  return n->attrs().Find(tensorflow::kTpuReplicateAttr) ||
+         n->attrs().Find(tensorflow::kCompileDeviceTypeAttr);
 }
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
-                          bool restrict_functionalization_to_tpu_nodes) {
-  // If `restrict_functionalization_to_tpu_nodes` is true let filter function
-  // return true for `_tpu_replicate` nodes, otherwise don't set filter.
-  NodeFilter node_filter =
-      restrict_functionalization_to_tpu_nodes
-          ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
-          : NodeFilter{};
+                          bool restrict_functionalization_to_compiled_nodes) {
+  NodeFilter node_filter = restrict_functionalization_to_compiled_nodes
+                               ? IsCompiledNode
+                               : NodeFilter{};
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       FunctionalizeControlFlow(graph, flib_def, node_filter,
                                /*include_functions=*/true),
       "Failed to functionalize Control Flow V1 ops. Consider using Control "
       "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
       "compat/v1/enable_control_flow_v2.");
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

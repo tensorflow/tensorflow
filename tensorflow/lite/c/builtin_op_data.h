@@ -302,7 +302,7 @@ typedef struct {
   // If set to true then the first dimension is time, otherwise batch.
   bool time_major;
 
-  // Parameters supported by version 4:
+  // Parameters supported by version 3:
   // If set to true, then hybrid ops use asymmetric quantization for inputs.
   bool asymmetric_quantize_inputs;
 } TfLiteBidirectionalSequenceLSTMParams;
@@ -501,6 +501,22 @@ typedef struct {
   const char* container;
   const char* shared_name;
 } TfLiteVarHandleParams;
+
+typedef struct {
+  int seed;
+  int seed2;
+} TfLiteRandomParams;
+
+typedef struct {
+  int num_boundaries;
+  // This points to the memory stored in the model (flatbuffer),
+  // and is not owned.
+  const float* boundaries;
+} TfLiteBucketizeParams;
+
+typedef struct {
+  bool approximate;
+} TfLiteGeluParams;
 
 #ifdef __cplusplus
 }  // extern "C"

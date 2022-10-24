@@ -14,10 +14,6 @@
 # ==============================================================================
 """Functional test for optimizer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import cross_device_ops
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import mirrored_strategy

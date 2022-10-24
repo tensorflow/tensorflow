@@ -14,10 +14,6 @@
 # ==============================================================================
 """Support for wrapping converted functions bodies with auxiliary logic."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.operators import variables

@@ -87,25 +87,24 @@ class PackOp : public OpKernel {
     const int64_t axis_dim = output_shape.dim_size(axis);
 
     const int64_t output_size = output->NumElements();
+    auto output_flat = output->shaped<T, 2>({before_dim, after_dim * axis_dim});
+
+    // Except for shapes, pack is a special case of concat, so we reuse the
+    // same computational kernels.
+    ConstMatrixVector inputs_flat;
+    inputs_flat.reserve(num);
+    for (int i = 0; i < num; ++i) {
+      const Tensor& input = c->input(i);
+      OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
+                  errors::InvalidArgument(
+                      "Shapes of all inputs must match: values[0].shape = ",
+                      first_input.shape().DebugString(), " != values[", i,
+                      "].shape = ", input.shape().DebugString()));
+
+      inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+          input.shaped<T, 2>({before_dim, after_dim})));
+    }
     if (output_size > 0) {
-      auto output_flat =
-          output->shaped<T, 2>({before_dim, after_dim * axis_dim});
-
-      // Except for shapes, pack is a special case of concat, so we reuse the
-      // same computational kernels.
-      ConstMatrixVector inputs_flat;
-      inputs_flat.reserve(num);
-      for (int i = 0; i < num; ++i) {
-        const Tensor& input = c->input(i);
-        OP_REQUIRES(c, first_input.shape().IsSameSize(input.shape()),
-                    errors::InvalidArgument(
-                        "Shapes of all inputs must match: values[0].shape = ",
-                        first_input.shape().DebugString(), " != values[", i,
-                        "].shape = ", input.shape().DebugString()));
-
-        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
-            input.shaped<T, 2>({before_dim, after_dim})));
-      }
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (std::is_same<Device, GPUDevice>::value) {
         ConcatGPU<T>(c, inputs_flat, output, &output_flat);
@@ -127,6 +126,8 @@ class PackOp : public OpKernel {
 
 TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
+TF_CALL_qint16(REGISTER_PACK);
+TF_CALL_quint16(REGISTER_PACK);
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
 // Primarily used for SavedModel support on mobile.

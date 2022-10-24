@@ -17,17 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_HOST_INFO_H_
 
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/host_info.h"
 
 namespace tensorflow {
 namespace port {
-
-// Return the hostname of the machine on which this process is running.
-string Hostname();
-
-// Return the job name as a string if it exists, otherwise return an empty
-// string.
-string JobName();
-
+using tsl::port::Hostname;
+using tsl::port::JobName;
+using tsl::port::JobUid;
 }  // namespace port
 }  // namespace tensorflow
 

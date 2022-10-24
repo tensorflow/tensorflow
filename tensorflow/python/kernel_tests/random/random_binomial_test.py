@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for tensorflow.ops.stateful_random_ops.binomial."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.python.framework import dtypes

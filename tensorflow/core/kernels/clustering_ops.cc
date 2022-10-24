@@ -26,12 +26,12 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -103,9 +103,9 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     const int64_t num_to_sample = num_to_sample_tensor.scalar<int64_t>()();
     const int64_t seed = seed_tensor.scalar<int64_t>()();
     const int64_t num_retries_per_sample = [&]() {
-      const int64_t value = num_retries_per_sample_tensor.scalar<int64>()();
+      const int64_t value = num_retries_per_sample_tensor.scalar<int64_t>()();
       return value >= 0 ? value
-                        : 2 + static_cast<int64>(std::log(num_to_sample));
+                        : 2 + static_cast<int64_t>(std::log(num_to_sample));
     }();
 
     OP_REQUIRES(context, num_points > 0,

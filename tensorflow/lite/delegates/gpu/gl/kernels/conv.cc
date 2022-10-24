@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/conv.h"
 
+#include <any>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -44,7 +47,11 @@ class Convolution : public NodeShader {
           "Convolution does not support more than 1 runtime tensor");
     }
     const auto& attr =
-        absl::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
+        std::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
+    if (attr.groups != 1) {
+      return absl::UnimplementedError(
+          "Convolution does not support more than 1 group");
+    }
     auto weights = attr.weights.shape;
     const int offsets_count = weights.h * weights.w;
     const bool offsets_count_too_large = offsets_count > kMaxConstArraySize;
@@ -172,7 +179,7 @@ class Convolution1x1 : public NodeShader {
           "Convolution does not support more than 1 runtime tensor");
     }
     const auto& attr =
-        absl::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
+        std::any_cast<const Convolution2DAttributes&>(ctx.op_attr);
     if (attr.weights.shape.h != 1 || attr.weights.shape.w != 1) {
       return absl::UnimplementedError("Height and width should be 1.");
     }
@@ -295,11 +302,11 @@ class Convolution1x1 : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewConvolutionNodeShader() {
-  return absl::make_unique<Convolution>();
+  return std::make_unique<Convolution>();
 }
 
 std::unique_ptr<NodeShader> NewConvolution1x1NodeShader() {
-  return absl::make_unique<Convolution1x1>();
+  return std::make_unique<Convolution1x1>();
 }
 
 }  // namespace gl

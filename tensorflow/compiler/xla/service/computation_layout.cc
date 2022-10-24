@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 
 #include <algorithm>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
@@ -61,12 +61,13 @@ bool ComputationLayout::LayoutIsSet() const {
          result_layout_.LayoutIsSet();
 }
 
-string ComputationLayout::ToString() const {
-  std::vector<string> params;
+std::string ComputationLayout::ToString() const {
+  std::vector<std::string> params;
+  params.reserve(parameter_layouts_.size());
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }
-  return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
+  return absl::StrCat("(", absl::StrJoin(params, ","), ")->",
                       result_layout_.ToString());
 }
 
@@ -88,15 +89,6 @@ bool ComputationLayout::operator==(const ComputationLayout& other) const {
 bool ComputationLayout::operator!=(const ComputationLayout& other) const {
   return result_layout() != other.result_layout() ||
          parameter_layouts() != other.parameter_layouts();
-}
-
-uint64 ComputationLayout::Hash() const {
-  uint64 hash_value = ShapeUtil::Hash(result_layout_.shape());
-  for (const auto& parameter_layout : parameter_layouts_) {
-    hash_value = tensorflow::Hash64Combine(
-        hash_value, ShapeUtil::Hash(parameter_layout.shape()));
-  }
-  return hash_value;
 }
 
 }  // namespace xla

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/intrinsics_port.h"
+#include "tensorflow/tsl/platform/windows/intrinsics_port.h"
 #endif
 
 namespace Eigen {
@@ -152,6 +152,40 @@ EIGEN_STRONG_INLINE Packet4f pload2bf16<Packet4f>(const float* from) {
   p[2] = (ir[0] << 16) & 0xffff0000;
   p[3] = ir[0] & 0xffff0000;
   return ploadu<Packet4f>(reinterpret_cast<float*>(p));
+}
+#endif
+
+#if defined(EIGEN_VECTORIZE_NEON)
+// Return a packet with the first value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_first<Packet4f>(const Packet4f& a) {
+  return pset1<Packet4f>(pfirst(a));
+}
+template <>
+EIGEN_STRONG_INLINE Packet2f pbroadcast_first<Packet2f>(const Packet2f& a) {
+  return pset1<Packet2f>(pfirst(a));
+}
+
+// Return a packet with the second value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_second<Packet4f>(const Packet4f& a) {
+  return pset1<Packet4f>(vgetq_lane_f32(a, 1));
+}
+template <>
+EIGEN_STRONG_INLINE Packet2f pbroadcast_second<Packet2f>(const Packet2f& a) {
+  return pset1<Packet2f>(vget_lane_f32(a, 1));
+}
+
+// Return a packet with the third value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_third<Packet4f>(const Packet4f& a) {
+  return pset1<Packet4f>(vgetq_lane_f32(a, 2));
+}
+
+// Return a packet with the fourth value of the input Packet replicated
+template <>
+EIGEN_STRONG_INLINE Packet4f pbroadcast_fourth<Packet4f>(const Packet4f& a) {
+  return pset1<Packet4f>(vgetq_lane_f32(a, 3));
 }
 #endif
 

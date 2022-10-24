@@ -1,7 +1,7 @@
 path: "tensorflow.optimizers.schedules.PiecewiseConstantDecay"
 tf_class {
-  is_instance: "<class \'keras.optimizer_v2.learning_rate_schedule.PiecewiseConstantDecay\'>"
-  is_instance: "<class \'keras.optimizer_v2.learning_rate_schedule.LearningRateSchedule\'>"
+  is_instance: "<class \'keras.optimizers.schedules.learning_rate_schedule.PiecewiseConstantDecay\'>"
+  is_instance: "<class \'keras.optimizers.schedules.learning_rate_schedule.LearningRateSchedule\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

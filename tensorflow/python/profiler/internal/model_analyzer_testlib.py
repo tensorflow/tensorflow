@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """A test lib that defines some models."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 
 from tensorflow.python.framework import dtypes

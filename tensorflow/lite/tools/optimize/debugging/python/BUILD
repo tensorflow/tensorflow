@@ -1,6 +1,6 @@
 # QuantizationDebugger for TFLite accuracy tooling.
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     default_visibility = [
@@ -15,9 +15,9 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:convert",
-        "//tensorflow/lite/python:metrics",
+        "//tensorflow/lite/python:interpreter",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -34,10 +34,10 @@ py_strict_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
-        "//tensorflow/lite/python:metrics",
+        "//tensorflow/lite/python/metrics",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/trackable:autotrackable",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

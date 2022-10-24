@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
 #include "tensorflow/core/platform/platform.h"
 
@@ -32,6 +33,8 @@ class GetElementAtIndexOp : public HybridAsyncOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }
+
+  ~GetElementAtIndexOp() override {}
 
  protected:
   Status DoCompute(OpKernelContext* ctx) override;

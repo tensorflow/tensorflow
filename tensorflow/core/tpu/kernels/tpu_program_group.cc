@@ -15,16 +15,16 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -186,13 +186,6 @@ void TpuProgramGroup::RefreshHloMetadatasPtrs() {
   for (const auto& hlo_metadata_internal_ : hlo_metadatas_) {
     hlo_metadatas_ptrs_.push_back(&hlo_metadata_internal_);
   }
-}
-
-Status TpuProgramGroup::LogCompilationStats(const TpuCompilationCacheKey& key,
-                                            absl::Duration duration) {
-  // A placeholder for tracking compilation statistics for future work. The
-  // implementation can be pushing into some external storage for analytics.
-  return Status::OK();
 }
 
 const std::vector<bool>& TpuProgramGroup::may_modify_variables_list() const {
@@ -365,7 +358,7 @@ Status TpuProgramGroup::DeserializeFromRpcResponseProtos(
   }
 
   Initialize(tpu_programs);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TpuProgramGroup::SerializeExecutable(

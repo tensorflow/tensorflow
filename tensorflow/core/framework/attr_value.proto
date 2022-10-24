@@ -27,7 +27,7 @@ message AttrValue {
     repeated TensorProto tensor = 8;             // "list(tensor)"
     repeated NameAttrList func = 9;              // "list(attr)"
   }
-  // LINT.ThenChange(https://www.tensorflow.org/code/tensorflow/c/c_api.cc)
+  // LINT.ThenChange(//tensorflow/c/c_api.cc)
 
   oneof value {
     bytes s = 2;                 // "string"

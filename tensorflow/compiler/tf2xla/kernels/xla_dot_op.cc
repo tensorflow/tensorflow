@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -41,7 +42,7 @@ class XlaDotOp : public XlaOpKernel {
         context,
         precision_config_.ParsePartialFromString(precision_config_attr),
         errors::InvalidArgument("Error parsing convolution dimension numbers"));
-    preferred_element_type_ = absl::nullopt;
+    preferred_element_type_ = std::nullopt;
   }
 
   void Compile(XlaOpKernelContext* context) override {
@@ -57,7 +58,7 @@ class XlaDotOp : public XlaOpKernel {
   }
 
  protected:
-  absl::optional<xla::PrimitiveType> preferred_element_type_;
+  std::optional<xla::PrimitiveType> preferred_element_type_;
 
  private:
   xla::DotDimensionNumbers dnums_;
@@ -65,7 +66,7 @@ class XlaDotOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDotOp);
 };
 
-REGISTER_XLA_OP(Name("XlaDot"), XlaDotOp);
+REGISTER_XLA_OP(Name("XlaDot"), MlirXlaOpKernel);
 
 class XlaDotV2Op : public XlaDotOp {
  public:
@@ -83,7 +84,7 @@ class XlaDotV2Op : public XlaDotOp {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDotV2Op);
 };
 
-REGISTER_XLA_OP(Name("XlaDotV2"), XlaDotV2Op);
+REGISTER_XLA_OP(Name("XlaDotV2"), MlirXlaOpKernel);
 
 }  // namespace
 }  // namespace tensorflow

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -37,16 +37,14 @@ namespace {
 class TupleSimplifierTest : public HloTestBase {
  protected:
   void Run(HloModule* module, bool change_expected) {
-    TupleSimplifier simplifier;
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(), module);
     TF_ASSERT_OK(changed_status.status());
-    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+    EXPECT_EQ(change_expected, changed_status.value());
   }
   void Run(HloModule* module, bool change_expected, bool exclude_entry) {
-    TupleSimplifier simplifier(exclude_entry);
-    auto changed_status = simplifier.Run(module);
+    auto changed_status = RunHloPass(TupleSimplifier(exclude_entry), module);
     TF_ASSERT_OK(changed_status.status());
-    EXPECT_EQ(change_expected, changed_status.ValueOrDie());
+    EXPECT_EQ(change_expected, changed_status.value());
   }
 
   const Shape scalar_shape_ = ShapeUtil::MakeShape(F32, {});
@@ -286,6 +284,20 @@ TEST_F(TupleSimplifierTest, CanExcludeEntryComputation) {
   EXPECT_THAT(c0->root_instruction(), p0);
   EXPECT_THAT(c1->root_instruction(), p1);
   EXPECT_THAT(entry->instruction_count(), 9);
+}
+
+TEST_F(TupleSimplifierTest, ShardingLoss) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      t = (s32[10]) tuple(p0)
+      ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  Run(m.get(), /*change_expected=*/false);
 }
 
 }  // namespace

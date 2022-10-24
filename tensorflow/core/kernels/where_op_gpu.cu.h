@@ -161,7 +161,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
 
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(ctx->allocate_temp(
-        DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+        DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
 
     auto second_success = reducer(
@@ -178,7 +178,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -258,10 +258,10 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T, NDIM>::ConstTensor input,
-      typename TTypes<int64>::Matrix output, TIndex* found_true_host) {
+      typename TTypes<int64_t>::Matrix output, TIndex* found_true_host) {
     if (output.dimension(0) == 0) {
       // Nothing to do.
-      return Status::OK();
+      return OkStatus();
     }
 
     const auto& cu_stream = GetGpuStream(ctx);
@@ -298,7 +298,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
 
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(ctx->allocate_temp(
-        DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+        DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
 
     auto second_success = counter(
@@ -328,7 +328,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                 d.stream(), output_rows, strides,
                                 output.data()));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

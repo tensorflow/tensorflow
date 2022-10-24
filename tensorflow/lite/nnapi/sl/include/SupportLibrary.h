@@ -16,28 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_NNAPI_SL_INCLUDE_SUPPORT_LIBRARY_H_
 #define TENSORFLOW_LITE_NNAPI_SL_INCLUDE_SUPPORT_LIBRARY_H_
 
+#include <dlfcn.h>
+
+#include <cstdlib>
 #include <memory>
 #include <string>
+#include <variant>
 
 // Changed when importing from AOSP
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/sl/public/NeuralNetworksSupportLibraryImpl.h"
 
 namespace tflite {
 namespace nnapi {
 
+#ifndef __NNAPI_FL5_MIN_ANDROID_API__
+#define __NNAPI_FL5_MIN_ANDROID_API__ __ANDROID_API_S__
+#endif
+
 /**
- * Helper struct, derived from the latest NnApiSLDriverImpl.
+ * Helper struct, wraps different versions of NnApiSLDriverImpl.
  *
  * Owns the .so handle, and will close it in destructor.
  * Sets proper implStructFeatureLevel in constructor.
- *
- * It's derived from the latest NnApiSLDriverImplFL* struct,
- * so it contains all possible functionality.
- *
- * When a new NnApiSLDriverImpl is introduced, this class
- * has to switch base class to it and provide constructors for
- * all existing NnApiSLDriverImplFL* structs.
  *
  * There's expectation that for M>N, NnApiSLDriverImplFL(M) is
  * a strict superset of NnApiSLDriverImplFL(N), and *NnApiSLDriverImplFL(M) can
@@ -46,11 +48,36 @@ namespace nnapi {
  * The base->implFeatureLevel is set to the actual Feature Level
  * implemented by the SLDriverImpl,
  */
-struct NnApiSupportLibrary : NnApiSLDriverImplFL5 {
-  NnApiSupportLibrary(const NnApiSLDriverImplFL5& impl, void* libHandle);
-  ~NnApiSupportLibrary();
+struct NnApiSupportLibrary {
+  NnApiSupportLibrary(const NnApiSLDriverImplFL5* impl, void* libHandle)
+      : libHandle(libHandle), fl5(impl) {}
+  // No need for ctor below since FL6&7 are typedefs of FL5
+  // NnApiSupportLibrary(const NnApiSLDriverImplFL6& impl, void* libHandle):
+  // impl(impl), NnApiSupportLibrary(const NnApiSLDriverImplFL7& impl, void*
+  // libHandle): impl(impl), libHandle(libHandle) {}
+  ~NnApiSupportLibrary() {
+    if (libHandle != nullptr) {
+      dlclose(libHandle);
+      libHandle = nullptr;
+    }
+  }
+  NnApiSupportLibrary(const NnApiSupportLibrary&) = delete;
+  NnApiSupportLibrary& operator=(const NnApiSupportLibrary&) = delete;
+
+  int64_t getFeatureLevel() const { return fl5->base.implFeatureLevel; }
+
+  const NnApiSLDriverImplFL5* getFL5() const { return fl5; }
+  const NnApiSLDriverImplFL6* getFL6() const {
+    TFLITE_CHECK_GE(getFeatureLevel(), ANEURALNETWORKS_FEATURE_LEVEL_6);
+    return reinterpret_cast<const NnApiSLDriverImplFL6*>(&fl5);
+  }
+  const NnApiSLDriverImplFL7* getFL7() const {
+    TFLITE_CHECK_GE(getFeatureLevel(), ANEURALNETWORKS_FEATURE_LEVEL_7);
+    return reinterpret_cast<const NnApiSLDriverImplFL6*>(&fl5);
+  }
 
   void* libHandle = nullptr;
+  const NnApiSLDriverImplFL5* fl5;
 };
 
 /**

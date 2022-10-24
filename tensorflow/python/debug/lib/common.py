@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Common values and methods for TensorFlow Debugger."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import json
 

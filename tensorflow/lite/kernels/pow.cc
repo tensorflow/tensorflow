@@ -107,8 +107,8 @@ TfLiteStatus CheckValue(TfLiteContext* context, const TfLiteTensor* input) {
   const int32_t* data = GetTensorData<int32_t>(input);
   for (int i = 0; i < num_elements; ++i) {
     if (data[i] < 0) {
-      context->ReportError(context,
-                           "POW does not support negative value for int32.");
+      TF_LITE_KERNEL_LOG(context,
+                         "POW does not support negative value for int32.");
       return kTfLiteError;
     }
   }
@@ -140,7 +140,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default: {
-      context->ReportError(context, "Unsupported data type: %d", output->type);
+      TF_LITE_KERNEL_LOG(context, "Unsupported data type: %d", output->type);
       return kTfLiteError;
     }
   }

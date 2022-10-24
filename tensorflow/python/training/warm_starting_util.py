@@ -14,13 +14,7 @@
 # ==============================================================================
 """Utilities to warm-start TF.Learn Estimators."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
-
-import six
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -337,15 +331,14 @@ def _get_grouped_variables(vars_to_warm_start):
       `Variables`, or a list of strings.
   """
   # TODO(b/143899805): Remove unicode checks when deprecating Python2.
-  if isinstance(vars_to_warm_start,
-                six.string_types) or vars_to_warm_start is None:
+  if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
     # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
     # everything (in TRAINABLE_VARIABLES) here.
     logging.info("Warm-starting variables only in TRAINABLE_VARIABLES.")
     list_of_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES, scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
-    if all(isinstance(v, six.string_types) for v in vars_to_warm_start):
+    if all(isinstance(v, str) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
         list_of_vars += ops.get_collection(
@@ -486,7 +479,7 @@ def warm_start(ckpt_to_initialize_from,
 
   # Group the vocabless vars into one call to init_from_checkpoint.
   vocabless_vars = {}
-  for var_name, variable in six.iteritems(grouped_variables):
+  for var_name, variable in grouped_variables.items():
     prev_var_name = var_name_to_prev_var_name.get(var_name)
     if prev_var_name:
       prev_var_name_used.add(var_name)
@@ -527,9 +520,26 @@ def warm_start(ckpt_to_initialize_from,
         if len(variable) == 1:
           variable = variable[0]
         prev_tensor_name, var = _get_var_info(variable, prev_var_name)
+        if prev_tensor_name in vocabless_vars:
+          # The API for checkpoint_utils.init_from_checkpoint accepts a mapping
+          # from checkpoint tensor names to model variable names, so it does not
+          # support warm-starting two variables from the same tensor.  Our work-
+          # around is to run init_from_checkpoint multiple times, each time we
+          # encounter a new variable that should be initialized by a previously-
+          # used tensor.
+          logging.debug("Requested prev_var_name {} initialize both {} and {}; "
+                        "calling init_from_checkpoint.".format(
+                            prev_tensor_name,
+                            vocabless_vars[prev_tensor_name],
+                            var))
+          checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from,
+                                                vocabless_vars)
+          vocabless_vars.clear()
         vocabless_vars[prev_tensor_name] = var
 
-  checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from, vocabless_vars)
+  if vocabless_vars:
+    checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from,
+                                          vocabless_vars)
   prev_var_name_not_used = set(
       var_name_to_prev_var_name.keys()) - prev_var_name_used
   vocab_info_not_used = set(var_name_to_vocab_info.keys()) - vocab_info_used

@@ -31,7 +31,7 @@ class ShardDatasetParams : public DatasetParams {
         num_shards_(num_shards),
         index_(index),
         require_non_empty_(require_non_empty) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -46,16 +46,16 @@ class ShardDatasetParams : public DatasetParams {
     input_names->emplace_back(ShardDatasetOp::kInputDataset);
     input_names->emplace_back(ShardDatasetOp::kNumShards);
     input_names->emplace_back(ShardDatasetOp::kIndex);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(ShardDatasetOp::kRequireNonEmpty,
-                              require_non_empty_);
-    attr_vector->emplace_back(ShardDatasetOp::kOutputTypes, output_dtypes_);
-    attr_vector->emplace_back(ShardDatasetOp::kOutputShapes, output_shapes_);
-    return Status::OK();
+    attr_vector->emplace_back("require_non_empty", require_non_empty_);
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("metadata", "");
+    return OkStatus();
   }
 
   string dataset_type() const override { return ShardDatasetOp::kDatasetType; }

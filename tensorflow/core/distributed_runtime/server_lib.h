@@ -78,6 +78,9 @@ class ServerInterface {
   // Set coordination service agent instance to coordination service RPC handler
   virtual Status SetCoordinationServiceAgentInstance(
       CoordinationServiceAgent* agent) = 0;
+  // TODO(hanyangtay): Remove this method once gRPC server clean shutdown is
+  // supported.
+  virtual Status StopCoordinationService() = 0;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ServerInterface);

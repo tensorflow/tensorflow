@@ -1,0 +1,98 @@
+// Protobuf definitions for communicating the results of the memory
+// visualization analysis subprocess (written in C++) to the outer script which
+// renders HTML from Python.
+
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+// Describes a heap object that is displayed in a plot in the memory
+// visualization HTML.
+message HeapObject {
+  oneof color {
+    int32 numbered = 1;
+    string named = 2;
+  }
+  string label = 3;
+  int32 logical_buffer_id = 4;
+  double logical_buffer_size_mib = 5;
+  double unpadded_shape_mib = 6;
+  string instruction_name = 7;
+  string shape_string = 8;
+  string tf_op_name = 9;
+  string group_name = 10;
+  string op_code = 11;
+}
+
+// Describes the start / exclusive limit HLO program points for a given buffer
+// lifetime, used for rendering a box on the plot.
+message BufferSpan {
+  int32 start = 1;
+  int32 limit = 2;
+}
+
+message LogicalBuffer {
+  int64 id = 1;
+  string shape = 2;
+  double size_mib = 3;
+  string hlo_name = 4;
+  repeated int64 shape_index = 5;
+}
+
+message BufferAllocation {
+  int64 id = 1;
+  double size_mib = 2;
+  repeated string attributes = 3;
+  repeated LogicalBuffer logical_buffers = 4;
+  string common_shape = 5;
+}
+
+// Groups together all results from the preprocessing C++ step.
+message PreprocessResult {
+  // Heap sizes at each HLO program point (the HLO sequential order).
+  repeated double heap_sizes = 1;
+
+  // Unpadded heap sizes (calculated as the minimal sizes based on the data type
+  // and dimensionality) at each HLO program point (the HLO sequential order).
+  repeated double unpadded_heap_sizes = 2;
+
+  // Heap objects at the peak memory usage point ordered by HLO program "birth"
+  // time.
+  repeated HeapObject max_heap = 3;
+
+  // Heap objects at the peak memory usage point ordered by size, descending.
+  repeated HeapObject max_heap_by_size = 4;
+
+  // Mapping from logical buffer ID to the HLO sequential order span in which it
+  // is alive.
+  map<int32, BufferSpan> logical_buffer_spans = 5;
+
+  // Indexes to get back and forth from the by-size and by-program-order
+  // sequences.
+  repeated int32 max_heap_to_by_size = 6;
+  repeated int32 by_size_to_max_heap = 7;
+
+  string module_name = 8;
+  string entry_computation_name = 9;
+
+  // Peak heap size for the HLO program.
+  double peak_heap_mib = 10;
+
+  // Peak unpadded heap size for the HLO program.
+  double peak_unpadded_heap_mib = 11;
+
+  // HLO program point number at which the peak heap size occurs.
+  int32 peak_heap_size_position = 12;
+
+  // Size of the entry computation parameters in MiB.
+  //
+  // This does not reflect whether those MiB are reusable during the computation
+  // or not, it is simply a size value.
+  double entry_computation_parameters_mib = 13;
+
+  double non_reusable_mib = 14;
+
+  double maybe_live_out_mib = 15;
+
+  repeated BufferAllocation indefinite_lifetimes = 16;
+}

@@ -25,10 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 
@@ -68,26 +64,27 @@ class ChannelTracker {
   // Bumps the next_channel_ number and returns the allocated number
   // wrapped in a ChannelHandle.
   ChannelHandle AllocateHandle(ChannelHandle::ChannelType type)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   Status RegisterSendInternal(const ChannelHandle& handle)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   Status RegisterRecvInternal(const ChannelHandle& handle)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   // Guards the channel mapping.
-  tensorflow::mutex channel_mutex_;
+  absl::Mutex channel_mutex_;
 
   // The next sequence number to assign to a channel.
-  int64_t next_channel_ TF_GUARDED_BY(channel_mutex_);
+  int64_t next_channel_ ABSL_GUARDED_BY(channel_mutex_);
 
   // Mapping from ChannelHandle value to the corresponding registered
   // Channel object.
   absl::flat_hash_map<int64_t, Channel> opaque_to_channel_
-      TF_GUARDED_BY(channel_mutex_);
+      ABSL_GUARDED_BY(channel_mutex_);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ChannelTracker);
+  ChannelTracker(const ChannelTracker&) = delete;
+  ChannelTracker& operator=(const ChannelTracker&) = delete;
 };
 
 }  // namespace xla

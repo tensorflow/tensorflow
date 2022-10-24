@@ -18,13 +18,14 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace llvm {
 class LLVMContext;
 class Module;
-}
+}  // namespace llvm
 
 namespace xla {
 namespace gpu {
@@ -33,7 +34,7 @@ namespace gpu {
 // is created in the given LLVM context.
 //
 // If loading fails for some reason, dies printing a diagnostic error.
-std::unique_ptr<llvm::Module> LoadIRModule(const string& filename,
+std::unique_ptr<llvm::Module> LoadIRModule(const std::string& filename,
                                            llvm::LLVMContext* llvm_context);
 
 // Convenience function for replacing the extension of the given filename.
@@ -41,8 +42,8 @@ std::unique_ptr<llvm::Module> LoadIRModule(const string& filename,
 //
 // For example:
 //   ReplaceFilenameExtension("/foo/baz.txt", "cc") --> "/foo/baz.cc"
-string ReplaceFilenameExtension(absl::string_view filename,
-                                absl::string_view new_extension);
+std::string ReplaceFilenameExtension(absl::string_view filename,
+                                     absl::string_view new_extension);
 
 }  // namespace gpu
 }  // namespace xla

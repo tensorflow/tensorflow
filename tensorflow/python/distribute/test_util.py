@@ -14,10 +14,8 @@
 # ==============================================================================
 """Test utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
+import dataclasses
 import functools
 import io
 import itertools
@@ -28,6 +26,7 @@ from absl import app
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import multi_process_runner
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
@@ -40,6 +39,28 @@ try:
   import objgraph  # pylint:disable=g-import-not-at-top
 except ImportError:
   objgraph = None
+
+
+@dataclasses.dataclass
+class TestClusterParams:
+  cluster: dict
+  max_num_worker: int
+  max_num_ps: int
+
+
+def get_cluster_def(cluster_params, num_workers, num_ps):
+  if (num_workers > cluster_params.max_num_worker or
+      num_ps > cluster_params.max_num_ps):
+    raise ValueError("Requesting more servers than the maximum, adjust"
+                     "cluster params' max_num_ps and max_num_worker")
+  if cluster_params.cluster is None:
+    cluster_params.cluster = multi_worker_test_base.create_in_process_cluster(
+        num_workers=cluster_params.max_num_worker,
+        num_ps=cluster_params.max_num_ps)
+  return {
+      "worker": cluster_params.cluster["worker"][:num_workers],
+      "ps": cluster_params.cluster["ps"][:num_ps],
+  }
 
 
 def gather(strategy, value):
@@ -134,17 +155,20 @@ def topological_sort_operations(operations):
   both data dependencies and control dependencies. Note that the edge goes from
   an operation to its dependencies.
 
+  The sort is intentionally unstable, reversing orders of operations and
+  dependencies on ties.
+
   Args:
     operations: a list of tf.Operation in the same graph.
 
   Returns:
     A map from a tf.Operation to its topological order.
   """
-  in_degrees = {}
-  for op in operations:
+  in_degrees = collections.OrderedDict()
+  for op in reversed(operations):
     if op not in in_degrees:
       in_degrees[op] = 0
-    for next_op in _op_dependencies(op):
+    for next_op in reversed(_op_dependencies(op)):
       in_degrees[next_op] = in_degrees.get(next_op, 0) + 1
   nexts = []
   for op, in_degree in in_degrees.items():
@@ -156,7 +180,7 @@ def topological_sort_operations(operations):
     op, nexts = nexts[0], nexts[1:]
     order[op] = next_order
     next_order += 1
-    for next_op in _op_dependencies(op):
+    for next_op in reversed(_op_dependencies(op)):
       in_degrees[next_op] -= 1
       if in_degrees[next_op] == 0:
         nexts.append(next_op)
@@ -235,7 +259,7 @@ def show_backref(target, max_depth=3):
   Args:
     target: The target object for the memory graph.
     max_depth: The maximum depth of the graph. By default 3 layers of references
-    are used. Increases this a lot may result in the graph growing too big.
+      are used. Increases this a lot may result in the graph growing too big.
 
   Returns:
     A string that contains the object reference graph.

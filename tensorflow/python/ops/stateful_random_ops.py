@@ -14,12 +14,6 @@
 # ==============================================================================
 """Operations for generating random numbers."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import six
-
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import values_util
@@ -31,10 +25,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import gen_stateless_random_ops_v2
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.stateless_random_ops import Algorithm
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -61,12 +56,21 @@ SEED_SIZE = 16  # in units of SEED_TYPE
 
 STATE_TYPE = SEED_TYPE
 ALGORITHM_TYPE = STATE_TYPE
-PHILOX_STATE_SIZE = 3
-THREEFRY_STATE_SIZE = 2
+
+
+# The following sizes are all in unit of uint64.
+PHILOX_KEY_SIZE = 1
+THREEFRY_KEY_SIZE = 1
+PHILOX_COUNTER_SIZE = 2
+THREEFRY_COUNTER_SIZE = 1
+PHILOX_STATE_SIZE = PHILOX_COUNTER_SIZE + PHILOX_KEY_SIZE
+THREEFRY_STATE_SIZE = THREEFRY_COUNTER_SIZE + THREEFRY_KEY_SIZE
 
 
 RNG_ALG_PHILOX = Algorithm.PHILOX.value
 RNG_ALG_THREEFRY = Algorithm.THREEFRY.value
+
+
 DEFAULT_ALGORITHM = RNG_ALG_PHILOX
 
 
@@ -103,7 +107,7 @@ def _make_1d_state(state_size, seed):
   Returns:
     a 1-D tensor of shape [state_size] and dtype STATE_TYPE.
   """
-  if isinstance(seed, six.integer_types):
+  if isinstance(seed, int):
     # chop the Python integer (infinite precision) into chunks of SEED_TYPE
     ls = []
     for _ in range(state_size):
@@ -132,27 +136,27 @@ def _make_1d_state(state_size, seed):
 
 
 def _get_counter_size(alg):
-  if alg == RNG_ALG_PHILOX:
-    return 2
-  elif alg == RNG_ALG_THREEFRY:
-    return 1
+  if alg == Algorithm.PHILOX.value:
+    return PHILOX_COUNTER_SIZE
+  elif alg == Algorithm.THREEFRY.value:
+    return THREEFRY_COUNTER_SIZE
+  elif alg == Algorithm.AUTO_SELECT.value:
+    # For AUTO_SELECT, we'll manage the counter as if it's for Philox.
+    return PHILOX_COUNTER_SIZE
   else:
-    raise ValueError(
-        f"Argument `alg` got unsupported value {alg}. Supported values are "
-        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
-        f"the ThreeFry algorithm.")
+    raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
 
 def _get_state_size(alg):
-  if alg == RNG_ALG_PHILOX:
+  if alg == Algorithm.PHILOX.value:
     return PHILOX_STATE_SIZE
-  elif alg == RNG_ALG_THREEFRY:
+  elif alg == Algorithm.THREEFRY.value:
     return THREEFRY_STATE_SIZE
+  elif alg == Algorithm.AUTO_SELECT.value:
+    # For AUTO_SELECT, we'll manage the state as if it's for Philox.
+    return PHILOX_STATE_SIZE
   else:
-    raise ValueError(
-        f"Argument `alg` got unsupported value {alg}. Supported values are "
-        f"{RNG_ALG_PHILOX} for the Philox algorithm and {RNG_ALG_THREEFRY} for "
-        f"the ThreeFry algorithm.")
+    raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
 
 def _check_state_shape(shape, alg):
@@ -212,7 +216,7 @@ def get_replica_id():
 
 
 @tf_export("random.Generator", "random.experimental.Generator")
-class Generator(tracking.AutoTrackable):
+class Generator(autotrackable.AutoTrackable):
   """Random-number generator.
 
   Example:
@@ -377,7 +381,7 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The new generator.
     """
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       raise RuntimeError('"from_non_deterministic_state" cannot be called when '  # pylint: disable=g-doc-exception
                          "determinism is enabled.")
     if alg is None:
@@ -473,7 +477,11 @@ class Generator(tracking.AutoTrackable):
     Returns:
       The created variable.
     """
-    v = variables.Variable(*args, **kwargs)
+    with ops.name_scope("random_generator"):
+      # Make sure we don't change this name since Keras was using this name
+      # to filter out the state variable.
+      kwargs["name"] = "StateVar"
+      v = variables.Variable(*args, **kwargs)
     if isinstance(v, sharded_variable.ShardedVariable):
       # RNG state is an atomic entity representing a 128-bit or
       # 192-bit value, so it mustn't be sharded.
@@ -562,15 +570,13 @@ class Generator(tracking.AutoTrackable):
         counter-based; otherwise it raises a ValueError.
     """
     alg = self.algorithm
-    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+    if alg in (a.value for a in Algorithm):
       return self._state_var[-1]
     else:
-      raise ValueError(
-          f"This generator uses an unsupported algorithm {alg}. Supported "
-          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
-          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
+      raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
   def _skip_single_var(self, var, delta):
+    resource_variable_ops.variable_accessed(var)
     # TODO(wangpeng): Cache the cast algorithm instead of casting everytime.
     return gen_stateful_random_ops.rng_read_and_skip(
         var.handle,
@@ -898,17 +904,14 @@ class Generator(tracking.AutoTrackable):
       A tensor of shape [2, count] and dtype int64.
     """
     alg = self.algorithm
-    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+    if alg in (a.value for a in Algorithm):
       keys = self._make_int64_keys(shape=[count])
       # The two seeds for stateless random ops don't have individual semantics
       # and are scrambled together, so setting one to zero is fine.
       zeros = array_ops.zeros_like(keys)
       return array_ops.stack([keys, zeros])
     else:
-      raise ValueError(
-          f"This generator uses an unsupported algorithm {alg}. Supported "
-          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
-          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
+      raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
   def split(self, count=1):
     """Returns a list of independent `Generator` objects.
@@ -953,15 +956,12 @@ class Generator(tracking.AutoTrackable):
       return [0] * (_get_state_size(alg) - 1) + [key]
 
     alg = self.algorithm
-    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+    if alg in (a.value for a in Algorithm):
       keys = self._make_int64_keys(shape=[count])
       return [Generator(state=_key_to_state(alg, key), alg=alg)
               for key in array_ops.unstack(keys, num=count)]
     else:
-      raise ValueError(
-          f"This generator uses an unsupported algorithm {alg}. Supported "
-          f"values are {RNG_ALG_PHILOX} for the Philox algorithm and "
-          f"{RNG_ALG_THREEFRY} for the ThreeFry algorithm.")
+      raise ValueError(stateless_random_ops.unsupported_alg_error_msg(alg))
 
 
 # It's not safe to create TF ops before `init_google` is called, so this is
@@ -985,7 +985,7 @@ def get_global_generator():
   """
   global global_generator
   if global_generator is None:
-    if config.deterministic_ops_enabled():
+    if config.is_op_determinism_enabled():
       raise RuntimeError('"get_global_generator" cannot be called if '  # pylint: disable=g-doc-exception
                          "determinism is enabled, unless "
                          '"set_global_generator" has already been called. '
@@ -1000,16 +1000,27 @@ def get_global_generator():
 def set_global_generator(generator):
   """Replaces the global generator with another `Generator` object.
 
-  This function creates a new Generator object (and the Variable object within),
-  which does not work well with tf.function because (1) tf.function puts
-  restrictions on Variable creation thus reset_global_generator can't be freely
-  used inside tf.function; (2) redirecting a global variable to
-  a new object is problematic with tf.function because the old object may be
-  captured by a 'tf.function'ed function and still be used by it.
-  A 'tf.function'ed function only keeps weak references to variables,
-  so deleting a variable and then calling that function again may raise an
-  error, as demonstrated by
-  random_test.py/RandomTest.testResetGlobalGeneratorBadWithDefun .
+  This function replaces the global generator with the provided `generator`
+  object.
+  A random number generator utilizes a `tf.Variable` object to store its state.
+  The user shall be aware of caveats how `set_global_generator` interacts with
+  `tf.function`:
+
+  - tf.function puts restrictions on Variable creation thus one cannot freely
+    create a new random generator instance inside `tf.function`.
+    To call `set_global_generator` inside `tf.function`, the generator instance
+    must have already been created eagerly.
+  - tf.function captures the Variable during trace-compilation, thus a compiled
+    f.function will not be affected `set_global_generator` as demonstrated by
+    random_test.py/RandomTest.testResetGlobalGeneratorBadWithDefun .
+
+  For most use cases, avoid calling `set_global_generator` after program
+  initialization, and prefer to reset the state of the existing global generator
+  instead, such as,
+
+  >>> rng = tf.random.get_global_generator()
+  >>> rng.reset_from_seed(30)
+
 
   Args:
     generator: the new `Generator` object.

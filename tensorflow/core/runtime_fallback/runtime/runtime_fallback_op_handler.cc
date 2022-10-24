@@ -66,7 +66,7 @@ class RuntimeFallbackOpHandler : public tfrt::OpHandler {
 
   const std::string& TfDeviceName() const { return tf_device_name_; }
 
-  tfrt::RCReference<tfrt::Device> GetDeviceRef() { return device_.CopyRef(); }
+  tfrt::RCReference<tfrt::Device> GetDeviceRef() { return device_; }
 
  private:
   explicit RuntimeFallbackOpHandler(tfrt::CoreRuntime* runtime,
@@ -99,7 +99,6 @@ using tfrt::OpInvocation;
 using tfrt::OpMetadataFn;
 using tfrt::raw_ostream;
 using tfrt::RCReference;
-using tfrt::SmallVector;
 using tfrt::string_view;
 using tfrt::Tensor;
 using tfrt::TensorMetadata;
@@ -169,6 +168,7 @@ struct RuntimeFallbackOpHandlerTraits {
     if (chain) *chain = std::move(ch);
   }
 
+  // TODO(fishx): Remove this method.
   static tfrt::Variant<tfrt::RCReference<tfrt::Device>,
                        tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>>
   GetResultDevice(RuntimeFallbackOpHandler* tf_op_handler,
@@ -184,14 +184,13 @@ struct RuntimeFallbackOpHandlerTraits {
       if (!expected_device) {
         return tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>(
             tfrt::MakeErrorAsyncValueRef(
-                exec_ctx.host(), tfrt::StrCat(expected_device.takeError())));
+                tfrt::StrCat(expected_device.takeError())));
       }
       return std::move(expected_device.get());
     }
 
     auto result_device =
-        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>(
-            exec_ctx.host());
+        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>();
 
     result_tensor_av.AndThen([result_tensor_av_ref = result_tensor_av.CopyRef(),
                               result_device = result_device.CopyRef(),
@@ -202,10 +201,21 @@ struct RuntimeFallbackOpHandlerTraits {
       }
       auto expected_device = GetDeviceFromFallbackTensor(
           result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx);
-      result_device.emplace(GetDeviceFromFallbackTensor(
-          result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
+      tfrt::Emplace(
+          result_device,
+          GetDeviceFromFallbackTensor(
+              result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
     });
     return std::move(result_device);
+  }
+
+  static tfrt::Variant<tfrt::RCReference<tfrt::Device>,
+                       tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>>
+  GetResultDevice(const RuntimeFallbackOpEntry& op_entry,
+                  RuntimeFallbackOpHandler* tf_op_handler,
+                  const tfrt::AsyncValueRef<tfrt::Tensor>& result_tensor_av,
+                  int index, const ExecutionContext& exec_ctx) {
+    return GetResultDevice(tf_op_handler, result_tensor_av, exec_ctx);
   }
 };
 
@@ -271,7 +281,7 @@ Expected<CoreRuntimeOp> RuntimeFallbackOpHandler::MakeOp(string_view op_name) {
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       },
       // device and arg_tensor_type are not used in runtime fallback ops.
-      /*is_fallback=*/true, /*device=*/device_.CopyRef());
+      /*is_fallback=*/true, /*device=*/device_);
 }
 
 llvm::Expected<tfrt::OpHandler*> CreateRuntimeFallbackOpHandler(

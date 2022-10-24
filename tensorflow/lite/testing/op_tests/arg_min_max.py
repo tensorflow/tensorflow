@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for arg_min_max."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import random
 
 import tensorflow.compat.v1 as tf
@@ -47,6 +43,13 @@ def make_arg_min_max_tests(options):
           "is_arg_max": [False, True],
           "is_last_axis": [True],
           "dynamic_range_quantize": [False, True],
+      },
+      {
+          "input_dtype": [tf.bool],
+          "input_shape": [[1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
+          "output_type": [tf.int32, tf.int64],
+          "is_arg_max": [True],
+          "is_last_axis": [False],
       },
   ]
 

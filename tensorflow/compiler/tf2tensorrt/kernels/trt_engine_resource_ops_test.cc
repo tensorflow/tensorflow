@@ -20,7 +20,9 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_instance.pb.h"  // NOLINT
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -96,7 +98,8 @@ class TRTEngineResourceOpsTest
                                      ITensorProxyPtr input) {
     nvinfer1::Dims dims2{1, {2}};
     ITensorProxyPtr input2 =
-        network->addInput("input2", nvinfer1::DataType::kINT32, dims2);
+        network->addInput(absl::StrCat(IONamePrefixes::kInputPHName, 1).c_str(),
+                          nvinfer1::DataType::kINT32, dims2);
     EXPECT_NE(nullptr, input2->trt_tensor());
 
     nvinfer1::Dims start{2, {0, 0}};
@@ -137,9 +140,9 @@ class TRTEngineResourceOpsTest
     if (this->param_.dynamic_shape) {
       std::fill(dims.d, dims.d + dims.nbDims, -1);
     }
-    const char* in_name = "input";
+    const std::string in_name = StrCat(IONamePrefixes::kInputPHName, 0);
     ITensorProxyPtr input =
-        network->addInput(in_name, nvinfer1::DataType::kFLOAT, dims);
+        network->addInput(in_name.c_str(), nvinfer1::DataType::kFLOAT, dims);
     EXPECT_NE(nullptr, input->trt_tensor());
     // Mark the output.
     ITensorProxyPtr output =
@@ -158,9 +161,12 @@ class TRTEngineResourceOpsTest
     if (this->param_.dynamic_shape) {
       TrtShapeOptimizationProfile profile;
       profile.SetShapeTensorMask(network.get());
+      const int n_input = param_.n_inputs;
+      // Set the input mask to true (no resource input)
+      std::vector<bool> input_mask(n_input, true);
+      profile.SetInputMask(input_mask);
       // The for loop defines three optimization profiles for the network.
       for (int i = 1; i <= 3; i++) {
-        const int n_input = param_.n_inputs;
         std::vector<TensorShape> shape_vec(n_input);
         // Define a shape with all dimensions set to 3*i.
         std::vector<int> dimvec(this->param_.dims.nbDims, 3 * i);
@@ -193,8 +199,7 @@ class TRTEngineResourceOpsTest
       }
       std::vector<PartialTensorShape> input_partial_shapes;
       TF_CHECK_OK(GetNetworkInputShapes(network.get(), &input_partial_shapes));
-      profile.InitProfiles(input_partial_shapes,
-                           ProfileStrategy::kImplicitBatchModeCompatible);
+      profile.InitProfiles(input_partial_shapes, ProfileStrategy::kOptimal);
       // Configure and build engine
       TF_CHECK_OK(profile.ConfigureBuilder(builder.get(), builder_config.get(),
                                            network.get()));
@@ -276,9 +281,14 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine = CreateTRTEngine();
   ExecutionContext context = ExecutionContext::Create(engine.get());
 
+  std::vector<TensorShape> engine_input_shape(1);
+  TF_ASSERT_OK(DimsAdapter(param_.dims).TensorShape(&(engine_input_shape[0])));
+  if (param_.n_inputs > 1) {
+    engine_input_shape.push_back(TensorShape({1, 1}));
+  }
   resource->cache_.emplace(
-      std::vector<TensorShape>{TensorShape({1, 1})},
-      absl::make_unique<EngineContext>(std::move(engine), std::move(context)));
+      engine_input_shape,
+      std::make_unique<EngineContext>(std::move(engine), std::move(context)));
   // Check that the resource has multiple references before it is unregistered
   // from the resource manager.
   EXPECT_FALSE(resource->RefCountIsOne());
@@ -314,16 +324,17 @@ TEST_P(TRTEngineResourceOpsTest, Basic) {
   // Verify the file for the serialized engine.
   std::unique_ptr<RandomAccessFile> file;
   TF_ASSERT_OK(env->NewRandomAccessFile(filename, &file));
-  auto reader = absl::make_unique<io::RecordReader>(file.get());
+  auto reader = std::make_unique<io::RecordReader>(file.get());
   uint64 offset = 0;
   tstring record;
   TF_ASSERT_OK(reader->ReadRecord(&offset, &record));
   TRTEngineInstance engine_instance;
   engine_instance.ParseFromString(record);
-  EXPECT_EQ(1, engine_instance.input_shapes_size());
-  EXPECT_EQ(2, engine_instance.input_shapes(0).dim_size());
-  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(0).size());
-  EXPECT_EQ(1, engine_instance.input_shapes(0).dim(1).size());
+  EXPECT_EQ(param_.n_inputs, engine_instance.input_shapes_size());
+  EXPECT_EQ(param_.dims.nbDims, engine_instance.input_shapes(0).dim_size());
+  for (int i = 0; i < param_.dims.nbDims; i++) {
+    EXPECT_EQ(param_.dims.d[i], engine_instance.input_shapes(0).dim(i).size());
+  }
   EXPECT_TRUE(errors::IsOutOfRange(reader->ReadRecord(&offset, &record)));
 
   // Recreate the resource and use the file with the serialized engine to

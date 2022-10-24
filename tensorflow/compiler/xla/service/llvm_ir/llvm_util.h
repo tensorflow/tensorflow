@@ -36,19 +36,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace llvm {
 class FastMathFlags;
 class TargetOptions;
-};
+};  // namespace llvm
 
 namespace xla {
 namespace llvm_ir {
 
 // Dump the given LLVM entity to a string. This works for Types and Values.
 template <typename T>
-string DumpToString(const T& entity) {
+std::string DumpToString(const T& entity) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
@@ -59,7 +58,7 @@ string DumpToString(const T& entity) {
 // Same as above, except that const T& does not work well with MILR because the
 // print methods are not const.
 template <typename T>
-string DumpToString(T& entity) {
+std::string DumpToString(T& entity) {
   std::string buffer_string;
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
@@ -70,7 +69,7 @@ string DumpToString(T& entity) {
 // Dump the given LLVM module to a string. This requires a function distinct
 // from DumpToString because the signatures of the print() methods for Values
 // and Modules are slightly different.
-string DumpModuleToString(const llvm::Module& module);
+std::string DumpModuleToString(const llvm::Module& module);
 
 // Constructs a human-friendly name from the given inputs.  The result is
 // suitable for use as an llvm::Value's name.
@@ -81,15 +80,15 @@ string DumpModuleToString(const llvm::Module& module);
 //   - joining all of the nonempty inputs by '.', and then
 //   - removing all '%'s.
 //
-string IrName(absl::string_view a);
-string IrName(absl::string_view a, absl::string_view b);
-string IrName(const HloInstruction* a, absl::string_view b = "");
+std::string IrName(absl::string_view a);
+std::string IrName(absl::string_view a, absl::string_view b);
+std::string IrName(const HloInstruction* a, absl::string_view b = "");
 
 // Removes special characters from a function name.
 //
 // Note that this can cause different inputs to map to the same output, so after
 // sanitizing a function name, you must run it through a uniquer.
-string SanitizeFunctionName(string function_name);
+std::string SanitizeFunctionName(std::string function_name);
 
 // Emits a call to the specified intrinsic with the given operands. Overloaded
 // intrinsics (for example, "minnum") must include a type in overloaded_types
@@ -113,13 +112,13 @@ llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           absl::string_view name = "");
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
-// (1-dimensional array), equivalent to array[index]. The type is automatically
-// determined from the element type of the array.  The int64_t index overload
+// (1-dimensional array), equivalent to array[index]. The element type of the
+// array must be explicitly passed in.  The int64_t index overload
 // wraps the index in a i64 llvm::Value.
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* b);
-llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64_t index,
-                                   llvm::IRBuilder<>* b);
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   llvm::Value* index, llvm::IRBuilder<>* b);
+llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
+                                   int64_t index, llvm::IRBuilder<>* b);
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
@@ -135,7 +134,7 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
 // Returns a value that represents a pointer to a global string constant that
 // encodes the shape as a serialized protobuf.
 StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
-                                                         int32* shape_size,
+                                                         int32_t* shape_size,
                                                          llvm::IRBuilder<>* b);
 
 // Converts a given literal to an IR Constant. Literals have known constant
@@ -236,7 +235,7 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
                                        uint64_t dereferenceable_bytes);
 
 // Tells LLVM `inst >= lower && inst < upper`. Returns `inst` for convenience.
-llvm::Instruction* AddRangeMetadata(int64_t lower, int64_t upper,
+llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst);
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
@@ -272,9 +271,6 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix = "");
 
-void DumpIrIfEnabled(mlir::ModuleOp mlir_module, int unique_id,
-                     const DebugOptions& debug_options);
-
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,
                                   const HloModuleConfig& module_config,
@@ -297,12 +293,23 @@ llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
 
 // Adds a delta value to the global state variable and return the old value of
 // the variable.
-llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+llvm::Value* RngGetAndUpdateState(uint64_t delta, llvm::Module* module,
                                   llvm::IRBuilder<>* b);
 
 // Gets the LLVM address space that should be used for global variables (e.g.
 // XLA's rng state).
 unsigned GetGlobalMemoryAddressSpace();
+
+// Emits a block which does "return void". Leaves the insert point as is.
+llvm::BasicBlock* EmitReturnBlock(llvm::IRBuilder<>* b);
+
+// Emits `if (condition) return`. Assumes that the current function returns
+// void.
+//
+// Can either use a supplied `return_block`, or generate a new one.
+void EmitEarlyReturn(llvm::Value* condition, llvm::IRBuilder<>* b,
+                     llvm::BasicBlock* return_block = nullptr);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

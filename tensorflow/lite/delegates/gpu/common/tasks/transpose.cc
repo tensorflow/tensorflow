@@ -44,11 +44,11 @@ std::string GetTransposeCode(const OperationDef& op_def,
        "S >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  FLT temps[4];\n";
-  c += "  temps[0] = INIT_FLT(0.0f);\n";
-  c += "  temps[1] = INIT_FLT(0.0f);\n";
-  c += "  temps[2] = INIT_FLT(0.0f);\n";
-  c += "  temps[3] = INIT_FLT(0.0f);\n";
+  c += "  args.src_tensor::scalar_type temps[4];\n";
+  c += "  temps[0] = args.src_tensor::scalar_zero_value;\n";
+  c += "  temps[1] = args.src_tensor::scalar_zero_value;\n";
+  c += "  temps[2] = args.src_tensor::scalar_zero_value;\n";
+  c += "  temps[3] = args.src_tensor::scalar_zero_value;\n";
   int remap[4];
   remap[attr.perm.b] = 0;
   remap[attr.perm.h] = 1;
@@ -61,7 +61,7 @@ std::string GetTransposeCode(const OperationDef& op_def,
     }
     c += "  int s_y = " + bhw[remap[1]] + ";\n";
     c += "  int s_x = " + bhw[remap[2]] + ";\n";
-    c += "  FLT4 t = args.src_tensor.Read(s_x, s_y, S);\n";
+    c += "  args.src_tensor::type t = args.src_tensor.Read(s_x, s_y, S);\n";
     c += "  temps[0] = t.x;\n";
     c += "  temps[1] = t.y;\n";
     c += "  temps[2] = t.z;\n";
@@ -77,14 +77,11 @@ std::string GetTransposeCode(const OperationDef& op_def,
     c += "      int s_y = " + bhwc[remap[1]] + ";\n";
     c += "      int s_x = " + bhwc[remap[2]] + ";\n";
     c += "      int s_c = " + bhwc[remap[3]] + ";\n";
-    c += "      int s_z = s_c / 4;\n";
-    c += "      int src_sub_ch = s_c % 4;\n";
-    c += "      FLT4 t = args.src_tensor.Read(s_x, s_y, s_z);\n";
-    c += "      temps[i] = SELECT_BY_INDEX_FROM_FLT4(t, src_sub_ch);\n";
+    c += "      args.src_tensor.ReadPerChannel(temps[i], s_x, s_y, s_c);\n";
     c += "    }\n";
     c += "  }\n";
   }
-  c += "  FLT4 result;\n";
+  c += "  args.src_tensor::type result;\n";
   c += "  result.x = temps[0];\n";
   c += "  result.y = temps[1];\n";
   c += "  result.z = temps[2];\n";

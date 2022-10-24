@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/recordable_queue.h"
 
+#include <memory>
+
 namespace tflite {
 namespace gpu {
 namespace cl {
@@ -22,7 +24,7 @@ namespace cl {
 std::unique_ptr<RecordableQueue> CreateRecordableQueue(
     const std::vector<ClOperation*>& ops, const CLDevice& device,
     const CLContext& context) {
-  return absl::make_unique<RecordableQueue>(RecordableQueue());
+  return std::make_unique<RecordableQueue>(RecordableQueue());
 }
 
 }  // namespace cl

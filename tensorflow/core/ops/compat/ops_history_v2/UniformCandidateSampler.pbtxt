@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "UniformCandidateSampler"
   input_arg {
     name: "true_classes"

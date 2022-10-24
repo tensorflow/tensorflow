@@ -18,8 +18,8 @@ limitations under the License.
 namespace tensorflow {
 REGISTER7(BinaryOp, CPU, "NotEqual", functor::not_equal_to, float, Eigen::half,
           double, uint8, int8, int16, bfloat16);
-REGISTER7(BinaryOp, CPU, "NotEqual", functor::not_equal_to, uint16, uint32,
-          uint64, qint8, qint16, quint8, quint16);
+REGISTER8(BinaryOp, CPU, "NotEqual", functor::not_equal_to, uint16, uint32,
+          uint64, qint8, qint16, quint8, quint16, qint32);
 
 REGISTER_KERNEL_BUILDER(Name("NotEqual")
                             .Device(DEVICE_DEFAULT)

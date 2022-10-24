@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -28,16 +26,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -56,7 +51,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 using TestTypes = ::testing::Types<
 // TODO(b/183565702): Support integer convs on GPU.
 #if !XLA_TEST_BACKEND_GPU
-    int32,
+    int32_t,
 #endif
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
     Eigen::half,
@@ -74,16 +69,16 @@ class ForwardPassConvolution_3x3x256_256_OutputZ_Iota : public ConvolutionTest {
     const int kKernelSizeY = 2;
     const int kOutputActivationSizeZ = 256;
     const int kMiniBatchSize = 4;
-    auto alhs = absl::make_unique<Array4D<T>>(
+    auto alhs = std::make_unique<Array4D<T>>(
         kMiniBatchSize, kInputActivationSizeZ, kInputActivationSizeY,
         kInputActivationSizeX);
     alhs->FillWithMultiples(static_cast<T>(static_cast<T>(1.0f)));
     ASSERT_EQ(3, alhs->width());
     ASSERT_EQ(3, alhs->height());
 
-    auto arhs = absl::make_unique<Array4D<T>>(kOutputActivationSizeZ,
-                                              kInputActivationSizeZ,
-                                              kKernelSizeY, kKernelSizeX);
+    auto arhs = std::make_unique<Array4D<T>>(kOutputActivationSizeZ,
+                                             kInputActivationSizeZ,
+                                             kKernelSizeY, kKernelSizeX);
     Array2D<T> rhs_raster({
         {static_cast<T>(1.0f), static_cast<T>(0.0f)},  // row 0
         {static_cast<T>(0.0f), static_cast<T>(0.0f)},  // row 1
@@ -294,21 +289,20 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
   iota(input_elems.begin(), input_elems.end(), 1.0f);
   auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
-  auto input_r5 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+  auto input_r5 = input_r1.Reshape(input_dims).value();
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
   iota(filter_elems.begin(), filter_elems.end(), 1.0f);
   auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
-  auto filter_r5 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+  auto filter_r5 = filter_r1.Reshape(filter_dims).value();
 
   auto expected_r1 = LiteralUtil::CreateR1<float>(
       {19554, 19962, 20370, 22110, 22590, 23070, 34890, 35730, 36570, 37446,
        38358, 39270, 50226, 51498, 52770, 52782, 54126, 55470});
-  auto expected_r5 = expected_r1.Reshape({1, 3, 1, 2, 3}).ConsumeValueOrDie();
+  auto expected_r5 = expected_r1.Reshape({1, 3, 1, 2, 3}).value();
 
-  auto input_literal = client_->TransferToServer(input_r5).ConsumeValueOrDie();
-  auto filter_literal =
-      client_->TransferToServer(filter_r5).ConsumeValueOrDie();
+  auto input_literal = client_->TransferToServer(input_r5).value();
+  auto filter_literal = client_->TransferToServer(filter_r5).value();
 
   ComputeAndCompareLiteral(&builder, expected_r5,
                            {input_literal.get(), filter_literal.get()},
@@ -357,21 +351,19 @@ class Convolve2D_1x3x3x5_3x3x5x3_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(
         {static_cast<T>(92115), static_cast<T>(93150), static_cast<T>(94185)});
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 3}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 3}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -417,12 +409,12 @@ class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(
         {static_cast<T>(16029), static_cast<T>(16218), static_cast<T>(16407),
@@ -430,12 +422,10 @@ class Convolve2D_1x3x3x5_3x3x1x15_Depthwise_Valid : public ConvolutionTest {
          static_cast<T>(18369), static_cast<T>(18576), static_cast<T>(18783),
          static_cast<T>(19620), static_cast<T>(19836), static_cast<T>(20052),
          static_cast<T>(20925), static_cast<T>(21150), static_cast<T>(21375)});
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 15}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 15}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -483,12 +473,12 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(
         {static_cast<T>(6864),  static_cast<T>(7296),  static_cast<T>(7746),
@@ -498,12 +488,10 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid : public ConvolutionTest {
          static_cast<T>(11886), static_cast<T>(12534), static_cast<T>(13200),
          static_cast<T>(11589), static_cast<T>(12246), static_cast<T>(12921),
          static_cast<T>(13614), static_cast<T>(14325)});
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 5}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 5}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -553,22 +541,20 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(2048, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 512}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 512}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -617,24 +603,22 @@ class Convolve2D_1x4x4x512_3x3x1x512_Depthwise_Valid_Output_Batch_In_Lanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(2048, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 512}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 512}).value();
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
                              {input_literal.get(), filter_literal.get()},
@@ -686,25 +670,22 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Input_Batch_in_Lanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
     auto input_r4_relaid =
         input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(2048 * 256, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 =
-        expected_r1.Reshape({256, 2, 2, 512}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({256, 2, 2, 512}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4_relaid).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -755,27 +736,24 @@ class Convolve2D_256x4x4x512_3x3x1x512_Depthwise_Both_Batch_in_Lanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
     auto input_r4_relaid =
         input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(2048 * 256, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 =
-        expected_r1.Reshape({256, 2, 2, 512}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({256, 2, 2, 512}).value();
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal =
-        client_->TransferToServer(input_r4_relaid).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
                              {input_literal.get(), filter_literal.get()},
@@ -826,14 +804,14 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid_Output_Batch_In_Lanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
     auto input_r4_relaid =
         input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(
         {static_cast<T>(6864),  static_cast<T>(7296),  static_cast<T>(7746),
@@ -843,14 +821,12 @@ class Convolve2D_1x4x4x5_3x3x1x5_Depthwise_Valid_Output_Batch_In_Lanes
          static_cast<T>(11886), static_cast<T>(12534), static_cast<T>(13200),
          static_cast<T>(11589), static_cast<T>(12246), static_cast<T>(12921),
          static_cast<T>(13614), static_cast<T>(14325)});
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 5}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 5}).value();
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal =
-        client_->TransferToServer(input_r4_relaid).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
                              {input_literal.get(), filter_literal.get()},
@@ -901,22 +877,20 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(640, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -965,26 +939,24 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
     auto input_r4_relaid =
         input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(640, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).value();
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({3, 0, 2, 1}));
 
-    auto input_literal =
-        client_->TransferToServer(input_r4_relaid).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
                              {input_literal.get(), filter_literal.get()},
@@ -1035,26 +1007,24 @@ class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
     auto input_r4_relaid =
         input_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(640, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 160}).value();
     auto expected_r4_relaid =
         expected_r4.Relayout(LayoutUtil::MakeLayout({0, 3, 2, 1}));
 
-    auto input_literal =
-        client_->TransferToServer(input_r4_relaid).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4_relaid).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4_relaid,
                              {input_literal.get(), filter_literal.get()},
@@ -1105,22 +1075,20 @@ class Convolve2D_1x4x4x1024_3x3x1x1024_Depthwise_Valid
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape),
                                static_cast<T>(1));
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(4096, static_cast<T>(18));
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 1024}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 2, 2, 1024}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1168,24 +1136,22 @@ class Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 = LiteralUtil::CreateR1<T>(
         {static_cast<T>(5076), static_cast<T>(5160), static_cast<T>(5244),
          static_cast<T>(5328), static_cast<T>(6164), static_cast<T>(6264),
          static_cast<T>(6364), static_cast<T>(6464), static_cast<T>(7380),
          static_cast<T>(7496), static_cast<T>(7612), static_cast<T>(7728)});
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 12}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 12}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1234,22 +1200,20 @@ class Convolve2D_1x2x2x1024_2x2x128x512_Grouped_Valid : public ConvolutionTest {
                                static_cast<T>(1));
 
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
 
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(512, static_cast<T>(1024));
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 512}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 512}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1298,22 +1262,20 @@ class Convolve2D_1x2x2x1024_2x2x128x8_Grouped_Valid : public ConvolutionTest {
                                static_cast<T>(1));
 
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape),
                                 static_cast<T>(2));
 
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     std::vector<T> output_elems(8, static_cast<T>(1024));
     auto expected_r1 = LiteralUtil::CreateR1<T>(output_elems);
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 8}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 8}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1361,22 +1323,20 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 =
         LiteralUtil::CreateR1<T>({static_cast<T>(7712), static_cast<T>(8816),
                                   static_cast<T>(9992), static_cast<T>(11240)});
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1425,23 +1385,21 @@ class Convolve2D_1x2x2x12_2x2x3x4_Grouped_Valid_Filter_OF_In_Sublanes
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
     auto filter_r4_relaid =
         filter_r4.Relayout(LayoutUtil::MakeLayout({3, 2, 1, 0}));
     auto expected_r1 = LiteralUtil::CreateR1<T>(
         {static_cast<T>(6968), static_cast<T>(8516), static_cast<T>(10280),
          static_cast<T>(12260)});
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4_relaid).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4_relaid).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1491,22 +1449,20 @@ class Convolve2D_1x1x1x12_1x1x3x4_Grouped_Valid : public ConvolutionTest {
     std::vector<T> input_elems(ShapeUtil::ElementsIn(input_shape));
     iota_int_init_value(input_elems, 1);
     auto input_r1 = LiteralUtil::CreateR1<T>(input_elems);
-    auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+    auto input_r4 = input_r1.Reshape(input_dims).value();
 
     std::vector<T> filter_elems(ShapeUtil::ElementsIn(filter_shape));
     iota_int_init_value(filter_elems, 1);
     auto filter_r1 = LiteralUtil::CreateR1<T>(filter_elems);
-    auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+    auto filter_r4 = filter_r1.Reshape(filter_dims).value();
 
     auto expected_r1 =
         LiteralUtil::CreateR1<T>({static_cast<T>(38), static_cast<T>(98),
                                   static_cast<T>(176), static_cast<T>(272)});
-    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).ConsumeValueOrDie();
+    auto expected_r4 = expected_r1.Reshape({1, 1, 1, 4}).value();
 
-    auto input_literal =
-        client_->TransferToServer(input_r4).ConsumeValueOrDie();
-    auto filter_literal =
-        client_->TransferToServer(filter_r4).ConsumeValueOrDie();
+    auto input_literal = client_->TransferToServer(input_r4).value();
+    auto filter_literal = client_->TransferToServer(filter_r4).value();
 
     ComputeAndCompareLiteral(&builder, expected_r4,
                              {input_literal.get(), filter_literal.get()},
@@ -1565,8 +1521,6 @@ XLA_TEST_P(ConvolveWithAndWithoutCanonicalization,
 INSTANTIATE_TEST_CASE_P(ConvolveWithAndWithoutCanonicalization_Instantiation,
                         ConvolveWithAndWithoutCanonicalization,
                         ::testing::Values(true, false));
-
-
 
 XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
   XlaBuilder builder(TestName());
@@ -1744,6 +1698,22 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
+// CUDNN does not support s8->s32 convs
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU(PackedNibbleConvolve)) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = s8[5,11,11,7] parameter(1)
+  %rhs = s8[3,3,7,7] parameter(0)
+  ROOT %convolution = s32[5,11,11,7] convolution(lhs, rhs),
+     window={size=3x3 pad=1_1x1_1},
+     dim_labels=b01f_01io->b01f,
+     operand_precision={PACKED_NIBBLE,PACKED_NIBBLE}
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
+}
+
 XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolveWithStride) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
@@ -1779,6 +1749,55 @@ ENTRY TestComputation {
   %parameter.1 = f32[10,5]{1,0} parameter(0)
   %parameter.2 = f32[5,7]{1,0} parameter(1)
   ROOT %convolution.3 = f32[10,7]{1,0} convolution(f32[10,5]{1,0} %parameter.1, f32[5,7]{1,0} %parameter.2), dim_labels=bf_io->bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv2D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,5,5,1] parameter(0)
+  %p1 = f32[3,3,1,32] parameter(1)
+  %conv = f32[8,5,5,32] convolution(p0, p1), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,5,5,32] broadcast(%bias), dimensions={3}
+  %add = f32[8,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestFusedConv3D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %p0 = f32[8,4,5,5,1] parameter(0)
+  %p1 = f32[3,3,3,1,32] parameter(1)
+  %conv = f32[8,4,5,5,32] convolution(p0, p1), window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+  %bias = f32[32] parameter(2)
+  %broadcasted_bias = f32[8,4,5,5,32] broadcast(%bias), dimensions={4}
+  %add = f32[8,4,5,5,32] add(%conv, %broadcasted_bias)
+  %zero = f32[] constant(0)
+  %zeros = f32[8,4,5,5,32] broadcast(%zero), dimensions={}
+  ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  constant.1 = pred[] constant(true)
+  broadcast.2 = pred[3,3,3]{2,1,0} broadcast(constant.1), dimensions={}
+  convolution.3 = pred[3,3,3]{2,1,0} convolution(broadcast.2, broadcast.2), window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
+  ROOT tuple.4 = (pred[3,3,3]{2,1,0}) tuple(convolution.3)
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }

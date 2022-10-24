@@ -14,7 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include <iostream>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 
 namespace mlir {
@@ -130,19 +130,22 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
   }
 };
 
+#define GEN_PASS_DEF_TENSORFLOWOPTIMIZEPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Canonicalize operations in functions.
 struct TensorFlowOptimizePass
-    : public TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
+    : public impl::TensorFlowOptimizePassBase<TensorFlowOptimizePass> {
   LogicalResult initialize(MLIRContext *context) override {
-    OwningRewritePatternList pattern_list(context);
+    RewritePatternSet pattern_list(context);
     populateWithGenerated(pattern_list);
-    pattern_list.insert<SimplifyBroadcastReshape>(context);
+    pattern_list.add<SimplifyBroadcastReshape>(context);
     patterns = std::move(pattern_list);
     return success();
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
     if (failed(applyPatternsAndFoldGreedily(func, patterns)))
       signalPassFailure();
   }
@@ -154,7 +157,7 @@ struct TensorFlowOptimizePass
 
 void CreateTFStandardPipeline(OpPassManager &pm,
                               const StandardPipelineOptions &options) {
-  OpPassManager &func_pm = pm.nest<FuncOp>();
+  OpPassManager &func_pm = pm.nest<func::FuncOp>();
 
   // First operates on the executor dialect:
   // - remove dead islands.
@@ -174,20 +177,23 @@ void CreateTFStandardPipeline(OpPassManager &pm,
     pm.addPass(createInlinerPass());
   }
   pm.addPass(createSymbolDCEPass());
-  pm.addNestedPass<FuncOp>(CreateTFOptimizePass());
-  pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addNestedPass<func::FuncOp>(CreateTFOptimizePass());
+  pm.addNestedPass<func::FuncOp>(createCSEPass());
 }
 
-std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TensorFlowOptimizePass>();
 }
 
-// Registers a pipeline builder function for the default canonicalize/optimizer.
-static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
-    "tf-standard-pipeline",
-    "Run all the passes involved in transforming/optimizing the graph after "
-    "importing into MLIR, without any target specialization.",
-    CreateTFStandardPipeline);
+void RegisterTFOptimizePassPipeline() {
+  // Registers a pipeline builder function for the default
+  // canonicalize/optimizer.
+  static mlir::PassPipelineRegistration<StandardPipelineOptions> pipeline(
+      "tf-standard-pipeline",
+      "Run all the passes involved in transforming/optimizing the graph after "
+      "importing into MLIR, without any target specialization.",
+      CreateTFStandardPipeline);
+}
 
 }  // namespace TF
 }  // namespace mlir

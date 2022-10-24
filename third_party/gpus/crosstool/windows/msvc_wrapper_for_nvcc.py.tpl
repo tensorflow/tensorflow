@@ -20,8 +20,6 @@ DESCRIPTION:
   This script is the Windows version of //third_party/gpus/crosstool/crosstool_wrapper_is_not_gcc
 """
 
-from __future__ import print_function
-
 from argparse import ArgumentParser
 import os
 import subprocess
@@ -177,6 +175,8 @@ def InvokeNvcc(argv, log=False):
   # Provide a unique dir for each compiling action to avoid conflicts.
   tempdir = tempfile.mkdtemp(dir = NVCC_TEMP_DIR)
   nvccopts += ['--keep', '--keep-dir', tempdir]
+  # Force C++17 dialect (note, everything in just one string!)
+  nvccopts += ['--std c++17']
   if log:
     Log([NVCC_PATH] + nvccopts)
 

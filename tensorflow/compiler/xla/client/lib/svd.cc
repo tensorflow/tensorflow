@@ -31,7 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -565,7 +566,7 @@ StatusOr<SVDResult> OneSidedJacobiUpdate(SVDResult svd_result, XlaOp p, XlaOp q,
 StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   XlaBuilder* builder = w.builder();
   TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(w));
-  auto num_dims = static_cast<int32>(shape.rank());
+  auto num_dims = static_cast<int32_t>(shape.rank());
   int64_t n = shape.dimensions(num_dims - 1);
   shape.set_dimensions(num_dims - 2, n);
   auto w_sliced = SliceInMinorDims(w, {0, 0}, {n, n});
@@ -578,10 +579,24 @@ StatusOr<XlaOp> ComputeToleranceComparison(XlaOp w, XlaOp epsilon) {
   broadcasted_dims.back() = num_dims - 1;
   auto broadcast_to_columns =
       BroadcastInDim(diag, shape.dimensions(), broadcasted_dims);
-  // Compute w_{i,i} * w_{j,j} * epsilon^2 < (w_{i,j})^2
-  return Lt(
-      broadcast_to_rows * broadcast_to_columns * epsilon * epsilon,
-      Square(Select(GetDiagonalMask(w_sliced), ZerosLike(w_sliced), w_sliced)));
+  // Compute tolerance = w_{i,i} * w_{j,j} * epsilon^2
+  // Use at least F32 precision to avoid precision issues with small denormal.
+  XlaOp tolerance;
+  if (builder->GetShape(epsilon)->element_type() == BF16 ||
+      builder->GetShape(epsilon)->element_type() == F16) {
+    auto upscale_eps = ConvertElementType(epsilon, F32);
+    tolerance = ConvertElementType(broadcast_to_rows, F32) *
+                ConvertElementType(broadcast_to_columns, F32) * upscale_eps *
+                upscale_eps;
+    // Convert back into the original precision.
+    tolerance = ConvertElementType(tolerance,
+                                   builder->GetShape(epsilon)->element_type());
+  } else {
+    tolerance = broadcast_to_rows * broadcast_to_columns * epsilon * epsilon;
+  }
+  // tolerance < (w_{i,j})^2
+  return Lt(tolerance, Square(Select(GetDiagonalMask(w_sliced),
+                                     ZerosLike(w_sliced), w_sliced)));
 }
 
 // Main boby of One-sided Jacobi Method.
@@ -819,7 +834,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   if (!shape_with_status.status().ok()) {
     return return_error(shape_with_status.status());
   }
-  Shape a_shape = shape_with_status.ValueOrDie();
+  Shape a_shape = shape_with_status.value();
   const int64_t num_dims = a_shape.rank();
   const int64_t num_batch_dims = num_dims - 2;
   std::vector<int64_t> batch_dims(num_batch_dims);
@@ -841,7 +856,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   if (!svd_result_or.ok()) {
     return return_error(svd_result_or.status());
   }
-  SVDResult svd_result = svd_result_or.ValueOrDie();
+  SVDResult svd_result = svd_result_or.value();
 
   auto output_with_status = WhileLoopFn(
       {
@@ -859,7 +874,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
     return return_error(output_with_status.status());
   }
 
-  auto output = output_with_status.ValueOrDie();
+  auto output = output_with_status.value();
 
   svd_result.u = output[1];
   svd_result.v = output[2];
@@ -869,7 +884,7 @@ SVDResult SVD(XlaOp a, int64_t max_iter, float epsilon,
   if (!svd_result_or.ok()) {
     return return_error(svd_result_or.status());
   }
-  svd_result = svd_result_or.ValueOrDie();
+  svd_result = svd_result_or.value();
 
   if (maybe_transpose) {
     std::swap(svd_result.u, svd_result.v);

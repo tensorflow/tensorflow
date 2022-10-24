@@ -32,6 +32,16 @@ void DequantizeInt8(const int8_t* packed_s8_data, float* unpacked_fp32_data,
                     const RuntimeShape& tensor_shape, int32_t zero_point,
                     double scale);
 
+// Per-channel dequantizes INT8 value using given zero points and
+// scales. packed_s8_data should contain raw tensor data corresponding
+// to a given tensor_shape. unpacked_fp32_data should be preallocated
+// to have the same size.
+void PerChannelDequantizeInt8(const int8_t* packed_s8_data,
+                              float* unpacked_fp32_data,
+                              const RuntimeShape& tensor_shape,
+                              const int32_t* zero_points, const float* scales,
+                              int32_t quantized_dimension);
+
 // Dequantizes INT8 value using given zero point and scale.
 // packed_fp16_data should have tensor_elements size and contain raw
 // FP16 tensor data. unpacked_fp32_data should be preallocated to

@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Fast-Fourier Transform ops."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 import numpy as np
@@ -171,7 +167,9 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
       if fft_length_static is not None:
         fft_length = fft_length_static
       return ifft_fn(input_tensor, fft_length, Treal=real_dtype, name=name)
-  _irfft.__doc__ = re.sub("    Treal.*?\n", "", ifft_fn.__doc__)
+
+  _irfft.__doc__ = re.sub("`input`", "`input_tensor`",
+                          re.sub("    Treal.*?\n", "", ifft_fn.__doc__))
   return _irfft
 
 

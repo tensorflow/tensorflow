@@ -15,7 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_REDUCTION_DIMENSION_GROUPER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_REDUCTION_DIMENSION_GROUPER_H_
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -38,14 +39,15 @@ namespace gpu {
 //   f[600] tmp = f[600] bitcast(f[10,20,30] input)
 //   f[] out = reduce(f[600] tmp, dimensions={0})
 //
-// TODO(cheshire): handle variadic reduction
 class ReductionDimensionGrouper : public HloModulePass {
  public:
   absl::string_view name() const override {
     return "reduction-dimension-grouper";
   }
-
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace gpu

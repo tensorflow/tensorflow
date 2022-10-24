@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -229,15 +228,16 @@ class Client {
  private:
   // Returns the execution statistics (e.g., gflop/s) as a string from the
   // ExecutionProfile returned from an execution of the computation.
-  StatusOr<string> ExecutionStatsAsString(const XlaComputation& computation,
-                                          const ExecutionProfile& profile);
+  StatusOr<std::string> ExecutionStatsAsString(
+      const XlaComputation& computation, const ExecutionProfile& profile);
 
   StatusOr<ChannelHandle> CreateChannelHandleByType(
       ChannelHandle::ChannelType type);
 
   ServiceInterface* stub_;  // Stub that this client is connected on.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(Client);
+  Client(const Client&) = delete;
+  Client& operator=(const Client&) = delete;
 };
 
 }  // namespace xla

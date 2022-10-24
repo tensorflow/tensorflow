@@ -14,10 +14,6 @@
 # ==============================================================================
 """TPU specific APIs to be used in conjunction with TPU Strategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gc
 
 from tensorflow.core.protobuf import config_pb2
@@ -145,6 +141,7 @@ def initialize_tpu_system(cluster_resolver=None):
 
   logging.info("Finished initializing TPU system.")
   tpu_topology = topology.Topology(serialized=serialized_topology)
+  cluster_resolver.set_tpu_topology(serialized_topology)
   _INITIALIZED_TPU_SYSTEMS[tpu_name] = tpu_topology
 
   return tpu_topology

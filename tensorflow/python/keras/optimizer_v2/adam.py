@@ -16,6 +16,7 @@
 # pylint: disable=g-classes-have-attributes
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -444,13 +445,13 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
     m = self.get_slot(var, 'm')
     m_scaled_g_values = grad * coefficients['one_minus_beta_1_t']
     m.assign(m * coefficients['beta_1_t'])
-    m.scatter_add(ops.IndexedSlices(m_scaled_g_values, indices))
+    m.scatter_add(indexed_slices.IndexedSlices(m_scaled_g_values, indices))
 
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, 'v')
     v_scaled_g_values = (grad * grad) * coefficients['one_minus_beta_2_t']
     v.assign(v * coefficients['beta_2_t'])
-    v.scatter_add(ops.IndexedSlices(v_scaled_g_values, indices))
+    v.scatter_add(indexed_slices.IndexedSlices(v_scaled_g_values, indices))
 
     if not self.amsgrad:
       var.assign_sub(coefficients['lr'] * m /

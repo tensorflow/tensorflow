@@ -53,10 +53,29 @@ If the outputs differ, there is a miscompile.
 Run with an environment variable VERBOSE set to see logging.
 )";
 
-// Function to be linked with.
+// Must be kept ABI-compatible with the real definition of XlaCustomCallStatus.
+struct XlaCustomCallStatus {
+  // If 'failed' is true then 'message' is present; otherwise it is absent.
+  // (The 'bool' followed by 'std::string' is ABI-compatible with
+  // 'std::optional<std::string>').
+  bool failed;
+  std::string message;
+  // To account for extra struct padding at the end.
+  std::string padding;
+};
+
 extern "C" {
+// Function to be linked with.
 extern void EntryModule(char* result_buffer, char* run_opts, char** params,
-                        char** buffer_table, int* prof_counters);
+                        char** buffer_table, void* status,
+                        int64_t* prof_counters);
+
+// Must be kept in sync with the real definition of this runtime function.
+bool __xla_cpu_runtime_StatusIsSuccess(  // NOLINT: This doesn't need a
+                                         // prototype.
+    const XlaCustomCallStatus* status) {
+  return !(status->failed);
+}
 }
 
 namespace {
@@ -259,27 +278,26 @@ class BufferTable {
 // Example of input:
 //
 // BufferAssignment:
-// allocation 0: 0x27017c46b600, size 32768, parameter 0, shape f32[256,32] at
+// allocation 0: size 32768, parameter 0, shape f32[256,32] at
 // ShapeIndex {}:
 //  value: <3 parameter @0> (size=32768,offset=0): f32[256,32]{1,0}
-// allocation 1: 0x27017c46b6b0, size 128, output shape is f32[32],
+// allocation 1: size 128, output shape is f32[32],
 // maybe-live-out:
 //  value: <5 reduce @0> (size=128,offset=0): f32[32]{0}
-// allocation 2: 0x27017c46b760, size 4, constant:
+// allocation 2: size 4, constant:
 //  value: <4 init_value @0> (size=4,offset=0): f32[]
-// allocation 3: 0x27017c46b810, size 4, thread-local:
+// allocation 3: size 4, thread-local:
 //  value: <0 x.1 @0> (size=4,offset=0): f32[]
-// allocation 4: 0x27017c46b8c0, size 4, thread-local:
+// allocation 4: size 4, thread-local:
 //  value: <1 y.1 @0> (size=4,offset=0): f32[]
-// allocation 5: 0x27017c46b970, size 4, output shape is f32[], thread-local:
+// allocation 5: size 4, output shape is f32[], thread-local:
 //  value: <2 add.1 @0> (size=4,offset=0): f32[]
 BufferAssignment ParseBufferAssignment(const std::string& fname) {
   BufferAssignment assignment;
   std::ifstream infile(fname);
   std::string line;
   while (std::getline(infile, line)) {
-    std::regex allocation_line_r(
-        "allocation ([0-9]+): .+, size ([0-9]+), (.+)");
+    std::regex allocation_line_r("allocation ([0-9]+): size ([0-9]+), (.+)");
     std::smatch match;
     if (std::regex_search(line, match, allocation_line_r)) {
       Log("Matched allocation description: " + line);
@@ -334,9 +352,9 @@ template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
 void FillIntT(void* buffer, int num_elements) {
   std::mt19937 generator(kSeed);
   T* casted = static_cast<T*>(buffer);
-  std::uniform_int_distribution<T> distr(kLowerBound, kUpperBound);
+  std::uniform_int_distribution<> distr(kLowerBound, kUpperBound);
   for (int i = 0; i < num_elements; i++) {
-    casted[i] = distr(generator);
+    casted[i] = static_cast<T>(distr(generator));
   }
 }
 
@@ -484,10 +502,13 @@ int main(int argc, char** argv) {
     }
   }
 
+  XlaCustomCallStatus status;
+
   Log("Launching module");
   EntryModule(/*result_buffer=*/nullptr,
               /*run_opts=*/nullptr,
               /*params=*/nullptr, table.AsPtr(),
+              /*status=*/&status,
               /*prof_counters=*/nullptr);
 
   std::cout << "Output:" << std::endl;

@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -54,16 +55,13 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
                                        PatternRewriter& rewriter) const;
 };
 
-class BroadcastFoldPass : public PassWrapper<BroadcastFoldPass, FunctionPass> {
+#define GEN_PASS_DEF_BROADCASTFOLDPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class BroadcastFoldPass
+    : public impl::BroadcastFoldPassBase<BroadcastFoldPass> {
  public:
-  StringRef getArgument() const final { return "tf-broadcast-fold"; }
-
-  StringRef getDescription() const final {
-    return "Fold explicit broadcasts into the following operations if they "
-           "support implicit broadcasting on their operand.";
-  }
-
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
@@ -192,22 +190,20 @@ LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
   return success(changed);
 }
 
-void BroadcastFoldPass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
-  auto func = getFunction();
+void BroadcastFoldPass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
+  auto func = getOperation();
 
-  patterns.insert<ConvertResultsBroadcastableShapeOp>(func.getContext());
+  patterns.add<ConvertResultsBroadcastableShapeOp>(func.getContext());
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OperationPass<FuncOp>> CreateBroadcastFoldPass() {
-  return absl::make_unique<BroadcastFoldPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBroadcastFoldPass() {
+  return std::make_unique<BroadcastFoldPass>();
 }
 }  // namespace TF
-
-static PassRegistration<BroadcastFoldPass> pass;
 
 }  // namespace mlir

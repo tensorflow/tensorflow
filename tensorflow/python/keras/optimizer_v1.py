@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import training_util
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 
@@ -194,7 +194,7 @@ class SGD(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+      lr = lr * (
           1. /
           (1. +
            self.decay * math_ops.cast(self.iterations,
@@ -269,7 +269,7 @@ class RMSprop(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+      lr = lr * (
           1. /
           (1. +
            self.decay * math_ops.cast(self.iterations,
@@ -345,7 +345,7 @@ class Adagrad(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+      lr = lr * (
           1. /
           (1. +
            self.decay * math_ops.cast(self.iterations,
@@ -427,7 +427,7 @@ class Adadelta(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+      lr = lr * (
           1. /
           (1. +
            self.decay * math_ops.cast(self.iterations,
@@ -524,7 +524,7 @@ class Adam(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+      lr = lr * (
           1. /
           (1. +
            self.decay * math_ops.cast(self.iterations,
@@ -620,7 +620,7 @@ class Adamax(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr = lr * (  # pylint: disable=g-no-augmented-assignment
+      lr = lr * (
           1. /
           (1. +
            self.decay * math_ops.cast(self.iterations,

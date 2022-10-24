@@ -13,20 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Provides templates which allow variable sharing."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import functools
 import traceback
-
+from tensorflow.python.checkpoint import checkpoint as trackable_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
@@ -44,6 +39,25 @@ def make_template(name_,
                   custom_getter_=None,
                   **kwargs):
   """Given an arbitrary function, wrap it so that it does variable sharing.
+
+  @compatibility(TF2)
+  `tf.compat.v1.make_template` is a legacy API that is only compatible
+  with eager execution enabled and `tf.function` if you combine it with
+  `tf.compat.v1.keras.utils.track_tf1_style_variables`. See the model mapping
+  migration guide section on `make_template` for more info:
+
+  https://www.tensorflow.org/guide/migrate/model_mapping#using_tfcompatv1make_template_in_the_decorated_method
+
+  Even if you use legacy apis for `variable_scope`-based variable reuse,
+  we recommend using
+  `tf.compat.v1.keras.utils.track_tf1_style_variables` directly and not using
+  `tf.compat.v1.make_template`, as it interoperates with eager execution in a
+  simpler and more predictable fashion than `make_template`.
+
+  The TF2 API approach would be tracking your variables using
+  `tf.Module`s or Keras layers and models rather than relying on
+  `make_template`.
+  @end_compatibility
 
   This wraps `func_` in a Template and partially evaluates it. Templates are
   functions that create variables the first time they are called and reuse them
@@ -482,7 +496,7 @@ class Template(trackable.Trackable):
     return self._variable_scope
 
 
-class _EagerTemplateVariableStore(object):
+class _EagerTemplateVariableStore:
   """Wrapper around EagerVariableStore to support nesting EagerTemplates."""
 
   def __init__(self, variable_scope_name):

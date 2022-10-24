@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_MLIR_XLA_OP_KERNEL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_MLIR_XLA_OP_KERNEL_H_
 
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 
 namespace tensorflow {
@@ -24,11 +25,14 @@ namespace tensorflow {
 // legalization.
 class MlirXlaOpKernel : public XlaOpKernel {
  public:
-  explicit MlirXlaOpKernel(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit MlirXlaOpKernel(OpKernelConstruction* ctx);
 
  private:
+  Status ContextToXlaArgs(XlaOpKernelContext* ctx,
+                          std::vector<XlaCompiler::Argument>& xla_args);
   void Compile(XlaOpKernelContext* ctx) override;
   Status ConstructXlaOp(XlaOpKernelContext* ctx);
+  mlir::MLIRContext mlir_ctx_;
 };
 
 }  // namespace tensorflow

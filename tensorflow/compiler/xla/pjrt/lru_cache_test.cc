@@ -18,7 +18,6 @@ limitations under the License.
 #include <random>
 
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {

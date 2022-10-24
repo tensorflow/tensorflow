@@ -41,7 +41,7 @@ Status GradOpRegistry::Lookup(const string& op, GradFunc* func) const {
     return errors::NotFound(error_msg);
   }
   *func = iter->second;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // end namespace ops

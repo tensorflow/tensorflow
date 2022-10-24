@@ -97,6 +97,11 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateAdd(const DataType type);
 
+  // Get an XLA lambda to compute LogAddExp. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::XlaComputation* GetOrCreateLogAddExp(const DataType type);
+
   // Get an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
@@ -105,23 +110,17 @@ class XlaContext : public ResourceBase {
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
 
-  Status RecordCollectiveReduceV2OpInfo(int group_key, int group_size) {
-    if (!collective_reduce_info_) {
-      collective_reduce_info_ = {group_key, group_size};
-    } else if (collective_reduce_info_->group_key != group_key ||
-               collective_reduce_info_->group_size != group_size) {
-      return errors::InvalidArgument(
-          "Only single configuration of CollectiveReduceV2Op is ",
-          "supported in a given cluster. Recorded group_key=",
-          collective_reduce_info_->group_key,
-          " attempting to insert group_key=", group_key);
-    }
-    return Status::OK();
-  }
+  // Records the collective information from the nested compilation `result`.
+  Status RecordCollectiveInfoFromNestedCompilationResult(
+      const XlaCompilationResult& result);
 
-  const absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>&
-  GetCollectiveReduceV2OpInfo() {
-    return collective_reduce_info_;
+  // Records the collective configurations for all the collectives in the XLA
+  // cluster and returns the channel_id to be used for the next collective.
+  StatusOr<int64_t> RecordCollectiveInfo(int group_key, int group_size);
+
+  const std::optional<XlaCompilationResult::CollectiveInfo>&
+  GetCollectiveInfo() {
+    return collective_info_;
   }
 
  private:
@@ -143,10 +142,9 @@ class XlaContext : public ResourceBase {
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
 
-  // Information about encountered CollectiveReduceV2OpInfo ops. We allow only a
+  // Information about encountered collective ops. We allow only a
   // single configuration per cluster.
-  absl::optional<XlaCompilationResult::CollectiveReduceV2OpInfo>
-      collective_reduce_info_;
+  std::optional<XlaCompilationResult::CollectiveInfo> collective_info_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::XlaComputation>;
@@ -169,6 +167,10 @@ class XlaContext : public ResourceBase {
 
   // Cached computation to compute Mul of two elements, specialized by type.
   ComputationMap mul_func_;
+
+  // Cached computation to compute Log(Add(Exp())) of two elements, specialized
+  // by type.
+  ComputationMap log_add_exp_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;

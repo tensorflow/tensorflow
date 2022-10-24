@@ -208,6 +208,11 @@ class XlaOpKernelContext {
       absl::string_view name, std::vector<xla::Literal>* outputs,
       xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
 
+  // Returns the Tensor representation of the constant input.
+  StatusOr<Tensor> ConstantInputTensor(
+      int index,
+      xla::ValueInferenceMode mode = xla::ValueInferenceMode::kValue);
+
   // Returns an XlaExpression describing the value of 'index'.
   const XlaExpression& InputExpression(int index);
   const XlaExpression& InputExpression(absl::string_view name);
@@ -329,6 +334,11 @@ class XlaOpKernelContext {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateAdd(const DataType type);
+
+  // Gets an XLA lambda to compute LogAddExp. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::XlaComputation* GetOrCreateLogAddExp(const DataType type);
 
   // Gets an XLA lambda to compute Mul. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a

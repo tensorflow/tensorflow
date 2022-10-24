@@ -14,16 +14,11 @@
 # ==============================================================================
 """Base class for tests in this module."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import imp
 import inspect
+import io
 import sys
-
-import six
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
@@ -109,7 +104,7 @@ class TestCase(test.TestCase):
   @contextlib.contextmanager
   def assertPrints(self, expected_result):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       yield
       self.assertEqual(out_capturer.getvalue(), expected_result)

@@ -72,13 +72,14 @@ namespace xla {
 //
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions, int num_replicas,
-                bool spmd_partition)
+  ArCrsCombiner(int num_spatial_partitions, bool spmd_partition)
       : num_spatial_partitions_(num_spatial_partitions),
-        num_replicas_(num_replicas),
         spmd_partition_(spmd_partition) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Helper method to allow testing of InstructionsComputeSameValue.
   static bool TestInstructionsComputeSameValue(HloInstruction* i1,
@@ -98,8 +99,8 @@ class ArCrsCombiner : public HloModulePass {
               int64_t dist)
         : ar(all_reduce), crs(cross_replica_sum), distance(dist) {}
 
-    string ToString() {
-      std::vector<string> pieces;
+    std::string ToString() {
+      std::vector<std::string> pieces;
       pieces.push_back("(");
       HloInstruction* instruction = ar;
       while (instruction != crs) {
@@ -117,25 +118,25 @@ class ArCrsCombiner : public HloModulePass {
     }
   };
 
-  absl::optional<ArCrsCombiner::ArCrsPair> MatchesArCrsPattern(
+  std::optional<ArCrsCombiner::ArCrsPair> MatchesArCrsPattern(
       HloInstruction* instruction);
 
   // If the passed instruction is a while parameter, and the while body is only
   // called by a single while instruction, return the while instruction.
-  absl::optional<HloInstruction*> WhileFromBodyParameter(
+  std::optional<HloInstruction*> WhileFromBodyParameter(
       HloInstruction* instruction);
 
   // If the passed instruction is a parameter in one of the branch computations,
   // and the branch body is only called by a single instruction, return the
   // conditional instruction.
-  absl::optional<HloInstruction*> ConditionalFromBodyParameter(
+  std::optional<HloInstruction*> ConditionalFromBodyParameter(
       HloInstruction* instruction);
 
   // Returns a vector of tuple instructions.
   // If all instructions that flow to "instruction" are tuples, return them.
-  // Otherwise, return absl::nullopt. Returns an empty vector if the instruction
+  // Otherwise, return std::nullopt. Returns an empty vector if the instruction
   // is already in the visited set.
-  absl::optional<std::vector<HloInstruction*>> GetAllTuples(
+  std::optional<std::vector<HloInstruction*>> GetAllTuples(
       HloInstruction* instruction,
       absl::flat_hash_set<HloInstruction*>* visited);
 
@@ -168,8 +169,6 @@ class ArCrsCombiner : public HloModulePass {
   StatusOr<bool> RewriteGraph();
 
   int num_spatial_partitions_;
-
-  int num_replicas_;
 
   // Run this combiner pass assuming the input module is an SPMD partitioned
   // module (as opposed to MPMD partitioned).

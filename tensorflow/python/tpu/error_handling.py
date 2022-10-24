@@ -14,10 +14,6 @@
 # ==============================================================================
 """Stub file to maintain backwards compatibility."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=wildcard-import,unused-import
 from tensorflow_estimator.python.estimator.tpu.error_handling import *
 # pylint: enable=wildcard-import,unused-import

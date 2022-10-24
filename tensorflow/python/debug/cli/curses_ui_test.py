@@ -13,18 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests of the curses-based CLI."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import curses
 import os
+import queue
 import tempfile
 import threading
 
 import numpy as np
-from six.moves import queue
 
 from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_test_utils
@@ -90,8 +86,9 @@ class MockCursesUI(curses_ui.CursesUI):
 
     # Override the default path to the command history file to avoid test
     # concurrency issues.
+    _, history_file_path = tempfile.mkstemp()  # safe to ignore fd
     self._command_history_store = debugger_cli_common.CommandHistory(
-        history_file_path=tempfile.mktemp())
+        history_file_path=history_file_path)
 
   # Below, override the _screen_ prefixed member methods that interact with the
   # actual terminal, so that the mock can run in a terminal-less environment.

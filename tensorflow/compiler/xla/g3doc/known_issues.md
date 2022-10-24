@@ -3,6 +3,20 @@
 Compilation with XLA can greatly improve the performance of your programs, but
 the TensorFlow interop has a number of known sharp corners.
 
+## `tf.Variable` on a different device
+
+*Error message*: `INVALID_ARGUMENT: Trying to access resource <Variable>
+(defined @ <Loc>) located in device CPU:0 from device GPU:0`
+
+XLA cluster runs on exactly one device, and it can not read or write to
+`tf.Variable` located on a different device. Usually this error message
+indicates that the variable was not placed on the right device to begin with.
+The error message should precisely specify the location of the offending
+variable.
+
+NOTE: `tf.Variable` of type `int32` are always placed on a host, and can not be
+placed on a GPU. As a workaround, `int64` can be used.
+
 ## TensorArray TF/XLA interconversion is not supported
 
 *Error message*: `Support for TensorList crossing the XLA/TF boundary is not
@@ -43,19 +57,30 @@ exceeds the original bound.
 
 XLA currently ignores TF seeds to random operations. This affects stateful TF
 random operations, such as `tf.random.normal`, or `tf.nn.dropout`. XLA will
-behave as if the compilation was seeded with a new unique seed at each run. This
-limitation does not apply to stateless random ops.
+behave as if the compilation was seeded with a new unique seed at each run
+within the same process (the first run of the process will always yield the same
+result).
 
-## TensorFlow Asserts are ignored
+*Workaround*: use
+[the recommended RNGs](https://www.tensorflow.org/guide/random_numbers#stateless_rngs)
+such as `tf.random.stateless_uniform` or the `tf.random.Generator` directly.
 
-Assertions created using `tf.Assert` and similar functions are noops when
-compiled to XLA. While proper assertion support is in principle possible, it
-might make certain optimizations impossible (mainly fusing the buffer on which
-the assertion is performed).
+## Must-be-constant inputs which are functions of induction variables are not supported
 
-## Non-deterministic output
+*Error Message*: `XLA compilation requires that operator arguments that
+represent shapes or dimensions be evaluated to concrete values at compile time.
+This error means that a shape or dimension argument could not be evaluated at
+compile time, usually because the value of the argument depends on a parameter
+to the computation, on a variable, or on a stateful operation such as a random
+number generator`.
 
-On CPU and GPU the output may be non-deterministic (same as TF proper).
+XLA requires certain values to be known at compile time, such as reduction axis
+of a reduce operation, or transposition dimensions. Consider the case when e.g.
+reduction axis is defined as a function of an induction variable of `tf.range`:
+resolving it statically is not possible without unrolling the entire loop, which
+might not be desired by the user.
 
-*Workaround*: To enforce determinism, set the `TF_DETERMINISTIC_OPS` environment
-variable to `1` (same as for TF).
+*Workaround*: Unroll loops, e.g. by converting `tf.range` into Python `range`.
+
+NOTE: The error message above is not unique to this issue, and can arise due to
+other limitations or bugs.

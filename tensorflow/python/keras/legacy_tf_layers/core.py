@@ -17,10 +17,6 @@
 
 Also contains their functional aliases.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import warnings
 
 from tensorflow.python.keras import layers as keras_layers

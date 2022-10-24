@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,40 +15,66 @@ limitations under the License.
 
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 
 namespace mlir {
 namespace tfg {
 
-TFOp::TFOp(Operation &op) : op_(op) {
-  assert(isa<TFGraphDialect>(op.getDialect()));
+TFOp::TFOp(Operation *op) : op_(op) {
+  assert(!op || classof(op) && "expected a TFG op");
 }
 
 StringAttr TFOp::nameAttr() {
-  return op_.getAttrOfType<StringAttr>(getDialect()->getNameAttrIdentifier());
+  return op_->getAttrOfType<StringAttr>(getDialect()->getNameAttrIdentifier());
 }
+
 StringRef TFOp::name() { return nameAttr().getValue(); }
-StringAttr TFOp::requestedDeviceAttr() {
-  return op_.getAttrOfType<StringAttr>(getDialect()->getDeviceAttrIdentifier());
+
+void TFOp::setName(const Twine &name) {
+  setName(StringAttr::get(op_->getContext(), name.str()));
 }
+
+void TFOp::setName(StringAttr name) {
+  op_->setAttr(getDialect()->getNameAttrIdentifier(), name);
+}
+
+StringAttr TFOp::requestedDeviceAttr() {
+  return op_->getAttrOfType<StringAttr>(
+      getDialect()->getDeviceAttrIdentifier());
+}
+
 StringRef TFOp::requestedDevice() { return requestedDeviceAttr().getValue(); }
+
+void TFOp::setRequestedDevice(const Twine &device) {
+  setRequestedDevice(StringAttr::get(op_->getContext(), device.str()));
+}
+
+void TFOp::setRequestedDevice(StringAttr device) {
+  op_->setAttr(getDialect()->getDeviceAttrIdentifier(), device);
+}
+
 StringAttr TFOp::assignedDeviceAttr() {
-  return op_.getAttrOfType<StringAttr>(
+  return op_->getAttrOfType<StringAttr>(
       getDialect()->getAssignedDeviceAttrIdentifier());
 }
+
 StringRef TFOp::assignedDevice() { return assignedDeviceAttr().getValue(); }
 
-GraphFuncOp getCalledFunction(Operation *op, SymbolTable &symbol_table) {
-  // Check if a node does indirect function call via PartitionedCallOp.
-  if (op->getName().getStringRef() == "tfg.PartitionCall" ||
-      op->getName().getStringRef() == "tfg.StatefulPartitionedCall") {
-    auto func_attr = op->getAttrOfType<FuncAttr>("f");
-    if (!func_attr) return {};
-    GraphFuncOp callee = symbol_table.lookup<GraphFuncOp>(
-        func_attr.getName().getLeafReference());
-    if (callee) return callee;
-  }
-  return symbol_table.lookup<GraphFuncOp>(op->getName().stripDialect());
+void TFOp::setAssignedDevice(const Twine &device) {
+  setAssignedDevice(StringAttr::get(op_->getContext(), device.str()));
+}
+
+void TFOp::setAssignedDevice(StringAttr device) {
+  op_->setAttr(getDialect()->getAssignedDeviceAttrIdentifier(), device);
+}
+
+StringAttr TFOp::tpuReplicate() {
+  return op_->getAttrOfType<StringAttr>("_tpu_replicate");
+}
+
+void TFOp::setTpuReplicate(StringAttr tpu_replicate) {
+  op_->setAttr("_tpu_replicate", tpu_replicate);
 }
 
 }  // namespace tfg

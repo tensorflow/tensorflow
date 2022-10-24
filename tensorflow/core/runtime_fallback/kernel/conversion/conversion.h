@@ -25,17 +25,13 @@ namespace tfrt {
 class TensorConversionFnRegistry;
 class DenseHostTensor;
 class CpuDevice;
+class Device;
 class ExecutionContext;
 }
 
 namespace tensorflow {
 class KernelFallbackTensor;
 namespace tfd {
-
-tfrt::Expected<tfrt::DenseHostTensor>
-ConvertKernelFallbackTensorToDenseHostTensor(
-    const KernelFallbackTensor& tensor, const tfrt::CpuDevice& src,
-    const tfrt::CpuDevice& dst, const tfrt::ExecutionContext& exec_ctx);
 
 void RegisterKernelFallbackTensorConversionFn(
     tfrt::TensorConversionFnRegistry* registry);

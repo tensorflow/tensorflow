@@ -14,17 +14,12 @@
 # ==============================================================================
 """Tests for training.moving_averages when using a DistributionStrategy."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
-from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
-from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -191,13 +186,8 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(all_combinations_eager)
   def testReplicaContextEager(self, distribution, use_function):
-    if not use_function and isinstance(
-        distribution, (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+    if not use_function and strategy_test_lib.is_tpu_strategy(distribution):
       self.skipTest("TPUStrategy doesn't support pure eager execution.")
-    if isinstance(distribution,
-                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
-      self.skipTest("b/160194267: Cannot do variable.assign([0.5]) in replica "
-                    "context with MultiWorkerMirroredStrategy.")
     with distribution.scope():
       w = variables.Variable([1.0],
                              name="w",
@@ -253,14 +243,9 @@ class ExponentialMovingAverageTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(all_combinations)
   def testReplicaContextGraph(self, distribution):
-    if isinstance(distribution,
-                  (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+    if strategy_test_lib.is_tpu_strategy:
       self.skipTest("b/139550827: Cannot do variable.assign in replica context "
                     "of TPUStrategy")
-    if isinstance(distribution,
-                  collective_all_reduce_strategy.CollectiveAllReduceStrategy):
-      self.skipTest("b/160194267: Cannot do variable.assign([0.5]) in replica "
-                    "context with MultiWorkerMirroredStrategy.")
     with distribution.scope():
       w_assign, w_apply, ema_w = distribution.run(
           self._ema_replica_fn_graph)

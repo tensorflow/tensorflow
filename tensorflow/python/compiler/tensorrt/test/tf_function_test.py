@@ -19,6 +19,7 @@ import os
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.compiler.tensorrt.test.tf_trt_integration_test_base import GraphState
 from tensorflow.python.compiler.tensorrt.test.tf_trt_integration_test_base import IsQuantizationWithCalibration
@@ -41,19 +42,21 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
 
   def __init__(self, methodName):  # pylint: disable=invalid-name
     super(TfFunctionTest, self).__init__(methodName)
+    self._profile_strategy = "Range"
     self._trt_engine_op_count_offset = 0
     self._test_conversion_params = {
         "_tftrt_convert_function": True,
         "_tftrt_trt_logger_name": "DefaultLogger",
         "_tftrt_max_batch_size": 10,
-        "_tftrt_max_workspace_size_bytes": 1 << 25,
+        "_tftrt_max_workspace_size_bytes":
+            (trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES),
         "_tftrt_precision_mode": "FP16",
         "_tftrt_minimum_segment_size": 2,
         "_tftrt_is_dyn_op": True,
         "_tftrt_max_cached_engines": 1,
         "_tftrt_use_calibration": False,
         "_tftrt_use_implicit_batch": True,
-        "_tftrt_profile_strategy": "Range",
+        "_tftrt_profile_strategy": self._profile_strategy,
         "_tftrt_allow_build_at_runtime": False
     }
     self._is_v2 = False
@@ -135,7 +138,7 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return {
-        "TRTEngineOp_0": [
+        "TRTEngineOp_000": [
             "weights", "conv", "bias", "bias_add", "relu", "identity",
             "max_pool"
         ]
@@ -304,8 +307,10 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
       self._VerifyTestAttrs(function_protos=gdef_to_verify.library.function)
     else:
       self.assertEqual(num_engines, len(expected_engines))
-      if isinstance(expected_engines, dict):
-        self._VerifyConnections(expected_engines, original_gdef, gdef_to_verify)
+      expected_connections = self.ExpectedConnections(run_params)
+      if expected_connections:
+        self._VerifyConnections(expected_engines, expected_connections,
+                                original_gdef, gdef_to_verify)
       self._VerifyMaxBatchSizeAnnotations(
           expected_engines=expected_engines,
           original_gdef=original_gdef,
@@ -333,6 +338,8 @@ class TfFunctionTest(trt_test.TfTrtIntegrationTestBase):
     else:
       self._test_conversion_params["_tftrt_allow_build_at_runtime"] = (
           run_params.convert_online or run_params.dynamic_engine)
+    self._test_conversion_params["_tftrt_use_implicit_batch"] = \
+        not run_params.dynamic_shape
     self.DisableNonTrtOptimizers()
     trt_test.TfTrtIntegrationTestBase.RunTest(self, run_params)
 

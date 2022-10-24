@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <fenv.h>  // NOLINT
+
+#include <cmath>
 #include <limits>
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -483,17 +486,17 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForSinCos() {
   const int kFirstWrongVal = 1 << 16;
   if (T == F32) {
     this->known_incorrect_fn_ = [](int64_t v) {
-      float f = BitCast<float>(static_cast<uint32>(v));
+      float f = BitCast<float>(static_cast<uint32_t>(v));
       return std::abs(f) > kFirstWrongVal;
     };
   } else if (T == BF16) {
     this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
+      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
       return std::abs(f) > kFirstWrongVal;
     };
   } else if (T == F16) {
     this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
       return std::abs(f) > kFirstWrongVal;
     };
   }
@@ -510,17 +513,17 @@ void Exhaustive32BitOrLessUnaryTest<T>::SetParamsForTan() {
   // exceed 2**p.
   if (T == F32) {
     this->known_incorrect_fn_ = [](int64_t v) {
-      float f = BitCast<float>(static_cast<uint32>(v));
+      float f = BitCast<float>(static_cast<uint32_t>(v));
       return std::abs(f) > (1 << 13);
     };
   } else if (T == BF16) {
     this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16>(v)));
+      float f = static_cast<float>(BitCast<bfloat16>(static_cast<uint16_t>(v)));
       return std::abs(f) > (1 << 16);
     };
   } else if (T == F16) {
     this->known_incorrect_fn_ = [](int64_t v) {
-      float f = static_cast<float>(BitCast<half>(static_cast<uint16>(v)));
+      float f = static_cast<float>(BitCast<half>(static_cast<uint16_t>(v)));
       return std::abs(f) > (1 << 15);
     };
   }
@@ -613,8 +616,8 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Digamma, {
     // the results we get here are very close to MAX_FLOAT.  We just hardcode
     // these results, as this is better than ignoring these inputs altogether.
     auto host_digamma_with_gpu_ftz_errors = +[](float x) {
-      if (BitCast<uint32>(x) == 0x00200000 ||
-          BitCast<uint32>(x) == 0x80200000) {
+      if (BitCast<uint32_t>(x) == 0x00200000 ||
+          BitCast<uint32_t>(x) == 0x80200000) {
         return std::copysign(std::numeric_limits<float>::max(), -x);
       }
       return HostDigamma(x);
@@ -646,7 +649,7 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
     // Overflows to inf for input 4.08500343e+36 (0x7c44af8e).
     if (ty_ == F32) {
       host_lgamma = +[](float v) {
-        if (BitCast<uint32>(v) == 0x7c44af8e) {
+        if (BitCast<uint32_t>(v) == 0x7c44af8e) {
           return std::numeric_limits<float>::infinity();
         }
         return std::lgamma(v);
@@ -657,6 +660,14 @@ UNARY_TEST_FLOAT_32_BITS_OR_LESS(Lgamma, {
 })
 
 UNARY_TEST_FLOAT_32_BITS_OR_LESS(Round, { Run(Round, std::round); })
+
+UNARY_TEST_FLOAT_32_BITS_OR_LESS(RoundNearestEven, {
+  ErrorSpecGen error_spec_gen = +[](NativeT) { return ErrorSpec{0.0, 0.0}; };
+  int curr_direction = fegetround();
+  fesetround(FE_TONEAREST);
+  Run(RoundNearestEven, std::nearbyint, error_spec_gen);
+  fesetround(curr_direction);
+})
 
 INSTANTIATE_TEST_SUITE_P(F32, ExhaustiveF32UnaryTest,
                          ::testing::ValuesIn(CreateExhaustiveF32Ranges()));

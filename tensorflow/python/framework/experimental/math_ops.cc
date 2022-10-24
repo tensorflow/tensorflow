@@ -32,7 +32,6 @@ namespace tensorflow {
 PYBIND11_MODULE(_math_ops, m) {
   m.def("add", [](AbstractContext* ctx, AbstractTensorHandle* a,
                   AbstractTensorHandle* b, const char* name) {
-    int num_outputs = 1;
     AbstractTensorHandle* output;
     if (!name) {
       name = "Add";
@@ -42,7 +41,6 @@ PYBIND11_MODULE(_math_ops, m) {
   });
   m.def("mat_mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
                       AbstractTensorHandle* b, const char* name) {
-    int num_outputs = 1;
     AbstractTensorHandle* output;
     if (!name) {
       name = "MatMul";
@@ -54,7 +52,6 @@ PYBIND11_MODULE(_math_ops, m) {
   });
   m.def("neg",
         [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
-          int num_outputs = 1;
           AbstractTensorHandle* output;
           if (!name) {
             name = "Neg";
@@ -64,7 +61,6 @@ PYBIND11_MODULE(_math_ops, m) {
         });
   m.def("sub", [](AbstractContext* ctx, AbstractTensorHandle* a,
                   AbstractTensorHandle* b, const char* name) {
-    int num_outputs = 1;
     AbstractTensorHandle* output;
     if (!name) {
       name = "Sub";
@@ -74,7 +70,6 @@ PYBIND11_MODULE(_math_ops, m) {
   });
   m.def("mul", [](AbstractContext* ctx, AbstractTensorHandle* a,
                   AbstractTensorHandle* b, const char* name) {
-    int num_outputs = 1;
     AbstractTensorHandle* output;
     if (!name) {
       name = "Mul";
@@ -84,7 +79,6 @@ PYBIND11_MODULE(_math_ops, m) {
   });
   m.def("log1p",
         [](AbstractContext* ctx, AbstractTensorHandle* a, const char* name) {
-          int num_outputs = 1;
           AbstractTensorHandle* output;
           if (!name) {
             name = "Log1p";
@@ -94,7 +88,6 @@ PYBIND11_MODULE(_math_ops, m) {
         });
   m.def("div_no_nan", [](AbstractContext* ctx, AbstractTensorHandle* a,
                          AbstractTensorHandle* b, const char* name) {
-    int num_outputs = 1;
     AbstractTensorHandle* output;
     if (!name) {
       name = "DivNoNan";

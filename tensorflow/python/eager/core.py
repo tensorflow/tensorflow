@@ -14,10 +14,6 @@
 # ==============================================================================
 """Experimental API for TensorFlow's "Eager" mode of execution."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.framework import errors
 

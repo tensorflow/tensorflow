@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TF_TYPES_TYPES
 #define TF_TYPES_TYPES
 
+include "mlir/IR/AttrTypeBase.td"
 include "tensorflow/core/ir/types/dialect.td"
-
 
 // All of the types will extend this class.
 class TFType_Type<string name> : TypeDef<TFTypeDialect, name> { }
@@ -36,5 +36,16 @@ def OpaqueTensorType : TFType_Type<"OpaqueTensor"> {
     particularly useful in generic functions.
   }];
 }
+
+class TFGraph_OpaqueTensorOr<Type ConcreteType>
+    : Type<Or<[ConcreteType.predicate, OpaqueTensorType.predicate]>,
+           ConcreteType.description # " or opaque tensor type">;
+
+def TFGraph_Tensor : TFGraph_OpaqueTensorOr<AnyTensor>;
+
+// A value that is either a tensor or a control type.
+def TFGraph_TensorOrControlType
+    : Type<Or<[TFGraph_Tensor.predicate, ControlType.predicate]>,
+           "any tensor or control type">;
 
 #endif // TYPES

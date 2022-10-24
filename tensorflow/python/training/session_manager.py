@@ -13,20 +13,15 @@
 # limitations under the License.
 # ==============================================================================
 """Training helper that checkpoints models and creates session."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 import numpy as np
-
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -72,7 +67,7 @@ def _restore_checkpoint_and_maybe_run_saved_model_initializers(
 
 
 @tf_export(v1=["train.SessionManager"])
-class SessionManager(object):
+class SessionManager:
   """Training helper that restores from checkpoint and creates session.
 
   This class is a small wrapper that takes care of session creation and
@@ -577,7 +572,8 @@ def _ready(op, sess, msg):
       return False, str(e)
 
 
-class _CountDownTimer(object):
+class _CountDownTimer:
+  """A timer that tracks a duration since creation."""
 
   __slots__ = ["_start_time_secs", "_duration_secs"]
 

@@ -1,3 +1,19 @@
+op 	 {
+  name: "AssignVariableOp"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  is_stateful: true
+}
 op {
   name: "AssignVariableOp"
   input_arg {
@@ -11,6 +27,13 @@ op {
   attr {
     name: "dtype"
     type: "type"
+  }
+  attr {
+    name: "validate_shape"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
   is_stateful: true
 }

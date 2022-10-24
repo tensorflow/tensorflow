@@ -40,9 +40,9 @@ void init_builders(py::module& m) {
       .def("saveInsertionPoint", &mlir::OpBuilder::saveInsertionPoint)
       .def("restoreInsertionPoint", &mlir::OpBuilder::restoreInsertionPoint)
       .def(
-          "createOperation",
+          "create",
           [](mlir::OpBuilder& opb, mlir::OperationState& state) {
-            return opb.createOperation(state);
+            return opb.create(state);
           },
           py::return_value_policy::reference)
       .def("getContext", &mlir::OpBuilder::getContext,

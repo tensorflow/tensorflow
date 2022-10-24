@@ -1,0 +1,10 @@
+# RUN: not tfg-translate -graphdef-to-mlir %s 2>&1 | FileCheck %s
+
+# CHECK: Function without a name
+
+library {
+  function {
+    signature {
+    }
+  }
+}

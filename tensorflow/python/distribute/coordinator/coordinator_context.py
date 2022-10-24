@@ -14,10 +14,6 @@
 # ==============================================================================
 """The execution context for ClusterCoordinator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import contextlib
 import threading
 
@@ -68,8 +64,8 @@ class DispatchContext(object):
         cluster_coordinator._maybe_rebuild_remote_values(  # pylint: disable=protected-access
             self._worker, remote_value))
     if e:
-      if not isinstance(e, cluster_coordinator.InputError):
-        e = cluster_coordinator.InputError(e)
+      if not isinstance(e, cluster_coordinator.ClosureInputError):
+        e = cluster_coordinator.ClosureInputError(e)
       raise e
 
   def maybe_get_remote_value(self, ret):

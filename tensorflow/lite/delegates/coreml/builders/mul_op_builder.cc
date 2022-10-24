@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/coreml/builders/mul_op_builder.h"
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/coreml/builders/activation_layer_builder.h"
@@ -34,7 +37,7 @@ const std::string& MulOpBuilder::DebugName() {
 
 CoreML::Specification::NeuralNetworkLayer* MulOpBuilder::Build() {
   if (layer_ == nullptr) {
-    layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
+    layer_ = std::make_unique<CoreML::Specification::NeuralNetworkLayer>();
   }
   // MultiplyLayerParams only has limited broadcasting support. For example:
   // [B, 1, 1, 1], [B, C, 1, 1], [B, 1, H, W], [B, C, H, W]. other shapes

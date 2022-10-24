@@ -60,13 +60,13 @@ Benchmark::Benchmark(const string& device, Graph* g,
   }
 
   CHECK(!old_benchmark_api) << "Expected new API only";
-  old_benchmark_api_ = false;
+
   string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
   LocalDevice::set_use_global_threadpool(false);
 
-  device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+  device_mgr_ = std::make_unique<StaticDeviceMgr>(
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0"));
   device_ = device_mgr_->ListDevices()[0];
   CHECK(device_) << "Could not create a " << device << " device";
@@ -86,7 +86,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   const int graph_def_version = g->versions().producer();
 
-  flib_def_ = absl::make_unique<FunctionLibraryDefinition>(g->flib_def());
+  flib_def_ = std::make_unique<FunctionLibraryDefinition>(g->flib_def());
 
   pflr_ = std::unique_ptr<ProcessFunctionLibraryRuntime>(
       new ProcessFunctionLibraryRuntime(
@@ -159,8 +159,6 @@ string GetRendezvousKey(const Node* node) {
 void Benchmark::RunWithRendezvousArgs(
     const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, benchmark::State& state) {
-  CHECK(!old_benchmark_api_)
-      << "This method should only be called with new benchmark API";
   if (!device_ || state.max_iterations == 0) {
     return;
   }

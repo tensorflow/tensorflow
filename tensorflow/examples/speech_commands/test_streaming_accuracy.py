@@ -59,10 +59,6 @@ bazel run tensorflow/examples/speech_commands:test_streaming_accuracy_py -- \
 --suppression_ms=500 --time_tolerance_ms=1500
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 

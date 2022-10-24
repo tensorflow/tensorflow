@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
@@ -37,8 +38,8 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/cuda_solvers.h"
 #include "tensorflow/core/util/cuda_sparse.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 #endif
 
 namespace tensorflow {
@@ -93,10 +94,15 @@ class CSRMatMulOp : public OpKernel {
                     "Only one of adjoint_b and transpose_b may be true."));
     OP_REQUIRES_OK(c, c->GetAttr("transpose_output", &transpose_output_));
     OP_REQUIRES_OK(c, c->GetAttr("conjugate_output", &conjugate_output_));
-    conjugate_a_ = adjoint_a;
-    conjugate_b_ = adjoint_b;
     transpose_a_ |= adjoint_a;
     transpose_b_ |= adjoint_b;
+    if (is_complex<T>::value) {
+      conjugate_a_ = adjoint_a;
+      conjugate_b_ = adjoint_b;
+    } else {
+      conjugate_a_ = false;
+      conjugate_b_ = false;
+    }
   }
 
   ~CSRMatMulOp() override {}
@@ -134,7 +140,7 @@ class CSRMatMulOp : public OpKernel {
           TensorShape(a_dense_shape), " vs. ",
           dense_tensor_b.shape().DebugString());
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  public:
@@ -255,7 +261,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(ctx->allocate_output(0, output_shape, output));
       *matmul_result = output_transposed;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns an Eigen::Ref expression of a sparse sub-matrix from the given
@@ -480,7 +486,7 @@ class CSRMatMulCPUOp : public CSRMatMulOp<CPUDevice, T> {
       TF_RETURN_IF_ERROR(
           DoMatrixTranspose(ctx->eigen_device<CPUDevice>(), input, output));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -549,8 +555,8 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
 #endif
     if (use_matrix_vector_multiply) {
       // Call matrix-vector multiply if b is a vector.
-      TTypes<int64>::ConstVec a_dense_shape_comp(a_dense_shape.data() + row_dim,
-                                                 2);
+      TTypes<int64_t>::ConstVec a_dense_shape_comp(
+          a_dense_shape.data() + row_dim, 2);
       Tensor b_conj_t;
       const T* b_base_ptr = b_t.template flat<T>().data();
       bool conjugate_a = this->conjugate_a_;
@@ -658,7 +664,7 @@ class CSRMatMulGPUOp : public CSRMatMulOp<GPUDevice, T> {
     }
 
     // Dense shape of a batch component of A.
-    TTypes<int64>::ConstVec a_input_dense_shape_comp(
+    TTypes<int64_t>::ConstVec a_input_dense_shape_comp(
         a_input_dense_shape.data() + row_dim, 2);
 
     auto b = b_t_input.flat<T>();
@@ -857,7 +863,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
@@ -874,17 +880,17 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       gpusparseSpMatDescr_t matA;
       gpusparseDnMatDescr_t matB, matC;
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateCsr(
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreateCsr(
           &matA, m, k, nnz, const_cast<int*>(a.row_ptr.data()),
           const_cast<int*>(a.col_ind.data()), const_cast<T*>(a.values.data()),
           CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, HIPSPARSE_INDEX_BASE_ZERO,
           GPUDataType<T>::type));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreateDnMat(
           &matB, n, k, ldb, const_cast<T*>(b.data()), GPUDataType<T>::type,
           HIPSPARSE_ORDER_COL));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateDnMat(
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreateDnMat(
           &matC, m, n, ldc, c.data(), GPUDataType<T>::type,
           HIPSPARSE_ORDER_COL));
 
@@ -895,16 +901,16 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       Tensor buffer;
       TF_RETURN_IF_ERROR(ctx->allocate_temp(
-          DT_INT8, TensorShape({static_cast<int64>(bufferSize)}), &buffer));
+          DT_INT8, TensorShape({static_cast<int64_t>(bufferSize)}), &buffer));
       DCHECK(buffer.flat<int8>().data() != nullptr);
 
       TF_RETURN_IF_ERROR(cuda_sparse.SpMM(transA, transB, &alpha, matA, matB,
                                           &beta, matC, CUSPARSE_MM_ALG_DEFAULT,
                                           buffer.flat<int8>().data()));
 
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matB));
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroyDnMat(matC));
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseDestroySpMat(matA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseDestroyDnMat(matB));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseDestroyDnMat(matC));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseDestroySpMat(matA));
 
 #else
 
@@ -924,11 +930,11 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
 
       gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreateMatDescr(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+          se::wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseSetMatIndexBase(
+          descrA, HIPSPARSE_INDEX_BASE_ZERO));
 #endif  // GOOGLE_CUDA
 
       TF_RETURN_IF_ERROR(
@@ -939,7 +945,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 #endif  // GOOGLE_CUDA && CUDA_VERSION >= 10020
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -978,11 +984,11 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
           cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
 #elif TENSORFLOW_USE_ROCM
       gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseCreateMatDescr(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_GPUSPARSE_ERROR(
-          wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+          se::wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(se::wrap::hipsparseSetMatIndexBase(
+          descrA, HIPSPARSE_INDEX_BASE_ZERO));
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
       const int m = a.dense_shape_host(0);
@@ -1000,7 +1006,7 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 #endif
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

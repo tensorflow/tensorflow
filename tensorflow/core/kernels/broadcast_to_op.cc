@@ -63,10 +63,6 @@ class BroadcastToOp : public OpKernel {
 
     Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &output_tensor));
-    // Handle empty case.
-    if (output_shape.num_elements() == 0) {
-      return;
-    }
 
     // Handle broadcast from Scalar.
     const Device& device = ctx->eigen_device<Device>();
@@ -76,6 +72,7 @@ class BroadcastToOp : public OpKernel {
       return;
     }
 
+    // Check whether the broadcast is valid.
     BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(output_shape),
                 /*fewer_dims_optimization=*/true);
     OP_REQUIRES(ctx, bcast.IsValid(),
@@ -86,6 +83,11 @@ class BroadcastToOp : public OpKernel {
                 errors::InvalidArgument("Unable to broadcast tensor of shape ",
                                         input_shape, " to tensor of shape ",
                                         output_shape));
+
+    // Handle empty case.
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
 
     functor::BroadcastTo<Device, T>()(device, ctx, *output_tensor, output_shape,
                                       input_tensor, input_shape, bcast);

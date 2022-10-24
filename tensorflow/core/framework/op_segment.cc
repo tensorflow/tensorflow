@@ -46,7 +46,7 @@ Status OpSegment::FindOrCreate(const string& session_handle,
     }
     *kernel = gtl::FindPtrOrNull(item->name_kernel, node_name);
     if (*kernel != nullptr) {
-      return Status::OK();
+      return OkStatus();
     }
   }
   Status s = create_fn(kernel);
@@ -68,7 +68,7 @@ Status OpSegment::FindOrCreate(const string& session_handle,
       *kernel = *p_kernel;
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void OpSegment::AddHold(const string& session_handle) {

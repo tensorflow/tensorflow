@@ -89,6 +89,9 @@ REGISTER_KERNEL_BUILDER(Name("_ScopedAllocator").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ScopedAllocator").Device(DEVICE_GPU),
                         ScopedAllocatorOp);
 
+REGISTER_KERNEL_BUILDER(Name("_ScopedAllocator").Device(DEVICE_DEFAULT),
+                        ScopedAllocatorOp);
+
 class ScopedAllocatorConcatOp : public OpKernel {
  public:
   explicit ScopedAllocatorConcatOp(OpKernelConstruction* context)
@@ -170,6 +173,9 @@ REGISTER_KERNEL_BUILDER(Name("_ScopedAllocatorConcat").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ScopedAllocatorConcat").Device(DEVICE_GPU),
                         ScopedAllocatorConcatOp);
 
+REGISTER_KERNEL_BUILDER(Name("_ScopedAllocatorConcat").Device(DEVICE_DEFAULT),
+                        ScopedAllocatorConcatOp);
+
 class ScopedAllocatorSplitOp : public OpKernel {
  public:
   explicit ScopedAllocatorSplitOp(OpKernelConstruction* context)
@@ -230,6 +236,9 @@ REGISTER_KERNEL_BUILDER(Name("_ScopedAllocatorSplit").Device(DEVICE_CPU),
                         ScopedAllocatorSplitOp);
 
 REGISTER_KERNEL_BUILDER(Name("_ScopedAllocatorSplit").Device(DEVICE_GPU),
+                        ScopedAllocatorSplitOp);
+
+REGISTER_KERNEL_BUILDER(Name("_ScopedAllocatorSplit").Device(DEVICE_DEFAULT),
                         ScopedAllocatorSplitOp);
 
 }  // namespace tensorflow

@@ -1,9 +1,6 @@
-load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 # Pybind rules must live in tensorflow/python due to header rule visibility.
 exports_files(
@@ -20,18 +17,10 @@ py_library(
         "//third_party/py/tensorflow_numerics/extensions:__pkg__",
     ],
     deps = [
-        ":saving",
         "//tensorflow/python:_pywrap_parallel_device",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/tpu/ops",
     ],
-)
-
-py_library(
-    name = "saving",
-    srcs = ["saving.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python:framework_ops"],
 )
 
 distribute_py_test(
@@ -43,10 +32,10 @@ distribute_py_test(
     tags = [
         # Dependencies aren't otherwise included in the pip package yet.
         "no_pip",
+        "notpu",  # TODO(b/210159281)
     ],
     deps = [
         ":parallel_device",
-        ":saving",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:framework_ops",

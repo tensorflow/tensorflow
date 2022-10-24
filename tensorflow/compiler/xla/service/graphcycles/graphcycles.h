@@ -40,10 +40,9 @@ limitations under the License.
 //   FindPath() is linear in the size of the graph.
 // The current implementation uses O(|V|+|E|) space.
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "absl/types/span.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -62,7 +61,7 @@ class GraphCycles {
   // All node identifiers passed to other routines in this interface
   // must have been allocated by NewNode() and not yet deallocated
   // by RemoveNode().
-  int32 NewNode();
+  int32_t NewNode();
 
   // Remove "node" from the graph, deleting all edges to and from it.
   // After this call the identifier "node" it may no longer be used
@@ -85,7 +84,7 @@ class GraphCycles {
   // the nodes is removed from the graph, and edges to/from it are added to
   // the remaining one, which is returned. If contracting the edge would create
   // a cycle, does nothing and return no value.
-  absl::optional<int32> ContractEdge(int32_t a, int32_t b);
+  std::optional<int32_t> ContractEdge(int32_t a, int32_t b);
 
   // Return true if can contract edge, otherwise return false.
   bool CanContractEdge(int32_t a, int32_t b);
@@ -114,7 +113,7 @@ class GraphCycles {
   // the return value is at most one greater than the number of nodes in the
   // graph.
   int FindPath(int32_t source, int32_t dest, int max_path_len,
-               int32 path[]) const;
+               int32_t path[]) const;
 
   // Check internal invariants. Crashes on failure, returns true on success.
   // Expensive: should only be called from graphcycles_test.cc.
@@ -122,31 +121,32 @@ class GraphCycles {
 
   // Warning: Do not use these if iterating over the span and modifying the
   // GraphCycles at the same time. Instead use SuccessorsCopy/PredecessorsCopy.
-  absl::Span<const int32> Successors(int32_t node) const;
-  absl::Span<const int32> Predecessors(int32_t node) const;
+  absl::Span<const int32_t> Successors(int32_t node) const;
+  absl::Span<const int32_t> Predecessors(int32_t node) const;
 
   // Return a copy of the successors set. This is needed for code using the
   // collection while modifying the GraphCycles.
-  std::vector<int32> SuccessorsCopy(int32_t node) const;
+  std::vector<int32_t> SuccessorsCopy(int32_t node) const;
   // Return a copy of the predecessors set. This is needed for code using the
   // collection while modifying the GraphCycles.
-  std::vector<int32> PredecessorsCopy(int32_t node) const;
+  std::vector<int32_t> PredecessorsCopy(int32_t node) const;
 
   // Returns all nodes in post order.
   //
   // If there is a path from X to Y then X appears after Y in the
   // returned vector.
-  std::vector<int32> AllNodesInPostOrder() const;
+  std::vector<int32_t> AllNodesInPostOrder() const;
 
   // Returns the graph in graphviz format.
-  string DebugString() const;
+  std::string DebugString() const;
 
   // ----------------------------------------------------
   struct Rep;
 
  private:
   Rep *rep_;  // opaque representation
-  TF_DISALLOW_COPY_AND_ASSIGN(GraphCycles);
+  GraphCycles(const GraphCycles &) = delete;
+  GraphCycles &operator=(const GraphCycles &) = delete;
 };
 
 }  // namespace tensorflow

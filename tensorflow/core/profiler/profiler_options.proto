@@ -14,6 +14,7 @@ message ProfileOptions {
     CPU = 1;
     GPU = 2;
     TPU = 3;
+    PLUGGABLE_DEVICE = 4;
   }
 
   // Device type to profile/trace: (version >= 1)
@@ -21,6 +22,8 @@ message ProfileOptions {
   // DeviceType::CPU: only CPU will be profiled.
   // DeviceType::GPU: only CPU/GPU will be profiled.
   // DeviceType::TPU: only CPU/TPU will be profiled.
+  // DeviceType::PLUGGABLE_DEVICE: only CPU/pluggable devices with profilers
+  // will be profiled.
   DeviceType device_type = 6;
 
   // We don't collect the dataset ops by default for better trace-viewer

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for SharedVariableCreator."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util

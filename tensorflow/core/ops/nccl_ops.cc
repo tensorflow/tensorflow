@@ -131,7 +131,7 @@ REGISTER_OP("_NcclBroadcastRecv")
       ShapeHandle out;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
       c->set_output(0, out);
-      return Status::OK();
+      return OkStatus();
     })
     .Doc(R"doc(
 Replacement node for NcclBroadcast.

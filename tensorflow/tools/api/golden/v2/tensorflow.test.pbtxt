@@ -56,4 +56,8 @@ tf_module {
     name: "main"
     argspec: "args=[\'argv\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
+  member_method {
+    name: "with_eager_op_as_function"
+    argspec: "args=[\'cls\', \'only_as_function\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+  }
 }

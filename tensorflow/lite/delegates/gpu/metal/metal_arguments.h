@@ -35,8 +35,11 @@ class MetalArguments : public ArgumentsBinder {
  public:
   MetalArguments() = default;
 
-  absl::Status Init(const std::map<std::string, std::string>& linkables,
-                    MetalDevice* device, Arguments* args, std::string* code);
+  absl::Status Init(bool use_arguments_buffer, MetalDevice* device,
+                    Arguments* args, std::string* code);
+
+  absl::Status Init(bool use_arguments_buffer, MetalDevice* device,
+                    Arguments* args);
 
   // Move only
   MetalArguments(MetalArguments&& args) = default;
@@ -52,6 +55,12 @@ class MetalArguments : public ArgumentsBinder {
   void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset,
               int texture_offset = 0) const;
 
+  // For usage with Argument Buffers
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void AddResourcesToEncoder(id<MTLComputeCommandEncoder> encoder) const;
+  API_AVAILABLE(ios(11.0), macos(10.13), tvos(11.0))
+  void EncodeArguments(id<MTLArgumentEncoder> arguments_encoder);
+
  private:
   // creates structure with layout:
   // struct uniforms_buffer {
@@ -60,24 +69,27 @@ class MetalArguments : public ArgumentsBinder {
   //   float val_2;
   //   int dummy;  // for alignment
   // };
-  std::string ScalarArgumentsToStructWithScalarFields(Arguments* args,
-                                                      std::string* code);
+  std::string CopyScalarArgumentsToStructWithScalarFields(
+      const Arguments& args, const std::string& call_prefix = "",
+      std::string* code = nullptr);
 
   // creates structure with layout:
   // struct uniforms_buffer {
   //   int4 val_0_val_1_dummy_dummy;
   //   float4 val_2_dummy_dummy_dummy;
   // };
-  std::string ScalarArgumentsToStructWithVec4Fields(Arguments* args,
-                                                    std::string* code);
+  std::string CopyScalarArgumentsToStructWithVec4Fields(
+      const Arguments& args, const std::string& call_prefix = "",
+      std::string* code = nullptr);
 
   absl::Status AllocateObjects(const Arguments& args, id<MTLDevice> device);
-  absl::Status AddObjectArgs(const GpuInfo& gpu_info, Arguments* args);
+  absl::Status AddObjectArgs(const GpuInfo& gpu_info, const Arguments& args);
 
-  void AddGPUResources(const std::string& name, const GPUResources& resources,
-                       Arguments* args);
+  void AddGPUResources(const std::string& name, const GPUResources& resources);
 
   std::string GetListOfArgs(int buffer_offset, int textures_offset = 0);
+
+  std::string GetArgumentBufferStructDefinition(bool add_constants_struct);
 
   absl::Status SetGPUResources(const std::string& name,
                                const GPUResourcesWithValue& resources);
@@ -90,30 +102,14 @@ class MetalArguments : public ArgumentsBinder {
   void AddImageBuffer(const std::string& name,
                       const GPUImageBufferDescriptor& desc);
 
-  absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle);
+  absl::Status SetBuffer(const std::string& name, id<MTLBuffer> handle,
+                         uint64_t offset);
   absl::Status SetImage2D(const std::string& name, id<MTLTexture> handle);
   absl::Status SetImage2DArray(const std::string& name, id<MTLTexture> handle);
   absl::Status SetImage3D(const std::string& name, id<MTLTexture> handle);
   absl::Status SetImageBuffer(const std::string& name, id<MTLTexture> handle);
 
   absl::Status SetObjectsResources(const Arguments& args);
-
-  absl::Status ResolveSelectorsPass(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables, std::string* code);
-
-  absl::Status ResolveSelector(
-      const GpuInfo& gpu_info, const Arguments& args,
-      const std::map<std::string, std::string>& linkables,
-      const std::string& object_name, const std::string& selector,
-      const std::vector<std::string>& function_args,
-      const std::vector<std::string>& template_args, std::string* result);
-
-  void ResolveObjectNames(const std::string& object_name,
-                          const std::vector<std::string>& member_names,
-                          std::string* code);
-
-  void ResolveArgsPass(std::string* code);
 
   static constexpr char kArgsPrefix[] = "args.";
   struct IntValue {
@@ -144,6 +140,7 @@ class MetalArguments : public ArgumentsBinder {
   struct MetalBufferDescriptor {
     GPUBufferDescriptor desc;
     id<MTLBuffer> handle;
+    uint64_t offset;
   };
   struct MetalImage2DDescriptor {
     GPUImage2DDescriptor desc;

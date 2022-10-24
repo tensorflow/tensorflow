@@ -17,24 +17,20 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft_impl.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/types.h"
 
-using tensorflow::int32;
-
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenFft(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenFft(
     const void* run_options_ptr, void* out, void* operand, int32_t fft_type,
     int32_t double_precision, int32_t fft_rank, int64_t input_batch,
     int64_t fft_length0, int64_t fft_length1, int64_t fft_length2) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
   XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
-  tensorflow::xla::EigenFftImpl(
-      *run_options->intra_op_thread_pool(), out, operand,
-      static_cast<tensorflow::xla::FftType>(fft_type),
-      static_cast<bool>(double_precision), fft_rank, input_batch, fft_length0,
-      fft_length1, fft_length2);
+  xla::EigenFftImpl(*run_options->intra_op_thread_pool(), out, operand,
+                    static_cast<xla::internal::FftType>(fft_type),
+                    static_cast<bool>(double_precision), fft_rank, input_batch,
+                    fft_length0, fft_length1, fft_length2);
 }

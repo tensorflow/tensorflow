@@ -14,10 +14,6 @@
 # ==============================================================================
 """Logging and debugging utilities."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import traceback
@@ -142,8 +138,8 @@ def log(level, msg, *args, **kwargs):
       _output_to_stdout(msg, *args, **kwargs)
 
 
-def warn(msg, *args, **kwargs):
+def warning(msg, *args, **kwargs):
   logging.warning(msg, *args, **kwargs)
   if echo_log_to_stdout:
     _output_to_stdout('WARNING: ' + msg, *args, **kwargs)
-  sys.stdout.flush()
+    sys.stdout.flush()

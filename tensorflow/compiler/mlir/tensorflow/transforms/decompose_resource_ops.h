@@ -29,7 +29,7 @@ namespace TF {
 // operations. So decomposition may not be correct outside of backends like XLA,
 // which automatically locks all resource variables.
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
-                                          OwningRewritePatternList *patterns);
+                                          RewritePatternSet *patterns);
 
 }  // namespace TF
 }  // namespace mlir

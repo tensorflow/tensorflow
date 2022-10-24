@@ -14,15 +14,9 @@
 # ==============================================================================
 """Functions used to extract and analyze stacks.  Faster than Python libs."""
 # pylint: disable=g-bad-name
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import inspect
 import threading
-
-import six
 
 # TODO(b/138203821): change to from ...util import ... once the bug is fixed.
 from tensorflow.python.util import _tf_stack
@@ -33,11 +27,7 @@ from tensorflow.python.util import _tf_stack
 # when a thread is joined, so reusing the key does not introduce a correctness
 # issue. Moreover, get_ident is faster than storing and retrieving a unique
 # key in a thread local store.
-if six.PY2:
-  import thread  # pylint: disable=g-import-not-at-top
-  _get_thread_key = thread.get_ident
-else:
-  _get_thread_key = threading.get_ident
+_get_thread_key = threading.get_ident
 
 
 # TODO(mdan): Move these to C++ as well.
@@ -167,7 +157,7 @@ def extract_stack():
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
   # traversing the stack.
-  # TODO(cheshire): Remove this function, use extract_stack_for_node or Python
+  # TODO(cheshire): Remove this function, use extract_stack_for_op or Python
   # traceback module.
   thread_key = _get_thread_key()
   return _tf_stack.extract_stack(
@@ -176,23 +166,20 @@ def extract_stack():
 
 
 # TODO(mdan): Revisit these - a single location is almost always sufficient.
-def extract_stack_for_node(node):
-  """Attaches the current stack trace to `node`.
+def extract_stack_for_op(c_op, stacklevel=1):
+  """Attaches the current stack trace to `c_op`.
 
   Args:
-    node: a Node object.
-
-  Returns:
-    A list-like FrameSummary containing StackFrame-like objects, which are
-    namedtuple-like objects with the following fields: filename, lineno, name,
-    line, meant to masquerade as traceback.FrameSummary objects.
+    c_op: a TF_Operation object.
+    stacklevel: An integer for ignoring Python wrapper stack frames.
+      The default value of 1 ignores this function from the frame.
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
   # traversing the stack.
   thread_key = _get_thread_key()
-  return _tf_stack.extract_stack_for_node(
+  _tf_stack.extract_stack_for_op(
       _source_mapper_stacks[thread_key][-1].internal_map,
-      _source_filter_stacks[thread_key][-1].internal_set, node)
+      _source_filter_stacks[thread_key][-1].internal_set, c_op, stacklevel)
 
 
 StackSummary = _tf_stack.StackTraceWrapper

@@ -18,10 +18,6 @@
 
 See the [Neural network](https://tensorflow.org/api_guides/python/nn) guide.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys as _sys
 
 # pylint: disable=unused-import

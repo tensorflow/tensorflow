@@ -15,10 +15,6 @@
 
 # pylint: disable=wildcard-import,unused-import
 """Protocol Buffer encoding and decoding from tensors."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=unused-import
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.gen_decode_proto_ops import decode_proto_v2 as decode_proto

@@ -19,19 +19,19 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Analysis/BufferViewFlowAnalysis.h"  // from @llvm-project
 #include "mlir/Analysis/Liveness.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Bufferization/Transforms/BufferViewFlowAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 
 constexpr llvm::StringRef
     mlir::kernel_gen::tf_framework::TFAllocOp::kReuseOutputAttrName;
@@ -47,7 +47,7 @@ namespace {
 
 class BufferReuseAnalysis {
  public:
-  explicit BufferReuseAnalysis(FuncOp f) { build(f); }
+  explicit BufferReuseAnalysis(func::FuncOp f) { build(f); }
 
   static constexpr int32_t kIndexAmbiguous = -1;
 
@@ -64,20 +64,20 @@ class BufferReuseAnalysis {
   }
 
  private:
-  void build(FuncOp &f) {
+  void build(func::FuncOp &f) {
     BufferViewFlowAnalysis aliases(f);
     find_output_indices(f, aliases);
     find_reuse_candiates(f, aliases);
   }
 
-  void find_output_indices(FuncOp &f, BufferViewFlowAnalysis &aliases) {
+  void find_output_indices(func::FuncOp &f, BufferViewFlowAnalysis &aliases) {
     f.walk([&](memref::AllocOp alloc_op) {
       int32_t output_index = kIndexAmbiguous;
       int count_return_uses = 0;
       auto buffer_aliases = aliases.resolve(alloc_op.getResult());
       for (Value alias : buffer_aliases) {
         for (auto &use : alias.getUses()) {
-          if (isa<ReturnOp>(use.getOwner())) {
+          if (isa<func::ReturnOp>(use.getOwner())) {
             int32_t index = use.getOperandNumber();
             if (count_return_uses++ == 0)
               output_index = index;
@@ -90,7 +90,7 @@ class BufferReuseAnalysis {
     });
   }
 
-  void find_reuse_candiates(FuncOp &f, BufferViewFlowAnalysis &aliases) {
+  void find_reuse_candiates(func::FuncOp &f, BufferViewFlowAnalysis &aliases) {
     Liveness liveness(f);
     f.walk([&](Block *block) {
       find_reuse_candiates(block, aliases, liveness.getLiveness(block),
@@ -173,7 +173,7 @@ class BufferReuseAnalysis {
     return first_use;
   }
 
-  std::vector<Value> get_buffer_arguments(FuncOp &f) {
+  std::vector<Value> get_buffer_arguments(func::FuncOp &f) {
     std::vector<Value> buffer_arguments;
     for (BlockArgument arg : f.getArguments()) {
       if (arg.getType().isa<BaseMemRefType>()) buffer_arguments.push_back(arg);
@@ -186,17 +186,16 @@ class BufferReuseAnalysis {
     auto old_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     auto new_buffer_ty = old_buffer.getType().dyn_cast<MemRefType>();
     if (!old_buffer_ty || !new_buffer_ty ||
-        old_buffer_ty.getAffineMaps() != new_buffer_ty.getAffineMaps())
+        old_buffer_ty.getLayout() != new_buffer_ty.getLayout())
       return false;
 
     if (auto generic_op = dyn_cast<linalg::GenericOp>(op)) {
-      SmallVector<OpOperand *> op_operands =
-          generic_op.getInputAndOutputOperands();
-      auto old_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
-        return op_operand->get() == old_buffer;
+      auto op_operands = op->getOpOperands();
+      auto old_it = llvm::find_if(op_operands, [&](OpOperand &op_operand) {
+        return op_operand.get() == old_buffer;
       });
-      auto new_it = llvm::find_if(op_operands, [&](OpOperand *op_operand) {
-        return op_operand->get() == new_buffer;
+      auto new_it = llvm::find_if(op_operands, [&](OpOperand &op_operand) {
+        return op_operand.get() == new_buffer;
       });
       assert(old_it != op_operands.end() && new_it != op_operands.end() &&
              "Expect `old/new_buffer` to be operand of `op`.");
@@ -218,8 +217,8 @@ class BufferReuseAnalysis {
       // have the same size we also know that when one side has an identity map
       // and the other side only drops dimensions, these dimensions have to be
       // of size 1.
-      AffineMap old_indexing_map = generic_op.getTiedIndexingMap(*old_it);
-      AffineMap new_indexing_map = generic_op.getTiedIndexingMap(*new_it);
+      AffineMap old_indexing_map = generic_op.getMatchingIndexingMap(old_it);
+      AffineMap new_indexing_map = generic_op.getMatchingIndexingMap(new_it);
       return (old_indexing_map == new_indexing_map &&
               old_indexing_map.isProjectedPermutation()) ||
              (old_indexing_map.isIdentity() &&
@@ -233,20 +232,20 @@ class BufferReuseAnalysis {
   DenseMap<Operation *, int32_t> output_indices_;
 };
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_BUFFERREUSEPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
-struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
-  void runOnFunction() override {
-    if (!getFunction()->getAttrOfType<UnitAttr>(
+struct BufferReusePass : public impl::BufferReusePassBase<BufferReusePass> {
+  void runOnOperation() override {
+    if (!getOperation()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))
       return;
 
-    BufferReuseAnalysis analysis(getFunction());
+    BufferReuseAnalysis analysis(getOperation());
 
     // Annotate IR with reuse candidates and output indices per allocation.
     Builder builder(&getContext());
-    getFunction().walk([&](memref::AllocOp op) {
+    getOperation().walk([&](memref::AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
         auto attr = builder.getI32IntegerAttr(*output_index);
         op.getOperation()->setAttr(
@@ -263,7 +262,7 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateBufferReusePass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateBufferReusePass() {
   return std::make_unique<BufferReusePass>();
 }
 

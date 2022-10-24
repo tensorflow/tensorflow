@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -52,44 +53,19 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kDeviceCPU[] = "CPU";
 constexpr char kFuncDeviceAttr[] = "tf.device";
 
-// A pass that allows TPU input layout to be determined after JIT compilation.
-// This is done by adding run-time ops that interpret compilation result and
-// copy the input to device with that layout.
-//
-// Example: original program:
-//
-//   %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//   %compile:2 = "tf._TPUCompileMlir"(...)
-//   %execute = "tf.TPUExecute"(%input, ..., %compile#1) {device = "/TPU:0"}
-//
-// Without this pass, later TF graph partitioning passes will insert send/recv
-// between %input and %execute and data will be copied to device in a fixed
-// layout. With this pass, the program will be transformed into:
-//
-//   %input = "tf.IteratorGetNext"(...) {device = "/CPU:0"}
-//   %compile:2 = "tf._TPUCompileMlir"(...)
-//   %get_layout = "tf.TPUGetLayoutOp"(%compile#1) {...}
-//   %copy_to_device = "tf.TPUCopyWithLayout"(%input, %get_layout)
-//       {device = "/TPU:0"}
-//   %execute = "tf.TPUExecute"(%copy_to_device, ..., %compile#1)
-//       {device = "/TPU:0"}
-//
-// This way, %compile will determine the layout, which will be respected by
-// %copy_to_device. There will not be send/recv ops added by later passes,
-// because tf.TPUCopyWithLayout accepts a host input and produces a device
-// output.
 struct TPUDynamicLayoutPass
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TPUDynamicLayoutPass, TF::ResourceAliasAnalysis> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(TPUDynamicLayoutPass)
+
   void runOnFunction(
-      FuncOp func,
+      func::FuncOp func,
       const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
 
   StringRef getArgument() const final { return "tf-tpu-dynamic-layout-pass"; }
 
   StringRef getDescription() const final {
-    return "Adds ops that allow TPU program inputs to have layouts determined "
-           "at JIT compile time.";
+    return "Inserts TPU layout ops to determine layout at run time.";
   }
 };
 
@@ -117,7 +93,7 @@ bool IsSupportedInputOp(
   };
 
   // Check all generator aliases (ops or function argument) are on CPU.
-  FuncOp func = iterator_op->getParentOfType<FuncOp>();
+  func::FuncOp func = iterator_op->getParentOfType<func::FuncOp>();
   return llvm::all_of(aliases, [&](Value alias) {
     // Ignore non-generator aliases.
     if (!is_generator(alias)) return true;
@@ -180,7 +156,7 @@ void HandleInput(Value input, const int64_t execute_arg_index,
   builder.setInsertionPoint(execute_launch);
   auto copy_with_layout = BuildCopyWithLayout(execute_launch, compile_launch,
                                               get_layout, input, &builder);
-  copy_with_layout->setAttr(kDeviceAttr, execute_launch.deviceAttr());
+  copy_with_layout->setAttr(kDeviceAttr, execute_launch.getDeviceAttr());
   execute.setOperand(execute_arg_index, copy_with_layout);
 }
 
@@ -192,7 +168,7 @@ bool HandleReplicatedInputs(
     mlir::BlockArgument replicate_arg, tf_device::ReplicateOp replicate,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   // We need to know the devices to copy to.
-  if (!replicate.devices()) return false;
+  if (!replicate.getDevices()) return false;
 
   MutableArrayRef<OpOperand> inputs =
       replicate.GetOperandsForBlockArgument(replicate_arg);
@@ -210,7 +186,7 @@ bool HandleReplicatedInputs(
         BuildCopyWithLayout(execute_launch, compile_launch, get_layout,
                             entry.value().get(), &builder);
 
-    auto device_list = replicate.devices()
+    auto device_list = replicate.getDevices()
                            .getValue()
                            .get(execute_launch.getDevice())
                            .cast<ArrayAttr>();
@@ -265,7 +241,7 @@ void HandleCompileAndExecutes(
         // not on the host.)
         auto* input_op = input.getDefiningOp();
         if (maybe_replicate &&
-            maybe_replicate.body().isAncestor(input_op->getParentRegion())) {
+            maybe_replicate.getBody().isAncestor(input_op->getParentRegion())) {
           continue;
         }
         if (!IsSupportedInputOp(input_op, resource_alias_analysis)) continue;
@@ -285,7 +261,7 @@ void HandleCompileAndExecutes(
 }
 
 void TPUDynamicLayoutPass::runOnFunction(
-    FuncOp func,
+    func::FuncOp func,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   func.walk([&](TF::_TPUCompileMlirOp compile) {
     // Detect tf._TPUCompileMlir -> tf.TPUExecute(s).
@@ -295,7 +271,8 @@ void TPUDynamicLayoutPass::runOnFunction(
 
     llvm::SmallVector<tf_device::LaunchOp, 4> execute_launches;
     execute_launches.reserve(compile_launch.getNumResults() - 1);
-    for (Value program_result : llvm::drop_begin(compile_launch.results(), 1)) {
+    for (Value program_result :
+         llvm::drop_begin(compile_launch.getResults(), 1)) {
       if (!program_result.hasOneUse()) return;
       Operation* user = *program_result.user_begin();
       auto execute = llvm::dyn_cast<TF::TPUExecuteOp>(user);
@@ -316,8 +293,6 @@ void TPUDynamicLayoutPass::runOnFunction(
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
-
-static PassRegistration<TPUDynamicLayoutPass> pass;
 
 }  // namespace TFTPU
 }  // namespace mlir

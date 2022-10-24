@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/external/external_delegate.h"
 
+#include <locale>
 #include <string>
 #include <vector>
 
@@ -23,16 +24,25 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+// TODO(b/245168068): Add support for `TfLiteOpaqueDelegateBuilder`.
+
 // External delegate library construct
 struct ExternalLib {
   using CreateDelegatePtr = std::add_pointer<TfLiteDelegate*(
       const char**, const char**, size_t,
       void (*report_error)(const char*))>::type;
   using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
+  struct wchar_codecvt : public std::codecvt<wchar_t, char, std::mbstate_t> {};
 
   // Open a given delegate library and load the create/destroy symbols
   bool load(const std::string library) {
+#if defined(_WIN32)
+    std::wstring_convert<wchar_codecvt> converter;
+    void* handle = SharedLibrary::LoadLibrary(
+        converter.from_bytes(library.c_str()).c_str());
+#else
     void* handle = SharedLibrary::LoadLibrary(library.c_str());
+#endif  // defined(_WIN32)
     if (handle == nullptr) {
       TFLITE_LOG(TFLITE_LOG_INFO, "Unable to load external delegate from : %s",
                  library.c_str());
@@ -146,14 +156,12 @@ ExternalDelegateWrapper::ExternalDelegateWrapper(
     external_delegate_ = external_lib_.create(ckeys.data(), cvalues.data(),
                                               ckeys.size(), nullptr);
     if (external_delegate_) {
-      wrapper_delegate_ = {
-          .data_ = reinterpret_cast<void*>(this),
-          .Prepare = DelegatePrepare,
-          .CopyFromBufferHandle = nullptr,
-          .CopyToBufferHandle = nullptr,
-          .FreeBufferHandle = nullptr,
-          .flags = external_delegate_->flags,
-      };
+      wrapper_delegate_.data_ = reinterpret_cast<void*>(this);
+      wrapper_delegate_.Prepare = DelegatePrepare;
+      wrapper_delegate_.CopyFromBufferHandle = nullptr;
+      wrapper_delegate_.CopyToBufferHandle = nullptr;
+      wrapper_delegate_.FreeBufferHandle = nullptr;
+      wrapper_delegate_.flags = external_delegate_->flags;
       if (external_delegate_->CopyFromBufferHandle) {
         wrapper_delegate_.CopyFromBufferHandle = DelegateCopyFromBufferHandle;
       }
@@ -181,7 +189,7 @@ ExternalDelegateWrapper::~ExternalDelegateWrapper() {
 TfLiteStatus TfLiteExternalDelegateOptionsInsert(
     TfLiteExternalDelegateOptions* options, const char* key,
     const char* value) {
-  if (options->count >= kMaxOptions) {
+  if (options->count >= kExternalDelegateMaxOptions) {
     return kTfLiteError;
   }
   options->keys[options->count] = key;

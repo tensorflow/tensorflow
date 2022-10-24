@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-sink-constant"
@@ -38,15 +37,18 @@ namespace TFDevice {
 namespace {
 using ::mlir::TF::ConstOp;
 
+#define GEN_PASS_DEF_CLUSTERCONSTANTSINKINGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class ClusterConstantSinkingPass
-    : public TF::ClusterConstantSinkingPassBase<ClusterConstantSinkingPass> {
+    : public impl::ClusterConstantSinkingPassBase<ClusterConstantSinkingPass> {
  public:
   explicit ClusterConstantSinkingPass(
       llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter)
       : filter_(filter) {}
 
-  void runOnFunction() override {
-    getFunction().walk([filter = filter_](tf_device::ClusterOp cluster) {
+  void runOnOperation() override {
+    getOperation().walk([filter = filter_](tf_device::ClusterOp cluster) {
       LLVM_DEBUG(llvm::dbgs() << "Visit " << *cluster.getOperation() << "\n");
       // For each launch op, we find the values used that come from a constant
       // defined above and sink these constants in the region body.
@@ -54,7 +56,7 @@ class ClusterConstantSinkingPass
       // a sunk clone of it. This allows for reusing a sunk constant with
       // multiple uses in the region.
       llvm::DenseMap<Value, TF::ConstOp> sunk_constant;
-      Region &body = cluster.body();
+      Region &body = cluster.getBody();
       visitUsedValuesDefinedAbove(body, [&](OpOperand *use) {
         Value constant = use->get();
         auto const_op = dyn_cast_or_null<TF::ConstOp>(constant.getDefiningOp());
@@ -95,7 +97,7 @@ class ClusterConstantSinkingPass
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass(
+std::unique_ptr<OperationPass<func::FuncOp>> CreateClusterConstantSinkingPass(
     llvm::function_ref<bool(tf_device::ClusterOp, ElementsAttr)> filter) {
   return std::make_unique<ClusterConstantSinkingPass>(filter);
 }

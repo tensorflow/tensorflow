@@ -22,8 +22,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace xla {
 namespace gpu {
@@ -43,7 +43,7 @@ namespace gpu {
 // Heisenberg effect when dumping the IR.
 class DumpIrPass : public llvm::FunctionPass {
  public:
-  explicit DumpIrPass(const string &output_filename)
+  explicit DumpIrPass(const std::string &output_filename)
       : llvm::FunctionPass(id_), output_filename_(output_filename) {}
 
   bool doInitialization(llvm::Module &M) override {
@@ -72,7 +72,7 @@ class DumpIrPass : public llvm::FunctionPass {
 
  private:
   static char id_;
-  string output_filename_;
+  std::string output_filename_;
   std::error_code ec_;
   std::unique_ptr<llvm::raw_fd_ostream> out_;
 };
@@ -85,14 +85,14 @@ void IrDumpingPassManager::run(llvm::Module &module) {
     if (dump_ir_) {
       const llvm::PassInfo *PI =
           llvm::PassRegistry::getPassRegistry()->getPassInfo(P->getPassID());
-      const string basename = ReplaceFilenameExtension(
-          absl::string_view(tensorflow::io::Basename(input_filename_)),
+      const std::string basename = ReplaceFilenameExtension(
+          absl::string_view(tsl::io::Basename(input_filename_)),
           absl::StrFormat(
               "pass-%02d.before.%s.ll", i,
               absl::string_view(PI == nullptr ? "unknown"
                                               : PI->getPassArgument().data())));
       llvm::legacy::PassManager::add(
-          new DumpIrPass(tensorflow::io::JoinPath(output_dir_, basename)));
+          new DumpIrPass(tsl::io::JoinPath(output_dir_, basename)));
     }
     llvm::legacy::PassManager::add(P);
   }

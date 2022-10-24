@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LOCAL_CLIENT_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -32,9 +33,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
@@ -143,6 +144,20 @@ class LocalClient : public Client {
   StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> Compile(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
+      const ExecutableBuildOptions& options);
+
+  // Same as Compile() above, but return AotCompilationResult objects (instead
+  // of LocalExecutable objects), which can be persisted to later load
+  // LocalExecutable(s) using the Load() method below.
+  StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  CompileAheadOfTime(const XlaComputation& computation,
+                     const absl::Span<const Shape* const> argument_layouts,
+                     const ExecutableBuildOptions& options);
+
+  // Return a LocalExecutable object loaded from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<LocalExecutable>> Load(
+      const std::string& serialized_aot_result,
       const ExecutableBuildOptions& options);
 
   // Copy the literal data to the device with the given ordinal and return as a

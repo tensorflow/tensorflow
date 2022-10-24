@@ -49,10 +49,10 @@ void GPUDeviceContext::CopyTensorInSameDevice(const Tensor* input_tensor,
 
 Status GPUDeviceContext::ThenExecute(Device* device, se::Stream* stream,
                                      std::function<void()> func) {
-  const DeviceBase::GpuDeviceInfo* gpu_info =
-      device->tensorflow_gpu_device_info();
+  const DeviceBase::AcceleratorDeviceInfo* gpu_info =
+      device->tensorflow_accelerator_device_info();
   gpu_info->event_mgr->ThenExecute(stream, func);
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

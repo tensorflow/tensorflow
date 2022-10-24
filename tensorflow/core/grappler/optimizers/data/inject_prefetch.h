@@ -31,15 +31,15 @@ class InjectPrefetch : public TFDataOptimizerBase {
   InjectPrefetch() = default;
   ~InjectPrefetch() override = default;
 
-  string name() const override { return "inject_prefetch"; };
+  std::string name() const override { return "inject_prefetch"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
-    if (!config) return Status::OK();
+    if (!config) return OkStatus();
 
-    const string& autotune = config->parameter_map().at(kAutotune).s();
+    const std::string& autotune = config->parameter_map().at(kAutotune).s();
     if (autotune == "true") {
       autotune_ = true;
     } else if (autotune == "false") {
@@ -48,14 +48,14 @@ class InjectPrefetch : public TFDataOptimizerBase {
       return errors::InvalidArgument("Received an invalid value for parameter ",
                                      kAutotune, ": ", autotune);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status OptimizeAndCollectStats(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output,
                                  OptimizationStats* stats) override;
 
- private:
+ protected:
   bool autotune_ = true;
 };
 

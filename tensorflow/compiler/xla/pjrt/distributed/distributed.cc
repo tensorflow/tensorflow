@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/distributed/distributed.h"
 
+#include <string>
+
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
@@ -23,19 +25,22 @@ namespace xla {
 
 StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(
-    std::string address,
-    const DistributedRuntimeServiceImpl::Options& options) {
+    std::string address, const DistributedRuntimeServiceImpl::Options& options,
+    bool use_coordination_service) {
   auto credentials = ::grpc::InsecureServerCredentials();
-  return DistributedRuntimeService::Get(address, credentials, options);
+  return DistributedRuntimeService::Get(address, credentials, options,
+                                        use_coordination_service);
 }
 
 std::shared_ptr<DistributedRuntimeClient> GetDistributedRuntimeClient(
-    std::string address, const DistributedRuntimeClient::Options& options) {
+    std::string address, const DistributedRuntimeClient::Options& options,
+    bool use_coordination_service) {
   std::shared_ptr<::grpc::ChannelCredentials> creds =
       ::grpc::InsecureChannelCredentials();
   std::shared_ptr<::grpc::Channel> channel =
       ::grpc::CreateChannel(address, creds);
-  return absl::make_unique<DistributedRuntimeClient>(channel, options);
+  return GetDistributedRuntimeClient(channel, options,
+                                     use_coordination_service);
 }
 
 }  // namespace xla

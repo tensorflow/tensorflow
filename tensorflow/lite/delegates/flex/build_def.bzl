@@ -9,7 +9,7 @@ load(
     "tf_cc_binary",
     "tf_copts",
     "tf_defines_nortti_if_lite_protos",
-    "tf_features_nolayering_check_if_android_or_ios",
+    "tf_features_nolayering_check_if_ios",
     "tf_features_nomodules_if_mobile",
     "tf_opts_nortti_if_lite_protos",
     "tf_portable_full_lite_protos",
@@ -128,11 +128,12 @@ def tflite_flex_cc_library(
             defines = [
                 "SELECTIVE_REGISTRATION",
                 "SUPPORT_SELECTIVE_REGISTRATION",
+                "EIGEN_NEON_GEBP_NR=4",
             ] + tf_portable_full_lite_protos(
                 full = [],
                 lite = ["TENSORFLOW_LITE_PROTOS"],
             ) + tf_defines_nortti_if_lite_protos(),
-            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_android_or_ios(),
+            features = tf_features_nomodules_if_mobile() + tf_features_nolayering_check_if_ios(),
             linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
             includes = [
                 CUSTOM_KERNEL_HEADER.include_path,
@@ -162,7 +163,7 @@ def tflite_flex_cc_library(
         hdrs = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate.h"),
         ],
-        features = tf_features_nolayering_check_if_android_or_ios(),
+        features = tf_features_nolayering_check_if_ios(),
         visibility = visibility,
         deps = [
             clean_dep("//tensorflow/lite/delegates/flex:delegate_data"),
@@ -216,9 +217,6 @@ def tflite_flex_shared_library(
 
     tflite_cc_shared_object(
         name = name,
-        # Until we have more granular symbol export for the C++ API on Windows,
-        # export all symbols.
-        features = ["windows_export_all_symbols"],
         linkopts = select({
             "//tensorflow:macos": [
                 "-Wl,-exported_symbols_list,$(location //tensorflow/lite/delegates/flex:exported_symbols.lds)",

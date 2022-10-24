@@ -556,6 +556,27 @@ TEST(Prelu, INT8Weights) {
       .Test(xnnpack_delegate.get());
 }
 
+TEST(Prelu, INT8ChannelWiseWeights) {
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  PreluTester()
+      .InputShape({batch, height, width, channels})
+      .SlopeShape({channels})
+      .INT8ChannelWiseWeights()
+      .Test(xnnpack_delegate.get());
+}
+
 TEST(Prelu, SparseWeights) {
   std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
@@ -597,6 +618,34 @@ TEST(Prelu, MultiThreading) {
   PreluTester()
       .InputShape({batch, height, width, channels})
       .SlopeShape({channels})
+      .Test(xnnpack_delegate.get());
+}
+
+TEST(Prelu, WeightsCache) {
+  TfLiteXNNPackDelegateOptions delegate_options =
+      TfLiteXNNPackDelegateOptionsDefault();
+  std::unique_ptr<TfLiteXNNPackDelegateWeightsCache,
+                  decltype(&TfLiteXNNPackDelegateWeightsCacheDelete)>
+      weights_cache(TfLiteXNNPackDelegateWeightsCacheCreate(),
+                    TfLiteXNNPackDelegateWeightsCacheDelete);
+  delegate_options.weights_cache = weights_cache.get();
+  std::unique_ptr<TfLiteDelegate, decltype(&TfLiteXNNPackDelegateDelete)>
+      xnnpack_delegate(TfLiteXNNPackDelegateCreate(&delegate_options),
+                       TfLiteXNNPackDelegateDelete);
+
+  std::random_device random_device;
+  auto rng = std::mt19937(random_device());
+  auto shape_rng =
+      std::bind(std::uniform_int_distribution<int32_t>(2, 5), std::ref(rng));
+  const auto batch = shape_rng();
+  const auto height = shape_rng();
+  const auto width = shape_rng();
+  const auto channels = shape_rng();
+
+  PreluTester()
+      .InputShape({batch, height, width, channels})
+      .SlopeShape({channels})
+      .WeightsCache(weights_cache.get())
       .Test(xnnpack_delegate.get());
 }
 

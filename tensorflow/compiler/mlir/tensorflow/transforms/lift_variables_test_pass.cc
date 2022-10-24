@@ -20,24 +20,20 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
 namespace mlir {
+namespace tf_saved_model {
 namespace {
 using ::tensorflow::Session;
 
+#define GEN_PASS_DEF_LIFTVARIABLESTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesTestPass
-    : public PassWrapper<LiftVariablesTestPass, OperationPass<ModuleOp>> {
+    : public impl::LiftVariablesTestPassBase<LiftVariablesTestPass> {
  public:
   LiftVariablesTestPass() { session_ = new TF::test_util::FakeSession(); }
 
   ~LiftVariablesTestPass() override { delete session_; }
-
-  StringRef getArgument() const final {
-    return "tf-saved-model-lift-variables-test";
-  }
-
-  StringRef getDescription() const final {
-    return "Lift variables and save them as global tensors";
-  }
 
   void runOnOperation() override {
     ModuleOp module = getOperation();
@@ -49,20 +45,14 @@ class LiftVariablesTestPass
   Session* session_;
 };
 
+#define GEN_PASS_DEF_LIFTVARIABLESINVALIDSESSIONTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 // This pass is only available in the tf-opt binary for testing.
 class LiftVariablesInvalidSessionTestPass
-    : public PassWrapper<LiftVariablesInvalidSessionTestPass,
-                         OperationPass<ModuleOp>> {
+    : public impl::LiftVariablesInvalidSessionTestPassBase<
+          LiftVariablesInvalidSessionTestPass> {
  public:
-  StringRef getArgument() const final {
-    return "tf-saved-model-lift-variables-invalid-session-test";
-  }
-
-  StringRef getDescription() const final {
-    return "Lift variables and save them as global tensors with an invalid "
-           "session";
-  }
-
   void runOnOperation() override {
     ModuleOp module = getOperation();
     // Pass an invalid session argument, which is a nullptr.
@@ -72,13 +62,19 @@ class LiftVariablesInvalidSessionTestPass
 };
 
 }  // namespace
-
-namespace tf_saved_model {
-
-static PassRegistration<LiftVariablesTestPass> lift_variables_test_pass;
-
-static PassRegistration<LiftVariablesInvalidSessionTestPass>
-    lift_variables_invalid_session_test_pass;
-
 }  // namespace tf_saved_model
+
+namespace tf_test {
+
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesTestPass() {
+  return std::make_unique<tf_saved_model::LiftVariablesTestPass>();
+}
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLiftVariablesInvalidSessionTestPass() {
+  return std::make_unique<
+      tf_saved_model::LiftVariablesInvalidSessionTestPass>();
+}
+
+}  // namespace tf_test
 }  // namespace mlir

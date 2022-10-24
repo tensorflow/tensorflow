@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/connected_traceme.h"
+#include "tensorflow/core/profiler/lib/scoped_memory_debug_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 #define VALUE_IN_DEBUG_STRING false
@@ -152,7 +153,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   Tensor TempChunk(int i) const override {
     AllocationAttributes empty;
-    ScopedMemoryDebugAnnotation op_annotation(
+    profiler::ScopedMemoryDebugAnnotation op_annotation(
         "CollectiveAdapterImpl::TempChunk");
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
@@ -334,11 +335,14 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
               context_id = producer.GetContextId()]() {
     core::ScopedUnref unref(col_impl);
     profiler::TraceMeConsumer consumer(
-        [ctx] {
+        [ctx, col_ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
-          return profiler::TraceMeEncode(std::move(op),
-                                         {{"id", ctx->step_id()}});
+          return profiler::TraceMeEncode(
+              std::move(op),
+              {{"id", ctx->step_id()},
+               {"instance_key", col_ctx->col_params->instance.instance_key},
+               {"collective", col_ctx->col_params->instance.type}});
         },
         context_id);
     col_impl->Ref();
@@ -359,8 +363,12 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
   // timeout callback executes, done_safe will become a no-op and the timeout
   // callback is responsible for invoking done() at the end.
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
-  auto trace_id =
-      profiler::TraceMe::ActivityStart("CollectiveExecutor::CompleteParams");
+  int64_t trace_id = profiler::TraceMe::ActivityStart([cp]() {
+    return profiler::TraceMeEncode("CollectiveExecutor::CompleteParams",
+                                   {{"group_key", cp->group.group_key},
+                                    {"group_size", cp->group.group_size}});
+  });
+
   auto done_safe = [this, is_callback_called, cancel_mgr, trace_id,
                     done](const Status& s) {
     profiler::TraceMe::ActivityEnd(trace_id);
@@ -472,7 +480,7 @@ void BaseCollectiveExecutor::UnblockDependencies(
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =
-        col_params.group.task_names[col_params.default_rank];
+        col_params.group.members[col_params.default_rank].task;
     const int32_t num_devices =
         col_params.group.num_devices_per_task.at(task_name);
     launched_[col_params.instance.instance_key] = num_devices;

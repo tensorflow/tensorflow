@@ -37,10 +37,6 @@ debug_data_reader.update()
 # and other types of data are read by `debug_data_reader`.
 ```
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
 from tensorflow.core.protobuf import debug_event_pb2

@@ -29,43 +29,20 @@ from tensorflow.python.keras.layers import convolutional_recurrent
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import cudnn_recurrent
 from tensorflow.python.keras.layers import dense_attention
-from tensorflow.python.keras.layers import einsum_dense
 from tensorflow.python.keras.layers import embeddings
-from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
-from tensorflow.python.keras.layers import multi_head_attention
-from tensorflow.python.keras.layers import noise
 from tensorflow.python.keras.layers import pooling
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
-from tensorflow.python.keras.layers import wrappers
-from tensorflow.python.keras.layers.normalization import batch_normalization
-from tensorflow.python.keras.layers.normalization import batch_normalization_v1
-from tensorflow.python.keras.layers.normalization import layer_normalization
-from tensorflow.python.keras.layers.preprocessing import category_crossing
-from tensorflow.python.keras.layers.preprocessing import category_encoding
-from tensorflow.python.keras.layers.preprocessing import discretization
-from tensorflow.python.keras.layers.preprocessing import hashing
-from tensorflow.python.keras.layers.preprocessing import image_preprocessing
-from tensorflow.python.keras.layers.preprocessing import integer_lookup
-from tensorflow.python.keras.layers.preprocessing import normalization as preprocessing_normalization
-from tensorflow.python.keras.layers.preprocessing import string_lookup
-from tensorflow.python.keras.layers.preprocessing import text_vectorization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
                convolutional_recurrent, core, cudnn_recurrent, dense_attention,
-               embeddings, einsum_dense, local, merge, noise,
-               batch_normalization_v1, layer_normalization,
-               pooling, image_preprocessing, recurrent, wrappers, hashing,
-               category_crossing, category_encoding, discretization,
-               multi_head_attention, integer_lookup,
-               preprocessing_normalization, string_lookup, text_vectorization)
-ALL_V2_MODULES = (rnn_cell_wrapper_v2, batch_normalization, layer_normalization,
-                  recurrent_v2)
+               embeddings, merge, pooling, recurrent)
+ALL_V2_MODULES = (rnn_cell_wrapper_v2, recurrent_v2)
 # ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
 # thread-local to avoid concurrent mutations.
 LOCAL = threading.local()
@@ -100,36 +77,14 @@ def populate_deserializable_objects():
         ALL_V2_MODULES,
         obj_filter=lambda x: inspect.isclass(x) and issubclass(x, base_cls))
 
-  # These deserialization aliases are added for backward compatibility,
-  # as in TF 1.13, "BatchNormalizationV1" and "BatchNormalizationV2"
-  # were used as class name for v1 and v2 version of BatchNormalization,
-  # respectively. Here we explicitly convert them to their canonical names.
-  LOCAL.ALL_OBJECTS[
-      'BatchNormalizationV1'] = batch_normalization_v1.BatchNormalization
-  LOCAL.ALL_OBJECTS[
-      'BatchNormalizationV2'] = batch_normalization.BatchNormalization
-
   # Prevent circular dependencies.
   from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.premade.linear import LinearModel  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.premade.wide_deep import WideDeepModel  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.feature_column.sequence_feature_column import SequenceFeatures  # pylint: disable=g-import-not-at-top
 
   LOCAL.ALL_OBJECTS['Input'] = input_layer.Input
   LOCAL.ALL_OBJECTS['InputSpec'] = input_spec.InputSpec
   LOCAL.ALL_OBJECTS['Functional'] = models.Functional
   LOCAL.ALL_OBJECTS['Model'] = models.Model
-  LOCAL.ALL_OBJECTS['SequenceFeatures'] = SequenceFeatures
   LOCAL.ALL_OBJECTS['Sequential'] = models.Sequential
-  LOCAL.ALL_OBJECTS['LinearModel'] = LinearModel
-  LOCAL.ALL_OBJECTS['WideDeepModel'] = WideDeepModel
-
-  if tf2.enabled():
-    from tensorflow.python.keras.feature_column.dense_features_v2 import DenseFeatures  # pylint: disable=g-import-not-at-top
-    LOCAL.ALL_OBJECTS['DenseFeatures'] = DenseFeatures
-  else:
-    from tensorflow.python.keras.feature_column.dense_features import DenseFeatures  # pylint: disable=g-import-not-at-top
-    LOCAL.ALL_OBJECTS['DenseFeatures'] = DenseFeatures
 
   # Merge layers, function versions.
   LOCAL.ALL_OBJECTS['add'] = merge.add

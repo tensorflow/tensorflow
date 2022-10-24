@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
@@ -27,6 +28,8 @@ class ReorderTfAssertPass
     : public mlir::PassWrapper<ReorderTfAssertPass,
                                mlir::OperationPass<mlir::ModuleOp>> {
  public:
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ReorderTfAssertPass)
+
   llvm::StringRef getArgument() const final { return "tfrt-reorder-tf-assert"; }
   llvm::StringRef getDescription() const final {
     return "Move tf.Assert to the end of the function to avoid unnecessary "
@@ -35,12 +38,12 @@ class ReorderTfAssertPass
 
   void runOnOperation() override {
     auto module = getOperation();
-    for (auto func_op : module.getOps<mlir::FuncOp>()) {
+    for (auto func_op : module.getOps<mlir::func::FuncOp>()) {
       ProcessFunction(func_op);
     }
   }
 
-  void ProcessFunction(mlir::FuncOp func_op) {
+  void ProcessFunction(mlir::func::FuncOp func_op) {
     auto& block = func_op.front();
 
     llvm::SmallVector<mlir::Operation*, 2> assert_ops;
@@ -77,7 +80,7 @@ class ReorderTfAssertPass
     return false;
   }
 
-  bool IsFunctionNonSideEffectingOrAssert(mlir::FuncOp func_op) {
+  bool IsFunctionNonSideEffectingOrAssert(mlir::func::FuncOp func_op) {
     auto& block = func_op.front();
     for (mlir::Operation& op : block) {
       if (!llvm::isa<mlir::TF::AssertOp>(&op) &&

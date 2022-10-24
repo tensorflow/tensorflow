@@ -138,6 +138,12 @@ class ImmediateExecutionContext : public AbstractContext {
   // Configure device placement policy logging.
   virtual void SetLogDevicePlacement(bool enable) = 0;
 
+  // Enables running eager ops as functions.
+  virtual void SetRunEagerOpAsFunction(bool enable) = 0;
+
+  // Enables rewriting jit_compile functions.
+  virtual void SetJitCompileRewrite(bool enable) = 0;
+
   // Sets the device placement policy for the current thread.
   virtual void SetThreadLocalDevicePlacementPolicy(
       ContextDevicePlacementPolicy policy) = 0;
@@ -160,6 +166,9 @@ class ImmediateExecutionContext : public AbstractContext {
   // Experimental Custom Device.
   //===--------------------------------------------------------------------===//
   virtual CustomDeviceOpHandler& GetCustomDeviceOpHandler() = 0;
+
+  // Returns whether `device_name` is registered as a custom device.
+  virtual bool IsCustomDevice(const string& device_name) = 0;
 
   // Register a custom device. It will return error is the device name is
   // already registered.

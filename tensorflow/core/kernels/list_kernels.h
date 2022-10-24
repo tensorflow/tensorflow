@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/tensor_list.h"
+#include "tensorflow/core/kernels/tensor_list_util.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -37,6 +38,19 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 #include "tensorflow/core/util/util.h"
+
+// stream.h isn't available in some platforms such as Android, iOS, ChromiumOS,
+// and Fuchsia. Only include it for platforms that PluggableDevice is tested on.
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED) &&                              \
+    (__x86_64__ || __i386__ || defined(__APPLE__) || defined(_WIN32)) && \
+    !defined(ANDROID) && !defined(__ANDROID__) && !TARGET_OS_IOS &&      \
+    !defined(PLATFORM_CHROMIUMOS) && !defined(__Fuchsia__)
+#define PLUGGABLE_DEVICE_SUPPORTED
+#endif
+
+#ifdef PLUGGABLE_DEVICE_SUPPORTED
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#endif
 
 namespace tensorflow {
 
@@ -54,6 +68,97 @@ Status ForwardInputOrCreateNewList(OpKernelContext* c, int32_t input_index,
                                    int32_t output_index,
                                    const TensorList& input_list,
                                    TensorList** output_list);
+
+// TODO(penporn): Move this to a proper place.
+inline bool IsPluggableDevice(OpKernelContext* c) {
+  return c->op_device_context() && c->op_device_context()->IsPluggableDevice();
+}
+
+template <typename Device, typename T>
+inline void SetZero(OpKernelContext* ctx, Tensor& tensor) {
+#ifdef PLUGGABLE_DEVICE_SUPPORTED
+  if (IsPluggableDevice(ctx)) {
+    auto ptr =
+        se::DeviceMemoryBase(tensor.flat<T>().data(), tensor.TotalBytes());
+    auto stream = ctx->op_device_context()->stream();
+    auto result = stream->ThenMemZero(&ptr, tensor.TotalBytes()).ok();
+    DCHECK_EQ(true, result);
+  } else {
+#endif  // PLUGGABLE_DEVICE_SUPPORTED
+    functor::SetZeroFunctor<Device, T>()(ctx->eigen_device<Device>(),
+                                         tensor.flat<T>());
+#ifdef PLUGGABLE_DEVICE_SUPPORTED
+  }
+#endif  // PLUGGABLE_DEVICE_SUPPORTED
+}
+
+template <typename T>
+inline void CopyTensorPluggableDevice(OpKernelContext* ctx, Tensor& src,
+                                      Tensor& dst) {
+#ifdef PLUGGABLE_DEVICE_SUPPORTED
+  auto src_t = src.unaligned_flat<T>();
+  auto dst_t = dst.flat<T>();
+  DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+  auto src_ptr = se::DeviceMemoryBase(src_t.data(), src.TotalBytes());
+  auto dst_ptr = se::DeviceMemoryBase(dst_t.data(), dst.TotalBytes());
+  auto stream = ctx->op_device_context()->stream();
+  auto result = stream->ThenMemcpy(&dst_ptr, src_ptr, src.TotalBytes()).ok();
+  DCHECK_EQ(true, result);
+#else
+  LOG(FATAL)  // Crash OK.
+      << "PluggableDevice is not supported on this platform.";
+#endif  // PLUGGABLE_DEVICE_SUPPORTED
+}
+
+template <typename Device, typename T>
+inline void CopyTensor(OpKernelContext* ctx, Tensor& src, Tensor& dst) {
+  auto src_t = src.unaligned_flat<T>();
+  auto dst_t = dst.flat<T>();
+  dst_t.device(ctx->eigen_device<Device>()) = src_t;
+}
+
+template <typename T>
+void ConcatPluggableDevice(
+    OpKernelContext* context,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output) {
+#ifdef PLUGGABLE_DEVICE_SUPPORTED
+  DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+
+  se::Stream* stream = context->op_device_context()->stream();
+
+  size_t num_inputs = inputs.size();
+  std::vector<ptrdiff_t> sizes;
+  sizes.reserve(num_inputs);
+  int64 row_size = 0;
+  for (const auto& input : inputs) {
+    sizes.push_back(input->dimension(1));
+    row_size += sizes.back();
+  }
+
+  T* out = &(*output)(0, 0);
+  std::vector<const T*> inp;
+  inp.reserve(num_inputs);
+  for (const auto& input : inputs) {
+    inp.push_back(&(*input)(0, 0));
+  }
+  const int64 dim0 = output->dimension(0);
+  for (int64 i = 0; i < dim0; ++i) {
+    for (int64 j = 0; j < num_inputs; ++j) {
+      auto size = sizes[j];
+      se::DeviceMemoryBase out_base{out, size * sizeof(T)};
+      se::DeviceMemoryBase inp_base{const_cast<T*>(inp[j]), size * sizeof(T)};
+      stream->ThenMemcpy(&out_base, inp_base, size * sizeof(T));
+      out += size;
+      inp[j] += size;
+    }
+  }
+#else
+  LOG(FATAL)  // Crash OK.
+      << "PluggableDevice is not supported on this platform.";
+#endif  // PLUGGABLE_DEVICE_SUPPORTED
+}
 
 template <typename Device, typename T>
 class TensorListStack : public OpKernel {
@@ -134,8 +239,7 @@ class TensorListStack : public OpKernel {
           }
           OP_REQUIRES_OK(
               c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
-          functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                               zeros.flat<T>());
+          SetZero<Device, T>(c, zeros);
         }
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             const_cast<const Tensor&>(zeros).shaped<T, 2>(
@@ -150,7 +254,11 @@ class TensorListStack : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    if (IsPluggableDevice(c)) {
+      ConcatPluggableDevice<T>(c, inputs_flat, &output_flat);
+    } else {
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    }
   }
 
  private:
@@ -214,8 +322,7 @@ class TensorListGetItem : public OpKernel {
         attr.set_on_host(true);
       }
       OP_REQUIRES_OK(c, c->allocate_output(0, element_shape, &result, attr));
-      functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                           result->flat<T>());
+      SetZero<Device, T>(c, *result);
     }
   }
 
@@ -261,8 +368,7 @@ class TensorListPopBack : public OpKernel {
         attr.set_on_host(true);
       }
       OP_REQUIRES_OK(c, c->allocate_output(1, element_shape, &result, attr));
-      functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                           result->flat<T>());
+      SetZero<Device, T>(c, *result);
     }
 
     TensorList* output_list = nullptr;
@@ -289,8 +395,11 @@ class TensorListConcat : public OpKernel {
   void Compute(OpKernelContext* c) override {
     PartialTensorShape element_shape_except_first_dim;
     if (!element_shape_.unknown_rank()) {
-      element_shape_except_first_dim = PartialTensorShape(
-          gtl::ArraySlice<int64_t>(element_shape_.dim_sizes()).subspan(1));
+      auto dim_sizes = element_shape_.dim_sizes();
+      OP_REQUIRES(c, !dim_sizes.empty(),
+                  errors::InvalidArgument("element_shape must not be empty"));
+      element_shape_except_first_dim =
+          PartialTensorShape(gtl::ArraySlice<int64_t>(dim_sizes).subspan(1));
     }
     // Check that the input Variant tensor is indeed a TensorList and has the
     // correct element type.
@@ -445,8 +554,7 @@ class TensorListConcat : public OpKernel {
         Tensor& zeros = zeros_vec.back();
         OP_REQUIRES_OK(
             c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
-        functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                             zeros.flat<T>());
+        SetZero<Device, T>(c, zeros);
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             const_cast<const Tensor&>(zeros).shaped<T, 2>(
                 {1, zeros.NumElements()})));
@@ -460,7 +568,11 @@ class TensorListConcat : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    if (IsPluggableDevice(c)) {
+      ConcatPluggableDevice<T>(c, inputs_flat, &output_flat);
+    } else {
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    }
   }
 
  private:
@@ -513,6 +625,11 @@ class TensorListSplit : public OpKernel {
                     "Expected lengths to be a vector, received shape: ",
                     lengths.shape().DebugString()));
     output_list.tensors().reserve(lengths.shape().dim_size(0));
+
+    const auto copy_tensor = IsPluggableDevice(c)
+                                 ? &CopyTensorPluggableDevice<T>
+                                 : &CopyTensor<Device, T>;
+
     int64_t start = 0;
     int64_t end = 0;
     for (int i = 0; i < lengths.shape().dim_size(0); ++i) {
@@ -531,8 +648,7 @@ class TensorListSplit : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      aligned.flat<T>().device(c->eigen_device<Device>()) =
-          tmp.unaligned_flat<T>();
+      copy_tensor(c, tmp, aligned);
       output_list.tensors().emplace_back(aligned);
     }
     OP_REQUIRES(c, end == input_tensor.shape().dim_size(0),
@@ -620,8 +736,7 @@ class TensorListGather : public OpKernel {
           }
           OP_REQUIRES_OK(
               c, c->allocate_temp(element_dtype_, element_shape, &zeros, attr));
-          functor::SetZeroFunctor<Device, T>()(c->eigen_device<Device>(),
-                                               zeros.flat<T>());
+          SetZero<Device, T>(c, zeros);
         }
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             const_cast<const Tensor&>(zeros).shaped<T, 2>(
@@ -636,7 +751,11 @@ class TensorListGather : public OpKernel {
       return;
     }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    if (IsPluggableDevice(c)) {
+      ConcatPluggableDevice<T>(c, inputs_flat, &output_flat);
+    } else {
+      ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+    }
   }
 
  private:
@@ -654,6 +773,11 @@ class TensorListFromTensor : public OpKernel {
     attr.set_on_host(true);
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(1).shape()),
+        errors::InvalidArgument(
+            "TensorListFromTensor: element_shape must be at most rank 1 but ",
+            "has the shape of ", c->input(1).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(1), &element_shape));
     TensorList output_list;
     const Tensor& t = c->input(0);
@@ -670,6 +794,11 @@ class TensorListFromTensor : public OpKernel {
                     " from a tensor with shape ", output_shape.DebugString()));
     output_list.element_shape = element_shape;
     output_list.tensors().reserve(t.shape().dim_size(0));
+
+    const auto copy_tensor = IsPluggableDevice(c)
+                                 ? &CopyTensorPluggableDevice<T>
+                                 : &CopyTensor<Device, T>;
+
     for (int i = 0; i < t.shape().dim_size(0); ++i) {
       Tensor tmp = t.Slice(i, i + 1);
       TensorShape tmp_shape = tmp.shape();
@@ -680,8 +809,7 @@ class TensorListFromTensor : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
-      aligned.flat<T>().device(c->eigen_device<Device>()) =
-          tmp.unaligned_flat<T>();
+      copy_tensor(c, tmp, aligned);
       output_list.tensors().push_back(aligned);
     }
     output_tensor->scalar<Variant>()() = std::move(output_list);
@@ -692,6 +820,8 @@ class TensorListFromTensor : public OpKernel {
 template <typename Device, typename T>
 Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
                TensorList* list) {
+  const auto copy_tensor = IsPluggableDevice(c) ? &CopyTensorPluggableDevice<T>
+                                                : &CopyTensor<Device, T>;
   for (int index = 0; index < indices.NumElements(); ++index) {
     const int i = indices.flat<int32>()(index);
     Tensor tmp = value.Slice(index, index + 1);
@@ -706,11 +836,10 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
     TF_RETURN_IF_ERROR(c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
     // TODO(apassos) do all slices in a single kernel invocation instead of
     // many small ones.
-    aligned.flat<T>().device(c->eigen_device<Device>()) =
-        tmp.unaligned_flat<T>();
+    copy_tensor(c, tmp, aligned);
     std::swap(list->tensors()[i], aligned);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename Device, typename T>
@@ -775,10 +904,20 @@ class TensorListScatter : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
     Tensor indices = c->input(1);
     PartialTensorShape element_shape;
+    OP_REQUIRES(
+        c, !TensorShapeUtils::IsMatrixOrHigher(c->input(2).shape()),
+        errors::InvalidArgument(
+            "TensorListScatter: element_shape must be at most rank 1 but has ",
+            "the shape of ", c->input(2).shape().DebugString()));
     OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
     // TensorListScatterV2 passes the num_elements input, TensorListScatter does
     // not.
-    int num_elements = c->num_inputs() >= 4 ? c->input(3).scalar<int>()() : -1;
+    int num_elements = -1;
+    if (c->num_inputs() >= 4) {
+      OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(3).shape()),
+                  errors::InvalidArgument("num_elements must be a scalar"));
+      num_elements = c->input(3).scalar<int>()();
+    }
     OP_REQUIRES(c, num_elements >= -1,
                 errors::InvalidArgument(
                     "TensorListScatter expects num_elements >= -1, found: ",
@@ -834,52 +973,13 @@ class TensorListScatter : public OpKernel {
 template <typename Device>
 Status TensorListBinaryAdd(OpKernelContext* c, const TensorList& a,
                            const TensorList& b, TensorList* out) {
-  if (a.element_dtype != b.element_dtype) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors of different dtypes. One is ",
-        DataTypeString(a.element_dtype), " and the other is ",
-        DataTypeString(b.element_dtype));
-  }
-  out->element_dtype = a.element_dtype;
-  if (!a.element_shape.IsCompatibleWith(b.element_shape)) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors with incompatible element shapes. "
-        "One is ",
-        a.element_shape.DebugString(), " and the other is ",
-        b.element_shape.DebugString());
-  }
-
-  TF_RETURN_IF_ERROR(
-      a.element_shape.MergeWith(b.element_shape, &out->element_shape));
-  if (a.tensors().size() != b.tensors().size()) {
-    return errors::InvalidArgument(
-        "Trying to add two lists of tensors with different lengths. One is ",
-        a.tensors().size(), " and the other is ", b.tensors().size());
-  }
-  out->tensors().reserve(a.tensors().size());
-  for (int i = 0; i < a.tensors().size(); ++i) {
-    const Tensor& a_tensor = a.tensors()[i];
-    const Tensor& b_tensor = b.tensors()[i];
-    Tensor out_tensor;
-    TF_RETURN_IF_ERROR(
-        BinaryAddTensors<Device>(c, a_tensor, b_tensor, &out_tensor));
-    out->tensors().push_back(out_tensor);
-  }
-  return Status::OK();
+  return TensorListBinaryAdd(c, a, b, out, BinaryAddTensors<Device>);
 }
 
 template <typename Device>
 Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
                            TensorList* y) {
-  y->element_dtype = x.element_dtype;
-  y->element_shape = x.element_shape;
-  y->tensors().reserve(x.tensors().size());
-  for (const Tensor& t : x.tensors()) {
-    Tensor out_tensor;
-    TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, t, &out_tensor));
-    y->tensors().emplace_back(out_tensor);
-  }
-  return Status::OK();
+  return TensorListZerosLike(c, x, y, ZerosLikeTensor<Device>);
 }
 
 template <typename Device, typename T>
@@ -996,7 +1096,23 @@ class TensorListPushBackBatch : public OpKernel {
           c, c->allocate_temp(element_dtype_, input_element_shape, &frame));
       if (input_element_shape.num_elements() > 0) {
         auto frame_t = frame.flat<T>();
-        frame_t.device(c->eigen_device<Device>()) = input_t.template chip<0>(b);
+        // TODO(penporn): Get this if out of the batch loop.
+        if (IsPluggableDevice(c)) {
+          // The chip method need Eigen Device, so need to use Tensor.Slice
+          // instead of chip for pluggable device. The input should be reshaped
+          // to 2-D and so can be sliced by batch dim.
+          auto input_t_shape =
+              TensorShape({input_t.dimension(0), input_t.dimension(1)});
+          auto input_reshaped = Tensor();
+          OP_REQUIRES(c, input_reshaped.CopyFrom(input, input_t_shape),
+                      errors::Unknown("Unexpected shape error."));
+
+          auto input_batch = input_reshaped.Slice(b, b + 1);
+          CopyTensorPluggableDevice<T>(c, input_batch, frame);
+        } else {
+          frame_t.device(c->eigen_device<Device>()) =
+              input_t.template chip<0>(b);
+        }
       }
       output->tensors().push_back(std::move(frame));
     }
@@ -1008,4 +1124,5 @@ class TensorListPushBackBatch : public OpKernel {
 
 }  // namespace tensorflow
 
+#undef PLUGGABLE_DEVICE_SUPPORTED
 #endif  // TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_

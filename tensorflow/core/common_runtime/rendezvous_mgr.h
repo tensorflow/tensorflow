@@ -51,8 +51,15 @@ class RefCountedIntraProcessRendezvous : public Rendezvous {
                  DoneCallback done) override;
   void StartAbort(const Status& status) override;
 
+  // Returns the member LocalRendezvous' status.
+  Status GetLocalRendezvousStatus();
+
+  inline void UpdateDeviceManager(DeviceMgr* device_mgr) {
+    device_mgr_ = device_mgr;
+  }
+
  private:
-  const DeviceMgr* device_mgr_;
+  const DeviceMgr* device_mgr_;  // Not owned.
   LocalRendezvous local_;
 
   ~RefCountedIntraProcessRendezvous() override;

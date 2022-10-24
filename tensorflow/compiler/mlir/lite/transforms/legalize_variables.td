@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // TFLite variables legalization patterns
+include "mlir/IR/PatternBase.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -34,6 +35,6 @@ def LegalizeReadVariable : Pat<
   [(HasSupportedElementType $result)]>;
 
 def LegalizeAssignVariable : Pat<
-  (TF_AssignVariableOp $resource, $value),
+  (TF_AssignVariableOp $resource, $value, $validate_shape),
   (TFL_AssignVariableOp $resource, $value),
   [(IsSupportedElementType $value)]>;

@@ -14,15 +14,11 @@
 # ==============================================================================
 """Tests for fft operations."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import itertools
+import unittest
 
 from absl.testing import parameterized
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
@@ -195,7 +191,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
   # def test_large_batch_memory_fail(self):
   #   if test.is_gpu_available(cuda_only=True):
   #     rank = 1
-  #     for dims in xrange(rank, rank + 3):
+  #     for dims in range(rank, rank + 3):
   #       self._check_memory_fail(
   #           np.mod(np.arange(np.power(128, dims)), 64).reshape(
   #               (128,) * dims).astype(np.complex64), rank)
@@ -250,7 +246,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     if context.executing_eagerly():
       return
     for rank in VALID_FFT_RANKS:
-      for dims in xrange(0, rank):
+      for dims in range(0, rank):
         x = np.zeros((1,) * dims).astype(np.complex64)
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape must be .*rank {}.*".format(rank)):
@@ -271,6 +267,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._check_grad_complex(self._tf_ifft_for_rank(rank), re, im,
                              rtol=tol, atol=tol)
 
+  @unittest.skip("16.86% flaky")
   @parameterized.parameters(itertools.product(
       VALID_FFT_RANKS, range(2), (np.float32, np.float64)))
   def test_grad_random(self, rank, extra_dims, np_type):
@@ -285,6 +282,7 @@ class FFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.disable_xla("b/155276727")
 class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
 
   def _tf_fft(self, x, rank, fft_length=None, feed_dict=None):
@@ -522,7 +520,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     if context.executing_eagerly():
       return
     for rank in VALID_FFT_RANKS:
-      for dims in xrange(0, rank):
+      for dims in range(0, rank):
         x = np.zeros((1,) * dims).astype(np.complex64)
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape .* must have rank at least {}".format(rank)):
@@ -530,7 +528,7 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
         with self.assertRaisesWithPredicateMatch(
             ValueError, "Shape .* must have rank at least {}".format(rank)):
           self._tf_ifft(x, rank)
-      for dims in xrange(rank, rank + 2):
+      for dims in range(rank, rank + 2):
         x = np.zeros((1,) * rank)
 
         # Test non-rank-1 fft_length produces an error.
@@ -612,6 +610,15 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     self._check_grad_complex(
         self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
         rtol=tol, atol=tol)
+
+  def test_invalid_args(self):
+    # Test case for GitHub issue 55263
+    a = np.empty([6, 0])
+    b = np.array([1, -1])
+    with self.assertRaisesRegex(errors.InvalidArgumentError, "must >= 0"):
+      with self.session():
+        v = fft_ops.rfft2d(input_tensor=a, fft_length=b)
+        self.evaluate(v)
 
 
 @test_util.run_all_in_graph_and_eager_modes

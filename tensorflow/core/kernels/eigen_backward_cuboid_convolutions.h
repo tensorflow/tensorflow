@@ -44,7 +44,7 @@ namespace Eigen {
  */
 
 template <typename OutputBackward, typename Kernel>
-EIGEN_ALWAYS_INLINE static const typename internal::conditional<
+EIGEN_ALWAYS_INLINE static const std::conditional_t<
     internal::traits<OutputBackward>::Layout == ColMajor,
     TensorReshapingOp<
         const DSizes<typename internal::traits<OutputBackward>::Index,
@@ -83,7 +83,7 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                     const array<
                         typename internal::traits<OutputBackward>::Index, 5>,
                     const TensorReverseOp<const Eigen::array<bool, 5>,
-                                          const Kernel>>>>>>>::type
+                                          const Kernel>>>>>>>
 CuboidConvolutionBackwardInput(
     const Kernel& kernel, const OutputBackward& output_backward,
     typename internal::traits<OutputBackward>::Index inputPlanes,
@@ -322,7 +322,7 @@ CuboidConvolutionBackwardInput(
  * for row-major.
  */
 template <typename OutputBackward, typename Input>
-EIGEN_ALWAYS_INLINE static const typename internal::conditional<
+EIGEN_ALWAYS_INLINE static const std::conditional_t<
     internal::traits<Input>::Layout == ColMajor,
     const TensorReverseOp<
         const Eigen::array<typename internal::traits<Input>::Index,
@@ -385,7 +385,7 @@ EIGEN_ALWAYS_INLINE static const typename internal::conditional<
                             const Eigen::array<
                                 typename internal::traits<Input>::Index,
                                 internal::traits<Input>::NumDimensions>,
-                            const OutputBackward>>>>>>>>::type
+                            const OutputBackward>>>>>>>>
 CuboidConvolutionBackwardKernel(
     const Input& input, const OutputBackward& output_backward,
     typename internal::traits<Input>::Index kernelPlanes,

@@ -18,13 +18,13 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* mlir_input = R"(
-func @matmul(%arg0: tensor<?x?xf32>,
+func.func @matmul(%arg0: tensor<?x?xf32>,
              %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
     %0 = "tf.MatMul"(%arg0, %arg1) {
            transpose_a = false,
            transpose_b = false
          } : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
-    return %0 : tensor<?x?xf32>
+    func.return %0 : tensor<?x?xf32>
   }
 )";
 

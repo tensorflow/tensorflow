@@ -87,7 +87,7 @@ tensorflow::Status AddModel(
   TF_RETURN_IF_ERROR(Add(ctx, inputs, absl::MakeSpan(add_outputs)));
 
   outputs[0] = add_outputs[0];
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::AbstractContext* BuildFunction(const char* fn_name) {
@@ -110,7 +110,7 @@ tensorflow::Status CreateParamsForInputs(
             input->DataType(), shape, &handle));
     params->emplace_back(handle);
   }
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 using Model = std::function<tensorflow::Status(
@@ -147,7 +147,7 @@ tensorflow::Status PrepareFunction(
   }
   TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
 
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status BuildImmediateExecutionContext(
@@ -159,7 +159,7 @@ tensorflow::Status BuildImmediateExecutionContext(
   *ctx = tensorflow::unwrap(TF_NewEagerExecutionContext(opts, status.get()));
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(status.get()));
   TFE_DeleteContextOptions(opts);
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 tensorflow::Status TestScalarTensorHandle(
@@ -173,7 +173,7 @@ tensorflow::Status TestScalarTensorHandle(
   TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
   *tensor = tensorflow::unwrap(
       TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return tensorflow::Status::OK();
+  return ::tensorflow::OkStatus();
 }
 
 TEST_P(CppTests, TestFunctionCacheWithAdd) {
@@ -231,15 +231,16 @@ TEST_P(CppTests, TestFunctionCacheWithAdd) {
                      .build();
   ExecutionContext exec_ctx(std::move(*req_ctx));
 
-  auto request_ctx_fn = [host = corert->GetHostContext()](
-                            tensorflow::tfd::OpKernelRunnerTable* runner_table,
-                            RCReference<RequestContext>* request_ctx) {
-    *request_ctx =
-        std::move(*RequestContextBuilder(host,
-                                         /*resource_context=*/nullptr)
-                       .build());
-    return Status::OK();
-  };
+  auto request_ctx_fn =
+      [host = corert->GetHostContext()](
+          tensorflow::tfrt_stub::OpKernelRunnerTable* runner_table,
+          RCReference<RequestContext>* request_ctx) {
+        *request_ctx =
+            std::move(*RequestContextBuilder(host,
+                                             /*resource_context=*/nullptr)
+                           .build());
+        return ::tensorflow::OkStatus();
+      };
 
   // Inserts a new cache entry.
   FunctionCache::FunctionCacheResult result;

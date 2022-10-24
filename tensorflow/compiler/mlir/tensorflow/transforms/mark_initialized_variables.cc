@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Threading.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
@@ -47,9 +48,8 @@ bool IsVariableInitialized(mlir::TF::VarHandleOp var_handle_op,
   return is_initialized;
 }
 
-LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
-                                                 tensorflow::Session* session,
-                                                 mlir::MLIRContext* context) {
+LogicalResult MarkInitializedVariablesInFunction(func::FuncOp function,
+                                                 tensorflow::Session* session) {
   if (!session || !llvm::hasSingleElement(function)) return success();
   Block& block = function.front();
 
@@ -69,6 +69,7 @@ LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
   if (!resource_tensors_or.ok())
     return function->emitError(resource_tensors_or.status().message().data());
 
+  MLIRContext* context = function.getContext();
   for (auto var_and_tensor : llvm::zip(var_ops, resource_tensors_or.value())) {
     auto& var_op = std::get<0>(var_and_tensor);
     auto& resource_tensor = std::get<1>(var_and_tensor);
@@ -85,5 +86,16 @@ LogicalResult MarkInitializedVariablesInFunction(FuncOp function,
   }
   return success();
 }
+
+LogicalResult MarkInitializedVariablesInFunction(ModuleOp module,
+                                                 tensorflow::Session* session) {
+  auto functions_range = module.getOps<func::FuncOp>();
+  return mlir::failableParallelForEach(
+      module.getContext(), functions_range.begin(), functions_range.end(),
+      [&](func::FuncOp function) {
+        return MarkInitializedVariablesInFunction(function, session);
+      });
+}
+
 }  // namespace tf_saved_model
 }  // namespace mlir

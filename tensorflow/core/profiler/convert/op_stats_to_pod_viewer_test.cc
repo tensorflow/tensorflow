@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
-#include "tensorflow/core/profiler/utils/time_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -90,26 +90,24 @@ TEST(OpStatsToPodViewer, GpuPodViewer) {
   const PodStatsRecord& record = pod_stats_map.pod_stats_per_core().at(kCoreId);
   EXPECT_EQ(kStepNum, record.step_num());
   EXPECT_EQ(kHostname, record.host_name());
-  EXPECT_NEAR(PicosToMicros(kStepTimePs), record.total_duration_us(),
-              kMaxError);
+  EXPECT_NEAR(PicoToMicro(kStepTimePs), record.total_duration_us(), kMaxError);
   const auto& breakdown = record.step_breakdown_us();
-  EXPECT_NEAR(PicosToMicros(kDeviceCompute32Ps + kDeviceCompute16Ps),
+  EXPECT_NEAR(PicoToMicro(kDeviceCompute32Ps + kDeviceCompute16Ps),
               breakdown.at(kDeviceCompute), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceToDevicePs + kDeviceWaitDevicePs),
+  EXPECT_NEAR(PicoToMicro(kDeviceToDevicePs + kDeviceWaitDevicePs),
               breakdown.at(kDeviceToDevice), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceCollectivePs),
+  EXPECT_NEAR(PicoToMicro(kDeviceCollectivePs),
               breakdown.at(kDeviceCollectives), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostComputePs), breakdown.at(kHostCompute),
+  EXPECT_NEAR(PicoToMicro(kHostComputePs), breakdown.at(kHostCompute),
               kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostPreparePs), breakdown.at(kHostPrepare),
+  EXPECT_NEAR(PicoToMicro(kHostPreparePs), breakdown.at(kHostPrepare),
               kMaxError);
   EXPECT_NEAR(
-      PicosToMicros(kHostWaitInputPs + kHostToDevicePs + kDeviceWaitHostPs),
+      PicoToMicro(kHostWaitInputPs + kHostToDevicePs + kDeviceWaitHostPs),
       breakdown.at(kInput), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kDeviceToHostPs), breakdown.at(kOutput), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kHostCompilePs), breakdown.at(kCompile), kMaxError);
-  EXPECT_NEAR(PicosToMicros(kUnknownTimePs), breakdown.at(kAllOthers),
-              kMaxError);
+  EXPECT_NEAR(PicoToMicro(kDeviceToHostPs), breakdown.at(kOutput), kMaxError);
+  EXPECT_NEAR(PicoToMicro(kHostCompilePs), breakdown.at(kCompile), kMaxError);
+  EXPECT_NEAR(PicoToMicro(kUnknownTimePs), breakdown.at(kAllOthers), kMaxError);
 
   EXPECT_EQ(GetGenericEventTypeStr(kDeviceCollectives), record.bottleneck());
 }

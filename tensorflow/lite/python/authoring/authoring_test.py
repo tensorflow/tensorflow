@@ -82,8 +82,27 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         "model conversion for TensorFlow Lite. "
         "https://www.tensorflow.org/lite/guide/ops_select", log_messages)
 
-  def test_compatibility_error(self):
+  def test_compatibility_error_generic(self):
     @authoring.compatible
+    @tf.function
+    def f():
+      dataset = tf.data.Dataset.range(3)
+      dataset = dataset.shuffle(3, reshuffle_each_iteration=True)
+      return dataset
+
+    f()
+    log_messages = f.get_compatibility_log()
+    self.assertIn(
+        "COMPATIBILITY ERROR: failed to legalize operation 'tf.RangeDataset' "
+        "that was explicitly marked illegal", log_messages)
+
+  def test_compatibility_error_custom(self):
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    @authoring.compatible(converter_target_spec=target_spec)
     @tf.function
     def f():
       dataset = tf.data.Dataset.range(3)
@@ -221,8 +240,6 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         "DummySeedGenerator"
     ]
     @authoring.compatible(converter_target_spec=target_spec)
-
-    @authoring.compatible(converter_target_spec=target_spec)
     @tf.function
     def f():
       dataset = tf.data.Dataset.range(3)
@@ -238,7 +255,13 @@ class TFLiteAuthoringTest(tf.test.TestCase):
         log_messages)
 
   def test_allow_custom_ops(self):
-    @authoring.compatible(converter_allow_custom_ops=True)
+    target_spec = tf.lite.TargetSpec()
+    target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    @authoring.compatible(
+        converter_allow_custom_ops=True, converter_target_spec=target_spec)
     @tf.function
     def f():
       dataset = tf.data.Dataset.range(3)

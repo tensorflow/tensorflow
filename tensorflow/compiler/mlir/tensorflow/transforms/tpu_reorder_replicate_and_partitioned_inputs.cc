@@ -18,16 +18,18 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
 
+#define GEN_PASS_DEF_TPUREORDERREPLICATEANDPARTITIONEDINPUTSPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUReorderReplicateAndPartitionedInputsPass
-    : public TF::TPUReorderReplicateAndPartitionedInputsPassBase<
+    : public impl::TPUReorderReplicateAndPartitionedInputsPassBase<
           TPUReorderReplicateAndPartitionedInputsPass> {
-  void runOnFunction() override;
+  void runOnOperation() override;
 };
 
 LogicalResult ReorderReplicateAndPartitionedInputs(
@@ -38,10 +40,6 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
       }))
     return replicated_input.emitOpError()
            << "expects all inputs from 'tf.TPUPartitionedInput' ops";
-
-  if (replicated_input.index() != -1)
-    return replicated_input->emitOpError()
-           << "unsupported index = " << replicated_input.index();
 
   auto first_partitioned_input = llvm::cast<TF::TPUPartitionedInputOp>(
       replicated_input.getOperand(0).getDefiningOp());
@@ -105,9 +103,9 @@ LogicalResult ReorderReplicateAndPartitionedInputs(
   return success();
 }
 
-void TPUReorderReplicateAndPartitionedInputsPass::runOnFunction() {
+void TPUReorderReplicateAndPartitionedInputsPass::runOnOperation() {
   auto result =
-      getFunction()->walk([](TF::TPUReplicatedInputOp replicated_input) {
+      getOperation()->walk([](TF::TPUReplicatedInputOp replicated_input) {
         if (llvm::none_of(replicated_input.inputs(), [](Value input) {
               return llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(
                   input.getDefiningOp());
@@ -126,14 +124,14 @@ void TPUReorderReplicateAndPartitionedInputsPass::runOnFunction() {
     return;
   }
 
-  getFunction()->walk([](TF::TPUPartitionedInputOp partitioned_input) {
+  getOperation()->walk([](TF::TPUPartitionedInputOp partitioned_input) {
     if (partitioned_input->use_empty()) partitioned_input->erase();
   });
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<func::FuncOp>>
 CreateTPUReorderReplicateAndPartitionedInputsPass() {
   return std::make_unique<TPUReorderReplicateAndPartitionedInputsPass>();
 }

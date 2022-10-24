@@ -398,7 +398,12 @@ void TestSomeGemm(int rows, int depth, int cols,
       use_golden ? cpu_backend_gemm::Order::kRowMajor : random_order();
   lhs_params.rows = rows;
   lhs_params.cols = depth;
-  if (!std::is_floating_point<LhsScalar>::value) {
+  // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
+  // zero_point as 0 because int16 might cause overflow in acuum int32.
+  // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
+  if (!std::is_floating_point<LhsScalar>::value &&
+      (!std::is_same<LhsScalar, int8_t>::value &&
+       !std::is_same<RhsScalar, int16_t>::value)) {
     lhs_params.zero_point = 1;
     if (!use_golden) {
       lhs_params.zero_point += random_engine() % 8;
@@ -410,7 +415,12 @@ void TestSomeGemm(int rows, int depth, int cols,
       use_golden ? cpu_backend_gemm::Order::kColMajor : random_order();
   rhs_params.rows = depth;
   rhs_params.cols = cols;
-  if (!std::is_floating_point<RhsScalar>::value) {
+  // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
+  // zero_point as 0 because int16 might cause overflow in acuum int32.
+  // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
+  if (!std::is_floating_point<RhsScalar>::value &&
+      (!std::is_same<LhsScalar, int8_t>::value &&
+       !std::is_same<RhsScalar, int16_t>::value)) {
     rhs_params.zero_point = 1;
     if (!use_golden) {
       rhs_params.zero_point += random_engine() % 8;
@@ -422,7 +432,12 @@ void TestSomeGemm(int rows, int depth, int cols,
       use_golden ? cpu_backend_gemm::Order::kColMajor : random_order();
   dst_params.rows = rows;
   dst_params.cols = cols;
-  if (!std::is_floating_point<DstScalar>::value) {
+  // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
+  // zero_point as 0 because int16 might cause overflow in acuum int32.
+  // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
+  if (!std::is_floating_point<DstScalar>::value &&
+      (!std::is_same<LhsScalar, int8_t>::value &&
+       !std::is_same<RhsScalar, int16_t>::value)) {
     dst_params.zero_point = 1;
     if (!use_golden) {
       dst_params.zero_point += random_engine() % 8;
@@ -527,7 +542,12 @@ void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = lhs_rows;
   lhs_params.cols = lhs_cols;
-  if (!std::is_floating_point<LhsScalar>::value) {
+  // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
+  // zero_point as 0 because int16 might cause overflow in acuum int32.
+  // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
+  if (!std::is_floating_point<LhsScalar>::value &&
+      (!std::is_same<LhsScalar, int8_t>::value &&
+       !std::is_same<RhsScalar, int16_t>::value)) {
     lhs_params.zero_point = 1;
   }
 
@@ -535,7 +555,12 @@ void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
   rhs_params.rows = rhs_rows;
   rhs_params.cols = rhs_cols;
-  if (!std::is_floating_point<RhsScalar>::value) {
+  // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
+  // zero_point as 0 because int16 might cause overflow in acuum int32.
+  // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
+  if (!std::is_floating_point<RhsScalar>::value &&
+      (!std::is_same<LhsScalar, int8_t>::value &&
+       !std::is_same<RhsScalar, int16_t>::value)) {
     rhs_params.zero_point = 1;
   }
 
@@ -543,7 +568,12 @@ void TestMaybeValidGemm(int lhs_rows, int lhs_cols, int rhs_rows, int rhs_cols,
   dst_params.order = cpu_backend_gemm::Order::kColMajor;
   dst_params.rows = dst_rows;
   dst_params.cols = dst_cols;
-  if (!std::is_floating_point<DstScalar>::value) {
+  // 16x8 quant only supports RUY path. For Ruy 16x8 gemm, it restricts
+  // zero_point as 0 because int16 might cause overflow in acuum int32.
+  // https://github.com/google/ruy/blob/master/ruy/validate.h#L53-L57
+  if (!std::is_floating_point<DstScalar>::value &&
+      (!std::is_same<LhsScalar, int8_t>::value &&
+       !std::is_same<RhsScalar, int16_t>::value)) {
     dst_params.zero_point = 1;
   }
 
@@ -636,6 +666,7 @@ typedef ::testing::Types<
     TypesTuple<std::uint8_t, std::uint8_t, std::int32_t, std::uint8_t>,
     TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int8_t>,
     TypesTuple<std::int8_t, std::int8_t, std::int32_t, std::int16_t>,
+    TypesTuple<std::int8_t, std::int16_t, std::int32_t, std::int16_t>,
     TypesTuple<std::uint8_t, std::uint8_t, std::int32_t, std::int8_t>>
     CpuBackendGemmTestInstantiations;
 

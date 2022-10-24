@@ -28,6 +28,7 @@ limitations under the License.
 #include "tfrt/common/compat/eigen/thread_pool_device.h"  // from @tf_runtime
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
@@ -64,17 +65,14 @@ bool KernelFallbackExecute(
   for (AsyncValue* input : arguments) {
     inputs.push_back(FormRef(input));
   }
-  llvm::SmallVector<RCReference<AsyncValue>, 4> outputs;
-  inputs.reserve(results.size());
-  for (auto& output : results) {
-    outputs.push_back(output.CopyRef());
-  }
+  llvm::SmallVector<RCReference<AsyncValue>, 4> outputs(results.begin(),
+                                                        results.end());
 
   // Always run TFRTOpKernel::Compute on the blocking thread pool to
   // avoid deadlock. Many TF kernels block until their intra-op closures
   // complete.
   bool work_enqueued = EnqueueBlockingWork(
-      exec_ctx,
+      exec_ctx.host(),
       [exec_ctx, inputs = std::move(inputs), outputs = std::move(outputs),
        op_name_str = std::move(op_name_str), attrs = attrs.freeze(),
        output_type = output_type]() mutable {
@@ -84,7 +82,7 @@ bool KernelFallbackExecute(
                 op_name_str, &op_kernel_construction);
 
         // Forward kernel construction error.
-        if (op_kernel_construction.error().hasValue()) {
+        if (op_kernel_construction.error().has_value()) {
           SetError(exec_ctx, &outputs,
                    op_kernel_construction.error().getValue());
           return;
@@ -103,7 +101,7 @@ bool KernelFallbackExecute(
         op->Compute(&op_kernel_context);
 
         // Forward the context's error or outputs to raii_frame.
-        if (op_kernel_context.error().hasValue()) {
+        if (op_kernel_context.error().has_value()) {
           SetError(exec_ctx, &outputs, op_kernel_context.error().getValue());
           return;
         } else {

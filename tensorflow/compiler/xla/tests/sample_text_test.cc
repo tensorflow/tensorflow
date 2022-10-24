@@ -16,26 +16,25 @@ limitations under the License.
 // This demonstrates how to use hlo_test_base to create textual IR based
 // testcases.
 
+#include <optional>
 #include <string>
 #include <vector>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
 
-using absl::nullopt;
+using std::nullopt;
 
 class SampleTextTest : public HloTestBase {};
 
 TEST_F(SampleTextTest, Axpy) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule axpy_module:
 ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
   %alpha = f32[] parameter(0)
@@ -50,7 +49,7 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 }
 
 TEST_F(SampleTextTest, Tuple) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TupleCreate_module:
 ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
   %v1 = f32[] parameter(0)

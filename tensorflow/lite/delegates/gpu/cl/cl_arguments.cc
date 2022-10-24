@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
@@ -23,9 +25,8 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
-#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
+#include "tensorflow/lite/delegates/gpu/cl/qcom_thin_filter.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
-#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
@@ -52,70 +53,6 @@ void ReplaceAllWords(const std::string& old_word, const std::string& new_word,
     str->replace(position, old_word.size(), new_word);
     position = str->find(old_word, position + new_word.size());
   }
-}
-
-std::string GetNextWord(const std::string& code, size_t first_position) {
-  size_t pos = first_position;
-  char t = code[pos];
-  while (IsWordSymbol(t)) {
-    pos++;
-    t = code[pos];
-  }
-  return code.substr(first_position, pos - first_position);
-}
-
-size_t FindEnclosingBracket(const std::string& text, size_t first_pos,
-                            char bracket) {
-  const std::map<char, char> brackets = {
-      {'(', ')'},
-      {'{', '}'},
-      {'[', ']'},
-      {'<', '>'},
-  };
-  char b_open = bracket;
-  auto it = brackets.find(b_open);
-  if (it == brackets.end()) {
-    return -1;
-  }
-  char b_close = it->second;
-  size_t pos = first_pos;
-  int opened = 1;
-  int closed = 0;
-  while (opened != closed && pos < text.size()) {
-    if (text[pos] == b_open) {
-      opened++;
-    } else if (text[pos] == b_close) {
-      closed++;
-    }
-    pos++;
-  }
-  if (opened == closed) {
-    return pos;
-  } else {
-    return -1;
-  }
-}
-
-absl::Status ParseArgsInsideBrackets(const std::string& text,
-                                     size_t open_bracket_pos,
-                                     size_t* close_bracket_pos,
-                                     std::vector<std::string>* args) {
-  *close_bracket_pos =
-      FindEnclosingBracket(text, open_bracket_pos + 1, text[open_bracket_pos]);
-  if (*close_bracket_pos == -1) {
-    return absl::NotFoundError("Not found enclosing bracket");
-  }
-  std::string str_args = text.substr(open_bracket_pos + 1,
-                                     *close_bracket_pos - open_bracket_pos - 2);
-  std::vector<absl::string_view> words = absl::StrSplit(str_args, ',');
-  args->reserve(words.size());
-  for (const auto& word : words) {
-    absl::string_view arg = absl::StripAsciiWhitespace(word);
-    if (!arg.empty()) {
-      args->push_back(std::string(arg));
-    }
-  }
-  return absl::OkStatus();
 }
 
 void AppendArgument(const std::string& arg, std::string* args) {
@@ -170,25 +107,7 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     Buffer gpu_buffer;
     RETURN_IF_ERROR(
         gpu_buffer.CreateFromBufferDescriptor(*buffer_desc, context));
-    *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
-    return absl::OkStatus();
-  }
-
-  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(desc);
-  if (texture_desc) {
-    Texture2D gpu_texture;
-    RETURN_IF_ERROR(
-        gpu_texture.CreateFromTexture2DDescriptor(*texture_desc, context));
-    *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
-    return absl::OkStatus();
-  }
-
-  const auto* linear_desc = dynamic_cast<const TensorLinearDescriptor*>(desc);
-  if (linear_desc) {
-    LinearStorage gpu_storage;
-    RETURN_IF_ERROR(
-        gpu_storage.CreateFromTensorLinearDescriptor(*linear_desc, context));
-    *result = absl::make_unique<LinearStorage>(std::move(gpu_storage));
+    *result = std::make_unique<Buffer>(std::move(gpu_buffer));
     return absl::OkStatus();
   }
 
@@ -196,7 +115,17 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
   if (tensor_desc) {
     Tensor gpu_tensor;
     RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, context));
-    *result = absl::make_unique<Tensor>(std::move(gpu_tensor));
+    *result = std::make_unique<Tensor>(std::move(gpu_tensor));
+    return absl::OkStatus();
+  }
+
+  const auto* qcom_thin_filter_desc =
+      dynamic_cast<const QcomThinFilterDescriptor*>(desc);
+  if (qcom_thin_filter_desc) {
+    QcomThinFilter thin_filter;
+    RETURN_IF_ERROR(
+        thin_filter.CreateFromDescriptor(*qcom_thin_filter_desc, context));
+    *result = std::make_unique<QcomThinFilter>(std::move(thin_filter));
     return absl::OkStatus();
   }
 
@@ -208,20 +137,16 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
 // Static
 constexpr char CLArguments::kArgsPrefix[];
 
-absl::Status CLArguments::Init(
-    const GpuInfo& gpu_info,
-    const std::map<std::string, std::string>& linkables, CLContext* context,
-    Arguments* args, std::string* code) {
+absl::Status CLArguments::Init(const GpuInfo& gpu_info, CLContext* context,
+                               Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
-  RETURN_IF_ERROR(AddObjectArgs(gpu_info, args));
-  RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, *args, linkables, code));
-  object_refs_ = std::move(args->object_refs_);
-  args->GetActiveArguments(kArgsPrefix, *code);
+  RETURN_IF_ERROR(AddObjectArgs(gpu_info, *args));
+  args->MoveObjectRefs(&object_refs_);
   const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   RenameArgumentsInCode(code);
-  ResolveArgsPass(code);
+  args->ResolveArgsPass(code);
   *code = absl::Substitute(*code, GetListOfArgs());
   if (gpu_info.SupportsImages()) {
     *code = GetDefaultSamplers(gpu_info) + *code;
@@ -232,8 +157,8 @@ absl::Status CLArguments::Init(
 absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
                                CLContext* context) {
   RETURN_IF_ERROR(AllocateObjects(*args, context));
-  RETURN_IF_ERROR(AddObjectArgs(gpu_info, args));
-  object_refs_ = std::move(args->object_refs_);
+  RETURN_IF_ERROR(AddObjectArgs(gpu_info, *args));
+  args->MoveObjectRefs(&object_refs_);
   const bool use_f32_for_halfs = gpu_info.IsPowerVR();
   CopyArguments(*args, use_f32_for_halfs);
   RETURN_IF_ERROR(SetObjectsResources(*args));
@@ -242,9 +167,9 @@ absl::Status CLArguments::Init(const GpuInfo& gpu_info, Arguments* args,
 
 absl::Status CLArguments::AllocateObjects(const Arguments& args,
                                           CLContext* context) {
-  objects_.resize(args.objects_.size());
+  objects_.resize(args.GetObjects().size());
   int i = 0;
-  for (auto& t : args.objects_) {
+  for (auto& t : args.GetObjects()) {
     RETURN_IF_ERROR(CreateCLObject(t.second.get(), context, &objects_[i]));
     i++;
   }
@@ -252,19 +177,19 @@ absl::Status CLArguments::AllocateObjects(const Arguments& args,
 }
 
 absl::Status CLArguments::AddObjectArgs(const GpuInfo& gpu_info,
-                                        Arguments* args) {
-  for (auto& t : args->objects_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
+                                        const Arguments& args) {
+  for (const auto& t : args.GetObjects()) {
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info));
   }
-  for (auto& t : args->object_refs_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info), args);
+  for (const auto& t : args.GetObjectRefs()) {
+    AddGPUResources(t.first, t.second->GetGPUResources(gpu_info));
   }
   return absl::OkStatus();
 }
 
 absl::Status CLArguments::SetObjectsResources(const Arguments& args) {
   int i = 0;
-  for (const auto& t : args.objects_) {
+  for (const auto& t : args.GetObjects()) {
     GPUResourcesWithValue resources;
     RETURN_IF_ERROR(objects_[i]->GetGPUResources(t.second.get(), &resources));
     RETURN_IF_ERROR(SetGPUResources(t.first, resources));
@@ -273,134 +198,8 @@ absl::Status CLArguments::SetObjectsResources(const Arguments& args) {
   return absl::OkStatus();
 }
 
-absl::Status CLArguments::ResolveSelectorsPass(
-    const GpuInfo& gpu_info, const Arguments& args,
-    const std::map<std::string, std::string>& linkables, std::string* code) {
-  std::string result;
-  size_t position = 0;
-  size_t next_position = code->find(kArgsPrefix);
-  while (next_position != std::string::npos) {
-    size_t arg_pos = next_position;
-    next_position += strlen(kArgsPrefix);
-    std::string object_name = GetNextWord(*code, next_position);
-    char next = (*code)[next_position + object_name.size()];
-    if (next == '.') {
-      next_position += object_name.size() + 1;
-      std::string selector_name = GetNextWord(*code, next_position);
-      next_position += selector_name.size();
-      next = (*code)[next_position];
-      std::vector<std::string> template_args;
-      if (next == '<') {
-        size_t close_bracket_pos;
-        RETURN_IF_ERROR(ParseArgsInsideBrackets(
-            *code, next_position, &close_bracket_pos, &template_args));
-        next_position = close_bracket_pos;
-        next = (*code)[next_position];
-      }
-      if (next != '(') {
-        return absl::NotFoundError(absl::StrCat(
-            "Expected ( after ", object_name, ".", selector_name, " call"));
-      }
-      std::vector<std::string> function_args;
-      size_t close_bracket_pos;
-      RETURN_IF_ERROR(ParseArgsInsideBrackets(
-          *code, next_position, &close_bracket_pos, &function_args));
-      for (auto& arg : function_args) {
-        RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, {}, &arg));
-      }
-      std::string patch;
-      RETURN_IF_ERROR(ResolveSelector(gpu_info, args, linkables, object_name,
-                                      selector_name, function_args,
-                                      template_args, &patch));
-      code->replace(arg_pos, close_bracket_pos - arg_pos, patch);
-      position = arg_pos + patch.size();
-    } else {
-      position = arg_pos + strlen(kArgsPrefix);
-    }
-    next_position = code->find(kArgsPrefix, position);
-  }
-  return absl::OkStatus();
-}
-
-void CLArguments::ResolveObjectNames(
-    const std::string& object_name,
-    const std::vector<std::string>& member_names, std::string* code) {
-  for (const auto& member_name : member_names) {
-    const std::string new_name = kArgsPrefix + object_name + "_" + member_name;
-    ReplaceAllWords(member_name, new_name, code);
-  }
-}
-
-absl::Status CLArguments::ResolveSelector(
-    const GpuInfo& gpu_info, const Arguments& args,
-    const std::map<std::string, std::string>& linkables,
-    const std::string& object_name, const std::string& selector,
-    const std::vector<std::string>& function_args,
-    const std::vector<std::string>& template_args, std::string* result) {
-  GPUObjectDescriptor* desc_ptr;
-  RETURN_IF_ERROR(args.GetDescriptor(object_name, &desc_ptr));
-  auto names = desc_ptr->GetGPUResources(gpu_info).GetNames();
-  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
-    auto it = linkables.find(object_name);
-    if (it != linkables.end()) {
-      if (desc_ptr->GetAccess() != AccessType::WRITE &&
-          desc_ptr->GetAccess() != AccessType::READ_WRITE) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Object with name - ", object_name, " should have Write access."));
-      }
-      std::string value_name, x_coord, y_coord, s_coord;
-      RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
-          function_args, &value_name, &x_coord, &y_coord, &s_coord));
-      // x_coord can have batch size property of link_object
-      ResolveObjectNames(object_name, names, &x_coord);
-      *result = it->second;
-      ReplaceAllWords("in_out_value", value_name, result);
-      ReplaceAllWords("X_COORD", x_coord, result);
-      ReplaceAllWords("Y_COORD", y_coord, result);
-      ReplaceAllWords("S_COORD", s_coord, result);
-      RETURN_IF_ERROR(ResolveSelectorsPass(gpu_info, args, {}, result));
-      if (selector == "Linking") {
-        return absl::OkStatus();
-      }
-    }
-  }
-  std::string patch;
-  RETURN_IF_ERROR(desc_ptr->PerformSelector(gpu_info, selector, function_args,
-                                            template_args, &patch));
-  ResolveObjectNames(object_name, names, &patch);
-  *result += patch;
-  return absl::OkStatus();
-}
-
-void CLArguments::ResolveArgsPass(std::string* code) {
-  size_t position = 0;
-  size_t next_position = code->find(kArgsPrefix);
-  while (next_position != std::string::npos) {
-    size_t arg_pos = next_position;
-    next_position += strlen(kArgsPrefix);
-    std::string object_name = GetNextWord(*code, next_position);
-    std::string new_name = object_name;
-    code->replace(arg_pos, object_name.size() + strlen(kArgsPrefix), new_name);
-    position = arg_pos + new_name.size();
-    next_position = code->find(kArgsPrefix, position);
-  }
-}
-
-void CLArguments::CopyScalarValues(Arguments* args) const {
-  for (const auto& fvalue : float_values_) {
-    args->float_values_[fvalue.first].value = fvalue.second.value;
-  }
-  for (const auto& ivalue : int_values_) {
-    args->int_values_[ivalue.first].value = ivalue.second.value;
-  }
-  for (const auto& hfvalue : half_values_) {
-    args->half_values_[hfvalue.first].value = hfvalue.second.value;
-  }
-}
-
 void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {
-  for (const auto& fvalue : args.float_values_) {
+  for (const auto& fvalue : args.GetFloatValues()) {
     auto& new_val = float_values_[fvalue.first];
     new_val.value = fvalue.second.value;
     new_val.active = fvalue.second.active;
@@ -409,7 +208,7 @@ void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {
       shared_float4s_data_.push_back(new_val.value);
     }
   }
-  for (const auto& ivalue : args.int_values_) {
+  for (const auto& ivalue : args.GetIntValues()) {
     auto& new_val = int_values_[ivalue.first];
     new_val.value = ivalue.second.value;
     new_val.active = ivalue.second.active;
@@ -418,7 +217,7 @@ void CLArguments::CopyArguments(const Arguments& args, bool use_f32_for_halfs) {
       shared_int4s_data_.push_back(new_val.value);
     }
   }
-  for (const auto& hfvalue : args.half_values_) {
+  for (const auto& hfvalue : args.GetHalfValues()) {
     auto& new_val = half_values_[hfvalue.first];
     new_val.value = hfvalue.second.value;
     new_val.active = hfvalue.second.active;
@@ -506,14 +305,7 @@ void CLArguments::AddCustomMemory(const std::string& name,
 }
 
 void CLArguments::AddGPUResources(const std::string& name,
-                                  const GPUResources& resources,
-                                  Arguments* args) {
-  for (const auto& r : resources.ints) {
-    args->AddInt(absl::StrCat(name, "_", r));
-  }
-  for (const auto& r : resources.floats) {
-    args->AddFloat(absl::StrCat(name, "_", r));
-  }
+                                  const GPUResources& resources) {
   for (const auto& r : resources.buffers) {
     AddBuffer(absl::StrCat(name, "_", r.first), r.second);
   }
@@ -653,10 +445,10 @@ absl::Status CLArguments::SetObjectRef(const std::string& name,
 
 absl::Status CLArguments::SetGPUResources(
     const std::string& name, const GPUResourcesWithValue& resources) {
-  for (const auto& r : resources.ints) {
+  for (const auto& r : resources.generic.ints) {
     RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
   }
-  for (const auto& r : resources.floats) {
+  for (const auto& r : resources.generic.floats) {
     RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
   }
   for (const auto& r : resources.buffers) {
@@ -691,12 +483,16 @@ std::string CLArguments::GetListOfArgs() {
     for (const auto& attr : t.second.desc.attributes) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
-    AppendArgument(
-        absl::StrCat(
-            MemoryTypeToCLType(t.second.desc.memory_type), " ",
-            ToCLDataType(t.second.desc.data_type, t.second.desc.element_size),
-            "* ", t.first, attributes),
-        &result);
+    std::string cl_type;
+    if (t.second.desc.data_type == DataType::BOOL) {
+      cl_type = ToCLDataType(DataType::UINT8, t.second.desc.element_size);
+    } else {
+      cl_type =
+          ToCLDataType(t.second.desc.data_type, t.second.desc.element_size);
+    }
+    AppendArgument(absl::StrCat(MemoryTypeToCLType(t.second.desc.memory_type),
+                                " ", cl_type, "* ", t.first, attributes),
+                   &result);
   }
   for (auto& t : image_buffers_) {
     AppendArgument(absl::StrCat(GetImageModifier(t.second.desc.access_type),

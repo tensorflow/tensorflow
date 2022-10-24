@@ -17,20 +17,6 @@ include "mlir/Pass/PassBase.td"
 
 // TF SavedModel dialect passes.
 
-def SavedModelLiftVariablePass : Pass<"tf-savedmodel-lift-variable-pass",
-    "ModuleOp"> {
-  let summary = "Convert function arguments to global tensors";
-
-  let description = [{
-    This pass takes care of finding all variables from the function arguments
-    and converting them to the corresponding global tensors, that will be
-    located out of function. Also it converts resource arguments from function
-    types to the corresponding saved model arguments accordingly.
-  }];
-
-  let constructor = "::mlir::tf_saved_model::CreateLiftVariablesPass(nullptr)";
-}
-
 def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "ModuleOp"> {
   let summary = "Freeze tf_saved_model.global_tensor's in func bodies.";
 
@@ -56,4 +42,93 @@ def FreezeGlobalTensorsPass : Pass<"tf-saved-model-freeze-global-tensors", "Modu
     Option<"allow_mutable_tensors", "allow-mutable-tensors", "bool", /*default=*/"false",
            "Allows mutable tensors to be in the graph.">
   ];
+}
+
+def OptimizeGlobalTensorsPass : Pass<"tf-saved-model-optimize-global-tensors", "ModuleOp"> {
+  let summary = "Optimize tf_saved_model.global_tensor's.";
+
+  let constructor = "mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass()";
+}
+
+def RemoveVariablesInSessionInitializerPass : Pass<"tf-saved-model-remove-vars-in-session-initializer", "ModuleOp"> {
+  let summary = "Remove variables in tf saved model's session initializer.";
+
+  let constructor = "mlir::tf_saved_model::CreateRemoveVariablesInSessionInitializerPass()";
+}
+
+def FreezeAssetsPass : Pass<"tf-saved-model-freeze-assets", "ModuleOp"> {
+  let summary = "Freeze tf_saved_model.asset's in func bodies.";
+  let constructor = "mlir::tf_saved_model::CreateFreezeAssetsPass()";
+}
+
+def DedupBoundInputBindingPass : Pass<"tf-saved-model-dedup-bound-input-binding-pass", "mlir::func::FuncOp"> {
+  let summary = "Remove duplicate 'tf_saved_model.bound_input' bindings.";
+  let constructor = "mlir::tf_saved_model::CreateDedupBoundInputBindingPass()";
+}
+
+def LowerGlobalsToMlProgramPass: Pass<"tf-saved-model-lower-globals-to-mlprogram", "mlir::ModuleOp"> {
+  let summary = "Remove (and remap) function arguments that map to global tensors.";
+  let description = [{
+    This pass will lower AssignVariableOp and ReadVariableOp to their ml_program
+    equivalents, for those resources which stem from a "bound input" function argument
+    that maps to a GlobalTensorOp. The arguments in question will be removed.
+
+    So this will lower e.g.
+
+      func @f(%arg0 {tf_saved_model.bound_input = @v}) {
+        %0 = "tf.ReadVariableOp"(%arg0)
+        ...
+      }
+
+    to
+
+      func @f() {
+        %0 = ml_program.global_load @v
+        ...
+      }
+  }];
+  let constructor = "mlir::tf_saved_model::CreateLowerGlobalsToMlProgramPass()";
+}
+
+def LowerVariableOpsToMlProgramPass: Pass<"tf-saved-model-lower-variable-ops-to-mlprogram", "mlir::ModuleOp"> {
+  let summary = "Lower tf.ReadVariable and tf.AssignVariable";
+
+  let description = [{
+    This pass will lower AssignVariableOp and ReadVariableOp to their ml_program
+    equivalents, for those resources which come from a VarHandle op, but also
+    for those which come from a "bound input" parameter. For the latter,
+    said parameter will not be removed, unlike LowerGlobalsToMlProgramPass.
+
+    So this will lower e.g.
+
+      %0 = "tf.VarHandleOp" {name = "foo"}
+      %1 = "tf.ReadVariableOp"(%0)
+
+    to
+
+      %0 = ml_program.global_load @vars.foo
+  }];
+
+  let constructor = "::mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass()";
+}
+
+def StripSavedModuleMetadataPass : Pass<"tf-strip-saved-module-metadata", "ModuleOp"> {
+  let summary = "Removes saved_model attributes.";
+  let description = [{
+      Removes all saved_model attributes from a module and its functions.
+      This only removes attributes, saved_model ops will stay in place.
+
+      This pass is useful for pass pipelines that have already consumed
+      all the tf_saved_model information, and now want to do further
+      transformations without tf_saved_model's verifiers kicking in.
+
+      For example, this would remove the semantics attribute from module:
+
+        module attributes {tf_saved_model.semantics} [...]
+
+      so the result becomes just
+
+        module [...]
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateStripSavedModuleMetadataPass()";
 }

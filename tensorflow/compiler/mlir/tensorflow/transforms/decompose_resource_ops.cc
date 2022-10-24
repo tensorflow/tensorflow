@@ -18,38 +18,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/core/framework/rng_alg.h"
 
 namespace mlir {
 namespace TF {
 
 namespace {
-// Returns int, float or complex DenseElementsAttr with scalar shape with the
-// given element type and the integer value.
-static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-  if (auto float_ty = ty.dyn_cast<FloatType>()) {
-    FloatAttr attr = FloatAttr::get(float_ty, raw_value);
-    return DenseElementsAttr::get(scalar_ty, attr);
-  }
-
-  if (auto int_ty = ty.dyn_cast<IntegerType>()) {
-    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
-    return DenseElementsAttr::get(scalar_ty, attr);
-  }
-
-  if (auto complex_ty = ty.dyn_cast<ComplexType>()) {
-    Type complex_element_ty = complex_ty.getElementType();
-    if (complex_element_ty.isF32()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<float>>(raw_value));
-    } else if (complex_element_ty.isF64()) {
-      return DenseElementsAttr::get(
-          scalar_ty, static_cast<std::complex<double>>(raw_value));
-    }
-  }
-  llvm_unreachable("unsupported type");
-}
 
 // Returns subtype of `resource` if present. Otherwise an unranked tensor type
 // of `element_type` is returned.
@@ -127,12 +102,15 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
       return rewriter.notifyMatchFailure(op, "expected alg to be a scalar");
     }
 
-    uint64_t alg_value = ((*alg_constant.int_value_begin()).getZExtValue());
-    tensorflow::Algorithm alg;
+    uint64_t alg_value = ((*alg_constant.value_begin<APInt>()).getZExtValue());
+    tensorflow::ConcreteRngAlgorithm alg;
     if (tensorflow::RNG_ALG_PHILOX == alg_value) {
-      alg = tensorflow::RNG_ALG_PHILOX;
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_PHILOX;
     } else if (tensorflow::RNG_ALG_THREEFRY == alg_value) {
-      alg = tensorflow::RNG_ALG_THREEFRY;
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_THREEFRY;
+    } else if (tensorflow::RNG_ALG_AUTO_SELECT == alg_value) {
+      // For AUTO_SELECT, we'll manage the counter as if it's for Philox.
+      alg = tensorflow::ConcreteRngAlgorithm::RNG_ALG_PHILOX;
     } else {
       return rewriter.notifyMatchFailure(op, "unsupported alg");
     }
@@ -220,8 +198,8 @@ class DecomposeRngReadAndSkipOp : public RewritePattern {
 }  // namespace
 
 void PopulateDecomposeResourceOpsPatterns(MLIRContext *context,
-                                          OwningRewritePatternList *patterns) {
-  patterns->insert<DecomposeRngReadAndSkipOp>(context);
+                                          RewritePatternSet *patterns) {
+  patterns->add<DecomposeRngReadAndSkipOp>(context);
   populateWithGenerated(*patterns);
 }
 

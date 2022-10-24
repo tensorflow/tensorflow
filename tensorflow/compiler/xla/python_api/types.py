@@ -14,10 +14,6 @@
 # ======================================
 """Utilities for XLA-specific Python types."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 
 import numpy as _np  # Avoids becoming a part of public Tensorflow API.

@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for convert_to_constants.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 
@@ -61,8 +57,8 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model.load import load
 from tensorflow.python.saved_model.save import save
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.training.saver import export_meta_graph
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -173,7 +169,7 @@ class VariablesToConstantsTest(test.TestCase):
       root: AutoTrackable object with original ConcreteFunction.
       output_func: frozen ConcreteFunction.
     """
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     input_func = root.f.get_concrete_function()
 
@@ -203,7 +199,7 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Save the converted ConcreteFunction as a signature.
     save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = converted_concrete_func
     save(root, save_dir, {"mykey": converted_concrete_func})
 
@@ -217,7 +213,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testConstSavedModel(self):
     """Test a basic model with constants while saving/loading the SavedModel."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data["x"])
 
@@ -238,7 +234,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testVariableModel(self):
     """Test a basic model with Variables."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -255,7 +251,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testScalarModel(self):
     """Test a basic model with Variables."""
     input_data = {"x": constant_op.constant(1., shape=[])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -272,7 +268,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testVariableSavedModel(self):
     """Test a basic model with Variables with saving/loading the SavedModel."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -294,7 +290,7 @@ class VariablesToConstantsTest(test.TestCase):
   def testMultiFunctionModel(self):
     """Test a basic model with multiple tf.functions."""
 
-    class BasicModel(tracking.AutoTrackable):
+    class BasicModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.y = None
@@ -358,7 +354,7 @@ class VariablesToConstantsTest(test.TestCase):
     fn = imported.signatures["serving_default"]
 
     output_func = convert_to_constants.convert_variables_to_constants_v2(fn)
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     self._testConvertedFunction(root, fn, output_func, input_data)
 
   @test_util.run_v2_only
@@ -542,7 +538,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
       root: AutoTrackable object with original ConcreteFunction.
       output_func: frozen ConcreteFunction.
     """
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = func
     input_func = root.f.get_concrete_function()
 
@@ -572,7 +568,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
 
     # Save the converted ConcreteFunction as a signature.
     save_dir = os.path.join(self.get_temp_dir(), "frozen_saved_model")
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.f = converted_concrete_func
     save(root, save_dir, {"mykey": converted_concrete_func})
 
@@ -585,7 +581,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
   def testRaiseErrorInEagerMode(self):
     """Test the raised exception in Eager mode."""
     input_data = {"x": constant_op.constant(1., shape=[1])}
-    root = tracking.AutoTrackable()
+    root = autotrackable.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -601,7 +597,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.v1 = variables.Variable(3.)
         root.v2 = variables.Variable(2.)
         root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -620,7 +616,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.v1 = variables.Variable(3.)
         root.v2 = variables.Variable(2.)
         root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -648,7 +644,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.f = def_function.function(lambda x: 2. * x)
         to_save = root.f.get_concrete_function(input_data["x"])
 
@@ -670,7 +666,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
     with ops.Graph().as_default():
       with session_lib.Session() as sess:
         input_data = {"x": constant_op.constant(1., shape=[1])}
-        root = tracking.AutoTrackable()
+        root = autotrackable.AutoTrackable()
         root.v1 = variables.Variable(3.)
         root.v2 = variables.Variable(2.)
         root.f = def_function.function(lambda x: root.v1 * root.v2 * x)
@@ -692,7 +688,7 @@ class ConvertVariablesToConstantsV2SessionTest(test.TestCase):
   def testMultiFunctionModel(self):
     """Test a basic model with multiple tf.functions."""
 
-    class BasicModel(tracking.AutoTrackable):
+    class BasicModel(autotrackable.AutoTrackable):
 
       def __init__(self):
         self.y = None

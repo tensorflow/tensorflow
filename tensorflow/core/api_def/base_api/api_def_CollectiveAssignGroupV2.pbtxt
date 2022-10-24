@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "CollectiveAssignGroupV2"
+  summary: "Assign group keys based on group assignment."
+  visibility: HIDDEN
+}

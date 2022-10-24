@@ -72,7 +72,6 @@ class Benchmark {
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
   FunctionLibraryRuntime* flr_;  // Not owned.
   std::unique_ptr<Executor> exec_;
-  bool old_benchmark_api_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);
 };

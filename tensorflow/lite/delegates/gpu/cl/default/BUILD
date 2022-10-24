@@ -13,6 +13,11 @@ cc_library(
     srcs = ["recordable_queue.cc"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:recordable_queue",
-        "//tensorflow/lite/delegates/gpu/common:status",
     ],
+)
+
+cc_library(
+    name = "util",
+    srcs = ["util.cc"],
+    deps = ["//tensorflow/lite/delegates/gpu/cl:opencl_wrapper"],
 )

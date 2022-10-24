@@ -14,10 +14,6 @@
 # ==============================================================================
 """Locking related utils."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import threading
 
 
@@ -103,7 +99,7 @@ class GroupLock(object):
     self._ready.acquire()
     self._group_member_counts[group_id] -= 1
     if self._group_member_counts[group_id] == 0:
-      self._ready.notifyAll()
+      self._ready.notify_all()
     self._ready.release()
 
   def _another_group_active(self, group_id):

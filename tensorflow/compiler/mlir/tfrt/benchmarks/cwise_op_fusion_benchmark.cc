@@ -18,26 +18,26 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* dynamic_dims = R"(
-func @compute_dynamic(%arg0: tensor<?xf32>,
+func.func @compute_dynamic(%arg0: tensor<?xf32>,
                       %arg1: tensor<1xf32>,
                       %arg2: tensor<?xf32>) -> tensor<?xf32> {
     %0 = "tf.Mul"(%arg0, %arg1)
          : (tensor<?xf32>, tensor<1xf32>) -> tensor<?xf32>
     %1 = "tf.AddV2"(%0, %arg2)
          : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
-    return %1 : tensor<?xf32>
+    func.return %1 : tensor<?xf32>
 }
 )";
 
 static const char* static_dims = R"(
-func @compute_static(%arg0: tensor<1024xf32>,
+func.func @compute_static(%arg0: tensor<1024xf32>,
                      %arg1: tensor<1xf32>,
                      %arg2: tensor<1024xf32>) -> tensor<1024xf32> {
     %0 = "tf.Mul"(%arg0, %arg1)
          : (tensor<1024xf32>, tensor<1xf32>) -> tensor<1024xf32>
     %1 = "tf.AddV2"(%0, %arg2)
          : (tensor<1024xf32>, tensor<1024xf32>) -> tensor<1024xf32>
-    return %1 : tensor<1024xf32>
+    func.return %1 : tensor<1024xf32>
 }
 )";
 
@@ -49,7 +49,7 @@ static llvm::SmallVector<InputTensorSpec> Inputs() {
   };
 }
 
-BM_Mlir(ComputeDynamicDims, dynamic_dims, "compute_dynamic", Inputs())->Arg(0);
-BM_Mlir(ComputeStaticDims, static_dims, "compute_static", Inputs())->Arg(0);
+BM_Jitrt(ComputeDynamicDims, dynamic_dims, "compute_dynamic", Inputs())->Arg(0);
+BM_Jitrt(ComputeStaticDims, static_dims, "compute_static", Inputs())->Arg(0);
 
 }  // namespace tensorflow

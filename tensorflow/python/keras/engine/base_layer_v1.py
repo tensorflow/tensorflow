@@ -59,9 +59,9 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import autotrackable
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import nest
 from tensorflow.tools.docs import doc_controls
 
@@ -2165,7 +2165,7 @@ class Layer(base_layer.Layer):
     # other attributes referencing it.
     reference_counts = self._obj_reference_counts
     if existing_value not in reference_counts:
-      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
+      super(autotrackable.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
 
     reference_count = reference_counts[existing_value]
@@ -2173,24 +2173,24 @@ class Layer(base_layer.Layer):
       # There are other remaining references. We can't remove this object from
       # _layers etc.
       reference_counts[existing_value] = reference_count - 1
-      super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
+      super(autotrackable.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
       return
     else:
       # This is the last remaining reference.
       del reference_counts[existing_value]
 
-    super(tracking.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
+    super(autotrackable.AutoTrackable, self).__delattr__(name)  # pylint: disable=bad-super-call
 
     if (isinstance(existing_value, Layer)
         or base_layer_utils.has_weights(existing_value)):
-      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
+      super(autotrackable.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_self_tracked_trackables',
           [l for l in self._self_tracked_trackables if l is not existing_value])
     if isinstance(existing_value, tf_variables.Variable):
-      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
+      super(autotrackable.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_trainable_weights',
           [w for w in self._trainable_weights if w is not existing_value])
-      super(tracking.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
+      super(autotrackable.AutoTrackable, self).__setattr__(  # pylint: disable=bad-super-call
           '_non_trainable_weights',
           [w for w in self._non_trainable_weights if w is not existing_value])
 
@@ -2200,7 +2200,7 @@ class Layer(base_layer.Layer):
         # Exclude @property.setters from tracking
         hasattr(self.__class__, name)):
       try:
-        super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
+        super(autotrackable.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
       except AttributeError:
         raise AttributeError(
             ('Can\'t set the attribute "{}", likely because it conflicts with '
@@ -2267,7 +2267,7 @@ class Layer(base_layer.Layer):
 
     # TODO(b/180760306) Skip the auto trackable from tf.Module to keep status
     # quo. See the comment at __delattr__.
-    super(tracking.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
+    super(autotrackable.AutoTrackable, self).__setattr__(name, value)  # pylint: disable=bad-super-call
 
   # This is a hack so that the is_layer (within
   # training/trackable/layer_utils.py) check doesn't get the weights attr.
@@ -2351,13 +2351,17 @@ class Layer(base_layer.Layer):
   def _tracking_metadata(self):
     return self._trackable_saved_model_saver.tracking_metadata
 
-  def _list_extra_dependencies_for_serialization(self, serialization_cache):
-    return (self._trackable_saved_model_saver
-            .list_extra_dependencies_for_serialization(serialization_cache))
-
-  def _list_functions_for_serialization(self, serialization_cache):
-    return (self._trackable_saved_model_saver
-            .list_functions_for_serialization(serialization_cache))
+  def _trackable_children(self, save_type='checkpoint', **kwargs):
+    if save_type == 'savedmodel':
+      cache = kwargs['cache']
+      # TODO(b/213628533): This must be called before super() to ensure
+      # that any input shape changes are applied before getting the config of
+      # the model.
+      children = self._trackable_saved_model_saver.trackable_children(cache)
+    else:
+      children = {}
+    children.update(super()._trackable_children(save_type, **kwargs))
+    return children
 
   def __getstate__(self):
     # Override to support `copy.deepcopy` and pickling.

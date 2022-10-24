@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
@@ -32,7 +32,7 @@ namespace {
 class CallOnceTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_->AddSubgraphs(2);
+    AddSubgraphs(2);
     builder_->BuildCallOnceAndReadVariableSubgraph(
         &interpreter_->primary_subgraph());
     builder_->BuildAssignRandomValueToVariableSubgraph(

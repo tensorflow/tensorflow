@@ -75,15 +75,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.BitwiseAnd`
 *   `raw_ops.BitwiseOr`
 *   `raw_ops.BitwiseXor`
-*   `raw_ops.BoostedTreesBucketize`
-*   `raw_ops.BoostedTreesCreateQuantileStreamResource`
-*   `raw_ops.BoostedTreesFlushQuantileSummaries`
-*   `raw_ops.BoostedTreesMakeQuantileSummaries`
-*   `raw_ops.BoostedTreesQuantileStreamResourceAddSummaries`
-*   `raw_ops.BoostedTreesQuantileStreamResourceDeserialize`
-*   `raw_ops.BoostedTreesQuantileStreamResourceFlush`
-*   `raw_ops.BoostedTreesQuantileStreamResourceGetBucketBoundaries`
-*   `raw_ops.BoostedTreesQuantileStreamResourceHandleOp`
 *   `raw_ops.BroadcastArgs`
 *   `raw_ops.BroadcastGradientArgs`
 *   `raw_ops.BroadcastTo`
@@ -190,6 +181,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.FIFOQueue`
 *   `raw_ops.FIFOQueueV2`
 *   `raw_ops.Fill`
+*   `raw_ops.FilterDataset`
 *   `raw_ops.FinalizeDataset`
 *   `raw_ops.Fingerprint`
 *   `raw_ops.FlatMapDataset`
@@ -242,7 +234,6 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.IRFFT`
 *   `raw_ops.IRFFT2D`
 *   `raw_ops.IRFFT3D`
-*   `raw_ops.IsBoostedTreesQuantileStreamResourceInitialized`
 *   `raw_ops.IsFinite`
 *   `raw_ops.IsNan`
 *   `raw_ops.IsVariableInitialized`
@@ -359,6 +350,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Print`
 *   `raw_ops.PrintV2`
 *   `raw_ops.Prod`
+*   `raw_ops.Qr`
 *   `raw_ops.QuantizedAdd`
 *   `raw_ops.QuantizedAvgPool`
 *   `raw_ops.QuantizedBatchNormWithGlobalNormalization`
@@ -412,6 +404,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.RandomUniformInt`
 *   `raw_ops.Range`
 *   `raw_ops.Rank`
+*   `raw_ops.ReadFile`
 *   `raw_ops.ReadVariableOp`
 *   `raw_ops.Real`
 *   `raw_ops.RealDiv`
@@ -634,6 +627,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.Switch`
 *   `raw_ops.SymbolicGradient`
 *   `raw_ops.TakeDataset`
+*   `raw_ops.TakeWhileDataset`
 *   `raw_ops.Tan`
 *   `raw_ops.Tanh`
 *   `raw_ops.TanhGrad`
@@ -721,11 +715,13 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.UniqueWithCounts`
 *   `raw_ops.UniqueWithCountsV2`
 *   `raw_ops.Unpack`
+*   `raw_ops.UnsortedSegmentJoin`
 *   `raw_ops.UnsortedSegmentMax`
 *   `raw_ops.UnsortedSegmentMin`
 *   `raw_ops.UnsortedSegmentProd`
 *   `raw_ops.UnsortedSegmentSum`
 *   `raw_ops.UnwrapDatasetVariant`
+*   `raw_ops.UpperBound`
 *   `raw_ops.VarHandleOp`
 *   `raw_ops.Variable`
 *   `raw_ops.VariableShape`
@@ -733,6 +729,7 @@ supported by TensorFlow Lite runtime with the Select TensorFlow Ops feature.
 *   `raw_ops.VarIsInitializedOp`
 *   `raw_ops.Where`
 *   `raw_ops.WrapDatasetVariant`
+*   `raw_ops.WriteFile`
 *   `raw_ops.Xdivy`
 *   `raw_ops.Xlog1py`
 *   `raw_ops.Xlogy`
@@ -849,7 +846,7 @@ filegroup(
 )
 ```
 
-In order to find the relvant operator kernel source file under the
+In order to find the relevant operator kernel source file under the
 `tensorflow/core/kernels` directory, you can search the source code location,
 which contains the following kernel declaration with the operator name:
 

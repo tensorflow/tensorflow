@@ -97,8 +97,8 @@ class DrawBoundingBoxesOp : public OpKernel {
 
         auto colors = colors_tensor.matrix<float>();
         for (int64_t i = 0; i < colors.dimension(0); i++) {
-          std::vector<float> color_value(4);
-          for (int64_t j = 0; j < 4; j++) {
+          std::vector<float> color_value(depth);
+          for (int64_t j = 0; j < depth; j++) {
             color_value[j] = colors(i, j);
           }
           color_table.emplace_back(color_value);
@@ -119,7 +119,7 @@ class DrawBoundingBoxesOp : public OpKernel {
 
     for (int64_t b = 0; b < batch_size; ++b) {
       const int64_t num_boxes = boxes.dim_size(1);
-      const auto tboxes = boxes.tensor<T, 3>();
+      const auto tboxes = boxes.tensor<float, 3>();
       for (int64_t bb = 0; bb < num_boxes; ++bb) {
         int64_t color_index = bb % color_table.size();
         const int64_t min_box_row =

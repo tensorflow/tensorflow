@@ -13,6 +13,3 @@
 # limitations under the License.
 # ==============================================================================
 """Kernel tests for tf.linalg."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function

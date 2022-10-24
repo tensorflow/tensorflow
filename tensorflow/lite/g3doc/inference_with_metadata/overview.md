@@ -1,6 +1,6 @@
 # TensorFlow Lite inference with metadata
 
-Inferencing [models with metadata](../convert/metadata.md) can be as easy as
+Inferencing [models with metadata](../models/convert/metadata.md) can be as easy as
 just a few lines of code. TensorFlow Lite metadata contains a rich description
 of what the model does and how to use the model. It can empower code generators
 to automatically generate the inference code for you, such as using the
@@ -55,7 +55,7 @@ Browse
 and [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite) to download
 pretrained models with metadata for both vision and text tasks. Also see
 different options of
-[visualizing the metadata](../convert/metadata.md#visualize-the-metadata).
+[visualizing the metadata](../models/convert/metadata.md#visualize-the-metadata).
 
 ## TensorFlow Lite Support GitHub repo
 

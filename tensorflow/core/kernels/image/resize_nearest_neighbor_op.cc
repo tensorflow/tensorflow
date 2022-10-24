@@ -110,7 +110,7 @@ struct BoolToScaler {};
 
 struct HalfPixelScalerForNN {
   inline float operator()(const int x, const float scale) const {
-    // All of the nearest neigbor code below immediately follows a call to this
+    // All of the nearest neighbor code below immediately follows a call to this
     // function with a std::floor(), so instead of subtracting the 0.5 as we
     // do in HalfPixelScale, we leave it as is, as the std::floor does the
     // correct thing.
@@ -257,11 +257,11 @@ class ResizeNearestNeighborOpGrad : public OpKernel {
     const int64_t out_width = sizes(1);
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(
-        context,
-        context->allocate_output(
-            0, TensorShape({batch_size, out_height, out_width, channels}),
-            &output));
+    TensorShape shape;
+    OP_REQUIRES_OK(context,
+                   TensorShape::BuildTensorShape(
+                       {batch_size, out_height, out_width, channels}, &shape));
+    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
 
     // Return if the output is empty.
     if (output->NumElements() == 0) return;

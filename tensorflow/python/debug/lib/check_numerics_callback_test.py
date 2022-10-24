@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 
 import numpy as np
@@ -195,6 +191,10 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     self.assertIn("shape: (1, 1)\n", message)
     self.assertIn("# of -Inf elements: 1\n", message)
     self.assertTrue(re.search(r"Input tensor.*0\.", message))
+
+  @test_util.enable_eager_op_as_function
+  def testCatchEagerOpFloat16NaNWithEagerOpAsFunctionEnabled(self):
+    self.testCatchEagerOpFloat16NaN()
 
   @test_util.run_in_graph_and_eager_modes
   def testCatchFunctionOpInfFloat64(self):

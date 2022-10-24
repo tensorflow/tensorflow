@@ -1,6 +1,6 @@
 // RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
-func @main(tensor<4 x f32>, tensor<4 x i8>, tensor<4 x f32>, tensor<4 x f32>) -> tensor<4 x f32> {
+func.func @main(tensor<4 x f32>, tensor<4 x i8>, tensor<4 x f32>, tensor<4 x f32>) -> tensor<4 x f32> {
 // CHECK:      {
 // CHECK-NEXT:     version: 3,
 // CHECK-NEXT:     operator_codes: [ {
@@ -15,7 +15,8 @@ func @main(tensor<4 x f32>, tensor<4 x i8>, tensor<4 x f32>, tensor<4 x f32>) ->
 // CHECK-NEXT:         name: "arg0",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         type: INT8,
@@ -23,35 +24,40 @@ func @main(tensor<4 x f32>, tensor<4 x i8>, tensor<4 x f32>, tensor<4 x f32>) ->
 // CHECK-NEXT:         name: "arg1",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 3,
 // CHECK-NEXT:         name: "arg2",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 4,
 // CHECK-NEXT:         name: "arg3",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         name: "Const",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:         },
-// CHECK-NEXT:         is_variable: true
+// CHECK-NEXT:         is_variable: true,
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       }, {
 // CHECK-NEXT:         shape: [ 4 ],
 // CHECK-NEXT:         buffer: 6,
 // CHECK-NEXT:         name: "tfl.svdf",
 // CHECK-NEXT:         quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:         }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         has_rank: true
 // CHECK-NEXT:       } ],
 // CHECK-NEXT:       inputs: [ 0, 1, 2, 3 ],
 // CHECK-NEXT:       outputs: [ 5 ],
@@ -95,5 +101,5 @@ func @main(tensor<4 x f32>, tensor<4 x i8>, tensor<4 x f32>, tensor<4 x f32>) ->
 ^bb0(%arg0: tensor<4 x f32>, %arg1: tensor<4 x i8>, %arg2: tensor<4 x f32>, %arg3: tensor<4 x f32>):
   %0 = "tfl.pseudo_const" () {value = dense<0.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
   %1 = "tfl.svdf"(%arg0, %arg1, %arg2, %arg3, %0) {fused_activation_function = "RELU", rank = 2 : i32} : (tensor<4xf32>, tensor<4xi8>, tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  return %1 : tensor<4xf32>
+  func.return %1 : tensor<4xf32>
 }

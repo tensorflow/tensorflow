@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -22,28 +25,25 @@ namespace mlir {
 namespace TF {
 namespace {
 
+#define GEN_PASS_DEF_TFDATAOPTIMIZATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Perform tf.data optimizations.
 struct TFDataOptimization
-    : public PassWrapper<TFDataOptimization, FunctionPass> {
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tf-data-optimization";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Performs tf.data optimizations";
-  }
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+    : public impl::TFDataOptimizationPassBase<TFDataOptimization> {
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);
 
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    (void)applyPatternsAndFoldGreedily(getOperation(), std::move(patterns));
   }
 };
 
 }  // namespace
+
+std::unique_ptr<OperationPass<func::FuncOp>> CreateTFDataOptimizationPass() {
+  return std::make_unique<TFDataOptimization>();
+}
+
 }  // namespace TF
 }  // namespace mlir
-
-static mlir::PassRegistration<mlir::TF::TFDataOptimization> pass;

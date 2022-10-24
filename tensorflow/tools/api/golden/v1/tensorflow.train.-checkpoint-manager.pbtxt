@@ -1,6 +1,6 @@
 path: "tensorflow.train.CheckpointManager"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.checkpoint_management.CheckpointManager\'>"
+  is_instance: "<class \'tensorflow.python.checkpoint.checkpoint_management.CheckpointManager\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "checkpoint"

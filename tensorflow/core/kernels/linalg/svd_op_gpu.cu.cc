@@ -43,8 +43,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"
 
 namespace tensorflow {
 
@@ -97,7 +98,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
   void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
               int64 p, Tensor& M_copy, Tensor* S, Tensor* U, Tensor* V,
-              std::unique_ptr<CudaSolver> solver) {
+              std::unique_ptr<GpuSolver> solver) {
     // Compute U S V* = M.
     // 1. cuSolver works in column-major rather than row-major.
     // 2. Gesvd returns V*. GesvdjBatched returns V.
@@ -267,7 +268,7 @@ class SvdOpGpu : public AsyncOpKernel {
 
   void CheckResult(OpKernelContext* context, DoneCallback done,
                    const std::vector<DeviceLapackInfo>& dev_info,
-                   std::unique_ptr<CudaSolver> solver) {
+                   std::unique_ptr<GpuSolver> solver) {
     auto info_checker = [context, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& /* unused */) {
@@ -279,8 +280,8 @@ class SvdOpGpu : public AsyncOpKernel {
       done();
     };
 
-    CudaSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
-                                                    std::move(info_checker));
+    GpuSolver::CheckLapackInfoAndDeleteSolverAsync(std::move(solver), dev_info,
+                                                   std::move(info_checker));
   }
 
   // The SVD if m >= n
@@ -297,7 +298,7 @@ class SvdOpGpu : public AsyncOpKernel {
     input_shape.AddDim(m);
     Tensor input_copy;
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
     OP_REQUIRES_OK_ASYNC(
         context,
         solver->allocate_scoped_tensor(M.dtype(), input_shape, &input_copy),
@@ -321,7 +322,7 @@ class SvdOpGpu : public AsyncOpKernel {
     // this op owns the input buffer exclusively. This is needed because the
     // SVD modifies the input
     // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    std::unique_ptr<GpuSolver> solver(new GpuSolver(context));
     Tensor input_copy;
     OP_REQUIRES_OK_ASYNC(
         context,
@@ -353,6 +354,14 @@ class SvdOpGpu : public AsyncOpKernel {
     const int64 m = input.dim_size(ndims - 2);
     const int64 n = input.dim_size(ndims - 1);
     const int64 p = std::min(m, n);
+
+    if (n == 1) {
+      OP_REQUIRES_ASYNC(
+          context, !tensorflow::OpDeterminismRequired(),
+          errors::Unimplemented("Determinism is not yet supported for SVD of "
+                                "matrices with 1 column."),
+          done);
+    }
 
     // output tensors.
     Tensor* outputU = NULL;
@@ -390,6 +399,12 @@ class SvdOpGpu : public AsyncOpKernel {
                          done);
     OP_REQUIRES_OK_ASYNC(context, context->allocate_output(2, shapeV, &outputV),
                          done);
+
+    // If there are zero batches, we are done.
+    if (shapeRaw.num_elements() == 0) {
+      done();
+      return;
+    }
 
     if (n == 0 || m == 0) {
       if (n == m || !compute_uv_ || !full_matrices_) {

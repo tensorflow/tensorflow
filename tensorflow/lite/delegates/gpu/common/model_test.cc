@@ -512,7 +512,7 @@ TEST(Model, InsertNodeAfter) {
 
 TEST(BatchMatchingTest, EmptyGraph) {
   GraphFloat32 graph;
-  ASSERT_TRUE(IsBatchMatchesForAllValues(graph));
+  EXPECT_TRUE(CheckBatchSizeForAllValues(graph).ok());
 }
 
 TEST(BatchMatchingTest, AllMatch) {
@@ -521,7 +521,7 @@ TEST(BatchMatchingTest, AllMatch) {
   Value* b = graph.NewValue();
   a->tensor.shape = BHWC(1, 1, 1, 1);
   b->tensor.shape = BHWC(1, 1, 1, 1);
-  ASSERT_TRUE(IsBatchMatchesForAllValues(graph));
+  EXPECT_TRUE(CheckBatchSizeForAllValues(graph).ok());
 }
 
 TEST(BatchMatchingTest, NotAllMatch) {
@@ -530,7 +530,8 @@ TEST(BatchMatchingTest, NotAllMatch) {
   Value* b = graph.NewValue();
   a->tensor.shape = BHWC(1, 1, 1, 1);
   b->tensor.shape = BHWC(2, 1, 1, 1);
-  ASSERT_FALSE(IsBatchMatchesForAllValues(graph));
+  EXPECT_EQ(CheckBatchSizeForAllValues(graph).code(),
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

@@ -19,6 +19,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <utility>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -331,13 +333,13 @@ class CTCLossOpGPU : public OpKernel {
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, probs_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> probs_desc =
-        probs_desc_s.ConsumeValueOrDie();
+        std::move(probs_desc_s).value();
 
     auto grads_desc_s = executor->createRnnStateTensorDescriptor(
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, grads_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> grads_desc =
-        grads_desc_s.ConsumeValueOrDie();
+        std::move(grads_desc_s).value();
 
     absl::Span<const int32> labels_data(labels_values->flat<int32>().data(),
                                         num_indices);

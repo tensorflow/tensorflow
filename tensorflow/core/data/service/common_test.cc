@@ -150,6 +150,42 @@ TEST(CommonTest, TargetWorkersToString) {
   EXPECT_EQ(TargetWorkersToString(TARGET_WORKERS_LOCAL), "LOCAL");
 }
 
+TEST(CommonTest, ParseDeploymentMode) {
+  EXPECT_THAT(ParseDeploymentMode("COLOCATED"),
+              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_COLOCATED));
+  EXPECT_THAT(ParseDeploymentMode("Colocated"),
+              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_COLOCATED));
+  EXPECT_THAT(ParseDeploymentMode("REMOTE"),
+              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_REMOTE));
+  EXPECT_THAT(ParseDeploymentMode("remote"),
+              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_REMOTE));
+  EXPECT_THAT(ParseDeploymentMode("HYBRID"),
+              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_HYBRID));
+  EXPECT_THAT(ParseDeploymentMode("hybrid"),
+              IsOkAndHolds(DeploymentMode::DEPLOYMENT_MODE_HYBRID));
+}
+
+TEST(CommonTest, ParseInvalidDeploymentMode) {
+  EXPECT_THAT(ParseDeploymentMode("DEPLOYMENT_MODE_UNSPECIFIED"),
+              testing::StatusIs(error::INVALID_ARGUMENT));
+}
+
+TEST(CommonTest, IsPreemptedError) {
+  EXPECT_TRUE(IsPreemptedError(errors::Aborted("Aborted")));
+  EXPECT_TRUE(IsPreemptedError(errors::Cancelled("Cancelled")));
+  EXPECT_TRUE(IsPreemptedError(errors::Unavailable("Unavailable")));
+  EXPECT_FALSE(IsPreemptedError(OkStatus()));
+}
+
+TEST(CommonTest, IsPermanentError) {
+  EXPECT_FALSE(
+      IsPreemptedError(errors::FailedPrecondition("Failed precondition")));
+  EXPECT_FALSE(IsPreemptedError(errors::Internal("Internal")));
+  EXPECT_FALSE(IsPreemptedError(errors::InvalidArgument("Invalid argument")));
+  EXPECT_FALSE(IsPreemptedError(errors::NotFound("Not found")));
+  EXPECT_FALSE(IsPreemptedError(errors::OutOfRange("Out of range")));
+  EXPECT_FALSE(IsPreemptedError(errors::Unknown("Unknown")));
+}
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

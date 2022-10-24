@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/metrics/types_util.h"
 
+#include <string>
+
 #include "llvm/ADT/TypeSwitch.h"
-#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -73,9 +75,25 @@ class LocationExtractor : public Location {
           LocationExtractor(loc.getCaller()).Extract(error_data);
         })
         .Case<FusedLoc>([&](FusedLoc loc) {
+          auto locations = loc.getLocations();
+          size_t num_locs = locations.size();
+          // Skip the first location if it stores information for propagating
+          // op_type metadata.
+          if (num_locs > 0) {
+            if (auto name_loc = locations[0].dyn_cast<mlir::NameLoc>()) {
+              if (name_loc.getName().strref().endswith(":")) {
+                if (num_locs == 2) {
+                  return LocationExtractor(locations[1]).Extract(error_data);
+                } else if (num_locs > 2) {
+                  locations = {locations.begin() + 1, locations.end()};
+                }
+              }
+            }
+          }
+
           mutable_location->set_type(ConverterErrorData::FUSEDLOC);
           llvm::interleave(
-              loc.getLocations(),
+              locations,
               [&](Location l) { LocationExtractor(l).Extract(error_data); },
               [&]() {});
         });

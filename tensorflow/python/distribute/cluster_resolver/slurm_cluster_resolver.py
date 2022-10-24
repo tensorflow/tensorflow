@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implementation of Cluster Resolvers for Slurm workload manager."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import re
 import subprocess
@@ -224,8 +220,8 @@ class SlurmClusterResolver(ClusterResolver):
       A ClusterResolver object which can be used with distributed TensorFlow.
 
     Raises:
-      RuntimeError: If requested more GPUs per node then available or
-        requested more tasks then assigned tasks or
+      RuntimeError: If requested more GPUs per node than available or
+        requested more tasks than assigned tasks or
         resolving missing values from the environment failed.
     """
 
@@ -268,7 +264,7 @@ class SlurmClusterResolver(ClusterResolver):
     self._cluster_allocation = {}
 
     if max_tasks_per_node * self._gpus_per_task > self._gpus_per_node:
-      raise RuntimeError('Requested more GPUs per node then available.')
+      raise RuntimeError('Requested more GPUs per node than available.')
 
     if sum(self._jobs.values()) != num_tasks:
       raise RuntimeError('Requested {} tasks but only {} were assigned.'.format(

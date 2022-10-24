@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RegisterDataset"
   input_arg {
     name: "dataset"
@@ -45,6 +45,43 @@ op {
   }
   attr {
     name: "element_spec"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}
+op {
+  name: "RegisterDataset"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+  }
+  attr {
+    name: "element_spec"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "metadata"
     type: "string"
     default_value {
       s: ""

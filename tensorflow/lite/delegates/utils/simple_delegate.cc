@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -29,7 +30,7 @@ namespace tflite {
 namespace {
 TfLiteRegistration GetDelegateKernelRegistration(
     SimpleDelegateInterface* delegate) {
-  TfLiteRegistration kernel_registration;
+  TfLiteRegistration kernel_registration{};
   kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
   kernel_registration.custom_name = delegate->Name();
@@ -98,11 +99,11 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
       delegate_options.max_delegated_partitions,
       delegate_options.min_nodes_per_partition);
 
-  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
-                  "%s delegate: %d nodes delegated out of %d nodes with "
-                  "%d partitions.\n",
-                  delegate->Name(), supported_nodes.size(),
-                  helper.num_total_nodes(), helper.num_partitions());
+  TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+                       "%s delegate: %d nodes delegated out of %d nodes with "
+                       "%d partitions.\n",
+                       delegate->Name(), supported_nodes.size(),
+                       helper.num_total_nodes(), helper.num_partitions());
   TfLiteRegistration delegate_kernel_registration =
       GetDelegateKernelRegistration(delegate);
 

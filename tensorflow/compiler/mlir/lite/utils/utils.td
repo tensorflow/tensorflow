@@ -16,7 +16,7 @@ limitations under the License.
 // Utility predicates that are shared by multiple passes.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Func/IR/FuncOps.td"
 
 // Checks value is not produced by a TFL_Quant or
 // from TFL_Quant Op with same quant type.

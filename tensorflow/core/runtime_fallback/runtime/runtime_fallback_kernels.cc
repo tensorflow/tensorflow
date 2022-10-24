@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <utility>
+
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -60,6 +62,7 @@ limitations under the License.
 #include "tfrt/host_context/async_value.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
+#include "tfrt/host_context/device.h"  // from @tf_runtime
 #include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
@@ -77,12 +80,12 @@ limitations under the License.
 #include "tfrt/tensor/string_host_tensor.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor_serialize_utils.h"  // from @tf_runtime
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_driver.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_device.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_gpu_allocator.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
@@ -119,7 +122,6 @@ using tfrt::RemainingAttributes;
 using tfrt::RemainingResults;
 using tfrt::Result;
 using tfrt::ShapeAttr;
-using tfrt::SmallVector;
 using tfrt::string_view;
 using tfrt::StringAttr;
 using tfrt::StringAttribute;
@@ -140,25 +142,24 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
   int rank;
   tensorflow::Status status = th->NumDims(&rank);
   if (!status.ok())
-    return tfrt::MakeErrorAsyncValueRef(
-        host, tfrt::StrCat("error getting rank from TF tensor handle: ",
-                           status.error_message()));
+    return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
+        "error getting rank from TF tensor handle: ", status.error_message()));
 
-  SmallVector<tfrt::Index, 4> dims;
+  llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
     int64_t dim;
     status = th->Dim(i, &dim);
     if (!status.ok())
       return tfrt::MakeErrorAsyncValueRef(
-          host, tfrt::StrCat("error getting dimension from TFE tensor handle: ",
-                             status.error_message()));
+          tfrt::StrCat("error getting dimension from TFE tensor handle: ",
+                       status.error_message()));
     dims.push_back(dim);
   }
 
   TensorShape shape{dims};
   DataType dtype = th->DataType();
   return tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-      host, shape, GetTfrtDtype(dtype), std::move(th));
+      shape, GetTfrtDtype(dtype), std::move(th));
 }
 
 // Kernel for moving DHT to RuntimeFallbackTensor. Note that the buffer of the
@@ -249,22 +250,24 @@ static tensorflow::Status InjectTfGpuResourcesHelper(
                                                 /*peer_gpu_ids=*/{});
       if (!tf_allocator)
         return tensorflow::errors::NotFound("TF allocator not found");
-      auto gpu_device_info = gpu_device->tensorflow_gpu_device_info();
-      if (!gpu_device_info)
-        return tensorflow::errors::NotFound("gpu_device_info not found");
+      auto accelerator_device_info =
+          gpu_device->tensorflow_accelerator_device_info();
+      if (!accelerator_device_info)
+        return tensorflow::errors::NotFound(
+            "accelerator_device_info not found");
 
       tfrt::gpu::GpuResources gpu_resources;
       gpu_resources.gpu_context = tfrt::gpu::wrapper::Context(gpu_context);
       gpu_resources.allocator_factory =
           CreateRuntimeFallbackGpuAllocatorFactory(tf_allocator);
       gpu_resources.stream = tfrt::gpu::wrapper::Stream(static_cast<CUstream>(
-          gpu_device_info->stream->implementation()->GpuStreamHack()));
+          accelerator_device_info->stream->implementation()->GpuStreamHack()));
       auto platform = tfrt::gpu::wrapper::Platform::CUDA;
       tfrt::gpu::SetTfrtGpuResources(
           tfrt::gpu::wrapper::Device(gpu_ordinal, platform), gpu_resources);
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 tensorflow::Status InjectTfGpuResources() {
@@ -288,7 +291,7 @@ tensorflow::Status InjectTfGpuResources() {
     already_injected_gpu_devices = true;
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -348,7 +351,7 @@ static tensorflow::Status DecodeDenseAttrToTensorInterface(
   tensorflow::Tensor t;
   TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tensor.get(), &t));
   *result = tensorflow::TensorInterface(std::move(t));
-  return Status::OK();
+  return OkStatus();
 }
 
 // Handle attributes.
@@ -418,7 +421,7 @@ static tensorflow::Status PrepareAttributes(EagerOperation* eager_op,
             static_cast<const tfrt::DType*>(op_attr.GetData()),
             op_attr.element_count);
 
-        SmallVector<tensorflow::DataType, 4> tf_dtypes;
+        llvm::SmallVector<tensorflow::DataType, 4> tf_dtypes;
         tf_dtypes.reserve(bef_dtypes.size());
         for (auto bef_dtype : bef_dtypes) {
           tf_dtypes.push_back(ConvertBefAttrTypeToTfDataType(bef_dtype));
@@ -567,7 +570,7 @@ Status CallEagerExecute(const tfrt::ExecutionContext& exec_ctx,
   TF_RETURN_IF_ERROR(eager_op->Execute(
       absl::MakeSpan(result_tensor_handles.data(), num_retvals), &num_retvals));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 static bool ShouldAddHostContextAttr(const char* op_name) {
@@ -586,11 +589,9 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error =
-        EmitErrorAsync(exec_ctx, status.error_message(),
-                       tfrt::ConvertTfErrorCodeToTfrtErrorCode(status));
+    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
     // Set all results to error.
-    for (auto& result : results) result = error.CopyRef();
+    std::fill(results.begin(), results.end(), error);
     return error;
   };
 
@@ -634,16 +635,14 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
                 TensorHandleFromInterface(result_tensor_handles[i])},
             host);
     if (!expected_fallback_tensor)
-      results[i] =
-          EmitErrorAsync(exec_ctx,
-                         tfrt::StrCat(expected_fallback_tensor.takeError()))
-              .CopyRef();
+      results[i] = EmitErrorAsync(
+          exec_ctx, tfrt::StrCat(expected_fallback_tensor.takeError()));
     else
       results[i] = tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-          host, std::move(*expected_fallback_tensor));
+          std::move(*expected_fallback_tensor));
   }
 
-  return GetReadyChain(host);
+  return tfrt::GetReadyChain();
 }
 
 AsyncValueRef<Chain> RuntimeFallbackExecute(
@@ -654,10 +653,10 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   // Get EagerContext.
   auto eager_ctx_expected = GetEagerContext(exec_ctx);
   if (!eager_ctx_expected) {
-    auto error = EmitErrorAsync(exec_ctx, eager_ctx_expected.takeError(),
-                                tfrt::ErrorCode::kUnknown);
+    auto error =
+        EmitErrorAsync(exec_ctx, toString(eager_ctx_expected.takeError()));
     // Set all results to error.
-    for (auto& result : results) result = error.CopyRef();
+    std::fill(results.begin(), results.end(), error);
     return std::move(error);
   }
   EagerContext* eager_ctx = eager_ctx_expected.get();
@@ -793,11 +792,11 @@ static void RuntimeFallbackKernel(
         std::move(owned_th), host);
     if (!fallback_tensor) {
       output_tensors[i] = tfrt::MakeErrorAsyncValueRef(
-          host, tfrt::StrCat(fallback_tensor.takeError()));
+          tfrt::StrCat(fallback_tensor.takeError()));
     } else {
       output_tensors[i] =
           tfrt::MakeAvailableAsyncValueRef<RuntimeFallbackTensor>(
-              host, std::move(*fallback_tensor));
+              std::move(*fallback_tensor));
     }
   }
   out_chain.Set(in_chain);
@@ -807,10 +806,8 @@ static void EmitErrorAndSetInResults(
     const tfrt::ExecutionContext& exec_ctx,
     const tfrt::DecodedDiagnostic& error,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results) {
-  auto error_av = tfrt::EmitErrorAsync(exec_ctx, error.message, error.code);
-  for (auto& result : results) {
-    result = error_av.CopyRef();
-  }
+  auto error_av = tfrt::EmitErrorAsync(exec_ctx, error.status);
+  std::fill(results.begin(), results.end(), error_av);
 }
 
 // Convert the tfrt::TensorHandle to tensorflow::Tensor. `device` is the target
@@ -822,7 +819,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> tensorhandle_args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>>
         tf_tensor_results,
-    absl::string_view device, const tfrt::ExecutionContext& exec_ctx) {
+    tfrt::string_view device, const tfrt::ExecutionContext& exec_ctx) {
   assert(tensorhandle_args.size() == tf_tensor_results.size());
 
   auto set_result = [&](tfrt::RCReference<tfrt::AsyncValue>& result,
@@ -840,7 +837,8 @@ void CoreRTTensorHandleToFallbackTensorInternal(
   auto maybe_convert_runtime_fallback_tensor =
       [&exec_ctx](
           tfrt::AsyncValueRef<Tensor> tensor_avref,
-          const tfrt::Device& device) -> tfrt::AsyncValueRef<tfrt::Tensor> {
+          const tfrt::Device& src_device,
+          const tfrt::Device& dst_device) -> tfrt::AsyncValueRef<tfrt::Tensor> {
     // TODO(tfrt-devs): Remove implicit conversion in this kernel since it will
     // have extra overheads.
     // Convert RuntimeFallbackTensor to KernelFallbackTensor before calling
@@ -850,41 +848,69 @@ void CoreRTTensorHandleToFallbackTensorInternal(
     assert(tensor_avref.IsAvailable());
     assert(!tensor_avref.IsError());
     auto& tensor = tensor_avref.get();
-    if (tensor.IsTensorType(RuntimeFallbackTensor::kTensorType)) {
+    if (!tensor.IsTensorType(DenseHostTensor::kTensorType) ||
+        !src_device.IsDeviceType(tfrt::CpuDevice::kDeviceType) ||
+        !dst_device.IsDeviceType(tfrt::CpuDevice::kDeviceType)) {
       return tfrt::ConvertTensor(exec_ctx, tensor,
-                                 /*src=*/device,
-                                 /*dst=*/device,
+                                 /*src=*/src_device,
+                                 /*dst=*/dst_device,
                                  KernelFallbackTensor::kTensorType);
     }
     return tensor_avref;
   };
 
+  auto dst_device = exec_ctx.host()->GetDeviceRef(device);
+
   // Retrieve the underlying pointer of tfrt::Tensor. We don't need to do
   // extra ownership management here because KernelFallbackExecuteCompat()
   // will always convert it to tensorflow::Tensor which is itself refcounted.
   for (int i = 0; i < tensorhandle_args.size(); ++i) {
-    auto* av = tensorhandle_args[i];
-    auto& tensor_handle = av->get<tfrt::TensorHandle>();
+    if (!dst_device) {
+      tf_tensor_results[i] = tfrt::MakeErrorAsyncValueRef(
+          tfrt::StrCat("Failed to find device with name ", device));
+      continue;
+    }
+    auto& tensor_handle = tensorhandle_args[i]->get<tfrt::TensorHandle>();
     assert(tensor_handle.IsDeviceAvailable());
     assert(!tensor_handle.IsDeviceError());
+
     auto* tensor_av = tensor_handle.GetAsyncTensor();
     auto tensor_avref = tfrt::AsyncValueRef<Tensor>(FormRef(tensor_av));
-    auto& device = *tensor_handle.GetAvailableDevice();
-    if (!tensor_av->IsAvailable()) {
-      auto result_ref = tfrt::MakeIndirectAsyncValue(exec_ctx.host());
-      tf_tensor_results[i] = result_ref.CopyRef();
-      tensor_av->AndThen([tensor_avref = std::move(tensor_avref),
-                          result_ref = std::move(result_ref), &device,
-                          maybe_convert_runtime_fallback_tensor,
-                          exec_ctx]() mutable {
-        auto converted_tensor_avref = maybe_convert_runtime_fallback_tensor(
-            std::move(tensor_avref), device);
-        auto expected_tf_tensor =
-            TFRTTensorToTFTensor(converted_tensor_avref.get(), exec_ctx.host());
 
+    auto& src_device = *tensor_handle.GetAvailableDevice();
+    AsyncValueRef<Tensor> knfb_tensor;
+    if (!tensor_av->IsAvailable()) {
+      auto ind_av = tfrt::MakeIndirectAsyncValue();
+      knfb_tensor = AsyncValueRef<Tensor>(ind_av.CopyRef());
+      tensor_av->AndThen(
+          [tensor_avref = std::move(tensor_avref), ind_av = std::move(ind_av),
+           &src_device, dst_device = dst_device.CopyRef(),
+           maybe_convert_runtime_fallback_tensor, exec_ctx]() mutable {
+            ind_av->ForwardTo(maybe_convert_runtime_fallback_tensor(
+                std::move(tensor_avref), src_device, *dst_device));
+          });
+    } else {
+      knfb_tensor = maybe_convert_runtime_fallback_tensor(
+          std::move(tensor_avref), src_device, *dst_device);
+    }
+
+    if (!knfb_tensor.IsAvailable()) {
+      auto result_ref = tfrt::MakeIndirectAsyncValue();
+      tf_tensor_results[i] = result_ref;
+      auto knfb_tensor_av = knfb_tensor.GetAsyncValue();
+      knfb_tensor_av->AndThen([knfb_tensor = std::move(knfb_tensor),
+                               result_ref = std::move(result_ref),
+                               dst_device = dst_device.CopyRef(),
+                               exec_ctx]() mutable {
+        if (knfb_tensor.IsError()) {
+          result_ref->ForwardTo(std::move(knfb_tensor));
+          return;
+        }
+        auto expected_tf_tensor =
+            TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
         if (!expected_tf_tensor) {
-          auto error =
-              tfrt::EmitErrorAsync(exec_ctx, expected_tf_tensor.takeError());
+          auto error = tfrt::EmitErrorAsync(
+              exec_ctx, toString(expected_tf_tensor.takeError()));
           result_ref->ForwardTo(std::move(error));
         } else {
           auto tf_tensor_ref = tfrt::MakeAvailableAsyncValueRef<
@@ -894,11 +920,8 @@ void CoreRTTensorHandleToFallbackTensorInternal(
         }
       });
     } else {
-      auto converted_tensor_avref = maybe_convert_runtime_fallback_tensor(
-          std::move(tensor_avref), device);
-      set_result(
-          tf_tensor_results[i],
-          TFRTTensorToTFTensor(converted_tensor_avref.get(), exec_ctx.host()));
+      set_result(tf_tensor_results[i],
+                 TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host()));
     }
   }
 }
@@ -959,9 +982,8 @@ void CoreRTTensorHandleToFallbackTensor(
     return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
   });
 
-  CoreRTTensorHandleToFallbackTensorInternal(
-      args.values(), results.values(), ToAbslStringView(device.GetValue()),
-      exec_ctx);
+  CoreRTTensorHandleToFallbackTensorInternal(args.values(), results.values(),
+                                             device.GetValue(), exec_ctx);
 }
 
 // Convert the tensorflow::Tensor to tfrt::TensorHandle. `device` is the device
@@ -973,7 +995,7 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> tf_tensor_args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>>
         tensorhandle_results,
-    absl::string_view device, const tfrt::ExecutionContext& exec_ctx) {
+    tfrt::string_view device, const tfrt::ExecutionContext& exec_ctx) {
   auto* host = exec_ctx.host();
 
   assert(tf_tensor_args.size() == tensorhandle_results.size());
@@ -986,10 +1008,8 @@ static void FallbackTensorToCoreRTTensorHandleInternal(
 
     tensorhandle_results[i] =
         tfrt::MakeAvailableAsyncValueRef<tfrt::TensorHandle>(
-            host,
-            host->GetDeviceManager()->GetDeviceRef<tfrt::Device>(
-                {device.data(), device.size()}),
-            metadata, std::move(kernel_fallback_tensor));
+            host->GetDeviceRef(device), metadata,
+            std::move(kernel_fallback_tensor));
   }
 }
 
@@ -1003,9 +1023,8 @@ void FallbackTensorToCoreRTTensorHandle(
     return tensorflow::profiler::TraceMeEncode({{"id", request_id}});
   });
 
-  FallbackTensorToCoreRTTensorHandleInternal(
-      args.values(), results.values(), ToAbslStringView(device.GetValue()),
-      exec_ctx);
+  FallbackTensorToCoreRTTensorHandleInternal(args.values(), results.values(),
+                                             device.GetValue(), exec_ctx);
 }
 
 static llvm::Expected<bool> Predicate(
@@ -1056,10 +1075,9 @@ static void RuntimeFallbackExecuteOp(
     StringAttr op_name_attr, tfrt::AsyncValueRef<tfrt::Chain>* op_chain,
     const ExecutionContext& exec_ctx) {
   auto set_error = [&exec_ctx, results](tfrt::string_view msg) {
-    auto error_av = EmitErrorAsync(exec_ctx, msg, tfrt::ErrorCode::kUnknown);
+    auto error_av = EmitErrorAsync(exec_ctx, absl::InternalError(msg));
     // Set all results to error.
-    for (int i = 0, n = results.size(); i < n; ++i)
-      results[i] = error_av.CopyRef();
+    for (int i = 0, n = results.size(); i < n; ++i) results[i] = error_av;
   };
 
   auto op_name = op_name_attr.GetValue();
@@ -1072,8 +1090,6 @@ static void RuntimeFallbackExecuteOp(
   // the tensorflow format.
   std::string device_name = device_attr.GetValue().str();
   if (!absl::StartsWith(device_name, "/")) device_name = kDefaultCpuDevice;
-
-  auto* host = exec_ctx.host();
 
   // Set up OpAttrs.
   tfrt::OpAttrs op_attrs;
@@ -1130,7 +1146,8 @@ static void RuntimeFallbackExecuteOp(
   // assume runtime fallback execution is always synchronous.
   DCHECK(chain.IsAvailable());
   if (chain.IsError()) {
-    EmitErrorAndSetInResults(exec_ctx, chain.GetError(), results.values());
+    EmitErrorAndSetInResults(
+        exec_ctx, tfrt::DecodedDiagnostic(chain.GetError()), results.values());
     return;
   }
 
@@ -1145,7 +1162,7 @@ static void RuntimeFallbackExecuteOp(
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
     DCHECK(s.ok()) << s.ToString();
     results[i] =
-        tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(host, *tf_tensor);
+        tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(*tf_tensor);
   }
 }
 
@@ -1177,9 +1194,8 @@ void CreateRuntimeFallbackOpHandlerKernel(Result<tfrt::OpHandler*> op_handler,
 static OwnedTensorHandle ConvertTFRTTensorToTFTensorHandle(
     tfrt::Tensor* tensor) {
   if (auto* dht = llvm::dyn_cast<tfrt::DenseHostTensor>(tensor)) {
-    RCReference<HostBuffer> host_buffer = dht->buffer().CopyRef();
-    tensorflow::Tensor tensor = MoveHostBufferToTfTensor(
-        std::move(host_buffer), dht->dtype(), dht->shape());
+    tensorflow::Tensor tensor =
+        MoveHostBufferToTfTensor(dht->buffer(), dht->dtype(), dht->shape());
 
     return OwnedTensorHandle{
         tensorflow::TensorHandle::CreateLocalHandle(tensor)};
@@ -1236,92 +1252,6 @@ static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
   return std::move(value);
 }
 
-// Sync execution via runtime fallback, by taking and returning
-// tfrt::TensorHandle.
-static void RuntimeFallbackSyncExecuteOp(tfrt::SyncKernelFrame* frame) {
-  const auto& exec_ctx = frame->GetExecutionContext();
-  assert(frame->GetNumAttributes() == 2);
-  auto op_attr_array = AggregateAttr(frame->GetAttributeAt(0));
-  auto op_name = StringAttr(frame->GetAttributeAt(1));
-
-  tfrt::OpAttrs op_attrs;
-  tfrt::SetUpOpAttrs(op_attr_array, &op_attrs);
-
-  llvm::SmallVector<OwnedTensorHandle, 8> input_tensor_handles;
-  llvm::SmallVector<TensorHandle*, 8> input_tensor_handle_ptrs;
-  input_tensor_handles.reserve(frame->GetNumArgs());
-  input_tensor_handles.reserve(frame->GetNumArgs());
-  for (int i = 0, e = frame->GetNumArgs(); i < e; ++i) {
-    auto& tensor = frame->GetArgAt<Tensor>(i);
-    input_tensor_handles.push_back(ConvertTFRTTensorToTFTensorHandle(&tensor));
-    input_tensor_handle_ptrs.push_back(input_tensor_handles.back().get());
-  }
-  int num_retvals = frame->GetNumResults();
-  llvm::SmallVector<tensorflow::AbstractTensorHandle*, 4> result_tensor_handles(
-      num_retvals);
-
-  // Get EagerContext.
-  auto eager_ctx_expected = GetEagerContext(exec_ctx);
-  if (!eager_ctx_expected) {
-    frame->SetError(eager_ctx_expected.takeError());
-    return;
-  }
-
-  auto status = CallEagerExecute(exec_ctx, eager_ctx_expected.get(),
-                                 op_name.GetValue().drop_front(3).str().c_str(),
-                                 /*device_name=*/"", input_tensor_handle_ptrs,
-                                 OpAttrsRef(op_attrs), result_tensor_handles);
-
-  if (!status.ok()) {
-    frame->SetError(tfrt::MakeStringError(status.error_message()));
-    return;
-  }
-
-  llvm::SmallVector<OwnedTensorHandle, 4> owned_result_tensor_handles;
-  owned_result_tensor_handles.reserve(result_tensor_handles.size());
-  for (auto* tensor_handle : result_tensor_handles)
-    owned_result_tensor_handles.push_back(
-        OwnedTensorHandle{TensorHandleFromInterface(tensor_handle)});
-
-  for (auto iter : llvm::enumerate(owned_result_tensor_handles)) {
-    auto value = ConvertTFTensorHandleToTFRTTensor(std::move(iter.value()),
-                                                   frame->GetHostContext());
-    if (!value) {
-      frame->SetError(value.takeError());
-      return;
-    }
-    *frame->GetResultAt(iter.index()) = std::move(*value);
-  }
-}
-
-// Sync execution via kernel fallback compat mode, by taking and returning
-// tensorflow::Tensor (as such this is "thin").
-// Graph compiler needs to make sure this kernel is used in proper context.
-// TODO(tfrt-devs): Add function attribute support.
-// TODO(tfrt-devs): Add device support.
-static void KernelFallbackSyncExecuteThinOp(tfrt::SyncKernelFrame* frame) {
-  const auto& exec_ctx = frame->GetExecutionContext();
-  assert(frame->GetNumAttributes() == 2);
-  auto op_attr_array = AggregateAttr(frame->GetAttributeAt(0));
-  auto op_name = StringAttr(frame->GetAttributeAt(1));
-  auto op_name_sv = op_name.GetValue();
-  op_name_sv.consume_front("tf.");
-
-  tfrt::OpAttrs op_attrs;
-  tfrt::SetUpOpAttrs(op_attr_array, &op_attrs);
-
-  // The TF kernel we call takes and returns vectors of tensorflow::Tensor.
-  auto status = KernelFallbackSyncExecuteCompat(
-      exec_ctx, ToAbslStringView(op_name_sv),
-      /*device_name=*/ToAbslStringView(exec_ctx.host()->GetHostDevice().name()),
-      frame, tfrt::OpAttrsRef(op_attrs));
-
-  if (!status.ok()) {
-    frame->SetError(tfrt::MakeStringError(status.error_message()));
-    return;
-  }
-}
-
 void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
   registry->AddKernel("tfd.init_eager_context",
                       TFRT_KERNEL(TfdInitEagerContext));
@@ -1351,13 +1281,6 @@ void RegisterTfdDelegateKernels(tfrt::KernelRegistry* registry) {
                       TFRT_KERNEL(CreateRuntimeFallbackOpHandlerKernel));
   registry->AddKernel("corert.add_runtime_fallback_implicit_conversions",
                       TFRT_KERNEL(AddRuntimeFallbackImplicitConversionKernel));
-
-  // Below are synchronous fallback kernels.
-
-  registry->AddSyncKernel("tfrt_fallback_sync.executeop",
-                          RuntimeFallbackSyncExecuteOp);
-  registry->AddSyncKernel("tfrt_fallback_sync.knfb_exec_thin",
-                          KernelFallbackSyncExecuteThinOp);
 }
 
 }  // namespace tfd

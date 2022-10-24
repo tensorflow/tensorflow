@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/permutation_util.h"
 
-#include "absl/algorithm/container.h"
+#include <vector>
+
 #include "absl/container/inlined_vector.h"
 
 namespace xla {

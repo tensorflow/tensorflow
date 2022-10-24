@@ -38,12 +38,13 @@ TEST(ProvidedDelegateListTest, AppendCmdlineFlags) {
   ProvidedDelegateList providers(&params);
   providers.AddAllDelegateParams();
 
-  providers.AppendCmdlineFlags(&flags);
+  providers.AppendCmdlineFlags(flags);
   EXPECT_FALSE(flags.empty());
 }
 
 TEST(KernelTestDelegateProvidersTest, CreateAllRankedDelegates) {
-#if !defined(__Fuchsia__) && !defined(TFLITE_WITHOUT_XNNPACK)
+#if !defined(__Fuchsia__) && !defined(__s390x__) && \
+    !defined(TFLITE_WITHOUT_XNNPACK)
   ToolParams params;
   ProvidedDelegateList providers(&params);
   providers.AddAllDelegateParams();

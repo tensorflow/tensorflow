@@ -25,10 +25,6 @@ If there are no associated files in the provided file, the model is output
 as-is.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 import zipfile

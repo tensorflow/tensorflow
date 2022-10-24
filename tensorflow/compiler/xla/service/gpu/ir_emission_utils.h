@@ -16,58 +16,30 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMISSION_UTILS_H_
 
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-
-// TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
-// don't belong in "ir_emission_utils".
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
 
-// Different types of convolutions supported by cudnn.
+// The amount of shared memory a CUDA kernel can use.
 //
-// A way to think about these is that a convolution is defined by three arrays
-// -- the "input", the "filter", and the "output" -- and given any two of these,
-// we can compute the third.  For example, a backward-input convolution takes as
-// input a filter and an "output" and produces an "input" such that if one were
-// to do a forward convolution of "input" using filter, the result would be
-// something with the same shape as "output".
-//
-// This way of thinking is not correct if you look at the values produced. For
-// example, a backward-input convolution is not actually the mathematical
-// inverse of a forward convolution.  But it's right as far as the shapes and
-// "connectivity" (i.e. which elements of the input affect which elements of
-// the output) are concerned.
-enum class CudnnConvKind {
-  kForward,            // input  + filter => output
-  kBackwardInput,      // filter + output => input
-  kBackwardFilter,     // input  + output => filter
-  kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
-                       // (optionally) side_input) => output
-};
+// Stay on the conservative side, this is smaller than full 64kB, but allows
+// some extra space for cache.
+inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
 
-StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
-
-// Converts a CudnnConvKind value to a string.
-string CudnnConvKindToString(CudnnConvKind kind);
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
 
 // Matrix multiplication before the rewrite.
 //
@@ -75,86 +47,14 @@ string CudnnConvKindToString(CudnnConvKind kind);
 // GemmRewriter pass has finished.
 bool IsMatrixMultiplication(const HloInstruction& dot);
 
-// Matrix multiplication rewritten into a GEMM custom call.
-// All matrix multiplications should be rewritten as such custom calls
-// after a GemmRewriter lowering pass.
-bool IsCublasGemm(const HloInstruction& hlo);
+inline constexpr int64_t WarpSize() { return 32; }
 
-constexpr int64_t kWarpSize = 32;
-
-// Need at least 256 threads/block for reasonable tree reduction
+// Need at least 1024 threads/block for reasonable tree reduction
 // performance (assuming all data fits).
-constexpr int64_t kMinThreadsXRowReduction = 256;
+inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 
 // When doing batched row reduction, how big the batch dimension could be.
-static constexpr int64_t kBatchedReductionRaceFreeBound = 8;
-
-// A call to cuBLAS general matrix multiplication API.
-extern const char* const kGemmCallTarget;
-
-// A call to cuDNN for batch normalization is represented as CustomCall HLO with
-// a call target equal to one of these strings.
-//
-// The operands to and outputs of these calls are the same as those of the
-// corresponding HLOs, except:
-//
-//  - epsilon and feature_index are proper operands, at the end of the operands
-//    list.  They must be HLO constants.
-//  - The cuDNN forward training call returns inv_stddev =
-//    1/sqrt(variance + epsilon) in place of plain variance.
-//  - Similarly, BatchNormGrad accepts inv_stddev in place of the variance
-//    operand.
-extern const char* const kCudnnBatchNormForwardInferenceCallTarget;
-extern const char* const kCudnnBatchNormForwardTrainingCallTarget;
-extern const char* const kCudnnBatchNormBackwardCallTarget;
-
-// Returns true if `hlo` will be implemented as a call to a cuDNN batch
-// normalization routine.
-//
-// This returns true if `hlo` is a CustomCall HLO with a call target equal to
-// one of the kCudnnBatchNormFoo constants above, but returns *false* for HLOs
-// with one of the kBatchNorm opcodes, because these are lowered either to a
-// sequence of generic HLOs or to a cuDNN CustomCall.
-bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
-
-// A call to cuDNN for convolution (forward, backward filter, or backward input)
-// is represented as a CustomCall HLO with a call target equal to one of these
-// strings.
-//
-// These CustomCalls have window() and convolution_dimension_numbers() set like
-// regular convolution ops.  They have the same LHS and RHS operands, plus two
-// additional constant operands: an int64_t operand for the cudnn algorithm and
-// a bool operand for whether tensor_ops is enabled. A value of -1 for the cudnn
-// algorithm means that the implementation is free to choose the best algorithm
-// it can.
-//
-// These calls output a tuple (conv_result, scratch_memory), where conv_result
-// is the actual result of the convolution, and scratch_memory is temporary
-// memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
-// is not well-defined.
-//
-// GpuConvRewriter lowers kConvolution HLOs to these custom calls.
-// When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
-// on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
-// algorithm for each conv and sets the amount of scratch space needed.
-//
-// (Representing the scratch memory as an output may seem strange at first, but
-// it's quite sensible, from a certain point of view.  The scratch buffer is a
-// location in memory that the conv can write into, but which it can't legally
-// read from, at least until it's written something first.  But that's exactly
-// the definition of an output buffer.)
-extern const char* const kCudnnConvForwardCallTarget;
-extern const char* const kCudnnConvBackwardInputCallTarget;
-extern const char* const kCudnnConvBackwardFilterCallTarget;
-extern const char* const kCudnnConvBiasActivationForwardCallTarget;
-
-// Returns true if `hlo` will be implemented as a call to a cuDNN convolution
-// routine.
-//
-// This returns true if `hlo` is a CustomCall HLO with a call target equal to
-// one of the kCudnnConvFoo constants above, but returns *false* for HLOs with a
-// kConvolution opcode.
-bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
+inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -169,35 +69,9 @@ bool IsCustomCallToCusolver(const HloInstruction& hlo);
 // is a success/failure code per batch element.
 extern const char* const kCusolverCholeskyCallTarget;
 
-// Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
-// or cuDNN convolution.
-bool ImplementedAsLibraryCall(const HloInstruction& hlo);
-
-// Layout analysis for fusion. The constructor will analyze the given LMHLO
-// fusion operation and store the inferred layouts of fusion internal values.
-// The default constructor will be used when dealing with LMHLO operations, in
-// which case there no analysis is needed and the layout can be inferred from
-// the memref types (so that we can have a unified interface in helper functions
-// to query layouts).
-class FusionLayoutAnalysis {
- public:
-  FusionLayoutAnalysis() {}
-  explicit FusionLayoutAnalysis(mlir::lmhlo::FusionOp fusion_op);
-
-  // Gets the shape of a given value, including its inferred layout.
-  Shape GetShape(mlir::Value value) const;
-
- private:
-  llvm::DenseMap<mlir::Value, Layout> layouts_;
-};
-
 // Returns true if either the dimensions being reduced or the dimensions being
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
-
-// MLIR variant that relies on the shape layouts from fusion layout analysis.
-bool IsReductionFromOrToContiguousDimensions(
-    mlir::Operation* op, const FusionLayoutAnalysis& layout_analysis);
 
 // Returns whether unnested_hlo is an input fusion whose root is either a slice
 // or a tuple of slices. If verify_no_strides is true, returns false unless all
@@ -214,7 +88,7 @@ struct ReductionDimensions {
   //
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
-  std::array<int64_t, 3> dimensions;
+  Vector3 dimensions;
 };
 
 // Given the input shape and dimensions to reduce for a reduction, returns
@@ -225,13 +99,10 @@ struct ReductionDimensions {
 // dimensions to reduce or the dimensions to keep are consecutive.
 ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
-ReductionDimensions GetReductionKindAndContiguousComponents(
-    mlir::Operation* reduce);
 
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
-std::array<int64_t, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions,
-    se::CudaComputeCapability cuda_compute_capability);
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
+                           se::CudaComputeCapability cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -241,7 +112,7 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // Emits code to shuffle data between threads of a warp. This has the same
 // semantics as the PTX "shfl.sync.down" instruction but works for values that
 // aren't 32 bits in size. The last operand of the emitted "shfl" is
-// `kWarpSize - 1`.
+// `WarpSize() - 1`.
 //
 // This function emits a "full-warp" shuffle, which all threads of a warp
 // participate in.  *Do not use this function from a divergent context:* You
@@ -309,7 +180,65 @@ Shape GetShape(mlir::Value value);
 // Returns whether the given reduction can be safely generated without atomics:
 // that is, at most one block will write to every output element.
 bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const std::array<int64_t, 3>& reduction_tiling);
+                         const Vector3& reduction_tiling);
+
+// Description of how to emit a given transposition.
+//
+// On a group of input parameters that are 0-2-1 transpose of the outputs
+// of a fusion kernel, stores the input parameters that are safe for the
+// shared memory transpose implementation and the dimension permutation.
+//
+// When a tile based shared memory transpose is used to implement an input
+// with 0-2-1 transpose, we preload a tile of the input elements [z, y..y+31,
+// x..x+31] to compute the output tile elements of the same indices.
+// Preloading the input tile this way is only safe when the computation of the
+// output tile elements do not need any input element outside the preloaded
+// tile. We inspect all the transitive users of the input parameter up to the
+// fusion root instruction to see if we can find any instruction that can make
+// preloading the input tile unsafe.
+struct TransposeDimsAndParams {
+  // Permutation of the dimensions relative to output.
+  Vector3 dims;
+
+  // Indices of parameters which are permuted.
+  std::vector<int64_t> params;
+
+  std::string ToString() const {
+    return absl::StrFormat("{dims={%s}, params={%s}}",
+                           absl::StrJoin(dims, ", "),
+                           absl::StrJoin(params, ", "));
+  }
+};
+
+// Returns instructions which are roots of the fusion, following the operands of
+// GTE instructions in the root tuple. Groups multiple subsequent instructions
+// with the same root. CHECKs that the fusion never outputs the same instruction
+// twice, as well as that there are no explicitly created tuples or nested gtes
+// in fusion output.
+//
+// For input: (tuple (gte R1) (gte R1) O2)
+// Expected output: [R1, O2]
+//
+// For input: (tuple R1 R2 O2)
+// Expected output: [R1, R2, O2]
+//
+// For input: (tuple (gte R1) (gte R1) R2 O3)
+// Expected output: [R1, R2, O3]
+//
+// For input: R1
+// Expected output: [R1]
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
+
+// Returns whether the computation has at least one root triggering unnested
+// reduction emitter.
+bool HasAnyUnnestedReductionRoot(HloComputation* computation);
+
+// Whether there is a fusion root triggering transposition emitter.
+bool HasAnyTiledTransposeRoot(HloComputation* computation);
+
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla

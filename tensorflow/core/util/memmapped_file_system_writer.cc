@@ -106,7 +106,7 @@ Status MemmappedFileSystemWriter::FlushAndClose() {
   TF_RETURN_IF_ERROR(output_file_->Flush());
   TF_RETURN_IF_ERROR(output_file_->Close());
   output_file_.reset();
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
@@ -121,7 +121,7 @@ Status MemmappedFileSystemWriter::AdjustAlignment(uint64 alignment) {
     rest -= sp.size();
     output_file_offset_ += sp.size();
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void MemmappedFileSystemWriter::AddToDirectoryElement(const string& name,

@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -42,7 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -71,7 +71,7 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -90,7 +90,7 @@ TEST_F(AlgebraicSimplifierTest, FactorIntegerAddition) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::MultiplyAnyOrder(
@@ -111,7 +111,7 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAddition) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
@@ -129,7 +129,7 @@ TEST_F(AlgebraicSimplifierTest, SquareOfAbs) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
@@ -149,7 +149,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::MultiplyAnyOrder(
@@ -170,7 +170,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplyChain2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::Parameter(0), m::MultiplyAnyOrder(m::ConstantScalar(2),
@@ -193,7 +193,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplyBroadcastReassoc) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::Parameter(0), m::Broadcast(m::MultiplyAnyOrder(
@@ -215,7 +215,7 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAdditionWithBroadcast) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
@@ -237,7 +237,7 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAdditionNotPowerOf2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 // A*C + B*C => (A+B)*C simplification should not happen if A, B, and C are
@@ -255,7 +255,7 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAdditionComplex) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 // A*C + B*C => (A+B)*C simplification is OK if A, B, and C are complex.
@@ -273,7 +273,7 @@ TEST_F(AlgebraicSimplifierTest, FactorFpAdditionBfloat16) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(
                   m::AddAnyOrder(m::Parameter(0), m::Parameter(1)),
@@ -291,7 +291,7 @@ TEST_F(AlgebraicSimplifierTest, UnsignedDivideByPowerOf2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ShiftRightLogical(
                   m::Parameter(0), m::Broadcast(m::ConstantScalar(3)))));
@@ -308,7 +308,7 @@ TEST_F(AlgebraicSimplifierTest, SignedDivideByPowerOf2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto match_dividend_is_negative =
       m::Lt(m::Parameter(0), m::Broadcast(m::ConstantScalar(0)));
   auto match_abs = m::Select(match_dividend_is_negative,
@@ -331,7 +331,7 @@ TEST_F(AlgebraicSimplifierTest, UnsignedRemainderByPowerOf2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::AndAnyOrder(m::Parameter(0),
                                         m::Broadcast(m::ConstantScalar(7)))));
@@ -348,7 +348,7 @@ TEST_F(AlgebraicSimplifierTest, SignedRemainderByPowerOf2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto match_dividend_is_negative =
       m::Lt(m::Parameter(0), m::Broadcast(m::ConstantScalar(0)));
   auto match_abs = m::Select(match_dividend_is_negative,
@@ -368,7 +368,7 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r0s32, "param0"));
   HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(0)));
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32, HloOpcode::kMultiply, param0, zero));
 
@@ -376,7 +376,7 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_EQ(computation->root_instruction(), zero);
 }
 
@@ -392,7 +392,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeConstants) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0),
                                      m::Multiply(m::ConstantScalar(2.0),
@@ -413,7 +413,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplyReassociateMergeBroadcastedConstants) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Multiply(
@@ -433,7 +433,7 @@ TEST_F(AlgebraicSimplifierTest, ElementwiseSinkMultipleBroadcastsScalar) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Broadcast(m::Multiply(m::Broadcast(m::Parameter(1)),
@@ -452,7 +452,7 @@ TEST_F(AlgebraicSimplifierTest, ElementwiseSinkMultipleBroadcastsConstantMix) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Multiply(
                   m::Parameter(0), m::Broadcast(m::ConstantScalar(2.0))))));
@@ -470,7 +470,7 @@ TEST_F(AlgebraicSimplifierTest, ElementwiseSinkMultipleBroadcastsNonScalar) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Broadcast(m::Multiply(m::Parameter(1), m::Parameter(0)))));
@@ -488,7 +488,7 @@ TEST_F(AlgebraicSimplifierTest, ElementwiseNoSinkBroadcastsDifferentDims) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Broadcast(m::Parameter(1)),
                                      m::Broadcast(m::Parameter(0)))));
@@ -509,7 +509,7 @@ TEST_F(AlgebraicSimplifierTest,
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Multiply(
@@ -535,7 +535,7 @@ TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_EQ(computation->root_instruction(), param0);
 }
 
@@ -557,7 +557,7 @@ TEST_F(AlgebraicSimplifierTest, SelectFalse) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_EQ(computation->root_instruction(), param1);
 }
 
@@ -577,8 +577,36 @@ TEST_F(AlgebraicSimplifierTest, SelectIdentical) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_EQ(computation->root_instruction(), param1);
+}
+
+// Test that select(not(pred), a, b) is simplified to select(pred, b, a)
+TEST_F(AlgebraicSimplifierTest, SelectWithNotPred) {
+  Shape pred_ty = ShapeUtil::MakeShape(PRED, {});
+  Shape r0s32 = ShapeUtil::MakeShape(S32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, pred_ty, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0s32, "param1"));
+  HloInstruction* param2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, r0s32, "param2"));
+  HloInstruction* pred_instr = builder.AddInstruction(
+      HloInstruction::CreateUnary(pred_ty, HloOpcode::kNot, param0));
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      r0s32, HloOpcode::kSelect, pred_instr, param1, param2));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  HloInstruction* root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  const auto& operands = computation->root_instruction()->operands();
+  EXPECT_EQ(operands[0], param0);
+  EXPECT_EQ(operands[1], param2);
+  EXPECT_EQ(operands[2], param1);
 }
 
 // Test that Reduce(Reduce(A)) -> Reduce(A)
@@ -613,7 +641,7 @@ TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
                                                       dims1, add_computation));
   m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Reduce(m::Parameter(0), m::Op().Is(zero))));
   EXPECT_EQ(root->dimensions(), std::vector<int64_t>({0, 2, 3}));
@@ -635,7 +663,7 @@ TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0), m::Constant())));
 }
@@ -661,7 +689,7 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(
                         m::Op().Is(param0),
@@ -682,7 +710,7 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeBroadcastedConstants) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Add(m::Parameter(0),
                                 m::Broadcast(m::Add(m::ConstantScalar(1.0),
@@ -706,7 +734,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -742,7 +770,7 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kMap);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
                                       m::Broadcast(m::Op().Is(zero)))));
@@ -769,7 +797,7 @@ TEST_F(AlgebraicSimplifierTest, KeepNontrivialMap) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
@@ -789,7 +817,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -804,7 +832,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Constant()));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
   EXPECT_EQ(3.14f, root->operand(0)->literal().GetFirstElement<float>());
@@ -820,7 +848,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Constant()));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Constant()));
 }
@@ -835,7 +863,7 @@ TEST_F(AlgebraicSimplifierTest, IotaToBroadcast) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Constant()));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Iota()));
 }
@@ -856,7 +884,7 @@ TEST_F(AlgebraicSimplifierTest, SubZero) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSubtract);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -877,7 +905,7 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSubtract);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0),
                                       m::Negate(m::Op().Is(constant)))));
@@ -895,7 +923,7 @@ TEST_F(AlgebraicSimplifierTest, SubBroadcastConstCanonicalization) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Add(m::Parameter(0),
@@ -912,7 +940,7 @@ TEST_F(AlgebraicSimplifierTest, SubSame) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::ConstantScalar(0))));
 }
@@ -928,9 +956,32 @@ TEST_F(AlgebraicSimplifierTest, DegenerateDimsInOperandRemovedFromBroadcast) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
+// Test to catch a crash where we were overshooting the reshaped_dimensions
+// vector.
+TEST_F(AlgebraicSimplifierTest, ArrayOvershootTest) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      param0 = f32[18,18,2,1,1,128]{1,0,5,2,4,3} parameter(0)
+      cpy1 = f32[18,18,2,1,1,128]{5,2,1,0,4,3} copy(f32[18,18,2,1,1,128]{1,0,5,2,4,3} param0)
+      bitcast = f32[648,128,1,1]{3,2,1,0} bitcast(cpy1)
+      ROOT cpy2 = f32[648,128,1,1]{3,2,0,1} copy(f32[648,128,1,1]{3,2,1,0} bitcast)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  // Assert false because algebraic simplifier - at the time of adding this
+  // test - does not change anything. Motivation of the test to make sure it
+  // does not crash the compiler.
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 // Test that (A/B)/C is simplified to A/(B*C).
@@ -956,7 +1007,7 @@ TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
                                    m::Parameter(2))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -988,7 +1039,7 @@ TEST_F(AlgebraicSimplifierTest, RhsDivOfDiv) {
                            m::Divide(m::Parameter(1), m::Parameter(2)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1024,7 +1075,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
                            m::Divide(m::Parameter(2), m::Parameter(3)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1052,7 +1103,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfExp) {
               GmockMatch(m::Divide(m::Parameter(0), m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0),
@@ -1083,7 +1134,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfPower) {
                            m::Power(m::Parameter(1), m::Parameter(2)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(
@@ -1116,7 +1167,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
                            m::Power(m::Parameter(1), m::Parameter(2)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   ASSERT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(
@@ -1140,7 +1191,7 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Constant())));
@@ -1158,7 +1209,7 @@ TEST_F(AlgebraicSimplifierTest, DivideByBroadcastedConstant) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(
@@ -1183,7 +1234,7 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
                                                       inner_power, exp2));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 // Don't simplify pow(pow(A, X), Y) => pow(A, X*Y) if X and Y are complex
@@ -1205,7 +1256,7 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPowerComplex) {
 
   m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
 }
 
 // Test that A/1 is simplified to A for a scalar.
@@ -1224,7 +1275,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, div);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -1245,7 +1296,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, div);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -1269,7 +1320,7 @@ TEST_F(AlgebraicSimplifierTest, ComplexOfRealImagC) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, cplx);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -1293,7 +1344,7 @@ TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, real);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -1317,7 +1368,7 @@ TEST_F(AlgebraicSimplifierTest, ImagOfComplex) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, imag);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param1);
 }
@@ -1344,7 +1395,7 @@ TEST_F(AlgebraicSimplifierTest, SelectMakeTuple) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, add);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(1), m::Parameter(2))));
 }
@@ -1372,7 +1423,7 @@ TEST_F(AlgebraicSimplifierTest, ExpDiv) {
       GmockMatch(m::Divide(m::Exp(m::Parameter(0)), m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1402,7 +1453,7 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
                                      m::Exp(m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Exp(m::Add(m::Parameter(0), m::Parameter(1)))));
@@ -1428,7 +1479,7 @@ TEST_F(AlgebraicSimplifierTest, PowExp) {
               GmockMatch(m::Power(m::Exp(m::Parameter(0)), m::Parameter(1))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1455,7 +1506,7 @@ TEST_F(AlgebraicSimplifierTest, LnPow) {
               GmockMatch(m::Log(m::Power(m::Parameter(0), m::Parameter(1)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1482,7 +1533,7 @@ TEST_F(AlgebraicSimplifierTest, LnSqrt) {
               GmockMatch(m::Log(m::Sqrt(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1506,7 +1557,7 @@ TEST_F(AlgebraicSimplifierTest, LnRsqrt) {
               GmockMatch(m::Log(m::Rsqrt(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Log(m::Parameter(0)),
@@ -1531,7 +1582,7 @@ TEST_F(AlgebraicSimplifierTest, LnExp) {
               GmockMatch(m::Log(m::Exp(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_EQ(computation->root_instruction(), param0);
 }
@@ -1561,7 +1612,7 @@ TEST_F(AlgebraicSimplifierTest, LnExpDiv) {
                                           m::Exp(m::Parameter(1))))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Subtract(m::Parameter(0), m::Parameter(1))));
@@ -1586,7 +1637,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Scalar) {
               GmockMatch(m::Power(m::Parameter(0), m::Op().Is(zero))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Constant()));
@@ -1611,7 +1662,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Vector) {
               GmockMatch(m::Power(m::Parameter(0), m::Op().Is(zero))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast()));
@@ -1640,7 +1691,7 @@ TEST_F(AlgebraicSimplifierTest, Pow1) {
               GmockMatch(m::Power(m::Parameter(0), m::Op().Is(one))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_EQ(computation->root_instruction(), param0);
 }
@@ -1663,7 +1714,7 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
               GmockMatch(m::Power(m::Parameter(0), m::Op().Is(two))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
@@ -1687,7 +1738,7 @@ TEST_F(AlgebraicSimplifierTest, Pow3) {
               GmockMatch(m::Power(m::Parameter(0), m::Op().Is(three))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -1713,7 +1764,7 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
               GmockMatch(m::Power(m::Parameter(0), m::Op().Is(negative_one))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Divide(m::Constant(), m::Parameter(0))));
@@ -1758,7 +1809,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Convolution(m::Op().Is(lhs), m::Op().Is(rhs))));
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Constant())));
 }
@@ -1802,7 +1853,7 @@ TEST_F(AlgebraicSimplifierTest, ReduceWindowIsReduceAndReshape) {
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Reshape(m::Reduce(m::Parameter(0), m::Constant()))));
@@ -1845,7 +1896,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Constant())));
 }
@@ -1876,10 +1927,323 @@ ENTRY ZeroSizedReduceWindow {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ReduceWindow(m::Parameter(0), m::Parameter(0),
                                          m::Constant(), m::Constant())));
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::Broadcast(m::Constant()),
                                   m::Broadcast(m::Constant()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, NopMax) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY test {
+  p_s8   = s8[]   parameter(0)
+  p_u8   = u8[]   parameter(1)
+  p_s16  = s16[]  parameter(2)
+  p_u16  = u16[]  parameter(3)
+  p_s32  = s32[]  parameter(4)
+  p_u32  = u32[]  parameter(5)
+  p_s64  = s64[]  parameter(6)
+  p_u64  = u64[]  parameter(7)
+  p_f16  = f16[]  parameter(8)
+  p_bf16 = bf16[] parameter(9)
+  p_f32  = f32[]  parameter(10)
+  p_f64  = f64[]  parameter(11)
+
+  const_s8   = s8[]   constant(-128)
+  const_u8   = u8[]   constant(0)
+  const_s16  = s16[]  constant(-32768)
+  const_u16  = u16[]  constant(0)
+  const_s32  = s32[]  constant(-2147483648)
+  const_u32  = u32[]  constant(0)
+  const_s64  = s64[]  constant(-9223372036854775808)
+  const_u64  = u64[]  constant(0)
+  const_f16  = f16[]  constant(-inf)
+  const_bf16 = bf16[] constant(-inf)
+  const_f32  = f32[]  constant(-inf)
+  const_f64  = f64[]  constant(-inf)
+
+  max_s8   = s8[]   maximum(p_s8, const_s8)
+  max_u8   = u8[]   maximum(p_u8, const_u8)
+  max_s16  = s16[]  maximum(p_s16, const_s16)
+  max_u16  = u16[]  maximum(p_u16, const_u16)
+  max_s32  = s32[]  maximum(p_s32, const_s32)
+  max_u32  = u32[]  maximum(p_u32, const_u32)
+  max_s64  = s64[]  maximum(p_s64, const_s64)
+  max_u64  = u64[]  maximum(p_u64, const_u64)
+  max_f16  = f16[]  maximum(p_f16, const_f16)
+  max_bf16 = bf16[] maximum(p_bf16, const_bf16)
+  max_f32  = f32[]  maximum(p_f32, const_f32)
+  max_f64  = f64[]  maximum(p_f64, const_f64)
+
+  max2_s8   = s8[]   maximum(const_s8, p_s8)
+  max2_u8   = u8[]   maximum(const_u8, p_u8)
+  max2_s16  = s16[]  maximum(const_s16, p_s16)
+  max2_u16  = u16[]  maximum(const_u16, p_u16)
+  max2_s32  = s32[]  maximum(const_s32, p_s32)
+  max2_u32  = u32[]  maximum(const_u32, p_u32)
+  max2_s64  = s64[]  maximum(const_s64, p_s64)
+  max2_u64  = u64[]  maximum(const_u64, p_u64)
+  max2_f16  = f16[]  maximum(const_f16, p_f16)
+  max2_bf16 = bf16[] maximum(const_bf16, p_bf16)
+  max2_f32  = f32[]  maximum(const_f32, p_f32)
+  max2_f64  = f64[]  maximum(const_f64, p_f64)
+
+  ROOT tuple = tuple(max_s8, max_u8, max_s16, max_u16, max_s32, max_u32,
+                     max_s64, max_u64, max_f16, max_bf16, max_f32, max_f64,
+                     max2_s8, max2_u8, max2_s16, max2_u16, max2_s32, max2_u32,
+                     max2_s64, max2_u64, max2_f16, max2_bf16, max2_f32, max2_f64)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+
+  // We can't write GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1), ...)
+  // because this generates a template expression that's too complicated for our
+  // MSVC to compile.  :(
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* root;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Op(&root).WithOpcode(HloOpcode::kTuple).WithNumOperands(24)));
+  for (int i = 0; i < root->operand_count(); i++) {
+    SCOPED_TRACE(absl::StrCat("operand ", i));
+    const HloInstruction* operand = root->operand(i);
+    ASSERT_EQ(operand->opcode(), HloOpcode::kParameter);
+    EXPECT_EQ(operand->parameter_number(), i % 12);
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, NopMin) {
+  const char* const hlo_string = R"(
+HloModule test
+
+ENTRY test {
+  p_s8   = s8[]   parameter(0)
+  p_u8   = u8[]   parameter(1)
+  p_s16  = s16[]  parameter(2)
+  p_u16  = u16[]  parameter(3)
+  p_s32  = s32[]  parameter(4)
+  p_u32  = u32[]  parameter(5)
+  p_s64  = s64[]  parameter(6)
+  p_u64  = u64[]  parameter(7)
+  p_f16  = f16[]  parameter(8)
+  p_bf16 = bf16[] parameter(9)
+  p_f32  = f32[]  parameter(10)
+  p_f64  = f64[]  parameter(11)
+
+  const_s8   = s8[]   constant(127)
+  const_u8   = u8[]   constant(255)
+  const_s16  = s16[]  constant(32767)
+  const_u16  = u16[]  constant(65535)
+  const_s32  = s32[]  constant(2147483647)
+  const_u32  = u32[]  constant(4294967295)
+  const_s64  = s64[]  constant(9223372036854775807)
+  const_u64  = u64[]  constant(18446744073709551615)
+  const_f16  = f16[]  constant(inf)
+  const_bf16 = bf16[] constant(inf)
+  const_f32  = f32[]  constant(inf)
+  const_f64  = f64[]  constant(inf)
+
+  min_s8   = s8[]   minimum(p_s8, const_s8)
+  min_u8   = u8[]   minimum(p_u8, const_u8)
+  min_s16  = s16[]  minimum(p_s16, const_s16)
+  min_u16  = u16[]  minimum(p_u16, const_u16)
+  min_s32  = s32[]  minimum(p_s32, const_s32)
+  min_u32  = u32[]  minimum(p_u32, const_u32)
+  min_s64  = s64[]  minimum(p_s64, const_s64)
+  min_u64  = u64[]  minimum(p_u64, const_u64)
+  min_f16  = f16[]  minimum(p_f16, const_f16)
+  min_bf16 = bf16[] minimum(p_bf16, const_bf16)
+  min_f32  = f32[]  minimum(p_f32, const_f32)
+  min_f64  = f64[]  minimum(p_f64, const_f64)
+
+  min2_s8   = s8[]   minimum(const_s8, p_s8)
+  min2_u8   = u8[]   minimum(const_u8, p_u8)
+  min2_s16  = s16[]  minimum(const_s16, p_s16)
+  min2_u16  = u16[]  minimum(const_u16, p_u16)
+  min2_s32  = s32[]  minimum(const_s32, p_s32)
+  min2_u32  = u32[]  minimum(const_u32, p_u32)
+  min2_s64  = s64[]  minimum(const_s64, p_s64)
+  min2_u64  = u64[]  minimum(const_u64, p_u64)
+  min2_f16  = f16[]  minimum(const_f16, p_f16)
+  min2_bf16 = bf16[] minimum(const_bf16, p_bf16)
+  min2_f32  = f32[]  minimum(const_f32, p_f32)
+  min2_f64  = f64[]  minimum(const_f64, p_f64)
+
+  ROOT tuple = tuple(min_s8, min_u8, min_s16, min_u16, min_s32, min_u32,
+                     min_s64, min_u64, min_f16, min_bf16, min_f32, min_f64,
+                     min2_s8, min2_u8, min2_s16, min2_u16, min2_s32, min2_u32,
+                     min2_s64, min2_u64, min2_f16, min2_bf16, min2_f32, min2_f64)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+
+  SCOPED_TRACE(m->ToString());
+
+  // We can't write GmockMatch(m::Tuple(m::Parameter(0), m::Parameter(1), ...)
+  // because this generates a template expression that's too complicated for our
+  // MSVC to compile.  :(
+  SCOPED_TRACE(m->ToString());
+  const HloInstruction* root;
+  ASSERT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Op(&root).WithOpcode(HloOpcode::kTuple).WithNumOperands(24)));
+  for (int i = 0; i < root->operand_count(); i++) {
+    SCOPED_TRACE(absl::StrCat("operand ", i));
+    const HloInstruction* operand = root->operand(i);
+    ASSERT_EQ(operand->opcode(), HloOpcode::kParameter);
+    EXPECT_EQ(operand->parameter_number(), i % 12);
+  }
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Add) {
+  const char* const hlo_string = R"(
+HloModule test
+
+add {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(0)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1}, to_apply=add
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::AddAnyOrder(m::Parameter(),
+                                m::Broadcast(m::ConstantEffectiveScalar(0)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Min) {
+  const char* const hlo_string = R"(
+HloModule test
+
+min {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT min = f32[] minimum(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(inf)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1}, to_apply=min
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MinimumAnyOrder(
+          m::Parameter(), m::Broadcast(m::ConstantEffectiveScalar(
+                              std::numeric_limits<float>::infinity())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindow_Max) {
+  const char* const hlo_string = R"(
+HloModule test
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(-inf)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::MaximumAnyOrder(
+          m::Parameter(), m::Broadcast(m::ConstantEffectiveScalar(
+                              -std::numeric_limits<float>::infinity())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindowWithPad) {
+  const char* const hlo_string = R"(
+HloModule test
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(-inf)
+  ROOT reduce-window = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4}, to_apply=max
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Pad(
+          m::MaximumAnyOrder(m::Parameter(),
+                             m::Broadcast(m::ConstantEffectiveScalar(
+                                 -std::numeric_limits<float>::infinity()))),
+          m::ConstantEffectiveScalar(
+              -std::numeric_limits<float>::infinity()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, TrivialReduceWindowWithUnsupported) {
+  const char* const hlo_string = R"(
+HloModule test
+
+max {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(p0, p1)
+}
+
+unsupported_fn {
+  p0 = f32[] parameter(0)
+  ROOT p1 = f32[] parameter(1)
+}
+
+ENTRY test {
+  p = f32[16,32] parameter(0)
+  constant = f32[] constant(-inf)
+  a = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 stride=1x2}, to_apply=max
+  b = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 lhs_dilate=2x1}, to_apply=max
+  c = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 rhs_dilate=2x1}, to_apply=max
+  d = reduce-window(p, constant), window={size=1x1 pad=1_2x3_4 rhs_reversal=1x1}, to_apply=max
+  e = reduce-window(p, constant), window={size=1x1}, to_apply=unsupported_fn
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_FALSE(RunHloPass(&simplifier, m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
@@ -1904,7 +2268,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Pad(m::Parameter(0), m::Constant())));
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::Constant())));
 }
@@ -1930,7 +2294,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
               GmockMatch(m::Reshape(m::Broadcast(m::Reshape(m::Op().Is(op))))));
 
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(m->entry_computation()->root_instruction(), op);
 }
@@ -1950,7 +2314,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
               GmockMatch(m::Convert(m::Op().Is(input))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), input);
 }
@@ -1976,7 +2340,7 @@ TEST_F(AlgebraicSimplifierTest, EliminateConvertPairUpCast) {
               GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), input);
 }
@@ -2001,7 +2365,7 @@ TEST_F(AlgebraicSimplifierTest, DoNotEliminateConvertPairDownCast) {
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Convert(m::Convert(m::Op().Is(input)))));
 }
@@ -2037,7 +2401,7 @@ TEST_F(AlgebraicSimplifierTest, EliminateConvertPairMultiOut) {
                                   m::Op().Is(floor))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Tuple(m::Op().Is(convert_1), m::Op().Is(input),
@@ -2060,7 +2424,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
               GmockMatch(m::Copy(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), param0);
 }
@@ -2088,7 +2452,7 @@ TEST_F(AlgebraicSimplifierTest, CopyOfReshapeOfCopyEqualsBitcast) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   // Verify that the copy of reshape of copy is replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Bitcast(m::Parameter(0))));
@@ -2114,7 +2478,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfCopyEqualsBitcast) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   // Verify that the copy of reshape of copy is replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Bitcast(m::Parameter(0))));
@@ -2138,7 +2502,7 @@ TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
       [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier1(options);
-  ASSERT_FALSE(simplifier1.Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier1.Run(m.get()).value());
   // Verify that the copy is not replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
@@ -2146,7 +2510,7 @@ TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   AlgebraicSimplifierOptions options2;
   options2.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier2(options2);
-  EXPECT_TRUE(simplifier2.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier2.Run(m.get()).value());
   // Verify that the copy is replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Bitcast(m::Parameter(0))));
@@ -2168,7 +2532,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
               GmockMatch(m::Concatenate(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), param0);
 }
@@ -2189,7 +2553,7 @@ ENTRY test {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   HloComputation* computation = module->entry_computation();
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Tuple(m::Reverse(m::Slice(m::Pad())))));
@@ -2227,7 +2591,7 @@ ENTRY test {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   HloComputation* computation = module->entry_computation();
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Tuple(m::Reverse(m::Slice(m::Pad())))));
@@ -2274,7 +2638,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
                   m::Op().Is(empty_slice), m::Parameter(1))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(0),
@@ -2322,7 +2686,7 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -2355,7 +2719,7 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
                                         m::Op().Is(empty_slice))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_EQ(computation->root_instruction(), empty_literal);
 }
@@ -2378,7 +2742,7 @@ TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Pad(m::Parameter(0), m::Parameter(1))));
 }
@@ -2445,7 +2809,7 @@ TEST_F(AlgebraicSimplifierTest, SimplifyConcatenateOfSlices) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   auto s = m::Slice(m::Parameter(0));
   EXPECT_THAT(
       computation->root_instruction(),
@@ -2487,7 +2851,7 @@ TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
 
   // Copy has not been removed.
   EXPECT_THAT(computation->root_instruction(),
@@ -2517,7 +2881,7 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   // Copy has been removed.
   EXPECT_THAT(computation->root_instruction(), param0);
@@ -2548,7 +2912,7 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
       [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
 
   // Reshape is not replaced with a bitcast.
   EXPECT_THAT(computation->root_instruction(),
@@ -2577,7 +2941,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
-  EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
 
   // Verify that reshape(transpose(rng)) is replace by a single rng of the
   // same shape as the reshape.
@@ -2630,7 +2994,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  simplifier.Run(m.get()).ValueOrDie();
+  simplifier.Run(m.get()).value();
 
   // Verify that only the first reshape is replaced.
   EXPECT_THAT(
@@ -2659,7 +3023,7 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkReshapeDoesntAffectChangedBit) {
 
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   m->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
 }
 
 // Regression test for a bug where if we failed to sink a reshape, we'd set the
@@ -2683,7 +3047,7 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
 
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
   m->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
@@ -2709,7 +3073,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   // Verify that the transpose is replaced.
   EXPECT_THAT(computation->root_instruction(),
@@ -2738,15 +3102,8 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
 
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
-  // Don't replace transposes with bitcasts.
-  options.set_replace_transpose_with_bitcast(false);
-  AlgebraicSimplifier simplifier_no_replace(options);
-  ASSERT_FALSE(simplifier_no_replace.Run(m.get()).ValueOrDie());
-
-  // Replace transposes with bitcasts if possible.
-  options.set_replace_transpose_with_bitcast(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   // Verify that the transpose is replaced.
   EXPECT_THAT(computation->root_instruction(),
@@ -2773,7 +3130,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapesMerged) {
               GmockMatch(m::Reshape(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Parameter(0))));
@@ -2803,7 +3160,7 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
@@ -2829,7 +3186,7 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
               GmockMatch(m::Transpose(m::Op().Is(transpose1))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Transpose(m::Parameter(0))));
@@ -2851,7 +3208,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfBroadcast) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Slice(m::Parameter(0)))));
 }
@@ -2872,7 +3229,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfBroadcastPreserveLayout) {
   const Shape original_slice_shape =
       module->entry_computation()->root_instruction()->shape();
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Slice(m::Parameter(0)))));
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), original_slice_shape));
@@ -2895,7 +3252,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceOfBroadcast) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::DynamicSlice(
                         m::Parameter(0), m::Parameter(1), m::Parameter(3)))));
@@ -2920,7 +3277,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceOfBroadcastPreserveLayout) {
   const Shape original_dynslice_shape =
       module->entry_computation()->root_instruction()->shape();
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::DynamicSlice(
                         m::Parameter(0), m::Parameter(1), m::Parameter(3)))));
@@ -2942,7 +3299,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeIsReshape) {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Parameter()));
 }
@@ -2956,7 +3313,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
   auto reshape1 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(F32, {1, 5, 1}), param0));
   builder.AddInstruction(HloInstruction::CreateBroadcast(
-      ShapeUtil::MakeShape(F32, {1, 2, 3, 5, 1}), reshape1, {0, 3, 2}));
+      ShapeUtil::MakeShape(F32, {1, 2, 3, 5, 1}), reshape1, {0, 3, 4}));
 
   auto computation = m->AddEntryComputation(builder.Build());
 
@@ -2964,7 +3321,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Parameter(0))));
@@ -2987,7 +3344,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshapeMerged) {
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Parameter(0))));
@@ -3009,7 +3366,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x1_3) {
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
@@ -3031,7 +3388,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Parameter(0))));
@@ -3055,7 +3412,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
@@ -3078,7 +3435,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Broadcast(m::Parameter(0)))));
@@ -3098,7 +3455,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
   EXPECT_TRUE(
@@ -3119,7 +3476,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeToMixedRadix) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Add(
@@ -3142,7 +3499,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeToMixedRadixExtraDims) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(
       computation->root_instruction(),
@@ -3165,7 +3522,7 @@ TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   auto root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
@@ -3188,7 +3545,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2_6) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Iota())));
@@ -3208,7 +3565,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
   EXPECT_EQ(Cast<HloIotaInstruction>(computation->root_instruction())
@@ -3230,7 +3587,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x2_6x1x1x2) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Iota()));
   const int64_t iota_dim =
@@ -3253,7 +3610,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4x2_6x8) {
               GmockMatch(m::Reshape(m::Iota())));
 
   AlgebraicSimplifier simplifier(default_options_);
-  EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_FALSE(simplifier.Run(m.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Iota())));
@@ -3283,7 +3640,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
               GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), param);
 }
@@ -3315,7 +3672,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSliceOfPad) {
               GmockMatch(m::Slice(m::Pad(m::Parameter(0), m::Op().Is(zero)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), param);
 }
@@ -3360,12 +3717,40 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
               GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
   EXPECT_TRUE(has_negative_padding(pad));
 
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Slice(m::Pad(m::Parameter(0), m::Op().Is(zero)))));
   EXPECT_FALSE(
       has_negative_padding(computation->root_instruction()->operand(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, CanDisableBroadcastSinking) {
+  // Some broadcasts can be sunk (or delayed). This test verifies that we can
+  // disable this behavior when necessary.
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {}), "scalar"));
+  HloInstruction* broadcast =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(F32, {512, 16}), param, {}));
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {512, 16}), HloOpcode::kNegate, broadcast));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Negate(m::Broadcast(m::Parameter(0)))));
+
+  // Verify that we can disable the broadcast sinking optimization.
+  AlgebraicSimplifierOptions opts = default_options_;
+  opts.set_enable_sink_broadcast(false);
+  AlgebraicSimplifier simplifier(opts);
+
+  // Nothing has changed since broadcast sinking is disabled.
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, CanDisableNegativePadding) {
@@ -3413,7 +3798,7 @@ TEST_F(AlgebraicSimplifierTest, CanDisableNegativePadding) {
   EXPECT_TRUE(has_negative_padding(pad));
 
   // Nothing has changed since the negative padding replacement is disabled.
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, TrivialInteriorPadding) {
@@ -3444,7 +3829,7 @@ TEST_F(AlgebraicSimplifierTest, TrivialInteriorPadding) {
               GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
   ASSERT_TRUE(HasInteriorPadding(pad->padding_config()));
 
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Pad(m::Parameter(0), m::Op().Is(zero))));
@@ -3467,7 +3852,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
               GmockMatch(m::Reshape(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), param);
 }
@@ -3490,7 +3875,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
               GmockMatch(m::Slice(m::Parameter(0))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(), param);
 }
@@ -3519,7 +3904,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
               GmockMatch(m::Slice(m::Slice(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Slice(m::Parameter(0))));
@@ -3550,7 +3935,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfBroadcastToBroadcast) {
               GmockMatch(m::Slice(m::Broadcast(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Parameter(0))));
@@ -3579,7 +3964,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSlice) {
               GmockMatch(m::Slice(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Reshape(m::Slice(m::Parameter(0)))));
@@ -3605,7 +3990,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
               GmockMatch(m::Slice(m::Reshape(m::Parameter(0)))));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
@@ -3620,7 +4005,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
                    .status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(), keys);
 }
 
@@ -3643,7 +4028,7 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
                    .status());
   HloComputation* computation = module->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Tuple(m::Op().Is(keys), m::Op().Is(values0),
                                   m::Op().Is(values1))));
@@ -3665,7 +4050,7 @@ TEST_F(AlgebraicSimplifierTest, AndTrue) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -3686,7 +4071,7 @@ TEST_F(AlgebraicSimplifierTest, AndTrue2) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -3707,7 +4092,7 @@ TEST_F(AlgebraicSimplifierTest, AndFalse) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_false);
 }
@@ -3728,7 +4113,7 @@ TEST_F(AlgebraicSimplifierTest, AndFalse2) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_false);
 }
@@ -3749,7 +4134,7 @@ TEST_F(AlgebraicSimplifierTest, OrTrue) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_true);
 }
@@ -3770,7 +4155,7 @@ TEST_F(AlgebraicSimplifierTest, OrTrue2) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_true);
 }
@@ -3791,7 +4176,7 @@ TEST_F(AlgebraicSimplifierTest, OrFalse) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -3812,7 +4197,7 @@ TEST_F(AlgebraicSimplifierTest, OrFalse2) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
 }
@@ -3834,16 +4219,16 @@ struct ConvPaddingTestcase {
         expected_conv_window(expected_conv_window),
         pad_value(pad_value) {}
 
-  string ToString() const {
+  std::string ToString() const {
     return absl::StrFormat(
         "padding=%s, orig_conv_window=%s, expected_conv_window=%s, "
         "pad_value=%f",
         padding, orig_conv_window, expected_conv_window, pad_value);
   }
 
-  string padding;
-  string orig_conv_window;
-  string expected_conv_window;
+  std::string padding;
+  std::string orig_conv_window;
+  std::string expected_conv_window;
   float pad_value;
 };
 
@@ -3912,12 +4297,11 @@ TEST_P(ConvInputPaddingTest, DoTest) {
   auto* pad_value = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR0(testcase.pad_value)));
 
-  PaddingConfig padding_config =
-      ParsePaddingConfig(testcase.padding).ValueOrDie();
+  PaddingConfig padding_config = ParsePaddingConfig(testcase.padding).value();
   auto* lhs_pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeInference::InferPadShape(input->shape(), pad_value->shape(),
                                     padding_config)
-          .ValueOrDie(),
+          .value(),
       input, pad_value, padding_config));
 
   auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -3927,17 +4311,16 @@ TEST_P(ConvInputPaddingTest, DoTest) {
       "input"));
 
   ConvolutionDimensionNumbers dnums =
-      ParseConvolutionDimensionNumbers("bf01_io01->bf01").ValueOrDie();
+      ParseConvolutionDimensionNumbers("bf01_io01->bf01").value();
   Window window =
-      ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window))
-          .ValueOrDie();
+      ParseWindow(absl::StrCat("size=3x3 ", testcase.orig_conv_window)).value();
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeInference::InferConvolveShape(
           lhs_pad->shape(), filter->shape(),
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, window, dnums,
-          /*preferred_element_type=*/absl::nullopt)
-          .ValueOrDie(),
+          /*preferred_element_type=*/std::nullopt)
+          .value(),
       lhs_pad, filter, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2)));
   auto module = CreateNewVerifiedModule();
@@ -3945,9 +4328,9 @@ TEST_P(ConvInputPaddingTest, DoTest) {
 
   AlgebraicSimplifier simplifier(default_options_);
   if (testcase.expected_conv_window.empty()) {
-    ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+    ASSERT_FALSE(simplifier.Run(module.get()).value());
   } else {
-    ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+    ASSERT_TRUE(simplifier.Run(module.get()).value());
     auto* conv = module->entry_computation()->root_instruction();
     SCOPED_TRACE(module->ToString());
     ASSERT_THAT(conv,
@@ -4022,12 +4405,11 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
   auto* filter = builder.AddInstruction(HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(F32, {128, 256, 3, 3}),  // io01
       "input"));
-  PaddingConfig padding_config =
-      ParsePaddingConfig(testcase.padding).ValueOrDie();
+  PaddingConfig padding_config = ParsePaddingConfig(testcase.padding).value();
   auto* rhs_pad = builder.AddInstruction(HloInstruction::CreatePad(
       ShapeInference::InferPadShape(filter->shape(), pad_value->shape(),
                                     padding_config)
-          .ValueOrDie(),
+          .value(),
       filter, pad_value, padding_config));
 
   auto* input = builder.AddInstruction(HloInstruction::CreateParameter(
@@ -4037,12 +4419,12 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
       "input"));
 
   ConvolutionDimensionNumbers dnums =
-      ParseConvolutionDimensionNumbers("bf01_io01->bf01").ValueOrDie();
+      ParseConvolutionDimensionNumbers("bf01_io01->bf01").value();
   Window window = ParseWindow(absl::StrFormat("size=%dx%d %s",
                                               rhs_pad->shape().dimensions(2),
                                               rhs_pad->shape().dimensions(3),
                                               testcase.orig_conv_window))
-                      .ValueOrDie();
+                      .value();
 
   // Add a PrecisionConfig and check that AlgebraicSimplifier keeps it in place
   // after the transformation.
@@ -4055,8 +4437,8 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
           input->shape(), rhs_pad->shape(),
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, window, dnums,
-          /*preferred_element_type=*/absl::nullopt)
-          .ValueOrDie(),
+          /*preferred_element_type=*/std::nullopt)
+          .value(),
       input, rhs_pad, /*feature_group_count=*/1, /*batch_group_count=*/1,
       window, dnums, precision_config));
 
@@ -4065,9 +4447,9 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
 
   AlgebraicSimplifier simplifier(default_options_);
   if (testcase.expected_conv_window.empty()) {
-    ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+    ASSERT_FALSE(simplifier.Run(module.get()).value());
   } else {
-    ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+    ASSERT_TRUE(simplifier.Run(module.get()).value());
     auto* conv = module->entry_computation()->root_instruction();
     SCOPED_TRACE(module->ToString());
     ASSERT_THAT(conv,
@@ -4115,7 +4497,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   // Builds a convolution from <options> and runs algebraic simplification on
   // the computation. Returns a string description of the result of
   // simplification.
-  auto build_and_simplify = [&]() -> string {
+  auto build_and_simplify = [&]() -> std::string {
     HloComputation::Builder b(TestName());
 
     Window window;
@@ -4202,8 +4584,8 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     Shape out_shape = ShapeInference::InferConvolveShape(
                           in_shape, f_shape, /*feature_group_count=*/1,
                           /*batch_group_count=*/1, window, dnums,
-                          /*preferred_element_type=*/absl::nullopt)
-                          .ValueOrDie();
+                          /*preferred_element_type=*/std::nullopt)
+                          .value();
     if (options.output_minor_to_major_layout) {
       out_shape = ShapeUtil::MakeShapeWithLayout(F32, out_shape.dimensions(),
                                                  {0, 1, 2, 3});
@@ -4220,7 +4602,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     AlgebraicSimplifierOptions simplifier_options;
     simplifier_options.set_is_layout_sensitive(true);
     AlgebraicSimplifier simplifier(simplifier_options);
-    if (!simplifier.Run(module.get()).ValueOrDie()) {
+    if (!simplifier.Run(module.get()).value()) {
       return "NO_CHANGE";
     }
     auto* root = computation->root_instruction();
@@ -4319,6 +4701,216 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
   EXPECT_EQ("NO_CHANGE", build_and_simplify());
 }
 
+struct ConvTestOptions {
+  int input_width = 4;
+  int input_height = 2;
+  int input_features = 10;
+  int input_batch = 1;
+  int kernel_width = 1;
+  int kernel_height = 1;
+  int kernel_input_channels = 1;
+  int kernel_output_channels = 10;
+  int feature_group_count = 10;
+  absl::string_view input_order = "bf01";
+  absl::string_view kernel_order = "io01";
+  absl::string_view output_order = "bf01";
+  PrimitiveType input_type = F32;
+  PrimitiveType kernel_type = F32;
+  PrimitiveType output_type = F32;
+  struct WindowOptions {
+    int col_stride = 1;
+    int col_padding = 0;
+    int col_dilation = 1;
+    int row_stride = 1;
+    int row_padding = 0;
+    int row_dilation = 1;
+  } window_options;
+
+  std::unique_ptr<HloComputation> Build(const std::string& test_name) const {
+    auto create_dimension = [](int size, int stride, int padding,
+                               int dilation) {
+      WindowDimension dim;
+      dim.set_size(size);
+      dim.set_stride(stride);
+      dim.set_padding_low(padding);
+      dim.set_padding_high(padding);
+      dim.set_window_dilation(dilation);
+      dim.set_base_dilation(dilation);
+      return dim;
+    };
+    auto vertical = create_dimension(kernel_height, window_options.row_stride,
+                                     window_options.row_padding,
+                                     window_options.row_dilation);
+    auto horizontal = create_dimension(kernel_width, window_options.col_stride,
+                                       window_options.col_padding,
+                                       window_options.col_dilation);
+    bool width_first = kernel_order.find('0') < kernel_order.find('1');
+    Window window;
+    *window.add_dimensions() = width_first ? horizontal : vertical;
+    *window.add_dimensions() = width_first ? vertical : horizontal;
+
+    auto create_shape = [this](PrimitiveType type, absl::string_view order,
+                               int width, int height) {
+      DimensionVector dim;
+      for (char ch : order) {
+        if (ch == '0') {
+          dim.push_back(width);
+        } else if (ch == '1') {
+          dim.push_back(height);
+        } else if (ch == 'f') {
+          dim.push_back(input_features);
+        } else if (ch == 'b') {
+          dim.push_back(input_batch);
+        } else if (ch == 'i') {
+          dim.push_back(kernel_input_channels);
+        } else if (ch == 'o') {
+          dim.push_back(kernel_output_channels);
+        } else {
+          LOG(FATAL) << "Incorrect order value: " << ch;
+        }
+      }
+      return ShapeUtil::MakeShape(type, dim);
+    };
+    Shape input_shape =
+        create_shape(input_type, input_order, input_width, input_height);
+    Shape kernel_shape =
+        create_shape(kernel_type, kernel_order, kernel_width, kernel_height);
+
+    ConvolutionDimensionNumbers dnums =
+        ParseConvolutionDimensionNumbers(
+            absl::StrCat(input_order, "_", kernel_order, "->", output_order))
+            .value();
+    Shape inferred_shape =
+        ShapeInference::InferConvolveShape(
+            input_shape, kernel_shape, feature_group_count,
+            /*batch_group_count=*/1, window, dnums, output_type)
+            .value();
+
+    HloComputation::Builder b(test_name);
+    HloInstruction* input = b.AddInstruction(
+        HloInstruction::CreateParameter(0, input_shape, "input"));
+    HloInstruction* kernel = b.AddInstruction(
+        HloInstruction::CreateParameter(1, kernel_shape, "kernel"));
+    b.AddInstruction(HloInstruction::CreateConvolve(
+        inferred_shape, input, kernel, feature_group_count,
+        /*batch_group_count=*/1, window, dnums,
+        HloTestBase::DefaultPrecisionConfig(2)));
+    return b.Build();
+  }
+};
+
+class ConvTestBase : public HloTestBase {
+ public:
+  std::unique_ptr<HloModule> Simplify(ConvTestOptions options) {
+    auto module = CreateNewVerifiedModule();
+    module->AddEntryComputation(options.Build(TestName()));
+    AlgebraicSimplifierOptions simplifier_options;
+    AlgebraicSimplifier simplifier{simplifier_options};
+    bool result = simplifier.Run(module.get()).value();
+    return result ? std::move(module) : nullptr;
+  }
+
+  template <typename T>
+  void ExpectSimplifyMatch(ConvTestOptions options, const T& match) {
+    auto module = Simplify(std::move(options));
+    ASSERT_NE(module.get(), nullptr);
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(match));
+  }
+
+  void ExpectSimplifyNoMatch(ConvTestOptions options) {
+    auto module = Simplify(std::move(options));
+    EXPECT_EQ(module.get(), nullptr);
+  }
+};
+
+TEST_F(ConvTestBase, DefaultOptions) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{},
+      m::Multiply(m::Parameter(0), m::Broadcast(m::Reshape(m::Parameter(1)))));
+}
+
+TEST_F(ConvTestBase, FeatureDimension) {
+  ExpectSimplifyNoMatch(
+      ConvTestOptions{.kernel_input_channels = 2, .feature_group_count = 5});
+}
+
+TEST_F(ConvTestBase, ContractedDimension) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.kernel_height = 2},
+      m::Reshape(m::Reduce(m::Multiply(m::Parameter(0), m::Broadcast()),
+                           m::Convert(m::Constant()))));
+}
+
+TEST_F(ConvTestBase, InputConvert) {
+  ExpectSimplifyMatch(ConvTestOptions{.input_type = F16},
+                      m::Multiply(m::Convert(m::Parameter(0)),
+                                  m::Broadcast(m::Reshape(m::Parameter(1)))));
+}
+
+TEST_F(ConvTestBase, KernelConvert) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.kernel_type = F16},
+      m::Multiply(m::Parameter(0),
+                  m::Broadcast(m::Reshape(m::Convert(m::Parameter(1))))));
+}
+
+TEST_F(ConvTestBase, OutputConvert) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.output_type = F16},
+      m::Multiply(m::Convert(m::Parameter(0)),
+                  m::Broadcast(m::Reshape(m::Convert(m::Parameter(1))))));
+}
+
+class ConvTestTranspose : public ConvTestBase,
+                          public ::testing::WithParamInterface<const char*> {};
+
+TEST_P(ConvTestTranspose, InputLayout) {
+  ExpectSimplifyMatch(ConvTestOptions{.input_order = GetParam()},
+                      m::Multiply(m::Transpose(m::Parameter(0)),
+                                  m::Broadcast(m::Reshape(m::Parameter(1)))));
+}
+
+TEST_P(ConvTestTranspose, KernelLayout) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.kernel_order = absl::StrReplaceAll(
+                          GetParam(), {{"b", "i"}, {"f", "o"}})},
+      m::Multiply(m::Parameter(0),
+                  m::Broadcast(m::Reshape(m::Transpose(m::Parameter(1))))));
+}
+
+TEST_P(ConvTestTranspose, OutputLayout) {
+  ExpectSimplifyMatch(
+      ConvTestOptions{.output_order = GetParam()},
+      m::Multiply(m::Transpose(m::Parameter(0)),
+                  m::Broadcast(m::Reshape(m::Transpose(m::Parameter(1))))));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvTestSuite, ConvTestTranspose,
+    ::testing::ValuesIn({"10fb", "10bf", "1fb0", "1f0b", "1bf0", "1b0f",
+                         "01fb", "01bf", "0fb1", "0f1b", "0bf1", "0b1f",
+                         "fb01", "fb10", "f01b", "f0b1", "f10b", "f1b0",
+                         "b01f", "b0f1", "b10f", "b1f0", "bf10"}));
+
+class ConvTestWindow : public ConvTestBase,
+                       public ::testing::WithParamInterface<ConvTestOptions> {};
+
+TEST_P(ConvTestWindow, NoMatch) { ExpectSimplifyNoMatch(GetParam()); }
+
+INSTANTIATE_TEST_SUITE_P(
+    ConvTestSuite, ConvTestWindow,
+    ::testing::ValuesIn({
+        ConvTestOptions{.kernel_width = 3},
+        ConvTestOptions{.kernel_height = 3},
+        ConvTestOptions{.window_options = {.col_stride = 2}},
+        ConvTestOptions{.window_options = {.col_padding = 1}},
+        ConvTestOptions{.window_options = {.col_dilation = 2}},
+        ConvTestOptions{.window_options = {.row_stride = 2}},
+        ConvTestOptions{.window_options = {.row_padding = 1}},
+        ConvTestOptions{.window_options = {.row_dilation = 2}},
+    }));
+
 // Test that slice(broadcast(/*scalar value*/)) simplifies to a single
 // broadcast.
 TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
@@ -4344,10 +4936,10 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 
   AlgebraicSimplifier simplifier(default_options_);
 
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   // Running simplification again should not result in any further changes.
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Op().Is(scalar_param))
                              .WithShapeEqualTo(&slice_shape)));
@@ -4380,7 +4972,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reshape_shape));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Broadcast(m::Op().Is(forty_two))
                              .WithShapeEqualTo(&reshape_shape)));
@@ -4390,7 +4982,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 // reshape(transpose(reshape(op))) can simplify to
 // reshape(concat(slice(op), ..., slice(op))).
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeToConcatSlice) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
@@ -4404,7 +4996,7 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   Shape result_shape = ShapeUtil::MakeShape(F32, {8, 28, 14, 64});
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -4417,7 +5009,7 @@ ENTRY entry {
 // reshape(transpose(reshape(op))) with a large number of chunks
 // is not rewritten.
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeTooLarge) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpaceBig
 
 ENTRY entry {
@@ -4431,13 +5023,13 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 // Test that a reshape(transpose(reshape(op))) that does not constitute a
 // depth-to-space transformation is not rewritten.
 TEST_F(AlgebraicSimplifierTest, TransposeReshapeNotDepthToSpace) {
-  const string& hlo_string = R"(
+  const std::string& hlo_string = R"(
 HloModule TransposeReshapeDepthToSpace
 
 ENTRY entry {
@@ -4451,80 +5043,36 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation::Builder builder(TestName());
-
-  // Create operand to the pad.
-  HloInstruction* operand =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {1, 2, 3, 4}), "p0"));
-
-  // Create the pad.
-  PaddingConfig padding = MakeNoPaddingConfig(4);
-  padding.mutable_dimensions(1)->set_edge_padding_low(1);
-  padding.mutable_dimensions(3)->set_edge_padding_high(2);
-
-  HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(F32, {1, 3, 3, 5}), operand, pad_value, padding));
-
-  // Create add computation.
-  HloComputation* add_computation = nullptr;
-  {
-    HloComputation::Builder builder(TestName() + ".add");
-    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-    HloInstruction* p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-    HloInstruction* p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
-    add_computation = module->AddEmbeddedComputation(builder.Build());
-  }
-
-  // Create the reduce-window.
-  Window window;
-  for (int64_t i = 0; i < pad->shape().rank(); ++i) {
-    auto* dim = window.add_dimensions();
-    dim->set_size(1);
-    dim->set_padding_low(10);
-    dim->set_padding_high(100);
-    dim->set_window_dilation(1);
-    dim->set_base_dilation(1);
-    dim->set_stride(1);
-  }
-  const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
-  HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* reduce_window =
-      builder.AddInstruction(HloInstruction::CreateReduceWindow(
-          reduce_window_shape, pad, reduce_init_value, window,
-          add_computation));
-
-  // Build the computation and run the simplifier.
-  auto computation = module->AddEntryComputation(builder.Build());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root, reduce_window);
+  const std::string& hlo_string = R"(
+HloModule test
+fn {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY entry {
+  param = f32[1,2,3,4] parameter(0)
+  const = f32[] constant(5)
+  pad = pad(param, const), padding=0_0x1_0x0_0x0_2
+  ROOT r = reduce-window(pad, const), to_apply=fn, window={size=2x2x2x2 lhs_dilate=1x1x1x3 pad=10_100x10_100x10_100x10_100}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-
+  ASSERT_TRUE(RunHloPass(&simplifier, module.get()).value());
   // Running simplification again should not result in any further changes.
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(RunHloPass(&simplifier, module.get()).value());
 
   // Verify the result
-  root = computation->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root,
-              GmockMatch(m::ReduceWindow(m::Op().Is(operand), m::Constant())));
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reduce_window_shape))
-      << ShapeUtil::HumanString(root->shape()) << " vs "
-      << ShapeUtil::HumanString(reduce_window_shape);
+              GmockMatch(m::ReduceWindow(m::Parameter(0), m::Constant())));
   EXPECT_EQ(root->window().dimensions(0).padding_low(), 10);
   EXPECT_EQ(root->window().dimensions(1).padding_low(), 11);
   EXPECT_EQ(root->window().dimensions(2).padding_low(), 10);
@@ -4532,85 +5080,38 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   EXPECT_EQ(root->window().dimensions(0).padding_high(), 100);
   EXPECT_EQ(root->window().dimensions(1).padding_high(), 100);
   EXPECT_EQ(root->window().dimensions(2).padding_high(), 100);
-  EXPECT_EQ(root->window().dimensions(3).padding_high(), 102);
+  EXPECT_EQ(root->window().dimensions(3).padding_high(), 106);
 }
 
 // Test that ReduceWindow(Convert(Pad(op, x)), y) can simplify to
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation::Builder builder(TestName());
-
-  // Create operand to the pad.
-  HloInstruction* parameter =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(BF16, {1, 2, 3, 4}), "p0"));
-
-  // Create the pad.
-  PaddingConfig padding = MakeNoPaddingConfig(4);
-  padding.mutable_dimensions(1)->set_edge_padding_low(1);
-  padding.mutable_dimensions(3)->set_edge_padding_high(2);
-
-  HloInstruction* pad_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
-      ShapeUtil::MakeShape(BF16, {1, 3, 3, 5}), parameter, pad_value, padding));
-
-  HloInstruction* convert =
-      builder.AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::ChangeElementType(pad->shape(), F32), pad));
-
-  // Create add computation.
-  HloComputation* add_computation = nullptr;
-  {
-    HloComputation::Builder builder(TestName() + ".add");
-    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
-    HloInstruction* p0 = builder.AddInstruction(
-        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
-    HloInstruction* p1 = builder.AddInstruction(
-        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
-    builder.AddInstruction(
-        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
-    add_computation = module->AddEmbeddedComputation(builder.Build());
-  }
-
-  // Create the reduce-window.
-  Window window;
-  for (int64_t i = 0; i < pad->shape().rank(); ++i) {
-    auto* dim = window.add_dimensions();
-    dim->set_size(1);
-    dim->set_padding_low(10);
-    dim->set_padding_high(100);
-    dim->set_window_dilation(1);
-    dim->set_base_dilation(1);
-    dim->set_stride(1);
-  }
-  const Shape reduce_window_shape =
-      ShapeUtil::MakeShape(F32, {111, 113, 113, 116});
-  HloInstruction* reduce_init_value = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(5.0f)));
-  HloInstruction* reduce_window =
-      builder.AddInstruction(HloInstruction::CreateReduceWindow(
-          reduce_window_shape, convert, reduce_init_value, window,
-          add_computation));
-
-  // Build the computation and run the simplifier.
-  auto computation = module->AddEntryComputation(builder.Build());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root, reduce_window);
+  const std::string& hlo_string = R"(
+HloModule test
+fn {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT add = f32[] add(p0, p1)
+}
+ENTRY entry {
+  param = bf16[1,2,3,4] parameter(0)
+  const = bf16[] constant(5)
+  pad = pad(param, const), padding=0_0x1_0x0_0x0_2
+  converted = f32[1,3,3,6] convert(pad)
+  ROOT r = reduce-window(converted, const), to_apply=fn, window={size=2x2x2x2 pad=10_100x10_100x10_100x10_100}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-
+  ASSERT_TRUE(RunHloPass(&simplifier, module.get()).value());
   // Running simplification again should not result in any further changes.
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(RunHloPass(&simplifier, module.get()).value());
 
   // Verify the result
-  root = computation->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::ReduceWindow(m::Convert(m::Parameter(0)),
                                                m::Constant())));
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reduce_window_shape))
-      << ShapeUtil::HumanString(root->shape()) << " vs "
-      << ShapeUtil::HumanString(reduce_window_shape);
   EXPECT_EQ(root->window().dimensions(0).padding_low(), 10);
   EXPECT_EQ(root->window().dimensions(1).padding_low(), 11);
   EXPECT_EQ(root->window().dimensions(2).padding_low(), 10);
@@ -4633,7 +5134,7 @@ TEST_F(AlgebraicSimplifierTest, ReversalOfTrivialDimensionsToBitcast) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(a, root);
@@ -4669,7 +5170,7 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
   m->AddEmbeddedComputation(std::move(dot_computation));
   m->AddEntryComputation(call_builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
 }
 
 // Test that a constant with tuple shape becomes a tuple of constants.
@@ -4686,7 +5187,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
   auto computation = m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Tuple(m::Constant(), m::Constant())));
 }
@@ -4713,7 +5214,7 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
 
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Parameter()));
 }
 
@@ -4725,7 +5226,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantDynamicSlice) {
   std::vector<HloInstruction*> params;
   for (int i = 0; i < 3; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR0<int32>(2 << (i + 1)))));
+        LiteralUtil::CreateR0<int32_t>(2 << (i + 1)))));
   }
   Shape ds_shape = ShapeUtil::MakeShape(F32, {2, 20, 200});
   builder.AddInstruction(HloInstruction::CreateDynamicSlice(
@@ -4737,7 +5238,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantDynamicSlice) {
 
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Slice(m::Parameter())));
 }
@@ -4777,10 +5278,10 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
 
   auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::DynamicSlice(m::Parameter(), m::Parameter(),
-                                         m::Parameter(), m::Parameter())));
+              GmockMatch(m::DynamicSlice(m::Parameter(), m::Constant(),
+                                         m::Parameter(), m::Constant())));
 }
 
 // Test that two consecutive broadcasts can be merged to one.
@@ -4800,7 +5301,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
   EXPECT_THAT(root->dimensions(), ElementsAre(2));
@@ -4826,7 +5327,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts2) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Parameter(0))));
   EXPECT_THAT(root->dimensions(), ElementsAre(1, 3));
@@ -4846,7 +5347,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Iota()));
   EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
@@ -4867,7 +5368,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   root = computation->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Iota()));
   EXPECT_EQ(Cast<HloIotaInstruction>(root)->iota_dimension(), 2);
@@ -4880,7 +5381,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
     ENTRY test {
       lhs = f32[3,4,5] parameter(0)
       rhs = f32[6,3,4] parameter(1)
-      dot = f32[5,6] dot(lhs,rhs), lhs_contracting_dims={0,1}, rhs_contracting_dims={1,2}
+      dot = f32[5,6] dot(lhs,rhs), lhs_contracting_dims={0,1}, rhs_contracting_dims={1,2}, operand_precision={highest,high}
       ROOT transpose = f32[6,5] transpose(dot), dimensions={1,0}
     }
   )";
@@ -4889,9 +5390,143 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfDot) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, GmockMatch(m::Dot(m::Parameter(1), m::Parameter(0))));
+  const HloInstruction* dot;
+  ASSERT_THAT(root, GmockMatch(m::Dot(&dot, m::Parameter(1), m::Parameter(0))));
+  EXPECT_EQ(dot->precision_config().operand_precision()[0],
+            PrecisionConfig::HIGH);
+  EXPECT_EQ(dot->precision_config().operand_precision()[1],
+            PrecisionConfig::HIGHEST);
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[10,20,30,40] parameter(0)
+      rhs = f32[10,20,50,30] parameter(1)
+      dot = dot(lhs,rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                          lhs_contracting_dims={2}, rhs_contracting_dims={3},
+                          operand_precision={high, default}
+      ROOT transpose = transpose(dot), dimensions={0,1,3,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* dot;
+  ASSERT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(&dot, m::Parameter(1), m::Parameter(0))));
+  DotDimensionNumbers dnums = dot->dot_dimension_numbers();
+  EXPECT_THAT(dnums.lhs_batch_dimensions(), ElementsAre(0, 1));
+  EXPECT_THAT(dnums.rhs_batch_dimensions(), ElementsAre(0, 1));
+  EXPECT_THAT(dnums.lhs_contracting_dimensions(), ElementsAre(3));
+  EXPECT_THAT(dnums.rhs_contracting_dimensions(), ElementsAre(2));
+  EXPECT_EQ(dot->precision_config().operand_precision()[0],
+            PrecisionConfig::DEFAULT);
+  EXPECT_EQ(dot->precision_config().operand_precision()[1],
+            PrecisionConfig::HIGH);
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDimsInBatchDotCantSimplify) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[10,20,30,40] parameter(0)
+      rhs = f32[10,20,50,30] parameter(1)
+      dot = dot(lhs,rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                          lhs_contracting_dims={2}, rhs_contracting_dims={3}
+      ROOT transpose = transpose(dot), dimensions={1,0,3,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfNonCanonicalBatchDotCantSimplify) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      p0 = f32[13,11,2,3] parameter(0)
+      p1 = f32[13,11,3,7,5] parameter(1)
+      dot1 = dot(p0, p1), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+      dot2 = dot(p1, p0), rhs_batch_dims={0,1}, rhs_contracting_dims={3}, lhs_batch_dims={0,1}, lhs_contracting_dims={2}
+      trans1 = transpose(dot1), dimensions={0,1,2,4,3}
+      trans2 = transpose(dot2), dimensions={0,1,2,4,3}
+      ROOT root = tuple(trans1, trans2)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTranspose) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,8] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      i2 = s32[] parameter(3)
+      transpose = f32[12,8,10] transpose(param), dimensions={0,2,1}
+      ROOT slice = f32[2,3,5] dynamic-slice(transpose, i0, i1, i2),
+        dynamic_slice_sizes={2,3,5}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Transpose(
+                        m::DynamicSlice(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(3), m::Parameter(2)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceOfTrivialReshape) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param = f32[12,10,1,8] parameter(0)
+      i0 = s32[] parameter(1)
+      i1 = s32[] parameter(2)
+      i2 = s32[] parameter(3)
+      z = s32[] constant(0)
+      reshape = f32[1,12,10,8] reshape(param)
+      ROOT slice = f32[1,2,3,5] dynamic-slice(reshape, z, i0, i1, i2),
+        dynamic_slice_sizes={1,2,3,5}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(false);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::DynamicSlice(
+                        m::Parameter(0), m::Parameter(1), m::Parameter(2),
+                        m::Constant(), m::Parameter(3)))));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
@@ -4910,7 +5545,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
 }
@@ -4931,7 +5566,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
 }
@@ -4952,7 +5587,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Slice(m::Parameter(0))));
 }
@@ -4973,7 +5608,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPad) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Slice(m::Parameter(0))));
   EXPECT_THAT(root->slice_starts(), ElementsAre(1, 1));
@@ -4995,7 +5630,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalarConstant) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Constant())));
 }
@@ -5016,7 +5651,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Parameter()));
 }
@@ -5039,7 +5674,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadSomeDimsInPadding) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::ConstantScalar(-7.0))));
 }
@@ -5061,7 +5696,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Parameter(1)));
 }
@@ -5083,7 +5718,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Slice(m::Parameter(2))));
   EXPECT_EQ(root->slice_starts(0), 1);
@@ -5104,7 +5739,7 @@ TEST_F(AlgebraicSimplifierTest, ConcatToBroadcast) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
@@ -5124,7 +5759,7 @@ TEST_F(AlgebraicSimplifierTest, NegateNegate) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
 }
@@ -5144,9 +5779,102 @@ TEST_F(AlgebraicSimplifierTest, NotNot) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
+}
+
+TEST_F(AlgebraicSimplifierTest, BatchDotTransposeOperands) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[10,20,30,40] parameter(0)
+      rhs = f32[10,20,50,30] parameter(1)
+      lhs_t = transpose(lhs), dimensions={0,1,3,2}
+      rhs_t = transpose(rhs), dimensions={0,1,3,2}
+      ROOT root = dot(lhs_t, rhs_t),
+                  lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                  lhs_contracting_dims={3}, rhs_contracting_dims={2},
+                  operand_precision={default, high}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* dot;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Transpose(m::Dot(&dot, m::Parameter(1), m::Parameter(0)))));
+  EXPECT_EQ(dot->precision_config().operand_precision()[0],
+            PrecisionConfig::HIGH);
+  EXPECT_EQ(dot->precision_config().operand_precision()[1],
+            PrecisionConfig::DEFAULT);
+}
+
+TEST_F(AlgebraicSimplifierTest, BatchDotTransposeBatchDims) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[10,20,40,30] parameter(0)
+      rhs = f32[10,20,30,50] parameter(1)
+      lhs_t = transpose(lhs), dimensions={1,0,2,3}
+      rhs_t = transpose(rhs), dimensions={1,0,2,3}
+      ROOT root = dot(lhs_t, rhs_t),
+                  lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                  lhs_contracting_dims={3}, rhs_contracting_dims={2},
+                  operand_precision={default, high}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* dot;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Transpose(m::Dot(&dot, m::Parameter(0), m::Parameter(1)))));
+  EXPECT_EQ(dot->precision_config().operand_precision()[0],
+            PrecisionConfig::DEFAULT);
+  EXPECT_EQ(dot->precision_config().operand_precision()[1],
+            PrecisionConfig::HIGH);
+}
+
+TEST_F(AlgebraicSimplifierTest, BatchDotTransposeBatchDimsAndOperands) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[10,20,30,40] parameter(0)
+      rhs = f32[10,20,50,30] parameter(1)
+      lhs_t = transpose(lhs), dimensions={1,0,3,2}
+      rhs_t = transpose(rhs), dimensions={1,0,3,2}
+      ROOT root = dot(lhs_t, rhs_t),
+                  lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+                  lhs_contracting_dims={3}, rhs_contracting_dims={2},
+                  operand_precision={high, default}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHloPass(&simplifier, module.get()));
+  EXPECT_TRUE(changed);
+  const HloInstruction* dot;
+  ASSERT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Transpose(m::Dot(&dot, m::Parameter(1), m::Parameter(0)))));
+  EXPECT_EQ(dot->precision_config().operand_precision()[0],
+            PrecisionConfig::DEFAULT);
+  EXPECT_EQ(dot->precision_config().operand_precision()[1],
+            PrecisionConfig::HIGH);
 }
 
 struct PadReduceWindowEffectiveBroadcastCase {
@@ -5160,7 +5888,7 @@ struct PadReduceWindowEffectiveBroadcastCase {
   bool prepend_a;
   bool should_become_broadcast;
 
-  string ToTestCaseName() const {
+  std::string ToTestCaseName() const {
     return absl::StrCat(absl::StrJoin(input_spatials, ","), ";",
                         absl::StrJoin(symmetric_pad_spatials, ","), ";",
                         absl::StrJoin(reduce_window_spatials, ","), ";",
@@ -5245,6 +5973,7 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
   AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
+  SCOPED_TRACE(m->ToString());
 
   EXPECT_TRUE(
       ShapeUtil::Equal(computation->root_instruction()->shape(), output_shape));
@@ -5270,7 +5999,7 @@ PadReduceWindowEffectiveBroadcastCases() {
        /*reduce_window_spatials=*/{7, 7}, /*prepend_a=*/true,
        /*should_become_broadcast=*/false},  //
       {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{2, 2},
-       /*reduce_window_spatials=*/{1, 1}, /*prepend_a=*/true,
+       /*reduce_window_spatials=*/{2, 2}, /*prepend_a=*/true,
        /*should_become_broadcast=*/false},  //
       {/*input_spatials=*/{5, 1}, /*symmetric_pad_amount=*/{0, 2},
        /*reduce_window_spatials=*/{2, 5}, /*prepend_a=*/true,
@@ -5576,7 +6305,7 @@ TEST_F(DotOfConcatSimplificationTest, ConcatIntoScalarDot) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   AlgebraicSimplifierOptions options = default_options_;
   options.set_enable_dot_strength_reduction(false);
-  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
 }
 
 TEST_F(DotOfConcatSimplificationTest, UnnestConcatenate) {
@@ -5618,7 +6347,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
       m->AddEntryComputation(builder.Build());
 
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(), operand);
 }
 
@@ -5641,11 +6370,36 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root->opcode(), HloOpcode::kAdd);
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
+}
+
+// Test of dynamic-update-slice with dims where update and result have the same
+// size so we can replace indices to 0.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceTrivialIndices) {
+  const char* hlo_string = R"(
+HloModule DynamicUpdateSliceTrivialIndices
+
+ENTRY DynamicUpdateSliceTrivialIndices {
+  param0 = f32[1800,12,512] parameter(0)
+  param1 = f32[1,12,512] parameter(1)
+  param2 = u32[] parameter(2)
+  ROOT dynamic-update-slice = f32[1800,12,512] dynamic-update-slice(
+    param0, param1, param2, param2, param2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite\n" << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(m::Parameter(0), m::Parameter(1),
+                                               m::Parameter(2), m::Constant(),
+                                               m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSlice) {
@@ -5669,8 +6423,8 @@ ENTRY AddDynamicUpdateSliceToAddSlice {
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite reshape\n" << module->ToString();
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite to add slice\n" << module->ToString();
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
@@ -5683,6 +6437,36 @@ ENTRY AddDynamicUpdateSliceToAddSlice {
                  m::Reshape(m::Parameter(1))),
           m::Constant(), m::Parameter(2), m::Constant(), m::Constant(),
           m::Constant(), m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSliceOnLhs) {
+  const char* hlo_string = R"(
+HloModule AddDynamicUpdateSliceToAddSlice
+
+ENTRY AddDynamicUpdateSliceToAddSlice {
+  param0 = f32[4,12,512] parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[4,12,512] broadcast(constant), dimensions={}
+  param1 = f32[1,12,512] parameter(1)
+  param2 = s32[] parameter(2)
+  constant.1 = s32[] constant(0)
+  dynamic-update-slice = f32[4,12,512] dynamic-update-slice(
+    broadcast, param1, param2, constant.1, constant.1)
+  ROOT add = f32[4,12,512] add(dynamic-update-slice, param0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite to add slice\n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::DynamicUpdateSlice(
+                        m::Parameter(0),
+                        m::Add(m::DynamicSlice(m::Parameter(0), m::Parameter(2),
+                                               m::Constant(), m::Constant()),
+                               m::Parameter(1)),
+                        m::Parameter(2), m::Constant(), m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ScalarMultiplyReduction) {
@@ -5707,7 +6491,7 @@ ENTRY ConstScalarMultiply {
   AlgebraicSimplifierOptions options;
   options.set_enable_scalar_multiply_reduction(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
   EXPECT_THAT(root,
@@ -5735,7 +6519,7 @@ ENTRY ConstScalarMultiply {
   AlgebraicSimplifierOptions options;
   options.set_enable_scalar_multiply_reduction(true);
   AlgebraicSimplifier simplifier(options);
-  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(simplifier.Run(module.get()).value());
 }
 
 INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,
@@ -5784,9 +6568,9 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
   int32_t start_col = (spec.lcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_row))),
+          LiteralUtil::CreateR0<int32_t>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_col)))};
+          LiteralUtil::CreateR0<int32_t>(start_col)))};
   int64_t slice_row_size = (spec.lcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.lcd == 0) ? 1 : spec.k;
   std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
@@ -5865,9 +6649,9 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
   int32_t start_col = (spec.rcd == 0) ? spec.s : 0;
   std::vector<HloInstruction*> start_indices = {
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_row))),
+          LiteralUtil::CreateR0<int32_t>(start_row))),
       builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<int32>(start_col)))};
+          LiteralUtil::CreateR0<int32_t>(start_col)))};
   int64_t slice_row_size = (spec.rcd == 0) ? spec.k : 1;
   int64_t slice_col_size = (spec.rcd == 0) ? 1 : spec.k;
   std::vector<int64_t> slice_sizes = {slice_row_size, slice_col_size};
@@ -5936,7 +6720,11 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
        /*neg=*/false},
   };
   std::vector<DotOfGatherTestSpec> all;
-  for (int i = 0; i < positives.size(); i++) {
+  const std::vector<DotOfGatherTestSpec>::size_type positives_size =
+      positives.size();
+  all.reserve(positives_size * 2);
+  for (std::vector<DotOfGatherTestSpec>::size_type i = 0; i < positives_size;
+       i++) {
     DotOfGatherTestSpec positive_test = positives[i];
     all.push_back(positive_test);
     DotOfGatherTestSpec negative_test = positive_test;
@@ -5969,7 +6757,7 @@ TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
 }
@@ -6001,7 +6789,7 @@ ENTRY entry {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Tuple(
                         m::Reshape(m::GetTupleElement(m::Parameter(), 0)),
@@ -6036,7 +6824,7 @@ ENTRY entry {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Tuple(m::Broadcast(m::ConstantScalar(0)),
                                         m::Broadcast(m::ConstantScalar(1)))));
@@ -6062,7 +6850,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Constant()));
 }
@@ -6084,7 +6872,7 @@ TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
 
   AlgebraicSimplifierOptions options;
   AlgebraicSimplifier simplifier(options);
-  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(simplifier.Run(module.get()).value());
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Multiply()));
 }
@@ -6101,7 +6889,7 @@ TEST_F(AlgebraicSimplifierTest, RecipSqrt) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(m::Parameter(1),
                                              m::Rsqrt(m::Parameter(0)))));
@@ -6119,7 +6907,7 @@ TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::MultiplyAnyOrder(m::Parameter(1),
                                              m::Sqrt(m::Parameter(0)))));
@@ -6138,7 +6926,7 @@ TEST_F(AlgebraicSimplifierTest, CopyReshape) {
   AlgebraicSimplifierOptions options(
       [](const Shape&, const Shape&) { return false; });
   options.set_is_layout_sensitive(true);
-  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Reshape(m::Parameter(0)).WithShapeEqualTo(&result_shape)));
@@ -6156,7 +6944,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RL) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
   auto shape2 = ShapeUtil::MakeShape(F32, {3, 2, 2});
   auto shape3 = ShapeUtil::MakeShape(F32, {2, 3, 2});
@@ -6186,7 +6974,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_RR) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto shape1 = ShapeUtil::MakeShape(F32, {2, 6});
   auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2});
   auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3});
@@ -6211,7 +6999,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_LR) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto shape1 = ShapeUtil::MakeShape(F32, {6, 2});
   auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2});
   auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3});
@@ -6236,7 +7024,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_LR2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto shape1 = ShapeUtil::MakeShape(F32, {2, 8});
   auto shape2 = ShapeUtil::MakeShape(F32, {2, 2, 2, 2});
   const HloInstruction* transpose;
@@ -6264,7 +7052,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_MM) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto shape1 = ShapeUtil::MakeShape(F32, {2, 6, 2});
   auto shape2 = ShapeUtil::MakeShape(F32, {2, 3, 2, 2});
   auto shape3 = ShapeUtil::MakeShape(F32, {2, 2, 3, 2});
@@ -6293,7 +7081,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegTranspose) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   // Transpose affects non-contracting dimension. The transpose and reshape
   // should not be moved to the constant side.
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegReshape) {
@@ -6310,7 +7098,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegReshape) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   // Reshape affects non-contracting dimensions. The transpose and reshape
   // should not be moved to the constant side.
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegConstant) {
@@ -6326,7 +7114,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegConstant) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   // Both operands are non-constant, so the optimization should not happen.
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegLayout) {
@@ -6350,7 +7138,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_NegLayout) {
   // The transformation of moving transpose and reshape to the constant side is
   // layout insensitive. It should not happen if AlgebraicSimplifier is set up
   // to be layout sensitive.
-  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDimsNoChange) {
@@ -6369,7 +7157,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDimsNoChange) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDims) {
@@ -6385,7 +7173,7 @@ TEST_F(AlgebraicSimplifierTest, DotContractingReorder_SizeOneDims) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   auto shape1 = ShapeUtil::MakeShape(F32, {6, 5});
   auto shape2 = ShapeUtil::MakeShape(F32, {1, 3, 2, 4});
   auto shape3 = ShapeUtil::MakeShape(F32, {1, 2, 3, 4});
@@ -6416,7 +7204,7 @@ TEST_F(AlgebraicSimplifierTest,
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, CompareIota) {
@@ -6429,7 +7217,7 @@ TEST_F(AlgebraicSimplifierTest, CompareIota) {
       ROOT compare = pred[128] compare(iota, broad), direction=LT
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::ConstantScalar(false))));
 }
@@ -6443,7 +7231,7 @@ TEST_F(AlgebraicSimplifierTest, CompareLtZero) {
       ROOT compare = pred[] compare(param, zero), direction=LT
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ConstantScalar(false)));
 }
@@ -6457,7 +7245,7 @@ TEST_F(AlgebraicSimplifierTest, CompareLeZero) {
       ROOT compare = pred[] compare(param, zero), direction=LE
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Le(m::Parameter(0), m::ConstantEffectiveScalar(0))));
@@ -6472,7 +7260,7 @@ TEST_F(AlgebraicSimplifierTest, CompareGeZero) {
       ROOT compare = pred[] compare(param, zero), direction=GE
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ConstantScalar(true)));
 }
@@ -6500,7 +7288,7 @@ TEST_F(AlgebraicSimplifierTest, CompareZeroGt) {
       ROOT compare = pred[] compare(zero, param), direction=GT
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ConstantScalar(false)));
 }
@@ -6514,7 +7302,7 @@ TEST_F(AlgebraicSimplifierTest, CompareZeroGe) {
       ROOT compare = pred[] compare(zero, param), direction=GE
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Ge(m::ConstantEffectiveScalar(0), m::Parameter(0))));
@@ -6529,7 +7317,7 @@ TEST_F(AlgebraicSimplifierTest, CompareZeroLe) {
       ROOT compare = pred[] compare(zero, param), direction=LE
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::ConstantScalar(true)));
 }
@@ -6543,7 +7331,7 @@ TEST_F(AlgebraicSimplifierTest, CompareZeroLt) {
       ROOT compare = pred[] compare(zero, param), direction=LT
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Lt(m::ConstantEffectiveScalar(0), m::Parameter(0))));
@@ -6557,7 +7345,7 @@ TEST_F(AlgebraicSimplifierTest, CompareSame) {
       ROOT compare = pred[123] compare(param, param), direction=GE
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(m::ConstantScalar(true))));
 }
@@ -6574,7 +7362,7 @@ TEST_F(AlgebraicSimplifierTest, CompareSimplified) {
       ROOT out = pred[] and(cmp1, cmp2)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Compare(m::Op(), m::Op().IsConstantScalar(10))
@@ -6593,7 +7381,7 @@ TEST_F(AlgebraicSimplifierTest, CompareSimplifiedReversed) {
       ROOT out = pred[] and(cmp1, cmp2)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Compare(m::Op(), m::Op().IsConstantScalar(10))
@@ -6614,7 +7402,7 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
 
   // Verify that the default is to re-write
   TF_ASSERT_OK_AND_ASSIGN(auto m1, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m1.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m1.get()).value());
   EXPECT_THAT(m1->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Op(), m::Op())));
 
@@ -6622,7 +7410,7 @@ TEST_F(AlgebraicSimplifierTest, CanDisableDotToMultiplyRewrite) {
   AlgebraicSimplifierOptions opts = default_options_;
   opts.set_enable_dot_to_multiply_rewrite(false);
   TF_ASSERT_OK_AND_ASSIGN(auto m2, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(opts).Run(m2.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(opts).Run(m2.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, RemainderOfIota) {
@@ -6635,7 +7423,7 @@ TEST_F(AlgebraicSimplifierTest, RemainderOfIota) {
       ROOT remainder = s32[5,1000] remainder(iota, s32[5,1000] five_bcast)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Iota()));
 }
@@ -6651,7 +7439,7 @@ TEST_F(AlgebraicSimplifierTest, RemainderOfNPlusIota) {
       ROOT remainder = s32[5,1000] remainder(sum, s32[5,1000] five_bcast)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Remainder(m::Iota(), m::Broadcast())));
 }
@@ -6668,7 +7456,7 @@ TEST_F(AlgebraicSimplifierTest, RemainderOfNPlusIotaOverflow) {
       ROOT remainder = s8[126] remainder(sum, s8[126] five_bcast)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, RepeatedRemainder) {
@@ -6681,7 +7469,7 @@ TEST_F(AlgebraicSimplifierTest, RepeatedRemainder) {
       ROOT rr = s32[1000] remainder(r, q)
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Remainder(m::Parameter(), m::Parameter())));
 }
@@ -6701,7 +7489,7 @@ TEST_F(AlgebraicSimplifierTest, SlicePadLayout) {
   const Shape root_shape = m->entry_computation()->root_instruction()->shape();
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
-  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Slice().WithShapeEqualTo(&root_shape)));
 }
@@ -6720,7 +7508,7 @@ TEST_F(AlgebraicSimplifierTest, MinOfMaxToClamp) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
@@ -6741,7 +7529,7 @@ TEST_F(AlgebraicSimplifierTest, MaxOfMinToClamp) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Clamp(m::Broadcast(m::ConstantScalar(3.0)), m::Parameter(0),
@@ -6760,7 +7548,7 @@ TEST_F(AlgebraicSimplifierTest, ClampOfClamp) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(2))));
@@ -6778,7 +7566,7 @@ TEST_F(AlgebraicSimplifierTest, MaxOfClamp) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Clamp(m::Parameter(0), m::Parameter(1), m::Parameter(2))));
@@ -6795,9 +7583,32 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfMultipleConcatOperands) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[50,50] parameter(0)
+      p1 = f32[50,50] parameter(1)
+      p2 = f32[50,50] parameter(2)
+      p3 = f32[50,50] parameter(3)
+      c0 = f32[200,50] concatenate(p0, p1, p2, p3), dimensions={0}
+      ROOT s0 = f32[98,50] slice(c0), slice={[51:149], [0:50]}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Slice(m::Concatenate(m::Parameter(1), m::Parameter(2)))));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->slice_starts(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(m->entry_computation()->root_instruction()->slice_limits(),
+              ElementsAre(99, 50));
 }
 
 TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
@@ -6810,7 +7621,7 @@ TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Abs(m::Parameter(0))));
 }
@@ -6836,9 +7647,35 @@ TEST_F(AlgebraicSimplifierTest, ReduceOfBatchDotToContractingDimension) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Dot(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceAddIsCommutative) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fn1 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+    fn2 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p1, p0)
+    }
+    test {
+      p0 = f32[10,10,10] parameter(0)
+      zero = f32[] constant(0)
+      r1 = f32[10,10] reduce(p0, zero), dimensions={0}, to_apply=fn1
+      ROOT r2 = f32[10] reduce(r1, zero), dimensions={0}, to_apply=fn2
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Reduce(m::Parameter(0), m::ConstantScalar(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
@@ -6864,7 +7701,7 @@ TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Expect transformation: rsqrt(power(gte.2,-2)) -> abs(gte.2)
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kPower), nullptr);
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
@@ -6899,7 +7736,7 @@ TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Expect transformation: rsqrt(divide(1,gte.2)) -> sqrt(gte.2)
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
@@ -6932,7 +7769,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 
   // Expect transformation: multiply(rsqrt(gte.2), rsqrt(gte.2)) -> divide(1,
   // gte.2)
@@ -6969,7 +7806,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt_NegativeTestCase) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForward");
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_NE(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
   EXPECT_NE(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
@@ -6998,7 +7835,7 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Verify that the module doesn't have any abs node.
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
   EXPECT_EQ(m->entry_computation()->root_instruction()->operand(2)->opcode(),
@@ -7026,7 +7863,7 @@ TEST_F(AlgebraicSimplifierTest,
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardInference");
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_NE(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
 }
 
@@ -7040,35 +7877,53 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
-TEST_F(AlgebraicSimplifierTest, BroadcastCompareSimplification) {
+TEST_F(AlgebraicSimplifierTest, ScalarCompareMaximumSimplification) {
   std::string module_string = R"(
     HloModule m
     test {
       a = s32[] parameter(0)
       b = s32[] parameter(1)
-      x = s32[10]{0} parameter(2)
-      broadcast_a = s32[10]{0} broadcast(a), dimensions={}
-      broadcast_b = s32[10]{0} broadcast(b), dimensions={}
-      add = s32[10]{0} add(broadcast_a, x)
-      ROOT cmp = pred[10]{0} compare(add, broadcast_b), direction=EQ
+      max = s32[] maximum(a,b)
+      ROOT cmp = pred[] compare(max, a), direction=GT
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  SCOPED_TRACE("before: " + m->ToString());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  SCOPED_TRACE("after: " + m->ToString());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
-              GmockMatch(m::Compare(m::Parameter(2),
-                                    m::Broadcast(m::Subtract(
-                                        m::Parameter(1), m::Parameter(0))))));
-
+              GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))));
   // Numerically unstable transformation shouldn't be applied to floating types.
   std::string module_string_f32 =
       absl::StrReplaceAll(module_string, {{"s32", "f32"}});
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareMaximumSimplification) {
+  std::string module_string = R"(
+    HloModule m
+    test {
+      a = s32[12,4,1,6] parameter(0)
+      b = s32[12,4,1,6] parameter(1)
+      max = s32[12,4,1,6] maximum(a,b)
+      ROOT cmp = pred[12,4,1,6] compare(max, b), direction=GT
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
+  SCOPED_TRACE("before: " + m->ToString());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  SCOPED_TRACE("after: " + m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))));
+  // Numerically unstable transformation shouldn't be applied to floating types.
+  std::string module_string_f32 =
+      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
@@ -7083,7 +7938,7 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Pow(A, 2) is transformed to AA. As a result, Abs(Power(A, 2)) is
   // transformed to AA.
   EXPECT_THAT(m->entry_computation()->root_instruction(),
@@ -7124,9 +7979,9 @@ TEST_F(AlgebraicSimplifierTest, ScatterAddCombined) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   // Combine Scatters
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Optimize Add with 0
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Scatter(m::Parameter(0),
@@ -7168,9 +8023,9 @@ TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedSwapped) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   // Combine Scatters
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Optimize Add with 0
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Scatter(m::Parameter(0),
@@ -7211,9 +8066,9 @@ TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWeirdDnums) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   // Combine Scatters
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Simplify Add
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Scatter(m::Broadcast(),
@@ -7254,9 +8109,9 @@ TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWeirdDnums2) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   // Combine Scatters
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   // Simplify Add
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Scatter(m::Broadcast(),
@@ -7297,7 +8152,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarScatter) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   // Combine Scatters
-  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
 }
 
 TEST_F(AlgebraicSimplifierTest, SwapConvOperands) {
@@ -7313,7 +8168,7 @@ TEST_F(AlgebraicSimplifierTest, SwapConvOperands) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
   // Combine Scatters
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   const HloInstruction* conv = m->entry_computation()->root_instruction();
   EXPECT_THAT(conv,
               GmockMatch(m::Convolution(m::Parameter(1), m::Parameter(0))));
@@ -7339,7 +8194,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarDividePredicate) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::MultiplyAnyOrder(
@@ -7361,7 +8216,7 @@ TEST_F(AlgebraicSimplifierTest, MultipleDotStrengthReductions) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_EQ(3, m->computation_count());
 }
 
@@ -7381,7 +8236,7 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   ASSERT_THAT(
       m->entry_computation()->root_instruction(),
       GmockMatch(m::Tuple(m::Reduce(m::Parameter(0), m::ConstantScalar(0)))));
@@ -7397,6 +8252,129 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
                   ->called_computations()[0]
                   ->root_instruction(),
               GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReplaceReduceMaxWithReduceArgMax) {
+  const char* kModuleStr = R"(
+HloModule ReplaceReduceMaxWithReduceArgMax
+
+%reduction_computation__1.25287 (parameter.25288: bf16[], parameter.25289: s32[], parameter.25290: bf16[], parameter.25291: s32[]) -> (bf16[], s32[]) {
+  %constant.25292 = pred[] constant(false)
+  %parameter.25288 = bf16[] parameter(0)
+  %parameter.25290 = bf16[] parameter(2)
+  %compare.25293 = pred[] compare(bf16[] %parameter.25288, bf16[] %parameter.25290), direction=GT
+  %compare.25294 = pred[] compare(bf16[] %parameter.25288, bf16[] %parameter.25288), direction=NE
+  %or.25295 = pred[] or(pred[] %compare.25293, pred[] %compare.25294)
+  %select.25300 = bf16[] select(pred[] %or.25295, bf16[] %parameter.25288, bf16[] %parameter.25290)
+  %compare.25296 = pred[] compare(bf16[] %parameter.25288, bf16[] %parameter.25290), direction=EQ
+  %parameter.25289 = s32[] parameter(1)
+  %parameter.25291 = s32[] parameter(3)
+  %compare.25297 = pred[] compare(s32[] %parameter.25289, s32[] %parameter.25291), direction=LT
+  %and.25298 = pred[] and(pred[] %compare.25296, pred[] %compare.25297)
+  %or.25299 = pred[] or(pred[] %or.25295, pred[] %and.25298)
+  %select.25301 = s32[] select(pred[] %or.25299, s32[] %parameter.25289, s32[] %parameter.25291)
+  ROOT %tuple.25302 = (bf16[], s32[]) tuple(bf16[] %select.25300, s32[] %select.25301)
+}
+
+%primitive_computation_max.25303 (parameter.25304: bf16[], parameter.25305: bf16[]) -> bf16[] {
+  %parameter.25304 = bf16[] parameter(0), metadata={op_type="max" op_name="max"}
+  %parameter.25305 = bf16[] parameter(1), metadata={op_type="max" op_name="max"}
+  ROOT %maximum.25306 = bf16[] maximum(bf16[] %parameter.25304, bf16[] %parameter.25305), metadata={op_type="max" op_name="max"}
+}
+
+ENTRY %main {
+  %p0 = bf16[384,128,19392]{2,1,0} parameter(0)
+
+  // Variadic Reduce (ArgMax)
+  %iota.25376 = s32[384,128,19392] iota(), iota_dimension=2
+  %constant.25377 = bf16[] constant(-inf)
+  %constant.25378 = s32[] constant(0)
+  %reduce.25379 = (bf16[384,128]{1,0}, s32[384,128]{1,0}) reduce(bf16[384,128,19392]{2,1,0} %p0, s32[384,128,19392] %iota.25376, bf16[] %constant.25377, s32[] %constant.25378), dimensions={2}, to_apply=%reduction_computation__1.25287
+
+  %get-tuple-element.25381 = s32[384,128]{1,0} get-tuple-element((bf16[384,128]{1,0}, s32[384,128]{1,0}) %reduce.25379), index=1
+
+  // Reduce (Max)
+  %constant.25382 = bf16[] constant(-inf)
+  %reduce.25383 = bf16[384,128]{1,0} reduce(bf16[384,128,19392]{2,1,0} %p0, bf16[] %constant.25382), dimensions={2}, to_apply=%primitive_computation_max.25303
+
+  ROOT %tuple.0 = (bf16[384,128]{1,0}, s32[384,128]{1,0}) tuple(%reduce.25383, %get-tuple-element.25381)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  int64_t reduce_count = absl::c_count_if(
+      m->entry_computation()->instructions(), [](const HloInstruction* hlo) {
+        return hlo->opcode() == HloOpcode::kReduce;
+      });
+  // Expect one Reduce operation after simplification.
+  EXPECT_EQ(1, reduce_count);
+  auto variadic_reduce = m::Reduce().WithShape(m::Shape().IsTuple());
+  auto root = m->entry_computation()->root_instruction();
+  // Expect that both outputs are fed by 'variadic_reduce'.
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::GetTupleElement(variadic_reduce, 0),
+                                  m::GetTupleElement(variadic_reduce, 1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReplaceReduceMinWithReduceArgMin) {
+  const char* kModuleStr = R"(
+HloModule ReplaceReduceMinWithReduceArgMin
+
+%region_3.84 (Arg_0.85: bf16[], Arg_1.86: s32[], Arg_2.87: bf16[], Arg_3.88: s32[]) -> (bf16[], s32[]) {
+  %Arg_3.88 = s32[]{:T(256)} parameter(3)
+  %Arg_2.87 = bf16[]{:T(512)} parameter(2)
+  %Arg_1.86 = s32[]{:T(256)} parameter(1)
+  %compare.93 = pred[]{:T(1024)S(6)} compare(s32[]{:T(256)} %Arg_1.86, s32[]{:T(256)} %Arg_3.88), direction=LT, metadata={op_name="lt" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %Arg_0.85 = bf16[]{:T(512)} parameter(0)
+  %compare.92 = pred[]{:T(1024)S(6)} compare(bf16[]{:T(512)} %Arg_0.85, bf16[]{:T(512)} %Arg_2.87), direction=EQ, metadata={op_name="eq" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %and.94 = pred[]{:T(1024)S(6)} and(pred[]{:T(1024)S(6)} %compare.92, pred[]{:T(1024)S(6)} %compare.93), metadata={op_name="and" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %compare.90 = pred[]{:T(1024)S(6)} compare(bf16[]{:T(512)} %Arg_0.85, bf16[]{:T(512)} %Arg_0.85), direction=NE, metadata={op_name="ne" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %compare.89 = pred[]{:T(1024)S(6)} compare(bf16[]{:T(512)} %Arg_0.85, bf16[]{:T(512)} %Arg_2.87), direction=LT, metadata={op_name="lt" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %or.91 = pred[]{:T(1024)S(6)} or(pred[]{:T(1024)S(6)} %compare.89, pred[]{:T(1024)S(6)} %compare.90), metadata={op_name="or" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %select.96 = bf16[]{:T(512)} select(pred[]{:T(1024)S(6)} %or.91, bf16[]{:T(512)} %Arg_0.85, bf16[]{:T(512)} %Arg_2.87), metadata={op_name="select_n" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %or.95 = pred[]{:T(1024)S(6)} or(pred[]{:T(1024)S(6)} %or.91, pred[]{:T(1024)S(6)} %and.94), metadata={op_name="or" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %select.97 = s32[]{:T(256)} select(pred[]{:T(1024)S(6)} %or.95, s32[]{:T(256)} %Arg_1.86, s32[]{:T(256)} %Arg_3.88), metadata={op_name="select_n" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  ROOT %tuple.98 = (bf16[]{:T(512)}, s32[]{:T(256)}) tuple(bf16[]{:T(512)} %select.96, s32[]{:T(256)} %select.97)
+}
+
+%region_0.8 (Arg_0.9: bf16[], Arg_1.10: bf16[]) -> bf16[] {
+  %Arg_1.10 = bf16[]{:T(512)} parameter(1)
+  %Arg_0.9 = bf16[]{:T(512)} parameter(0)
+  ROOT %minimum.11 = bf16[]{:T(512)} minimum(bf16[]{:T(512)} %Arg_0.9, bf16[]{:T(512)} %Arg_1.10), metadata={op_name="jit(ScaMTPUTopK)/jit(main)/jit(ScaMTPUTopK)/jit(jit_ScaMTPUTopK)/reduce_min[axes=(2,)]" source_file="<ipython-input-4-4f3bd086a82e>" source_line=8}
+}
+
+ENTRY %main {
+  %param_0.3 = bf16[1024,1024,2048]{2,0,1:T(8,128)(2,1)} parameter(0)
+
+  // ArgMin
+  %iota.5.clone.1 = s32[1024,1024,2048]{2,0,1:T(8,128)} iota(), iota_dimension=2, metadata={op_name="jit(ScaMTPUTopK)/jit(main)/jit(ScaMTPUTopK)/jit(jit_ScaMTPUTopK)/iota[dtype=int32 shape=(1024, 1024, 2048) dimension=2]" source_file="<ipython-input-4-4f3bd086a82e>" source_line=12}
+  %constant.24 = bf16[]{:T(512)} constant(inf)
+  %constant.23 = s32[]{:T(256)} constant(0)
+  %reduce.3 = (bf16[1024,1024]{0,1:T(8,128)(2,1)}, s32[1024,1024]{0,1:T(8,128)}) reduce(bf16[1024,1024,2048]{2,0,1:T(8,128)(2,1)} %param_0.3, s32[1024,1024,2048]{2,0,1:T(8,128)} %iota.5.clone.1, bf16[]{:T(512)} %constant.24, s32[]{:T(256)} %constant.23), dimensions={2}, to_apply=%region_3.84
+
+  %gte.0 = s32[1024,1024]{0,1:T(8,128)} get-tuple-element(%reduce.3), index=1
+
+  // ReduceMin
+  %constant.25 = bf16[]{:T(512)} constant(inf)
+  %reduce.4 = bf16[1024,1024]{0,1:T(8,128)(2,1)} reduce(bf16[1024,1024,2048]{2,0,1:T(8,128)(2,1)} %param_0.3, bf16[]{:T(512)} %constant.25), dimensions={2}, to_apply=%region_0.8
+
+  ROOT %tuple.0 = (bf16[1024,1024]{0,1:T(8,128)(2,1)}, s32[1024,1024]{0,1:T(8,128)}) tuple(%reduce.4, %gte.0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  int64_t reduce_count = absl::c_count_if(
+      m->entry_computation()->instructions(), [](const HloInstruction* hlo) {
+        return hlo->opcode() == HloOpcode::kReduce;
+      });
+  // Expect one Reduce operation after simplification.
+  EXPECT_EQ(1, reduce_count);
+  auto variadic_reduce = m::Reduce().WithShape(m::Shape().IsTuple());
+  auto root = m->entry_computation()->root_instruction();
+  // Expect that both outputs are fed by 'variadic_reduce'.
+  ASSERT_THAT(root,
+              GmockMatch(m::Tuple(m::GetTupleElement(variadic_reduce, 0),
+                                  m::GetTupleElement(variadic_reduce, 1))));
 }
 
 TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduceWindow) {
@@ -7415,7 +8393,7 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduceWindow) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   ASSERT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(
                   m::ReduceWindow(m::Parameter(0), m::ConstantScalar(0)))));
@@ -7444,7 +8422,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorder) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Broadcast(
                   m::Pad(m::Broadcast(m::Constant()), m::Constant()))));
@@ -7462,7 +8440,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorderWithUse) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::Broadcast(
                   m::Pad(m::Broadcast(m::Constant()), m::Constant())))));
@@ -7480,7 +8458,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorderWithNonScalar) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Tuple(m::Broadcast(
                   m::Pad(m::Broadcast(m::Parameter()), m::Constant())))));
@@ -7504,7 +8482,7 @@ ENTRY f {
                           ParseAndReturnVerifiedModule(hlo_string));
   VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
   auto* pad = module->entry_computation()->root_instruction();
   EXPECT_THAT(pad,
@@ -7531,12 +8509,36 @@ ENTRY f {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite \n" << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reshape(m::Convert(
                   m::Clamp(m::Constant(), m::Parameter(0), m::Constant())))));
+}
+
+// Test of converting dynamic-slice indices to zeros on dims with the full size.
+TEST_F(AlgebraicSimplifierTest, DynamicSliceTrivialIndices) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %operand = s32[2,2] parameter(0)
+  %index = u32[] parameter(1)
+  ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %index, %index),
+    dynamic_slice_sizes={2,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(m::Parameter(0), m::Constant(),
+                                         m::Parameter(1))));
 }
 
 // Test folding of clamp(pid, 0, limit) -> pid
@@ -7556,7 +8558,7 @@ ENTRY f {
       auto module, ParseAndReturnVerifiedModule(hlo_string, /*replica_count=*/1,
                                                 /*num_partitions=*/6));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite \n" << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -7575,7 +8577,7 @@ ENTRY f {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite \n" << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -7596,7 +8598,7 @@ ENTRY f {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
   VLOG(2) << "After rewrite \n" << module->ToString();
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -7618,12 +8620,389 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationSelMaxBcast) {
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
-  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Select(
                   m::Parameter(1), m::Broadcast(m::ConstantScalar()),
                   m::MaximumAnyOrder(m::Parameter(0),
                                      m::Broadcast(m::ConstantScalar())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SimplifyRedundantBitcastConvert) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0)
+      p1 = s32[10] parameter(1)
+      b0 = u32[10] bitcast-convert(p0)
+      b1 = u32[10] bitcast-convert(p1)
+      c = u32[20] concatenate(b0, b1), dimensions={0}
+      ROOT out = s32[20] bitcast-convert(c)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Concatenate(m::Parameter(0), m::Parameter(1))));
+}
+
+TEST_F(AlgebraicSimplifierTest, SimplifyOptimizationBarrier) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY entry {
+      param.0 = f32[] parameter(0)
+      param.1 = f32[] parameter(1)
+      add.0 = f32[] add(param.0, param.1)
+      sub.0 = f32[] subtract(param.0, param.1)
+      mul.0 = f32[] multiply(param.0, param.1)
+      tuple.0 = (f32[], f32[], f32[]) tuple(mul.0, sub.0, add.0)
+      b = (f32[], f32[], f32[]) opt-barrier(tuple.0)
+      gte.0 = f32[] get-tuple-element(b), index=1
+      ROOT  t = (f32[], f32[]) tuple(mul.0,gte.0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            3);
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  EXPECT_EQ(m->entry_computation()
+                ->root_instruction()
+                ->operand(1)
+                ->operand(0)
+                ->operand(0)
+                ->operand_count(),
+            2);
+}
+
+TEST_F(AlgebraicSimplifierTest, GTETupleShardingLoss) {
+  // Verify the gte(tuple) folding does not happen if it loses sharding info.
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = s32[10] parameter(0), sharding={devices=[2]0,1}
+      t = (s32[10]) tuple(p0)
+      ROOT %gte = s32[10] get-tuple-element(t), index=0, sharding={replicated}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
+  // Verify we maintain layout when optimizing dynamic-slice
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+      p0 = u32[]{:T(128)} parameter(0)
+      %constant.1 = s32[4]{0:T(128)} constant({0, 16, 32, 48})
+      %dynamic-slice = s32[1]{0:T(128)} dynamic-slice(s32[4]{0:T(128)} %constant.1, u32[] %p0), dynamic_slice_sizes={1}
+      ROOT t = (s32[1]{0:T(128)}) tuple(dynamic-slice)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  const Shape& slice_shape =
+      m.get()->entry_computation()->root_instruction()->operand(0)->shape();
+  EXPECT_TRUE(slice_shape.has_layout());
+  EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
+}
+
+// Fold a sequence of copy bitcast copy
+TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+     fusion.1235 = bf16[1600,50,512]{2,0,1:T(8,128)(2,1)} parameter(0)
+     copy.3038 = bf16[1600,50,512]{0,2,1:T(8,128)(2,1)} copy(fusion.1235)
+     bitcast.8 = bf16[1600,50,16,32]{0,3,2,1:T(8,128)(2,1)} bitcast(copy.3038)
+     copy.3045 = bf16[1600,50,16,32]{1,3,2,0:T(8,128)(2,1)} copy(bitcast.8)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_TRUE(simplifier.Run(m.get()).value());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Copy(m::Parameter()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyBitcastCopy2) {
+  const char* kModuleStr = R"(
+    HloModule m
+
+    ENTRY test {
+     %Arg_0.1 = f32[8,3,3,7,7]{4,0,3,2,1:T(8,128)} parameter(0)
+     %copy.1 = f32[8,3,3,7,7]{4,3,2,1,0:T(8,128)} copy(f32[8,3,3,7,7]{4,0,3,2,1:T(8,128)} %Arg_0.1)
+     %bitcast = f32[1,72,7,7]{3,2,1,0:T(8,128)} bitcast(f32[8,3,3,7,7]{4,3,2,1,0:T(8,128)} %copy.1)
+     %copy.2 = f32[1,72,7,7]{1,3,2,0:T(8,128)} copy(f32[1,72,7,7]{3,2,1,0:T(8,128)} %bitcast)
+    }
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyReshapeCopy3) {
+  const char* kModuleStr = R"(
+   HloModule m
+
+  ENTRY main {
+  p = f32[2,3]{0,1} parameter(0)
+  copy = f32[2,3]{1,0} copy(p)
+  reshape = f32[3,2]{1,0} bitcast(copy)
+  ROOT copy.1 = f32[3,2]{0,1} copy(reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+  VLOG(3) << "Module " << m->ToString();
+}
+
+TEST_F(AlgebraicSimplifierTest, CopyReshapeCopy4) {
+  const char* kModuleStr = R"(
+   HloModule m
+
+  ENTRY main {
+    p = f32[6,2,3]{0,1,2} parameter(0)
+    copy.0 = f32[6,2,3]{0,2,1} copy(p)
+    reshape = f32[2,3,6]{1,0,2} bitcast(copy.0)
+    ROOT copy.1 = f32[2,3,6]{0,1,2} copy(reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  ASSERT_FALSE(simplifier.Run(m.get()).value());
+  VLOG(3) << "Module " << m->ToString();
+}
+
+TEST_F(AlgebraicSimplifierTest, BitcastCopyChain) {
+  const char* kModuleStr = R"(
+   HloModule m
+
+  ENTRY main {
+   p.0 = f32[4,32,32,1]{2,3,1,0} parameter(0)
+   reshape.30 = f32[4,32,1,1,32]{4,1,0,3,2} reshape(p.0)
+   transpose.1757 = f32[4,1,1,32,32]{3,4,0,1,2} transpose(reshape.30), dimensions={0,3,2,4,1}
+   copy.3 = f32[4,1,1,32,32]{4,3,0,2,1} copy(transpose.1757)
+   reshape.1758 = f32[4,1,1,1024]{3,2,1,0} reshape(copy.3)
+   transpose.61 = f32[1024,4,1,1]{0,3,2,1} transpose(reshape.1758), dimensions={3,0,1,2}
+   copy.4 = f32[1024,4,1,1]{0,1,3,2} copy(transpose.61)
+   ROOT reshape.107 = f32[1024,4]{0,1} reshape(copy.4)
+   })";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  auto result = simplifier.Run(m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  ASSERT_TRUE(result);
+  EXPECT_NE(FindInstruction(m.get(), "copy.3"), nullptr);
+}
+
+// Make sure that the following copy-bitcast-copy is not transformed via
+// SwapCopyBitcastCopy function. If SwapCopyBitcastCopy does not fire, in this
+// case, the last copy will be turned into a bitcast by HandleCopy.
+TEST_F(AlgebraicSimplifierTest, BitcastCopyChainSmall) {
+  const char* kModuleStr = R"(
+   HloModule m
+   ENTRY %main (para.0: f32[4,1,1,32,32]) -> f32[1024,4,1,1] {
+    %para.0 = f32[4,1,1,32,32]{3,4,0,1,2} parameter(0)
+    %copy.0 = f32[4,1,1,32,32]{4,3,0,2,1} copy(%para.0)
+    %bitcast.0 = f32[1024,4,1,1]{0,3,2,1} bitcast(%copy.0)
+    ROOT %copy.1 = f32[1024,4,1,1]{0,1,3,2} copy(%bitcast.0)
+  }
+
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
+  SCOPED_TRACE(m->ToString());
+  auto result = simplifier.Run(m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  ASSERT_TRUE(result);
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter(0))))));
+}
+
+// Reverse(Reverse(A)) ==> A.
+TEST_F(AlgebraicSimplifierTest, RemoveIdenticalNestedReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      r0 = bf16[100,1,100,512] reverse(p0), dimensions={1,2}
+      ROOT r1 = bf16[100,1,100,512] reverse(r0), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
+}
+
+// Reverse(Reverse(A)) ==> Reverse(A).
+TEST_F(AlgebraicSimplifierTest, ShrinkNestedReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      r0 = bf16[100,1,100,512] reverse(p0), dimensions={1,2,3}
+      ROOT r1 = bf16[100,1,100,512] reverse(r0), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reverse(m::Parameter(0))));
+}
+
+// reverse(ElementWiseBinOp(x, constant)) ==> ElementWiseBinOp(reverse(x),
+// constant)
+TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      ewbo0 = bf16[100,1,100,512] add(p0, const)
+      ROOT r0 = bf16[100,1,100,512] reverse(ewbo0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Reverse(m::Parameter(0)),
+                                      m::Broadcast(m::Constant()))));
+}
+
+// reverse(ElementWiseBinOp(constant, x)) ==> ElementWiseBinOp(constant,
+// reverse(x))
+TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      ewbo0 = bf16[100,1,100,512] add(const, p0)
+      ROOT r0 = bf16[100,1,100,512] reverse(ewbo0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Broadcast(m::Constant()),
+                                      m::Reverse(m::Parameter(0)))));
+}
+
+// non-contiguous degenerate dimensions adding
+// reverse(DegenerateDimensionAddingReshape(x)) ==>
+// DegenerateDimensionAddingReshape(reverse(x))
+TEST_F(AlgebraicSimplifierTest,
+       SwapNonContiguousDegenerateDimensionAddingReshapeAndReverse) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 5}), "param0"));
+
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {1, 3, 1, 4, 1, 5}), param0));
+  std::vector<int64_t> dims{0, 1, 3, 4};
+  absl::Span<const int64_t> rev_dims = absl::MakeSpan(dims);
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {1, 3, 1, 4, 1, 5}), reshape1, rev_dims));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  ASSERT_TRUE(g);
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  std::vector<int64_t> after_rewrite_dims{0, 1};
+  absl::Span<const int64_t> after_rewrite_rev_dims =
+      absl::MakeSpan(after_rewrite_dims);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Reverse())));
+  EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
+              after_rewrite_rev_dims);
+}
+
+// contiguous degenerate dimensions adding
+// reverse(DegenerateDimensionAddingReshape(x)) ==>
+// DegenerateDimensionAddingReshape(reverse(x))
+TEST_F(AlgebraicSimplifierTest,
+       SwapContiguousDegenerateDimensionAddingReshapeAndReverse) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 5}), "param0"));
+
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {3, 1, 1, 1, 4, 1, 5}), param0));
+  std::vector<int64_t> dims{0, 1, 3, 4};
+  absl::Span<const int64_t> rev_dims = absl::MakeSpan(dims);
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {3, 1, 1, 1, 4, 1, 5}), reshape1, rev_dims));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  ASSERT_TRUE(g);
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  std::vector<int64_t> after_rewrite_dims{0, 1};
+  absl::Span<const int64_t> after_rewrite_rev_dims =
+      absl::MakeSpan(after_rewrite_dims);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Reverse())));
+  EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
+              after_rewrite_rev_dims);
 }
 
 }  // namespace

@@ -51,8 +51,8 @@ class CustomCallTargetRegistry {
   // Different platforms have different ABIs.  TODO(jlebar): Describe them!
   //
   // (We std::map rather than std::unordered_map because the STL doesn't provide
-  // a default hasher for pair<string, string>, and we want to avoid pulling in
-  // dependencies that might define this.)
+  // a default hasher for pair<std::string, std::string>, and we want to avoid
+  // pulling in dependencies that might define this.)
   std::map<std::pair<std::string, std::string>, void*> registered_symbols_;
   mutable std::mutex mu_;
 };

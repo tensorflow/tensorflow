@@ -21,10 +21,6 @@ tensorflow/lite/schema/schema.fbs
 
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import copy
 import random
 import re
@@ -129,12 +125,14 @@ def strip_strings(model):
   model.signatureDefs = None
 
 
-def randomize_weights(model, random_seed=0):
+def randomize_weights(model, random_seed=0, buffers_to_skip=None):
   """Randomize weights in a model.
 
   Args:
     model: The model in which to randomize weights.
     random_seed: The input to the random number generator (default value is 0).
+    buffers_to_skip: The list of buffer indices to skip. The weights in these
+                     buffers are left unmodified.
   """
 
   # The input to the random seed generator. The default value is 0.
@@ -142,7 +140,11 @@ def randomize_weights(model, random_seed=0):
 
   # Parse model buffers which store the model weights
   buffers = model.buffers
-  for i in range(1, len(buffers)):  # ignore index 0 as it's always None
+  buffer_ids = range(1, len(buffers))  # ignore index 0 as it's always None
+  if buffers_to_skip is not None:
+    buffer_ids = [idx for idx in buffer_ids if idx not in buffers_to_skip]
+
+  for i in buffer_ids:
     buffer_i_data = buffers[i].data
     buffer_i_size = 0 if buffer_i_data is None else buffer_i_data.size
 

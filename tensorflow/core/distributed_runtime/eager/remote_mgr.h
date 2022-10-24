@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_MGR_H_
 
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
@@ -25,8 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace eager {
-
-const int64_t kInvalidRemoteOpId = -1;
 
 // This class manages the states required to setup an eager cluster.
 // TODO(fishx): Move remote state from context to this class.

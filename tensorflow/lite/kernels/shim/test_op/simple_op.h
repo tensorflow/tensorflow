@@ -18,13 +18,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/lite/kernels/shim/op_kernel.h"
 #include "tensorflow/lite/kernels/shim/status_macros.h"
-#include "tensorflow/lite/kernels/shim/tensor_view.h"
 
 namespace tflite {
 namespace shim {
@@ -37,10 +37,11 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
  protected:
   enum Inputs { kInput0 = 0, kInput1 };
   enum Outputs { kOutput0 = 0, kOutput1, kOutput2, kOutput3 };
-  static constexpr int kOutput0Size = 5;
   int64_t output1_size_;
+  std::string output2_suffix_;
   int64_t n_;
-  static const char kOutput1SizeAttr[];
+  static constexpr int kOutput0Size = 5;
+  static constexpr char kOutput1SizeAttr[] = "output1_size";
 
  public:
   using typename OpKernelShim<SimpleOp, Rt>::InitContext;
@@ -48,12 +49,29 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
   using typename OpKernelShim<SimpleOp, Rt>::ShapeInferenceContext;
 
   SimpleOp() = default;
-  static const char kOpName[];
-  static const char kDoc[];
+  static constexpr char kOpName[] = "SimpleOperation";
+  static constexpr char kDoc[] = R"doc(
+Description:
+  Simple example op for testing and demonstration purposes.
+
+Attrs
+  output1_size: int - the size of the second output
+  output2_suffix: string - the string value to be appended to the end of out2
+  N: int - the number of tensors for the second input and last output
+Inputs
+  in0: str, shape=[] - A scalar input
+  in1: int64, list<shape=?> - A list of tensors as input
+Outputs
+  out0: int, shape=[5] - first output
+  out1: float, shape=[?] - second output
+  out2: string, shape=[?] - third output
+  out3: int64, list<shape=?> - fourth output that is in1 but incremented.
+)doc";
 
   // Attributes declaration (syntax: https://www.tensorflow.org/guide/create_op)
   static std::vector<std::string> Attrs() {
-    return {absl::StrCat(kOutput1SizeAttr, ": int"), "N: int >= 0"};
+    return {absl::StrCat(kOutput1SizeAttr, ": int"), "output2_suffix: string",
+            "N: int >= 0"};
   }
   // Input tensors declaration (syntax:
   // https://www.tensorflow.org/guide/create_op)
@@ -70,9 +88,13 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
   absl::Status Init(InitContext* ctx) {
     SH_RETURN_IF_ERROR(ctx->GetAttr(kOutput1SizeAttr, &output1_size_));
     if (output1_size_ < 1) {
-      return absl::InternalError("output_size should be >= 1");
+      return absl::InternalError(
+          absl::StrCat(kOutput1SizeAttr, " should be >= 1"));
     }
     SH_RETURN_IF_ERROR(ctx->GetAttr("N", &n_));
+    absl::string_view output2_suffix;
+    SH_RETURN_IF_ERROR(ctx->GetAttr("output2_suffix", &output2_suffix));
+    output2_suffix_ = std::string(output2_suffix);
     return absl::OkStatus();
   }
 
@@ -94,11 +116,12 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
     auto output1 = output1_t->template As<float, 1>();
     for (int i = 0; i < output1.Dim(0); ++i) output1(i) = 0.5 * i;
     // output2 whose size is based on input
-    const int output2_size = input_str.length();
+    const int output2_size = input_str.length() + 1;
     SH_ASSIGN_OR_RETURN(auto output2_t,
                         ctx->GetOutput(kOutput2, Shape({output2_size})));
     auto output2 = output2_t->template As<tensorflow::tstring, 1>();
-    for (int i = 0; i < output2.Dim(0); ++i) output2(i) = std::to_string(i);
+    for (int i = 0; i < output2.Dim(0) - 1; ++i) output2(i) = std::to_string(i);
+    output2(output2.Dim(0) - 1) = output2_suffix_;
     // output3 which is a list of length N
     // The values in output3 are element wise equal to input2 + 1.
     if (ctx->NumInputs() < kInput1 + n_) {
@@ -137,7 +160,7 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
       const auto& input_t = input_t_or.value();
       const auto input_str =
           input_t->template AsScalar<::tensorflow::tstring>();
-      output2_shape = Shape({static_cast<int>(input_str.length())});
+      output2_shape = Shape({static_cast<int>(input_str.length() + 1)});
     } else {
       output2_shape = Shape({Shape::kUnknownDim});
     }
@@ -160,32 +183,6 @@ class SimpleOp : public OpKernelShim<SimpleOp, Rt> {
   }
 };
 
-// Static member definitions.
-// These can be inlined once the toolchain is bumped up to C++17
-
-template <Runtime Rt>
-const char SimpleOp<Rt>::kOutput1SizeAttr[] = "output1_size";
-
-template <Runtime Rt>
-const char SimpleOp<Rt>::kOpName[] = "SimpleOperation";
-
-template <Runtime Rt>
-const char SimpleOp<Rt>::kDoc[] = R"doc(
-Description:
-  Simple example op for testing and demonstration purposes.
-
-Attrs
-  output1_size: int - the size of the second output
-  N: int - the number of tensors for the second input and last output
-Inputs
-  in0: str, shape=[] - A scalar input
-  in1: int64, list<shape=?> - A list of tensors as input
-Outputs
-  out0: int, shape=[5] - first output
-  out1: float, shape=[?] - second output
-  out2: string, shape=[?] - third output
-  out3: int64, list<shape=?> - fourth output that is in1 but incremented.
-)doc";
 
 }  // namespace shim
 }  // namespace tflite

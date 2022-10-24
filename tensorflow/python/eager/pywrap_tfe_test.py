@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for low-level eager execution primitives."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import sys
 import traceback
 
@@ -41,6 +37,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 
 
+@test_util.with_eager_op_as_function
 class Tests(test.TestCase):
 
   @test_util.assert_no_new_tensors
@@ -258,12 +255,13 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
     with self.assertRaisesRegex(
-        Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]"):
+        Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]|"
+        r"Value for attr 'num_split' of -1 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
     with self.assertRaisesRegex(
         Exception,
-        "Value for attr 'num_split' of 0 must be at least minimum 1"):
+        r"Value for attr 'num_split' of 0 must be at least minimum 1"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=0)
 
   def testIsFunction(self):

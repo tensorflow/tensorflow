@@ -13,11 +13,8 @@
 # limitations under the License.
 # ==============================================================================
 """Grouping dataset transformations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
@@ -285,18 +282,20 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
-    self._key_func = dataset_ops.StructuredFunctionWrapper(
+    self._key_func = structured_function.StructuredFunctionWrapper(
         key_func, self._transformation_name(), dataset=input_dataset)
     if not self._key_func.output_structure.is_compatible_with(
         tensor_spec.TensorSpec([], dtypes.int64)):
       raise ValueError(
-          "`key_func` must return a single tf.int64 tensor. "
-          "Got type=%s and shape=%s"
-          % (self._key_func.output_types, self._key_func.output_shapes))
+          f"Invalid `key_func`. Expected `key_func` to return a scalar "
+          f"tf.int64 tensor, but instead `key_func` has output "
+          f"types={self._key_func.output_types} "
+          f"and shapes={self._key_func.output_shapes}."
+      )
 
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
-    self._init_func = dataset_ops.StructuredFunctionWrapper(
+    self._init_func = structured_function.StructuredFunctionWrapper(
         init_func,
         self._transformation_name(),
         input_structure=tensor_spec.TensorSpec([], dtypes.int64))
@@ -313,7 +312,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
     need_to_rerun = True
     while need_to_rerun:
 
-      wrapped_func = dataset_ops.StructuredFunctionWrapper(
+      wrapped_func = structured_function.StructuredFunctionWrapper(
           reduce_func,
           self._transformation_name(),
           input_structure=(self._state_structure, input_dataset.element_spec),
@@ -325,18 +324,20 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
           nest.flatten(state_classes)):
         if not issubclass(new_state_class, state_class):
           raise TypeError(
-              "The element classes for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (self._state_classes, wrapped_func.output_classes))
+              f"Invalid `reducer`. The output class of the "
+              f"`reducer.reduce_func` {wrapped_func.output_classes}, "
+              f"does not match the class of the reduce state "
+              f"{self._state_classes}.")
 
       # Extract and validate type information from the returned values.
       for new_state_type, state_type in zip(
           nest.flatten(wrapped_func.output_types), nest.flatten(state_types)):
         if new_state_type != state_type:
           raise TypeError(
-              "The element types for the new state must match the initial "
-              "state. Expected %s; got %s." %
-              (self._init_func.output_types, wrapped_func.output_types))
+              f"Invalid `reducer`. The element types for the new state "
+              f"{wrapped_func.output_types} do not match the element types "
+              f"of the old state {self._init_func.output_types}."
+          )
 
       # Extract shape information from the returned values.
       flat_state_shapes = nest.flatten(state_shapes)
@@ -366,8 +367,9 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def _make_finalize_func(self, finalize_func):
     """Make wrapping defun for finalize_func."""
-    self._finalize_func = dataset_ops.StructuredFunctionWrapper(
-        finalize_func, self._transformation_name(),
+    self._finalize_func = structured_function.StructuredFunctionWrapper(
+        finalize_func,
+        self._transformation_name(),
         input_structure=self._state_structure)
 
   @property
@@ -384,13 +386,28 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
 
 @tf_export("data.experimental.Reducer")
-class Reducer(object):
+class Reducer:
   """A reducer is used for reducing a set of elements.
 
   A reducer is represented as a tuple of the three functions:
-    1) initialization function: key => initial state
-    2) reduce function: (old state, input) => new state
-    3) finalization function: state => result
+  - init_func - to define initial value: key => initial state
+  - reducer_func - operation to perform on values with same key: (old state, input) => new state
+  - finalize_func - value to return in the end: state => result
+  
+  For example,
+  
+  ```
+  def init_func(_):
+    return (0.0, 0.0)
+
+  def reduce_func(state, value):
+    return (state[0] + value['features'], state[1] + 1)
+
+  def finalize_func(s, n):
+    return s / n
+
+  reducer = tf.data.experimental.Reducer(init_func, reduce_func, finalize_func)
+  ```
   """
 
   def __init__(self, init_func, reduce_func, finalize_func):

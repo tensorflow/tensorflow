@@ -57,11 +57,25 @@ TfLiteStatus SignatureRunner::ResizeInputTensor(
     subgraph_->ReportError("Input name %s was not found", input_name);
     return kTfLiteError;
   }
-
   return subgraph_->ResizeInputTensor(it->second, new_size);
 }
 
+TfLiteStatus SignatureRunner::ResizeInputTensorStrict(
+    const char* input_name, const std::vector<int>& new_size) {
+  const auto& it = signature_def_->inputs.find(input_name);
+  if (it == signature_def_->inputs.end()) {
+    subgraph_->ReportError("Input name %s was not found", input_name);
+    return kTfLiteError;
+  }
+  return subgraph_->ResizeInputTensorStrict(it->second, new_size);
+}
+
 TfLiteStatus SignatureRunner::Invoke() {
+  // "Resets" cancellation flag so cancellation happens before this invoke will
+  // not take effect.
+  if (subgraph_->continue_invocation_)
+    (void)subgraph_->continue_invocation_->test_and_set();
+
   TF_LITE_ENSURE_STATUS(subgraph_->Invoke());
 
   // Makes sure output tensors are readable.

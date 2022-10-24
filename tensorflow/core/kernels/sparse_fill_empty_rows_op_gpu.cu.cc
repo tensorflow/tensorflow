@@ -28,14 +28,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/util/cuda_solvers.h"  // For ScratchSpace
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/core/util/rocm_solvers.h"
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
@@ -200,7 +199,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                                                     TensorShape({0}), &unused));
       }
       done();
-      return Status::OK();
+      return OkStatus();
     }
 
     // The algorithm as currently implemented is summarized as follows:
@@ -298,9 +297,12 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       empty_row_indicator = empty_row_indicator_t.vec<bool>().data();
     }
 
-    TF_RETURN_IF_ERROR(wrap_kernel_call(ComputeEmptyRowIndicatorKernel<Tindex>,
-                                        /*device=*/device, /*size=*/dense_rows,
-                                        elements_per_row, empty_row_indicator));
+    if (dense_rows > 0) {
+      TF_RETURN_IF_ERROR(
+          wrap_kernel_call(ComputeEmptyRowIndicatorKernel<Tindex>,
+                           /*device=*/device, /*size=*/dense_rows,
+                           elements_per_row, empty_row_indicator));
+    }
 
     // For each row, the number of empty rows up to and including that row.
     Tensor num_empty_rows_through_t;
@@ -406,21 +408,24 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
             done);
       }
 
-      OP_REQUIRES_OK_ASYNC(
-          context,
-          wrap_kernel_call(ScatterNewElementsKernel<T, Tindex>,
-                           /*device=*/device, /*size=*/dense_rows, rank,
-                           default_value, num_empty_rows_through,
-                           input_row_ends, empty_row_indicator, output_indices,
-                           output_values),
-          done);
+      if (dense_rows > 0) {
+        OP_REQUIRES_OK_ASYNC(
+            context,
+            wrap_kernel_call(ScatterNewElementsKernel<T, Tindex>,
+                             /*device=*/device, /*size=*/dense_rows, rank,
+                             default_value, num_empty_rows_through,
+                             input_row_ends, empty_row_indicator,
+                             output_indices, output_values),
+            done);
+      }
 
       done();
     };
 
-    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
-        stream, async_finish_computation);
-    return Status::OK();
+    context->device()
+        ->tensorflow_accelerator_device_info()
+        ->event_mgr->ThenExecute(stream, async_finish_computation);
+    return OkStatus();
   }
 
  private:
@@ -448,7 +453,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     } else {
       *reverse_index_map = nullptr;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
@@ -461,9 +466,11 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     TF_RETURN_IF_ERROR(
         context->allocate_temp(index_type, TensorShape({N}), &row_indices_t));
     auto row_indices = row_indices_t.flat<Tindex>();
-    TF_RETURN_IF_ERROR(wrap_kernel_call(CopyRowIndicesKernel<Tindex>,
-                                        /*device=*/device, /*size=*/N, rank,
-                                        indices, row_indices));
+    if (N > 0) {
+      TF_RETURN_IF_ERROR(wrap_kernel_call(CopyRowIndicesKernel<Tindex>,
+                                          /*device=*/device, /*size=*/N, rank,
+                                          indices, row_indices));
+    }
     // Allocate input_index_map.
     TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
                                               input_index_map_t));
@@ -528,9 +535,11 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
     auto visited = visited_t.vec<bool>();
     visited.device(device) = visited.constant(false);
 
-    TF_RETURN_IF_ERROR(wrap_kernel_call(
-        GatherOriginalGradValuesKernel<T, Tindex>, /*device=*/device,
-        /*size=*/N, reverse_index_map, grad_values, d_values, visited));
+    if (N > 0) {
+      TF_RETURN_IF_ERROR(wrap_kernel_call(
+          GatherOriginalGradValuesKernel<T, Tindex>, /*device=*/device,
+          /*size=*/N, reverse_index_map, grad_values, d_values, visited));
+    }
 
     // Now we mask out the visited values and sum the remaining ones (which
     // correspond to the empty rows in the forward input) to compute
@@ -561,7 +570,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     Tensor temp_storage;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
+        DT_INT8, TensorShape({static_cast<int64_t>(temp_storage_bytes)}),
         &temp_storage));
 
     gpuprim_status = gpuprim::DeviceReduce::Sum(
@@ -579,7 +588,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

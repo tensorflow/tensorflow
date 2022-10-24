@@ -17,10 +17,15 @@ limitations under the License.
 
 #include <limits>
 #include <list>
+#include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/bfloat16.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -31,10 +36,10 @@ namespace {
 // Also throws in some trailing whitespace on the original to show it is
 // removed.
 TEST(UtilTest, ReindentsDifferentNumberOfLeadingSpacesUniformly) {
-  string original = R"(   hello there
+  std::string original = R"(   hello there
       world)";
-  string got = Reindent(original, "  ");
-  string want = R"(  hello there
+  std::string got = Reindent(original, "  ");
+  std::string want = R"(  hello there
   world)";
   EXPECT_EQ(want, got);
 }
@@ -56,7 +61,8 @@ TEST(UtilTest, VectorString) {
   std::vector<float> float_vector = {5.5};
   EXPECT_EQ(VectorString(float_vector), "(5.5)");
 
-  std::set<const char*> string_set = {"a", "b"};
+  std::set<std::string_view> string_set = {std::string_view("a"),
+                                           std::string_view("b")};
   EXPECT_EQ(VectorString(string_set), "(a, b)");
 
   EXPECT_EQ(VectorString({}), "()");
@@ -65,7 +71,7 @@ TEST(UtilTest, VectorString) {
 
 TEST(UtilTest, LogLines) {
   // Just make sure this code runs (not verifying the output).
-  LogLines(tensorflow::INFO, "hello\n\nworld", __FILE__, __LINE__);
+  LogLines(tsl::INFO, "hello\n\nworld", __FILE__, __LINE__);
 }
 
 TEST(UtilTest, CommonFactors) {
@@ -112,17 +118,17 @@ TEST(UtilTest, SanitizeFileName) {
 }
 
 TEST(UtilTest, RoundTripFpToString) {
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(
-                false, QuietNanWithoutPayload<Eigen::half>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(
+                false, QuietNanWithoutPayload<half>())),
             "nan");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(
-                true, QuietNanWithoutPayload<Eigen::half>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(
+                true, QuietNanWithoutPayload<half>())),
             "-nan");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tensorflow::bfloat16>(
-                false, QuietNanWithoutPayload<tensorflow::bfloat16>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(
+                false, QuietNanWithoutPayload<bfloat16>())),
             "nan");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<tensorflow::bfloat16>(
-                true, QuietNanWithoutPayload<tensorflow::bfloat16>())),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(
+                true, QuietNanWithoutPayload<bfloat16>())),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(
                 false, QuietNanWithoutPayload<float>())),
@@ -137,15 +143,13 @@ TEST(UtilTest, RoundTripFpToString) {
                 true, QuietNanWithoutPayload<double>())),
             "-nan");
 
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(false, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(false, 0x1)),
             "nan(0x1)");
-  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<Eigen::half>(true, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(true, 0x1)),
             "-nan(0x1)");
-  EXPECT_EQ(RoundTripFpToString(
-                NanWithSignAndPayload<tensorflow::bfloat16>(false, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(false, 0x1)),
             "nan(0x1)");
-  EXPECT_EQ(RoundTripFpToString(
-                NanWithSignAndPayload<tensorflow::bfloat16>(true, 0x1)),
+  EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<bfloat16>(true, 0x1)),
             "-nan(0x1)");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<float>(false, 0x1)),
             "nan(0x1)");

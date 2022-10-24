@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -55,7 +56,7 @@ class CocoObjectDetection : public TaskExecutor {
   std::vector<Flag> GetFlags() final;
 
   // If the run is successful, the latest metrics will be returned.
-  absl::optional<EvaluationStageMetrics> RunImpl() final;
+  std::optional<EvaluationStageMetrics> RunImpl() final;
 
  private:
   void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
@@ -108,18 +109,18 @@ std::vector<Flag> CocoObjectDetection::GetFlags() {
   return flag_list;
 }
 
-absl::optional<EvaluationStageMetrics> CocoObjectDetection::RunImpl() {
+std::optional<EvaluationStageMetrics> CocoObjectDetection::RunImpl() {
   // Process images in filename-sorted order.
   std::vector<std::string> image_paths;
   if (GetSortedFileNames(StripTrailingSlashes(ground_truth_images_path_),
                          &image_paths) != kTfLiteOk) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   std::vector<std::string> model_labels;
   if (!ReadFileLines(model_output_labels_path_, &model_labels)) {
     TFLITE_LOG(ERROR) << "Could not read model output labels file";
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   EvaluationStageConfig eval_config;
@@ -140,7 +141,7 @@ absl::optional<EvaluationStageMetrics> CocoObjectDetection::RunImpl() {
   ObjectDetectionStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
-  if (eval.Init(&delegate_providers_) != kTfLiteOk) return absl::nullopt;
+  if (eval.Init(&delegate_providers_) != kTfLiteOk) return std::nullopt;
 
   const int step = image_paths.size() / 100;
   for (int i = 0; i < image_paths.size(); ++i) {
@@ -150,7 +151,7 @@ absl::optional<EvaluationStageMetrics> CocoObjectDetection::RunImpl() {
 
     const std::string image_name = GetNameFromPath(image_paths[i]);
     eval.SetInputs(image_paths[i], ground_truth_map[image_name]);
-    if (eval.Run() != kTfLiteOk) return absl::nullopt;
+    if (eval.Run() != kTfLiteOk) return std::nullopt;
 
     if (debug_mode_) {
       ObjectDetectionResult prediction = *eval.GetLatestPrediction();
@@ -186,7 +187,7 @@ absl::optional<EvaluationStageMetrics> CocoObjectDetection::RunImpl() {
   }
 
   OutputResult(latest_metrics);
-  return absl::make_optional(latest_metrics);
+  return std::make_optional(latest_metrics);
 }
 
 void CocoObjectDetection::OutputResult(

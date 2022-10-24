@@ -36,7 +36,7 @@ class PrefetchDatasetParams : public DatasetParams {
         slack_period_(slack_period),
         legacy_autotune_(legacy_autotune),
         buffer_size_min_(buffer_size_min) {
-    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
     iterator_prefix_ =
         name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
                                    input_dataset_params.iterator_prefix());
@@ -50,19 +50,18 @@ class PrefetchDatasetParams : public DatasetParams {
     input_names->clear();
     input_names->emplace_back(PrefetchDatasetOp::kInputDataset);
     input_names->emplace_back(PrefetchDatasetOp::kBufferSize);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status GetAttributes(AttributeVector* attr_vector) const override {
     attr_vector->clear();
-    attr_vector->emplace_back(PrefetchDatasetOp::kOutputTypes, output_dtypes_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kOutputShapes, output_shapes_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kSlackPeriod, slack_period_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kLegacyAutotune,
-                              legacy_autotune_);
-    attr_vector->emplace_back(PrefetchDatasetOp::kBufferSizeMin,
-                              buffer_size_min_);
-    return Status::OK();
+    attr_vector->emplace_back("output_types", output_dtypes_);
+    attr_vector->emplace_back("output_shapes", output_shapes_);
+    attr_vector->emplace_back("slack_period", slack_period_);
+    attr_vector->emplace_back("legacy_autotune", legacy_autotune_);
+    attr_vector->emplace_back("buffer_size_min", buffer_size_min_);
+    attr_vector->emplace_back("metadata", "");
+    return OkStatus();
   }
 
   string dataset_type() const override {

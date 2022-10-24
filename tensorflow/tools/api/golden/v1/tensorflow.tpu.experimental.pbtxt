@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "HardwareFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "StochasticGradientDescentParameters"
     mtype: "<type \'type\'>"
   }

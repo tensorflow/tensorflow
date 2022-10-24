@@ -33,10 +33,6 @@ squashed to 0..1.
 This follows the general rationale of the mini-benchmark: use as much of the
 model outputs as possible for metrics, so that less example data is needed.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import sys
 # TODO(b/152872335): (re-)port to tf v2 after output names are kept during

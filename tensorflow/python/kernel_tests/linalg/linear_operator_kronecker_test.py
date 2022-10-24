@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -83,7 +80,12 @@ class SquareLinearOperatorKroneckerTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  def tearDown(self):
+    config.enable_tensor_float_32_execution(self.tf32_keep_)
+
   def setUp(self):
+    self.tf32_keep_ = config.tensor_float_32_execution_enabled()
+    config.enable_tensor_float_32_execution(False)
     # Increase from 1e-6 to 1e-4
     self._atol[dtypes.float32] = 1e-4
     self._atol[dtypes.complex64] = 1e-4
@@ -268,6 +270,22 @@ class SquareLinearOperatorKroneckerTest(
         is_non_singular=True,
     )
     self.check_tape_safe(operator)
+
+  def test_convert_variables_to_tensors(self):
+    matrix_1 = variables_module.Variable([[1., 0.], [0., 1.]])
+    matrix_2 = variables_module.Variable([[2., 0.], [0., 2.]])
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix_1, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix_2, is_non_singular=True),
+        ],
+        is_non_singular=True,
+    )
+    with self.cached_session() as sess:
+      sess.run([x.initializer for x in operator.variables])
+      self.check_convert_variables_to_tensors(operator)
 
 
 if __name__ == "__main__":

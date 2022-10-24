@@ -39,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -258,7 +258,7 @@ struct DotOutputFusionLayoutAssignmentResult {
 };
 
 static StatusOr<DotOutputFusionLayoutAssignmentResult> RunDotOutputFusion(
-    HloModule* module, const string& test_name, int m, int k, int n,
+    HloModule* module, const std::string& test_name, int m, int k, int n,
     const int64_t dot_operand_idx_in_add) {
   DotOutputFusionLayoutAssignmentResult result;
 

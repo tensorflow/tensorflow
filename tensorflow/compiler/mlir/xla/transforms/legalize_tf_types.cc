@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -30,7 +31,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
 
 #define DEBUG_TYPE "xla-legalize-tf-types"
 
@@ -101,8 +101,8 @@ class TfTypeConversionTarget : public ConversionTarget {
     markUnknownOpDynamicallyLegal([this](Operation *op) {
       // The FuncOp type can contain types that the op's operand and result
       // types do not contain.
-      if (auto func = dyn_cast<FuncOp>(op)) {
-        if (!converter_.isSignatureLegal(func.getType())) return false;
+      if (auto func = dyn_cast<func::FuncOp>(op)) {
+        if (!converter_.isSignatureLegal(func.getFunctionType())) return false;
       }
       return converter_.isLegal(op);
     });
@@ -140,22 +140,26 @@ class TfTypePattern : public ConversionPattern {
       if (failed(rewriter.convertRegionTypes(&new_region, *getTypeConverter())))
         return failure();
     }
-    rewriter.replaceOp(op, rewriter.createOperation(state)->getResults());
+    rewriter.replaceOp(op, rewriter.create(state)->getResults());
 
     return success();
   }
 };
 
+#define GEN_PASS_DEF_LEGALIZETFTYPESPASS
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
 struct LegalizeTfTypesPass
-    : public LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
+    : public impl::LegalizeTfTypesPassBase<LegalizeTfTypesPass> {
   void runOnOperation() override;
 };
 
 void LegalizeTfTypesPass::runOnOperation() {
   TfTypeConverter converter;
-  OwningRewritePatternList patterns(&getContext());
-  patterns.insert<TfTypePattern>(&getContext(), converter);
-  populateFuncOpTypeConversionPattern(patterns, converter);
+  RewritePatternSet patterns(&getContext());
+  patterns.add<TfTypePattern>(&getContext(), converter);
+  populateFunctionOpInterfaceTypeConversionPattern<func::FuncOp>(patterns,
+                                                                 converter);
   TfTypeConversionTarget target(getContext(), converter);
   if (failed(applyFullConversion(getOperation(), target, std::move(patterns))))
     return signalPassFailure();

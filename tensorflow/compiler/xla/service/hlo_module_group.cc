@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_module_group.h"
 
-#include "tensorflow/core/lib/hash/hash.h"
-
 namespace xla {
 
 HloModuleGroup::HloModuleGroup(std::unique_ptr<HloModule> module)
@@ -49,7 +47,7 @@ std::vector<std::unique_ptr<HloModule>> HloModuleGroup::ConsumeModules() {
   return ret_modules;
 }
 
-string HloModuleGroup::ToString() const {
+std::string HloModuleGroup::ToString() const {
   std::ostringstream s;
   s << "HloModuleGroup " << name() << "\n\n";
   for (const HloModule* module : modules()) {
@@ -65,14 +63,6 @@ HloModuleGroupProto HloModuleGroup::ToProto() const {
     *proto.add_hlo_modules() = module->ToProto();
   }
   return proto;
-}
-
-uint64 HloModuleGroup::Hash() const {
-  uint64 result = 0;
-  for (auto& module : modules_) {
-    result = tensorflow::Hash64Combine(result, module->Hash());
-  }
-  return result;
 }
 
 /* static */ StatusOr<HloModuleGroup> HloModuleGroup::CreateFromProto(

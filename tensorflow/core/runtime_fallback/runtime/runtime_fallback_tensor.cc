@@ -186,7 +186,7 @@ RuntimeFallbackTensor MoveDHTToRuntimeFallbackTensor(DenseHostTensor&& dht,
 RuntimeFallbackTensor CopyRefDHTToRuntimeFallbackTensor(
     const DenseHostTensor& dht, HostContext* host) {
   // Do not copy the host buffer, TF_NewTensor simply CopyRef.
-  RCReference<HostBuffer> host_buffer = dht.buffer().CopyRef();
+  RCReference<HostBuffer> host_buffer = dht.buffer();
   tensorflow::Tensor tensor = MoveHostBufferToTfTensor(
       std::move(host_buffer), dht.dtype(), dht.shape());
 

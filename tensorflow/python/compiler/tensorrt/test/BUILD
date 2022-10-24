@@ -3,12 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-
-# cuda_py_test and cuda_py_tests enable XLA tests by default. We can't
-# combine XLA with TensorRT currently and should set
-# xla_enable_strict_auto_jit to False to disable XLA tests.
+load("//tensorflow/python/compiler/tensorrt:tensorrt.bzl", "tensorrt_py_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -17,6 +12,14 @@ package(
 
 exports_files(
     glob(["*test.py"]),
+)
+
+py_library(
+    name = "test_utils",
+    srcs = [
+        "test_utils.py",
+    ],
+    srcs_version = "PY3",
 )
 
 filegroup(
@@ -28,6 +31,12 @@ filegroup(
 filegroup(
     name = "trt_convert_test_data",
     srcs = [
+        "testdata/tf_readvariableop_saved_model/saved_model.pb",
+        "testdata/tf_readvariableop_saved_model/variables/variables.data-00000-of-00001",
+        "testdata/tf_readvariableop_saved_model/variables/variables.index",
+        "testdata/tf_variablev2_saved_model/saved_model.pb",
+        "testdata/tf_variablev2_saved_model/variables/variables.data-00000-of-00001",
+        "testdata/tf_variablev2_saved_model/variables/variables.index",
         "testdata/tftrt_2.0_saved_model/saved_model.pb",
         "testdata/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
         "testdata/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
@@ -52,67 +61,76 @@ filegroup(
     visibility = ["//tensorflow/python/compiler/tensorrt:__pkg__"],
 )
 
-cuda_py_tests(
-    name = "tf_trt_integration_test",
-    srcs = [
-        "annotate_max_batch_sizes_test.py",
-        "batch_matmul_test.py",
-        "biasadd_matmul_test.py",
-        "binary_tensor_weight_broadcast_test.py",
-        "cast_test.py",
-        "combined_nms_test.py",
-        "concatenation_test.py",
-        "const_broadcast_test.py",
-        "conv2d_test.py",
-        "dynamic_input_shapes_test.py",
-        "identity_output_test.py",
-        "int32_test.py",
-        "lru_cache_test.py",
-        "memory_alignment_test.py",
-        "multi_connection_neighbor_engine_test.py",
-        "neighboring_engine_test.py",
-        "quantization_test.py",
-        "rank_two_test.py",
-        "reshape_transpose_test.py",
-        "tf_function_test.py",
-        "topk_test.py",
-        "trt_mode_test.py",
-        "unary_test.py",
-        "vgg_block_nchw_test.py",
-        "vgg_block_test.py",
-    ],
-    python_version = "PY3",
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_rocm",
-        "no_windows",
-        "nomac",
-    ],
-    xla_enable_strict_auto_jit = False,
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
+oss_tests = [
+    "batch_matmul_test",
+    "biasadd_matmul_test",
+    "binary_tensor_weight_broadcast_test",
+    "bool_test",
+    "cast_test",
+    "concatenation_test",
+    "const_broadcast_test",
+    "data_dependent_shape_test",
+    "dynamic_input_shapes_test",
+    "identity_output_test",
+    "int32_test",
+    "lru_cache_test",
+    "memory_alignment_test",
+    "multi_connection_neighbor_engine_test",
+    "neighboring_engine_test",
+    "quantization_test",
+    "rank_two_test",
+    "reshape_transpose_test",
+    "topk_test",
+    "trt_engine_op_shape_test",
+    "trt_mode_test",
+    "unary_test",
+    "vgg_block_nchw_test",
+    "vgg_block_test",
+]
+
+no_oss_tests = [
+    "base_test",
+    "conv2d_test",  # "conv2d_test.py",  # b/198501457
+]
+# "base_test.py", # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
+
+base_tags = [
+    "no_cuda_on_cpu_tap",
+    "no_rocm",
+    "no_windows",
+    "nomac",
+]
+
+tensorrt_py_test(
+    name = "oss_tests",
+    tags = base_tags,
+    test_names = oss_tests,
+)
+
+tensorrt_py_test(
+    name = "no_oss_tests",
+    tags = base_tags + ["no_oss"],
+    test_names = no_oss_tests + ["combined_nms_test"],
+)
+
+tensorrt_py_test(
+    name = "tf_function_test",
+    tags = base_tags + [
+        "manual",  # TODO(b/231239602): re-enable once naming issue is resolved.
+        "notap",  # TODO(b/231239602): re-enable once naming issue is resolved.
+        "no_oss",  # TODO(b/231239602): re-enable once naming issue is resolved.
     ],
 )
 
-cuda_py_tests(
-    name = "tf_trt_integration_test2",
-    srcs = [
-        "base_test.py",
+test_suite(
+    name = "tf_trt_integration_test",
+    tests = oss_tests + [
+        "combined_nms_test",
+        "tf_function_test",
     ],
-    python_version = "PY3",
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_oss",  # TODO(b/165611343): Need to address the failures for CUDA 11 in OSS build.
-        "no_rocm",
-        "no_windows",
-        "nomac",
-    ],
-    xla_enable_strict_auto_jit = False,
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/compiler/tensorrt:tf_trt_integration_test_base",
-    ],
+)
+
+test_suite(
+    name = "tf_trt_integration_test_no_oss",
+    tests = no_oss_tests,
 )

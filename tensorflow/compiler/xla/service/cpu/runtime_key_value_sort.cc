@@ -20,21 +20,19 @@ limitations under the License.
 #include <numeric>
 #include <string>
 
+#include "absl/base/dynamic_annotations.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/platform/dynamic_annotations.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
 
-TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
+ABSL_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64_t a, int64_t b, int64_t c, char** values, int32_t values_count,
-    tensorflow::int32* values_primitive_type_size_in_bytes, bool is_stable,
+    int32_t* values_primitive_type_size_in_bytes, bool is_stable,
     char* run_options, int64_t* prof_counters,
     void (*less_than)(char*, char*, char**, char**, int64_t*)) {
   // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
   // code, so msan can't tell they are initialized.
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
-  TF_ANNOTATE_MEMORY_IS_INITIALIZED(values_primitive_type_size_in_bytes,
-                                    values_count * sizeof(tensorflow::int32));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values, values_count * sizeof(char*));
+  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(values_primitive_type_size_in_bytes,
+                                      values_count * sizeof(int32_t));
 
   // High-level idea of the iteration/sorting logic:
   // Conceptually we have a 3-dimensional shape [a, b, c]. b corresponds to the

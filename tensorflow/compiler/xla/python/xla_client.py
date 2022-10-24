@@ -1,4 +1,3 @@
-# Lint as: python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,12 +14,7 @@
 # ==============================================================================
 """An XLA client in Python."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import atexit
-import collections
 import contextlib
 import enum  # pylint: disable=g-bad-import-order
 import gzip
@@ -30,7 +24,6 @@ from typing import List, Sequence, Tuple, Union
 
 from . import xla_extension as _xla
 
-from absl import logging
 import numpy as np
 
 # Note this module does *not* depend on any Python protocol buffers. The XLA
@@ -50,7 +43,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 37
+_version = 101
+
+# Version number for MLIR:Python components.
+mlir_api_version = 36
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -62,14 +58,15 @@ def make_interpreter_client():
   return _xla.get_interpreter_client()
 
 
-def make_cpu_client(*, use_tfrt=False):
+def make_cpu_client(*, use_tfrt: bool = True) -> ...:
   if use_tfrt:
     return _xla.get_tfrt_cpu_client(asynchronous=True)
   else:
     return _xla.get_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0):
+def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
+                    allowed_devices=None):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -95,78 +92,50 @@ def make_gpu_client(distributed_client=None, node_id=0):
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
-      node_id=node_id)
+      node_id=node_id,
+      platform_name=platform_name,
+      allowed_devices=allowed_devices)
+
+
+def make_tfrt_tpu_c_api_client():
+  return _xla.get_tfrt_tpu_c_api_client()
 
 
 def make_tpu_client():
-  return _xla.get_tpu_client(max_inflight_computations=32)
+  """Returns a TPU client. Defaults to allowing 32 in-flight computations."""
+  use_pjrt_c_api = os.getenv('JAX_USE_PJRT_C_API_ON_TPU', 'false')
+  if use_pjrt_c_api not in ('1', 'true', 'false'):
+    raise ValueError(
+        'JAX_USE_PJRT_C_API_ON_TPU env var must be "1", "true" or "false", '
+        f'got "{use_pjrt_c_api}"')
+  if use_pjrt_c_api in ('1', 'true'):
+    return make_tfrt_tpu_c_api_client()
+
+  max_inflight_computations = os.getenv(
+      'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS', '32')
+  try:
+    max_inflight_computations = int(max_inflight_computations)
+  except ValueError as e:
+    raise ValueError(
+        f'JAX_TPU_MAX_INFLIGHT_COMPUTATIONS env var must be an int, '
+        f'got {max_inflight_computations}') from e
+  return _xla.get_tpu_client(
+      max_inflight_computations=max_inflight_computations)
 
 
-# Deprecated client factory API.
-
-# Backend factories, keyed by user-visible name, in increasing priority order.
-_local_backend_factories = collections.OrderedDict([
-    ('interpreter', make_interpreter_client),
-    ('cpu', make_cpu_client),
-    ('gpu', make_gpu_client),
-    ('tpu', make_tpu_client),
-])
-
-
-def register_local_backend_factory(name, factory):
-  _local_backend_factories[name] = factory
+def make_plugin_device_client():
+  """Returns a plugin device client."""
+  try:
+    return _xla.get_plugin_device_client()
+  except AttributeError as e:
+    raise AttributeError(
+        'xla_extension has no attributes named get_plugin_device_client. '
+        'Compile TensorFlow with '
+        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
+        '(defaults to false) to enable this.') from e
 
 
-_local_backends = None
-
-
-def _get_local_backends():
-  """Instantiates all known local backends."""
-  global _local_backends
-  if _local_backends is not None:
-    return _local_backends
-
-  _local_backends = collections.OrderedDict()
-  for name, factory in _local_backend_factories.items():
-    logging.vlog(1, "Initializing backend '%s'" % name)
-    try:
-      backend = factory()
-    except RuntimeError as err:
-      if name == 'cpu':
-        # We always expect CPU to initialize successfully.
-        raise
-      else:
-        # If the backend isn't built into the binary, or if it has no devices,
-        # we expect a RuntimeError.
-        logging.vlog(1, "Error initializing backend '%s': %s" % (name, err))
-        continue
-    _local_backends[name] = backend
-  return _local_backends
-
-
-def get_local_backend(name=None):
-  """Returns a local backend.
-
-  Args:
-    name: the backend name. If `None`, a default local backend is returned,
-      typically `gpu` if one is present, or `cpu` if not. If a string, the named
-      backend is returned or an exception raised.
-
-  Returns:
-    A LocalBackend object.
-  """
-  backends = _get_local_backends()
-  if name is not None:
-    try:
-      return backends[name]
-    except KeyError:
-      raise RuntimeError('Unknown backend %s. Available: %s' %
-                         (name, list(backends.keys())))
-
-  return list(backends.values())[-1]
-
-
-class OpMetadata(object):
+class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')
 
@@ -229,7 +198,7 @@ Shape = _xla.Shape
 Shape.__doc__ = """
 A Shape is an object defined in C++ that duck types like the following class:
 
-class Shape(object):
+class Shape:
   '''Represents an XLA shape.
 
   A shape is either an array shape, having rank-many integer
@@ -278,7 +247,7 @@ ProgramShape = _xla.ProgramShape
 ProgramShape.__doc__ = """
 A ProgramShape is a C++ object that duck types like the following class.
 
-class ProgramShape(object):
+class ProgramShape:
   def __init__(self, parameter_shapes, result_shape):
   def parameter_shapes(self) -> [Shape]:
   def result_shape(self) -> Shape:
@@ -289,7 +258,7 @@ ShapeIndex = _xla.ShapeIndex
 ShapeIndex.__doc__ = """
 A Shape is an object defined in C++ that duck types like the following class:
 
-class ShapeIndex(object):
+class ShapeIndex:
   '''Represents an XLA ShapeIndex.
 
   An index for specifying a particular nested subshape within a shape. Used in
@@ -345,7 +314,7 @@ CompileOptions = _xla.CompileOptions
 HostBufferSemantics = _xla.HostBufferSemantics
 
 # An Executable is a C++ class that duck types with the following API:
-# class Executable(object):
+# class Executable:
 #   def local_devices(self) -> [Device]:
 #   def execute(self, arguments : [Buffer]) -> Buffer:
 #     """Execute on one replica with Buffer arguments and return value."""
@@ -378,7 +347,7 @@ def execute_with_python_values(executable, arguments, backend):
 
   arguments = [put(arg) for arg in arguments]
   outputs = executable.execute(arguments)
-  return [x.to_py() for x in outputs]
+  return [np.asarray(x) for x in outputs]
 
 
 def execute_with_python_values_replicated(executable, arguments, backend):
@@ -401,7 +370,7 @@ def execute_with_python_values_replicated(executable, arguments, backend):
 
   inputs = [copy_to_devices(pyvals) for pyvals in zip(*arguments)]
   outputs = executable.execute_sharded_on_local_devices(inputs)
-  return [[x.to_py() for x in xs] for xs in zip(*outputs)]
+  return [[np.asarray(x) for x in xs] for xs in zip(*outputs)]
 
 
 class PaddingType(enum.Enum):
@@ -446,8 +415,18 @@ XlaOp = _xla.XlaOp
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+ShardedBuffer = _xla.ShardedBuffer
+ArrayImpl = _xla.ArrayImpl
 DeviceArrayBase = _xla.DeviceArrayBase
-Executable = _xla.Executable
+LoadedExecutable = _xla.LoadedExecutable
+OpSharding = _xla.OpSharding
+HloSharding = _xla.HloSharding
+Sharding = _xla.Sharding
+XLACompatibleSharding = _xla.XLACompatibleSharding
+MeshPspecSharding = _xla.MeshPspecSharding
+SingleDeviceSharding = _xla.SingleDeviceSharding
+PmapSharding = _xla.PmapSharding
+OpShardingSharding = _xla.OpShardingSharding
 
 
 def register_custom_call_target(name, fn, platform='cpu'):
@@ -466,11 +445,17 @@ def register_custom_call_target(name, fn, platform='cpu'):
 
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target
+register_custom_call_partitioner = _xla.register_custom_call_partitioner
+hlo_sharding_util = _xla.hlo_sharding_util
 
 
-class PaddingConfigDimension(object):
+class PaddingConfigDimension:
   """Python representation of a xla.PaddingConfigDimension protobuf."""
   __slots__ = ('edge_padding_low', 'edge_padding_high', 'interior_padding')
+
+  edge_padding_low: int
+  edge_padding_high: int
+  interior_padding: int
 
   def __init__(self):
     self.edge_padding_low = 0
@@ -478,7 +463,7 @@ class PaddingConfigDimension(object):
     self.interior_padding = 0
 
 
-class PaddingConfig(object):
+class PaddingConfig:
   """Python representation of a xla.PaddingConfig protobuf."""
   __slots__ = ('dimensions',)
 
@@ -511,7 +496,7 @@ def make_padding_config(
   return padding_config
 
 
-class DotDimensionNumbers(object):
+class DotDimensionNumbers:
   """Python representation of a xla.DotDimensionNumbers protobuf."""
   __slots__ = ('lhs_contracting_dimensions', 'rhs_contracting_dimensions',
                'lhs_batch_dimensions', 'rhs_batch_dimensions')
@@ -551,7 +536,7 @@ def make_dot_dimension_numbers(
     return dimension_numbers
 
 
-class ConvolutionDimensionNumbers(object):
+class ConvolutionDimensionNumbers:
   """Python representation of a xla.ConvolutionDimensionNumbers protobuf."""
   __slots__ = ('input_batch_dimension', 'input_feature_dimension',
                'input_spatial_dimensions', 'kernel_input_feature_dimension',
@@ -635,22 +620,7 @@ def make_convolution_dimension_numbers(
   return dimension_numbers
 
 
-class OpSharding(object):
-  """Python representation of a xla.OpSharding protobuf."""
-  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings', 'replicate_on_last_tile_dim')
-
-  Type = _xla.OpSharding_Type
-
-  def __init__(self):
-    self.type = self.Type.REPLICATED
-    self.tile_assignment_dimensions = []
-    self.tile_assignment_devices = []
-    self.tuple_shardings = []
-    self.replicate_on_last_tile_dim = False
-
-
-class PrecisionConfig(object):
+class PrecisionConfig:
   """Python representation of a xla.PrecisionConfig protobuf."""
   __slots__ = ('operand_precision',)
 
@@ -660,7 +630,7 @@ class PrecisionConfig(object):
     self.operand_precision = []
 
 
-class GatherDimensionNumbers(object):
+class GatherDimensionNumbers:
   """Python representation of a xla.GatherDimensionNumbers protobuf."""
   __slots__ = ('offset_dims', 'collapsed_slice_dims', 'start_index_map',
                'index_vector_dim')
@@ -672,7 +642,7 @@ class GatherDimensionNumbers(object):
     self.index_vector_dim = 0
 
 
-class ScatterDimensionNumbers(object):
+class ScatterDimensionNumbers:
   """Python representation of a xla.ScatterDimensionNumbers protobuf."""
   __slots__ = ('update_window_dims', 'inserted_window_dims',
                'scatter_dims_to_operand_dims', 'index_vector_dim')
@@ -684,7 +654,7 @@ class ScatterDimensionNumbers(object):
     self.index_vector_dim = 0
 
 
-class ReplicaGroup(object):
+class ReplicaGroup:
   """Python representation of a xla.ReplicaGroup protobuf."""
   __slots__ = ('replica_ids',)
 
@@ -729,6 +699,10 @@ def heap_profile(client: Client) -> bytes:
   return gzip.compress(client.heap_profile())
 
 
+XlaRuntimeError = _xla.XlaRuntimeError
+
 # Perform one last garbage collection of deferred Python references. This is
 # mostly to keep ASAN happy.
 atexit.register(_xla.collect_garbage)
+
+weakref_lru_cache = _xla.weakref_lru_cache

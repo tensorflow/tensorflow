@@ -43,6 +43,9 @@ cc_library(
 android_library(
     name = "android_tensorflow_inference_java",
     srcs = glob(["java/**/*.java"]) + ["//tensorflow/java:java_sources"],
+    javacopts = [
+        "-XepOpt:CheckReturnValue:CheckAllConstructors=false",  # b/226969262
+    ],
     tags = [
         "manual",
         "notap",

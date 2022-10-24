@@ -14,12 +14,8 @@
 # ==============================================================================
 """Tests for experimental iterator_ops."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
-
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import iterator_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -30,7 +26,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow_estimator.python.estimator import estimator

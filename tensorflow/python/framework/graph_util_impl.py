@@ -15,13 +15,8 @@
 """Helpers to manipulate a tensor graph in python.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 import copy
 import re
-
-import six
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
@@ -60,6 +55,11 @@ _CONTROL_FLOW_OP_NAMES_OR_IDENTITY = [
     "Merge",
     "NextIteration",
 ]
+
+_DEPRECATION_MSG = (
+    "This API was designed for TensorFlow v1. See "
+    "https://www.tensorflow.org/guide/migrate for instructions on how to "
+    "migrate your code to TensorFlow v2.")
 
 
 def _is_variable_op(op):
@@ -107,7 +107,7 @@ If you would like to create a `GraphDef` in TF2, use `tf.function` and
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.must_run_on_cpu`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.must_run_on_cpu"])
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
   """Returns True if the given node_def must run on CPU, otherwise False.
@@ -223,7 +223,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.extract_sub_graph`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.extract_sub_graph"])
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
@@ -239,10 +239,12 @@ def extract_sub_graph(graph_def, dest_nodes):
   """
 
   if not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError("graph_def must be a graph_pb2.GraphDef proto.")
+    raise TypeError("graph_def must be a graph_pb2.GraphDef proto, but got "
+                    f"type {type(graph_def)}.")
 
-  if isinstance(dest_nodes, six.string_types):
-    raise TypeError("dest_nodes must be an iterable of strings.")
+  if isinstance(dest_nodes, str):
+    raise TypeError("dest_nodes must be an iterable of strings, but got "
+                    f"type {type(dest_nodes)}.")
 
   name_to_input_name, name_to_node, name_to_seq_num = _extract_graph_summary(
       graph_def)
@@ -264,8 +266,7 @@ def extract_sub_graph(graph_def, dest_nodes):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.tensor_shape_from_node_def_name`"
-)
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
@@ -283,7 +284,7 @@ def tensor_shape_from_node_def_name(graph, input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.convert_variables_to_constants"])
 def convert_variables_to_constants(sess,
                                    input_graph_def,
@@ -327,7 +328,7 @@ def convert_variables_to_constants(sess,
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use `tf.compat.v1.graph_util.remove_training_nodes`")
+    instructions=_DEPRECATION_MSG)
 @tf_export(v1=["graph_util.remove_training_nodes"])
 def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
@@ -462,9 +463,11 @@ def graph_defs_equal(graph_def_1: graph_pb2.GraphDef,
       `graph_pb2.GraphDef`.
   """
   if not isinstance(graph_def_1, graph_pb2.GraphDef):
-    raise TypeError("graph_def_1 must be a graph_pb2.GraphDef proto.")
+    raise TypeError("graph_def_1 must be a graph_pb2.GraphDef proto, but got "
+                    f"type {type(graph_def_1)}.")
   if not isinstance(graph_def_2, graph_pb2.GraphDef):
-    raise TypeError("graph_def_2 must be a graph_pb2.GraphDef proto.")
+    raise TypeError("graph_def_2 must be a graph_pb2.GraphDef proto, but got "
+                    f"type {type(graph_def_2)}.")
   options = _proto_comparators.ProtoComparisonOptions(treat_nan_as_equal)
   return _proto_comparators.EqualsGraphDef(graph_def_1.SerializeToString(),
                                            graph_def_2.SerializeToString(),

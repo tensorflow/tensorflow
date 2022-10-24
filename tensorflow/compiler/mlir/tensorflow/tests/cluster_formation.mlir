@@ -5,7 +5,7 @@
 module {
   // CHECK-LABEL: func @singlecluster
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @singlecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @singlecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"(%[[ARG_0]])
     %2 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
@@ -21,7 +21,7 @@ module {
 
     // CHECK: %[[D_OUTPUT:[0-9]*]] = "tf.D"(%[[TPU0_OUTPUT]])
     %5 = "tf.D"(%4) : (tensor<?xi32>) -> tensor<?xi32>
-    return %5 : tensor<?xi32>
+    func.return %5 : tensor<?xi32>
   }
 }
 
@@ -32,7 +32,7 @@ module {
 module {
   // CHECK-LABEL: func @singlecluster
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @singlecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @singlecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -55,7 +55,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -66,7 +66,7 @@ module {
 module {
   // CHECK-LABEL: func @arglivein
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @arglivein(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @arglivein(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -86,7 +86,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -97,7 +97,7 @@ module {
 module {
   // CHECK-LABEL: func @argliveinotherislands
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @argliveinotherislands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @argliveinotherislands(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       // CHECK: %[[OTHER_ISLAND_OUTPUT:[a-z0-9]*]], %{{.*}} = tf_executor.island wraps "tf.D"
       %1:2 = tf_executor.island wraps "tf.D"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
@@ -120,7 +120,7 @@ module {
 
       tf_executor.fetch %2#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -130,7 +130,7 @@ module {
 
 module {
   // CHECK-LABEL: func @nolivein
-  func @nolivein() -> tensor<?xi32> {
+  func.func @nolivein() -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -147,7 +147,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -158,7 +158,7 @@ module {
 module {
   // CHECK-LABEL: func @multiplerelatedclusters
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @multiplerelatedclusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @multiplerelatedclusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -185,7 +185,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -196,7 +196,7 @@ module {
 module {
   // CHECK-LABEL: func @multipleunrelatedclusters
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @multipleunrelatedclusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @multipleunrelatedclusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -226,7 +226,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -237,7 +237,7 @@ module {
 module {
   // CHECK-LABEL: func @noncontinuoussinglecluster
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @noncontinuoussinglecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @noncontinuoussinglecluster(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -267,7 +267,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 
@@ -278,7 +278,7 @@ module {
 module {
   // CHECK-LABEL: func @intertwinedclusters
   // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<?xi32>)
-  func @intertwinedclusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+  func.func @intertwinedclusters(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = tf_executor.graph {
       %1:2 = tf_executor.island {
 
@@ -310,7 +310,7 @@ module {
       }
       tf_executor.fetch %1#0 : tensor<?xi32>
     }
-    return %0 : tensor<?xi32>
+    func.return %0 : tensor<?xi32>
   }
 }
 

@@ -449,7 +449,7 @@ node {
 # MLIR-SAME:  control_outputs = ""
 # MLIR-SAME:  inputs = "input"
 # MLIR-SAME:  outputs = "output"
-# MLIR:         %[[shape:.*]] = constant dense<[1, -1, 31]> : tensor<3xi32>
+# MLIR:         %[[shape:.*]] = arith.constant dense<[1, -1, 31]> : tensor<3xi32>
 # MLIR:         %[[bias:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x!quant.uniform<i32:f32:0
 # MLIR:         %[[weight:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x1x1x256x!quant.uniform<i8<-127:127>:f32:0, {0.12581039038230116,
 # MLIR:         %[[conv:.*]] = "tfl.conv_2d"(%[[ARG_0]], %[[weight]], %[[bias]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}

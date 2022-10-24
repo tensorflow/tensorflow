@@ -14,12 +14,7 @@
 # ==============================================================================
 """Tests for SavedModel."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
-import six
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -94,7 +89,7 @@ class SavedModelTestBase(test.TestCase):
     Returns:
       The evaluated tensor as a numpy array.
     """
-    name = tensor if isinstance(tensor, six.string_types) else tensor.name
+    name = tensor if isinstance(tensor, str) else tensor.name
     index = "0"
     if ":" in name:
       name, index = name.split(":")

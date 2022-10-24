@@ -1,16 +1,13 @@
-"""Generate Flatbuffer binary from json."""
+"""Build macros for TF Lite."""
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "clean_dep",
-    "tf_binary_additional_srcs",
-    "tf_cc_shared_object",
-    "tf_cc_test",
-)
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_oss", "tf_binary_additional_srcs", "tf_cc_shared_object")
 load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+
+def register_extension_info(**kwargs):
+    pass
 
 def tflite_copts():
     """Defines common compile time flags for TFLite libraries."""
@@ -23,9 +20,18 @@ def tflite_copts():
         clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
+        clean_dep("//tensorflow:linux_x86_64"): [
+            "-msse4.2",
+        ],
+        clean_dep("//tensorflow:linux_x86_64_no_sse"): [],
         clean_dep("//tensorflow:windows"): [
+            # copybara:uncomment_begin(no MSVC flags in google)
+            # "-DTFL_COMPILE_LIBRARY",
+            # "-Wno-sign-compare",
+            # copybara:uncomment_end_and_comment_begin
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
+            # copybara:comment_end
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
@@ -44,6 +50,12 @@ def tflite_copts():
         "//conditions:default": [
             "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
+    }) + select({
+        clean_dep("//tensorflow/lite:tflite_with_xnnpack_explicit_false"): ["-DTFLITE_WITHOUT_XNNPACK"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow/lite:tensorflow_profiler_config"): ["-DTF_LITE_TENSORFLOW_PROFILER"],
+        "//conditions:default": [],
     })
 
     return copts + tflite_copts_extra()
@@ -118,16 +130,38 @@ def tflite_symbol_opts():
         clean_dep("//tensorflow:debug"): [],
         clean_dep("//tensorflow/lite:tflite_keep_symbols"): [],
         "//conditions:default": [
-            "-s",  # Omit symbol table, for all non debug builds
+            # Omit symbol table, for all non debug builds
+            "-Wl,-s",
         ],
     })
 
+def tflite_linkopts_no_undefined():
+    """Defines linker flags to enable errors for undefined symbols.
+
+    This enables link-time errors for undefined symbols even when linking
+    shared libraries, where the default behaviour on many systems is to only
+    report errors for undefined symbols at runtime.
+    """
+    return if_oss(
+        ["-Wl,--no-undefined"],
+        select({
+            # Can't enable errors for undefined symbols for asan/msan/tsan mode,
+            # since undefined symbols in shared libraries (references to symbols
+            # that will be defined in the main executable) are normal and
+            # expected in those cases.
+            "//tools/cpp:asan_build": [],
+            "//tools/cpp:msan_build": [],
+            "//tools/cpp:tsan_build": [],
+            "//conditions:default": ["-Wl,--no-undefined"],
+        }),
+    )
+
 def tflite_linkopts():
-    """Defines linker flags to reduce size of TFLite binary."""
+    """Defines linker flags for linking TFLite binary."""
     return tflite_linkopts_unstripped() + tflite_symbol_opts()
 
 def tflite_jni_linkopts():
-    """Defines linker flags to reduce size of TFLite binary with JNI."""
+    """Defines linker flags for linking TFLite binary with JNI."""
     return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
 
 def tflite_jni_binary(
@@ -284,463 +318,62 @@ def json_to_tflite(name, src, out):
         tools = [flatc],
     )
 
-# This is the master list of generated examples that will be made into tests. A
-# function called make_XXX_tests() must also appear in generate_examples.py.
-# Disable a test by adding it to the denylists specified in
-# generated_test_models_failing().
-def generated_test_models():
-    return [
-        "abs",
-        "add",
-        "add_n",
-        "arg_min_max",
-        "avg_pool",
-        "batch_to_space_nd",
-        "cast",
-        "ceil",
-        "concat",
-        "constant",
-        "conv",
-        "conv_relu",
-        "conv_relu1",
-        "conv_relu6",
-        "conv2d_transpose",
-        "conv_with_shared_weights",
-        "conv_to_depthwiseconv_with_shared_weights",
-        "cos",
-        "depthwiseconv",
-        "depth_to_space",
-        "div",
-        "elu",
-        "equal",
-        "exp",
-        "embedding_lookup",
-        "expand_dims",
-        "eye",
-        "fill",
-        "floor",
-        "floor_div",
-        "floor_mod",
-        "fully_connected",
-        "fused_batch_norm",
-        "gather",
-        "gather_nd",
-        "gather_with_constant",
-        "global_batch_norm",
-        "greater",
-        "greater_equal",
-        "hardswish",
-        "identity",
-        "sum",
-        "l2norm",
-        "l2norm_shared_epsilon",
-        "l2_pool",
-        "leaky_relu",
-        "less",
-        "less_equal",
-        "local_response_norm",
-        "log_softmax",
-        "log",
-        "logical_and",
-        "logical_or",
-        "logical_xor",
-        "lstm",
-        "matrix_diag",
-        "matrix_set_diag",
-        "max_pool",
-        "maximum",
-        "mean",
-        "minimum",
-        "mirror_pad",
-        "mul",
-        "nearest_upsample",
-        "neg",
-        "not_equal",
-        "one_hot",
-        "pack",
-        "pad",
-        "padv2",
-        "placeholder_with_default",
-        "prelu",
-        "pow",
-        "range",
-        "rank",
-        "reduce_any",
-        "reduce_max",
-        "reduce_min",
-        "reduce_prod",
-        "relu",
-        "relu1",
-        "relu6",
-        "reshape",
-        "resize_bilinear",
-        "resize_nearest_neighbor",
-        "resolve_constant_strided_slice",
-        "reverse_sequence",
-        "reverse_v2",
-        "round",
-        "rsqrt",
-        "scatter_nd",
-        "shape",
-        "sigmoid",
-        "sin",
-        "slice",
-        "softmax",
-        "space_to_batch_nd",
-        "space_to_depth",
-        "sparse_to_dense",
-        "split",
-        "splitv",
-        "sqrt",
-        "square",
-        "squared_difference",
-        "squeeze",
-        "strided_slice",
-        "strided_slice_1d_exhaustive",
-        "strided_slice_np_style",
-        "sub",
-        "tanh",
-        "tile",
-        "topk",
-        "transpose",
-        "transpose_conv",
-        "unfused_gru",
-        "unique",
-        "unpack",
-        "unroll_batch_matmul",
-        "where",
-        "zeros_like",
-    ]
-
-# List of models that fail generated tests for the conversion mode.
-# If you have to disable a test, please add here with a link to the appropriate
-# bug or issue.
-def generated_test_models_failing(conversion_mode):
-    """Returns the list of failing test models.
-
-    Args:
-      conversion_mode: Conversion mode.
-
-    Returns:
-      List of failing test models for the conversion mode.
-    """
-    if conversion_mode == "toco-flex":
-        # These tests mean to fuse multiple TF ops to TFLite fused RNN & LSTM
-        # ops (e.g. LSTM, UnidirectionalSequentceLSTM) with some semantic
-        # changes (becoming stateful). We have no intention to make these
-        # work in Flex.
-        return [
-            "lstm",
-            "unidirectional_sequence_lstm",
-            "unidirectional_sequence_rnn",
-        ]
-    elif conversion_mode == "forward-compat":
-        return [
-            "merged_models",  # b/150647401
-        ]
-    return [
-        "merged_models",  # b/150647401
-    ]
-
-def generated_test_models_successful(conversion_mode):
-    """Returns the list of successful test models.
-
-    Args:
-      conversion_mode: Conversion mode.
-
-    Returns:
-      List of successful test models for the conversion mode.
-    """
-    return [test_model for test_model in generated_test_models() if test_model not in generated_test_models_failing(conversion_mode)]
-
-def generated_test_conversion_modes():
-    """Returns a list of conversion modes."""
-
-    return ["toco-flex", "forward-compat", "", "mlir-quant"]
-
-def common_test_args_for_generated_models(conversion_mode, failing):
-    """Returns test args for generated model tests.
-
-    Args:
-      conversion_mode: Conversion mode.
-      failing: True if the generated model test is failing.
-
-    Returns:
-      test args of generated models.
-    """
-    args = []
-
-    # Flex conversion shouldn't suffer from the same conversion bugs
-    # listed for the default TFLite kernel backend.
-    if conversion_mode == "toco-flex":
-        args.append("--ignore_known_bugs=false")
-
-    return args
-
-def common_test_tags_for_generated_models(conversion_mode, failing):
-    """Returns test tags for generated model tests.
-
-    Args:
-      conversion_mode: Conversion mode.
-      failing: True if the generated model test is failing.
-
-    Returns:
-      tags for the failing generated model tests.
-    """
-    tags = []
-
-    # Forward-compat coverage testing is largely redundant, and contributes
-    # to coverage test bloat.
-    if conversion_mode == "forward-compat":
-        tags.append("nozapfhahn")
-
-    if failing:
-        return ["notap", "manual"]
-
-    return tags
-
-def generated_test_models_all():
-    """Generates a list of all tests with the different converters.
-
-    Returns:
-      List of tuples representing:
-            (conversion mode, name of test, test tags, test args).
-    """
-    conversion_modes = generated_test_conversion_modes()
-    tests = generated_test_models()
-    options = []
-    for conversion_mode in conversion_modes:
-        failing_tests = generated_test_models_failing(conversion_mode)
-        for test in tests:
-            failing = test in failing_tests
-            if conversion_mode:
-                test += "_%s" % conversion_mode
-            tags = common_test_tags_for_generated_models(conversion_mode, failing)
-            args = common_test_args_for_generated_models(conversion_mode, failing)
-            options.append((conversion_mode, test, tags, args))
-    return options
-
-def merged_test_model_name():
-    """Returns the name of merged test model.
-
-    Returns:
-      The name of merged test model.
-    """
-    return "merged_models"
-
-def max_number_of_test_models_in_merged_zip():
-    """Returns the maximum number of merged test models in a zip file.
-
-    Returns:
-      Maximum number of merged test models in a zip file.
-    """
-    return 15
-
-def number_of_merged_zip_file(conversion_mode):
-    """Returns the number of merged zip file targets.
-
-    Returns:
-      Number of merged zip file targets.
-    """
-    m = max_number_of_test_models_in_merged_zip()
-    return (len(generated_test_models_successful(conversion_mode)) + m - 1) // m
-
-def merged_test_models():
-    """Generates a list of merged tests with the different converters.
-
-    This model list should be referred only if :generate_examples supports
-    --no_tests_limit and --test_sets flags.
-
-    Returns:
-      List of tuples representing:
-            (conversion mode, name of group, test tags, test args).
-    """
-    conversion_modes = generated_test_conversion_modes()
-    tests = generated_test_models()
-    options = []
-    for conversion_mode in conversion_modes:
-        test = merged_test_model_name()
-        if conversion_mode:
-            test += "_%s" % conversion_mode
-        successful_tests = generated_test_models_successful(conversion_mode)
-        if len(successful_tests) > 0:
-            tags = common_test_tags_for_generated_models(conversion_mode, False)
-
-            # Only non-merged tests are executed on TAP.
-            # Merged test rules are only for running on the real device environment.
-            if "notap" not in tags:
-                tags.append("notap")
-            args = common_test_args_for_generated_models(conversion_mode, False)
-            n = number_of_merged_zip_file(conversion_mode)
-            for i in range(n):
-                test_i = "%s_%d" % (test, i)
-                options.append((conversion_mode, test_i, tags, args))
-    return options
-
-def flags_for_merged_test_models(test_name, conversion_mode):
-    """Returns flags for generating zipped-example data file for merged tests.
-
-    Args:
-      test_name: str. Test name in the form of "<merged_model_name>_[<conversion_mode>_]%d".
-      conversion_mode: str. Which conversion mode to run with. Comes from the
-        list above.
-
-    Returns:
-      Flags for generating zipped-example data file for merged tests.
-    """
-    prefix = merged_test_model_name() + "_"
-    if not test_name.startswith(prefix):
-        fail(msg = "Invalid test name " + test_name + ": test name should start " +
-                   "with " + prefix + " when using flags of merged test models.")
-
-    # Remove prefix and conversion_mode from the test name
-    # to extract merged test index number.
-    index_string = test_name[len(prefix):]
-    if conversion_mode:
-        index_string = index_string.replace("%s_" % conversion_mode, "")
-
-    # If the maximum number of test models in a file is 15 and the number of
-    # successful test models are 62, 5 zip files will be generated.
-    # To assign the test models fairly among these files, each zip file
-    # should contain 12 or 13 test models. (62 / 5 = 12 ... 2)
-    # Each zip file will have 12 test models and the first 2 zip files will have
-    # 1 more test model each, resulting [13, 13, 12, 12, 12] assignment.
-    # So Zip file 0, 1, 2, 3, 4 and 5 will have model[0:13], model[13:26],
-    # model[26,38], model[38,50] and model[50,62], respectively.
-    zip_index = int(index_string)
-    num_merged_zips = number_of_merged_zip_file(conversion_mode)
-    test_models = generated_test_models_successful(conversion_mode)
-
-    # Each zip file has (models_per_zip) or (models_per_zip+1) test models.
-    models_per_zip = len(test_models) // num_merged_zips
-
-    # First (models_remaining) zip files have (models_per_zip+1) test models each.
-    models_remaining = len(test_models) % num_merged_zips
-    if zip_index < models_remaining:
-        # Zip files [0:models_remaining] have (models_per_zip+1) models.
-        begin = (models_per_zip + 1) * zip_index
-        end = begin + (models_per_zip + 1)
-    else:
-        # Zip files [models_remaining:] have (models_per_zip) models.
-        begin = models_per_zip * zip_index + models_remaining
-        end = begin + models_per_zip
-    tests_csv = ""
-    for test_model in test_models[begin:end]:
-        tests_csv += "%s," % test_model
-    if tests_csv != "":
-        tests_csv = tests_csv[:-1]  # Remove trailing comma.
-    return " --no_tests_limit --test_sets=%s" % tests_csv
-
-def gen_zip_test(
-        name,
-        test_name,
-        conversion_mode,
-        test_tags,
-        test_args,
-        additional_test_tags_args = {},
-        **kwargs):
-    """Generate a zipped-example test and its dependent zip files.
-
-    Args:
-      name: str. Resulting cc_test target name
-      test_name: str. Test targets this model. Comes from the list above.
-      conversion_mode: str. Which conversion mode to run with. Comes from the
-        list above.
-      test_tags: tags for the generated cc_test.
-      test_args: the basic cc_test args to be used.
-      additional_test_tags_args: a dictionary of additional test tags and args
-        to be used together with test_tags and test_args. The key is an
-        identifier which can be in creating a test tag to identify a set of
-        tests. The value is a tuple of list of additional test tags and args to
-        be used.
-      **kwargs: tf_cc_test kwargs
-    """
-    toco = "//tensorflow/lite/toco:toco"
-    flags = ""
-    if conversion_mode == "toco-flex":
-        flags += " --ignore_converter_errors --run_with_flex"
-    elif conversion_mode == "forward-compat":
-        flags += " --make_forward_compat_test"
-    elif conversion_mode == "mlir-quant":
-        flags += " --mlir_quantizer"
-    if test_name.startswith(merged_test_model_name() + "_"):
-        flags += flags_for_merged_test_models(test_name, conversion_mode)
-
-    gen_zipped_test_file(
-        name = "zip_%s" % test_name,
-        file = "%s.zip" % test_name,
-        toco = toco,
-        flags = flags + " --save_graphdefs",
-    )
-    tf_cc_test(
-        name,
-        args = test_args,
-        tags = test_tags + ["gen_zip_test"],
-        **kwargs
-    )
-    for key, value in additional_test_tags_args.items():
-        extra_tags, extra_args = value
-        extra_tags.append("gen_zip_test_%s" % key)
-        tf_cc_test(
-            name = "%s_%s" % (name, key),
-            args = test_args + extra_args,
-            tags = test_tags + extra_tags,
-            **kwargs
-        )
-
-def gen_zipped_test_file(name, file, toco, flags):
-    """Generate a zip file of tests by using :generate_examples.
-
-    Args:
-      name: str. Name of output. We will produce "`file`.files" as a target.
-      file: str. The name of one of the generated_examples targets, e.g. "transpose"
-      toco: str. Pathname of toco binary to run
-      flags: str. Any additional flags to include
-    """
-    native.genrule(
-        name = file + ".files",
-        cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
-                " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
-        outs = [file],
-        tools = [
-            ":generate_examples",
-            toco,
-        ],
+def _gen_selected_ops_impl(ctx):
+    args = ctx.actions.args()
+    args.add(ctx.attr.namespace, format = "--namespace=%s")
+    args.add(ctx.outputs.output, format = "--output_registration=%s")
+    tflite_path = "//tensorflow/lite"
+    args.add("--tflite_path=%s" % tflite_path[2:])
+    args.add_joined(
+        ctx.files.models,
+        join_with = ",",
+        format_joined = "--input_models=%s",
     )
 
-    native.filegroup(
-        name = name,
-        srcs = [file],
+    ctx.actions.run(
+        outputs = [ctx.outputs.output],
+        inputs = ctx.files.models,
+        arguments = [args],
+        executable = ctx.executable._generate_op_registrations,
+        mnemonic = "OpRegistration",
+        progress_message = "gen_selected_ops",
     )
+
+gen_selected_ops_rule = rule(
+    implementation = _gen_selected_ops_impl,
+    attrs = {
+        "models": attr.label_list(default = [], allow_files = True),
+        "namespace": attr.string(default = ""),
+        "output": attr.output(),
+        "_generate_op_registrations": attr.label(
+            executable = True,
+            default = Label(clean_dep(
+                "//tensorflow/lite/tools:generate_op_registrations",
+            )),
+            cfg = "exec",
+        ),
+    },
+)
 
 def gen_selected_ops(name, model, namespace = "", **kwargs):
-    """Generate the library that includes only used ops.
+    """Generate the source file that includes only used ops.
 
     Args:
-      name: Name of the generated library.
+      name: Prefix of the generated source file.
       model: TFLite models to interpret, expect a list in case of multiple models.
       namespace: Namespace in which to put RegisterSelectedOps.
       **kwargs: Additional kwargs to pass to genrule.
     """
-    out = name + "_registration.cc"
-    tool = clean_dep("//tensorflow/lite/tools:generate_op_registrations")
-    tflite_path = "//tensorflow/lite"
 
-    # isinstance is not supported in skylark.
-    if type(model) != type([]):
+    # If there's only one model provided as a string.
+    if type(model) == type(""):
         model = [model]
 
-    input_models_args = " --input_models=%s" % ",".join(
-        ["$(location %s)" % f for f in model],
-    )
-
-    native.genrule(
+    gen_selected_ops_rule(
         name = name,
-        srcs = model,
-        outs = [out],
-        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s %s") %
-              (tool, namespace, out, tflite_path[2:], input_models_args),
-        tools = [tool],
+        models = model,
+        namespace = namespace,
+        output = name + "_registration.cc",
         **kwargs
     )
 
@@ -788,6 +421,10 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
+                # Disable sanitizer runs as models can be huge and can timeout.
+                "noasan",
+                "nomsan",
+                "notsan",
             ] + tags + coverage_tags,
             deps = [
                 "//third_party/py/tensorflow",
@@ -802,7 +439,9 @@ def tflite_custom_cc_library(
         models = [],
         srcs = [],
         deps = [],
-        visibility = ["//visibility:private"]):
+        visibility = ["//visibility:private"],
+        experimental = False,
+        **kwargs):
     """Generates a tflite cc library, stripping off unused operators.
 
     This library includes the TfLite runtime as well as all operators needed for the given models.
@@ -816,6 +455,8 @@ def tflite_custom_cc_library(
         srcs: List of files implementing custom operators if any.
         deps: Additional dependencies to build all the custom operators.
         visibility: Visibility setting for the generated target. Default to private.
+        experimental: Whether to include experimental APIs or not.
+        **kwargs: Additional arguments for native.cc_library.
     """
     real_srcs = []
     real_srcs.extend(srcs)
@@ -826,6 +467,7 @@ def tflite_custom_cc_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
+            testonly = kwargs.get("testonly", default = False),
         )
         real_srcs.append(":%s_registration" % name)
         real_srcs.append("//tensorflow/lite:create_op_resolver_with_selected_ops.cc")
@@ -833,6 +475,10 @@ def tflite_custom_cc_library(
         # Support all operators if `models` not specified.
         real_deps.append("//tensorflow/lite:create_op_resolver_with_builtin_ops")
 
+    if experimental:
+        framework = "//tensorflow/lite:framework_experimental"
+    else:
+        framework = "//tensorflow/lite:framework_stable"
     native.cc_library(
         name = name,
         srcs = real_srcs,
@@ -845,10 +491,12 @@ def tflite_custom_cc_library(
             "//conditions:default": ["-lm", "-ldl"],
         }),
         deps = depset([
-            "//tensorflow/lite:framework",
+            framework,
             "//tensorflow/lite/kernels:builtin_ops",
+            "//tensorflow/lite/core:private_create_op_resolver_header",
         ] + real_deps),
         visibility = visibility,
+        **kwargs
     )
 
 def tflite_custom_android_library(
@@ -859,7 +507,8 @@ def tflite_custom_android_library(
         custom_package = "org.tensorflow.lite",
         visibility = ["//visibility:private"],
         include_xnnpack_delegate = True,
-        include_nnapi_delegate = True):
+        include_nnapi_delegate = True,
+        experimental = False):
     """Generates a tflite Android library, stripping off unused operators.
 
     Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
@@ -878,6 +527,7 @@ def tflite_custom_android_library(
         visibility: Visibility setting for the generated target. Default to private.
         include_xnnpack_delegate: Whether to include the XNNPACK delegate or not.
         include_nnapi_delegate: Whether to include the NNAPI delegate or not.
+        experimental: Whether to include experimental APIs or not.
     """
     tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
 
@@ -887,13 +537,18 @@ def tflite_custom_android_library(
     if include_xnnpack_delegate:
         delegate_deps.append("//tensorflow/lite/delegates/xnnpack:xnnpack_delegate")
 
+    if experimental:
+        native_framework_only = "//tensorflow/lite/java/src/main/native:native_experimental_framework_only"
+    else:
+        native_framework_only = "//tensorflow/lite/java/src/main/native:native_stable_framework_only"
+
     # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
     tflite_jni_binary(
         name = "libtensorflowlite_jni.so",
         linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
         # Do not sort: "native_framework_only" must come before custom tflite library.
         deps = [
-            "//tensorflow/lite/java/src/main/native:native_framework_only",
+            native_framework_only,
             ":%s_cc" % name,
         ] + delegate_deps,
     )
@@ -904,10 +559,15 @@ def tflite_custom_android_library(
         visibility = visibility,
     )
 
+    if experimental:
+        java_srcs = "//tensorflow/lite/java:java_srcs"
+    else:
+        java_srcs = "//tensorflow/lite/java:java_stable_srcs"
+
     android_library(
         name = name,
         manifest = "//tensorflow/lite/java:AndroidManifest.xml",
-        srcs = ["//tensorflow/lite/java:java_srcs"],
+        srcs = [java_srcs],
         deps = [
             ":%s_jni" % name,
             "@org_checkerframework_qual",
@@ -924,8 +584,9 @@ def tflite_custom_android_library(
 def tflite_custom_c_library(
         name,
         models = [],
+        experimental = False,
         **kwargs):
-    """Generates a tflite cc library, stripping off unused operators.
+    """Generates a tflite C library, stripping off unused operators.
 
     This library includes the C API and the op kernels used in the given models.
 
@@ -934,6 +595,7 @@ def tflite_custom_c_library(
         models: List of models. This TFLite build will only include
             operators used in these models. If the list is empty, all builtin
             operators are included.
+        experimental: Whether to include experimental APIs or not.
        **kwargs: custom c_api cc_library kwargs.
     """
     op_resolver_deps = "//tensorflow/lite:create_op_resolver_with_builtin_ops"
@@ -941,49 +603,76 @@ def tflite_custom_c_library(
         gen_selected_ops(
             name = "%s_registration" % name,
             model = models,
+            testonly = kwargs.get("testonly", default = False),
         )
+
+        if experimental:
+            framework = "//tensorflow/lite:framework_experimental"
+        else:
+            framework = "//tensorflow/lite:framework_stable"
 
         native.cc_library(
             name = "%s_create_op_resolver" % name,
             srcs = [
                 ":%s_registration" % name,
-                "//tensorflow/lite:create_op_resolver_with_selected_ops.cc",
             ],
             hdrs = ["//tensorflow/lite:create_op_resolver.h"],
             copts = tflite_copts(),
             deps = [
+                "//tensorflow/lite/core:private_create_op_resolver_header",
+                "//tensorflow/lite:create_op_resolver_with_selected_ops",
                 "//tensorflow/lite:op_resolver",
-                "//tensorflow/lite:framework",
+                framework,
                 "//tensorflow/lite/kernels:builtin_ops",
             ],
+            # Using alwayslink here is needed, I believe, to avoid warnings about
+            # backwards references when linking create_op_resolver_with_selected_ops,
+            # which has a reference to the RegisterSelectedOps function defined by
+            # '":%s_registration" % name' (the code generated by the call to
+            # gen_selected_ops above).
+            alwayslink = True,
+            **kwargs
         )
         op_resolver_deps = "%s_create_op_resolver" % name
 
+    if experimental:
+        hdrs = [
+            "//tensorflow/lite/c:c_api.h",
+            "//tensorflow/lite/c:c_api_experimental.h",
+            "//tensorflow/lite/c:c_api_opaque.h",
+        ]
+        experimental_deps = [
+            "//tensorflow/lite/c:c_api_experimental_without_op_resolver_without_alwayslink",
+        ]
+    else:
+        hdrs = [
+            "//tensorflow/lite/c:c_api.h",
+        ]
+        experimental_deps = []
     native.cc_library(
         name = name,
-        srcs = ["//tensorflow/lite/c:c_api_srcs"],
-        hdrs = ["//tensorflow/lite/c:c_api.h"],
+        hdrs = hdrs,
         copts = tflite_copts(),
         deps = [
             op_resolver_deps,
+            "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite/c:common",
             "//tensorflow/lite/c:c_api_types",
-            "//tensorflow/lite:builtin_ops",
-            "//tensorflow/lite:framework",
-            "//tensorflow/lite:version",
-            "//tensorflow/lite/core/api",
-            "//tensorflow/lite/delegates:interpreter_utils",
+            "//tensorflow/lite/c:c_api_without_op_resolver_without_alwayslink",
+            "//tensorflow/lite/core:private_headers",
+            "//tensorflow/lite/core/c:c_api_without_op_resolver_without_alwayslink",
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-            "//tensorflow/lite/kernels/internal:compatibility",
-        ],
+        ] + experimental_deps,
         **kwargs
     )
 
+# TODO(b/254126721): Move tflite_combine_cc_tests macro to lite/testing/build_def.bzl.
 def tflite_combine_cc_tests(
         name,
         deps_conditions,
         extra_cc_test_tags = [],
         extra_build_test_tags = [],
+        generate_cc_library = False,
         **kwargs):
     """Combine all certain cc_tests into a single cc_test and a build_test.
 
@@ -995,6 +684,10 @@ def tflite_combine_cc_tests(
           combined cc_test.
       extra_build_test_tags: the list of extra tags appended to the created
           corresponding build_test for the combined cc_test.
+      generate_cc_library: if set to True, additionally generates a combined
+          cc_library containing all kernel tests. The generated cc_library
+          will exclude all dependencies in `deps_conditions`, so that users
+          can plugin their own test driver and entry point.
       **kwargs: kwargs to pass to the cc_test rule of the test suite.
     """
     combined_test_srcs = {}
@@ -1042,3 +735,116 @@ def tflite_combine_cc_tests(
                 "tflite_portable_build_test",
             ] + extra_build_test_tags,
         )
+        if generate_cc_library:
+            native.cc_library(
+                name = "%s_lib" % name,
+                srcs = list(combined_test_srcs),
+                deps = [d for d in combined_test_deps if d not in deps_conditions],
+                testonly = 1,
+                alwayslink = 1,
+                **kwargs
+            )
+
+def tflite_self_contained_libs_test_suite(name):
+    """Indicate that cc_library rules in this package *should* be self-contained.
+
+    This adds build tests for each cc_library rule that verify that the
+    library can be successfully linked with no undefined symbols.  It also
+    adds a test_suite rule that contains all the generated build tests.
+
+    Place this rule at the bottom of a package. Any cc_library rules that
+    appear after the call to this rule will not be checked for undefined
+    symbols.  Rules that are tagged with 'allow_undefined_symbols' in
+    their 'tags' attribute will also not be checked for undefined symbols.
+
+    Args:
+      name: the name to use for the test_suite rule that contains
+        the build tests generated by this macro.
+    """
+    build_tests = []
+
+    for rule in native.existing_rules().values():
+        rule_name = rule["name"]
+        rule_kind = rule["kind"]
+        rule_tags = rule["tags"]
+        if rule_kind == "cc_library" and "allow_undefined_symbols" not in rule_tags:
+            tflite_cc_shared_object(
+                name = "%s_test_shared_lib" % rule_name,
+                testonly = True,
+                linkopts = tflite_linkopts_no_undefined(),
+                deps = [":%s" % rule_name],
+            )
+            build_test(
+                name = "%s_build_test" % rule_name,
+                targets = ["%s_test_shared_lib" % rule_name],
+            )
+            build_tests.append("%s_build_test" % rule_name)
+
+    native.test_suite(
+        name = name,
+        tests = build_tests,
+    )
+
+def _label(target):
+    """Return a Label <https://bazel.build/rules/lib/Label#Label> given a string.
+
+    Args:
+      target: (string) a relative or absolute build target.
+    """
+    if target[0:2] == "//":
+        return Label(target)
+    if target[0] == ":":
+        return Label("//" + native.package_name() + target)
+    return Label("//" + native.package_name() + ":" + target)
+
+def tflite_cc_library_with_c_headers_test(name, hdrs, **kwargs):
+    """Defines a C++ library with C-compatible header files.
+
+    This generates a cc_library rule, but also generates
+    build tests that verify that each of the 'hdrs'
+    can be successfully built in a C (not C++!) compilation unit
+    that directly includes only that header file.
+
+    Args:
+      name: (string) as per cc_library.
+      hdrs: (list of string) as per cc_library.
+      **kwargs: Additional kwargs to pass to cc_library.
+    """
+    native.cc_library(name = name, hdrs = hdrs, **kwargs)
+
+    build_tests = []
+    for hdr in hdrs:
+        label = _label(hdr)
+        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        native.genrule(
+            name = "%s_gen" % basename,
+            outs = ["%s.c" % basename],
+            cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
+            visibility = ["//visibility:private"],
+            testonly = True,
+        )
+        native.cc_library(
+            name = "%s_lib" % basename,
+            srcs = ["%s.c" % basename],
+            deps = [":" + name],
+            copts = kwargs.get("copts", []),
+            visibility = ["//visibility:private"],
+            testonly = True,
+            tags = ["allow_undefined_symbols"],
+        )
+        build_test(
+            name = "%s_build_test" % basename,
+            visibility = ["//visibility:private"],
+            targets = ["%s_lib" % basename],
+        )
+        build_tests.append("%s_build_test" % basename)
+
+    native.test_suite(
+        name = name + "_self_contained_c_build_tests",
+        tests = build_tests,
+    )
+
+register_extension_info(
+    extension = tflite_cc_library_with_c_headers_test,
+    label_regex_for_dep = "{extension_name}",
+)

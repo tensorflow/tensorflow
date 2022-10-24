@@ -24,11 +24,13 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h.inc"
+#include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace mlir {
 namespace TF {
+
+using GpuDeviceMetadata = tf_type::GpuDeviceMetadataAttr;
 
 // Tensorflow devices available at runtime with corresponding metadata if it is
 // available. It's completely valid to have a device without any metadata

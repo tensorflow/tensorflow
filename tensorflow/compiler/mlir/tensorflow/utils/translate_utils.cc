@@ -29,7 +29,8 @@ void PopulateTfVersions(mlir::ModuleOp module, const VersionDef& versions) {
   auto bad_consumers = b.getNamedAttr(
       "bad_consumers",
       b.getI32ArrayAttr(llvm::ArrayRef<int32_t>(
-          versions.bad_consumers().begin(), versions.bad_consumers().end())));
+          versions.bad_consumers().data(),
+          versions.bad_consumers().data() + versions.bad_consumers().size())));
   module->setAttr("tf.versions",
                   b.getDictionaryAttr(llvm::ArrayRef<mlir::NamedAttribute>(
                       {producer, min_consumer, bad_consumers})));

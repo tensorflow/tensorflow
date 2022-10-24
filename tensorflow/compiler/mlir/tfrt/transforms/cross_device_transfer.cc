@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -91,7 +92,7 @@ static std::string GetDevice(Operation *op) {
 }
 
 // Return the device of the given value.
-static std::string GetDevice(mlir::Value value, FuncOp parent_func_op) {
+static std::string GetDevice(mlir::Value value, func::FuncOp parent_func_op) {
   std::string device = "";
   if (BlockArgument block_arg = value.dyn_cast<BlockArgument>()) {
     if (StringAttr device_attr = parent_func_op.getArgAttrOfType<StringAttr>(
@@ -106,8 +107,10 @@ static std::string GetDevice(mlir::Value value, FuncOp parent_func_op) {
 }
 
 struct CrossDeviceTransferPass
-    : public PassWrapper<CrossDeviceTransferPass, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<CrossDeviceTransferPass, OperationPass<func::FuncOp>> {
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(CrossDeviceTransferPass)
+
+  void runOnOperation() override;
 
   llvm::StringRef getArgument() const final {
     return "tfrt-cross-device-transfer";
@@ -119,8 +122,8 @@ struct CrossDeviceTransferPass
   }
 };
 
-void CrossDeviceTransferPass::runOnFunction() {
-  FuncOp func_op = getOperation();
+void CrossDeviceTransferPass::runOnOperation() {
+  func::FuncOp func_op = getOperation();
   llvm::DenseMap<mlir::Value, llvm::StringMap<mlir::Value>>
       transferred_value_by_value_and_device;
 
@@ -179,7 +182,7 @@ void CrossDeviceTransferPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> CreateCrossDeviceTransferPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateCrossDeviceTransferPass() {
   return std::make_unique<CrossDeviceTransferPass>();
 }
 

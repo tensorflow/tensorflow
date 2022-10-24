@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for the SWIG-wrapped events writer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os.path
 
 from tensorflow.core.framework import summary_pb2

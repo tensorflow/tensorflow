@@ -9,6 +9,14 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "QuantizationDebugOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "QuantizationDebugger"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "authoring"
     mtype: "<type \'module\'>"
   }

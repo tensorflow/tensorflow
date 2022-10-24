@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for utilities working with arbitrarily nested structures."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 
@@ -106,11 +102,15 @@ def _test_is_compatible_with_structure_combinations():
   cases = [
       ("Tensor", lambda: constant_op.constant(37.0), lambda: [
           constant_op.constant(38.0),
-          array_ops.placeholder(dtypes.float32),
-          variables.Variable(100.0), 42.0,
+          array_ops.placeholder(dtypes.float32), 42.0,
           np.array(42.0, dtype=np.float32)
       ], lambda: [constant_op.constant([1.0, 2.0]),
                   constant_op.constant(37)]),
+      # TODO(b/209081027): add Python constant and TF constant to the
+      # incompatible branch after ResourceVariable becoming a CompositeTensor.
+      ("Variable", lambda: variables.Variable(100.0),
+       lambda: [variables.Variable(99.0)],
+       lambda: [1]),
       ("TensorArray", lambda: tensor_array_ops.TensorArray(
           dtype=dtypes.float32, element_shape=(3,), size=0), lambda: [
               tensor_array_ops.TensorArray(
@@ -686,7 +686,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.to_tensor_list(s_tensor, value_nest)
 
     with self.assertRaisesRegex(TypeError,
-                                "Neither a SparseTensor nor SparseTensorValue"):
+                                "neither a SparseTensor nor SparseTensorValue"):
       structure.to_tensor_list(s_sparse_tensor, value_tensor)
 
     with self.assertRaisesRegex(
@@ -702,8 +702,9 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.to_tensor_list(s_nest, value_sparse_tensor)
 
     with self.assertRaisesRegex(
-        ValueError, "Cannot create a tensor from the input list because item 0 "
-        ".*tf.Tensor.* is incompatible with the expected type spec "
+        ValueError,
+        "Cannot create a Tensor from the tensor list because item 0 "
+        ".*tf.Tensor.* is incompatible with the expected TypeSpec "
         ".*TensorSpec.*"):
       structure.from_tensor_list(s_tensor, flat_sparse_tensor)
 
@@ -711,8 +712,8 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.from_tensor_list(s_tensor, flat_nest)
 
     with self.assertRaisesRegex(
-        ValueError, "Cannot create a tensor from the input list because item 0 "
-        ".*tf.Tensor.* is incompatible with the expected type spec "
+        ValueError, "Cannot create a SparseTensor from the tensor list because "
+        "item 0 .*tf.Tensor.* is incompatible with the expected TypeSpec "
         ".*TensorSpec.*"):
       structure.from_tensor_list(s_sparse_tensor, flat_tensor)
 
@@ -775,7 +776,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.to_tensor_list(s_0, value_2)
 
     with self.assertRaisesRegex(TypeError,
-                                "Neither a SparseTensor nor SparseTensorValue"):
+                                "neither a SparseTensor nor SparseTensorValue"):
       structure.to_tensor_list(s_1, value_0)
 
     with self.assertRaisesRegex(
@@ -795,14 +796,14 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
       structure.to_tensor_list(s_2, value_1)
 
     with self.assertRaisesRegex(ValueError,
-                                r"Cannot create a tensor from the input list"):
+                                r"Cannot create a Tensor from the tensor list"):
       structure.from_tensor_list(s_0, flat_s_1)
 
     with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3"):
       structure.from_tensor_list(s_0, flat_s_2)
 
-    with self.assertRaisesRegex(ValueError,
-                                "Cannot create a tensor from the input list"):
+    with self.assertRaisesRegex(
+        ValueError, "Cannot create a SparseTensor from the tensor list"):
       structure.from_tensor_list(s_1, flat_s_0)
 
     with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3"):
@@ -822,6 +823,18 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     actual_structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
     self.assertEqual(actual_structure, expected_structure)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testConvertLegacyStructureFail(self):
+    with self.assertRaisesRegex(
+        TypeError, "Could not build a structure for output class "
+        "_EagerTensorArray. Make sure any component class in "
+        "`output_classes` inherits from one of the following classes: "
+        "`tf.TypeSpec`, `tf.sparse.SparseTensor`, `tf.Tensor`, "
+        "`tf.TensorArray`."):
+      structure.convert_legacy_structure(dtypes.int32,
+                                         tensor_shape.TensorShape([2, None]),
+                                         tensor_array_ops._EagerTensorArray)
 
   @combinations.generate(test_base.default_test_combinations())
   def testNestedNestedStructure(self):
@@ -925,6 +938,22 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase):
     proxied_spec = structure.type_spec_from_value(proxied)
     self.assertEqual(
         structure.type_spec_from_value(nt_type(1, 2)), proxied_spec)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeSpecNotBuild(self):
+    with self.assertRaisesRegex(
+        TypeError, "Could not build a `TypeSpec` for 100 with type int"):
+      structure.type_spec_from_value(100, use_fallback=False)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeSpecNotCompatible(self):
+    test_obj = structure.NoneTensorSpec()
+    with self.assertRaisesRegex(
+        ValueError, r"No `TypeSpec` is compatible with both NoneTensorSpec\(\) "
+        "and 100"):
+      test_obj.most_specific_compatible_shape(100)
+    self.assertEqual(test_obj,
+                     test_obj.most_specific_compatible_shape(test_obj))
 
 
 class CustomMap(collections_abc.Mapping):

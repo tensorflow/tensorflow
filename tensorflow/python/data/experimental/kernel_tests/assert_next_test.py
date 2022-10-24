@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.experimental.assert_next()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import testing
@@ -63,6 +59,9 @@ class AssertNextTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testAssertNextShort(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         testing.assert_next(["Root", "Whoops"]))
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
     self.assertDatasetProduces(
         dataset,
         expected_error=(

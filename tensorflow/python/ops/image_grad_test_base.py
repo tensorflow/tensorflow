@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for Python ops defined in image_grad.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl.testing import parameterized
 import numpy as np
 
@@ -537,7 +533,7 @@ class CropAndResizeOpTestBase(test.TestCase):
               with test_util.device(use_gpu=True):
                 with self.cached_session():
                   # pylint: disable=cell-var-from-loop
-                  if (config.deterministic_ops_enabled() and
+                  if (config.is_op_determinism_enabled() and
                       test_util.is_gpu_available()):
                     with self.assertRaises(errors_impl.UnimplementedError):
                       gradient_checker_v2.compute_gradient(
@@ -583,14 +579,15 @@ class RGBToHSVOpTestBase(test.TestCase):
     def f(x):
       return gen_image_ops.rgb_to_hsv(x)
 
-    # Building a simple input tensor to avoid any discontinuity
-    x = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8,
-                                                     0.9]]).astype(np.float32)
-    rgb_input_tensor = constant_op.constant(x, shape=x.shape)
-    # Computing Analytical and Numerical gradients of f(x)
-    analytical, numerical = gradient_checker_v2.compute_gradient(
-        f, [rgb_input_tensor])
-    self.assertAllClose(numerical, analytical, atol=1e-4)
+    for nptype in self.TYPES:
+      # Building a simple input tensor to avoid any discontinuity
+      x = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8,
+                                                       0.9]]).astype(nptype)
+      rgb_input_tensor = constant_op.constant(x, shape=x.shape)
+      # Computing Analytical and Numerical gradients of f(x)
+      analytical, numerical = gradient_checker_v2.compute_gradient(
+          f, [rgb_input_tensor])
+      self.assertAllClose(numerical, analytical, atol=1e-4)
 
   def testRGBToHSVGradRandomCase(self):
 

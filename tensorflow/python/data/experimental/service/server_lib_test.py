@@ -14,10 +14,6 @@
 # ==============================================================================
 """Tests for tf.data service server lib."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import tempfile
 import threading
@@ -85,7 +81,7 @@ class ServerLibTest(test.TestCase):
 
   def testStartDispatcherWithWrongFaultTolerantConfig(self):
     config = server_lib.DispatcherConfig(fault_tolerant_mode=True)
-    error = "Cannot enable fault tolerant mode without configuring a work_dir"
+    error = "Cannot enable fault tolerant mode without configuring a work dir"
     with self.assertRaisesRegex(ValueError, error):
       dispatcher = server_lib.DispatchServer(  # pylint: disable=unused-variable
           config=config, start=True)
@@ -115,19 +111,19 @@ class ServerLibTest(test.TestCase):
 
   def testStopDispatcher(self):
     dispatcher = server_lib.DispatchServer()
-    dispatcher._stop()
-    dispatcher._stop()
+    dispatcher.stop()
+    dispatcher.stop()
 
   def testStopWorker(self):
     dispatcher = server_lib.DispatchServer()
     worker = server_lib.WorkerServer(
         server_lib.WorkerConfig(dispatcher._address))
-    worker._stop()
-    worker._stop()
+    worker.stop()
+    worker.stop()
 
   def testStopStartDispatcher(self):
     dispatcher = server_lib.DispatchServer()
-    dispatcher._stop()
+    dispatcher.stop()
     with self.assertRaisesRegex(
         RuntimeError, "Server cannot be started after it has been stopped"):
       dispatcher.start()
@@ -136,21 +132,21 @@ class ServerLibTest(test.TestCase):
     dispatcher = server_lib.DispatchServer()
     worker = server_lib.WorkerServer(
         server_lib.WorkerConfig(dispatcher._address))
-    worker._stop()
+    worker.stop()
     with self.assertRaisesRegex(
         RuntimeError, "Server cannot be started after it has been stopped"):
       worker.start()
 
   def testJoinDispatcher(self):
     dispatcher = server_lib.DispatchServer()
-    dispatcher._stop()
+    dispatcher.stop()
     dispatcher.join()
 
   def testJoinWorker(self):
     dispatcher = server_lib.DispatchServer()
     worker = server_lib.WorkerServer(
         server_lib.WorkerConfig(dispatcher._address))
-    worker._stop()
+    worker.stop()
     worker.join()
 
   def testDispatcherNumWorkers(self):

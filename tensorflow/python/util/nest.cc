@@ -91,7 +91,7 @@ PyObject* FlattenDictItems(PyObject* dict) {
     // We use a general approach in case 'dict' is a PyMapping type,
     // but not a PyDict type.
     auto* value = PyObject_GetItem(dict, key);
-    if (swig::IsSequence(key)) {
+    if (swig::IsNested(key)) {
       // The dict might contain list - list pairs.
       auto flat_keys = make_safe(swig::Flatten(key, false));
       auto flat_values = make_safe(swig::Flatten(value, false));

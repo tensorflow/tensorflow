@@ -14,10 +14,6 @@
 # ==============================================================================
 """Common utilities and settings used by tfdbg v2's op callbacks."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # The ops that are skipped by tfdbg v2's op callbacks.
 # They belong to TensorFlow's control flow ops (e.g., "Enter", "StatelessIf")
 # and ops that wrap nested tf.function calls.

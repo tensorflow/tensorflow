@@ -22,13 +22,14 @@ limitations under the License.
 #include "google/protobuf/any.pb.h"
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/protobuf/conv_autotuning.pb.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 namespace tensorflow {
 
@@ -53,7 +54,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
     });
     return buffer;
   }
-  return se::DeviceMemoryBase(output_rz_or.ValueOrDie());
+  return se::DeviceMemoryBase(output_rz_or.value());
 }
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
@@ -75,7 +76,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
     });
     return;
   }
-  auto rz_check_status = rz_status.ValueOrDie();
+  auto rz_check_status = rz_status.value();
   if (!rz_check_status.ok()) {
     auto* fail = autotune_result->mutable_failure();
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
@@ -94,6 +95,17 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   }
 }
 
+bool EnableCublasLtGemm() {
+  static const bool enable_cublaslt_gemm = [] {
+    bool cublaslt_gemm = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_CUBLASLT",
+                                               /*default_val=*/false,
+                                               &cublaslt_gemm));
+    return cublaslt_gemm;
+  }();
+  return enable_cublaslt_gemm;
+}
+
 namespace {
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
@@ -101,7 +113,7 @@ tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   if (auto* dnn = stream_executor->AsDnn()) {
     se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
-      const auto& version = version_or.ValueOrDie();
+      const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
       cudnn_version.set_minor(version.minor_version());
       cudnn_version.set_patch(version.patch());
@@ -213,10 +225,54 @@ void LogFusedConvForwardAutotuneResults(
   Logger::GetSingleton()->LogProto(log);
 }
 
-Status BestCudnnConvAlgorithm(
-    absl::Span<const AutotuneResult> results,
-    std::vector<std::unique_ptr<se::dnn::ConvolveExecutionPlan>>* plans,
-    se::dnn::AlgorithmConfig* algo) {
+void LogFusedMatmulAutotuneResults(
+    se::dnn::DataType ab_dtype, se::dnn::DataType c_dtype,
+    se::DeviceMemoryBase a_buffer, se::DeviceMemoryBase b_buffer,
+    se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
+    bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
+    int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results) {
+  AutotuningLog log;
+  {
+    MatmulProto instr;
+    instr.set_ab_dtype(ab_dtype);
+    instr.set_c_dtype(c_dtype);
+    instr.set_trans_a(trans_a);
+    instr.set_trans_b(trans_b);
+    instr.set_m(m);
+    instr.set_n(n);
+    instr.set_k(k);
+    instr.set_lda(lda);
+    instr.set_ldb(ldb);
+    instr.set_ldc(ldc);
+    instr.set_activation(activation_mode);
+    instr.set_a_address(reinterpret_cast<uint64>(a_buffer.opaque()));
+    instr.set_b_address(reinterpret_cast<uint64>(b_buffer.opaque()));
+    instr.set_c_address(reinterpret_cast<uint64>(c_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
+    log.mutable_instr()->PackFrom(std::move(instr));
+  }
+  *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
+  *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
+  log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
+  {
+    string blas_version;
+    if (auto* blas = stream_exec->AsBlas()) {
+      if (blas->GetVersion(&blas_version).ok()) {
+        log.set_blas_version(blas_version);
+      }
+    }
+  }
+  for (const auto& result : results) {
+    *log.add_results() = result;
+  }
+  VLOG(2) << log.DebugString();
+  Logger::GetSingleton()->LogProto(log);
+}
+
+namespace {
+StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+    absl::Span<const AutotuneResult> results) {
   auto compare_run_times = [](const AutotuneResult& lhs,
                               const AutotuneResult& rhs) {
     return proto_utils::FromDurationProto(lhs.run_time()) <
@@ -226,6 +282,12 @@ Status BestCudnnConvAlgorithm(
   int idx_no_scratch = -1;
   for (int i = 0; i < results.size(); i++) {
     if (!results[i].has_failure()) {
+      if (OpDeterminismRequired()) {
+        // When determinism is enabled, choose first working algorithm, and
+        // don't choose a no_scratch algorithm.
+        idx = i;
+        break;
+      }
       if (idx == -1 || compare_run_times(results[i], results[idx])) {
         idx = i;
       }
@@ -238,42 +300,85 @@ Status BestCudnnConvAlgorithm(
   }
 
   if (idx == -1) {
-    return errors::NotFound("No algorithm worked!");
+    std::ostringstream msg;
+    msg << "No algorithm worked!  Error messages:";
+    // TODO(awpr): identify the algorithm as part of this error message, too.
+    for (const auto& result : results) {
+      msg << "\n  " << result.failure().msg();
+    }
+    return errors::NotFound(msg.str());
   }
 
-  if (plans == nullptr) {
-    VLOG(2) << "fastest algorithm: "
-            << proto_utils::FromDurationProto(results[idx].run_time())
-            << " with algo " << results[idx].conv().algorithm()
-            << ", workspace bytes " << results[idx].scratch_bytes();
-    algo->set_algorithm({results[idx].conv().algorithm(),
-                         results[idx].conv().tensor_ops_enabled()});
-    algo->set_scratch_size(results[idx].scratch_bytes());
-    if (idx_no_scratch != -1) {
-      algo->set_algorithm_no_scratch(
-          {results[idx_no_scratch].conv().algorithm(),
-           results[idx_no_scratch].conv().tensor_ops_enabled()});
-    }
-  } else {
-    VLOG(2) << "fastest algorithm: "
-            << proto_utils::FromDurationProto(results[idx].run_time())
-            << " with algo " << (*plans)[idx]->getTag() << ", workspace bytes "
-            << (*plans)[idx]->getWorkspaceSize();
-    algo->set_algorithm(
-        {(*plans)[idx]->getTag(), (*plans)[idx]->get_raw_desc()});
-    algo->set_scratch_size((*plans)[idx]->getWorkspaceSize());
-    if (idx_no_scratch != -1) {
-      algo->set_algorithm_no_scratch(
-          {(*plans)[idx_no_scratch]->getTag(),
-           (*plans)[idx_no_scratch]->get_raw_desc()});
-    }
-    algo->set_plan((*plans)[idx]);
-    if (idx_no_scratch != -1 && idx_no_scratch != idx) {
-      algo->set_plan_no_scratch((*plans)[idx_no_scratch]);
-    }
-  }
-  return Status::OK();
+  return std::make_tuple(idx, idx_no_scratch);
 }
+}  // namespace
+
+StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results) {
+  int idx;
+  int idx_no_scratch;
+  TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
+                      BestCudnnConvAlgorithmIndices(results));
+  VLOG(2) << "fastest algorithm: "
+          << proto_utils::FromDurationProto(results[idx].run_time())
+          << " with algo " << results[idx].algorithm().algo_id()
+          << ", workspace bytes " << results[idx].scratch_bytes();
+
+  se::dnn::AlgorithmConfig result(
+      se::dnn::AlgorithmDesc(results[idx].algorithm()),
+      results[idx].scratch_bytes());
+
+  if (idx_no_scratch != -1) {
+    result.set_algorithm_no_scratch(
+        se::dnn::AlgorithmDesc(results[idx_no_scratch].algorithm()));
+  }
+  return result;
+}
+
+template <typename Op>
+StatusOr<AutotuneEntry<Op>> BestCudnnConvAlgorithm(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<typename Op::Signature>>>
+        runners) {
+  if (runners.size() != results.size()) {
+    return errors::Internal(
+        "Mismatched size of autotune results and runners vectors.");
+  }
+  int idx;
+  int idx_no_scratch;
+  TF_ASSIGN_OR_RETURN(std::tie(idx, idx_no_scratch),
+                      BestCudnnConvAlgorithmIndices(results));
+  VLOG(2) << "fastest algorithm: "
+          << proto_utils::FromDurationProto(results[idx].run_time())
+          << " with algo " << runners[idx]->ToString() << ", workspace bytes "
+          << results[idx].scratch_bytes();
+  return AutotuneEntry<Op>::FromOpRunners(
+      std::move(runners[idx]), idx_no_scratch == -1 || idx_no_scratch == idx
+                                   ? nullptr
+                                   : std::move(runners[idx_no_scratch]));
+}
+
+template StatusOr<AutotuneEntry<se::dnn::ConvOp>>
+BestCudnnConvAlgorithm<se::dnn::ConvOp>(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::ConvSignature>>>
+        runners);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedConvOp>>
+BestCudnnConvAlgorithm<se::dnn::FusedConvOp>(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedConvSignature>>>
+        runners);
+
+template StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>>
+BestCudnnConvAlgorithm<se::dnn::FusedMatmulOp>(
+    absl::Span<const AutotuneResult> results,
+    std::vector<
+        std::unique_ptr<const se::dnn::OpRunner<se::dnn::FusedMatmulSignature>>>
+        runners);
 
 }  // namespace tensorflow
 

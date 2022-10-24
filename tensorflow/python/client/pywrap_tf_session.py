@@ -14,16 +14,15 @@
 # ==============================================================================
 """Python module for Session ops, vars, and functions exported by pybind11."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 # pylint: disable=invalid-import-order,g-bad-import-order, wildcard-import, unused-import
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client._pywrap_tf_session import *
 from tensorflow.python.client._pywrap_tf_session import _TF_SetTarget
 from tensorflow.python.client._pywrap_tf_session import _TF_SetConfig
 from tensorflow.python.client._pywrap_tf_session import _TF_NewSessionOptions
+
+# Register pybind11 type caster for StackTraceWrapper/AbstractStackTrace
+from tensorflow.python.util import tf_stack
 
 # Convert versions to strings for Python2 and keep api_compatibility_test green.
 # We can remove this hack once we remove Python2 presubmits. pybind11 can only
@@ -34,6 +33,7 @@ __version__ = str(get_version())
 __git_version__ = str(get_git_version())
 __compiler_version__ = str(get_compiler_version())
 __cxx11_abi_flag__ = get_cxx11_abi_flag()
+__cxx_version__ = get_cxx_version()
 __monolithic_build__ = get_monolithic_build()
 
 # User getters to hold attributes rather than pybind11's m.attr due to

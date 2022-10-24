@@ -12,21 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Tensorflow -> CPURT compilation."""
+"""Tests for Tensorflow -> jitrt compilation."""
 
 import numpy as np
 
-import unittest
-from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_cpurt
+from tensorflow.compiler.mlir.tfrt.jit.python_binding import tf_jitrt
+from tensorflow.python.platform import test
 
-cpurt = tf_cpurt.TfCpurtExecutor()
+jitrt = tf_jitrt.TfJitRtExecutor()
 
 
-class TfStridedSliceTest(googletest.TestCase):
+class TfStridedSliceTest(test.TestCase):
 
   def test_strided_slice_1d_to_0d(self):
     mlir_function = """
-      func @test(%arg0: tensor<3xi32>) -> tensor<i32> {
+      func.func @test(%arg0: tensor<3xi32>) -> tensor<i32> {
         %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>}
                  : () -> tensor<1xi32>
         %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>}
@@ -40,14 +40,14 @@ class TfStridedSliceTest(googletest.TestCase):
                shrink_axis_mask = 1 : i64
              } : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
               -> tensor<i32>
-        return %0 : tensor<i32>
+        func.return %0 : tensor<i32>
       }"""
 
-    compiled = cpurt.compile(mlir_function, 'test')
+    compiled = jitrt.compile(mlir_function, 'test')
     arg0 = np.array([1, 2, 3], dtype=np.int32)
-    [res] = cpurt.execute(compiled, [arg0])
+    [res] = jitrt.execute(compiled, [arg0])
     np.testing.assert_allclose(res, arg0[0], atol=0.0)
 
 
 if __name__ == '__main__':
-  googletest.main()
+  test.main()

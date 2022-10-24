@@ -125,7 +125,7 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor parsed(tensor_proto.dtype());
     if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
@@ -142,7 +142,7 @@ void ThreadPoolDevice::CopyTensorInSameDevice(
     return;
   }
   tensor::DeepCopy(*input_tensor, output_tensor);
-  done(Status::OK());
+  done(OkStatus());
 }
 
 namespace {
@@ -166,6 +166,10 @@ const absl::flat_hash_set<std::string>* GetOpsToLogFromEnv() {
 bool ShouldLogInputsAndOutputs(OpKernel* op_kernel) {
   static const absl::flat_hash_set<std::string>& ops_to_log =
       *GetOpsToLogFromEnv();
+  static const bool is_empty = ops_to_log.empty();
+  if (is_empty) {
+    return false;
+  }
   return ops_to_log.count(op_kernel->type_string());
 }
 }  // namespace

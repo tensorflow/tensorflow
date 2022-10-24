@@ -117,6 +117,13 @@ opt<bool> enable_shape_inference(
     llvm::cl::desc("Enable shape inference on import (temporary)"),
     llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+opt<bool> unconditionally_use_set_output_shapes(
+    "tf-enable-unconditionally-use-set-output-shapes-on-import",
+    llvm::cl::desc("Enable using the _output_shapes unconditionally on import "
+                   "(temporary)"),
+    llvm::cl::init(false));
+
 // Export options.
 // NOLINTNEXTLINE
 opt<bool> export_entry_func_to_flib(

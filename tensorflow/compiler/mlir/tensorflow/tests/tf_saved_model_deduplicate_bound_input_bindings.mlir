@@ -11,7 +11,7 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
   // CHECK: %arg2: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @x}
   // CHECK-NOT: %arg3
   // CHECK-NOT: %arg4
-  func @f(
+  func.func @f(
     %arg0: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
     %arg1: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @w},
     %arg2: tensor<!tf_type.resource<tensor<f32>>> {tf_saved_model.bound_input = @v},
@@ -28,6 +28,6 @@ module attributes {tf_saved_model.semantics, tf_saved_model.under_construction} 
     %val2 = "tf.ReadVariableOp"(%arg2) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     %val3 = "tf.ReadVariableOp"(%arg3) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
     %val4 = "tf.ReadVariableOp"(%arg4) : (tensor<!tf_type.resource<tensor<f32>>>) -> tensor<f32>
-    return
+    func.return
   }
 }

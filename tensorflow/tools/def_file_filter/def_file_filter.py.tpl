@@ -26,10 +26,6 @@ TODO: this works fine but there is an issue with exporting
 'const char * const' and importing it from a user_ops. The problem is
 on the importing end and using __declspec(dllimport) works around it.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import argparse
 import io
 import os
@@ -59,9 +55,15 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"tensorflow::internal::MakeCheckOpValueString|"
                            r"tensorflow::internal::PickUnusedPortOrDie|"
                            r"tensorflow::internal::ValidateDevice|"
-                           r"tensorflow::ops::internal::Enter|"
-                           r"tensorflow::strings::internal::AppendPieces|"
-                           r"tensorflow::strings::internal::CatPieces|"
+                           r"tsl::internal::LogMessage|"
+                           r"tsl::internal::LogString|"
+                           r"tsl::internal::CheckOpMessageBuilder|"
+                           r"tsl::internal::MakeCheckOpValueString|"
+                           r"tsl::internal::PickUnusedPortOrDie|"
+                           r"tsl::internal::ValidateDevice|"
+                           r"tsl::ops::internal::Enter|"
+                           r"tsl::strings::internal::AppendPieces|"
+                           r"tsl::strings::internal::CatPieces|"
                            r"tensorflow::io::internal::JoinPathImpl")
 
 # Include if matched after exclude
@@ -70,6 +72,7 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"nsync::|"
                         r"tensorflow::|"
                         r"toco::|"
+                        r"tsl::|"
                         r"functor::|"
                         r"tf_git_version|"
                         r"tf_compiler_version|"
@@ -272,7 +275,6 @@ def main():
     def_fp.write("\t ??0SessionOptions@tensorflow@@QEAA@XZ\n")
     def_fp.write("\t ?NewSession@tensorflow@@YAPEAVSession@1@AEBUSessionOptions@1@@Z\n")
     def_fp.write("\t ??1SavedModelBundleInterface@tensorflow@@UEAA@XZ\n")
-    def_fp.write("\t ?LoadSavedModel@tensorflow@@YA?AVStatus@1@AEBUSessionOptions@1@AEBVRunOptions@1@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@AEBV?$unordered_set@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@U?$hash@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@U?$equal_to@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@6@QEAUSavedModelBundle@1@@Z\n")
     def_fp.write("\t ?MaybeSavedModelDirectory@tensorflow@@YA_NAEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z\n")
     def_fp.write("\t ?_TensorShapeProto_default_instance_@tensorflow@@3VTensorShapeProtoDefaultTypeInternal@1@A\n")
     def_fp.write("\t ?_GraphDef_default_instance_@tensorflow@@3VGraphDefDefaultTypeInternal@1@A\n")

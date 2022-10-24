@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/rpc/xla_service.grpc.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -82,7 +81,8 @@ class GRPCStub : public ServiceInterface {
  private:
   grpc::XlaService::Stub* grpc_stub_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(GRPCStub);
+  GRPCStub(const GRPCStub&) = delete;
+  GRPCStub& operator=(const GRPCStub&) = delete;
 };
 
 }  // namespace xla

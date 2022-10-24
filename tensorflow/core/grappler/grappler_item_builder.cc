@@ -84,7 +84,7 @@ Status PruneGraph(GrapplerItem* item) {
   Cluster* cluster = nullptr;  // ModelPruner doesn't check cluster.
   TF_RETURN_IF_ERROR(pruner.Optimize(cluster, *item, &pruned_graph));
   item->graph = std::move(pruned_graph);
-  return Status::OK();
+  return OkStatus();
 }
 
 // Replace any unknown dimensions in a shape with
@@ -143,7 +143,7 @@ Status UpdatePlaceholderShape(
                             ": ", make_shape_status, ", skipping this input");
   }
 
-  // Some placeholder nodes have a mis-match between the node
+  // Some placeholder nodes have a mismatch between the node
   // attribute "shape" and a different node attribute "_output_shapes".
   // Specifically, a shape with shape.dims() == 0 could indicate either
   // a scalar or an unknown shape. In those cases, we check _output_shapes
@@ -198,7 +198,7 @@ Status UpdatePlaceholderShape(
   if (!shape_proto.dim().empty())
     *(node->mutable_attr()->at("shape").mutable_shape()) = shape_proto;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace
@@ -218,7 +218,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
     if (output_graph_def != &graph_def_arg) {
       *output_graph_def = graph_def_arg;
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Create a session option for a single GPU device.
@@ -245,7 +245,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+  auto dvc_mgr = std::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -278,7 +278,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
-  optimizer.Optimize(flr, env, cpu_device, &graphptr, /*shape_map=*/nullptr);
+  optimizer.Optimize(flr, env, cpu_device, &graphptr,
+                     tensorflow::GraphOptimizer::Options());
   graphptr->ToGraphDef(output_graph_def);
 
   // The default values of attributes might have been stripped by the optimizer.

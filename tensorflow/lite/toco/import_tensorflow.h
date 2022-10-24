@@ -37,7 +37,7 @@ struct TensorFlowImportFlags {
 // Converts TOCO model from TensorFlow GraphDef with given flags.
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
     const ModelFlags& model_flags, const TensorFlowImportFlags& tf_import_flags,
-    const tensorflow::GraphDef& graph_def);
+    const tensorflow::GraphDef& tf_graph);
 
 // Converts TOCO model from the file content of TensorFlow GraphDef with given
 // flags.

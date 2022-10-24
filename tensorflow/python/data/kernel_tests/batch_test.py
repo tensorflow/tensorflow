@@ -14,16 +14,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.Dataset.batch()`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import time
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -42,8 +40,6 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -293,6 +289,14 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
     manager.save()
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(num_parallel_calls=[None, 1])))
+  def testName(self, num_parallel_calls):
+    dataset = dataset_ops.Dataset.range(5).batch(
+        5, num_parallel_calls=num_parallel_calls, name='batch')
+    self.assertDatasetProduces(dataset, [list(range(5))])
 
 
 class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,

@@ -1,6 +1,5 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_oss",
     "tf_cuda_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -40,7 +39,6 @@ tf_cuda_library(
     name = "runtime_fallback_alwayslink",
     srcs = [
         "conversion_function.cc",
-        "runtime_fallback_batch_kernels.cc",
         "runtime_fallback_batch_tf_opkernels.cc",
         "runtime_fallback_gpu_allocator.cc",
         "runtime_fallback_gpu_allocator.h",
@@ -59,7 +57,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
         "//tensorflow/core/platform:mutex",
         "@tf_runtime//backends/gpu:gpu_config",
-        "//tensorflow/stream_executor/cuda:cuda_platform",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform",
         "@tf_runtime//backends/gpu:gpu_op_handler_alwayslink",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_gpu_alwayslink",
     ],
@@ -75,7 +73,6 @@ tf_cuda_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Support",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_tensor",
@@ -83,7 +80,6 @@ tf_cuda_library(
         "//tensorflow/core/runtime_fallback/util:tensor_util",
         "//tensorflow/core/runtime_fallback/util:type_util",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
-        "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler",
         "//tensorflow/core/tfrt/utils:error_util",
         "//tensorflow/core/tfrt/utils:tensor_util",
         "@tf_runtime//:core_runtime",
@@ -120,6 +116,7 @@ tf_cuda_library(
             "//tensorflow/core/platform:status",
             "//tensorflow/core/profiler/lib:traceme",
             "//tensorflow/core/kernels/batching_util:batch_resource_base",
+            "//tensorflow/core/kernels/batching_util:bounded_executor",
         ],
     }),
     alwayslink = 1,
@@ -169,7 +166,7 @@ cc_library(
     visibility = [
         ":internal",
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
-        # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt:__subpackages__",
+        "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
         "//tensorflow/core/tfrt/eager:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
@@ -212,9 +209,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_utils",

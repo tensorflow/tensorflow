@@ -524,7 +524,7 @@ Status SharedBatchScheduler<TaskType>::Create(
                                    options.num_batch_threads);
   }
   scheduler->reset(new SharedBatchScheduler<TaskType>(options));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -632,7 +632,7 @@ Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
     }
   }
   *queue = std::move(handle);
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -654,9 +654,9 @@ template <typename TaskType>
 bool SharedBatchScheduler<TaskType>::BatchExists(
     const BatchUniquePtr& batch_to_process) {
   if (absl::holds_alternative<BatchTaskUniqueptr>(batch_to_process)) {
-    return absl::get<BatchTaskUniqueptr>(batch_to_process) == nullptr;
+    return absl::get<BatchTaskUniqueptr>(batch_to_process) != nullptr;
   }
-  return absl::get<BatchTaskHandleUniquePtr>(batch_to_process) == nullptr;
+  return absl::get<BatchTaskHandleUniquePtr>(batch_to_process) != nullptr;
 }
 
 template <typename TaskType>
@@ -667,7 +667,7 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
   internal::Queue<TaskType>* queue_for_batch = nullptr;
   const int num_queues = queues_.size();
   for (int num_queues_tried = 0;
-       (BatchExists(batch_to_process)) && num_queues_tried < num_queues;
+       !BatchExists(batch_to_process) && num_queues_tried < num_queues;
        ++num_queues_tried) {
     DCHECK(next_queue_to_schedule_ != queues_.end());
 
@@ -680,13 +680,13 @@ void SharedBatchScheduler<TaskType>::GetNextWorkItem_Locked(
     // Ask '*next_queue_to_schedule_' if it wants us to process a batch.
     batch_to_process = (*next_queue_to_schedule_)->ScheduleBatch();
 
-    if (!BatchExists(batch_to_process)) {
+    if (BatchExists(batch_to_process)) {
       queue_for_batch = next_queue_to_schedule_->get();
     }
 
     // Advance 'next_queue_to_schedule_'.
     if (queue_closed && (*next_queue_to_schedule_)->IsEmpty() &&
-        (BatchExists(batch_to_process))) {
+        !BatchExists(batch_to_process)) {
       // We've encountered a closed queue with no work to do. Drop it.
       DCHECK_NE(queue_for_batch, next_queue_to_schedule_->get());
       next_queue_to_schedule_ = queues_.erase(next_queue_to_schedule_);
@@ -712,15 +712,13 @@ void SharedBatchScheduler<TaskType>::ThreadLogic() {
     mutex_lock l(mu_);
     while (true) {
       GetNextWorkItem_Locked(&queue_for_batch, &batch_to_process);
-      if (!BatchExists(batch_to_process)) {
-        break;
-      }
-      if (queues_.empty()) return;
+      if (BatchExists(batch_to_process)) break;
       // We couldn't find any work to do. Wait until a new batch becomes
       // schedulable, or some time has elapsed, before checking again.
       const int64_t kTimeoutMillis =
           1;  // The smallest accepted granule of time.
       WaitForMilliseconds(&l, &schedulable_batch_cv_, kTimeoutMillis);
+      if (queues_.empty()) return;
     }
   }
 
@@ -767,7 +765,8 @@ Queue<TaskType>::Queue(
   // Set the higher 32 bits of traceme_context_id_counter_ to be the creation
   // time of the queue. This prevents the batches in different queues to have
   // the same traceme_context_id_counter_.
-  traceme_context_id_counter_ = absl::GetCurrentTimeNanos() << 32;
+  traceme_context_id_counter_ = (absl::GetCurrentTimeNanos() & 0xFFFFFFFF)
+                                << 32;
   // Create an initial, open batch.
   if (options_.enable_lazy_split) {
     task_handle_batches_.emplace_back(
@@ -867,7 +866,7 @@ Status Queue<TaskType>::ScheduleWithLazySplit(std::unique_ptr<TaskType>* task) {
     schedulable_batch_callback_();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(b/194294263):
@@ -944,7 +943,7 @@ Status Queue<TaskType>::ScheduleWithoutOrEagerSplit(
     schedulable_batch_callback_();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TaskType>
@@ -973,7 +972,7 @@ size_t Queue<TaskType>::SchedulingCapacity() const {
 template <typename TaskType>
 size_t Queue<TaskType>::SchedulingCapacityInternal() const {
   const int64 num_new_batches_schedulable =
-      static_cast<int64>(options_.max_enqueued_batches) -
+      static_cast<int64_t>(options_.max_enqueued_batches) -
       this->num_enqueued_batches();
   const int64 execution_batch_size_limit = max_execution_batch_size();
   const int64 open_batch_capacity =

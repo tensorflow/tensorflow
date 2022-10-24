@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_DIMENSION_INFERENCE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DYNAMIC_DIMENSION_INFERENCE_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/macros.h"
 
 namespace xla {
 
@@ -37,14 +37,30 @@ namespace xla {
 // represent the runtime real size of those dynamic dimensions.
 class DynamicDimensionInference {
  public:
+  enum ShapeCheckMode {
+    kInvalid = 0,
+    // At compile time, pessimisticly assumes runtime shape checks may fail and
+    // returns a compile-time error.
+    kCompileTime,
+    // Insert runtime checks as Hlo ops.
+    kRuntime,
+    // Ignore shape check.
+    kIgnore,
+  };
   using CustomCallInferenceHandler =
       std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
 
+  // Generate an assertion which fails the execution if the instruction value is
+  // false.
+  using AssertionGenerator = std::function<void(HloInstruction*)>;
+
   static StatusOr<DynamicDimensionInference> Run(
       HloModule* module,
-      CustomCallInferenceHandler custom_call_handler = nullptr);
+      CustomCallInferenceHandler custom_call_handler = nullptr,
+      ShapeCheckMode shape_check_mode = ShapeCheckMode::kIgnore,
+      const AssertionGenerator& assertion_generator = nullptr);
 
-  string ToString() const;
+  std::string ToString() const;
 
   // If the dimension `dim` of instruction `inst` at `index` has a dynamic size,
   // returns a scalar HloInstruction that represents the runtime size of that
@@ -85,7 +101,8 @@ class DynamicDimensionInference {
 
  private:
   explicit DynamicDimensionInference(
-      HloModule* module, CustomCallInferenceHandler custom_call_handler);
+      HloModule* module, CustomCallInferenceHandler custom_call_handler,
+      ShapeCheckMode shape_check_mode, AssertionGenerator assertion_generator);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -112,6 +129,17 @@ class DynamicDimensionInference {
       return lhs.inst == rhs.inst && lhs.index == rhs.index &&
              lhs.dim == rhs.dim;
     }
+
+    std::tuple<int, int, std::string, int64_t> ToTuple() const {
+      return std::make_tuple(
+          inst && inst->GetModule() ? inst->GetModule()->unique_id() : -1,
+          inst ? inst->unique_id() : -1, index.ToString(), dim);
+    }
+
+    friend bool operator<(const DynamicDimension& lhs,
+                          const DynamicDimension& rhs) {
+      return lhs.ToTuple() < rhs.ToTuple();
+    }
   };
 
   // Copies the internal mapping from instruction `from` to instruction `to`.
@@ -129,18 +157,22 @@ class DynamicDimensionInference {
   // dynamic_mapping_ holds the result of the analysis. It maps a dynamic
   // dimension to a scalar HloInstruction that represents the real dynamic size
   // of the dynamic dimension.
-  using DynamicMapping = absl::flat_hash_map<DynamicDimension, HloInstruction*>;
+  using DynamicMapping = std::map<DynamicDimension, HloInstruction*>;
   DynamicMapping dynamic_mapping_;
 
   // A convenient mapping from an hlo to the set of dynamic dimensions that it
   // holds.
   using PerHloDynamicDimensions =
-      absl::flat_hash_map<HloInstruction*,
-                          absl::flat_hash_set<DynamicDimension>>;
+      ConstHloInstructionMap<std::set<DynamicDimension>>;
   PerHloDynamicDimensions per_hlo_dynamic_dimensions_;
 
   // A handler for custom calls.
   CustomCallInferenceHandler custom_call_handler_;
+
+  // Indicates what to do at places where shape check is needed.
+  ShapeCheckMode shape_check_mode_;
+
+  AssertionGenerator assertion_generator_;
 };
 
 }  // namespace xla

@@ -24,7 +24,7 @@ SET PY_EXE=C:\%PYTHON_DIRECTORY%\python.exe
 SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
 @REM First, upgrade pypi wheels
-%PY_EXE% -m pip install --upgrade "setuptools<53" pip wheel
+%PY_EXE% -m pip install --upgrade "setuptools" pip wheel
 
 @REM NOTE: Windows doesn't have any additional requirements from the common ones.
 %PY_EXE% -m pip install -r tensorflow/tools/ci_build/release/requirements_common.txt
@@ -44,11 +44,10 @@ SET PATH=%CUDA_TOOLKIT_PATH%\bin;%PATH%
 SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 
 @REM
-@REM Setup Bazel
+@REM Setup Bazelisk
 @REM
-:: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=3.7.2
+:: Download Bazelisk from GitHub and make sure its found in PATH.
 md C:\tools\bazel\
-wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
+wget -q https://github.com/bazelbuild/bazelisk/releases/download/v1.11.0/bazelisk-windows-amd64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%
 bazel version

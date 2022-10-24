@@ -14,10 +14,6 @@
 # ==============================================================================
 """Implementation of the SessionRunHook for preemptible Cloud TPUs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging as _logging
 import os
 import threading

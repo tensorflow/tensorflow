@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -35,7 +36,7 @@ Status EmitMlirFuncAndCall(
     mlir::MLIRContext *context, llvm::IRBuilder<> *b, const Shape &result_shape,
     llvm::ArrayRef<Shape> operand_shapes, llvm::Value *result_ptr,
     llvm::ArrayRef<llvm::Value *> operand_ptrs, llvm::StringRef func_name,
-    llvm::function_ref<void(mlir::OpBuilder *, mlir::FuncOp)> emitter);
+    llvm::function_ref<void(mlir::OpBuilder *, mlir::func::FuncOp)> emitter);
 
 }  // namespace cpu
 }  // namespace xla

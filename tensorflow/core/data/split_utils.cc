@@ -35,18 +35,18 @@ Status IndexSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   mutex_lock l(mu_);
   if (i_ >= n_) {
     *end_of_splits = true;
-    return Status::OK();
+    return OkStatus();
   }
   *end_of_splits = false;
   *split = Tensor(DT_INT64, TensorShape{});
   split->scalar<int64_t>()() = i_++;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IndexSplitProvider::Reset() {
   mutex_lock l(mu_);
   i_ = 0;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status IndexSplitProvider::Save(
@@ -76,20 +76,20 @@ Status ShardingSplitProvider::GetNext(Tensor* split, bool* end_of_splits) {
   while (num_to_skip_ > 0) {
     TF_RETURN_IF_ERROR(split_provider_->GetNext(split, end_of_splits));
     if (*end_of_splits) {
-      return Status::OK();
+      return OkStatus();
     }
     num_to_skip_--;
   }
   num_to_skip_ = num_shards_ - 1;
   TF_RETURN_IF_ERROR(split_provider_->GetNext(split, end_of_splits));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShardingSplitProvider::Reset() {
   mutex_lock l(mu_);
   TF_RETURN_IF_ERROR(split_provider_->Reset());
   num_to_skip_ = shard_index_;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ShardingSplitProvider::Save(
@@ -114,7 +114,7 @@ Status ShardingSplitProvider::Restore(
       },
       reader));
   TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumToSkip), &num_to_skip_));
-  return Status::OK();
+  return OkStatus();
 }
 
 StatusOr<std::shared_ptr<SplitProvider>> GetSingleSplitProvider(
@@ -154,14 +154,23 @@ StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
     }
     return result;
   }
-  int64_t split_provider_index = 0;
+  int64_t num_sources = 0;
   for (size_t i = 0; i < inputs.size(); ++i) {
-    IteratorContext::Params params(ctx);
     if (inputs[i]->num_sources() < 0) {
       return errors::FailedPrecondition(
           "Failed to determine the number of sources for dataset of type ",
           inputs[i]->type_string());
     }
+    num_sources += inputs[i]->num_sources();
+  }
+  if (num_sources != ctx->split_providers().size()) {
+    return errors::FailedPrecondition(
+        "Attempted to feed ", ctx->split_providers().size(),
+        " split providers into a dataset with ", num_sources, " sources");
+  }
+  int64_t split_provider_index = 0;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    IteratorContext::Params params(ctx);
     params.split_providers.clear();
     for (int j = 0; j < inputs[i]->num_sources(); ++j) {
       params.split_providers.push_back(
@@ -169,12 +178,6 @@ StatusOr<std::vector<IteratorContext>> CreateInputIteratorContexts(
     }
     split_provider_index += inputs[i]->num_sources();
     result.emplace_back(std::move(params));
-  }
-  if (split_provider_index != ctx->split_providers().size()) {
-    return errors::FailedPrecondition("Attempted to feed ",
-                                      ctx->split_providers().size(),
-                                      " split providers into a dataset with ",
-                                      split_provider_index, " sources");
   }
   return result;
 }

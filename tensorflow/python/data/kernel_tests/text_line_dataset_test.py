@@ -13,10 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for `tf.data.TextLineDataset`."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import gzip
 import os
 import pathlib
@@ -29,6 +25,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -86,7 +83,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
       combinations.times(
           test_base.default_test_combinations(),
           combinations.combine(compression_type=[None, "GZIP", "ZLIB"])))
-  def testTextLineDataset(self, compression_type):
+  def testBasic(self, compression_type):
     test_filenames = self._createFiles(
         2, 5, crlf=True, compression_type=compression_type)
 
@@ -126,7 +123,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
                          [self._lineText(1, i) for i in range(5)]] * 10)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTextLineDatasetParallelRead(self):
+  def testParallelRead(self):
     test_filenames = self._createFiles(10, 10)
     files = dataset_ops.Dataset.from_tensor_slices(test_filenames).repeat(10)
     expected_output = []
@@ -137,7 +134,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
         dataset, expected_output=expected_output * 10, assert_items_equal=True)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTextLineDatasetBuffering(self):
+  def testBuffering(self):
     test_filenames = self._createFiles(2, 5, crlf=True)
 
     repeat_dataset = readers.TextLineDataset(test_filenames, buffer_size=10)
@@ -175,7 +172,7 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
     self.assertNotIn(filename, [open_file.path for open_file in open_files])
 
   @combinations.generate(test_base.default_test_combinations())
-  def testTextLineDatasetPathlib(self):
+  def testPathlib(self):
     files = self._createFiles(1, 5)
     files = [pathlib.Path(f) for f in files]
 
@@ -183,6 +180,53 @@ class TextLineDatasetTest(TextLineDatasetTestBase, parameterized.TestCase):
     ds = readers.TextLineDataset(files)
     self.assertDatasetProduces(
         ds, expected_output=expected_output, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testName(self):
+    files = self._createFiles(1, 5)
+    expected_output = [self._lineText(0, i) for i in range(5)]
+    ds = readers.TextLineDataset(files, name="text_line_dataset")
+    self.assertDatasetProduces(
+        ds, expected_output=expected_output, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyFileList(self):
+    dataset = readers.TextLineDataset(filenames=[])
+    self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileDoesNotExist(self):
+    dataset = readers.TextLineDataset(filenames=["File not exist"])
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "No such file or directory"):
+      self.getDatasetOutput(dataset)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileNamesMustBeStrings(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements. Got "
+        "`tf.int32` elements."):
+      readers.TextLineDataset(filenames=0)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileNamesDatasetMustContainStrings(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements. Got a "
+        "dataset of `tf.int32` elements."):
+      filenames = dataset_ops.Dataset.from_tensors(0)
+      readers.TextLineDataset(filenames)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileNamesMustBeScalars(self):
+    with self.assertRaisesRegex(
+        TypeError,
+        "The `filenames` argument must contain `tf.string` elements of shape "
+        r"\[\] \(i.e. scalars\)."):
+      filenames = dataset_ops.Dataset.from_tensors([["File 1", "File 2"],
+                                                    ["File 3", "File 4"]])
+      readers.TextLineDataset(filenames)
 
 
 class TextLineDatasetCheckpointTest(TextLineDatasetTestBase,

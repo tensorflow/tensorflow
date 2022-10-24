@@ -15,26 +15,34 @@ def workspace():
         ],
     )
 
-    http_archive(
-        name = "tf_toolchains",
-        sha256 = "8613ab9da262fd30d101550eab5780948db7471c7809cbac15a9e9a3143447f2",
-        strip_prefix = "toolchains-1.2.7",
-        urls = [
-            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v1.2.7.tar.gz",
-            "https://github.com/tensorflow/toolchains/archive/v1.2.7.tar.gz",
-        ],
-    )
-
     tf_runtime()
 
     # https://github.com/bazelbuild/bazel-skylib/releases
     http_archive(
         name = "bazel_skylib",
-        sha256 = "1c531376ac7e5a180e0237938a2536de0c54d93f5c278634818e0efc952dd56c",
+        sha256 = "74d544d96f4a5bb630d465ca8bbcfe231e3594e5aae57e1edbf17a6eb3ca2506",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.3.0/bazel-skylib-1.3.0.tar.gz",
         ],
+    )
+
+    http_archive(
+        name = "rules_pkg",
+        urls = [
+            "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.7.1/rules_pkg-0.7.1.tar.gz",
+            "https://github.com/bazelbuild/rules_pkg/releases/download/0.7.1/rules_pkg-0.7.1.tar.gz",
+        ],
+        sha256 = "451e08a4d78988c06fa3f9306ec813b836b1d076d0f055595444ba4ff22b867f",
+    )
+
+    # Maven dependencies.
+    RULES_JVM_EXTERNAL_TAG = "3.2"
+    http_archive(
+        name = "rules_jvm_external",
+        strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
+        sha256 = "82262ff4223c5fda6fb7ff8bd63db8131b51b413d26eb49e3131037e79e324af",
+        url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
     )
 
     # Load the raw llvm-project.  llvm does not have build rules set up by default,

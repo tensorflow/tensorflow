@@ -25,26 +25,34 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes_detail.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/core/framework/tensor.h"
 
 namespace mlir {
 namespace mhlo {
 namespace {
 
-class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
+#define GEN_PASS_DEF_LEGALIZETF
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
+class LegalizeTF : public impl::LegalizeTFBase<LegalizeTF> {
  public:
   explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
                       llvm::Optional<StringRef> tf2xla_fallback_device_type,
@@ -52,13 +60,120 @@ class LegalizeTF : public LegalizeTFBase<LegalizeTF> {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
     prefer_tf2xla_ = prefer_tf2xla;
-    use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
-    if (tf2xla_fallback_device_type.hasValue()) {
+    use_tf2xla_fallback_ = tf2xla_fallback_device_type.has_value();
+    if (tf2xla_fallback_device_type.has_value()) {
       device_type_ = tf2xla_fallback_device_type.getValue().str();
     }
   }
   /// Performs the lowering to XLA dialect.
-  void runOnFunction() override;
+  void runOnOperation() override;
+};
+
+#define GEN_PASS_DEF_LEGALIZETFMODULEPASS
+#include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
+
+class LegalizeTFModulePass
+    : public impl::LegalizeTFModulePassBase<LegalizeTFModulePass> {
+ public:
+  explicit LegalizeTFModulePass(StringRef tf2xla_fallback_device_type) {
+    device_type_ = tf2xla_fallback_device_type.str();
+  }
+
+  /// Performs the lowering to XLA dialect.
+  void runOnOperation() override;
+};
+
+TensorType GetSameShapeTensorType(TensorType tensor_type, Type element_type) {
+  if (auto ranked_tensor_ty =
+          tensor_type.dyn_cast_or_null<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_tensor_ty.getShape(), element_type);
+  }
+  if (auto unranked_tensor_ty =
+          tensor_type.dyn_cast_or_null<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_type);
+  }
+  llvm_unreachable("unhandled type");
+}
+
+// TODO(hinsu): Move this pattern to legalize_tf after resolving the dependency
+// on the tensor proto.
+class ConvertUniformQuantizedDotHybridOp
+    : public OpRewritePattern<TF::UniformQuantizedDotHybridOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::UniformQuantizedDotHybridOp op,
+                                PatternRewriter &rewriter) const override {
+    // Check whether the rhs operand has constant op.
+    TF::TensorProtoAttr tensor_proto_attr;
+    if (!matchPattern(op.rhs(), m_Constant(&tensor_proto_attr)))
+      return failure();
+
+    // Check whether the rhs_scales operand has constant op.
+    DenseFPElementsAttr rhs_scales;
+    if (!matchPattern(op.rhs_scales(), m_Constant(&rhs_scales)))
+      return failure();
+
+    // Check whether the rhs_zero_points operand has constant op.
+    DenseIntElementsAttr rhs_zero_points;
+    if (!matchPattern(op.rhs_zero_points(), m_Constant(&rhs_zero_points)))
+      return failure();
+
+    // Invalid quantization parameter.
+    if (rhs_scales.empty()) return failure();
+    if (rhs_scales.size() != rhs_zero_points.size()) return failure();
+
+    // Uniform Quantized type for the rhs.
+    IntegerType storage_type = rewriter.getIntegerType(8);
+    FloatType expressed_type = rewriter.getF32Type();
+    int64_t storage_type_min = op.rhs_quantization_min_val();
+    int64_t storage_type_max = op.rhs_quantization_max_val();
+    int32_t quantized_dimension = op.rhs_quantization_axis();
+    const unsigned flags = mlir::quant::QuantizationFlags::Signed;
+
+    // Currently, PTQ supports per-tensor quantization, for now.
+    if (quantized_dimension != -1) return failure();
+
+    Type rhs_elem_ty;
+    rhs_elem_ty = quant::UniformQuantizedType::get(
+        flags, storage_type, expressed_type, rhs_scales.getValues<float>()[0],
+        rhs_zero_points.getValues<int32_t>()[0], storage_type_min,
+        storage_type_max);
+
+    Type rhs_type = GetSameShapeTensorType(
+        op.rhs().getType().cast<TensorType>(), rhs_elem_ty);
+
+    llvm::StringRef mangled_tensor = tensor_proto_attr.getValue();
+    absl::string_view tensor_view(mangled_tensor.data(), mangled_tensor.size());
+    // TODO(hinsu): Instead of getting the weight from TensorProto, use MLIR
+    // constant attribute to avoid depending on the Tensor proto.
+    tensorflow::TensorProto tensor_proto;
+    tensorflow::Status status =
+        tensorflow::mangling_util::DemangleTensor(tensor_view, &tensor_proto);
+    if (!status.ok()) {
+      return failure();
+    }
+
+    tensorflow::Tensor t;
+    if (!t.FromProto(tensor_proto)) {
+      return failure();
+    }
+
+    auto arr = t.flat<tensorflow::qint8>();
+    auto dense_attr = ElementsAttr(mlir::DenseElementsAttr::get(
+        GetSameShapeTensorType(rhs_type.cast<TensorType>(), storage_type),
+        llvm::makeArrayRef(arr.data(), arr.size())));
+
+    Value lhs = op.lhs();
+    rewriter.setInsertionPointAfterValue(op.rhs());
+    Value rhs = rewriter.create<mhlo::ConstantOp>(rewriter.getUnknownLoc(),
+                                                  rhs_type, dense_attr);
+
+    rewriter.setInsertionPoint(op);
+    rewriter.replaceOpWithNewOp<mhlo::DotOp>(op, lhs, rhs,
+                                             /*precision_config=*/nullptr);
+    return success();
+  }
 };
 
 // Emits debug information which includes the number of ops of each type which
@@ -162,6 +277,18 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::SquaredDifferenceOp>(),
     TypeID::get<TF::TanhOp>(),
     TypeID::get<TF::TanhGradOp>(),
+    TypeID::get<TF::XlaConvV2Op>(),
+    TypeID::get<TF::XlaDotOp>(),
+    TypeID::get<TF::XlaDotV2Op>(),
+    TypeID::get<TF::XlaDynamicSliceOp>(),
+    TypeID::get<TF::XlaEinsumOp>(),
+    TypeID::get<TF::XlaReduceWindowOp>(),
+    TypeID::get<TF::XlaReplicaIdOp>(),
+    TypeID::get<TF::XlaRngBitGeneratorOp>(),
+    TypeID::get<TF::XlaSelectAndScatterOp>(),
+    TypeID::get<TF::XlaSortOp>(),
+    TypeID::get<TF::XlaVariadicReduceV2Op>(),
+    TypeID::get<TF::XlaVariadicSortOp>(),
     TypeID::get<TF::XlogyOp>(),
     TypeID::get<TF::ZetaOp>(),
 
@@ -183,6 +310,16 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::InfeedDequeueTupleOp>(),
     TypeID::get<TF::OutfeedEnqueueTupleOp>(),
     TypeID::get<TF::XlaShardingOp>(),
+
+    // These ops have undetermined bugs, may not be legalizable with XlaOpKernel
+    // legalization in TF2XLA fallback. By legalization with MLIR, we can fix
+    // the bug. b/195583695 describes the motivation of this change.
+    // See b/216355804 how to reproduce the bug regarding tf.RandomUniform Op
+    // See b/216353817 how to reproduce the bug regarding tf.StridedSlice Op
+    // See b/245615401 how to reproduce the bug regarding tf.SliceOp
+    TypeID::get<TF::RandomUniformOp>(),
+    TypeID::get<TF::StridedSliceOp>(),
+    TypeID::get<TF::SliceOp>(),
   };
   // clang-format on
   return *ops;
@@ -191,10 +328,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
 // Patterns whose root op is in the set `include_ops` are moved from the set
 // `from` to the returned set. This is used to partition patterns by op so they
 // can be cleanly migrated from the old bridge to the MLIR bridge.
-OwningRewritePatternList PatternsIncludeOps(
-    OwningRewritePatternList &from,
-    const llvm::DenseSet<mlir::TypeID> &include_ops) {
-  OwningRewritePatternList to(from.getContext());
+RewritePatternSet PatternsIncludeOps(
+    RewritePatternSet &from, const llvm::DenseSet<mlir::TypeID> &include_ops) {
+  RewritePatternSet to(from.getContext());
   // Filter NativePatterns.
   for (auto &pattern : from.getNativePatterns()) {
     Optional<OperationName> pat_op_name = pattern->getRootKind();
@@ -202,7 +338,7 @@ OwningRewritePatternList PatternsIncludeOps(
     // If the pattern is in include_ops then include it.
     bool include =
         !pat_op_name ||
-        include_ops.count(pat_op_name->getAbstractOperation()->typeID);
+        include_ops.count(pat_op_name->getRegisteredInfo()->getTypeID());
     if (include) to.add(std::move(pattern));
   }
 
@@ -210,6 +346,40 @@ OwningRewritePatternList PatternsIncludeOps(
   to.add(std::move(from.getPDLPatterns()));
 
   return to;
+}
+
+mlir::LogicalResult ApplyPatterns(Operation *op, RewritePatternSet &patterns,
+                                  bool legalize_chlo,
+                                  bool allow_partial_conversion) {
+  ConversionTarget target(*op->getContext());
+  if (legalize_chlo) {
+    target.addIllegalDialect<chlo::ChloDialect>();
+  } else {
+    target.addLegalDialect<chlo::ChloDialect>();
+  }
+  target.addLegalDialect<MhloDialect>();
+  target.addLegalDialect<arith::ArithDialect>();
+  target.addLegalDialect<func::FuncDialect>();
+  target.addLegalDialect<tensor::TensorDialect>();
+  target.addLegalDialect<shape::ShapeDialect>();
+  target.addLegalOp<func::CallOp>();
+
+  if (!allow_partial_conversion) {
+    // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
+    target.addLegalOp<ModuleOp, ::mlir::func::FuncOp, ::mlir::func::ReturnOp>();
+    DenseSet<Operation *> nonlegalized_ops;
+    LogicalResult result = applyPartialConversion(
+        op, target, std::move(patterns), &nonlegalized_ops);
+    // In order to enforce that the conversion result is fully converted,
+    // fail if there are any nonlegalized ops in the set.
+    if (failed(result) || !nonlegalized_ops.empty()) {
+      EmitLegalizationErrors(op, nonlegalized_ops);
+      return failure();
+    }
+    return result;
+  }
+
+  return applyPartialConversion(op, target, std::move(patterns));
 }
 
 /// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
@@ -221,7 +391,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
                          llvm::Optional<StringRef> tf2xla_fallback_device_type,
                          bool prefer_tf2xla) {
   MLIRContext *context = op->getContext();
-  OwningRewritePatternList legalize_lower_patterns(context);
+  RewritePatternSet legalize_lower_patterns(context);
   // Note that the `OperationConverter` orders patterns lexicographically by:
   // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
   //    to arrive at conversion target). This requires relevant patterns to
@@ -230,10 +400,11 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   //    cases.
   // 2) Descending pattern benefit.
   // 3) Op specific patterns over patterns with MatchAnyOpTypeTag.
-  // 4) Order of patterns in `OwningRewritePatternList`.
+  // 4) Order of patterns in `RewritePatternSet`.
 
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &legalize_lower_patterns);
+  PopulateLegalizeTfQuantizationPatterns(context, &legalize_lower_patterns);
 
   // Add TF->TF lowering patterns.
   TF::PopulateTFLoweringBeforeHLOPatterns(context, &legalize_lower_patterns);
@@ -251,7 +422,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 
   // Set patterns to legalize_lower_patters, where in the prefer_tf2xla case
   // only patterns whose ops are in the set MlirPreferredOps are kept.
-  OwningRewritePatternList patterns =
+  RewritePatternSet patterns =
       (tf2xla_fallback_device_type && prefer_tf2xla)
           ? PatternsIncludeOps(legalize_lower_patterns, MlirPreferredOps())
           : std::move(legalize_lower_patterns);
@@ -265,65 +436,69 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
-    chlo::PopulateDecomposeChloPatterns(context, &patterns);
-    chlo::PopulateChloBroadcastingPatterns(context, &patterns);
+    chlo::populateDecomposeChloPatterns(context, &patterns);
+    chlo::populateChloBroadcastingPatterns(context, &patterns);
   }
   // ConstantLike op is convenient to create splat constants, but is
   // canonicalized to plain HLO constant if statically shaped. Add the
   // canonicalization pattern to pattern list to enable multi-hop lowering.
   chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
-  ConversionTarget target(*context);
-  if (legalize_chlo) {
-    target.addIllegalDialect<chlo::HloClientDialect>();
-  } else {
-    target.addLegalDialect<chlo::HloClientDialect>();
-  }
-  target.addLegalDialect<MhloDialect>();
-  target.addLegalDialect<StandardOpsDialect>();
-  target.addLegalDialect<tensor::TensorDialect>();
-  target.addLegalDialect<shape::ShapeDialect>();
-  target.addLegalOp<CallOp>();
-
-  if (!allow_partial_conversion) {
-    // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.
-    target.addLegalOp<ModuleOp, FuncOp, ::mlir::ReturnOp>();
-    DenseSet<Operation *> nonlegalized_ops;
-    LogicalResult result = applyPartialConversion(
-        op, target, std::move(patterns), &nonlegalized_ops);
-    // In order to enforce that the conversion result is fully converted,
-    // fail if there are any nonlegalized ops in the set.
-    if (failed(result) || !nonlegalized_ops.empty()) {
-      EmitLegalizationErrors(op, nonlegalized_ops);
-      return failure();
-    }
-    return result;
-  }
-
-  return applyPartialConversion(op, target, std::move(patterns));
+  return ApplyPatterns(op, patterns, legalize_chlo, allow_partial_conversion);
 }
 
 // Performs the lowering to XLA dialect.
-void LegalizeTF::runOnFunction() {
+void LegalizeTF::runOnOperation() {
   llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
   if (use_tf2xla_fallback_) {
     tf2xla_fallback_device_type = device_type_;
   }
-  if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
+  if (failed(legalizeTF(getOperation(), allow_partial_conversion_,
                         legalize_chlo_, tf2xla_fallback_device_type,
                         prefer_tf2xla_))) {
     signalPassFailure();
   }
 }
 
+void LegalizeTFModulePass::runOnOperation() {
+  // This pass should only be run when a fallback device is present.
+  if (!device_type_.hasValue()) {
+    return;
+  }
+  VLOG(1) << "TF to XLA legalization patterns include TF2XLA fallback "
+             "patterns for Ops that need to create functions.";
+  Operation *op = getOperation();
+  MLIRContext *context = op->getContext();
+  RewritePatternSet patterns(context);
+  PopulateLegalizeTfWithTf2XlaPatterns(device_type_, patterns, context,
+                                       /*prefer_tf2xla=*/false,
+                                       /*is_module_pass=*/true);
+
+  if (failed(ApplyPatterns(op, patterns,
+                           /*legalize_chlo=*/false,
+                           /*allow_partial_conversion=*/true))) {
+    signalPassFailure();
+  }
+}
+
 }  // end namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
+void PopulateLegalizeTfQuantizationPatterns(MLIRContext *context,
+                                            RewritePatternSet *patterns) {
+  patterns->add<ConvertUniformQuantizedDotHybridOp>(context);
+}
+
+std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion, bool legalize_chlo,
     llvm::Optional<StringRef> tf2xla_fallback_device_type, bool prefer_tf2xla) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
                                       tf2xla_fallback_device_type,
                                       prefer_tf2xla);
+}
+
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFModulePass(
+    StringRef tf2xla_fallback_device_type) {
+  return std::make_unique<LegalizeTFModulePass>(tf2xla_fallback_device_type);
 }
 
 }  // end namespace mhlo
