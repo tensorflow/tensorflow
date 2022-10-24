@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_EVALUATOR_HLO_EVALUATOR_TYPED_VISITOR_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_EVALUATOR_HLO_EVALUATOR_TYPED_VISITOR_H_
 
 #include <fenv.h>  // NOLINT
 
@@ -35,11 +35,11 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -2561,4 +2561,4 @@ extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_EVALUATOR_HLO_EVALUATOR_TYPED_VISITOR_H_

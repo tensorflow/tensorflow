@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
+#ifndef TENSORFLOW_COMPILER_XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
+#define TENSORFLOW_COMPILER_XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_
 
 #define _USE_MATH_DEFINES
 
@@ -480,4 +480,4 @@ std::unique_ptr<Array2D<float>> MatmulArray2D(const Array2D<float>& lhs,
                                               const Array2D<float>& rhs);
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
+#endif  // TENSORFLOW_COMPILER_XLA_HLO_EVALUATOR_HLO_EVALUATOR_H_

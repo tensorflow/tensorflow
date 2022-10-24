@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
-
-#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
+#include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator_typed_visitor.h"
 
 namespace xla {
-template class HloEvaluatorTypedVisitor<double>;
+template class HloEvaluatorTypedVisitor<bool>;
 }  // namespace xla
