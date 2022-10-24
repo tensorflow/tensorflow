@@ -3,7 +3,7 @@ syntax = "proto3";
 package tensorflow.distributed_runtime;
 
 option cc_enable_arenas = true;
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+option go_package = "github.com/tsl/tsl/go/core/protobuf/for_core_protos_go_proto";
 
 // Used to serialize and transmit tensorflow::Status payloads through
 // grpc::Status `error_details` since grpc::Status lacks payload API.

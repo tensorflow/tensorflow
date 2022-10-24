@@ -51,6 +51,7 @@ cc_library(
         # Required to be able to overload TensorResponse parsing.
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
 )
 

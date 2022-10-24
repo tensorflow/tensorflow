@@ -36,6 +36,12 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "distributed_runtime_payloads_proto",
+    srcs = ["distributed_runtime_payloads.proto"],
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
     make_default_target_header_only = True,
@@ -43,6 +49,7 @@ tf_proto_library(
         ":bfc_memory_map_proto",
         ":error_codes_proto_impl",
         ":histogram_proto",
+        ":distributed_runtime_payloads_proto",
     ],
     visibility = ["//visibility:public"],
 )
