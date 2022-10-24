@@ -3,7 +3,7 @@
 
 load("//tensorflow:tensorflow.bzl", "check_deps", "tf_copts")
 load(
-    "//tensorflow/stream_executor:build_defs.bzl",
+    "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
     "tf_additional_cudnn_plugin_copts",
 )
