@@ -262,6 +262,7 @@ struct OpState {
 };
 
 std::vector<int>* g_nodes_to_replace;
+TfLiteOpaqueDelegateStruct* g_opaque_delegate_struct;
 
 TfLiteRegistrationExternal* CreateExternalRegistration() {
   TfLiteRegistrationExternal* registration_external =
@@ -271,10 +272,19 @@ TfLiteRegistrationExternal* CreateExternalRegistration() {
       registration_external,
       [](TfLiteOpaqueContext* context, const char* buffer,
          size_t length) -> void* {
-        // TODO(b/246537428): Use 'TfLiteOpaqueDelegateParams' once the approach
-        // has been agreed and implemented.
-        const TfLiteDelegateParams* params =
-            reinterpret_cast<const TfLiteDelegateParams*>(buffer);
+        const TfLiteOpaqueDelegateParams* params =
+            reinterpret_cast<const TfLiteOpaqueDelegateParams*>(buffer);
+        // Ensure that the TFLite runtime passes the opaque delegate's address
+        // into the delegate kernel.
+        EXPECT_EQ(g_opaque_delegate_struct, params->delegate);
+        // Ensure that the TFLite runtime passes the opaque delegate's data
+        // field into the delegate kernel.  Note that our delegate's 'Prepare'
+        // callback marks the delegate as 'prepared' before it calls
+        // 'TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels'.
+        DelegateState* delegate_state =
+            static_cast<DelegateState*>(params->delegate_data);
+        EXPECT_TRUE(delegate_state->delegate_prepared);
+
         for (int i = 0; i < params->nodes_to_replace->size; ++i) {
           g_nodes_to_replace->push_back(params->nodes_to_replace->data[i]);
         }
@@ -325,6 +335,7 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
 
   struct TfLiteOpaqueDelegateStruct* opaque_delegate =
       TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+  g_opaque_delegate_struct = opaque_delegate;
 
   EXPECT_EQ(g_nodes_to_replace->size(), 0);
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
@@ -345,6 +356,7 @@ TEST(CApiSimple, OpaqueDelegate_ReplaceNodeSubsetsWithDelegateKernels) {
   TfLiteInterpreterDelete(interpreter);
   TfLiteOpaqueDelegateDelete(opaque_delegate);
   delete g_nodes_to_replace;
+  g_opaque_delegate_struct = nullptr;
 }
 
 using ::tflite::delegates::test_utils::TestFP16Delegation;
@@ -395,11 +407,17 @@ TEST_F(TestFP16Delegation,
         TfLiteIntArrayFree(subset_to_replace);
         return kTfLiteOk;
       };
-  TfLiteDelegate tflite_delegate{};
-  tflite_delegate.opaque_delegate_builder = &opaque_delegate_builder;
+  struct TfLiteOpaqueDelegateStruct* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+  g_opaque_delegate_struct = opaque_delegate;
   EXPECT_EQ(g_nodes_to_replace->size(), 0);
   EXPECT_EQ(interpreter_->execution_plan().size(), 8);
-  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(&tflite_delegate), kTfLiteOk);
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime tests.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(
+                reinterpret_cast<TfLiteDelegate*>(opaque_delegate)),
+            kTfLiteOk);
   EXPECT_EQ(interpreter_->execution_plan().size(), 7);
 
   // The delegate should have been applied.
@@ -411,7 +429,9 @@ TEST_F(TestFP16Delegation,
   EXPECT_EQ(nodes_to_replace[0], 1);
   EXPECT_EQ(nodes_to_replace[1], 3);
   EXPECT_EQ(nodes_to_replace[2], 7);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
   delete g_nodes_to_replace;
+  g_opaque_delegate_struct = nullptr;
 }
 
 TEST(CApiSimple, ErrorReporter) {
