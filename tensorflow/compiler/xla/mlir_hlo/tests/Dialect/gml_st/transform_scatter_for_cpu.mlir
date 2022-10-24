@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -xla-cpu-transform-scatter | FileCheck %s
+// RUN: mlir-hlo-opt %s -xla-cpu-transform-scatter | FileCheck %s
 
 #id_map = affine_map<(d0, d1) -> (d0, d1)>
 
@@ -14,6 +14,6 @@ func.func @scatter_small_vector_dim(%indices: tensor<?x2xindex>,
   return %result : tensor<?x?xf32>
 }
 
-// CHECK-FOR-LABEL: @scatter_small_vector_dim
+// CHECK-LABEL: @scatter_small_vector_dim
 // CHECK: gml_st.for
 // CHECK: thlo.scatter ins(%{{.*}} : tensor<1x2xindex>, %{{.*}} : tensor<1x?x?xf32>)
