@@ -1,0 +1,45 @@
+name: Close inactive issues
+on:
+  schedule:
+    - cron: "30 1 * * *"
+
+jobs:
+  close-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Awaiting resposnse issues
+        uses: actions/stale@v5
+        with:
+          days-before-issue-stale: 30
+          days-before-issue-close: 14
+          stale-issue-label: "stale"
+          only-issue-labels: 
+           - stat:awaiting response
+          stale-issue-message: > 
+            This issue is stale because it has been open for 30 days with no activity.
+            It will be closed if no further activity occurs. Thank you.
+          close-issue-message: >
+            This issue was closed because it has been inactive for 14 days since being marked as stale.
+            Please reopen if you'd like to work on this further.
+          days-before-pr-stale: -1
+          days-before-pr-close: 60
+          stale-pr-message: "This PR is stale because it has been open for 30 days with no activity."
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Contribution issues
+        uses: actions/stale@v5
+        with:
+          days-before-issue-stale: 180
+          days-before-issue-close: 360
+          stale-issue-label: "stale"
+          only-issue-labels: 
+           - stat:contribution welcome
+           - stat:good first issue
+          stale-issue-message: > 
+            This issue is stale because it has been open for 180 days with no activity.
+            It will be closed if no further activity occurs. Thank you.
+          close-issue-message: >
+            This issue was closed because it has been inactive for 360 days since being marked as stale.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
