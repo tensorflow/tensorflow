@@ -56,6 +56,7 @@ def if_google(google_value, oss_value = []):
     """
     return oss_value  # copybara:comment_replace return google_value
 
+# TODO(jakeharmon): Use this to replace if_static
 def if_tsl_link_protobuf(if_true, if_false = []):
     return select({
         "//conditions:default": if_true,
@@ -68,7 +69,7 @@ def if_libtpu(if_true, if_false = []):
         # copybara:uncomment_begin(different config setting in OSS)
         # "//tools/cc_target_os:gce": if_true,
         # copybara:uncomment_end_and_comment_begin
-        clean_dep("//tensorflow:with_tpu_support"): if_true,
+        clean_dep("//tensorflow/tsl:with_tpu_support"): if_true,
         # copybara:comment_end
         "//conditions:default": if_false,
     })
@@ -145,7 +146,7 @@ def get_win_copts(is_external = False):
     else:
         return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
 
-def tf_copts(
+def tsl_copts(
         android_optimization_level_override = "-O2",
         is_external = False,
         allow_exceptions = False):
@@ -286,3 +287,17 @@ check_deps = rule(
         ),
     },
 )
+
+def get_compatible_with_portable():
+    return []
+
+def filegroup(**kwargs):
+    native.filegroup(**kwargs)
+
+# Config setting selector used when building for products
+# which requires restricted licenses to be avoided.
+def if_not_mobile_or_arm_or_lgpl_restricted(a):
+    _ = (a,)  # buildifier: disable=unused-variable
+    return select({
+        "//conditions:default": [],
+    })

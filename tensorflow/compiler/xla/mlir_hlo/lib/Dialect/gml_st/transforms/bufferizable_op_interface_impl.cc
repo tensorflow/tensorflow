@@ -197,37 +197,15 @@ struct LoopOpInterface
   }
 };
 
-// Verifies if the subset chain is collapsed, i.e. set is produced by
-// `gml_st.space` or `gml_st.tile(gml_st.space)` or
-// `gml_st.point(gml_st.space)`.
-LogicalResult verifySubsetChain(Value set) {
-  Operation *definingOp = set.getDefiningOp();
-  if (isa<SpaceOp>(definingOp)) return success();
-
-  if (auto tile = dyn_cast<TileOp>(definingOp))
-    return success(tile.getSuperset().getDefiningOp<SpaceOp>() != nullptr);
-  return failure();
-}
-
 // Returns a scalar or a memref type result of `gml_st.materialize` op after
 // bufferization.
 FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
                                        MaterializeOp materializeOp) {
   Value set = materializeOp.getSet();
-  if (failed(verifySubsetChain(set))) return failure();
 
   Operation *setDefiningOp = set.getDefiningOp();
 
   Location loc = set.getLoc();
-  if (auto space = dyn_cast<SpaceOp>(setDefiningOp)) {
-    if (!materializeOp.getType().isa<ShapedType>()) {
-      Value zero = b.create<arith::ConstantIndexOp>(loc, 0);
-      SmallVector<Value, 2> indices(
-          memref.getType().cast<MemRefType>().getRank(), zero);
-      return b.create<memref::LoadOp>(loc, memref, indices).getResult();
-    }
-    return memref;
-  }
   if (auto tile = dyn_cast<TileOp>(setDefiningOp)) {
     if (!materializeOp.getType().isa<ShapedType>()) {
       auto indices =
@@ -245,20 +223,9 @@ FailureOr<Value> materializeExtraction(OpBuilder &b, Value memref,
 LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
                                    Value memref,
                                    const BufferizationOptions &options) {
-  if (failed(verifySubsetChain(set))) return failure();
-
   Location loc = update.getLoc();
 
   Operation *setDefiningOp = set.getDefiningOp();
-  if (isa<SpaceOp>(setDefiningOp)) {
-    if (!update.getType().isa<ShapedType>()) {
-      SmallVector<Value> indices(memref.getType().cast<MemRefType>().getRank(),
-                                 b.create<arith::ConstantIndexOp>(loc, 0));
-      b.create<memref::StoreOp>(loc, update, memref, indices);
-      return success();
-    }
-    return options.createMemCpy(b, loc, update, memref);
-  }
 
   // Create subviews or store ops for the set computation.
   auto tile = dyn_cast<TileOp>(setDefiningOp);

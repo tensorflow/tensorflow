@@ -62,7 +62,7 @@ def register_extension_info(**kwargs):
 # not contain rc or alpha, only numbers.
 # Also update tensorflow/core/public/version.h
 # and tensorflow/tools/pip_package/setup.py
-VERSION = "2.11.0"
+VERSION = "2.12.0"
 VERSION_MAJOR = VERSION.split(".")[0]
 two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 
@@ -351,6 +351,15 @@ def lrt_if_needed():
 
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
+        # copybara:uncomment_begin(no MSVC flags in google)
+        # "-DPLATFORM_WINDOWS",
+        # "-DEIGEN_HAS_C99_MATH",
+        # "-DTENSORFLOW_USE_EIGEN_THREADPOOL",
+        # "-DEIGEN_AVOID_STL_ARRAY",
+        # "-Iexternal/gemmlowp",
+        # "-Wno-sign-compare",
+        # "-DNOGDI",
+        # copybara:uncomment_end_and_comment_begin
         "/DPLATFORM_WINDOWS",
         "/DEIGEN_HAS_C99_MATH",
         "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
@@ -367,11 +376,19 @@ def get_win_copts(is_external = False):
         "/DNOGDI",
         # Also see build:windows lines in tensorflow/opensource_only/.bazelrc
         # where we set some other options globally.
+        # copybara:comment_end
     ]
+
     if is_external:
-        return WINDOWS_COPTS + ["/UTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/UTF_COMPILE_LIBRARY",
+            "-UTF_COMPILE_LIBRARY",
+        )]
     else:
-        return WINDOWS_COPTS + ["/DTF_COMPILE_LIBRARY"]
+        return WINDOWS_COPTS + [if_oss(
+            "/DTF_COMPILE_LIBRARY",
+            "-DTF_COMPILE_LIBRARY",
+        )]
 
 def tf_copts(
         android_optimization_level_override = "-O2",
@@ -1720,6 +1737,9 @@ def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
 
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
     deps = deps + if_cuda_or_rocm(cuda_deps)
+    if "default_copts" in kwargs:
+        copts = kwargs["default_copts"] + copts
+        kwargs.pop("default_copts", None)
     cc_library(
         deps = deps + if_cuda([
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
@@ -2338,6 +2358,13 @@ def pywrap_tensorflow_macro_opensource(
         ],
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
+
+    # This is needed so that libtensorflow_cc is included in the pip package.
+    srcs += select({
+        clean_dep("//tensorflow:macos"): [clean_dep("//tensorflow:libtensorflow_cc.%s.dylib" % VERSION_MAJOR)],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [clean_dep("//tensorflow:libtensorflow_cc.so.%s" % VERSION_MAJOR)],
+    })
 
     tf_cc_shared_library_opensource(
         name = cc_shared_library_name,
@@ -3128,7 +3155,6 @@ def tf_python_pybind_static_deps(testonly = False):
         "@icu//:__subpackages__",
         "@jsoncpp_git//:__subpackages__",
         "@libjpeg_turbo//:__subpackages__",
-        "@libxsmm_archive//:__subpackages__",
         "@llvm-project//:__subpackages__",
         "@llvm_openmp//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_test_passes.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
   // Register passes for TF->JitRt compilation.
   registerTfJitRtPasses();
   registerTfJitRtTestPasses();
+  mlir::gml_st::registerGmlStPasses();
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

@@ -23,5 +23,4 @@ import "tensorflow/compiler/xla/service/hlo.proto";
 message XlaRuntimeCpuExecutableProto {
   optional XlaRuntimeExecutableProto xla_runtime_executable = 1;
   optional XlaFrameworkMappingProto xla_framework_mapping = 2;
-  optional BufferAssignmentProto buffer_assignment = 3;
 }

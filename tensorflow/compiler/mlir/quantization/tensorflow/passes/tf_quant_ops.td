@@ -19,56 +19,6 @@ include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpAsmInterface.td"
 
-// Uniform quantization operators
-def TF_UniformDequantizeOp : TF_Op<"UniformDequantize", [Pure]> {
-  // TODO(b/230804708): Improve the operator description.
-  let summary = "Dequantize the given uniform quantized tensor.";
-
-  let arguments = (ins
-    TensorOf<[TF_Qint32, TF_Qint8]>:$input,
-    TF_Float32Tensor:$scales,
-    TF_Int32Tensor:$zps,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$quantization_max_val
-  );
-
-  let results = (outs
-    TF_Float32Tensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_UniformQuantizeOp : TF_Op<"UniformQuantize", [Pure]> {
-  // TODO(b/230804708): Improve the operator description.
-  let summary = "Convert the given tensor to uniform quantized tensor.";
-
-  let arguments = (ins
-    TensorOf<[TF_Float32, TF_Qint32, TF_Qint8]>:$input,
-    TF_Float32Tensor:$input_scales,
-    TF_Int32Tensor:$input_zps,
-    TF_Float32Tensor:$output_scales,
-    TF_Int32Tensor:$output_zps,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$input_quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$input_quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$input_quantization_max_val,
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
-  );
-
-  let results = (outs
-    TensorOf<[TF_Qint32, TF_Qint8]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
 def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
   // TODO(b/230804708): Improve the operator description.
   let summary = "Quantized add operator.";
@@ -92,29 +42,6 @@ def TF_UniformQuantizedAddOp : TF_Op<"UniformQuantizedAdd", [Pure]> {
     DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
     DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
     DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
-  );
-
-  let results = (outs
-    TensorOf<[TF_Qint32]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_UniformQuantizedClipByValueOp : TF_Op<"UniformQuantizedClipByValue", [Pure]> {
-  // TODO(b/230804708): Improve the operator description.
-  let summary = "Quantized clipping operator.";
-
-  let arguments = (ins
-    TensorOf<[TF_Qint32]>:$operand,
-    TensorOf<[TF_Qint32]>:$min,
-    TensorOf<[TF_Qint32]>:$max,
-    TF_Float32Tensor:$scales,
-    TF_Int32Tensor:$zps,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$quantization_max_val
   );
 
   let results = (outs
@@ -164,40 +91,6 @@ def TF_UniformQuantizedConvolutionOp : TF_Op<"UniformQuantizedConvolution", [Pur
   TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<8>;
-  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_UniformQuantizedDotOp : TF_Op<"UniformQuantizedDot", [Pure]> {
-  // TODO(b/230804708): Improve the operator description.
-  let summary = "Quantized dot operator.";
-
-  let arguments = (ins
-    TensorOf<[TF_Qint8]>:$lhs,
-    TensorOf<[TF_Qint8]>:$rhs,
-    TF_Float32Tensor:$lhs_scales,
-    TF_Int32Tensor:$lhs_zps,
-    TF_Float32Tensor:$rhs_scales,
-    TF_Int32Tensor:$rhs_zps,
-    TF_Float32Tensor:$output_scales,
-    TF_Int32Tensor:$output_zps,
-
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$lhs_quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$lhs_quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$lhs_quantization_max_val,
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$rhs_quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$rhs_quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$rhs_quantization_max_val,
-    DefaultValuedOptionalAttr<I64Attr, "-1">:$output_quantization_axis,
-    DefaultValuedOptionalAttr<I64Attr, "-128">:$output_quantization_min_val,
-    DefaultValuedOptionalAttr<I64Attr, "127">:$output_quantization_max_val
-  );
-
-  let results = (outs
-    TensorOf<[TF_Qint32]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr LhsT = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr RhsT = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 

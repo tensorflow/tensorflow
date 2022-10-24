@@ -16,7 +16,7 @@
 
 import collections
 import inspect
-from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple, OrderedDict
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 from tensorflow.core.function import trace_type
 from tensorflow.python.types import trace
@@ -120,7 +120,7 @@ class FunctionType(inspect.Signature):
 
   def __init__(self,
                parameters: Sequence[inspect.Parameter],
-               captures: Optional[OrderedDict[str, trace.TraceType]] = None,
+               captures: Optional[collections.OrderedDict] = None,
                **kwargs):
     super().__init__(parameters, **kwargs)
     self._captures = captures if captures else collections.OrderedDict()
@@ -130,7 +130,7 @@ class FunctionType(inspect.Signature):
     return super().parameters
 
   @property
-  def captures(self) -> OrderedDict[str, trace.TraceType]:
+  def captures(self) -> collections.OrderedDict:
     return self._captures
 
   # TODO(fmuham): Use this method instead of fullargspec and tf_inspect.
@@ -231,7 +231,7 @@ class FunctionType(inspect.Signature):
         raise ValueError("Can not generate placeholder value for "
                          "partially defined function type.")
 
-      arguments[parameter.name] = parameter.type_constraint._placeholder_value()    # pylint: disable=protected-access
+      arguments[parameter.name] = parameter.type_constraint._placeholder_value()  # pylint: disable=protected-access
 
     return inspect.BoundArguments(self, arguments)
 
@@ -243,14 +243,11 @@ class FunctionType(inspect.Signature):
                                                 other.captures)
 
   def __hash__(self) -> int:
-    return hash(
-        (tuple(self.parameters.items()), tuple(self.captures.items())))
+    return hash((tuple(self.parameters.items()), tuple(self.captures.items())))
 
   def __repr__(self):
-    return (
-        f"FunctionType(parameters={list(self.parameters.values())!r}, "
-        f"captures={self.captures})"
-    )
+    return (f"FunctionType(parameters={list(self.parameters.values())!r}, "
+            f"captures={self.captures})")
 
 
 # TODO(fmuham): Consider forcing kind to be always POSITIONAL_OR_KEYWORD.

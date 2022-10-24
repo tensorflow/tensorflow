@@ -213,7 +213,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     visibility = [
-        "//tensorflow/c:__subpackages__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/python:__subpackages__",
     ],
     deps = [

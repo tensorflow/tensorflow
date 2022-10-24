@@ -931,10 +931,9 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   if (out_status->status.ok()) {
     outputs->resize(num_outputs);
   } else {
-    TF_SetStatus(out_status, TF_GetCode(out_status),
-                 tensorflow::strings::StrCat(TF_Message(out_status),
-                                             " [Op:", op_name, "]")
-                     .c_str());
+    out_status->status = tensorflow::errors::CreateWithUpdatedMessage(
+        out_status->status, tensorflow::strings::StrCat(TF_Message(out_status),
+                                                        " [Op:", op_name, "]"));
   }
 
   Py_END_ALLOW_THREADS;

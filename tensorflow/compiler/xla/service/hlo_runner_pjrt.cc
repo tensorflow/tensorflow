@@ -25,11 +25,42 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
+
+// TODO(b/245550554): Remove the use of PjRtWrappedExecutable.
+class PjRtWrappedExecutable : public Executable {
+ public:
+  explicit PjRtWrappedExecutable(std::shared_ptr<HloModule> hlo_module,
+                                 PjRtLoadedExecutable* pjrt_loaded_executable)
+      : Executable(hlo_module),
+        pjrt_loaded_executable_(pjrt_loaded_executable) {}
+
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments,
+      HloExecutionProfile* hlo_execution_profile) override;
+
+  PjRtLoadedExecutable* GetPjRtLoadedExecutable() const {
+    return pjrt_loaded_executable_;
+  }
+
+ private:
+  PjRtLoadedExecutable* pjrt_loaded_executable_;
+};
+
+StatusOr<ExecutionOutput> PjRtWrappedExecutable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    std::vector<ExecutionInput> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  return Unimplemented(
+      "PjRtWrappedExecutable: Unimplemented ExecuteAsyncOnStream");
+}
 
 static const int kDeviceIdx = 0;
 
@@ -37,6 +68,27 @@ HloRunnerPjRt::HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
 HloRunnerPjRt::~HloRunnerPjRt() = default;
+
+StatusOr<CompileOptions> HloRunnerPjRt::GenerateDefaultCompileOptions(
+    HloModule* module, bool run_hlo_passes) {
+  TF_ASSIGN_OR_RETURN(
+      auto device_assignment,
+      pjrt_client_->GetDefaultDeviceAssignment(
+          module->config().replica_count(), module->config().num_partitions()));
+
+  CompileOptions compile_options;
+
+  compile_options.executable_build_options.set_device_assignment(
+      device_assignment);
+  compile_options.executable_build_options.set_num_partitions(
+      module->config().num_partitions());
+  compile_options.executable_build_options.set_num_replicas(
+      module->config().replica_count());
+  compile_options.executable_build_options.set_run_backend_only(
+      !run_hlo_passes);
+
+  return compile_options;
+}
 
 StatusOr<Literal> HloRunnerPjRt::TransferLiteralFromDevice(PjRtBuffer& buffer) {
   TF_RETURN_IF_ERROR(buffer.GetReadyFuture().Await());
@@ -74,38 +126,13 @@ StatusOr<Literal> HloRunnerPjRt::Execute(
     std::unique_ptr<HloModule> module,
     absl::Span<const Literal* const> arguments, bool run_hlo_passes,
     ExecutionProfile* profile) {
-  TF_ASSIGN_OR_RETURN(
-      auto device_assignment,
-      pjrt_client_->GetDefaultDeviceAssignment(
-          module->config().replica_count(), module->config().num_partitions()));
+  TF_ASSIGN_OR_RETURN(auto compile_options, GenerateDefaultCompileOptions(
+                                                module.get(), run_hlo_passes));
 
-  VLOG(1) << "HloRunnerPjRt::Execute" << device_assignment.ToString();
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      CreateExecutable(std::move(module), run_hlo_passes));
 
-  CompileOptions compile_options;
-
-  compile_options.executable_build_options.set_device_assignment(
-      device_assignment);
-  compile_options.executable_build_options.set_num_partitions(
-      module->config().num_partitions());
-  compile_options.executable_build_options.set_num_replicas(
-      module->config().replica_count());
-  compile_options.executable_build_options.set_run_backend_only(
-      !run_hlo_passes);
-
-  TF_ASSIGN_OR_RETURN(auto loaded_executable,
-                      CreateExecutable(module.get(), compile_options));
-
-  TF_ASSIGN_OR_RETURN(auto argument_handles,
-                      TransferLiteralsToDevice(arguments));
-
-  TF_ASSIGN_OR_RETURN(auto output_buffer,
-                      ExecuteWithDeviceBuffers(loaded_executable.get(),
-                                               std::move(argument_handles)));
-
-  // TODO (b/245550554): Support more than 1 output.
-  TF_RET_CHECK(output_buffer.size() == 1);
-
-  return TransferLiteralFromDevice(*output_buffer[0]);
+  return ExecuteWithExecutable(executable.get(), arguments, {});
 }
 
 std::vector<PjRtBuffer*> HloRunnerPjRt::BufferVecToPointerVec(
@@ -149,15 +176,38 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
   return output_buffers;
 }
 
-StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(
-    std::unique_ptr<HloModule> module, bool run_hlo_passes) {
-  return Unimplemented("Unimplemented CreateExecutable");
-}
-
 StatusOr<Literal> HloRunnerPjRt::ExecuteWithExecutable(
     Executable* executable, absl::Span<const Literal* const> arguments,
     ExecutionProfile* profile) {
-  return Unimplemented("Unimplemented ExecuteWithExecutable");
+  PjRtWrappedExecutable* wrapped_executable =
+      static_cast<PjRtWrappedExecutable*>(executable);
+
+  TF_ASSIGN_OR_RETURN(auto argument_handles,
+                      TransferLiteralsToDevice(arguments));
+
+  TF_ASSIGN_OR_RETURN(
+      auto output_buffer,
+      ExecuteWithDeviceBuffers(wrapped_executable->GetPjRtLoadedExecutable(),
+                               std::move(argument_handles)));
+  // TODO (b/245550554): Support more than 1 output.
+  CHECK_EQ(output_buffer.size(), 1);
+
+  return TransferLiteralFromDevice(*output_buffer[0]);
+}
+
+StatusOr<std::unique_ptr<Executable>> HloRunnerPjRt::CreateExecutable(
+    std::unique_ptr<HloModule> module, bool run_hlo_passes) {
+  TF_ASSIGN_OR_RETURN(auto compile_options, GenerateDefaultCompileOptions(
+                                                module.get(), run_hlo_passes));
+  TF_ASSIGN_OR_RETURN(auto pjrt_executable,
+                      CreateExecutable(module.get(), compile_options));
+
+  auto executable = std::make_unique<PjRtWrappedExecutable>(
+      std::shared_ptr<HloModule>(std::move(module)), pjrt_executable.release());
+
+  std::unique_ptr<Executable> exec =
+      static_cast<std::unique_ptr<Executable>>(executable.release());
+  return exec;
 }
 
 StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(

@@ -732,6 +732,7 @@ Status PyBuffer::RegisterTypes(py::module& m) {
       .def("get_device_buffer", &PyShardedBuffer::GetPyBuffer)
       .def("__len__", &PyShardedBuffer::num_devices)
       .def("block_until_ready", &PyShardedBuffer::BlockHostUntilReady)
+      .def("delete", &PyShardedBuffer::Delete)
       .def_static("create_sharded_buffer",
                   &PyShardedBuffer::CreateFromPyBuffers)
       .def_property_readonly("dtype", [](const PyShardedBuffer& self) {

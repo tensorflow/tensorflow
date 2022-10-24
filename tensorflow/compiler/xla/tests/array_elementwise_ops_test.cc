@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -43,9 +44,30 @@ limitations under the License.
 namespace xla {
 namespace {
 
+template <typename T>
+std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
+    absl::Span<const T> abs_vals) {
+  std::vector<T> ys;
+  std::vector<T> xs;
+  const size_t n = 4 * abs_vals.size() * abs_vals.size();
+  ys.reserve(n);
+  xs.reserve(n);
+  for (auto abs_y : abs_vals) {
+    for (auto y : {-abs_y, abs_y}) {
+      for (auto abs_x : abs_vals) {
+        for (auto x : {-abs_x, abs_x}) {
+          ys.push_back(y);
+          xs.push_back(x);
+        }
+      }
+    }
+  }
+  return {xs, ys};
+}
+
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
-  ErrorSpec error_spec_{0.0001, 0.0001};
+  ErrorSpec error_spec_{0.0002, 0.0002};
   ErrorSpec strict_error_spec_{3.6e-15, 3.6e-15};
 };
 
@@ -1550,15 +1572,21 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<float>(
-      &builder, {0.0f, 4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
-  auto rhs = ConstantR1<float>(
-      &builder, {0.0f, 2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
+  auto inf = std::numeric_limits<float>::infinity();
+  auto qnan = std::numeric_limits<float>::quiet_NaN();
+  auto eps = std::numeric_limits<float>::epsilon();
+
+  std::vector<float> ys;
+  std::vector<float> xs;
+  std::tie(xs, ys) =
+      AllSignedPairs<float>({0.0f, eps, 0.1f, 0.5f, 1.0f, 1.0f + eps, 2.0f,
+                             3.0f, M_PI, 1e6 + 0.1, qnan, inf});
+
+  auto lhs = ConstantR1<float>(&builder, xs);
+  auto rhs = ConstantR1<float>(&builder, ys);
   Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder,
-                             {1.0f, 16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f},
-                             {}, error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
@@ -2431,22 +2459,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F64s) {
   XlaBuilder builder(TestName());
   auto inf = std::numeric_limits<double>::infinity();
   auto qnan = std::numeric_limits<double>::quiet_NaN();
-  const auto vals = {0.0, 0.1, 0.9, 1.0, 1.1, M_PI, 1e6, qnan, inf};
-  const auto n = 4 * vals.size() * vals.size();
   std::vector<double> ys;
   std::vector<double> xs;
-  ys.reserve(n);
-  xs.reserve(n);
-  for (auto abs_y : vals) {
-    for (auto y : {-abs_y, abs_y}) {
-      for (auto abs_x : vals) {
-        for (auto x : {-abs_x, abs_x}) {
-          ys.push_back(y);
-          xs.push_back(x);
-        }
-      }
-    }
-  }
+  std::tie(xs, ys) =
+      AllSignedPairs<double>({0.0, 0.1, 0.9, 1.0, 1.1, M_PI, 1e6, qnan, inf});
   auto y = ConstantR1<double>(&builder, ys);
   auto x = ConstantR1<double>(&builder, xs);
   Atan2(y, x);

@@ -173,7 +173,6 @@ TEST_F(CApiTest, SucceedWithCustomValidation) {
   EXPECT_THAT(events, testing::Not(testing::IsEmpty()));
   for (auto& event : events) {
     EXPECT_EQ(event->event_type(), tflite::BenchmarkEventType_END);
-    EXPECT_FALSE(event->result()->ok());
   }
   TfLiteMiniBenchmarkResultFree(result);
 }

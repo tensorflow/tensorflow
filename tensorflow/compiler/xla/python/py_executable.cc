@@ -403,6 +403,16 @@ PyLoadedExecutable::HloModules() const {
   return executable_->GetHloModules();
 }
 
+std::optional<std::vector<OpSharding>>
+PyLoadedExecutable::GetParameterShardings() const {
+  return executable_->GetParameterShardings();
+}
+
+std::optional<std::vector<OpSharding>> PyLoadedExecutable::GetOutputShardings()
+    const {
+  return executable_->GetOutputShardings();
+}
+
 void PyLoadedExecutable::KeepAlive(py::object obj) {
   keepalives_.push_back(std::move(obj));
 }

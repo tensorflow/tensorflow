@@ -765,7 +765,8 @@ Queue<TaskType>::Queue(
   // Set the higher 32 bits of traceme_context_id_counter_ to be the creation
   // time of the queue. This prevents the batches in different queues to have
   // the same traceme_context_id_counter_.
-  traceme_context_id_counter_ = absl::GetCurrentTimeNanos() << 32;
+  traceme_context_id_counter_ = (absl::GetCurrentTimeNanos() & 0xFFFFFFFF)
+                                << 32;
   // Create an initial, open batch.
   if (options_.enable_lazy_split) {
     task_handle_batches_.emplace_back(

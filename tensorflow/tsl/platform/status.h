@@ -361,8 +361,8 @@ inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   return TfCheckOpHelperOutOfLine(v, msg);
 }
 
-#define TF_DO_CHECK_OK(val, level)                         \
-  while (auto _result = ::tsl::TfCheckOpHelper(val, #val)) \
+#define TF_DO_CHECK_OK(val, level)                          \
+  while (auto* _result = ::tsl::TfCheckOpHelper(val, #val)) \
   LOG(level) << *(_result)
 
 #define TF_CHECK_OK(val) TF_DO_CHECK_OK(val, FATAL)

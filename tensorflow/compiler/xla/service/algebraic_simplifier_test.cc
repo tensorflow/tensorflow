@@ -5280,8 +5280,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::DynamicSlice(m::Parameter(), m::Parameter(),
-                                         m::Parameter(), m::Parameter())));
+              GmockMatch(m::DynamicSlice(m::Parameter(), m::Constant(),
+                                         m::Parameter(), m::Constant())));
 }
 
 // Test that two consecutive broadcasts can be merged to one.
@@ -6377,6 +6377,31 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
 }
 
+// Test of dynamic-update-slice with dims where update and result have the same
+// size so we can replace indices to 0.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceTrivialIndices) {
+  const char* hlo_string = R"(
+HloModule DynamicUpdateSliceTrivialIndices
+
+ENTRY DynamicUpdateSliceTrivialIndices {
+  param0 = f32[1800,12,512] parameter(0)
+  param1 = f32[1,12,512] parameter(1)
+  param2 = u32[] parameter(2)
+  ROOT dynamic-update-slice = f32[1800,12,512] dynamic-update-slice(
+    param0, param1, param2, param2, param2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite\n" << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(m::Parameter(0), m::Parameter(1),
+                                               m::Parameter(2), m::Constant(),
+                                               m::Constant())));
+}
+
 TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSlice) {
   const char* hlo_string = R"(
 HloModule AddDynamicUpdateSliceToAddSlice
@@ -6412,6 +6437,36 @@ ENTRY AddDynamicUpdateSliceToAddSlice {
                  m::Reshape(m::Parameter(1))),
           m::Constant(), m::Parameter(2), m::Constant(), m::Constant(),
           m::Constant(), m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSliceOnLhs) {
+  const char* hlo_string = R"(
+HloModule AddDynamicUpdateSliceToAddSlice
+
+ENTRY AddDynamicUpdateSliceToAddSlice {
+  param0 = f32[4,12,512] parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[4,12,512] broadcast(constant), dimensions={}
+  param1 = f32[1,12,512] parameter(1)
+  param2 = s32[] parameter(2)
+  constant.1 = s32[] constant(0)
+  dynamic-update-slice = f32[4,12,512] dynamic-update-slice(
+    broadcast, param1, param2, constant.1, constant.1)
+  ROOT add = f32[4,12,512] add(dynamic-update-slice, param0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite to add slice\n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::DynamicUpdateSlice(
+                        m::Parameter(0),
+                        m::Add(m::DynamicSlice(m::Parameter(0), m::Parameter(2),
+                                               m::Constant(), m::Constant()),
+                               m::Parameter(1)),
+                        m::Parameter(2), m::Constant(), m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ScalarMultiplyReduction) {
@@ -8460,6 +8515,30 @@ ENTRY f {
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Reshape(m::Convert(
                   m::Clamp(m::Constant(), m::Parameter(0), m::Constant())))));
+}
+
+// Test of converting dynamic-slice indices to zeros on dims with the full size.
+TEST_F(AlgebraicSimplifierTest, DynamicSliceTrivialIndices) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %operand = s32[2,2] parameter(0)
+  %index = u32[] parameter(1)
+  ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %index, %index),
+    dynamic_slice_sizes={2,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(m::Parameter(0), m::Constant(),
+                                         m::Parameter(1))));
 }
 
 // Test folding of clamp(pid, 0, limit) -> pid

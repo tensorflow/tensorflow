@@ -17,7 +17,7 @@
 #import "TFLQuantizationParameters+Internal.h"
 #import "tensorflow/lite/objc/apis/TFLTensor.h"
 
-#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

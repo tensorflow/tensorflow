@@ -117,3 +117,13 @@ cc_test(
         "@pthreadpool",
     ],
 )
+
+cc_library(
+    name = "vendor_delegate",
+    hdrs = ["vendor_delegate.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/shims:delegate_plugin",
+    ],
+)

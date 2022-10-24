@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/platform/tstring.h"
 #include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
@@ -366,7 +367,7 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
 
   std::vector<HloSnapshot> snapshots;
   uint64_t offset = 0;
-  tensorflow::tstring record;
+  tsl::tstring record;
   while (reader.ReadRecord(&offset, &record).ok()) {
     HloSnapshot snapshot;
     if (snapshot.mutable_hlo()->ParseFromString(record)) {
@@ -393,7 +394,7 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
   if (s.ok()) {
     return std::vector<HloSnapshot>{std::move(snapshot)};
   }
-  if (s.code() == tensorflow::error::NOT_FOUND) {
+  if (s.code() == tsl::error::NOT_FOUND) {
     return s;
   }
   QCHECK(!opts.NeedsRealData())

@@ -61,10 +61,9 @@ class PjitFunction {
  public:
   PjitFunction(py::function fun, py::function cache_miss,
                std::vector<int> static_argnums)
-      : fun_(std::move(fun)),
-        cache_miss_(std::move(cache_miss)),
+      : cache_miss_(std::move(cache_miss)),
         static_argnums_(std::move(static_argnums)) {
-    function_name_ = py::str(py::getattr(fun_, "__name__", py::none()));
+    function_name_ = py::str(py::getattr(fun, "__name__", py::none()));
   }
 
   PjitFunction(const PjitFunction&) = delete;
@@ -83,7 +82,6 @@ class PjitFunction {
                           const CallSignature& signature,
                           const py::tuple& out_and_fastpath_data);
 
-  py::function fun_;
   std::string function_name_;
   py::function cache_miss_;
   std::vector<int> static_argnums_;

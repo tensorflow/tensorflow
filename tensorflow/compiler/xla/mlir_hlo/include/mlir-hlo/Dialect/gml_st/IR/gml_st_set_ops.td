@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for ST ops.
+// This is the operation definition file for GmlSt Subset ops.
 
 #ifndef GML_ST_SET_OPS
 #define GML_ST_SET_OPS
@@ -23,7 +23,6 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir/IR/AttrTypeBase.td"
 include "mlir/IR/OpBase.td"
 include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops_base.td"
-include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td"
 
 // Base class of all subset types.
 class GMLST_Set<string name> : TypeDef<GmlSt_Dialect, name> { }
@@ -44,41 +43,14 @@ def GMLST_TileType : GMLST_Set<"Tile"> {
   }];
 }
 
-// Whether a type is a subset type.
-def IsSetTypePred : Or<[GMLST_TileType.predicate]>;
-
-def AnySet : Type<IsSetTypePred, "subset type">;
-
-def GMLST_SpaceOp : GMLST_Op<"space", [Pure,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
-  let arguments = (ins Variadic<Index>:$dynamic_sizes,
-                       I64ArrayAttr:$static_sizes);
-  let results = (outs GMLST_TileType:$result);
-  let assemblyFormat = [{
-    custom<DynamicIndexList>($dynamic_sizes, $static_sizes,
-                               "ShapedType::kDynamicSize")
-    attr-dict `:` qualified(type($result))
-  }];
-  let builders = [
-    OpBuilder<(ins "ArrayRef<OpFoldResult>":$sizes,
-                    CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
-  ];
-  let extraClassDeclaration = [{
-    unsigned getNumDynamicEntriesUpToIdx(unsigned idx);
-    mlir::Value getDynamicSize(unsigned idx);
-  }];
-  let hasVerifier = 1;
-}
-
+def AnySet : Type<Or<[GMLST_TileType.predicate]>, "subset type">;
 
 def GMLST_TileOp : GMLST_Op<"tile", [
     Pure,
     AttrSizedOperandSegments,
     OffsetSizeAndStrideOpInterface,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>,
-    DeclareOpInterfaceMethods<ComposeSetInterface>]> {
-  let arguments = (ins GMLST_TileType:$superset,
-                       Variadic<Index>:$offsets,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+  let arguments = (ins Variadic<Index>:$offsets,
                        Variadic<Index>:$sizes,
                        Variadic<Index>:$strides,
                        I64ArrayAttr:$static_offsets,
@@ -86,17 +58,16 @@ def GMLST_TileOp : GMLST_Op<"tile", [
                        I64ArrayAttr:$static_strides);
   let results = (outs GMLST_TileType:$result);
   let assemblyFormat = [{
-    $superset
     custom<DynamicIndexList>($offsets, $static_offsets,
                                "ShapedType::kDynamicStrideOrOffset")
     custom<DynamicIndexList>($sizes, $static_sizes,
                                "ShapedType::kDynamicSize")
     custom<DynamicIndexList>($strides, $static_strides,
                                "ShapedType::kDynamicStrideOrOffset")
-    attr-dict `:` qualified(type($superset)) `to` qualified(type($result))
+    attr-dict `:` qualified(type($result))
   }];
   let builders = [
-   OpBuilder<(ins "Value":$superset, "ArrayRef<OpFoldResult>":$offsets,
+   OpBuilder<(ins "ArrayRef<OpFoldResult>":$offsets,
       "ArrayRef<OpFoldResult>":$sizes, "ArrayRef<OpFoldResult>":$strides,
       CArg<"ArrayRef<NamedAttribute>", "{}">:$attrs)>,
   ];
@@ -104,12 +75,12 @@ def GMLST_TileOp : GMLST_Op<"tile", [
     /// Return the expected rank of each of the`static_offsets`, `static_sizes`
     /// and `static_strides` attributes.
     std::array<unsigned, 3> getArrayAttrMaxRanks() {
-      unsigned rank = getSuperset().getType().cast<TileType>().getRank();
+      unsigned rank = getType().cast<TileType>().getRank();
       return {rank, rank, rank};
     }
     /// Return the number of leading operands before the `offsets`, `sizes` and
     /// and `strides` operands.
-    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 1; }
+    static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 0; }
   }];
   let hasVerifier = 1;
 }

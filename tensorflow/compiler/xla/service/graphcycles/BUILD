@@ -28,7 +28,6 @@ cc_library(
     name = "ordered_set",
     hdrs = ["ordered_set.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
@@ -40,7 +39,6 @@ tf_cc_test(
     srcs = ["graphcycles_test.cc"],
     deps = [
         ":graphcycles",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -54,7 +52,6 @@ tf_cc_test(
     srcs = ["ordered_set_test.cc"],
     deps = [
         ":ordered_set",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",

@@ -205,6 +205,10 @@ class DeviceDescription {
   // or an AMD Compute Unit.
   int core_count() const { return core_count_; }
 
+  // Number of floating point operations one core (SM, compute unit) can execute
+  // in parallel. Corresponds to the number of "CUDA cores" for NVIDIA devices.
+  int fpus_per_core() const { return fpus_per_core_; }
+
   // Returns the limit on the thread dimensionality values in each of the
   // respective dimensions. These limits affect what constitutes a legitimate
   // kernel launch request.
@@ -345,6 +349,7 @@ class DeviceDescription {
 
   int numa_node_;
   int core_count_;
+  int fpus_per_core_;
   bool ecc_enabled_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(DeviceDescription);
@@ -440,6 +445,9 @@ class DeviceDescriptionBuilder {
 
   void set_numa_node(int value) { device_description_->numa_node_ = value; }
   void set_core_count(int value) { device_description_->core_count_ = value; }
+  void set_fpus_per_core(int value) {
+    device_description_->fpus_per_core_ = value;
+  }
   void set_ecc_enabled(bool value) {
     device_description_->ecc_enabled_ = value;
   }

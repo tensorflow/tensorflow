@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
 
@@ -476,6 +476,7 @@ cc_library(
         "@stablehlo//:base",
         "@stablehlo//:broadcast_utils",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_type_inference",
     ],
 )
 
@@ -1277,47 +1278,32 @@ cc_library(
 )
 
 cc_library(
-    name = "gml_st_pipeline",
-    srcs = ["lib/Transforms/gml_st_pipeline.cc"],
-    hdrs = ["include/mlir-hlo/Transforms/gml_st_pipeline.h"],
-    deps = [
-        ":all_passes",
-        ":gml_st_passes",
-        ":mhlo_passes",
-        "@llvm-project//mlir:AffineToStandard",
-        "@llvm-project//mlir:BufferizationTransforms",
-        "@llvm-project//mlir:LinalgTransforms",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:SCFToControlFlow",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "gml_st_passes",
     srcs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h.inc",
         "include/mlir-hlo/Dialect/gml_st/transforms/transforms.h",
-        "lib/Dialect/gml_st/transforms/bufferize_tiled_loop.cc",
         "lib/Dialect/gml_st/transforms/collapse_materialize_ops.cc",
-        "lib/Dialect/gml_st/transforms/compose_set_ops.cc",
         "lib/Dialect/gml_st/transforms/fusion.cc",
         "lib/Dialect/gml_st/transforms/gml_st_to_gpu.cc",
         "lib/Dialect/gml_st/transforms/gml_st_to_scf.cc",
+        "lib/Dialect/gml_st/transforms/linalg_utils.cc",
         "lib/Dialect/gml_st/transforms/tiling.cc",
         "lib/Dialect/gml_st/transforms/tiling_cwise.cc",
+        "lib/Dialect/gml_st/transforms/tiling_cwise_gpu_warps.cc",
         "lib/Dialect/gml_st/transforms/tiling_reduction.cc",
         "lib/Dialect/gml_st/transforms/tiling_softmax.cc",
+        "lib/Dialect/gml_st/transforms/transform_matmul_for_cpu.cc",
+        "lib/Dialect/gml_st/transforms/transform_scatter_for_cpu.cc",
         "lib/Dialect/gml_st/transforms/vectorization.cc",
     ],
     hdrs = [
         "include/mlir-hlo/Dialect/gml_st/transforms/fusion.h",
+        "include/mlir-hlo/Dialect/gml_st/transforms/linalg_utils.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/passes.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/rewriters.h",
         "include/mlir-hlo/Dialect/gml_st/transforms/tiling.h",
     ],
     deps = [
-        ":compose_set_interface",
         ":gml_st",
         ":gml_st_passes_inc_gen",
         ":gml_st_transforms",
@@ -1335,6 +1321,7 @@ cc_library(
         "@llvm-project//mlir:BufferizationTransforms",
         "@llvm-project//mlir:ComplexDialect",
         "@llvm-project//mlir:ControlFlowDialect",
+        "@llvm-project//mlir:DestinationStyleOpInterface",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
@@ -1416,7 +1403,6 @@ cc_binary(
         ":all_passes",
         ":gml_st",
         ":gml_st_passes",
-        ":gml_st_pipeline",
         ":gml_st_test_passes",
         ":hlo_dialect_registration",
         ":lhlo",
@@ -1528,7 +1514,6 @@ gentbl_cc_library(
     td_srcs = [
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td",
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td",
     ],
     deps = [":gml_st_ops_td_files"],
 )
@@ -1539,7 +1524,6 @@ cc_library(
     hdrs = ["include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"],
     includes = ["include"],
     deps = [
-        ":compose_set_interface",
         ":gml_st_ops_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
@@ -1611,6 +1595,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AffineDialect",
         "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:DestinationStyleOpInterface",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgDialect",
@@ -1619,40 +1604,6 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
-    ],
-)
-
-gentbl_cc_library(
-    name = "compose_set_interface_inc_gen",
-    compatible_with = get_compatible_with_cloud(),
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            ["-gen-op-interface-decls"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc",
-        ),
-        (
-            ["-gen-op-interface-defs"],
-            "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc",
-        ),
-    ],
-    tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.td",
-    deps = ["@llvm-project//mlir:OpBaseTdFiles"],
-)
-
-cc_library(
-    name = "compose_set_interface",
-    srcs = [
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.cc.inc",
-        "include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h.inc",
-        "lib/Dialect/gml_st/transforms/compose_set_interface.cc",
-    ],
-    hdrs = ["include/mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"],
-    includes = ["include"],
-    deps = [
-        ":compose_set_interface_inc_gen",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -1763,6 +1714,7 @@ cc_library(
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ArithUtils",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:DestinationStyleOpInterface",
         "@llvm-project//mlir:DialectUtils",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
@@ -1785,6 +1737,7 @@ cc_library(
     deps = [
         ":thlo",
         "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:DestinationStyleOpInterface",
     ],
 )
 

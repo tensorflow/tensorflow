@@ -97,6 +97,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
@@ -135,6 +136,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/mlir_layout_resolution.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -298,19 +300,100 @@ se::Platform::Id CpuAotCompilationOptions::PlatformId() const {
 
 CpuXlaRuntimeAotCompilationResult::CpuXlaRuntimeAotCompilationResult(
     HloModuleProto hlo, const std::string& obj_file,
-    const std::string& mlir_module, const BufferAssignment& buffer_assignment,
-    XlaFrameworkMapping xla_framework_mapping) {
+    const std::string& mlir_module, XlaFrameworkMapping xla_framework_mapping) {
   XlaRuntimeExecutableProto xla_runtime_executable;
   *xla_runtime_executable.mutable_hlo_module_proto() = hlo;
   xla_runtime_executable.set_obj_file(obj_file);
   xla_runtime_executable.set_mlir_module(mlir_module);
+
   *xla_runtime_cpu_executable_.mutable_xla_runtime_executable() =
       xla_runtime_executable;
-
   *xla_runtime_cpu_executable_.mutable_xla_framework_mapping() =
       xla_framework_mapping.ToProto();
-  *xla_runtime_cpu_executable_.mutable_buffer_assignment() =
-      buffer_assignment.ToProto();
+}
+
+namespace {
+
+namespace runtime = ::xla::runtime;
+
+class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
+ public:
+  FlattenTuplesAndBufferizeTypeConverter() {
+    addConversion(
+        [](mlir::Type type, mlir::SmallVectorImpl<mlir::Type>& converted)
+            -> mlir::LogicalResult {
+          mlir::bufferization::BufferizeTypeConverter bufferize;
+          auto tuple_type = type.dyn_cast<mlir::TupleType>();
+          if (!tuple_type) {
+            converted.push_back(bufferize.convertType(type));
+            return mlir::success();
+          }
+          // TODO(b/249078472): update this expansion to support nested tuples.
+          converted.append(llvm::to_vector(llvm::map_range(
+              tuple_type.getTypes(),
+              [&](mlir::Type t) { return bufferize.convertType(t); })));
+          return mlir::success();
+        });
+  }
+};
+
+runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
+  runtime::CpuPipelineOptions copts;
+  runtime::JitExecutable::Options opts;
+  opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        dialects->insert<mlir::mhlo::MhloDialect, mlir::lmhlo::LmhloDialect>();
+        runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
+        RegisterHloXlaRuntimePipelineDialects(dialects);
+      };
+  opts.compiler.symbols_binding =
+      runtime::ToSymbolsBinding(PopulateXlaCpuCustomCall);
+  opts.compiler.create_compilation_pipeline =
+      [copts](xla::runtime::PassManager& passes) {
+        CreateDefaultHloXlaRuntimePipeline(passes);
+        passes->addPass(
+            mlir::bufferization::createBufferResultsToOutParamsPass());
+        passes->addNestedPass<mlir::func::FuncOp>(
+            mlir::bufferization::createBufferDeallocationPass());
+        runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
+      };
+  opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
+      FlattenTuplesAndBufferizeTypeConverter());
+  return opts;
+}
+
+}  // namespace
+
+StatusOr<std::unique_ptr<Executable>>
+CpuXlaRuntimeAotCompilationResult::LoadExecutable(
+    Compiler* compiler, se::StreamExecutor* executor) const {
+  XlaRuntimeExecutableProto xla_runtime_executable =
+      xla_runtime_cpu_executable_.xla_runtime_executable();
+  TF_ASSIGN_OR_RETURN(HloModuleConfig hlo_module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          xla_runtime_executable.hlo_module_proto(),
+                          GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(xla_runtime_executable.hlo_module_proto(),
+                                 hlo_module_config));
+
+  XlaFrameworkMapping xla_framework_mapping;
+  xla_framework_mapping.FromProto(
+      xla_runtime_cpu_executable_.xla_framework_mapping());
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferAssignment> buffer_assignment,
+                      compiler->AssignBuffers(hlo_module.get()));
+
+  // TODO(b/232263665): JitOptions should be used only for JIT case because it
+  // has details irrelevant to AOT.
+  runtime::JitExecutable::Options opts = GetXlaRuntimeJitExecutableOptions();
+
+  return CpuExecutable::LoadFromObjFile(
+      std::move(hlo_module), xla_runtime_executable.obj_file(),
+      xla_runtime_executable.mlir_module(), std::move(buffer_assignment),
+      xla_framework_mapping, opts);
 }
 
 CpuAotCompilationResult::CpuAotCompilationResult(
@@ -971,8 +1054,8 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::mhlo::createConvertToSignlessPass());
 
   // Transform scatter ops.
-  pm.addNestedPass<mlir::func::FuncOp>(createTransformScatterForCpuPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::gml_st::createComposeSetOpsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::gml_st::createTransformScatterForCpuPass());
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
@@ -1367,54 +1450,10 @@ CpuCompiler::CompileLegacyCpuExecutable(std::unique_ptr<HloModule> module) {
 
 namespace {
 
-namespace runtime = ::xla::runtime;
-
-class FlattenTuplesAndBufferizeTypeConverter : public mlir::TypeConverter {
- public:
-  FlattenTuplesAndBufferizeTypeConverter() {
-    addConversion(
-        [](mlir::Type type, mlir::SmallVectorImpl<mlir::Type>& converted)
-            -> mlir::LogicalResult {
-          mlir::bufferization::BufferizeTypeConverter bufferize;
-          auto tuple_type = type.dyn_cast<mlir::TupleType>();
-          if (!tuple_type) {
-            converted.push_back(bufferize.convertType(type));
-            return mlir::success();
-          }
-          // TODO(b/249078472): update this expansion to support nested tuples.
-          converted.append(llvm::to_vector(llvm::map_range(
-              tuple_type.getTypes(),
-              [&](mlir::Type t) { return bufferize.convertType(t); })));
-          return mlir::success();
-        });
-  }
-};
-
 StatusOr<std::unique_ptr<XlaRuntimeCpuExecutable>> GetXlaRuntimeCpuExecutable(
     mlir::ModuleOp mlir_module, absl::string_view entry_point,
     const XlaFrameworkMapping& xla_framework_mapping) {
-  runtime::CpuPipelineOptions copts;
-
-  runtime::JitExecutable::Options opts;
-  opts.specialization = runtime::JitExecutable::Specialization::kDisabled;
-  opts.compiler.register_dialects =
-      [](xla::runtime::DialectRegistry& dialects) {
-        dialects->insert<mlir::mhlo::MhloDialect>();
-        runtime::RegisterDefaultXlaCpuRuntimeDialects(dialects);
-        RegisterHloXlaRuntimePipelineDialects(dialects);
-      };
-  opts.compiler.create_compilation_pipeline =
-      [copts](xla::runtime::PassManager& passes) {
-        CreateDefaultHloXlaRuntimePipeline(passes);
-        passes->addPass(
-            mlir::bufferization::createBufferResultsToOutParamsPass());
-        passes->addNestedPass<mlir::func::FuncOp>(
-            mlir::bufferization::createBufferDeallocationPass());
-        runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
-      };
-  opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
-      FlattenTuplesAndBufferizeTypeConverter());
-
+  runtime::JitExecutable::Options opts = GetXlaRuntimeJitExecutableOptions();
   std::string serialized_mlir;
   llvm::raw_string_ostream os(serialized_mlir);
   mlir_module.print(os);
@@ -1794,8 +1833,7 @@ StatusOr<std::unique_ptr<AotCompilationResult>> CpuCompiler::Export(
 
   std::unique_ptr<AotCompilationResult> result =
       std::make_unique<CpuXlaRuntimeAotCompilationResult>(
-          module_proto, obj_file, mlir_module,
-          cpu_executable->buffer_assignment(), xla_framework_mapping);
+          module_proto, obj_file, mlir_module, xla_framework_mapping);
   return result;
 }
 

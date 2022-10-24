@@ -19,6 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/stream_executor/device_mem_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/common_runtime/device/device_host_allocator.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
@@ -30,16 +32,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_virtual_mem_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
-#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/framework/bfc_allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 
@@ -110,7 +112,7 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
   // TODO(imintz): Remove the cuMemAlloc capability of this allocator.
   if (options.per_process_gpu_memory_fraction() > 1.0 ||
       options.experimental().use_unified_memory()) {
-    return new DeviceMemAllocator(executor, platform_device_id,
+    return new se::DeviceMemAllocator(executor, platform_device_id,
                                   /*use_unified_memory=*/true, alloc_visitors,
                                   {});
   } else {
@@ -140,11 +142,11 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
         .release();
   }
 #else
-  return absl::WrapUnique(
-      new DeviceMemAllocator(executor, platform_device_id,
-                             (options.per_process_gpu_memory_fraction() > 1.0 ||
-                              options.experimental().use_unified_memory()),
-                             alloc_visitors, {}));
+  return absl::WrapUnique(new se::DeviceMemAllocator(
+      executor, platform_device_id,
+      (options.per_process_gpu_memory_fraction() > 1.0 ||
+       options.experimental().use_unified_memory()),
+      alloc_visitors, {}));
 #endif
 }
 
@@ -347,19 +349,19 @@ Allocator* GPUProcessState::GetGpuHostAllocator(int numa_node) {
         gpu_host_free_visitors_[numa_node]);
     // TODO(zheng-xq): evaluate whether 64GB by default is the best choice.
     int64_t gpu_host_mem_limit_in_mb = -1;
-    Status status = ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
-                                        1LL << 16 /*64GB max by default*/,
-                                        &gpu_host_mem_limit_in_mb);
+    Status status = tsl::ReadInt64FromEnvVar("TF_GPU_HOST_MEM_LIMIT_IN_MB",
+                                             1LL << 16 /*64GB max by default*/,
+                                             &gpu_host_mem_limit_in_mb);
     if (!status.ok()) {
       LOG(ERROR) << "GetGpuHostAllocator: " << status.error_message();
     }
     int64_t gpu_host_mem_limit = gpu_host_mem_limit_in_mb * (1LL << 20);
 
-    BFCAllocator::Options allocator_opts;
+    tsl::BFCAllocator::Options allocator_opts;
     allocator_opts.allow_growth = true;
-    Allocator* allocator =
-        new BFCAllocator(absl::WrapUnique(sub_allocator), gpu_host_mem_limit,
-                         /*name=*/"gpu_host_bfc", allocator_opts);
+    tsl::Allocator* allocator = new tsl::BFCAllocator(
+        absl::WrapUnique(sub_allocator), gpu_host_mem_limit,
+        /*name=*/"gpu_host_bfc", allocator_opts);
 
     if (LogMemory::IsEnabled() && !allocator->TracksAllocationSizes()) {
       // Wrap the allocator to track allocation ids for better logging

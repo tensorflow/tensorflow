@@ -675,6 +675,22 @@ typedef struct TfLiteDelegateParams {
   TfLiteIntArray* output_tensors;
 } TfLiteDelegateParams;
 
+// WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteOpaqueDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateOpaqueDelegateParams` function in `subgraph.cc`
+// details.
+typedef struct TfLiteOpaqueDelegateParams {
+  struct TfLiteOpaqueDelegateStruct* delegate;
+  void* delegate_data;
+  TfLiteIntArray* nodes_to_replace;
+  TfLiteIntArray* input_tensors;
+  TfLiteIntArray* output_tensors;
+} TfLiteOpaqueDelegateParams;
+
 typedef struct TfLiteContext {
   // Number of tensors in the context.
   size_t tensors_size;

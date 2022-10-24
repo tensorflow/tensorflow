@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/data/compression_utils.h"
 
 #include <limits>
+#include <string>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -26,31 +28,32 @@ namespace data {
 
 Status CompressElement(const std::vector<Tensor>& element,
                        CompressedElement* out) {
-  // Step 1: Determine the total uncompressed size. This requires serializing
-  // non-memcopyable tensors, which we save to use again later.
-  std::vector<TensorProto> non_memcpy_components;
-  size_t total_size = 0;
-  for (auto& component : element) {
-    if (DataTypeCanUseMemcpy(component.dtype())) {
-      const TensorBuffer* buffer = DMAHelper::buffer(&component);
-      if (buffer) {
-        total_size += buffer->size();
-      }
-    } else {
-      non_memcpy_components.emplace_back();
-      component.AsProtoTensorContent(&non_memcpy_components.back());
-      total_size += non_memcpy_components.back().ByteSizeLong();
+  // Determine the total amount of non`memcpy`able tensor data.
+  std::vector<TensorProto> nonmemcpyable_components;
+  size_t total_nonmemcpyable_size = 0;
+  for (const auto& component : element) {
+    if (!DataTypeCanUseMemcpy(component.dtype())) {
+      nonmemcpyable_components.emplace_back();
+      component.AsProtoTensorContent(&nonmemcpyable_components.back());
+      total_nonmemcpyable_size +=
+          nonmemcpyable_components.back().ByteSizeLong();
     }
   }
 
-  // Step 2: Write the tensor data to a buffer, and compress that buffer.
-  // We use tstring for access to resize_uninitialized.
-  tstring uncompressed;
-  uncompressed.resize_uninitialized(total_size);
-  // Position in `uncompressed` to write the next component.
-  char* position = uncompressed.mdata();
-  int non_memcpy_component_index = 0;
-  for (auto& component : element) {
+  // Build an array of `iovec`s pointing to the tensor data and compress it.
+  // - `memcpy`able data is pointed to directly using a `TensorBuffer` and does
+  // not take a copy before compression.
+  // - Non`memcpy`able data is serialized and written into a string (a `tstring`
+  // for access to `resize_uninitialized`) and does take a copy before
+  // compression.
+  std::vector<struct iovec> iov(element.size());
+  size_t total_size = 0;
+  tstring nonmemcpyable;
+  nonmemcpyable.resize_uninitialized(total_nonmemcpyable_size);
+  char* nonmemcpyable_pos = nonmemcpyable.mdata();
+  int nonmemcpyable_component_index = 0;
+  for (int i = 0; i < element.size(); ++i) {
+    const auto& component = element[i];
     CompressedComponentMetadata* metadata =
         out->mutable_component_metadata()->Add();
     metadata->set_dtype(component.dtype());
@@ -58,24 +61,29 @@ Status CompressElement(const std::vector<Tensor>& element,
     if (DataTypeCanUseMemcpy(component.dtype())) {
       const TensorBuffer* buffer = DMAHelper::buffer(&component);
       if (buffer) {
-        memcpy(position, buffer->data(), buffer->size());
+        iov[i].iov_base = buffer->data();
+        iov[i].iov_len = buffer->size();
         metadata->set_tensor_size_bytes(buffer->size());
       }
     } else {
-      TensorProto& proto = non_memcpy_components[non_memcpy_component_index++];
-      proto.SerializeToArray(position, proto.ByteSizeLong());
+      TensorProto& proto =
+          nonmemcpyable_components[nonmemcpyable_component_index++];
+      proto.SerializeToArray(nonmemcpyable_pos, proto.ByteSizeLong());
+      iov[i].iov_base = nonmemcpyable_pos;
+      iov[i].iov_len = proto.ByteSizeLong();
+      nonmemcpyable_pos += proto.ByteSizeLong();
       metadata->set_tensor_size_bytes(proto.ByteSizeLong());
     }
-    position += metadata->tensor_size_bytes();
+    total_size += iov[i].iov_len;
   }
   if (total_size > kuint32max) {
     return errors::OutOfRange("Encountered dataset element of size ",
                               total_size, ", exceeding the 4GB Snappy limit.");
   }
-  DCHECK_EQ(position, uncompressed.mdata() + total_size);
-
-  if (!port::Snappy_Compress(uncompressed.mdata(), total_size,
-                             out->mutable_data())) {
+  DCHECK_EQ(nonmemcpyable_pos,
+            nonmemcpyable.mdata() + total_nonmemcpyable_size);
+  if (!port::Snappy_CompressFromIOVec(iov.data(), total_size,
+                                      out->mutable_data())) {
     return errors::Internal("Failed to compress using snappy.");
   }
   VLOG(3) << "Compressed element from " << total_size << " bytes to "

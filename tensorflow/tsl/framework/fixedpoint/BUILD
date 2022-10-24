@@ -1,5 +1,5 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -48,7 +48,7 @@ filegroup(
     compatible_with = get_compatible_with_portable(),
     visibility = [
         "//tensorflow:__subpackages__",
-        "//tensorflow:internal",
+        "//tensorflow/tsl:internal",
     ],
 )
 

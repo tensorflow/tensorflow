@@ -25,7 +25,8 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 
@@ -224,11 +225,11 @@ struct AutoShardingOption {
 
   Status CheckAndSetup() {
     if (device_mesh_shape.empty()) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           "device_mesh_shape is empty and it needs to be specified.");
     }
     if (device_mesh_shape.size() > 3) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           absl::StrCat("Not supported: the length of device_mesh_shape is "
                        "greater than 3, actual length: ",
                        device_mesh_shape.size()));
@@ -236,7 +237,7 @@ struct AutoShardingOption {
     // All values in device_mesh_shape must be greater than 0.
     if (absl::c_any_of(device_mesh_shape,
                        [](const int64_t i) { return i <= 0; })) {
-      return tensorflow::errors::OutOfRange(
+      return tsl::errors::OutOfRange(
           absl::StrCat("device_mesh_shape values need to be larger than 0: "
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
@@ -266,7 +267,7 @@ struct AutoShardingOption {
 
     if (device_mesh_shape.size() != device_mesh_alpha.size() ||
         device_mesh_shape.size() != device_mesh_beta.size()) {
-      return tensorflow::errors::OutOfRange(absl::StrCat(
+      return tsl::errors::OutOfRange(absl::StrCat(
           "Sizes do not match: length of device_mesh_shape is ",
           device_mesh_shape.size(), ", length of device_mesh_alpha is ",
           device_mesh_alpha.size(), ", length of device_mesh_beta is ",
@@ -288,7 +289,7 @@ struct AutoShardingOption {
     } else {
       // Checks whether device_mesh_shape and device_mesh_ids are compatible.
       if (total_devices != device_mesh_ids.size()) {
-        return tensorflow::errors::OutOfRange(absl::StrCat(
+        return tsl::errors::OutOfRange(absl::StrCat(
             "Expect the product of device_mesh_shape to be the same as the "
             "size of device_mesh_ids, but we have total devices = ",
             total_devices,

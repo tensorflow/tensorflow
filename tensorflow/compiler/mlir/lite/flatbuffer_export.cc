@@ -1520,7 +1520,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     // make the Buffer empty apart from setting the buffer_idx=0 in the
     // Tensor. This does not seem to affect runtime behavior for RNN/LSTM,
     // but would be good for reducing memory footprint.
-    if (auto* inst = value.getDefiningOp()) {
+    if (value.getDefiningOp()) {
       auto buffer_or = BuildBuffer(value);
       if (!buffer_or) return false;
       buffers_.push_back(*buffer_or);

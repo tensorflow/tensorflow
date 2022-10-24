@@ -1775,8 +1775,6 @@ class MklQuantizedConvOp
                   !(bias_dt == DT_FLOAT || bias_dt == DT_QINT32)
               ? 2
               : 0;
-      int summand_min_max_idx_offset =
-          this->get_fuse_add() && summand_dt != DT_FLOAT ? 2 : 0;
       min_input_idx_ =
           non_minmax_arg_idx_base + bias_idx_offset + summand_idx_offset;
       max_input_idx_ = min_input_idx_ + 1;

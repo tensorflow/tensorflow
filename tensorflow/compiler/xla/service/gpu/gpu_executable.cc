@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/diagnostics.h"
@@ -707,10 +708,9 @@ static Status ExecuteXlaRuntime(
   executable.Execute(call_frame, opts);
 
   if (auto st = executable.ReturnResults(converter, &call_frame); !st.ok()) {
-    return InternalError(
-        "Failed to execute XLA Runtime executable: %s.",
-        tfrt::StrCat(st.message(),
-                     diagnostic.empty() ? "" : tfrt::StrCat(": ", diagnostic)));
+    return InternalError("Failed to execute XLA Runtime executable: %s%s%s.",
+                         st.message(), diagnostic.empty() ? "" : ": ",
+                         diagnostic);
   }
 
   return MaybeSyncAndProfile(
@@ -785,9 +785,8 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
       MaybeOwningDeviceMemory* maybe_owning_memory =
           [&]() -> xla::MaybeOwningDeviceMemory* {
         // ScopedBuffer is never an owned buffer.
-        if (auto* unowned_shapedbuffers =
-                std::get_if<absl::Span<const ShapedBuffer* const>>(
-                    &arguments)) {
+        if (std::holds_alternative<absl::Span<const ShapedBuffer* const>>(
+                arguments)) {
           return nullptr;
         } else {
           auto unowned_execution_input =
@@ -1099,7 +1098,7 @@ StatusOr<std::unique_ptr<Executable>> GpuExecutable::LoadFromObjFile(
     auto memref = type.dyn_cast<mlir::MemRefType>();
     if (!memref || !memref.hasStaticShape() || memref.getRank() != 1)
       return InternalError("Illegal entrypoint argument type: %s",
-                           tfrt::StrCat(type));
+                           mlir::debugString(type));
     buffer_sizes.push_back(memref.getDimSize(0));
   }
 

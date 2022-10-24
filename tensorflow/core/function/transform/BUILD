@@ -45,6 +45,7 @@ py_strict_test(
     deps = [
         ":transform",
         "//tensorflow/core/function/testing:test_pass_py",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",

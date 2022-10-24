@@ -9,7 +9,7 @@ load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_libtpu", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "if_libtpu", "tsl_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -228,7 +228,7 @@ cc_library(
 cc_library(
     name = "asm_compiler_header",
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
@@ -268,7 +268,7 @@ cc_library(
     name = "asm_compiler",
     srcs = if_gpu_is_configured(["asm_compiler.cc"]),
     hdrs = if_gpu_is_configured(["asm_compiler.h"]),
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
@@ -312,7 +312,7 @@ cc_library(
     name = "redzone_allocator",
     srcs = if_gpu_is_configured(["redzone_allocator.cc"]),
     hdrs = if_gpu_is_configured(["redzone_allocator.h"]),
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = [
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
         "//tensorflow/compiler/xla/stream_executor:__subpackages__",

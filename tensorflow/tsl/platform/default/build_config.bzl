@@ -5,15 +5,8 @@ load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load(
     "//tensorflow/tsl:tsl.bzl",
     "clean_dep",
-    "if_libtpu",
     "if_not_windows",
     "if_tsl_link_protobuf",
-)
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
 )
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 
@@ -247,7 +240,7 @@ def cc_proto_library(
 
     if use_grpc_plugin:
         cc_libs += select({
-            clean_dep("//tensorflow:linux_s390x"): ["//external:grpc_lib_unsecure"],
+            clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
             "//conditions:default": ["//external:grpc_lib"],
         })
 
@@ -330,7 +323,7 @@ def cc_grpc_library(
     proto_targets += srcs
 
     extra_deps += select({
-        clean_dep("//tensorflow:linux_s390x"): ["//external:grpc_lib_unsecure"],
+        clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
         "//conditions:default": ["//external:grpc_lib"],
     })
 
@@ -677,17 +670,14 @@ def tf_additional_lib_hdrs():
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]
 
-def tf_protos_all_impl():
-    return [
-        clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
-        clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
-        clean_dep("//tensorflow/core:protos_all_cc_impl"),
-        clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
-    ]
-
 def tf_protos_all():
     return if_static(
-        extra_deps = tf_protos_all_impl(),
+        extra_deps = [
+            clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/core:protos_all_cc_impl"),
+            clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
+        ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
     )
 
@@ -739,9 +729,9 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
     return select({
-        clean_dep("//tensorflow:android"): [],
-        clean_dep("//tensorflow:ios"): [],
-        clean_dep("//tensorflow:linux_s390x"): [],
+        clean_dep("//tensorflow/tsl:android"): [],
+        clean_dep("//tensorflow/tsl:ios"): [],
+        clean_dep("//tensorflow/tsl:linux_s390x"): [],
         "//conditions:default": [
             "//tensorflow/core/platform/cloud:gcs_file_system",
         ],
@@ -765,29 +755,6 @@ def tf_pyclif_proto_library(
         **kwargs):
     native.filegroup(name = name)
     native.filegroup(name = name + "_pb2")
-
-def tf_additional_binary_deps():
-    return [
-        clean_dep("@nsync//:nsync_cpp"),
-        # TODO(allenl): Split these out into their own shared objects. They are
-        # here because they are shared between contrib/ op shared objects and
-        # core.
-        clean_dep("//tensorflow/core/kernels:lookup_util"),
-        clean_dep("//tensorflow/core/util/tensor_bundle"),
-    ] + if_cuda(
-        [
-            clean_dep("//tensorflow/compiler/xla/stream_executor:cuda_platform"),
-        ],
-    ) + if_rocm(
-        [
-            clean_dep("//tensorflow/compiler/xla/stream_executor:rocm_platform"),
-            clean_dep("//tensorflow/compiler/xla/stream_executor/rocm:rocm_rpath"),
-        ],
-    ) + if_mkl_ml(
-        [
-            clean_dep("//third_party/mkl:intel_binary_blob"),
-        ],
-    )
 
 def tf_additional_rpc_deps():
     return []
@@ -890,15 +857,9 @@ def if_llvm_aarch64_available(then, otherwise = []):
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
-        "//tensorflow:linux_s390x": then,
+        "//tensorflow/tsl:linux_s390x": then,
         "//conditions:default": otherwise,
     })
-
-def tf_tpu_dependencies():
-    return if_libtpu(["//tensorflow/core/tpu/kernels"])
-
-def tf_dtensor_tpu_dependencies():
-    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
 
 def tf_cuda_libdevice_path_deps():
     return tf_platform_deps("cuda_libdevice_path")

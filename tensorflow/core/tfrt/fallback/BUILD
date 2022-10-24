@@ -84,6 +84,18 @@ cc_library(
 )
 
 cc_library(
+    name = "op_kernel_runner_cache",
+    srcs = ["op_kernel_runner_cache.cc"],
+    hdrs = ["op_kernel_runner_cache.h"],
+    deps = [
+        ":op_kernel_runner",
+        "//tensorflow/core/framework:node_def_util",
+        "@com_google_absl//absl/strings",
+        "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
     name = "cost_recorder",
     srcs = ["cost_recorder.cc"],
     hdrs = ["cost_recorder.h"],

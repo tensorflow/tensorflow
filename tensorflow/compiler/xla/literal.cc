@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/util/tensor_bundle/byte_swap_array.h"
@@ -1759,7 +1759,7 @@ StatusOr<Literal> LiteralBase::BitcastConvert(const Shape& dest_shape) const {
               root_piece().size_bytes());
 
   // Perform the reshape on little endian encoding even on big endian machines.
-  if (!tensorflow::port::kLittleEndian) {
+  if (!kLittleEndian) {
     // Swap byte ordering as per the input data type.
     size_t input_elem_size =
         ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());

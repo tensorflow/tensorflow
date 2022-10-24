@@ -867,9 +867,8 @@ class OwnedIterator(IteratorBase):
 
     return {"ITERATOR": _saveable_factory}
 
-  def __tf_tracing_type__(self, signature_context):
-    return signature_context.make_reference_type(self._type_spec,
-                                                 self._iterator_resource._id)  # pylint:disable=protected-access
+  def __tf_tracing_type__(self, _):
+    return self._type_spec
 
 
 @tf_export("data.IteratorSpec", v1=[])
@@ -922,11 +921,6 @@ class IteratorSpec(type_spec.TypeSpec):
   @staticmethod
   def from_value(value):
     return IteratorSpec(value.element_spec)  # pylint: disable=protected-access
-
-  def __tf_tracing_type__(self, signature_context):
-    # TODO(b/202772221): Validate and enforce this assumption of uniqueness per
-    # spec instance.
-    return signature_context.make_reference_type(self, id(self))
 
 
 # TODO(b/71645805): Expose trackable stateful objects from dataset.

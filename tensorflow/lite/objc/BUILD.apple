@@ -63,8 +63,8 @@ objc_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_allowlist(),
     deps = [
-        "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
+        "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",

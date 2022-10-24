@@ -495,7 +495,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         // we have added the fetched element to the `buffer_` else there will be
         // local state that may be missed by SaveInternal.
         mutex_lock input_l(input_mu_);
-        bool end_of_sequence;
+        bool end_of_sequence = false;
         BufferElement buffer_element;
         {
           profiler::TraceMe traceme(

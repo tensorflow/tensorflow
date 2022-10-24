@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
     "tsl_cc_test",
