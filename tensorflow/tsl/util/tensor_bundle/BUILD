@@ -2,7 +2,7 @@ load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 package(
     default_visibility = [

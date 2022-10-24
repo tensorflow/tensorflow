@@ -117,6 +117,12 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
 
+  // Returns a list of parameter OpSharding protos.
+  std::optional<std::vector<OpSharding>> GetParameterShardings() const;
+
+  // Returns a list of output OpSharding protos.
+  std::optional<std::vector<OpSharding>> GetOutputShardings() const;
+
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.
   virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {

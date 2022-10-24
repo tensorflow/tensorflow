@@ -708,13 +708,25 @@ ENTRY main {
   auto hlo_module =
       ParseAndReturnVerifiedModule(kHloString, ConfigWithoutLayoutAssignment())
           .value();
+<<<<<<< HEAD
   auto expected_ir = R"(
 ; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
 ; CHECK: load <4 x i16>
 ; CHECK-COUNT-4: load
+=======
+  std::string expected_ir = R"(
+; CHECK-LABEL: define KERNEL_ANNOTATION @fusion
+; CHECK: load <4 x i16>
+; CHECK-COUNT-4: load PLATFORM_SPECIFIC_TYPE
+>>>>>>> upstream/master
 ; CHECK-NOT: load
 ; CHECK: }
 )";
+
+  expected_ir = absl::StrReplaceAll(
+      expected_ir,
+      {{"PLATFORM_SPECIFIC_TYPE", is_built_with_rocm_ ? "i32" : "float"}});
+
   CompileAndVerifyIr(std::move(hlo_module),
                      MakePlatformSpecificLlvm(expected_ir),
                      /*match_optimized_ir=*/true);
@@ -876,7 +888,7 @@ TEST_F(GpuKernelTilingTest, ReductionInputTooLarge) {
   )";
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   Status status = CompileToExecutable(std::move(hlo_module)).status();
-  EXPECT_EQ(status.code(), tensorflow::error::Code::FAILED_PRECONDITION);
+  EXPECT_EQ(status.code(), tsl::error::Code::FAILED_PRECONDITION);
   EXPECT_THAT(
       status.error_message(),
       ::testing::HasSubstr(

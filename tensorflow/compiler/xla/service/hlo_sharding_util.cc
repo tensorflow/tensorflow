@@ -1366,7 +1366,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
   // We only handle computations with 2 parameters and only 1 calculation.
   if (computation->instruction_count() != 3) {
     return Status(
-        tensorflow::error::Code::INVALID_ARGUMENT,
+        tsl::error::Code::INVALID_ARGUMENT,
         "Expected scatter reduce computation with 2 parameters and only 1 "
         "calculation");
   }
@@ -1392,7 +1392,7 @@ IdentityValueAndHloOpcodeForScatterReduceComputation(
                           root_instruction->opcode());
   }
 
-  return Status(tensorflow::error::Code::INVALID_ARGUMENT,
+  return Status(tsl::error::Code::INVALID_ARGUMENT,
                 "Expected scatter reduce computation which is "
                 "add/or/multiply/add/min/max");
 }

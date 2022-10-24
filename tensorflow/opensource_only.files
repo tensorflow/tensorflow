@@ -33,6 +33,7 @@ tensorflow/go/README.md:
 tensorflow/go/op/wrappers.go:
 tensorflow/java/README.md:
 tensorflow/java/src/main/native/BUILD:
+tensorflow/lite/core/c/special_rules.bzl:
 tensorflow/lite/core/shims/BUILD:
 tensorflow/lite/core/shims/c/builtin_op_data.h:
 tensorflow/lite/core/shims/c/c_api.h:
@@ -236,7 +237,6 @@ third_party/gpus/rocm/rocm_config.h.tpl:
 third_party/gpus/rocm_configure.bzl:
 third_party/grpc/BUILD:
 third_party/icu/udata.patch:
-third_party/libxsmm.BUILD:
 third_party/linenoise.BUILD:
 third_party/llvm_openmp/BUILD:
 third_party/llvm_openmp/cmake_vars.bzl:

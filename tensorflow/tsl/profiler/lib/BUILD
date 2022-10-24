@@ -1,6 +1,6 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cc_test")
 load(
     "//tensorflow/tsl/profiler/builds:build_config.bzl",
@@ -36,6 +36,22 @@ filegroup(
         "context_types.h",
     ],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "profiler_controller",
+    srcs = ["profiler_controller.cc"],
+    hdrs = ["profiler_controller.h"],
+    visibility = [
+        "//tensorflow/core/profiler/lib:__pkg__",
+    ],
+    deps = [
+        ":profiler_interface",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:status",
+    ],
 )
 
 cc_library(
@@ -93,8 +109,8 @@ cc_library(
     hdrs = ["profiler_interface.h"],
     copts = tf_profiler_copts(),
     visibility = [
-        "//tensorflow:internal",
         "//tensorflow/core/profiler:internal",
+        "//tensorflow/tsl:internal",
     ],
     deps = [
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",

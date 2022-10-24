@@ -47,6 +47,8 @@ string DebugString(const DataType tf_type) {
       return "DT_INT8";
     case DT_BOOL:
       return "DT_BOOL";
+    case DT_UINT8:
+      return "DT_UINT8";
     default:
       return "Unknow TF DataType";
   }
@@ -64,6 +66,10 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
       return "kINT32";
     case nvinfer1::DataType::kBOOL:
       return "kBOOL";
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      return "kUINT8";
+#endif
     default:
       return "Invalid TRT data type";
   }
@@ -166,6 +172,11 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
       *trt_type = nvinfer1::DataType::kBOOL;
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case DT_UINT8:
+      *trt_type = nvinfer1::DataType::kUINT8;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Unsupported tensorflow data type ",
                                      DataTypeString(tf_type));
@@ -187,6 +198,11 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
 #if IS_TRT_VERSION_GE(8, 2, 0, 0)
     case nvinfer1::DataType::kBOOL:
       *tf_type = DT_BOOL;
+      break;
+#endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      *tf_type = DT_UINT8;
       break;
 #endif
     default:

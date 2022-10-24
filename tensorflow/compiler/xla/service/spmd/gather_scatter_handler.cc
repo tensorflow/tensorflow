@@ -199,12 +199,15 @@ StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
   const int64_t num_groups = indices.sharding().NumTiles(index_group_dims);
   const int64_t num_tiles = indices.sharding().TotalNumTiles();
   // Compute output sharding.
-  const HloSharding passthrough_sharding = hlo_sharding_util::
+  HloSharding passthrough_sharding = hlo_sharding_util::
       GatherOutputShardingFromIndexIndexPassthroughDimensions(
           indices.sharding(), gather);
   if (passthrough_sharding.IsTileMaximal()) {
     return nullptr;
   }
+  hlo_sharding_util::MergeShardingIfCompatible(
+      output_sharding, passthrough_sharding.NumTiles() + 1,
+      &passthrough_sharding);
   // Group shardings on index pass-through dimensions.
   const GroupedSharding output_grouped = hlo_sharding_util::GroupShardingOnDims(
       passthrough_sharding, output_group_dims);
@@ -232,7 +235,7 @@ StatusOr<HloInstruction*> PartitionGatherIndexPassthroughDimensions(
       PartitionGather(gather, per_group_operand, per_group_indices, pshape,
                       output_grouped.sharding, batch_dims, slice_sizes,
                       visitor));
-  pgather->set_sharding(hlo_sharding_util::UngroupSharding(output_grouped));
+  pgather->set_sharding(passthrough_sharding);
   VLOG(5) << "[Gather partitioning]: Partitioned as index only";
   return PartitionedHlo(pgather, gather->shape(), operand.state())
       .Reshard(output_sharding)
@@ -283,8 +286,9 @@ StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
     }
     // Merge the sharding from the instruction with the sharding suggested from
     // the operand sharding.
-    hlo_sharding_util::MergeSharding(output_sharding, &*maybe_passthrough,
-                                     /*may_combine_partial_sharding=*/true);
+    hlo_sharding_util::MergeShardingIfCompatible(
+        output_sharding, maybe_passthrough->NumTiles() + 1,
+        &*maybe_passthrough);
     // Group shardings on operand pass-through dimensions.
     const GroupedSharding output_grouped =
         hlo_sharding_util::GroupShardingOnDims(*maybe_passthrough,
@@ -309,7 +313,7 @@ StatusOr<HloInstruction*> PartitionGatherOperandPassthroughDimensions(
         PartitionGather(gather, per_group_operand, per_group_indices, pshape,
                         output_grouped.sharding, batch_dims, pslice_sizes,
                         visitor));
-    pgather->set_sharding(hlo_sharding_util::UngroupSharding(output_grouped));
+    pgather->set_sharding(*maybe_passthrough);
     VLOG(5) << "[Gather partitioning]: Partitioned as operand passthrough "
                "offset_dim";
     return PartitionedHlo(pgather, output_shape, operand.state())
@@ -1006,8 +1010,9 @@ StatusOr<HloInstruction*> PartitionScatterOperandPassthroughDimensions(
     }
     // Merge the sharding from update with the sharding suggested from the
     // operand sharding.
-    hlo_sharding_util::MergeSharding(updates[0].sharding(), &*maybe_passthrough,
-                                     /*may_combine_partial_sharding=*/true);
+    hlo_sharding_util::MergeShardingIfCompatible(
+        updates[0].sharding(), maybe_passthrough->NumTiles() + 1,
+        &*maybe_passthrough);
     // Group shardings on operand pass-through dimensions.
     const GroupedSharding update_grouped =
         hlo_sharding_util::GroupShardingOnDims(*maybe_passthrough,

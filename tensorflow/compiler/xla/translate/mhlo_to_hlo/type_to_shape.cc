@@ -82,14 +82,13 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
 }
 
 std::optional<DimLevelType> ConvertDimLevelType(
-    mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType dlt) {
+    mlir::sparse_tensor::DimLevelType dlt) {
   switch (dlt) {
-    case mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType::Singleton:
+    case mlir::sparse_tensor::DimLevelType::Singleton:
       return DimLevelType::DIM_SINGLETON;
-    case mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType::
-        Compressed:
+    case mlir::sparse_tensor::DimLevelType::Compressed:
       return DimLevelType::DIM_COMPRESSED;
-    case mlir::sparse_tensor::SparseTensorEncodingAttr::DimLevelType::Dense:
+    case mlir::sparse_tensor::DimLevelType::Dense:
       return DimLevelType::DIM_DENSE;
     default:
       return std::nullopt;

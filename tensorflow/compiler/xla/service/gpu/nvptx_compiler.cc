@@ -142,13 +142,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
-
-  // Find the fastest algorithm for GEMMs. Skip on Ampere and later as the
-  // algorithm goes unused.
-  if (!stream_exec->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
-          se::CudaComputeCapability::AMPERE)) {
-    post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
-  }
+  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
 
   // Transform TriangularSolve ops into custom-calls, so we can add temp
   // memory.
@@ -422,8 +416,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
-          if (maybe_cubin.status().code() ==
-              tensorflow::error::Code::NOT_FOUND) {
+          if (maybe_cubin.status().code() == tsl::error::Code::NOT_FOUND) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
               LOG(WARNING) << CantFindCudaMessage(
@@ -449,7 +442,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "using $PATH.",
                 hlo_module_config);
           } else if (maybe_cubin.status().code() !=
-                     tensorflow::error::Code::UNIMPLEMENTED) {
+                     tsl::error::Code::UNIMPLEMENTED) {
             // If unimplemented is returned, we fallback to the driver.
             LOG(FATAL) << "ptxas returned an error during compilation of ptx "
                           "to sass: '"

@@ -96,6 +96,15 @@ struct XlaBuilderFriend {
   static XlaOp BuildAllGatherDone(XlaBuilder* builder, const XlaOp operands,
                                   const Shape& shape);
 
+  static XlaOp BuildAllReduceStart(
+      XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
+      absl::Span<const ReplicaGroup> replica_groups = {},
+      const std::optional<ChannelHandle>& channel_id = std::nullopt,
+      const std::optional<Shape>& layout = std::nullopt,
+      const std::optional<bool> use_global_device_ids = std::nullopt);
+  static XlaOp BuildAllReduceDone(XlaBuilder* builder, const XlaOp operands,
+                                  const Shape& shape);
+
   static XlaOp BuildFusion(XlaBuilder* builder,
                            absl::Span<const XlaOp> operands,
                            absl::string_view fusion_kind,
@@ -1083,7 +1092,7 @@ class XlaBuilder {
   // Use a deque so pointers into this are stable, for example the return
   // value of LookUpInstructionByHandle().
   std::deque<HloInstructionProto> instructions_;
-  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // A cache for the HloInstructionProto shapes, to avoid recreating Shape
   // objects from protos and to support the GetShapePtr() API.
   std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 

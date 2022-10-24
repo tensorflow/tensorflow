@@ -111,7 +111,7 @@ class MakeErrorStream {
  private:
   class Impl {
    public:
-    Impl(const char* file, int line, tensorflow::error::Code code,
+    Impl(const char* file, int line, tsl::error::Code code,
          MakeErrorStream* error_stream, bool is_logged_by_default = true);
     Impl(const Status& status, PriorMessageHandling prior_message_handling,
          const char* file, int line, MakeErrorStream* error_stream);
@@ -126,7 +126,7 @@ class MakeErrorStream {
    private:
     const char* file_;
     int line_;
-    tensorflow::error::Code code_;
+    tsl::error::Code code_;
 
     PriorMessageHandling prior_message_handling_ = kAppendToPriorMessage;
     std::string prior_message_;
@@ -187,11 +187,11 @@ class StatusAdaptorForMacros {
 }  // namespace status_macros
 }  // namespace xla
 
-#define TF_RET_CHECK(condition)                                             \
-  while (ABSL_PREDICT_FALSE(!(condition)))                                  \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,            \
-                                             ::tensorflow::error::INTERNAL) \
-      .with_log_stack_trace()                                               \
+#define TF_RET_CHECK(condition)                                      \
+  while (ABSL_PREDICT_FALSE(!(condition)))                           \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
+                                             ::tsl::error::INTERNAL) \
+      .with_log_stack_trace()                                        \
       .add_ret_check_failure(#condition)
 
 #endif  // TENSORFLOW_COMPILER_XLA_STATUS_MACROS_H_

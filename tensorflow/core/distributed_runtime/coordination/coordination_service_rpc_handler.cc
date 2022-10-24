@@ -86,11 +86,10 @@ void CoordinationServiceRpcHandler::WaitForAllTasksAsync(
     return;
   }
   service->WaitForAllTasks(
-      request->source_task(), request->local_device_info(),
+      request->source_task(), request->device_info(),
       [response, service, done = std::move(done)](Status s) {
         if (s.ok()) {
-          *response->mutable_cluster_device_info() =
-              service->ListClusterDevices();
+          *response->mutable_device_info() = service->ListClusterDevices();
         }
         done(s);
       });

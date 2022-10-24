@@ -102,12 +102,16 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
                             hlo_module->config(), libdevice_dir));
     std::cout << ptx << std::endl;
 #else
+<<<<<<< HEAD
     std::string libdevice_dir = tensorflow::RocdlRoot();
     xla::gpu::GpuVersion gpu_version{rocm_compute_capability};
     TF_ASSIGN_OR_RETURN(
       std::vector<uint8_t> ptx,
       xla::gpu::amdgpu::CompileToHsaco(llvm_module.get(), gpu_version,
                                     hlo_module->config(), libdevice_dir));
+=======
+    return {tsl::error::UNIMPLEMENTED, "Feature not yet implemented in ROCm"};
+>>>>>>> upstream/master
 #endif
   }
   return xla::OkStatus();

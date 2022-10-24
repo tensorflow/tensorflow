@@ -50,7 +50,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/location_metadata.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/attribute_exporter.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/location_exporter.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -819,7 +819,7 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
 
   Value result = op.getResult();
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
@@ -843,6 +843,27 @@ LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
         ExtractLayout(all_gather_op,
                       result_type.cast<RankedTensorType>().getRank()),
         Convert_use_global_device_ids(all_gather_op.getUseGlobalDeviceIds()));
+    return success();
+  }
+  auto all_reduce_op =
+      dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
+  if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
+    xla::XlaComputation computation;
+    if (failed(ctx.converter->LowerRegionAsComputation(
+            &all_reduce_op.getComputation(), &computation))) {
+      return failure();
+    }
+
+    xla::XlaOp operand;
+    if (failed(GetXlaOp(all_reduce_op.getOperand(), value_map, &operand,
+                        all_reduce_op)))
+      return failure();
+
+    value_map[result] = xla::AllReduce(
+        operand, computation,
+        Convert_replica_groups(all_reduce_op.getReplicaGroups()),
+        Convert_channel_handle(all_reduce_op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(all_reduce_op.getUseGlobalDeviceIds()));
     return success();
   }
 
@@ -945,12 +966,21 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
 
   mlir::func::FuncOp callee = ctx.converter->LookUpSymbol(
       FlatSymbolRefAttr::get(op->getContext(), op.getCalledComputation()));
+
   auto all_gather_op =
       dyn_cast_or_null<AllGatherOp>(callee.getBody().front().front());
   if (all_gather_op && SimplyReturnedOp(all_gather_op)) {
     value_map[all_gather_op.getResult()] =
         xla::internal::XlaBuilderFriend::BuildAllGatherDone(
             ctx.builder, operand, xla::TypeToShape(all_gather_op.getType()));
+    return success();
+  }
+  auto all_reduce_op =
+      dyn_cast_or_null<AllReduceOp>(callee.getBody().front().front());
+  if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
+    value_map[all_reduce_op.getResult()] =
+        xla::internal::XlaBuilderFriend::BuildAllReduceDone(
+            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType()));
     return success();
   }
 
@@ -1317,7 +1347,7 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
 
   Value result = op.getResult(0);
   llvm::SmallVector<xla::XlaOp> args;
-  if (failed(GetTuple(op, op.operands(), ctx, args))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, args))) return failure();
   auto xla_api_version = xla::ConvertCustomCallApiVersion(op.getApiVersion());
   if (!xla_api_version.ok()) return failure();
   auto& value_map = *ctx.values;
@@ -1421,7 +1451,7 @@ LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
   value_map[op] = xla::Map(ctx.builder, operands, computation,
                            Convert_dimensions(op.getDimensions()));
   return success();
@@ -1431,7 +1461,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
 
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
 
   const auto sharding = ctx.builder->sharding();
   xla::XlaOp operand;
@@ -1444,7 +1474,7 @@ LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
     operand = Tuple(ctx.builder, operands);
   }
   std::vector<xla::Shape> subshapes;
-  for (auto operand : op.operands())
+  for (auto operand : op.getInputs())
     subshapes.push_back(xla::TypeToShape(operand.getType()));
 
   xla::Shape shape_with_layout = xla::ShapeUtil::MakeTupleShape(subshapes);
@@ -1547,7 +1577,7 @@ LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
       failed(GetTuple(op, op.getInitValues(), ctx, init_values))) {
     return failure();
   }
@@ -1571,7 +1601,7 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
     return failure();
   }
   llvm::SmallVector<xla::XlaOp> operands, init_values;
-  if (failed(GetTuple(op, op.operands(), ctx, operands)) ||
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands)) ||
       failed(GetTuple(op, op.getInitValues(), ctx, init_values))) {
     return failure();
   }
@@ -1707,7 +1737,7 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
 
   llvm::SmallVector<xla::XlaOp> operands;
   llvm::SmallVector<xla::XlaOp> updates;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
   if (failed(GetTuple(op, op.getUpdates(), ctx, updates))) return failure();
 
   xla::XlaOp scatter_indices;
@@ -1759,7 +1789,7 @@ LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
 
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
 
   xla::XlaOp operand;
   if (operands.size() == 1)
@@ -1803,7 +1833,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
     return failure();
 
   llvm::SmallVector<xla::XlaOp> operands;
-  if (failed(GetTuple(op, op.operands(), ctx, operands))) return failure();
+  if (failed(GetTuple(op, op.getInputs(), ctx, operands))) return failure();
   auto sorted =
       xla::Sort(operands, comparator, op.getDimension(), op.getIsStable());
 
@@ -1926,7 +1956,7 @@ LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
 
   auto& values = *ctx.values;
   llvm::SmallVector<xla::XlaOp, 4> operands;
-  for (auto operand : op.operands()) operands.push_back(values[operand]);
+  for (auto operand : op.getInputs()) operands.push_back(values[operand]);
 
   auto fusion_kind_string =
       mlir::mhlo::stringifyFusionKind(op.getFusionKind().getValue());

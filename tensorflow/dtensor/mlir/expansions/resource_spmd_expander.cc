@@ -166,7 +166,7 @@ StatusOr<mlir::Operation*> ResourceSPMDExpander::ExpandOp(mlir::Operation* op) {
   // attach the layout directly. Otherwise, the resource is an argument to the
   // SPMD function, and we attach the layout to the appropriate argument.
   auto input_resource_value = op->getOpOperand(0).get();
-  if (auto resource_producing_op = input_resource_value.getDefiningOp()) {
+  if (input_resource_value.getDefiningOp()) {
     if (!resource_layout)
       TF_RETURN_WITH_CONTEXT(errors::Internal("missing layout on resource"));
     if (!value_layout)

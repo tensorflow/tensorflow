@@ -27,10 +27,6 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #endif
 
-#ifdef TENSORFLOW_USE_LIBXSMM
-#include "include/libxsmm.h"
-#endif
-
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -67,9 +63,6 @@ DeviceProperties GetLocalCPUInfo() {
 
   (*device.mutable_environment())["eigen"] = strings::StrCat(
       EIGEN_WORLD_VERSION, ".", EIGEN_MAJOR_VERSION, ".", EIGEN_MINOR_VERSION);
-#ifdef TENSORFLOW_USE_LIBXSMM
-  (*device.mutable_environment())["libxsmm"] = LIBXSMM_VERSION;
-#endif
 
   return device;
 }

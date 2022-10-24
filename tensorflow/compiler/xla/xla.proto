@@ -213,6 +213,10 @@ message DebugOptions {
   // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
   bool xla_gpu_enable_mlir_lowering = 173;
 
+  // If true, generate softmax fusion nodes which are used in the MLIR lowering
+  // to generate device code for softmax.
+  bool xla_gpu_enable_softmax_fusion = 179;
+
   // Enable fast math with eigen in the HLO evaluator.
   bool xla_hlo_evaluator_use_fast_path = 106;
 
@@ -424,7 +428,7 @@ message DebugOptions {
   // (much) faster on our hardware.  Set this flag to disable this behavior.
   bool xla_cpu_strict_dot_conv_math = 175;
 
-  // Next id: 179
+  // Next id: 180
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

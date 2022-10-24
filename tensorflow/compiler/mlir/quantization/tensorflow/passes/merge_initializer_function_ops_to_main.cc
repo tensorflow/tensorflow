@@ -43,12 +43,12 @@ namespace mlir {
 namespace quant {
 namespace {
 
+using ::mlir::tf_saved_model::GetSessionInitializerOp;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerInitType;
+using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
+using ::mlir::tf_saved_model::SessionInitializerOp;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
 using ::tensorflow::quantization::kInitOpNamePrefix;
-
-// There can only be max 2 init funcs; one for variable initialization and one
-// for initializing resources other than variables (e.g. tables).
-constexpr int kMaxNumInitializerFunctions = 2;
 
 // This pass moves all ops from initializer functions to the main function. A
 // new `tf.NoOp` that has control dependency to the initializer function for
@@ -163,38 +163,45 @@ LogicalResult ValidateInitFunc(func::FuncOp init_func_op) {
   return success();
 }
 
-// Retrieves the initializer functions. The initializer functions are validated
-// for whether it can be moved to the main function. Returns failure() iff
-// validation fails. If successful, it will return at most
-// `kMaxNumInitializerFunctions` init functions.
-FailureOr<llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions>>
-GetInitFuncOps(tf_saved_model::SessionInitializerOp session_init_op,
-               SymbolTable symbol_table) {
+// Retrieves the value of `tf_saved_model.initializer_type` attribute from the
+// initializer function. Returns "unknown_initializer_type" iff the attribute is
+// not set.
+std::string GetInitializerType(func::FuncOp init_func_op) {
+  const auto initializer_type_attr =
+      init_func_op->getAttrOfType<StringAttr>(kTfSavedModelInitializerTypeAttr);
+
+  if (!initializer_type_attr) {
+    init_func_op->emitWarning()
+        << "Initializer func op does not have tf_saved_model.initializer_type "
+           "attribute. Func op: "
+        << init_func_op.getSymName();
+    return "unknown_initializer_type";
+  }
+
+  return initializer_type_attr.str();
+}
+
+// Returns initializer_type -> init_func_op mapping from the session_init_op's
+// initializers. The initializer functions are validated for whether it can be
+// moved to the main function. Returns failure() iff validation fails.
+FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> GetInitFuncOps(
+    SessionInitializerOp session_init_op, SymbolTable symbol_table) {
   const auto initializer_symbol_refs =
       session_init_op.getInitializersAttr()
           .getAsValueRange<FlatSymbolRefAttr>();
-  if (absl::c_distance(initializer_symbol_refs) > kMaxNumInitializerFunctions) {
-    session_init_op->emitError(
-        absl::StrFormat("SessionInitializerOp cannot have more than %d "
-                        "initializer functions. Got: %d.",
-                        kMaxNumInitializerFunctions,
-                        absl::c_distance(initializer_symbol_refs)));
-    return failure();
-  }
 
-  const auto lookup_func_op =
-      [symbol_table](const auto initializer_symbol_ref) {
-        return symbol_table.lookup<func::FuncOp>(initializer_symbol_ref);
-      };
+  absl::flat_hash_map<std::string, func::FuncOp> init_func_ops;
 
-  llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions> init_func_ops{};
-  absl::c_transform(initializer_symbol_refs, std::back_inserter(init_func_ops),
-                    lookup_func_op);
+  for (auto initializer_symbol_ref : initializer_symbol_refs) {
+    auto init_func_op =
+        symbol_table.lookup<func::FuncOp>(initializer_symbol_ref);
 
-  if (absl::c_any_of(init_func_ops, [](auto init_func_op) {
-        return failed(ValidateInitFunc(init_func_op));
-      })) {
-    return failure();
+    if (failed(ValidateInitFunc(init_func_op))) {
+      return failure();
+    }
+
+    const std::string initializer_type = GetInitializerType(init_func_op);
+    init_func_ops[initializer_type] = init_func_op;
   }
 
   return init_func_ops;
@@ -260,10 +267,23 @@ llvm::SmallVector<Value> CopyOpsToMainFunction(
   return fetches;
 }
 
-void ClearInitializersAttr(tf_saved_model::SessionInitializerOp session_init_op,
-                           MLIRContext* ctx) {
-  session_init_op.setInitializersAttr(
-      ArrayAttr::get(ctx, llvm::ArrayRef<Attribute>{}));
+// Removes the SymbolRefAttr from session_initializer op's `initializers`
+// attribute when its initializer_type corresponds to `init_type_to_erase`.
+void EraseInitializerFromInitializersAttr(
+    absl::flat_hash_map<std::string, func::FuncOp>& init_func_ops,
+    StringRef init_type_to_erase, SessionInitializerOp session_init_op,
+    MLIRContext* ctx) {
+  // Resets the `initializers` attribute excluding the symbol ref of the init
+  // function whose type matches `init_type_to_erase`.
+  llvm::SmallVector<Attribute> init_func_symbols{};
+  for (auto& [init_type, init_func_op] : init_func_ops) {
+    if (init_type == init_type_to_erase) continue;
+
+    init_func_symbols.emplace_back(
+        SymbolRefAttr::get(ctx, init_func_op.getSymName()));
+  }
+
+  session_init_op.setInitializersAttr(ArrayAttr::get(ctx, init_func_symbols));
 }
 
 // Creates a new `IslandOp` that wraps a `TF::NoOp`. The `IslandOp` has control
@@ -327,12 +347,13 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
   tf_executor::GraphOp main_graph_op = GetGraphOpFromFuncOp(main_func_op);
   if (!main_graph_op) return;
 
-  tf_saved_model::SessionInitializerOp session_init_op =
-      tf_saved_model::GetSessionInitializerOp(module_op);
+  SessionInitializerOp session_init_op = GetSessionInitializerOp(module_op);
   if (!session_init_op) return;
 
-  const FailureOr<llvm::SmallVector<func::FuncOp, kMaxNumInitializerFunctions>>
-      init_func_ops = GetInitFuncOps(session_init_op, SymbolTable{module_op});
+  // initializer_type -> init_func_op mapping.
+  SymbolTable symbol_table{module_op};
+  FailureOr<absl::flat_hash_map<std::string, func::FuncOp>> init_func_ops =
+      GetInitFuncOps(session_init_op, symbol_table);
   if (failed(init_func_ops)) {
     module_op->emitError("Validation on initializer functions failed.");
     return signalPassFailure();
@@ -341,8 +362,19 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
     return;
   }
 
+  // Find the init function with type "init_op" and clone the ops to @main.
+  // TODO(b/253614209): Also add the init function corresponding to the
+  // "restore_op" to @main.
+  const auto init_op_it = init_func_ops->find(kTfSavedModelInitializerInitType);
+  if (init_op_it == init_func_ops->end()) {
+    VLOG(1) << "Initializer function with tf_saved_model.initializer_type == "
+               "'init_op' not found.";
+    return;
+  }
+
+  func::FuncOp init_op_func = init_op_it->second;
   const llvm::SmallVector<Value> init_op_fetches =
-      CopyOpsToMainFunction(*init_func_ops, main_graph_op);
+      CopyOpsToMainFunction(init_op_func, main_graph_op);
   if (init_op_fetches.empty()) {
     VLOG(1) << "No fetch values exist from initializer functions.";
     return;
@@ -350,20 +382,21 @@ void MergeInitializerFunctionOpsToMainPass::runOnOperation() {
 
   // Creates a NoOp that has control dependency to the initializer function
   // for non-variables.
-  const Location loc = CreateInitOpLoc(ctx, init_func_ops->back());
+  const Location init_op_loc = CreateInitOpLoc(ctx, init_op_func);
   tf_executor::IslandOp noop_wrapper_island_op =
       CreateNoOpWithControlDependencies(
-          loc, main_graph_op,
-          /*control_dependencies=*/ArrayRef<Value>{init_op_fetches.back()});
+          init_op_loc, main_graph_op,
+          /*control_dependencies=*/init_op_fetches);
 
   AddFetchOperandToMain(main_graph_op,
                         /*fetch_operand=*/noop_wrapper_island_op.getControl());
 
-  // Erase the initializer function once all ops are moved to the main function.
-  absl::c_for_each(*init_func_ops,
-                   [](auto init_func_op) { init_func_op.erase(); });
+  symbol_table.erase(init_op_func);
 
-  ClearInitializersAttr(session_init_op, ctx);
+  EraseInitializerFromInitializersAttr(
+      *init_func_ops,
+      /*init_type_to_erase=*/kTfSavedModelInitializerInitType, session_init_op,
+      ctx);
 }
 
 }  // namespace

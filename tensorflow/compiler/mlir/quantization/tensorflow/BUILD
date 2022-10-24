@@ -18,6 +18,7 @@ package_group(
 package(
     default_visibility = [
         ":internal_visibility_allowlist_package",
+        "//tensorflow:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -308,6 +309,7 @@ cc_library(
         "passes/quantized_function_library.h",
         "passes/replace_cast_hacks_with_tf_xla_ops.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.inc",
+        "passes/unfreeze_constants.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -317,12 +319,13 @@ cc_library(
         ":constants",
         ":pass_utils",
         ":quantization_options_proto_cc",
+        ":tf_op_quant_spec",
         ":tf_quant_ops",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:tf_op_quant_spec",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:fake_quant_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:lift_as_function_call_utils",
         "//tensorflow/compiler/mlir/quantization/tensorflow/utils:tf_to_xla_attribute_utils",
@@ -333,6 +336,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/core:framework",

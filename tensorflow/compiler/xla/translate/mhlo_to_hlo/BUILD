@@ -40,6 +40,18 @@ cc_library(
 )
 
 cc_library(
+    name = "location_exporter",
+    srcs = ["location_exporter.cc"],
+    hdrs = ["location_exporter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "mlir_hlo_to_hlo",
     srcs = [
         "mlir_hlo_to_hlo.cc",
@@ -49,8 +61,8 @@ cc_library(
     deps = [
         ":attribute_exporter",
         ":layout_util",
+        ":location_exporter",
         ":type_to_shape",
-        "//tensorflow/compiler/mlir/xla:location_metadata",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -109,6 +121,36 @@ gentbl_cc_library(
 )
 
 cc_library(
+    name = "translate",
+    srcs = ["translate.cc"],
+    hdrs = ["translate.h"],
+    deps = [
+        ":mlir_hlo_to_hlo",
+        ":type_to_shape",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "translate_registration",
+    testonly = True,
+    srcs = ["translate_registration.cc"],
+    deps = [
+        ":translate",
+        "//tensorflow/compiler/xla/mlir_hlo:hlo_dialect_registration",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:TranslateLib",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "type_to_shape",
     srcs = ["type_to_shape.cc"],
     hdrs = ["type_to_shape.h"],
@@ -133,8 +175,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:test_main",
         "@llvm-project//mlir:IR",
     ],

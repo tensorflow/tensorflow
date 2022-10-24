@@ -1140,7 +1140,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/compiler/xla/translate:xla_mlir_translate",
+        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:translate",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",

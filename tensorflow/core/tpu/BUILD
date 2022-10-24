@@ -172,43 +172,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_initializer_helper",
-    srcs = ["tpu_initializer_helper.cc"],
-    hdrs = ["tpu_initializer_helper.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_api",
-        ":tpu_executor_init_fns",
-        ":tpu_library_init_fns",
-        ":tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_tpu_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
-        "//tensorflow/compiler/xla/stream_executor/tpu:pjrt_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-    ],
-)
-
-cc_library(
-    name = "tpu_api",
-    srcs = ["tpu_api.cc"],
-    hdrs = ["tpu_api.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tpu_ops_c_api_hdrs",
-        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_api",
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
-    ],
-)
-
-cc_library(
     name = "tpu_api_dlsym_initializer",
     srcs = if_windows(
         ["tpu_api_dlsym_initializer_windows.cc"],
@@ -216,24 +179,11 @@ cc_library(
     ),
     visibility = ["//visibility:public"],
     deps = [
-        ":tpu_initializer_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
     ],
     # Always link this in, because even if we don't use it directly we want its
     # static initializers to dynamically load API symbols exported from libtpu.so
     alwayslink = True,
-)
-
-cc_library(
-    name = "tpu_library_init_fns",
-    hdrs = ["tpu_library_init_fns.inc"],
-    visibility = ["//visibility:public"],
-    deps = [":tpu_executor_init_fns"],
-)
-
-cc_library(
-    name = "tpu_executor_init_fns",
-    hdrs = ["tpu_executor_init_fns.inc"],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -277,7 +227,6 @@ cc_library(
     srcs = ["tpu_execute.cc"],
     hdrs = ["tpu_execute.h"],
     deps = [
-        ":tpu_api",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
@@ -299,14 +248,15 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/lib",
         "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_node_context",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_op_executable",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_platform_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core/tpu/kernels:tpu_executable_info_proto_cc",
         "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "@com_google_absl//absl/base",
@@ -355,23 +305,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tpu_ops_c_api_hdrs",
-    srcs = [],
-    hdrs = [
-        "tpu_ops_c_api.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/c:tf_tstring",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_decl",
-        "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
-        "//tensorflow/compiler/xla/stream_executor/tpu:proto_helper",
-        "@com_google_absl//absl/types:optional",
-    ],
-    alwayslink = True,
-)
-
-cc_library(
     name = "tpu_fingerprint_utils",
     srcs = ["tpu_fingerprint_utils.cc"],
     hdrs = ["tpu_fingerprint_utils.h"],
@@ -390,15 +323,15 @@ cc_library(
     hdrs = ["tpu_model_server_initializer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tpu_api",
-        ":tpu_executor_init_fns",
-        ":tpu_initializer_helper",
-        ":tpu_library_init_fns",
-        ":tpu_ops_c_api_hdrs",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_c_api_hdrs",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_executor_init_fns",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_library_init_fns",
+        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
         "//tensorflow/core:lib",
     ],
     alwayslink = True,

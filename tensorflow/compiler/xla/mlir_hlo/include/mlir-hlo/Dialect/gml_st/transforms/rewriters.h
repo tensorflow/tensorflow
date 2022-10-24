@@ -37,8 +37,7 @@ void populateTiledLoopBufferizePattern(
     mlir::bufferization::BufferizeTypeConverter *converter,
     RewritePatternSet *patterns);
 
-void populateCollapseMaterializeOpsPatterns(MLIRContext *, bool reverse,
-                                            RewritePatternSet *);
+void populateCollapseMaterializeOpsPatterns(MLIRContext *, RewritePatternSet *);
 
 }  // namespace gml_st
 }  // namespace mlir

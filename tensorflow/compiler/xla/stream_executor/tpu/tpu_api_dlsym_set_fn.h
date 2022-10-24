@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_
 
-#define TFTPU_SET_FN(Struct, FnName)                                         \
-  Struct->FnName##Fn =                                                       \
-      reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName));   \
-  if (!(Struct->FnName##Fn)) {                                               \
-    LOG(FATAL) << #FnName " not available in this library.";                 \
-    return errors::Unimplemented(#FnName " not available in this library."); \
+#define TFTPU_SET_FN(Struct, FnName)                                       \
+  Struct->FnName##Fn =                                                     \
+      reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName)); \
+  if (!(Struct->FnName##Fn)) {                                             \
+    LOG(FATAL) << #FnName " not available in this library.";               \
+    return tsl::errors::Unimplemented(#FnName                              \
+                                      " not available in this library.");  \
   }
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_TPU_API_DLSYM_SET_FN_H_

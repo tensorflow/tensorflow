@@ -97,8 +97,9 @@ TEST(TFGOptimizerTest, TestCustomPipelineName) {
     mgr.addNestedPass<mlir::tfg::GraphOp>(
         std::make_unique<mlir::tfg::TestPass>());
   });
-  EXPECT_EQ(optimizer.name(),
-            "tfg_optimizer{tfg.graph(grappler-hook-test-pass)}");
+  EXPECT_EQ(
+      optimizer.name(),
+      "tfg_optimizer{builtin.module(tfg.graph(grappler-hook-test-pass))}");
 }
 
 TEST(TFGOptimizerTest, TestImportErrorReturnsAborted) {

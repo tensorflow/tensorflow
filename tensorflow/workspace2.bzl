@@ -1,7 +1,7 @@
 """TensorFlow workspace initialization. Consult the WORKSPACE on how to use it."""
 
 # Import third party config rules.
-load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
+load("@bazel_skylib//lib:versions.bzl", "versions")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
 load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
@@ -50,6 +50,7 @@ load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("//tensorflow/tools/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 load("//tensorflow/tools/toolchains/remote:configure.bzl", "remote_execution_configure")
 load("//tensorflow/tools/toolchains/clang6:repo.bzl", "clang6_configure")
+load("@rules_jvm_external//:defs.bzl", "maven_install")
 
 def _initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -132,9 +133,9 @@ def _tf_repositories():
     # LINT.IfChange
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "7a16ab0d767d9f8819973dbea1dc45e4e08236f89ab702d96f389fdc78c5855c",
-        strip_prefix = "XNNPACK-e8f74a9763aa36559980a0c2f37f587794995622",
-        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/e8f74a9763aa36559980a0c2f37f587794995622.zip"),
+        sha256 = "5a4636d6882f424b807c16335e8e6ac07d597affb7066073abe250e76951188d",
+        strip_prefix = "XNNPACK-93b9f902393b3a164d4bb44fcd210ca4d612e68f",
+        urls = tf_mirror_urls("https://github.com/google/XNNPACK/archive/93b9f902393b3a164d4bb44fcd210ca4d612e68f.zip"),
     )
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/xnnpack.cmake)
 
@@ -242,14 +243,6 @@ def _tf_repositories():
         sha256 = "d4f6480ecaa99e977e3833cc8a8e1263f9eecd1ce2d022bb548a24c4f32670f5",
         strip_prefix = "gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf",
         urls = tf_mirror_urls("https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz"),
-    )
-
-    tf_http_archive(
-        name = "libxsmm_archive",
-        build_file = "//third_party:libxsmm.BUILD",
-        sha256 = "8b642127880e92e8a75400125307724635ecdf4020ca4481e5efe7640451bb92",
-        strip_prefix = "libxsmm-1.17",
-        urls = tf_mirror_urls("https://github.com/libxsmm/libxsmm/archive/refs/tags/1.17.tar.gz"),
     )
 
     tf_http_archive(
@@ -485,6 +478,13 @@ def _tf_repositories():
     )
 
     tf_http_archive(
+        name = "com_google_fuzztest",
+        sha256 = "3fe79ede8e860ba7331987b2c1f84d3eeaf5bea00fd76398d6ff0006635586c6",
+        strip_prefix = "fuzztest-6d79ceb1dc2398e02a39efc23ce40d68baa16a42",
+        urls = tf_mirror_urls("https://github.com/google/fuzztest/archive/6d79ceb1dc2398e02a39efc23ce40d68baa16a42.zip"),
+    )
+
+    tf_http_archive(
         name = "com_github_gflags_gflags",
         sha256 = "34af2f15cf7367513b352bdcd2493ab14ce43692d2dcd9dfc499492966c64dcf",
         strip_prefix = "gflags-2.2.2",
@@ -590,10 +590,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "snappy",
         build_file = "//third_party:snappy.BUILD",
-        sha256 = "16b677f07832a612b0836178db7f374e414f94657c138e6993cbfc5dcc58651f",
-        strip_prefix = "snappy-1.1.8",
+        sha256 = "2e458b7017cd58dcf1469ab315389e85e7f445bd035188f2983f81fb19ecfb29",
+        strip_prefix = "snappy-984b191f0fefdeb17050b42a90b7625999c13b8d",
         system_build_file = "//third_party/systemlibs:snappy.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/snappy/archive/1.1.8.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/snappy/archive/984b191f0fefdeb17050b42a90b7625999c13b8d.tar.gz"),
     )
 
     tf_http_archive(
@@ -919,10 +919,25 @@ def _tf_repositories():
         ],
     )
 
+    # used for adding androidx.annotation dependencies in tflite android jni.
+    maven_install(
+        artifacts = [
+            "androidx.annotation:annotation:aar:1.1.0",
+        ],
+        repositories = [
+            "https://jcenter.bintray.com",
+            "https://maven.google.com",
+            "https://dl.google.com/dl/android/maven2",
+            "https://repo1.maven.org/maven2",
+        ],
+        fetch_sources = True,
+        version_conflict_policy = "pinned",
+    )
+
 def workspace():
     # Check the bazel version before executing any repository rules, in case
     # those rules rely on the version we require here.
-    check_bazel_version_at_least("1.0.0")
+    versions.check("1.0.0")
 
     # Initialize toolchains and platforms.
     _tf_toolchains()

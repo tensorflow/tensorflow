@@ -34,7 +34,11 @@ namespace op = xla::testing::opcode_matchers;
 class GpuCompilerTest : public HloTestBase {
  public:
   GpuCompilerTest()
+<<<<<<< HEAD
       : HloTestBase(PlatformUtil::GetPlatform(PLATFORM).value(),
+=======
+      : HloTestBase(PlatformUtil::GetDefaultPlatform().value(),
+>>>>>>> upstream/master
                     GetReferencePlatform()) {}
 };
 

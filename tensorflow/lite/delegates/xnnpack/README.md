@@ -201,6 +201,24 @@ does not allow new instances to be created, and has lower memory overhead. Soft
 finalization allows new instances to be created, and has higher memory overhead
 (up to the size of the largest packed weights, rounded up to page alignment).
 
+### Using XNNPACK for variable operations
+
+XNNPACK can handle resource variables and associated operations: `VAR_HANDLE`,
+`READ_VARIABLE`, and `ASSIGN_VARIABLE`, but needs to be opted in by the user
+using delegate options:
+
+```c++
+TfLiteXNNPackDelegateOptions xnnpack_options =
+    TfLiteXNNPackDelegateOptionsDefault();
+xnnpack_options.handle_variable_ops = true;
+```
+
+When XNNPACK handles resource variables,
+[tflite::Subgraph::resources](https://github.com/tensorflow/tensorflow/blob/5b4239ba9cf127fd26cd9f03c04dfc4c94c078d4/tensorflow/lite/core/subgraph.h#L197)
+cannot be used to access resources, because the resources are now internal to
+XNNPACK, and the changes are not reflected in tflite::Subgraph::resources. There
+is currently no way to access resources if XNNPACK handles resource variables.
+
 ## Profiling
 When TfLite profiling is enabled, XNNPACK will time each operator and report the
 results to TfLite which will print them as part of the overall execution profile.
@@ -402,6 +420,15 @@ Below is the list of currently supported floating-point operators:
 #### `SQUARED_DIFFERENCE`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+
+#### `STRIDED_SLICE`
+
+* The first input and the output must be in 32-bit floating-point format.
+* The second, third, and fourth inputs (the inputs with the slices' begin, end,
+  and stride specification) must be static (use `kTfLiteMmapRo` allocation
+  type).
+* The fourth input (strides) must be all ones.
+* The ellipsis mask, new axis mask, and shrink axis mask must be 0.
 
 #### `SUB`
 
@@ -624,6 +651,10 @@ Below is the list of operators supported in IEEE FP16 inference:
 
 * Must satisfy constraints on the floating-point (FP32) operator.
 * Neither of the inputs can be static (use `kTfLiteMmapRo` allocation type).
+
+#### `STRIDED_SLICE`
+
+* Must satisfy constraints on the floating-point (FP32) operator.
 
 #### `SUB`
 

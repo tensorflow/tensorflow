@@ -75,10 +75,9 @@ std::string SpmdLogger::MakeReport() {
             });
   for (int64_t i = 0;
        i < std::min<int64_t>(report_instruction_count_, entries_.size()); ++i) {
-    absl::StrAppend(
-        &report, "\n  ",
-        tensorflow::strings::HumanReadableNumBytes(entries_[i].first), " : ",
-        entries_[i].second, "\n");
+    absl::StrAppend(&report, "\n  ",
+                    tsl::strings::HumanReadableNumBytes(entries_[i].first),
+                    " : ", entries_[i].second, "\n");
   }
 
   return report;
@@ -166,7 +165,7 @@ template <typename F>
     for (int64_t i = 0;
          i < std::min<int64_t>(report_instruction_count, insts->size()); ++i) {
       absl::StrAppend(&report, "  ",
-                      tensorflow::strings::HumanReadableNumBytes(
+                      tsl::strings::HumanReadableNumBytes(
                           ShapeSizeInBytes((*insts)[i]->shape())),
                       " : ", (*insts)[i]->ToString(), "\n");
     }
@@ -2167,8 +2166,9 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       }
       return HloSharding::Tuple(shape, subshardings);
     }
-    // Delay manual sharding substitution for CustomCalls.
-    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall) {
+    // Delay manual sharding substitution for CustomCalls and PartitionIds.
+    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall &&
+        opcode != HloOpcode::kPartitionId) {
       return HloSharding::AssignDevice(0);
     }
     return sharding;
@@ -4238,6 +4238,11 @@ StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
 }
 
 Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
+  if (hlo->has_sharding() && hlo->sharding().IsManual()) {
+    hlo->set_sharding(HloSharding::AssignDevice(0));
+    return DefaultAction(hlo);
+  }
+
   return Unimplemented(
       "PartitionId instruction is not supported for SPMD partitioning since "
       "the meaning is ambiguous -- whether the instruction is replicated or "

@@ -97,13 +97,12 @@ class Layout {
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,
                   absl::Span<const DimLevelType> dim_level_types,
-                  absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-                  int64_t memory_space, std::unique_ptr<Shape> physical_shape);
+                  absl::Span<const Tile> tiles, int64_t memory_space,
+                  std::unique_ptr<Shape> physical_shape);
 
   explicit Layout(absl::Span<const int64_t> minor_to_major,
                   absl::Span<const DimLevelType> dim_level_types,
-                  absl::Span<const Tile> tiles,
-                  int64_t element_size_in_bits = 0, int64_t memory_space = 0);
+                  absl::Span<const Tile> tiles, int64_t memory_space = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -123,10 +122,6 @@ class Layout {
   //
   // - Comparing two layouts ignoring their difference in tiles:
   //   Equal().IgnoreTiles()(layout1, layout2);
-  //
-  // - Comparing two layouts ignoring their difference in tiles and element
-  //   size:
-  //   Equal().IgnoreTiles().IgnoreElementSize()(layout1, layout2);
   class Equal {
    public:
     Equal() = default;
@@ -138,14 +133,8 @@ class Layout {
       return *this;
     }
 
-    Equal& IgnoreElementSize() {
-      ignore_element_size_ = true;
-      return *this;
-    }
-
     Equal& MinorToMajorOnly() {
       ignore_tiles_ = true;
-      ignore_element_size_ = true;
       ignore_memory_space_ = true;
       ignore_physical_shape_ = true;
       return *this;
@@ -163,7 +152,6 @@ class Layout {
 
    private:
     bool ignore_tiles_ = false;
-    bool ignore_element_size_ = false;
     bool ignore_memory_space_ = false;
     bool ignore_physical_shape_ = false;
   };
@@ -233,11 +221,6 @@ class Layout {
   absl::Span<const Tile> tiles() const { return tiles_; }
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
-  int64_t element_size_in_bits() const { return element_size_in_bits_; }
-  Layout& set_element_size_in_bits(int64_t value) {
-    element_size_in_bits_ = value;
-    return *this;
-  }
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
   int64_t memory_space() const { return memory_space_; }
@@ -265,7 +248,7 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
-                      l.element_size_in_bits_, l.memory_space_);
+                      l.memory_space_);
   }
 
  private:
@@ -288,9 +271,6 @@ class Layout {
 
   // The tiles used in tiling-based layout.
   absl::InlinedVector<Tile, 2> tiles_;
-
-  // The number of bits used to store an individual array element.
-  int64_t element_size_in_bits_ = 0;
 
   // The assigned memory space.
   int64_t memory_space_ = 0;

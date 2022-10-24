@@ -83,66 +83,108 @@ func.func @concatenate(%a: tensor<?x?xi32>, %b: tensor<?x?xi32>, %c: tensor<?x?x
 }
 
 // CHECK-LABEL: @concatenate_with_static_info
-// CHECK-SAME:  %[[A:.*]]: tensor<?x32xi32>, %[[B:.*]]: tensor<64x16xi32>, %[[C:.*]]: tensor<?x?xi32>
-func.func @concatenate_with_static_info(%a: tensor<?x32xi32>, %b: tensor<64x16xi32>, %c: tensor<?x?xi32>) -> tensor<64x?xi32> {
+// CHECK-SAME:  %[[A:.*]]: tensor<64x32xi32>, %[[B:.*]]: tensor<64x16xi32>, %[[C:.*]]: tensor<64x?xi32>
+func.func @concatenate_with_static_info(%a: tensor<64x32xi32>, %b: tensor<64x16xi32>, %c: tensor<64x?xi32>) -> tensor<64x?xi32> {
   // CHECK-DAG:  %[[C1:.*]] = arith.constant 1
   // CHECK-DAG:  %[[C48:.*]] = arith.constant 48
   // CHECK-DAG:  %[[CONCAT_DIM_C:.*]] = tensor.dim %[[C]], %[[C1]]
   // CHECK-DAG:  %[[CONCAT_DIM_SUM:.*]] = arith.addi %[[CONCAT_DIM_C]], %[[C48]]
   // CHECK-DAG:  %[[INIT:.*]] = tensor.empty(%[[CONCAT_DIM_SUM]])
   // CHECK:      %[[CONCAT:.*]] = thlo.concatenate
-  // CHECK-SAME:     ins(%[[A]] : tensor<?x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<?x?xi32>)
+  // CHECK-SAME:     ins(%[[A]] : tensor<64x32xi32>, %[[B]] : tensor<64x16xi32>, %[[C]] : tensor<64x?xi32>)
   // CHECK-SAME:     outs(%[[INIT]] : tensor<64x?xi32>)
   // CHECK-SAME:     {dimension = 1 : i64}
   // CHECK:      return %[[CONCAT]]
-  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<?x32xi32>, tensor<64x16xi32>, tensor<?x?xi32>) -> tensor<64x?xi32>
+  %concat = "mhlo.concatenate"(%a, %b, %c) { dimension = 1 } : (tensor<64x32xi32>, tensor<64x16xi32>, tensor<64x?xi32>) -> tensor<64x?xi32>
   func.return %concat : tensor<64x?xi32>
 }
 
 func.func @simple_gather(%operand : tensor<3x3xf32>,
-                         %indices: tensor<3x2xi64>) -> tensor<3xf32> {
+                         %indices: tensor<3x2xi64>) -> tensor<3x1x1xf32> {
   %0 = "mhlo.gather"(%operand, %indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
+      collapsed_slice_dims = [],
       index_vector_dim = 1,
-      offset_dims = [],
+      offset_dims = [1, 2],
       start_index_map = [0, 1]
     >,
     indices_are_sorted = false,
     slice_sizes = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<3x3xf32>, tensor<3x2xi64>) -> tensor<3xf32>
-  func.return %0 : tensor<3xf32>
+  } : (tensor<3x3xf32>, tensor<3x2xi64>) -> tensor<3x1x1xf32>
+  func.return %0 : tensor<3x1x1xf32>
 }
 
 // CHECK-LABEL: @simple_gather
-//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3xf32>
+//   CHECK-DAG: %[[CAST:.*]] = arith.index_cast {{.*}} : tensor<3x2xi64> to tensor<3x2xindex>
+//   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
-//  CHECK-SAME:   ins(%arg0 : tensor<3x3xf32>, %arg1 : tensor<3x2xi64>)
-//  CHECK-SAME:   outs(%[[INIT]] : tensor<3xf32>)
+//  CHECK-SAME:   ins(%{{.*}} : tensor<3x3xf32>, %[[CAST]] : tensor<3x2xindex>)
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xf32>)
 //       CHECK: return %[[GATHER]]
 
 func.func @simple_gather_unsigned(
-    %operand : tensor<3x3xui32>, %indices: tensor<3x2xi64>) -> tensor<3xui32> {
+    %operand : tensor<3x3xui32>, %indices: tensor<3x2xui64>) -> tensor<3x1x1xui32> {
   %0 = "mhlo.gather"(%operand, %indices) {
     dimension_numbers = #mhlo.gather<
-      collapsed_slice_dims = [0, 1],
+      collapsed_slice_dims = [],
       index_vector_dim = 1,
-      offset_dims = [],
+      offset_dims = [1, 2],
       start_index_map = [0, 1]
     >,
     indices_are_sorted = false,
     slice_sizes = dense<[1, 1]> : tensor<2xi64>
-  } : (tensor<3x3xui32>, tensor<3x2xi64>) -> tensor<3xui32>
-  func.return %0 : tensor<3xui32>
+  } : (tensor<3x3xui32>, tensor<3x2xui64>) -> tensor<3x1x1xui32>
+  func.return %0 : tensor<3x1x1xui32>
 }
 // CHECK-LABEL: @simple_gather_unsigned
-//       CHECK: %[[CAST:.*]] = builtin.unrealized_conversion_cast %arg0 : tensor<3x3xui32> to tensor<3x3xi32>
-//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3xi32>
+//   CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast {{.*}} : tensor<3x3xui32> to tensor<3x3xi32>
+//   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xi32>
+//   CHECK-DAG: %[[INDEX_CAST:.*]] = arith.index_castui {{.*}} to tensor<3x2xindex>
 //       CHECK: %[[GATHER:.*]] = thlo.gather
-//  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %arg1 : tensor<3x2xi64>)
-//  CHECK-SAME:   outs(%[[INIT]] : tensor<3xi32>)
-//       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3xi32> to tensor<3xui32>
+//  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %[[INDEX_CAST]] : tensor<3x2xindex>)
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xi32>)
+//       CHECK: %[[CAST2:.*]] = builtin.unrealized_conversion_cast %[[GATHER]] : tensor<3x1x1xi32> to tensor<3x1x1xui32>
 //       CHECK: return %[[CAST2]]
+
+func.func @gather_with_slices(
+    %operand : tensor<300x300xi32>, %indices: tensor<3x2xi64>) -> tensor<3x101x102xi32> {
+  %0 = "mhlo.gather"(%operand, %indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [1, 2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[101, 102]> : tensor<2xi64>
+  } : (tensor<300x300xi32>, tensor<3x2xi64>) -> tensor<3x101x102xi32>
+  func.return %0 : tensor<3x101x102xi32>
+}
+// CHECK-LABEL: @gather_with_slices
+//       CHECK: %[[INIT:.*]] = tensor.empty() : tensor<3x101x102xi32>
+//       CHECK: thlo.gather
+//  CHECK-SAME:   outs(%[[INIT]] : tensor<3x101x102xi32>)
+
+func.func @gather_dynamic(
+    %operand : tensor<300xi32>, %indices: tensor<?x1xi64>) -> tensor<?x42xi32> {
+  %0 = "mhlo.gather"(%operand, %indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [],
+      index_vector_dim = 1,
+      offset_dims = [1],
+      start_index_map = [0]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[42]> : tensor<1xi64>
+  } : (tensor<300xi32>, tensor<?x1xi64>) -> tensor<?x42xi32>
+  func.return %0 : tensor<?x42xi32>
+}
+// CHECK-LABEL: @gather_dynamic
+//   CHECK-DAG: %[[C0:.*]] = arith.constant 0
+//       CHECK: %[[DIM:.*]] = tensor.dim {{.*}} %[[C0]] : tensor<?x1xi64>
+//       CHECK: %[[INIT:.*]] = tensor.empty(%dim) : tensor<?x42xi32>
+//       CHECK: thlo.gather
+//  CHECK-SAME: outs(%[[INIT]] : tensor<?x42xi32>)
 
 func.func @unsupported_gather(%operand: tensor<3x3xf32>,
                               %indices: tensor<3x2xi64>) -> tensor<3xf32> {
@@ -184,17 +226,18 @@ func.func @simple_scatter(%dst: tensor<3x3xf32>, %indices: tensor<2x2xi32>,
 // CHECK-LABEL: @simple_scatter
 // CHECK-SAME: (%[[DST:.*]]: tensor<3x3xf32>, %[[INDICES:.*]]: tensor<2x2xi32>,
 // CHECK-SAME:  %[[UPDATE:.*]]: tensor<2x1x3xf32>)
-//       CHECK: thlo.scatter ins(%[[INDICES]] : tensor<2x2xi32>,
-//  CHECK-SAME:                    %[[UPDATE]] : tensor<2x1x3xf32>)
-//  CHECK-SAME:                outs(%[[DST]] : tensor<3x3xf32>)
-//  CHECK-SAME:                (%[[UPD:.*]]: f32, %[[CUR:.*]]: f32) {
-//  CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<f32>
-//  CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<f32>
-//  CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<f32>
-//  CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<f32>
-//  CHECK-NEXT:    arith.addf %[[CUR]], %[[UPD]] : f32
-//  CHECK-NEXT:    tensor.from_elements
-//  CHECK-NEXT:    tensor.extract
+//      CHECK:   %[[CAST:.*]] = arith.index_cast %[[INDICES]] {{.*}} to tensor<2x2xindex>
+//      CHECK:   thlo.scatter ins(%[[CAST]] : tensor<2x2xindex>,
+// CHECK-SAME:                    %[[UPDATE]] : tensor<2x1x3xf32>)
+// CHECK-SAME:                outs(%[[DST]] : tensor<3x3xf32>)
+// CHECK-SAME:                (%[[UPD:.*]]: f32, %[[CUR:.*]]: f32) {
+// CHECK-NEXT:    %[[CUR_T:.*]] = tensor.from_elements %[[CUR]] : tensor<f32>
+// CHECK-NEXT:    %[[UPD_T:.*]] = tensor.from_elements %[[UPD]] : tensor<f32>
+// CHECK-NEXT:    %[[CUR:.*]] = tensor.extract %[[CUR_T]][] : tensor<f32>
+// CHECK-NEXT:    %[[UPD:.*]] = tensor.extract %[[UPD_T]][] : tensor<f32>
+// CHECK-NEXT:    arith.addf %[[CUR]], %[[UPD]] : f32
+// CHECK-NEXT:    tensor.from_elements
+// CHECK-NEXT:    tensor.extract
 
 
 // CHECK-LABEL: @reduce_add(
@@ -943,3 +986,81 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK-NEXT:    %[[RESULT:.*]] = tensor.from_elements %[[CMPRESULT]] : tensor<i1>
 // CHECK-NEXT:    %[[EXTRACTED_RESULT:.*]] = tensor.extract %[[RESULT]][] : tensor<i1>
 // CHECK-NEXT:    thlo.yield %[[EXTRACTED_RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: @softmax
+// CHECK-SAME:  %[[ARG:.*]]: tensor<2x3xf32>
+func.func @softmax(%ARG: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  // CHECK-DAG:  %[[CONSTANT:.*]] = mhlo.constant dense<-1>
+  // CHECK-DAG:  %[[CONSTANT_0:.*]] = mhlo.constant dense<0xFF800000>
+  // CHECK-DAG:  %[[CST:.*]] = arith.constant 0xFF800000
+  // CHECK-DAG:  %[[INIT:.*]] = tensor.empty() : tensor<2xf32>
+  // CHECK:      %[[FILL:.*]] = linalg.fill
+  // CHECK-SAME:     ins(%[[CST]] : f32)
+  // CHECK-SAME:     outs(%[[INIT]] : tensor<2xf32>)
+  // CHECK:      %[[REDUCTION:.*]] = thlo.reduction
+  // CHECK-SAME:     ins(%[[ARG]] : tensor<2x3xf32>)
+  // CHECK-SAME:     outs(%[[FILL]] : tensor<2xf32>)
+  // CHECK-SAME:     dimensions = [1] (%[[ARG1:.*]]: f32, %[[ARG2:.*]]: f32)
+  // CHECK:        %[[FROM:.*]] = tensor.from_elements %[[ARG2]]
+  // CHECK:        %[[FROM_0:.*]] = tensor.from_elements %[[ARG1]]
+  // CHECK:        %[[EXTRACT:.*]] = tensor.extract %[[FROM]][]
+  // CHECK:        %[[EXTRACT_0:.*]] = tensor.extract %[[FROM_0]][]
+  // CHECK:        %[[MAXF:.*]] = arith.maxf %[[EXTRACT]], %[[EXTRACT_0]]
+  // CHECK:        %[[FROM_1:.*]] = tensor.from_elements %[[MAXF]]
+  // CHECK:        %[[EXTRACT_1:.*]] = tensor.extract %[[FROM_1]][]
+  // CHECK:        thlo.yield %[[EXTRACT_1]]
+  // CHECK:      %[[CST_0:.*]] = arith.constant dense<1>
+  // CHECK:      %[[RESHAPE:.*]] = mhlo.reshape %[[REDUCTION]]
+  // CHECK:      %[[BROADCAST:.*]] = chlo.broadcast_subtract %[[ARG]], %[[RESHAPE]]
+  // CHECK:      %[[INIT_0:.*]] = tensor.empty() : tensor<2x3xf32>
+  // CHECK:      %[[MAP:.*]] = thlo.map
+  // CHECK-SAME:     ins(%[[BROADCAST]] : tensor<2x3xf32>)
+  // CHECK-SAME:     outs(%[[INIT_0]] : tensor<2x3xf32>)(%[[ARG1]]: f32) {
+  // CHECK:        %[[EXP:.*]] = math.exp %[[ARG1]]
+  // CHECK:        thlo.yield %[[EXP]]
+  // CHECK:      %[[CONSTANT_1:.*]] = mhlo.constant dense<-0.000000e+00>
+  // CHECK:      %[[CST_1:.*]] = arith.constant -0.000000e+00
+  // CHECK:      %[[INIT_1:.*]] = tensor.empty() : tensor<2xf32>
+  // CHECK:      %[[FILL_0:.*]] = linalg.fill
+  // CHECK-SAME:     ins(%[[CST_1]] : f32)
+  // CHECK-SAME:     outs(%[[INIT_1]] : tensor<2xf32>)
+  // CHECK:      %[[REDUCTION_0:.*]] = thlo.reduction
+  // CHECK-SAME:     ins(%[[MAP]] : tensor<2x3xf32>)
+  // CHECK-SAME:     outs(%[[FILL_0]] : tensor<2xf32>)
+  // CHECK-SAME:     dimensions = [1] (%[[ARG1]]: f32, %[[ARG2]]: f32)
+  // CHECK:        %[[FROM_2:.*]] = tensor.from_elements %[[ARG2]]
+  // CHECK:        %[[FROM_3:.*]] = tensor.from_elements %[[ARG1]]
+  // CHECK:        %[[EXTRACT_2:.*]] = tensor.extract %[[FROM_2]][]
+  // CHECK:        %[[EXTRACT_3:.*]] = tensor.extract %[[FROM_3]][]
+  // CHECK:        %[[ADDF:.*]] = arith.addf %[[EXTRACT_2]], %[[EXTRACT_3]]
+  // CHECK:        %[[FROM_4:.*]] = tensor.from_elements %[[ADDF]]
+  // CHECK:        %[[EXTRACT_4:.*]] = tensor.extract %[[FROM_4]][]
+  // CHECK:        thlo.yield %[[EXTRACT_4]]
+  // CHECK:      %[[CST_2:.*]] = arith.constant dense<1>
+  // CHECK:      %[[RESHAPE_0:.*]] = mhlo.reshape %[[REDUCTION_0]]
+  // CHECK:      %[[BROADCAST_0:.*]] = chlo.broadcast_divide %[[MAP]], %[[RESHAPE_0]]
+  // CHECK:      return %[[BROADCAST_0]]
+  %0 = mhlo.constant dense<-1> : tensor<1xi64>
+  %1 = mhlo.convert %ARG : tensor<2x3xf32>
+  %2 = mhlo.constant dense<0xFF800000> : tensor<f32>
+  %3 = mhlo.reduce(%1 init: %2) applies mhlo.maximum across dimensions = [1]
+      : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+  %4 = mhlo.convert %3 : tensor<2xf32>
+  %cst = arith.constant dense<1> : tensor<1xi32>
+  %5 = mhlo.reshape %4 : (tensor<2xf32>) -> tensor<2x1xf32>
+  %6 = chlo.broadcast_subtract %ARG, %5
+      : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+  %7 = mhlo.exponential %6 : tensor<2x3xf32>
+  %8 = mhlo.convert %7 : tensor<2x3xf32>
+  %9 = mhlo.constant dense<-0.000000e+00> : tensor<f32>
+  %10 = mhlo.reduce(%8 init: %9) applies mhlo.add across dimensions = [1]
+      : (tensor<2x3xf32>, tensor<f32>) -> tensor<2xf32>
+  %11 = mhlo.convert %10 : tensor<2xf32>
+  %cst_0 = arith.constant dense<1> : tensor<1xi32>
+  %12 = mhlo.reshape %11 : (tensor<2xf32>) -> tensor<2x1xf32>
+  %13 = chlo.broadcast_divide %7, %12
+      : (tensor<2x3xf32>, tensor<2x1xf32>) -> tensor<2x3xf32>
+  return %13 : tensor<2x3xf32>
+}

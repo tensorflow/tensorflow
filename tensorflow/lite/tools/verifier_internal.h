@@ -16,21 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_VERIFIER_INTERNAL_H_
 #define TENSORFLOW_LITE_TOOLS_VERIFIER_INTERNAL_H_
 
-#include <stddef.h>
-
-#include "tensorflow/lite/schema/schema_generated.h"
-
-namespace tflite {
-namespace internal {
-
-// Verifies that the buffer is a valid TF Lite Model flatbuffer
-// (without checking the consistency of the flatbuffer contents,
-// just that it is a valid flatbuffer).
-// Returns the FlatBuffer Model on success, or nullptr if the buffer does not
-// contain a valid TF Lite Model flatbuffer.
-const Model* VerifyFlatBufferAndGetModel(const void* buf, size_t len);
-
-}  // namespace internal
-}  // namespace tflite
+/// For documentation, see
+/// third_party/tensorflow/lite/core/tools/verifier_internal.h.
+#include "tensorflow/lite/core/tools/verifier_internal.h"
 
 #endif  // TENSORFLOW_LITE_TOOLS_VERIFIER_INTERNAL_H_

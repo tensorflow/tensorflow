@@ -183,7 +183,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
     ],
     alwayslink = 1,
 )

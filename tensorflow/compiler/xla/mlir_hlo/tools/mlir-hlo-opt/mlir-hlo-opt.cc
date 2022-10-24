@@ -22,7 +22,6 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir-hlo/Transforms/gml_st_pipeline.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
@@ -33,18 +32,7 @@ limitations under the License.
 using namespace mlir;
 
 namespace {
-struct HloToGpuPipelineOptions
-    : public PassPipelineOptions<HloToGpuPipelineOptions> {
-  ListOption<int64_t> blockTileDim{
-      *this, "block-tile",
-      llvm::cl::desc("dimensions of the subproblem processed by the block")};
-  ListOption<int64_t> warpTileDim{
-      *this, "warp-tile",
-      llvm::cl::desc("dimensions of the subproblem processed by the warp")};
-  ListOption<int64_t> threadTileDim{
-      *this, "thread-tile",
-      llvm::cl::desc("dimensions of the subproblem processed by the thread")};
-};
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -59,14 +47,7 @@ int main(int argc, char **argv) {
   PassPipelineRegistration<HloToGpuPipelineOptions>(
       "hlo-to-gpu-pipeline",
       "Pipeline to transform HLO to LLVM + NVVM dialects.",
-      [](OpPassManager &pm, const HloToGpuPipelineOptions &options) {
-        createHloToGpuPipeline(pm, options.blockTileDim, options.warpTileDim,
-                               options.threadTileDim);
-      });
-
-  PassPipelineRegistration<GmlStPipelineOptions>(
-      "gml-st-pipeline", "Pipeline to transform HLO to GmlSt and Linalg.",
-      createGmlStPipeline);
+      createHloToGpuPipeline);
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

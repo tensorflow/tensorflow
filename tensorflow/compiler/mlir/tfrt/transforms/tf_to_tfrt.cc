@@ -32,10 +32,13 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -568,16 +571,6 @@ class FallbackBatchFunctionOpConversion
       ConversionPatternRewriter &rewriter) const override {
     corert_converter_.MaterializeDerivedAttributes(op);
 
-    // Remove the device attribute for fallback, as currently fallback will
-    // select device automatically.
-    //
-    // TODO(chky): The device attribute should be passed explicitly. This can be
-    // once we change the kernel implementation to choose device based on
-    // attributes.
-    op->removeAttr(rewriter.getStringAttr(kDeviceAttr));
-
-    SymbolRefAttr f = op.fAttr();
-
     llvm::SmallVector<NamedAttribute, 12> attr_array;
     for (auto &key_and_value : op->getAttrs()) {
       StringRef name = key_and_value.getName();
@@ -591,26 +584,26 @@ class FallbackBatchFunctionOpConversion
     ArrayAttr op_attrs = CreateTfrtOpAttrs(attr_array, builder);
     if (!op_attrs) return op.emitWarning("failed to lower attributes.");
 
-    llvm::SmallVector<Type, 4> result_types;
-    for (auto type : op.getResultTypes()) {
-      if (failed(corert_converter_.convertType(type, result_types)))
-        return failure();
-    }
+    mlir::StringAttr device = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
+    if (!device || device.getValue().empty())
+      return op->emitWarning("failed to find a non-empty 'device' attribute");
+    auto parsed_device_name =
+        corert_converter_.ParseDeviceName(device.getValue());
+    if (!parsed_device_name)
+      return op->emitWarning("failed to parse the device name");
 
     llvm::SmallVector<mlir::Value, 4> new_operands;
-    if (mlir::failed(tfrt_compiler::ConvertCoreRTOperands(
-            op, adaptor.getOperands(), &new_operands, rewriter)))
+    if (mlir::failed(tfrt_compiler::ConvertFallbackOperands(
+            op, device.getValue(), adaptor.getOperands(), &new_operands,
+            rewriter)))
       return failure();
 
+    llvm::SmallVector<Type, 4> result_types(
+        op->getNumResults(), rewriter.getType<tfrt::fallback::TFTensorType>());
+
     auto new_op = rewriter.create<tfrt::fallback_async::BatchFunctionOp>(
-        op.getLoc(), corert_converter_.chain_type(), result_types,
-        corert_converter_.GetLocalSideEffectChain(op, &rewriter), new_operands,
-        f, op_attrs);
+        op.getLoc(), result_types, new_operands, device, op.fAttr(), op_attrs);
     rewriter.replaceOp(op, new_op.getResults());
-
-    // Register the converted op so that it can be retrieved by successors.
-    corert_converter_.RegisterLocalSideEffectChain(op, new_op.getOutOpChain());
-
     return success();
   }
 

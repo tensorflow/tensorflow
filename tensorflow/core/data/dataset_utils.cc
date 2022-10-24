@@ -934,6 +934,11 @@ bool RandomJobSamplePercentage(std::function<uint64_t(const string&)> hash_func,
          rollout_pct;
 }
 bool AllTasks(int64_t task_id) { return true; }
+// Typically 2 tasks run on a single TPU host. This selector assigns every 2
+// other tasks in the experiment such that control and experiment do not run on
+// the same hosts. For example, if a job has 4 tasks, then task 0 and 1 are
+// assigned to control and tasks 2 and 3 experiment.
+bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
 
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
@@ -948,7 +953,7 @@ REGISTER_DATASET_EXPERIMENT("reduce_interleave_prefetch",
 REGISTER_DATASET_EXPERIMENT("serialize_input_cycle_length",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
-                            RandomJobSamplePercentage<0>, AllTasks);
+                            RandomJobSamplePercentage<5>, IndependentHostTasks);
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow

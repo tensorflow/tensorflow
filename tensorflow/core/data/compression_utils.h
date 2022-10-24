@@ -15,8 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_COMPRESSION_UTILS_H_
 #define TENSORFLOW_CORE_DATA_COMPRESSION_UTILS_H_
 
-#include "tensorflow/core/common_runtime/dma_helper.h"
+#include <vector>
+
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {

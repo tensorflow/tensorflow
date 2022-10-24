@@ -323,6 +323,16 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
+struct LoadOptions {
+  // Origin of the subslice of the target topology to run computation on.
+  struct ComputationOrigin {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  std::optional<ComputationOrigin> computation_origin;
+};
+
 class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -472,11 +482,9 @@ class PjRtClient {
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
-  // LoadSerializedExecutable will materialize CompileOptions from within the
-  // serialized executable unlike 'DeserializeExecutable' above that accepts
-  // CompileOptions.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(absl::string_view serialized) const {
+  LoadSerializedExecutable(absl::string_view serialized, CompileOptions options,
+                           const LoadOptions& load_options) {
     return Unimplemented("Loading serialized executable not supported.");
   }
 
@@ -487,7 +495,8 @@ class PjRtClient {
   // generate the executable. Load will use the CompileOptions from within the
   // executable.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable) {
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) {
     return Unimplemented("Loading executable not supported.");
   }
 
@@ -1092,14 +1101,6 @@ struct ExecuteOptions {
   // Currently it is only applied to CPU implementations
   enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
   ExecutionMode execution_mode = ExecutionMode::kDefault;
-
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
 };
 
 // Represents a compiled computation that can be executed given handles to

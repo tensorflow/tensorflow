@@ -17,7 +17,6 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 
 namespace tensorflow {
-namespace {
 
 llvm::SmallVector<int64_t> ConvertTFShapeToMlir(
     llvm::ArrayRef<int64_t> shapes) {
@@ -26,7 +25,12 @@ llvm::SmallVector<int64_t> ConvertTFShapeToMlir(
   }));
 }
 
-}  // namespace
+llvm::SmallVector<int64_t> ConvertMlirShapeToTF(
+    llvm::ArrayRef<int64_t> shapes) {
+  return llvm::to_vector(llvm::map_range(shapes, [](int64_t shape) {
+    return mlir::ShapedType::isDynamic(shape) ? kTFDynamicSize : shape;
+  }));
+}
 
 mlir::RankedTensorType GetTypeFromTFTensorShape(llvm::ArrayRef<int64_t> shape,
                                                 mlir::Type elementType,
