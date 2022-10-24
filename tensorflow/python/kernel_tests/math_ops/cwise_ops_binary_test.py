@@ -292,21 +292,6 @@ class BinaryOpTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
-  def testBfloat16Basic(self):
-    # Currently on GPUs, bfloat16 is only supported in cwise ops that are used
-    # in certain variable initializers. This is because bfloat16 is supported
-    # in XLA but variable initializers are still sometimes run outside XLA, and
-    # we want to at least support bfloat16 when XLA is used.
-    # TODO(b/254095396): Support bfloat16 in more cwise ops.
-    bf16_np = dtypes_lib.bfloat16.as_numpy_dtype
-    x = np.linspace(-5, 20, 15).reshape(1, 3, 5).astype(bf16_np)  # pylint: disable=too-many-function-args
-    y = np.linspace(20, -5, 15).reshape(1, 3, 5).astype(bf16_np)  # pylint: disable=too-many-function-args
-    self._compareGpu(x, y, np.add, math_ops.add)
-    self._compareGpu(x, y, np.subtract, math_ops.subtract)
-    self._compareGpu(x, y, np.multiply, math_ops.multiply)
-    self._compareGpu(x, y, np.maximum, math_ops.maximum)
-    self._compareGpu(x, y, np.minimum, math_ops.minimum)
-
   def testUint8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint8)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint8)
