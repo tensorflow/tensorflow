@@ -28,6 +28,7 @@ limitations under the License.
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
@@ -202,19 +203,19 @@ struct CollapseSingleIterationLoops : public OpRewritePattern<ForOp> {
 // MaterializeOp
 //===----------------------------------------------------------------------===//
 
-static FailureOr<Type> inferReturnType(ShapedType sourceType, Type setType) {
+static Type inferReturnType(ShapedType sourceType, Type setType) {
   if (auto tileType = setType.dyn_cast<TileType>()) {
     return sourceType.clone(tileType.getShape(), sourceType.getElementType());
   }
-  return failure();
+  assert(false && "could not infer result type");
+  return {};
 }
 
 void MaterializeOp::build(OpBuilder &builder, OperationState &result,
                           Value source, Value set) {
   auto sourceType = source.getType().cast<ShapedType>();
-  auto resultTypeOr = inferReturnType(sourceType, set.getType());
-  assert(succeeded(resultTypeOr) && "could not infer result type");
-  build(builder, result, *resultTypeOr, source, set);
+  auto resultType = inferReturnType(sourceType, set.getType());
+  build(builder, result, resultType, source, set);
 }
 
 LogicalResult verifyCompatibleExtractedSubset(Operation *op,
@@ -263,6 +264,32 @@ LogicalResult MaterializeOp::verify() {
   // TODO(pifon): Add verification that was removed from TileOp::verify.
   return verifyCompatibleExtractedSubset(getOperation(), getSource().getType(),
                                          getType(), getSet().getType());
+}
+
+namespace {
+/// Cleans up UnrealizedConversionCast sets from materialize ops.
+struct FoldMaterializeUnrealizedConversionCast
+    : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    auto cast = op.getSet().getDefiningOp<UnrealizedConversionCastOp>();
+    if (!cast) return failure();
+
+    auto set = cast.getOperand(0);
+    auto newOp = rewriter.create<MaterializeOp>(
+        op.getLoc(), inferReturnType(op.getSource().getType(), set.getType()),
+        op.getSource(), set);
+    rewriter.replaceOpWithNewOp<tensor::CastOp>(op, op.getType(), newOp);
+    return success();
+  }
+};
+}  // namespace
+
+void MaterializeOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                                MLIRContext *context) {
+  results.add<FoldMaterializeUnrealizedConversionCast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1381,6 +1408,43 @@ LogicalResult YieldOp::verify() {
 // TileOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// Fold gml_st.tile [%c0] ... into gml_st.tile [0] ...
+/// Adapted from OpWithOffsetSizesAndStridesConstantArgumentFolder, which makes
+/// slightly incompatible assumptions about the op.
+struct FoldConstantsIntoTileType : public OpRewritePattern<TileOp> {
+  using OpRewritePattern<TileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TileOp op,
+                                PatternRewriter &rewriter) const override {
+    // No constant operand, just return;
+    if (llvm::none_of(op.getOperands(), [](Value operand) {
+          return matchPattern(operand, matchConstantIndex());
+        }))
+      return failure();
+
+    // At least one of offsets/sizes/strides is a new constant.
+    // Form the new list of operands and constant attributes from the existing.
+    SmallVector<OpFoldResult> mixedOffsets(op.getMixedOffsets());
+    SmallVector<OpFoldResult> mixedSizes(op.getMixedSizes());
+    SmallVector<OpFoldResult> mixedStrides(op.getMixedStrides());
+    canonicalizeSubViewPart(mixedOffsets, ShapedType::isDynamicStrideOrOffset);
+    canonicalizeSubViewPart(mixedSizes, ShapedType::isDynamic);
+    canonicalizeSubViewPart(mixedStrides, ShapedType::isDynamicStrideOrOffset);
+
+    // Create the new tile in canonical form.
+    TileOp newOp = rewriter.create<TileOp>(op.getLoc(), mixedOffsets,
+                                           mixedSizes, mixedStrides);
+    // Cast the result back to the original type. This will be folded further
+    // materialize ops.
+    rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
+        op, TypeRange{op.getType()}, ValueRange{newOp});
+
+    return success();
+  }
+};
+}  // namespace
+
 void TileOp::build(OpBuilder &b, OperationState &result,
                    ArrayRef<OpFoldResult> offsets, ArrayRef<OpFoldResult> sizes,
                    ArrayRef<OpFoldResult> strides,
@@ -1462,6 +1526,11 @@ LogicalResult TileOp::verify() {
     }
   }
   return success();
+}
+
+void TileOp::getCanonicalizationPatterns(RewritePatternSet &results,
+                                         MLIRContext *context) {
+  results.add<FoldConstantsIntoTileType>(context);
 }
 
 namespace {

@@ -288,7 +288,7 @@ func.func @fold_unit_dim() -> tensor<8x10xf32> {
   // CHECK: gml_st.for (%[[I:.*]]) = (%[[C0]]) to (%[[C4]]) step (%[[C1]])
   %out = gml_st.for (%i, %j) = (%c0, %c4) to (%c4, %c5) step (%c1, %c1)
       outs(%out_ = %init : tensor<8x10xf32>) {
-    // CHECK: gml_st.tile [%[[I]], %[[C4]]]
+    // CHECK: gml_st.tile [%[[I]], 4]
      %tile = gml_st.tile [%i, %j] [4, 1] [1, 1] : !gml_st.tile<4x1>
 
      %val = tensor.empty() : tensor<4x1xf32>
@@ -296,4 +296,20 @@ func.func @fold_unit_dim() -> tensor<8x10xf32> {
       : tensor<4x1xf32> into tensor<8x10xf32>[!gml_st.tile<4x1>]
   } : tensor<8x10xf32>
   func.return %out : tensor<8x10xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @fold_constant_tile_through_materialize
+func.func @fold_constant_tile_through_materialize(%in: tensor<4xf32>) ->
+    tensor<?xf32> {
+  %c2 = arith.constant 2 : index
+  // CHECK: %[[TILE:.*]] = gml_st.tile [2] [2] [1] : !gml_st.tile<2>
+  %tile = gml_st.tile [%c2] [%c2] [1] : !gml_st.tile<?>
+  // CHECK: %[[MAT:.*]] = gml_st.materialize {{.*}}[%[[TILE]]] : tensor<4xf32>[!gml_st.tile<2>]
+  %mat = gml_st.materialize %in[%tile] : tensor<4xf32>[!gml_st.tile<?>]
+      to tensor<?xf32>
+  // CHECK: %[[RET:.*]] = tensor.cast %[[MAT]] : tensor<2xf32> to tensor<?xf32>
+  // CHECK: return %[[RET]]
+  func.return %mat : tensor<?xf32>
 }

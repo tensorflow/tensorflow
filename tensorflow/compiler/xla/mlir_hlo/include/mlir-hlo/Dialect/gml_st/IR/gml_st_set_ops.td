@@ -82,6 +82,7 @@ def GMLST_TileOp : GMLST_Op<"tile", [
     /// and `strides` operands.
     static unsigned getOffsetSizeAndStrideStartOperandIndex() { return 0; }
   }];
+  let hasCanonicalizer = 1;
   let hasVerifier = 1;
 }
 

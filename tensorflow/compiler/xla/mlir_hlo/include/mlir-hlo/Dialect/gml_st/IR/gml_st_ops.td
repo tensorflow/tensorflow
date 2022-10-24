@@ -39,6 +39,8 @@ def GMLST_MaterializeOp : GMLST_Op<"materialize", [Pure]> {
     $source`[` $set `]` attr-dict `:` type($source) `[` type($set) `]`
       `to` type($result)
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 class GMLST_LoopLikeOp<string mnemonic, list<Trait> traits = []>

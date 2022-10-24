@@ -24,6 +24,7 @@ def GmlSt_Dialect : Dialect {
   let name = "gml_st";
   let cppNamespace = "::mlir::gml_st";
 
+  let dependentDialects = ["tensor::TensorDialect"];
   let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
