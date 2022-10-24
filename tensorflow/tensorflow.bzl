@@ -2359,13 +2359,6 @@ def pywrap_tensorflow_macro_opensource(
     })
     additional_linker_inputs = if_windows([], otherwise = ["%s.lds" % vscriptname])
 
-    # This is needed so that libtensorflow_cc is included in the pip package.
-    srcs += select({
-        clean_dep("//tensorflow:macos"): [clean_dep("//tensorflow:libtensorflow_cc.%s.dylib" % VERSION_MAJOR)],
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [clean_dep("//tensorflow:libtensorflow_cc.so.%s" % VERSION_MAJOR)],
-    })
-
     tf_cc_shared_library_opensource(
         name = cc_shared_library_name,
         srcs = srcs,

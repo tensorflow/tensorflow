@@ -18,7 +18,6 @@ package_group(
 package(
     default_visibility = [
         ":internal_visibility_allowlist_package",
-        "//tensorflow:__pkg__",
     ],
     licenses = ["notice"],
 )

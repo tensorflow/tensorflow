@@ -9,7 +9,6 @@ load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 default_visibility = [
     "//tensorflow/dtensor:dtensor-internal",
-    "//tensorflow:__pkg__",
 ]
 
 package(
