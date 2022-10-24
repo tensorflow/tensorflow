@@ -94,7 +94,6 @@ load(
     "tf_portable_proto_lib",
     "tf_proto_library",
     "tf_protos_grappler_impl",
-    "tf_protos_profiler_impl",
     "tf_tpu_dependencies",
 )
 load(
@@ -1458,7 +1457,9 @@ cc_library(
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
-    ] + tf_protos_grappler_impl() + tf_protos_profiler_impl() + tf_monitoring_framework_deps(),
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl",
+        "//tensorflow/core/profiler:profiler_options_proto_cc_impl",
+    ] + tf_protos_grappler_impl() + tf_monitoring_framework_deps(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
