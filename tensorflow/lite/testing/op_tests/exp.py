@@ -26,7 +26,12 @@ def make_exp_tests(options):
   test_parameters = [{
       "input_dtype": [tf.float32],
       "input_shape": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "fully_quantize": [False, True],
+      "input_range": [(-100, 9)],
+  }, {
+      "input_dtype": [tf.float32],
+      "input_shape": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "input_range": [(-2, 2)],
+      "fully_quantize": [True],
       "quant_16x8": [False, True],
   }]
 
@@ -41,12 +46,13 @@ def make_exp_tests(options):
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    min_value, max_value = parameters["input_range"]
     values = [
         create_tensor_data(
             parameters["input_dtype"],
             parameters["input_shape"],
-            min_value=-100,
-            max_value=9)
+            min_value=min_value,
+            max_value=max_value)
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
