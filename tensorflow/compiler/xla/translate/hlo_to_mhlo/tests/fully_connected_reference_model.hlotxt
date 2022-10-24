@@ -99,7 +99,7 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %[[VAL_30:.*]] = mhlo.reshape %[[VAL_29]] : (tensor<300x1x5xf32>) -> tensor<300x1x5xf32>
   %reshape.46 = f32[300,1,5] reshape(%select.45)
 
-  // CHECK-NEXT: %[[VAL_31:.*]] = "mhlo.tuple"(%[[VAL_30]]) {xla_shape = {{.*}}} : (tensor<300x1x5xf32>) -> tuple<tensor<300x1x5xf32>>
+  // CHECK-NEXT: %[[VAL_31:.*]] = mhlo.tuple %[[VAL_30]] {xla_shape = {{.*}}} : tuple<tensor<300x1x5xf32>>
   // CHECK-NEXT: return %[[VAL_31]] : tuple<tensor<300x1x5xf32>>
   ROOT %tuple.47 = (f32[300,1,5]) tuple(%reshape.46)
 }

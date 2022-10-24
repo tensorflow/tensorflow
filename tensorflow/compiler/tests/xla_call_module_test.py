@@ -168,7 +168,7 @@ module @jit_f.0 {
       module = """
 module @jit_fun.1 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x5xi32>) -> tensor<?xi32> {
-    %0 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
+    %0 = mhlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
     %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
     return %1 : tensor<?xi32>
   }
@@ -195,11 +195,11 @@ module @jit_fun.1 {
 module @jit_fun.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?x4xf32>, %arg2: tensor<2x?x4xf32>) -> (tensor<2x?x4xf32>, tensor<2x?x4xf32>) {
     %0 = mhlo.constant dense<2> : tensor<1xi32>
-    %2 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
+    %2 = mhlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
     %3 = mhlo.constant dense<4> : tensor<1xi32>
     %4 = "mhlo.concatenate"(%0, %2, %3) {dimension = 0 : i64} : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<3xi32>
     %5 = "mhlo.dynamic_broadcast_in_dim"(%arg1, %4) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x4xf32>, tensor<3xi32>) -> tensor<2x?x4xf32>
-    %6 = mhlo.add(%5, %arg2) : (tensor<2x?x4xf32>, tensor<2x?x4xf32>) -> tensor<2x?x4xf32>
+    %6 = mhlo.add %5, %arg2 : (tensor<2x?x4xf32>, tensor<2x?x4xf32>) -> tensor<2x?x4xf32>
     return %5, %6 : tensor<2x?x4xf32>, tensor<2x?x4xf32>
   }
 }
@@ -227,7 +227,7 @@ module @jit_fun{
       %4 = mhlo.add %arg2, %arg3 : tensor<i32>
       "mhlo.return"(%4) : (tensor<i32>) -> ()
     }
-    %2 = mhlo.multiply(%1, %arg0) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %2 = mhlo.multiply %1, %arg0 : tensor<i32>
     return %2 : tensor<i32>
   }
 }
@@ -253,7 +253,7 @@ module @jit_fun_3 {
     return %0 : tensor<?xi32>
   }
   func.func private @f(%arg0: tensor<i32>, %arg1: tensor<?xf32>) -> tensor<?xi32> {
-    %0 = "mhlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
+    %0 = mhlo.reshape %arg0 : (tensor<i32>) -> tensor<1xi32>
     %1 = "mhlo.dynamic_iota"(%0) {iota_dimension = 0 : i64} : (tensor<1xi32>) -> tensor<?xi32>
     return %1 : tensor<?xi32>
   }

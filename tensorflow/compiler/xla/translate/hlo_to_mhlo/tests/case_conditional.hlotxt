@@ -110,5 +110,5 @@ ENTRY %indexed_conditional () -> f32[] {
 // CHECK-NEXT:      %[[CST:.*]] = mhlo.constant
 // CHECK-NEXT:      mhlo.return %[[CST]], %[[CST]] : tensor<f32>, tensor<f32>
 // CHECK-NEXT:    }) : (tensor<i32>) -> (tensor<f32>, tensor<f32>)
-// CHECK-NEXT:    %[[TUPLE:.*]] = "mhlo.tuple"(%[[CASE]]#0, %[[CASE]]#1)
+// CHECK-NEXT:    %[[TUPLE:.*]] = mhlo.tuple %[[CASE]]#0, %[[CASE]]#1
 // CHECK-NEXT:    return %[[TUPLE]] : tuple<tensor<f32>, tensor<f32>>

@@ -476,6 +476,7 @@ cc_library(
         "@stablehlo//:base",
         "@stablehlo//:broadcast_utils",
         "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_assembly_format",
         "@stablehlo//:stablehlo_type_inference",
     ],
 )

@@ -2490,8 +2490,8 @@ func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
                        %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
   %0 = "mhlo.map"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<complex<f32>>, %arg3: tensor<complex<f32>>):
-    %1 = mhlo.real(%arg2) : (tensor<complex<f32>>) -> tensor<f32>
-    %2 = mhlo.real(%arg3) : (tensor<complex<f32>>) -> tensor<f32>
+    %1 = mhlo.real %arg2 : (tensor<complex<f32>>) -> tensor<f32>
+    %2 = mhlo.real %arg3 : (tensor<complex<f32>>) -> tensor<f32>
     %3 = "mhlo.compare"(%1, %2)
        {comparison_direction = #mhlo<comparison_direction EQ>}
        : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -2642,13 +2642,13 @@ func.func @reduce_lexicographic_min_complex(%arg0: tensor<?x3x4xcomplex<f64>>,
    across dimensions = [0, 1, 2]
    : (tensor<?x3x4xcomplex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
    reducer(%arg3: tensor<complex<f64>>, %arg4: tensor<complex<f64>>)  {
-    %1 = mhlo.real(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
-    %2 = mhlo.convert(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %1 = mhlo.real %arg3 : (tensor<complex<f64>>) -> tensor<f64>
+    %2 = mhlo.convert %arg4 : (tensor<complex<f64>>) -> tensor<f64>
     %3 = "mhlo.compare"(%1, %2)
       {comparison_direction = #mhlo<comparison_direction EQ>}
       : (tensor<f64>, tensor<f64>) -> tensor<i1>
-    %4 = mhlo.imag(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
-    %5 = mhlo.imag(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %4 = mhlo.imag %arg3 : (tensor<complex<f64>>) -> tensor<f64>
+    %5 = mhlo.imag %arg4 : (tensor<complex<f64>>) -> tensor<f64>
     %6 = "mhlo.compare"(%4, %5)
       {comparison_direction = #mhlo<comparison_direction LT>}
       : (tensor<f64>, tensor<f64>) -> tensor<i1>
