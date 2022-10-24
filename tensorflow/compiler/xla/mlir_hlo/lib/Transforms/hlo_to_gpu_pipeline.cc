@@ -69,11 +69,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     // Tile parallel dimensions of the softmax-like patterns and distribute them
     // across warps. Warps remain independant of each other.
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
-        /*distribute=*/true, options.blockTileDim));
+        /*distribute=*/true, options.blockTileDim, "block"));
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
-        /*distribute=*/true, options.warpTileDim));
+        /*distribute=*/true, options.warpTileDim, "warp"));
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
 
@@ -95,23 +95,28 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
     // GPU-specific tiling for cwise ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwiseGPUWarpsPass());
+    pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
+    pm.addPass(createCanonicalizerPass());
+    pm.addPass(createCSEPass());
+  } else {
+    // Tiling
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/true, options.blockTileDim));
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/true, options.warpTileDim));
+    pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
+        /*distribute=*/true, options.threadTileDim));
+    pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
+    pm.addNestedPass<FuncOp>(createScalarizationPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
   }
 
-  // Tiling
-  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, options.blockTileDim));
-  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, options.warpTileDim));
-  pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
-      /*distribute=*/true, options.threadTileDim));
-  pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
-  pm.addNestedPass<FuncOp>(createScalarizationPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-
   // Bufferization-related passes.
+  if (options.experimentalSoftmax) {
+    pm.addNestedPass<FuncOp>(gml_st::createVectorizeGmlStLoopsPass(
+        /*vectorizeGmlStOps=*/true, /*distributionLabels=*/{"warp", "thread"}));
+  }
   pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
   pm.addPass(createCanonicalizerPass());
