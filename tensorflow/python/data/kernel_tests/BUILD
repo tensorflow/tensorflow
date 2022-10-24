@@ -1114,8 +1114,9 @@ tf_py_test(
 
 tf_py_test(
     name = "unique_test",
-    size = "small",
+    size = "medium",
     srcs = ["unique_test.py"],
+    shard_count = 3,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
