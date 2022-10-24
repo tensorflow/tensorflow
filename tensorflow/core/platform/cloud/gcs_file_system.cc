@@ -128,6 +128,16 @@ constexpr char kThrottleBucket[] = "GCS_THROTTLE_BUCKET_SIZE";
 constexpr char kTokensPerRequest[] = "GCS_TOKENS_PER_REQUEST";
 // The environment variable to configure the initial tokens (format: <int64_t>)
 constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
+// The environment variable for GCS retry init_delay_time_us (format: <int64_t>)
+constexpr char kRetryConfigInitialDelayTimeUs[] =
+    "GCS_RETRY_CONFIG_INIT_DELAY_TIME_US";
+// The environment variable for GCS retry config max_delay_time_us (format:
+// <int64_t>)
+constexpr char kRetryConfigMaxDelayTimeUs[] =
+    "GCS_RETRY_CONFIG_MAX_DELAY_TIME_US";
+// The environment variable that controls the number of retries in GCS
+// exponential retries (format: <int32_t>)
+constexpr char kRetryConfigMaxRetries[] = "GCS_RETRY_CONFIG_MAX_RETRIES";
 
 // The environment variable to customize which GCS bucket locations are allowed,
 // if the list is empty defaults to using the region of the zone (format, comma
@@ -260,6 +270,38 @@ Status GetBoolValue(const Json::Value& parent, const char* name, bool* result) {
   }
   *result = result_value.asBool();
   return Status::OK();
+}
+
+/// Get GCS Retry Config by applying user overrides through env if any.
+RetryConfig GetGcsRetryConfig() {
+  RetryConfig retryConfig(
+      /* init_delay_time_us = */ 1000 * 1000,
+      /* max_delay_time_us = */ 32 * 1000 * 1000,
+      /* max_retries = */ 10);
+  // Apply the overrides for Retry configs.
+  uint64 init_delay_time_us;
+  if (GetEnvVar(kRetryConfigInitialDelayTimeUs, strings::safe_strtou64,
+                &init_delay_time_us)) {
+    retryConfig.init_delay_time_us = init_delay_time_us;
+  }
+
+  uint64 max_delay_time_us;
+  if (GetEnvVar(kRetryConfigMaxDelayTimeUs, strings::safe_strtou64,
+                &max_delay_time_us)) {
+    retryConfig.max_delay_time_us = max_delay_time_us;
+  }
+
+  uint32 max_retries;
+  if (GetEnvVar(kRetryConfigMaxRetries, strings::safe_strtou32, &max_retries)) {
+    retryConfig.max_retries = max_retries;
+  }
+
+  VLOG(1) << "GCS RetryConfig: "
+          << "init_delay_time_us = " << retryConfig.init_delay_time_us << " ; "
+          << "max_delay_time_us = " << retryConfig.max_delay_time_us << " ; "
+          << "max_retries = " << retryConfig.max_retries;
+
+  return retryConfig;
 }
 
 /// A GCS-based implementation of a random access file with an LRU block cache.
@@ -724,7 +766,7 @@ class GcsWritableFile : public WritableFile {
   GcsFileSystem::TimeoutConfig* timeouts_;
   std::function<void()> file_cache_erase_;
   bool sync_needed_;  // whether there is buffered data that needs to be synced
-  RetryConfig retry_config_;
+  RetryConfig retry_config_ = GetGcsRetryConfig();
   bool compose_append_;
   uint64 start_offset_;
   // Callbacks to the file system used to upload object into GCS.
@@ -926,6 +968,8 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache) {
   } else {
     compose_append_ = false;
   }
+
+  retry_config_ = GetGcsRetryConfig();
 }
 
 GcsFileSystem::GcsFileSystem(
@@ -2125,6 +2169,10 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   *request = std::move(new_request);
   return Status::OK();
 }
+
+RetryingGcsFileSystem::RetryingGcsFileSystem()
+    : RetryingFileSystem(std::make_unique<GcsFileSystem>(),
+                         RetryConfig(GetGcsRetryConfig())) {}
 
 }  // namespace tensorflow
 
