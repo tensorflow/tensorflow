@@ -41,13 +41,14 @@ from tensorflow.python.platform import test
 g_seeded = None
 g_unseeded = None
 
+def get_gpu_float_types():
+  float_types = [dtypes.float16, dtypes.float32, dtypes.float64]
+  if test_util.is_gpu_available(
+        cuda_only=True, min_cuda_compute_capability=(8, 0)):
+    float_types += [dtypes.bfloat16]
+  return float_types
 
-GPU_FLOATS = [dtypes.float16, dtypes.float32, dtypes.float64]
-if test_util.is_gpu_available(
-      cuda_only=True, min_cuda_compute_capability=(8, 0)):
-  GPU_FLOATS += [dtypes.bfloat16]
 CPU_FLOATS = [dtypes.bfloat16, dtypes.float16, dtypes.float32, dtypes.float64]
-FLOATS = GPU_FLOATS
 INTS = [dtypes.int32, dtypes.int64]
 
 
@@ -505,7 +506,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
 
     The GPU version.
     """
-    self._sameAsOldRandomOps(test_util.gpu_device_name(), GPU_FLOATS)
+    self._sameAsOldRandomOps(test_util.gpu_device_name(), get_gpu_float_types())
 
   @parameterized.parameters(INTS + [dtypes.uint32, dtypes.uint64])
   @test_util.run_v2_only
@@ -522,7 +523,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
           shape=shape, dtype=dtype)
     self.assertAllEqual(cpu, gpu)
 
-  @parameterized.parameters(FLOATS + INTS)
+  @parameterized.parameters(get_gpu_float_types() + INTS)
   @test_util.run_v2_only
   def testUniformIsInRange(self, dtype):
     minval = 2
@@ -534,14 +535,14 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(np.all(x >= minval))
     self.assertTrue(np.all(x < maxval))
 
-  @parameterized.parameters(FLOATS)
+  @parameterized.parameters(get_gpu_float_types())
   @test_util.run_v2_only
   def testNormalIsFinite(self, dtype):
     gen = random.Generator.from_seed(1234)
     x = gen.normal(shape=[10000], dtype=dtype).numpy()
     self.assertTrue(np.all(np.isfinite(x)))
 
-  @parameterized.parameters(FLOATS + INTS)
+  @parameterized.parameters(get_gpu_float_types() + INTS)
   @test_util.run_v2_only
   def testDistributionOfUniform(self, dtype):
     """Use Pearson's Chi-squared test to test for uniformity."""
@@ -562,7 +563,7 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     val = random_test_util.chi_squared(x, 10)
     self.assertLess(val, 16.92)
 
-  @parameterized.parameters(FLOATS)
+  @parameterized.parameters(get_gpu_float_types())
   @test_util.run_v2_only
   def testDistributionOfNormal(self, dtype):
     """Use Anderson-Darling test to test distribution appears normal."""
