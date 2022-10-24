@@ -309,6 +309,7 @@ cc_library(
         "passes/quantized_function_library.h",
         "passes/replace_cast_hacks_with_tf_xla_ops.cc",
         "passes/replace_cast_hacks_with_tf_xla_ops.inc",
+        "passes/unfreeze_constants.cc",
     ],
     hdrs = [
         "passes/passes.h",
@@ -320,6 +321,7 @@ cc_library(
         ":quantization_options_proto_cc",
         ":tf_op_quant_spec",
         ":tf_quant_ops",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
