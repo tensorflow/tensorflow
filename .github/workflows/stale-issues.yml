@@ -34,7 +34,7 @@ jobs:
           days-before-issue-stale: -1
           days-before-issue-close: -1
           stale-issue-label: "stale"
-          only-issue-labels: 
+          any-of-labels: 
            - stat:contribution welcome
            - stat:good first issue
           stale-issue-message: > 
