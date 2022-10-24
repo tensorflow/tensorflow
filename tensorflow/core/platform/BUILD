@@ -20,7 +20,6 @@ load(
     "tf_kernel_tests_linkstatic",
     "tf_platform_alias",
     "tf_platform_deps",
-    "tf_testing_deps",  # @unused
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -406,7 +405,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["logging.h"],
     deps = [
-        "//tensorflow/core/platform:types",
+        ":types",
         "//tensorflow/tsl/platform:logging",
     ],
 )
