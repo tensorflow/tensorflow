@@ -12,12 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "third_party/gpus/cuda/include/cublasLt.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "third_party/gpus/cuda/include/curand.h"
+#include "tensorflow/tsl/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/env.h"
 
-// Implements the cuBLASLt API by forwarding to cuBLASLt loaded from the DSO.
+// Implements the cuRAND API by forwarding to cuRAND loaded from the DSO.
 
 namespace {
 // Returns DSO handle or null if loading the DSO fails.
@@ -26,8 +25,7 @@ void* GetDsoHandle() {
   return nullptr;
 #else
   static auto handle = []() -> void* {
-    auto handle_or =
-        stream_executor::internal::DsoLoader::GetCublasLtDsoHandle();
+    auto handle_or = tsl::internal::DsoLoader::GetCurandDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
@@ -39,21 +37,14 @@ template <typename T>
 T LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
-    stream_executor::port::Env::Default()
+    tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
   return reinterpret_cast<T>(symbol);
 }
 
-void LogFatalSymbolNotFound(const char* symbol_name) {
-  LOG(FATAL) << symbol_name << " symbol not found.";
-}
-
-cublasStatus_t GetSymbolNotFoundError() { return CUBLAS_STATUS_INTERNAL_ERROR; }
+curandStatus_t GetSymbolNotFoundError() { return CURAND_STATUS_INTERNAL_ERROR; }
 }  // namespace
 
-// We only use cublasLt from CUDA 11.0 onward.
-#if CUDA_VERSION >= 11000
-#include "tensorflow/compiler/xla/stream_executor/cuda/cublasLt_11_0.inc"
-#endif
+#include "tensorflow/tsl/cuda/curand_10_0.inc"

@@ -13,24 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/stream_executor/cuda/cudnn_version.h"
+#ifndef TENSORFLOW_TSL_CUDA_CUDNN_VERSION_H_
+#define TENSORFLOW_TSL_CUDA_CUDNN_VERSION_H_
+
+#include <string>
+
+#include "absl/strings/str_cat.h"
 
 namespace stream_executor {
 namespace gpu {
 
+struct CudnnVersion {
+  CudnnVersion() = default;
+
+  CudnnVersion(int major, int minor, int patch)
+      : major_version(major), minor_version(minor), patch_level(patch) {}
+
+  std::string ToString() const {
+    return absl::StrCat(major_version, ".", minor_version, ".", patch_level);
+  }
+
+  int major_version;
+  int minor_version;
+  int patch_level;
+};
+
+// Returns true if the given source CuDNN version is compatible with the given
+// loaded version.
 bool IsSourceCompatibleWithCudnnLibrary(CudnnVersion source_version,
-                                        CudnnVersion loaded_version) {
-  // Major version is neither forward or backward compatible and therefore major
-  // versions needs to match between source and library.
-  //
-  // Minor version is backward-compatible and therefore minor version of library
-  // needs to be same or higher.
-  //
-  // Patch releases are always forward and backward compatible and therefore
-  // need not match.
-  return loaded_version.major_version == source_version.major_version &&
-         loaded_version.minor_version >= source_version.minor_version;
-}
+                                        CudnnVersion loaded_version);
 
 }  // namespace gpu
 }  // namespace stream_executor
+
+#endif  // TENSORFLOW_TSL_CUDA_CUDNN_VERSION_H_

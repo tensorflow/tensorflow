@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusparse.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/env.h"
 
 // Implements the cusparse API by forwarding to cusparse loaded from the DSO.
 
@@ -27,7 +27,7 @@ void* GetDsoHandle() {
 #else
   static auto handle = []() -> void* {
     auto handle_or =
-        stream_executor::internal::DsoLoader::GetCusparseDsoHandle();
+        tsl::internal::DsoLoader::GetCusparseDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
@@ -39,7 +39,7 @@ template <typename T>
 T LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
-    stream_executor::port::Env::Default()
+    tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
@@ -52,13 +52,13 @@ cusparseStatus_t GetSymbolNotFoundError() {
 }  // namespace
 
 #if CUDA_VERSION < 10000
-#include "tensorflow/compiler/xla/stream_executor/cuda/cusparse_9_0.inc"
+#include "tensorflow/tsl/cuda/cusparse_9_0.inc"
 #elif CUDA_VERSION < 10010
-#include "tensorflow/compiler/xla/stream_executor/cuda/cusparse_10_0.inc"
+#include "tensorflow/tsl/cuda/cusparse_10_0.inc"
 #elif CUDA_VERSION < 10020
-#include "tensorflow/compiler/xla/stream_executor/cuda/cusparse_10_1.inc"
+#include "tensorflow/tsl/cuda/cusparse_10_1.inc"
 #elif CUDA_VERSION < 11000
-#include "tensorflow/compiler/xla/stream_executor/cuda/cusparse_10_2.inc"
+#include "tensorflow/tsl/cuda/cusparse_10_2.inc"
 #else
-#include "tensorflow/compiler/xla/stream_executor/cuda/cusparse_11_0.inc"
+#include "tensorflow/tsl/cuda/cusparse_11_0.inc"
 #endif

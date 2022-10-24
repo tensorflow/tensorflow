@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "third_party/gpus/cuda/include/cufft.h"
 #include "third_party/gpus/cuda/include/cufftXt.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/env.h"
 
 // Implements the cuFFT API by forwarding to cuFFT loaded from the DSO.
 
@@ -26,7 +26,7 @@ void* GetDsoHandle() {
   return nullptr;
 #else
   static auto handle = []() -> void* {
-    auto handle_or = stream_executor::internal::DsoLoader::GetCufftDsoHandle();
+    auto handle_or = tsl::internal::DsoLoader::GetCufftDsoHandle();
     if (!handle_or.ok()) return nullptr;
     return handle_or.value();
   }();
@@ -38,7 +38,7 @@ template <typename T>
 T LoadSymbol(const char* symbol_name) {
   void* symbol = nullptr;
   if (auto handle = GetDsoHandle()) {
-    stream_executor::port::Env::Default()
+    tsl::Env::Default()
         ->GetSymbolFromLibrary(handle, symbol_name, &symbol)
         .IgnoreError();
   }
@@ -49,8 +49,8 @@ cufftResult GetSymbolNotFoundError() { return CUFFT_INTERNAL_ERROR; }
 }  // namespace
 
 #if CUFFT_VERSION < 10000
-#include "tensorflow/compiler/xla/stream_executor/cuda/cufft_9_0.inc"
+#include "tensorflow/tsl/cuda/cufft_9_0.inc"
 #else
 // All CUDA-10+ implementations use the same API.
-#include "tensorflow/compiler/xla/stream_executor/cuda/cufft_10_0.inc"
+#include "tensorflow/tsl/cuda/cufft_10_0.inc"
 #endif

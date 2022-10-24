@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/stream_executor/cuda/cudnn_version.h"
+#include "tensorflow/tsl/cuda/cudnn_version.h"
 
 #include "tensorflow/tsl/platform/test.h"
 
