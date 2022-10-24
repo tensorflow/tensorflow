@@ -264,7 +264,6 @@ class BinaryOpTest(test.TestCase):
     self.assertAllEqual(np_result, left_result)
     self.assertAllEqual(np_result, right_result)
 
-  @test_util.run_deprecated_v1
   def testBFloat16Basic(self):
     bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     x = np.linspace(-20, 20, 10).reshape(1, 2, 5).astype(bfloat16) # pylint: disable=too-many-function-args
