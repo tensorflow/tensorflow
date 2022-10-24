@@ -12,16 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/default/dso_loader.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
-namespace stream_executor {
+namespace tsl {
 namespace internal {
 namespace DsoLoader {
 
-port::Status TryDlopenCUDALibraries() {
-  namespace CachedLoader = ::stream_executor::internal::CachedDsoLoader;
+Status TryDlopenCUDALibraries() {
+  namespace CachedLoader = ::tsl::internal::CachedDsoLoader;
   auto cudart_status = CachedLoader::GetCudaRuntimeDsoHandle();
   auto cublas_status = CachedLoader::GetCublasDsoHandle();
   auto cublaslt_status = CachedLoader::GetCublasLtDsoHandle();
@@ -35,28 +37,28 @@ port::Status TryDlopenCUDALibraries() {
       !cufft_status.status().ok() || !curand_status.status().ok() ||
       !cusolver_status.status().ok() || !cusparse_status.status().ok() ||
       !cudnn_status.status().ok() || !cublaslt_status.status().ok()) {
-    return port::Status(port::error::INTERNAL,
-                        absl::StrCat("Cannot dlopen all CUDA libraries."));
+    return Status(error::INTERNAL,
+                  absl::StrCat("Cannot dlopen all CUDA libraries."));
   } else {
     return tsl::OkStatus();
   }
 }
 
-port::Status TryDlopenROCmLibraries() {
+Status TryDlopenROCmLibraries() {
   auto rocblas_status = GetRocblasDsoHandle();
   auto miopen_status = GetMiopenDsoHandle();
   auto rocfft_status = GetHipfftDsoHandle();
   auto rocrand_status = GetRocrandDsoHandle();
   if (!rocblas_status.status().ok() || !miopen_status.status().ok() ||
       !rocfft_status.status().ok() || !rocrand_status.status().ok()) {
-    return port::Status(port::error::INTERNAL,
-                        absl::StrCat("Cannot dlopen all ROCm libraries."));
+    return Status(error::INTERNAL,
+                  absl::StrCat("Cannot dlopen all ROCm libraries."));
   } else {
     return tsl::OkStatus();
   }
 }
 
-port::Status MaybeTryDlopenGPULibraries() {
+Status MaybeTryDlopenGPULibraries() {
 #if GOOGLE_CUDA
   return TryDlopenCUDALibraries();
 #elif TENSORFLOW_USE_ROCM
@@ -67,12 +69,12 @@ port::Status MaybeTryDlopenGPULibraries() {
 #endif
 }
 
-port::Status TryDlopenTensorRTLibraries() {
+Status TryDlopenTensorRTLibraries() {
   auto nvinfer_status = GetNvInferDsoHandle();
   auto nvinferplugin_status = GetNvInferPluginDsoHandle();
   if (!nvinfer_status.status().ok() || !nvinferplugin_status.status().ok()) {
-    return port::Status(port::error::INTERNAL,
-                        absl::StrCat("Cannot dlopen all TensorRT libraries."));
+    return Status(error::INTERNAL,
+                  absl::StrCat("Cannot dlopen all TensorRT libraries."));
   } else {
     return tsl::OkStatus();
   }
@@ -80,4 +82,4 @@ port::Status TryDlopenTensorRTLibraries() {
 
 }  // namespace DsoLoader
 }  // namespace internal
-}  // namespace stream_executor
+}  // namespace tsl

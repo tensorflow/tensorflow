@@ -12,25 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
+#include "tensorflow/tsl/platform/default/dso_loader.h"
 
 #include <stdlib.h>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "third_party/gpus/cuda/cuda_config.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/path.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/platform.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "third_party/tensorrt/tensorrt_config.h"
 
 #if TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
 
-namespace stream_executor {
+namespace tsl {
 namespace internal {
 
 namespace {
@@ -44,11 +46,11 @@ string GetCufftVersion() { return TF_CUFFT_VERSION; }
 string GetCusparseVersion() { return TF_CUSPARSE_VERSION; }
 string GetTensorRTVersion() { return TF_TENSORRT_VERSION; }
 
-port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
-  auto filename = port::Env::Default()->FormatLibraryFileName(name, version);
+StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
+  auto filename = Env::Default()->FormatLibraryFileName(name, version);
   void* dso_handle;
-  port::Status status =
-      port::Env::Default()->LoadDynamicLibrary(filename.c_str(), &dso_handle);
+  Status status =
+      Env::Default()->LoadDynamicLibrary(filename.c_str(), &dso_handle);
   if (status.ok()) {
     VLOG(1) << "Successfully opened dynamic library " << filename;
     return dso_handle;
@@ -62,12 +64,12 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   }
 #endif
   LOG(WARNING) << message;
-  return port::Status(port::error::FAILED_PRECONDITION, message);
+  return Status(error::FAILED_PRECONDITION, message);
 }
 }  // namespace
 
 namespace DsoLoader {
-port::StatusOr<void*> GetCudaDriverDsoHandle() {
+StatusOr<void*> GetCudaDriverDsoHandle() {
 #if defined(PLATFORM_WINDOWS)
   return GetDsoHandle("nvcuda", "");
 #elif defined(__APPLE__)
@@ -81,35 +83,35 @@ port::StatusOr<void*> GetCudaDriverDsoHandle() {
   return GetDsoHandle("cuda", "1");
 }
 
-port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
+StatusOr<void*> GetCudaRuntimeDsoHandle() {
   return GetDsoHandle("cudart", GetCudaRtVersion());
 }
 
-port::StatusOr<void*> GetCublasDsoHandle() {
+StatusOr<void*> GetCublasDsoHandle() {
   return GetDsoHandle("cublas", GetCublasVersion());
 }
 
-port::StatusOr<void*> GetCublasLtDsoHandle() {
+StatusOr<void*> GetCublasLtDsoHandle() {
   return GetDsoHandle("cublasLt", GetCublasVersion());
 }
 
-port::StatusOr<void*> GetCufftDsoHandle() {
+StatusOr<void*> GetCufftDsoHandle() {
   return GetDsoHandle("cufft", GetCufftVersion());
 }
 
-port::StatusOr<void*> GetCusolverDsoHandle() {
+StatusOr<void*> GetCusolverDsoHandle() {
   return GetDsoHandle("cusolver", GetCusolverVersion());
 }
 
-port::StatusOr<void*> GetCusparseDsoHandle() {
+StatusOr<void*> GetCusparseDsoHandle() {
   return GetDsoHandle("cusparse", GetCusparseVersion());
 }
 
-port::StatusOr<void*> GetCurandDsoHandle() {
+StatusOr<void*> GetCurandDsoHandle() {
   return GetDsoHandle("curand", GetCurandVersion());
 }
 
-port::StatusOr<void*> GetCuptiDsoHandle() {
+StatusOr<void*> GetCuptiDsoHandle() {
   // Load specific version of CUPTI this is built.
   auto status_or_handle = GetDsoHandle("cupti", GetCudaVersion());
   if (status_or_handle.ok()) return status_or_handle;
@@ -117,11 +119,11 @@ port::StatusOr<void*> GetCuptiDsoHandle() {
   return GetDsoHandle("cupti", "");
 }
 
-port::StatusOr<void*> GetCudnnDsoHandle() {
+StatusOr<void*> GetCudnnDsoHandle() {
   return GetDsoHandle("cudnn", GetCudnnVersion());
 }
 
-port::StatusOr<void*> GetNvInferDsoHandle() {
+StatusOr<void*> GetNvInferDsoHandle() {
 #if defined(PLATFORM_WINDOWS)
   return GetDsoHandle("nvinfer", "");
 #else
@@ -129,7 +131,7 @@ port::StatusOr<void*> GetNvInferDsoHandle() {
 #endif
 }
 
-port::StatusOr<void*> GetNvInferPluginDsoHandle() {
+StatusOr<void*> GetNvInferPluginDsoHandle() {
 #if defined(PLATFORM_WINDOWS)
   return GetDsoHandle("nvinfer_plugin", "");
 #else
@@ -137,142 +139,134 @@ port::StatusOr<void*> GetNvInferPluginDsoHandle() {
 #endif
 }
 
-port::StatusOr<void*> GetRocblasDsoHandle() {
-  return GetDsoHandle("rocblas", "");
-}
+StatusOr<void*> GetRocblasDsoHandle() { return GetDsoHandle("rocblas", ""); }
 
-port::StatusOr<void*> GetMiopenDsoHandle() {
-  return GetDsoHandle("MIOpen", "");
-}
+StatusOr<void*> GetMiopenDsoHandle() { return GetDsoHandle("MIOpen", ""); }
 
-port::StatusOr<void*> GetHipfftDsoHandle() {
-  return GetDsoHandle("hipfft", "");
-}
+StatusOr<void*> GetHipfftDsoHandle() { return GetDsoHandle("hipfft", ""); }
 
-port::StatusOr<void*> GetRocrandDsoHandle() {
-  return GetDsoHandle("rocrand", "");
-}
+StatusOr<void*> GetRocrandDsoHandle() { return GetDsoHandle("rocrand", ""); }
 
-port::StatusOr<void*> GetRocsolverDsoHandle() {
+StatusOr<void*> GetRocsolverDsoHandle() {
   return GetDsoHandle("rocsolver", "");
 }
 
 #if TF_ROCM_VERSION >= 40500
-port::StatusOr<void*> GetHipsolverDsoHandle() {
+StatusOr<void*> GetHipsolverDsoHandle() {
   return GetDsoHandle("hipsolver", "");
 }
 #endif
 
-port::StatusOr<void*> GetRoctracerDsoHandle() {
+StatusOr<void*> GetRoctracerDsoHandle() {
   return GetDsoHandle("roctracer64", "");
 }
 
-port::StatusOr<void*> GetHipsparseDsoHandle() {
+StatusOr<void*> GetHipsparseDsoHandle() {
   return GetDsoHandle("hipsparse", "");
 }
 
-port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
+StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
 
 }  // namespace DsoLoader
 
 namespace CachedDsoLoader {
-port::StatusOr<void*> GetCudaDriverDsoHandle() {
+StatusOr<void*> GetCudaDriverDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudaDriverDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
+StatusOr<void*> GetCudaRuntimeDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudaRuntimeDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCublasDsoHandle() {
+StatusOr<void*> GetCublasDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCublasLtDsoHandle() {
+StatusOr<void*> GetCublasLtDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasLtDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCurandDsoHandle() {
+StatusOr<void*> GetCurandDsoHandle() {
   static auto result = new auto(DsoLoader::GetCurandDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCufftDsoHandle() {
+StatusOr<void*> GetCufftDsoHandle() {
   static auto result = new auto(DsoLoader::GetCufftDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCusolverDsoHandle() {
+StatusOr<void*> GetCusolverDsoHandle() {
   static auto result = new auto(DsoLoader::GetCusolverDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCusparseDsoHandle() {
+StatusOr<void*> GetCusparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetCusparseDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCuptiDsoHandle() {
+StatusOr<void*> GetCuptiDsoHandle() {
   static auto result = new auto(DsoLoader::GetCuptiDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetCudnnDsoHandle() {
+StatusOr<void*> GetCudnnDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudnnDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetRocblasDsoHandle() {
+StatusOr<void*> GetRocblasDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocblasDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetMiopenDsoHandle() {
+StatusOr<void*> GetMiopenDsoHandle() {
   static auto result = new auto(DsoLoader::GetMiopenDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetHipfftDsoHandle() {
+StatusOr<void*> GetHipfftDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipfftDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetRocrandDsoHandle() {
+StatusOr<void*> GetRocrandDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetRoctracerDsoHandle() {
+StatusOr<void*> GetRoctracerDsoHandle() {
   static auto result = new auto(DsoLoader::GetRoctracerDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetRocsolverDsoHandle() {
+StatusOr<void*> GetRocsolverDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocsolverDsoHandle());
   return *result;
 }
 
 #if TF_ROCM_VERSION >= 40500
-port::StatusOr<void*> GetHipsolverDsoHandle() {
+StatusOr<void*> GetHipsolverDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsolverDsoHandle());
   return *result;
 }
 #endif
 
-port::StatusOr<void*> GetHipsparseDsoHandle() {
+StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
   return *result;
 }
 
-port::StatusOr<void*> GetHipDsoHandle() {
+StatusOr<void*> GetHipDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipDsoHandle());
   return *result;
 }
 
 }  // namespace CachedDsoLoader
 }  // namespace internal
-}  // namespace stream_executor
+}  // namespace tsl

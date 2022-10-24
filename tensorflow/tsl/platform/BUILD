@@ -20,6 +20,7 @@ load(
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_resource_deps",
+    "tf_stream_executor_deps",
     "tf_testing_deps",
     "tf_windows_aware_platform_deps",
     "tsl_cc_test",
@@ -1004,6 +1005,14 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform/default/build_config:cuda",
     ],
+)
+
+cc_library(
+    name = "dso_loader",
+    hdrs = ["dso_loader.h"],
+    deps = [
+        ":platform",
+    ] + tf_stream_executor_deps("dso_loader"),
 )
 
 cc_library(

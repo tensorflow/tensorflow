@@ -67,6 +67,35 @@ cc_library(
 )
 
 cc_library(
+    name = "dso_loader",
+    srcs = ["dso_loader.cc"] + select({
+        # include dynamic loading checker only for open source build
+        "//tensorflow/tsl:oss": ["dlopen_checker.cc"],
+        "//conditions:default": ["dlopen_checker_stub.cc"],
+    }),
+    hdrs = ["dso_loader.h"],
+    compatible_with = [],
+    copts = tsl_copts(),
+    tags = [
+        "manual",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_tensorrt//:tensorrt_headers",
+    ],
+)
+
+cc_library(
     name = "dynamic_annotations",
     hdrs = ["dynamic_annotations.h"],
     tags = [

@@ -12,19 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/compiler/xla/stream_executor/platform/default/dso_loader.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/default/dso_loader.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace stream_executor {
+namespace tsl {
 namespace internal {
 namespace DsoLoader {
 
 // Skip check when GPU libraries are statically linked.
-port::Status MaybeTryDlopenGPULibraries() {
+Status MaybeTryDlopenGPULibraries() {
   LOG(INFO) << "GPU libraries are statically linked, skip dlopen check.";
   return ::tsl::OkStatus();
 }
 }  // namespace DsoLoader
 }  // namespace internal
-}  // namespace stream_executor
+}  // namespace tsl
