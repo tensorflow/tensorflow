@@ -454,7 +454,7 @@ TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt16) {
   m.SetInput<int16_t>({-32256, -32768});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAreArray(ArrayFloatNear({-32256, -32597, -32768})));
+              ElementsAreArray(ArrayFloatNear({-32256, -32598, -32768})));
 }
 
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,
