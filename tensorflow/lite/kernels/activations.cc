@@ -1556,7 +1556,9 @@ TfLiteStatus GeluPrepare(TfLiteContext* context, TfLiteNode* node) {
   } else if (input->type == kTfLiteInt16) {
     LUTPopulate<int16_t>(input->params.scale, input->params.zero_point,
                          output->params.scale, output->params.zero_point,
-                         reference_ops::GeluTransform(params->approximate),
+                         params->approximate
+                             ? reference_ops::GeluTransformApproximate
+                             : reference_ops::GeluTransform,
                          data->lut_int16);
   }
   return GenericPrepare(context, node);
