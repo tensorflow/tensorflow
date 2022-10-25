@@ -2819,7 +2819,7 @@ TEST(QuantizedGeluOpTest, GeluInt16) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({
                   0.f, 0.84137f, 2.99579f,           // Row 1
@@ -2837,7 +2837,7 @@ TEST(QuantizedGeluOpTest, GeluInt16Approximate) {
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({
                   0.f, 0.841187f, 2.99625f,           // Row 1
