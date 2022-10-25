@@ -441,7 +441,7 @@ TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeValuesInt16) {
 TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt8) {
   ResizeBilinearOpModel m({TensorType_INT8, {1, 1, 2, 1}}, {1, 3}, GetParam());
   m.SetInput<int8_t>({-120, -128});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({-120, -125, -128})));
 }
@@ -452,7 +452,7 @@ TEST_P(ResizeBilinearOpTest, HorizontalResizeExtremeNegativeValuesInt16) {
   }
   ResizeBilinearOpModel m({TensorType_INT16, {1, 1, 2, 1}}, {1, 3}, GetParam());
   m.SetInput<int16_t>({-32256, -32768});
-  m.Invoke();
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
 #if TFLITE_SINGLE_ROUNDING
   EXPECT_THAT(m.GetOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({-32256, -32597, -32768})));
