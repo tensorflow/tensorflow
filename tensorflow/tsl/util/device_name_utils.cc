@@ -13,16 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
 #include <algorithm>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
 
-namespace tensorflow {
+namespace tsl {
 
 static bool IsAlpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
@@ -627,4 +624,4 @@ std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace {
@@ -68,7 +69,7 @@ class TestCoordinationClient : public CoordinationClient {
   TestCoordinationClient() = default;
 
   Status GetStatus() {
-    mutex_lock l(mu_);
+    tsl::mutex_lock l(mu_);
     return status_;
   }
 
@@ -82,7 +83,7 @@ class TestCoordinationClient : public CoordinationClient {
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
-    mutex_lock l(mu_);
+    tsl::mutex_lock l(mu_);
     status_ = Status(static_cast<errors::Code>(request->error_code()),
                      request->error_message());
     done(OkStatus());
@@ -120,7 +121,7 @@ class TestCoordinationClient : public CoordinationClient {
 #undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
-  mutex mu_;
+  tsl::mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
 };
 

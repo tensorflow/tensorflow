@@ -245,10 +245,9 @@ tf_cuda_library(
 
 cc_library(
     name = "call_options",
-    srcs = ["call_options.cc"],
     hdrs = ["call_options.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/tsl/distributed_runtime:call_options",
     ],
 )
 

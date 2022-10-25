@@ -4146,6 +4146,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
         "//tensorflow/python/util:util_hdr",
+        "//tensorflow/tsl/distributed_runtime:pywrap_required_hdrs",
     ],
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or

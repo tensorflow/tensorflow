@@ -37,6 +37,8 @@ filegroup(
         "command_line_flags.h",
         "determinism.cc",
         "determinism.h",
+        "device_name_utils.cc",
+        "device_name_utils.h",
         "env_var.cc",
         "env_var.h",
         "ptr_util.h",
@@ -61,6 +63,7 @@ filegroup(
     name = "framework_internal_private_hdrs",
     srcs = [
         "command_line_flags.h",
+        "device_name_utils.h",
         "env_var.h",
         "ptr_util.h",
         "stat_summarizer_options.h",
@@ -72,6 +75,7 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
+        "device_name_utils.cc",
         "use_cudnn.cc",
     ],
 )
@@ -104,6 +108,7 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
+        "device_name_utils.h",
         "ptr_util.h",
         "stat_summarizer_options.h",
         "use_cudnn.h",
@@ -233,6 +238,32 @@ tsl_cc_test(
     deps = [
         ":stats_calculator_portable",
         "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "device_name_utils",
+    srcs = ["device_name_utils.cc"],
+    hdrs = ["device_name_utils.h"],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:stringpiece",
+    ],
+)
+
+tsl_cc_test(
+    name = "device_name_utils_test",
+    size = "small",
+    srcs = ["device_name_utils_test.cc"],
+    deps = [
+        ":device_name_utils",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:strcat",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
     ],
 )

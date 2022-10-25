@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include <vector>
 
-namespace tensorflow {
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+
+namespace tsl {
 
 namespace {
 
@@ -634,4 +636,4 @@ static void BM_ParseFullName(::testing::benchmark::State& state) {
 }
 BENCHMARK(BM_ParseFullName);
 
-}  // namespace tensorflow
+}  // namespace tsl

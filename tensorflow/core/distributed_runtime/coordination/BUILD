@@ -90,6 +90,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:test_utils",
         "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/platform:mutex",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",

@@ -79,7 +79,6 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "determinism.h",
-        "device_name_utils.cc",
         "device_name_utils.h",
         "dump_graph.cc",
         "dump_graph.h",
@@ -210,7 +209,6 @@ filegroup(
         "batch_util.cc",
         "bcast.cc",
         "debug_events_writer.cc",
-        "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
         "events_writer.cc",
@@ -838,7 +836,6 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
-        "device_name_utils_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",

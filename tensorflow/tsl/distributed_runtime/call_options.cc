@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/tsl/distributed_runtime/call_options.h"
 
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
-namespace tensorflow {
+namespace tsl {
 
 CallOptions::CallOptions() {}
 
@@ -51,4 +51,4 @@ void CallOptions::SetTimeout(int64_t ms) {
   timeout_in_ms_ = ms;
 }
 
-}  // end namespace tensorflow
+}  // end namespace tsl
