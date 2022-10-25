@@ -302,8 +302,6 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
 
 StatusOr<std::string> TfrtCpuClient::SerializeExecutable(
     const PjRtLoadedExecutable& executable) const {
-  return Unimplemented("SerializeExecutable not implemented on %s",
-                       platform_name());
   const TfrtCpuExecutable* tfrt_cpu_executable =
       tensorflow::down_cast<const TfrtCpuExecutable*>(&executable);
 

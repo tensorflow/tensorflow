@@ -191,6 +191,13 @@ class CpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
+  }
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();
