@@ -58,7 +58,7 @@ static bool HasValueConstraints(Span<const ArgumentConstraint> constraints) {
 // Returns true if all function operands have statically known shape.
 static bool HasStaticShapeOperands(const FunctionType& signature) {
   auto is_dynamic = [](Span<const int64_t> sizes) -> bool {
-    return llvm::any_of(sizes, mlir::ShapedType::isDynamic);
+    return llvm::any_of(sizes, MemrefType::IsDynamic);
   };
 
   for (unsigned i = 0; i < signature.num_operands(); ++i) {
@@ -79,7 +79,7 @@ static bool HasStaticShapeOperands(const FunctionType& signature) {
 
     // All other types are non-shaped and thus have "statically known shape".
 
-    // TODO(ezhulenev): Run time types might need to support type interfaces or
+    // TODO(ezhulenev): Run-time types might need to support type interfaces or
     // a hierarchy with a base `ShapedType` so that users can define their own
     // types that can participate in shape specialization. This becomes
     // complicated for container-like types (e.g. async value) that might
