@@ -881,6 +881,8 @@ ProcessFunctionLibraryRuntime::OptimizeFunctionGraph(
   optimization_options.function_def = fdef;
   optimization_options.shape_inference_on_tfe_dialect_import =
       options.shape_inference_on_tfe_dialect_import;
+  optimization_options.debug_filename_prefix = "pflr_optmz_";
+  env_->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   if (should_run_optimization_passes) {
@@ -895,7 +897,7 @@ ProcessFunctionLibraryRuntime::OptimizeFunctionGraph(
                 dev_set.get(), default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
-  TF_RETURN_IF_ERROR(placer.Run());
+  TF_RETURN_IF_ERROR(placer.Run(optimization_options));
 
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());
   if (should_run_optimization_passes) {
@@ -1009,6 +1011,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.graph = nullptr;
   optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = &subgraphs;
+  optimization_options.debug_filename_prefix = "pflr_imd_";
+  env_->CreateUniqueFileName(&optimization_options.debug_filename_prefix, "_");
+
   // Normally POST_PARTITIONING passes are run by distributed workers.
   // Distributed workers are currently not supported in this code path, so we
   // run the passes here.
