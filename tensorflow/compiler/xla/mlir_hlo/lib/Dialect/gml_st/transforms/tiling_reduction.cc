@@ -22,7 +22,9 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -38,6 +40,7 @@ limitations under the License.
 using namespace mlir;
 
 namespace {
+
 struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
   using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
 
@@ -49,10 +52,13 @@ struct TilingReductionPass
     : public ::impl::TilingReductionPassBase<TilingReductionPass> {
   void runOnOperation() override;
 };
+
 }  // namespace
 
 LogicalResult TilingReductionPattern::matchAndRewrite(
     linalg::GenericOp genericOp, PatternRewriter& rewriter) const {
+  if (gml_st::hasTransformationAttr(genericOp)) return failure();
+
   // Match only if it's a linalg.generic tensor<1x?xf32> -> tensor<1xf32> with
   // iterator_types = ["parallel", "reduction"].
   auto itTypes = llvm::to_vector(
@@ -68,19 +74,8 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
   }
   auto input = genericOp.getInputs().front();
   auto output = genericOp.getOutputs().front();
-  auto inType = input.getType().dyn_cast<TensorType>();
   auto outType = output.getType().dyn_cast<TensorType>();
   constexpr int kWarpSize = 32;
-  if (!inType || !inType.hasRank() || inType.getRank() != 2 ||
-      inType.getShape().front() != 1 || inType.getShape().back() == kWarpSize) {
-    return rewriter.notifyMatchFailure(genericOp,
-                                       "Expected 2D row tensor input");
-  }
-  if (!outType || !outType.hasStaticShape() || outType.getRank() != 1 ||
-      outType.getNumElements() != 1) {
-    return rewriter.notifyMatchFailure(genericOp,
-                                       "Expected 1D 1-element output");
-  }
 
   Location loc = genericOp->getLoc();
   Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
@@ -136,6 +131,7 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
               // Clone linalg.generic op reducing two 1-element tensors.
               Operation* clonedOp = builder.clone(*genericOp.getOperation());
               clonedOp->setOperands({inElement, partElement});
+              gml_st::setTransformationAttr(builder, clonedOp);
               builder.create<gml_st::SetYieldOp>(loc, clonedOp->getResult(0),
                                                  partElement, outPoint);
             });
@@ -146,24 +142,31 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
   // Change existing linalg.generic to warp-reduce the partial result.
   partial = rewriter.create<tensor::ExpandShapeOp>(
       loc, outType.clone({1, 32}), partial, ReassociationIndices{0, 1});
-  rewriter.updateRootInPlace(genericOp,
-                             [&] { genericOp->setOperand(0, partial); });
+  rewriter.updateRootInPlace(genericOp, [&] {
+    genericOp->setOperand(0, partial);
+    gml_st::setTransformationAttr(rewriter, genericOp);
+  });
 
   return success();
 }
 
 void TilingReductionPass::runOnOperation() {
-  FrozenRewritePatternSet patterns = RewritePatternSet(
-      &getContext(), std::make_unique<TilingReductionPattern>(&getContext()));
-  auto walkResult = getOperation()->walk([&](linalg::GenericOp genericOp) {
-    if (failed(applyOpPatternsAndFold(genericOp, patterns)))
-      return WalkResult::interrupt();
-    return WalkResult::advance();
-  });
-  if (walkResult.wasInterrupted()) return signalPassFailure();
+  MLIRContext* ctx = &getContext();
+
+  // Populate patterns.
+  RewritePatternSet patterns(ctx);
+  patterns.insert<TilingReductionPattern>(ctx);
+
+  func::FuncOp f = getOperation();
+  if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    return signalPassFailure();
+  }
+
+  // Clean up by removing temporary attributes.
+  f.walk([](Operation* op) { gml_st::removeTransformationAttr(op); });
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>>
-mlir::gml_st::createTilingReductionPass() {
+gml_st::createTilingReductionPass() {
   return std::make_unique<TilingReductionPass>();
 }
