@@ -256,8 +256,8 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
   // We prefer to placing quantization emulation ops on the results of the
   // concat ops.
   func.walk([&](ConcatenationOp concat) {
-    if (concat.output().hasOneUse() &&
-        Quantized(*concat.output().user_begin())) {
+    if (concat.getOutput().hasOneUse() &&
+        Quantized(*concat.getOutput().user_begin())) {
       return;
     }
     concat.emitWarning(

@@ -185,15 +185,15 @@ bool AllOperationSafe(Block &block) {
 // 3. no call func inside while.
 bool ReduceWhileOperands(TFL::WhileOp while_op) {
   std::vector<uint64_t> explicitly_consumed_ids;
-  Block &cond = while_op.cond().front();
-  Block &body = while_op.body().front();
+  Block &cond = while_op.getCond().front();
+  Block &body = while_op.getBody().front();
 
   auto n = while_op.getNumOperands();
   if (!AllOperationSafe(cond) || !AllOperationSafe(body)) return false;
 
   // Find all Consumed indices.
   // i is consumed element if result(i) is used outside whileOp or
-  // arugment(i) is used in whileOp.cond().
+  // argument(i) is used in whileOp.getCond().
   for (auto i = 0; i < n; ++i) {
     if (!while_op.getResult(i).use_empty() ||
         !cond.getArgument(i).use_empty()) {
@@ -274,8 +274,8 @@ bool ReduceWhileOperands(TFL::WhileOp while_op) {
 
   auto new_while_op = OpBuilder(while_op).create<WhileOp>(
       while_op.getLoc(), new_result_types, new_operands, while_op->getAttrs());
-  new_while_op.cond().takeBody(while_op.cond());
-  new_while_op.body().takeBody(while_op.body());
+  new_while_op.getCond().takeBody(while_op.getCond());
+  new_while_op.getBody().takeBody(while_op.getBody());
 
   for (auto i = 0; i < n; ++i) {
     if (!while_op.getResult(i).use_empty()) {
