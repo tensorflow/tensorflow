@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #if !defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/tpu/tpu_initializer_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"
 #endif
 
 
@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 #if !defined(PLATFORM_GOOGLE)
-static bool tpu_library_finder = FindAndLoadTpuLibrary();
+static Status tpu_library_finder = FindAndLoadTpuLibrary();
 #endif
 }  // namespace
 }  // namespace tpu

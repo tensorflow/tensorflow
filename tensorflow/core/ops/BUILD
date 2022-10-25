@@ -5,12 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_libs")
 
 # For platform specific build config
 load(
@@ -247,6 +242,19 @@ tf_gen_op_libs(
     deps = ["//tensorflow/core/util:ragged_to_dense_util"],
 )
 
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "uniform_quant_ops",
+    ],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+    ],
+)
+
 cc_library(
     name = "ops",
     deps = [
@@ -308,6 +316,7 @@ cc_library(
         ":stateless_random_ops_v2_op_lib",
         ":string_ops_op_lib",
         ":training_ops_op_lib",
+        ":uniform_quant_ops_op_lib",
         ":word2vec_ops",
     ] + select({
         # Non-tpu platforms don't need tpu dependency.
@@ -506,7 +515,9 @@ tf_cc_test(
         "spectral_ops_test.cc",
         "state_ops_test.cc",
         "string_ops_test.cc",
+        "tpu_cross_replica_ops_test.cc",
         "training_ops_test.cc",
+        "uniform_quant_ops_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [

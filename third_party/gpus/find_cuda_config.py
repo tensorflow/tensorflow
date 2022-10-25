@@ -121,7 +121,7 @@ def _at_least_version(actual_version, required_version):
 def _get_header_version(path, name):
   """Returns preprocessor defines in C header file."""
   for line in io.open(path, "r", encoding="utf-8").readlines():
-    match = re.match("#define %s +(\d+)" % name, line)
+    match = re.match("\s*#\s*define %s\s+(\d+)" % name, line)
     if match:
       return match.group(1)
   return ""

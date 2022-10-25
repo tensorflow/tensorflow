@@ -311,7 +311,7 @@ class Im2ColConvFunctor {
     std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)>
         creator = [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
-          return Status::OK();
+          return OkStatus();
         };
     OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
                                 "Conv2d", "im2col_buffer",
@@ -572,8 +572,11 @@ class Conv2DUsingGemmOp : public BinaryOp<T> {
 // request the implementation explicitly, since otherwise it will clash with the
 // default EigenTensor-based kernel.
 #if defined(USE_GEMM_FOR_CONV)
+TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_double(REGISTER_CPU);
+TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 }  // namespace tensorflow

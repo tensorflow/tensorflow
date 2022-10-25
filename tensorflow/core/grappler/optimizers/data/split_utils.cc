@@ -178,7 +178,7 @@ Status InputRewriter::RewriteInput(absl::string_view input_str,
   auto iter = input_map_.find(input_str);
   if (iter != input_map_.end()) {
     *new_input_str = iter->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   if (IsControlInput(input_str)) {
@@ -189,7 +189,7 @@ Status InputRewriter::RewriteInput(absl::string_view input_str,
     TF_RETURN_IF_ERROR(RewriteNodeInput(input_str, new_input_str));
   }
   input_map_.insert({input_str, *new_input_str});
-  return Status::OK();
+  return OkStatus();
 }
 
 Status InputRewriter::RewriteControlInput(absl::string_view input_str,
@@ -201,7 +201,7 @@ Status InputRewriter::RewriteControlInput(absl::string_view input_str,
   } else {
     *new_input_str = string{input_str};
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
@@ -233,7 +233,7 @@ Status InputRewriter::RewriteArgumentInput(absl::string_view input_str,
       original_function_.signature().input_arg_size() - num_captured_inputs_) {
     // Argument is a captured input. No need to modify argument string.
     *new_input_str = string{input_str};
-    return Status::OK();
+    return OkStatus();
   }
   const OpDef::ArgDef* found_arg_def =
       &original_function_.signature().input_arg(i);
@@ -266,7 +266,7 @@ Status InputRewriter::RewriteNodeInput(absl::string_view input_str,
       components.size() == 3 ? components[2] : "0";
   if (!IsInFirstFunction(node_name)) {
     *new_input_str = string{input_str};
-    return Status::OK();
+    return OkStatus();
   }
 
   auto index_iter = name_to_node_.find(node_name);
@@ -352,7 +352,7 @@ Status InputRewriter::RewriteCrossFunctionInput(
   added_input_arg->set_description(absl::StrCat("Input ", input_index));
 
   *new_input_str = added_input_arg->name();
-  return Status::OK();
+  return OkStatus();
 }
 
 void InitializeSignatures(

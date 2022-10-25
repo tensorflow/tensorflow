@@ -25,6 +25,8 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_sanitizers
+from tensorflow.python.checkpoint import checkpoint as trackable_utils
+from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
@@ -57,8 +59,6 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.tracking import util as trackable_utils
 
 try:
   import attr  # pylint:disable=g-import-not-at-top
@@ -124,7 +124,7 @@ def _short_circuit_test_cases():
   return functools.reduce(reduce_fn, cases, [])
 
 
-class Foo(object):
+class Foo:
   """Dummy class used for invalid return value tests."""
 
   def __init__(self):
@@ -511,6 +511,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.range(10)
     dataset = apply_map(dataset, increment_fn)
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
 
     get_next = self.getNext(dataset, requires_initialization=True)
 
@@ -576,7 +579,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.zip((labels, images))
 
     @attr.s(cmp=True)
-    class Example(object):
+    class Example:
       label = attr.ib()
       image = attr.ib()
 
@@ -1166,6 +1169,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         "counter", (), dtypes.int32, use_resource=True)
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
     dataset = apply_map(dataset, lambda _: counter_var.assign_add(1))
+    options = options_lib.Options()
+    options.experimental_optimization.inject_prefetch = False
+    dataset = dataset.with_options(options)
     get_next = self.getNext(dataset, requires_initialization=True)
 
     self.evaluate(counter_var.initializer)

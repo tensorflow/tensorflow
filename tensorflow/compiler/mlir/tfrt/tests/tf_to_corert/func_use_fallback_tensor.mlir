@@ -201,7 +201,7 @@ func.func @branch1(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
 func.func @case_test(%arg0: tensor<i32>, %arg1: tensor<f32>,  %arg2: tensor<f32>) -> tensor<f32> {
   // CHECK: [[th_idx:%.*]] = tfrt_fallback_async.fallback_tensor_to_corert_tensorhandle [[tf_idx]]
   // CHECK-NEXT: [[idx:%.*]] = corert.tensorhandle_to_int32 [[th_idx]]
-  // CHECK-NEXT: [[out_chain:%.*]], [[out:%.*]] = tfrt.case [[idx]] [@branch0, @branch1]([[chain]], [[branch_arg0]], [[branch_arg1]])
+  // CHECK-NEXT: [[out:%.*]] = tfrt.case [[idx]] [@branch0, @branch1]([[chain]], [[branch_arg0]], [[branch_arg1]])
   %0 = "tf.Case"(%arg0, %arg1, %arg2) {_lower_using_switch_merge = true, branches = [@branch0, @branch1], is_stateless = true} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   func.return %0 : tensor<f32>
 }

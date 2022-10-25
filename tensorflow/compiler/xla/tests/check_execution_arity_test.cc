@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -42,14 +43,12 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   auto p1 = Parameter(&builder, 1, param_literal.shape(), "param1");
   Add(p0, p1);
 
-  auto param0_data =
-      client_->TransferToServer(param_literal).ConsumeValueOrDie();
-  auto param1_data =
-      client_->TransferToServer(param_literal).ConsumeValueOrDie();
+  auto param0_data = client_->TransferToServer(param_literal).value();
+  auto param1_data = client_->TransferToServer(param_literal).value();
 
   auto computation_status = builder.Build();
   ASSERT_IS_OK(computation_status.status());
-  auto computation = computation_status.ConsumeValueOrDie();
+  auto computation = std::move(computation_status).value();
 
   // The arity of the UserComputation is 2 arguments. Execution will succeed
   // with 2 arguments, but fail with a different number.
@@ -60,16 +59,14 @@ TEST_F(CheckExecutionArityTest, TwoParamComputationNumArguments) {
   auto result_one_arg =
       client_->Execute(computation, {param0_data.get()}, &execution_options_);
   ASSERT_FALSE(result_one_arg.ok());
-  ASSERT_EQ(result_one_arg.status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(result_one_arg.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(result_one_arg.status().error_message(),
               ContainsRegex("takes 2"));
 
   auto result_zero_args =
       client_->Execute(computation, {}, &execution_options_);
   ASSERT_FALSE(result_zero_args.ok());
-  ASSERT_EQ(result_zero_args.status().code(),
-            tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(result_zero_args.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(result_zero_args.status().error_message(),
               ContainsRegex("takes 2"));
 }
@@ -83,15 +80,14 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
 
   auto computation_status = builder.Build();
   ASSERT_IS_OK(computation_status.status());
-  auto computation = computation_status.ConsumeValueOrDie();
+  auto computation = std::move(computation_status).value();
 
   auto f32_literal = LiteralUtil::CreateR0<float>(1.1f);
-  auto f32_data = client_->TransferToServer(f32_literal).ConsumeValueOrDie();
+  auto f32_data = client_->TransferToServer(f32_literal).value();
   auto f32_4_literal = LiteralUtil::CreateR1<float>({1.0f, 2.0f, 3.0f, 4.0f});
-  auto f32_4_data =
-      client_->TransferToServer(f32_4_literal).ConsumeValueOrDie();
+  auto f32_4_data = client_->TransferToServer(f32_4_literal).value();
   auto u8_4_literal = LiteralUtil::CreateR1U8("hola");
-  auto u8_4_data = client_->TransferToServer(u8_4_literal).ConsumeValueOrDie();
+  auto u8_4_data = client_->TransferToServer(u8_4_literal).value();
 
   // Match
   auto status = client_->Execute(
@@ -102,7 +98,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_4_data.get(), f32_4_data.get()},
                             &execution_options_);
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
               ContainsRegex(
                   "Argument does not match shape of computation parameter 0"));
@@ -111,7 +107,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_data.get(), f32_data.get()},
                             &execution_options_);
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
               ContainsRegex(
                   "Argument does not match shape of computation parameter 1"));
@@ -120,7 +116,7 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   status = client_->Execute(computation, {f32_data.get(), u8_4_data.get()},
                             &execution_options_);
   ASSERT_FALSE(status.ok());
-  ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
+  ASSERT_EQ(status.status().code(), tsl::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
               ContainsRegex(
                   "Argument does not match shape of computation parameter 1"));

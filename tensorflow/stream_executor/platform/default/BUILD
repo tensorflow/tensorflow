@@ -8,16 +8,13 @@ package(default_visibility = ["//tensorflow/stream_executor:__subpackages__"])
 cc_library(
     name = "platform",
     textual_hdrs = ["initialize.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor/platform/default:platform",
+    ],
 )
 
 cc_library(
     name = "dso_loader",
-    srcs = ["dso_loader.cc"] + select({
-        # include dynamic loading checker only for open source build
-        "//tensorflow:oss": ["dlopen_checker.cc"],
-        "//conditions:default": ["dlopen_checker_stub.cc"],
-    }),
     hdrs = ["dso_loader.h"],
     compatible_with = [],
     copts = tf_copts(),
@@ -26,12 +23,10 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/stream_executor:platform",
+        "//tensorflow/compiler/xla/stream_executor/platform/default:dso_loader",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_rocm//rocm:rocm_headers",
         "@local_config_tensorrt//:tensorrt_headers",
     ],
 )

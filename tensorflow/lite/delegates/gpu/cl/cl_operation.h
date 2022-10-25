@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_CL_OPERATION_H_
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -61,12 +62,6 @@ class ClOperation {
   const GPUOperation& GetGpuOperation() const { return *operation_; }
   uint64_t GetKernelFingerprint() const { return kernel_fingerprint_; }
 
-  const OperationDef& GetDefinition() const {
-    return operation_->GetDefinition();
-  }
-
-  absl::Status AddOperation(ClOperation* operation);
-
   // should be called after changes of inputs/outputs.
   absl::Status UpdateParams();
 
@@ -77,6 +72,26 @@ class ClOperation {
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     return queue->Dispatch(kernel_, operation_->GetWorkGroupsCount(),
                            operation_->work_group_size_);
+  }
+
+  absl::Status AddToCommanBuffer(cl_command_buffer_khr cb) {
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
+    std::array<size_t, 3> local;
+    std::array<size_t, 3> global;
+    for (int i = 0; i < 3; ++i) {
+      local[i] = operation_->work_group_size_[i];
+      global[i] =
+          operation_->GetWorkGroupsCount()[i] * operation_->work_group_size_[i];
+    }
+    const int error_code = clCommandNDRangeKernelKHR(
+        cb, nullptr, nullptr, kernel_.kernel(), 3, nullptr, global.data(),
+        local.data(), 0, nullptr, nullptr, nullptr);
+    if (error_code != CL_SUCCESS) {
+      return absl::UnknownError(
+          absl::StrCat("Failed to clCommandNDRangeKernelKHR - ",
+                       CLErrorCodeToString(error_code)));
+    }
+    return absl::OkStatus();
   }
 
   absl::Status AddToQueue(ProfilingCommandQueue* queue, CLEvent* event) {

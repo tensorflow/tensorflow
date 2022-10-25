@@ -13,37 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The StreamExecutor is a single-device abstraction for:
-//
-// * Loading/launching data-parallel-kernels
-// * Invoking pre-canned high-performance library routines (like matrix
-//   multiply)
-
 #ifndef TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_H_
 
-#include "tensorflow/stream_executor/device_description.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/device_memory.h"    // IWYU pragma: export
-#include "tensorflow/stream_executor/device_options.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/event.h"           // IWYU pragma: export
-#include "tensorflow/stream_executor/kernel.h"       // IWYU pragma: export
-#include "tensorflow/stream_executor/kernel_spec.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/launch_dim.h"   // IWYU pragma: export
-#include "tensorflow/stream_executor/multi_platform_manager.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/platform.h"     // IWYU pragma: export
-#include "tensorflow/stream_executor/stream.h"       // IWYU pragma: export
-#include "tensorflow/stream_executor/stream_executor_pimpl.h"  // IWYU pragma: export
-#include "tensorflow/stream_executor/timer.h"  // IWYU pragma: export
-
-namespace perftools {
-namespace gputools {
-
-// Temporarily pull stream_executor into perftools::gputools while we migrate
-// code to the new namespace.  TODO(b/77980417): Remove this once we've
-// completed the migration.
-using namespace stream_executor;  // NOLINT[build/namespaces]
-
-}  // namespace gputools
-}  // namespace perftools
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_H_

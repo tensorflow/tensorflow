@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 #define DEBUG_TYPE "tf-executor-tpu-v1-island-inlining"
@@ -42,8 +41,11 @@ namespace tf_executor {
 namespace {
 constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 
+#define GEN_PASS_DEF_EXECUTORTPUV1ISLANDINLININGPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct ExecutorTPUV1IslandInliningPass
-    : public TF::ExecutorTPUV1IslandInliningPassBase<
+    : public impl::ExecutorTPUV1IslandInliningPassBase<
           ExecutorTPUV1IslandInliningPass> {
   void runOnOperation() override;
 };
@@ -63,7 +65,7 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
 
     auto call_interface = cast<CallOpInterface>(call_op.getOperation());
     auto called_func =
-        dyn_cast_or_null<FuncOp>(call_interface.resolveCallable());
+        dyn_cast_or_null<func::FuncOp>(call_interface.resolveCallable());
 
     if (failed(inlineCall(inliner, call_interface,
                           cast<CallableOpInterface>(called_func.getOperation()),
@@ -79,8 +81,8 @@ void ExecutorTPUV1IslandInliningPass::runOnOperation() {
   if (walk_result.wasInterrupted()) return signalPassFailure();
   // Move all remaining nested functions back into the parent module.
   Block &nested_block = nested_module->getRegion(0).front();
-  for (FuncOp func_op :
-       llvm::make_early_inc_range(nested_block.getOps<FuncOp>())) {
+  for (func::FuncOp func_op :
+       llvm::make_early_inc_range(nested_block.getOps<func::FuncOp>())) {
     if (!symbol_table.lookupSymbolIn(getOperation(), func_op.getName())) {
       nested_block.getOperations().remove(func_op.getOperation());
       symbol_table.insert(func_op.getOperation());

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
@@ -70,8 +69,11 @@ using MapToOperationVec2D = llvm::SmallDenseMap<Value, OperationVec2D>;
 using IfOpIterConst =
     llvm::SmallVectorTemplateCommon<mlir::TF::IfRegionOp>::const_iterator;
 
+#define GEN_PASS_DEF_MERGECONTROLFLOWPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct MergeControlFlowPass
-    : public TF::MergeControlFlowPassBase<MergeControlFlowPass> {
+    : public impl::MergeControlFlowPassBase<MergeControlFlowPass> {
   void runOnOperation() override;
 };
 
@@ -201,7 +203,7 @@ bool CanAddToIfSegment(
 
   for (auto iter = std::prev(last); std::next(iter) != first; iter--) {
     TF::IfRegionOp first_if_op = *iter;
-    FuncOp func = first_if_op->getParentOfType<FuncOp>();
+    func::FuncOp func = first_if_op->getParentOfType<func::FuncOp>();
     const TF::SideEffectAnalysis::Info& analysis =
         side_effect_analysis->GetAnalysisForFunc(func);
     auto all_ops = GetAllOpsFromIf(*(std::next(iter)));
@@ -246,7 +248,7 @@ absl::flat_hash_set<Operation*> GetMoveOpsBetweenTwoIfRegions(
   absl::flat_hash_set<Operation*> visited;
   absl::flat_hash_set<Operation*> moved_ops;
 
-  FuncOp func = result_op->getParentOfType<FuncOp>();
+  func::FuncOp func = result_op->getParentOfType<func::FuncOp>();
   const TF::SideEffectAnalysis::Info& analysis =
       side_effect_analysis->GetAnalysisForFunc(func);
 

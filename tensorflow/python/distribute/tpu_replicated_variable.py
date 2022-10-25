@@ -20,7 +20,7 @@ from __future__ import print_function
 from collections import abc
 import contextlib
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
+from tensorflow.python.compiler.xla.experimental import xla_sharding
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -30,7 +30,7 @@ from tensorflow.python.ops import gen_tpu_partition_ops as tpu_partition_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.trackable import base as trackable
 
 
 def _on_device_update(update_fn, var, value, **kwargs):
@@ -183,7 +183,7 @@ class TPUReplicatedVariable(variables_lib.Variable):
 
   @property
   def handle(self):
-    if save_context.in_save_context():
+    if save_context.in_save_context() or context.executing_eagerly():
       return self._vars[0].handle
 
     if tpu_util.enclosing_tpu_context() is None:

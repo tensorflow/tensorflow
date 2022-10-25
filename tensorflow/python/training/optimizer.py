@@ -18,8 +18,6 @@
 
 import abc
 
-import six
-
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -37,8 +35,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training import slot_creator
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -81,8 +79,7 @@ def _deduplicate_indexed_slices(values, indices):
 def _var_key(var):
   """Returns slot key for `var`."""
   # pylint: disable=protected-access
-  if hasattr(var, "_distributed_container"):
-    var = var._distributed_container()
+  var = distribute_utils.value_container(var)
   if (distribute_utils.is_distributed_variable(var) and
       not ops.executing_eagerly_outside_functions()):
     return (var.graph, var._shared_name)
@@ -92,8 +89,7 @@ def _var_key(var):
   # pylint: enable=protected-access
 
 
-@six.add_metaclass(abc.ABCMeta)
-class _OptimizableVariable(object):
+class _OptimizableVariable(metaclass=abc.ABCMeta):
   """Interface for abstracting over variables in the optimizers."""
 
   @abc.abstractmethod
@@ -961,7 +957,7 @@ class Optimizer(
 
   def _get_non_slot_variable(self, name, graph=None):
     non_slot = self._non_slot_dict.get((name, graph), None)
-    if hasattr(non_slot, "_distributed_container"):
+    if distribute_utils.value_container(non_slot) is not non_slot:
       # This is a mirrored non-slot.  In order to enable code like `_finish`
       # to assign to a non-slot, return the current context replica.
       return non_slot.get()
@@ -1202,7 +1198,8 @@ class Optimizer(
     """
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
-      new_slot_variable = slot_creator.create_slot(var, val, op_name)
+      new_slot_variable = slot_creator.create_slot(
+          var, val, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)
@@ -1228,7 +1225,7 @@ class Optimizer(
     named_slots = self._slot_dict(slot_name)
     if _var_key(var) not in named_slots:
       new_slot_variable = slot_creator.create_slot_with_initializer(
-          var, initializer, shape, dtype, op_name)
+          var, initializer, shape, dtype, op_name, copy_xla_sharding=True)
       self._restore_slot_variable(
           slot_name=slot_name, variable=var,
           slot_variable=new_slot_variable)

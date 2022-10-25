@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/determinism.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
@@ -528,6 +529,7 @@ static void DepthwiseConvBackpropInputReference(const DepthwiseArgs& args,
 }
 
 // Extern template instantiated in conv_grad_input_ops.cc.
+extern template struct LaunchConv2DBackpropInputOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
@@ -623,7 +625,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
       OP_REQUIRES(context, in_sizes_data[i] >= 0,
                   errors::InvalidArgument("Dimension ", i,
                                           " of input_sizes must be >= 0"));
-      input_shape.AddDim(in_sizes_data[i]);
+      OP_REQUIRES_OK(context, input_shape.AddDimWithStatus(in_sizes_data[i]));
     }
     const TensorShape& filter_shape = filter.shape();
     EXTRACT_AND_VERIFY_DIMENSIONS("DepthwiseConv2DBackpropInput");
@@ -639,13 +641,11 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
-                     (in_depth == 1 ||
-                      (use_cudnn_grouped_conv_ &&
-                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                  /*filter_cols=*/filter_cols,
-                                                  /*in_depth=*/in_depth,
-                                                  /*out_depth=*/out_depth)));
+    bool use_cudnn =
+        std::is_same<Device, GPUDevice>::value &&
+        (in_depth == 1 || (use_cudnn_grouped_conv_ &&
+                           ShouldCudnnGroupedConvolutionBeUsed(
+                               filter_rows, filter_cols, in_depth, out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -714,6 +714,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
                               .TypeConstraint<T>("T"),               \
                           DepthwiseConv2dNativeBackpropInputOp<CPUDevice, T>);
 
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
@@ -1031,6 +1032,7 @@ static void DepthwiseConvBackpropFilterReference(const DepthwiseArgs& args,
 }
 
 // Extern template instantiated in conv_grad_filter_ops.cc.
+extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, bfloat16>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
@@ -1087,20 +1089,27 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     cudnn_use_autotune_ = CudnnUseAutotune();
 
-    if (std::is_same<T, Eigen::half>::value) {
+    if (std::is_same<T, bfloat16>::value) {
+      dtype_ = DT_BFLOAT16;
+    } else if (std::is_same<T, Eigen::half>::value) {
       dtype_ = DT_HALF;
     } else if (std::is_same<T, float>::value) {
       dtype_ = DT_FLOAT;
     } else if (std::is_same<T, double>::value) {
       dtype_ = DT_DOUBLE;
     } else {
-      LOG(ERROR) << "Only half, float, and double are supported.";
+      LOG(ERROR) << "Only bfloat16, half, float, and double are supported.";
     }
+#if CUDNN_VERSION >= 7603
     // Use CuDNN grouped conv (filter gradients) when input/output is
     // float16(half). See cudnn release note 7.6.3. (https://docs.nvidia.com/dee
     // plearning/sdk/cudnn-release-notes/rel_763.html#rel_763)
-#if CUDNN_VERSION >= 7603
-    use_cudnn_grouped_conv_ = dtype_ == DT_HALF;
+    //
+    // Grouped convolution was added to cuDNN in version 7.0.1 but
+    // TensorFlow op-determinism has been added only for cuDNN versions 7.6.3
+    // and later intentionally. This is to avoid potential issues with earlier
+    // versions of cuDNN.
+    use_cudnn_grouped_conv_ = OpDeterminismRequired() || dtype_ == DT_HALF;
 #else
     use_cudnn_grouped_conv_ = false;
 #endif
@@ -1120,7 +1129,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       OP_REQUIRES(context, filter_sizes_data[i] >= 0,
                   errors::InvalidArgument("Dimension ", i,
                                           " of filter_sizes must be >= 0"));
-      filter_shape.AddDim(filter_sizes_data[i]);
+      OP_REQUIRES_OK(context,
+                     filter_shape.AddDimWithStatus(filter_sizes_data[i]));
     }
     const TensorShape& input_shape = input.shape();
 
@@ -1139,10 +1149,9 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
                      (in_depth == 1 ||
                       (use_cudnn_grouped_conv_ &&
-                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                  /*filter_cols=*/filter_cols,
-                                                  /*in_depth=*/in_depth,
-                                                  /*out_depth=*/out_depth)));
+                       (ShouldCudnnGroupedConvolutionBeUsed(
+                            filter_rows, filter_cols, in_depth, out_depth) ||
+                        OpDeterminismRequired())));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1245,6 +1254,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
           .Device(DEVICE_CPU)                     \
           .TypeConstraint<T>("T"),                \
       DepthwiseConv2dNativeBackpropFilterOp<CPUDevice, T>);
+TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)

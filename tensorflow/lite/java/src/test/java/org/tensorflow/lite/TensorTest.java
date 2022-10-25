@@ -16,7 +16,7 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.assertThrows;
 
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
@@ -38,8 +38,7 @@ import org.tensorflow.lite.Tensor.QuantizationParams;
 @RunWith(JUnit4.class)
 public final class TensorTest {
 
-  private static final String MODEL_PATH =
-      "tensorflow/lite/java/src/testdata/add.bin";
+  private static final String MODEL_PATH = "tensorflow/lite/java/src/testdata/add.bin";
 
   private static final String INT_MODEL_PATH =
       "tensorflow/lite/java/src/testdata/int32.bin";
@@ -102,22 +101,12 @@ public final class TensorTest {
 
   @Test
   public void testCopyToNull() {
-    try {
-      tensor.copyTo(null);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Success.
-    }
+    assertThrows(IllegalArgumentException.class, () -> tensor.copyTo(null));
   }
 
   @Test
   public void testModifyReadOnlyBuffer() {
-    try {
-      assertThat(tensor.asReadOnlyBuffer().putFloat(0.f));
-      fail();
-    } catch (ReadOnlyBufferException e) {
-      // Success.
-    }
+    assertThrows(ReadOnlyBufferException.class, () -> tensor.asReadOnlyBuffer().putFloat(0.f));
   }
 
   @Test
@@ -189,53 +178,37 @@ public final class TensorTest {
   @Test
   public void testCopyToInvalidByteBuffer() {
     ByteBuffer parsedOutput = ByteBuffer.allocateDirect(3 * 4).order(ByteOrder.nativeOrder());
-    try {
-      tensor.copyTo(parsedOutput);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected.
-    }
+    assertThrows(IllegalArgumentException.class, () -> tensor.copyTo(parsedOutput));
   }
 
   @Test
   public void testCopyToInvalidTypedBuffer() {
     IntBuffer parsedOutput = IntBuffer.allocate(2 * 8 * 8 * 3);
-    try {
-      tensor.copyTo(parsedOutput);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected.
-    }
+    assertThrows(IllegalArgumentException.class, () -> tensor.copyTo(parsedOutput));
   }
 
   @Test
   public void testCopyToWrongType() {
     int[][][][] parsedOutputs = new int[2][8][8][3];
-    try {
-      tensor.copyTo(parsedOutputs);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "Cannot convert between a TensorFlowLite tensor with type FLOAT32 and a Java object "
-                  + "of type [[[[I (which is compatible with the TensorFlowLite type INT32)");
-    }
+    IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> tensor.copyTo(parsedOutputs));
+    assertThat(e)
+        .hasMessageThat()
+        .contains(
+            "Cannot convert between a TensorFlowLite tensor with type FLOAT32 and a Java object "
+                + "of type [[[[I (which is compatible with the TensorFlowLite type INT32)");
   }
 
   @Test
   public void testCopyToWrongShape() {
     float[][][][] parsedOutputs = new float[1][8][8][3];
-    try {
-      tensor.copyTo(parsedOutputs);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e)
-          .hasMessageThat()
-          .contains(
-              "Cannot copy from a TensorFlowLite tensor (output) with shape [2, 8, 8, 3] "
-                  + "to a Java object with shape [1, 8, 8, 3].");
-    }
+    IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> tensor.copyTo(parsedOutputs));
+    assertThat(e)
+        .hasMessageThat()
+        .contains(
+            "Cannot copy from a TensorFlowLite tensor (output) with shape [2, 8, 8, 3] "
+                + "to a Java object with shape [1, 8, 8, 3].");
   }
 
   @Test
@@ -368,12 +341,7 @@ public final class TensorTest {
 
   @Test
   public void testSetToNull() {
-    try {
-      tensor.setTo(null);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Success.
-    }
+    assertThrows(IllegalArgumentException.class, () -> tensor.setTo(null));
   }
 
   @Test
@@ -400,12 +368,7 @@ public final class TensorTest {
       LongBuffer.allocate(3)
     };
     for (Buffer input : inputs) {
-      try {
-        tensor.setTo(input);
-        fail();
-      } catch (IllegalArgumentException e) {
-        // Success.
-      }
+      assertThrows(IllegalArgumentException.class, () -> tensor.setTo(input));
     }
   }
 
@@ -442,20 +405,14 @@ public final class TensorTest {
     float testFloat = 1.0f;
     dataType = tensor.dataTypeOf(testFloat);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
-    try {
-      double[] testDoubleArray = {0.783, 0.251};
-      tensor.dataTypeOf(testDoubleArray);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("cannot resolve DataType of");
-    }
-    try {
-      Float[] testBoxedArray = {0.783f, 0.251f};
-      tensor.dataTypeOf(testBoxedArray);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("cannot resolve DataType of [Ljava.lang.Float;");
-    }
+    double[] testDoubleArray = {0.783, 0.251};
+    IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> tensor.dataTypeOf(testDoubleArray));
+    assertThat(e).hasMessageThat().contains("cannot resolve DataType of");
+
+    Float[] testBoxedArray = {0.783f, 0.251f};
+    e = assertThrows(IllegalArgumentException.class, () -> tensor.dataTypeOf(testBoxedArray));
+    assertThat(e).hasMessageThat().contains("cannot resolve DataType of [Ljava.lang.Float;");
   }
 
   @Test
@@ -464,13 +421,11 @@ public final class TensorTest {
     assertThat(TensorImpl.computeNumDimensions(scalar)).isEqualTo(0);
     int[][] array = {{2, 4}, {1, 9}};
     assertThat(TensorImpl.computeNumDimensions(array)).isEqualTo(2);
-    try {
-      int[] emptyArray = {};
-      TensorImpl.computeNumDimensions(emptyArray);
-      fail();
-    } catch (IllegalArgumentException e) {
-      assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
-    }
+    int[] emptyArray = {};
+    IllegalArgumentException e =
+        assertThrows(
+            IllegalArgumentException.class, () -> TensorImpl.computeNumDimensions(emptyArray));
+    assertThat(e).hasMessageThat().contains("Array lengths cannot be 0.");
   }
 
   @Test
@@ -503,23 +458,13 @@ public final class TensorTest {
     wrapper.allocateTensors();
     tensor.setTo(5.0f);
     Float outputScalar = 7.0f;
-    try {
-      tensor.copyTo(outputScalar);
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected failure.
-    }
+    assertThrows(IllegalArgumentException.class, () -> tensor.copyTo(outputScalar));
   }
 
   @Test
   public void testUseAfterClose() {
     tensor.close();
-    try {
-      tensor.numBytes();
-      fail();
-    } catch (IllegalArgumentException e) {
-      // Expected failure.
-    }
+    assertThrows(IllegalArgumentException.class, () -> tensor.numBytes());
   }
 
   @Test

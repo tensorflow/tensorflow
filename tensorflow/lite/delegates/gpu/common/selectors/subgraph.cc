@@ -24,6 +24,24 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
+int GPUOperationsSubgraph::AddTensor(const TensorDescriptor& desc) {
+  new_tensors.push_back(desc);
+  return -new_tensors.size();
+}
+
+int GPUOperationsSubgraph::AddTensor(const BHWC& shape,
+                                     const TensorDescriptor& desc) {
+  TensorDescriptor desc_with_shape = desc;
+  desc_with_shape.SetBHWCShape(shape);
+  return AddTensor(desc_with_shape);
+}
+
+int GPUOperationsSubgraph::AddTensor(const OHWI& shape,
+                                     const TensorDescriptor& desc) {
+  const BHWC shape_as_bhwc(shape.o, shape.h, shape.w, shape.i);
+  return AddTensor(shape_as_bhwc, desc);
+}
+
 std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
     const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
     GPUOperationsSubgraph* gpu_subgraph) {

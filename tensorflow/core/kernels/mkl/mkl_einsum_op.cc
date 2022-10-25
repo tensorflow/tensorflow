@@ -101,13 +101,14 @@ struct MklEinsumHelper {
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
       f(ctx->eigen_device<Device>(), output->flat<T>());
-      return Status::OK();
+      return OkStatus();
     }
 
     // Compute parameters for DNNL matmul primitive.
     MklBatchMatMulHelper bmm;
-    auto params = bmm.CreateMatMulParams(lhs.shape(), rhs.shape(), out_shape,
-                                         trans_x, trans_y);
+    string prefix = "einsum";
+    auto params = bmm.CreateMatMulParams(prefix, lhs.shape(), rhs.shape(),
+                                         out_shape, trans_x, trans_y);
 
     // Create or retrieve matmul primitive from cache.
     MklMatMulPrimitive<T, T, T>* matmul_prim =
@@ -129,7 +130,7 @@ struct MklEinsumHelper {
       TF_RETURN_IF_ERROR(EinsumHelper::ReshapeToRank3(
           *output, bcast.output_batch_size(), &output_reshaped));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -271,15 +272,15 @@ class MklEinsum : public OpKernel {
   bool mkl_output_has_ellipsis_ = false;
 };
 
+#ifndef DNNL_AARCH64_USE_ACL
 #define REGISTER_EINSUM_MKL(TYPE)                                             \
   REGISTER_KERNEL_BUILDER(Name("_MklEinsum")                                  \
                               .Device(DEVICE_CPU)                             \
                               .TypeConstraint<TYPE>("T")                      \
                               .Label(mkl_op_registry::kMklNameChangeOpLabel), \
                           MklEinsum<CPUDevice, TYPE>)
-#ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
-#endif  // ENABLE_MKL
+#endif  // !DNNL_AARCH64_USE_ACL
 }  // namespace tensorflow
 #endif  // INTEL_MKL

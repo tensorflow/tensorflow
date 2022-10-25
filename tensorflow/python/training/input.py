@@ -378,7 +378,7 @@ def _flatten(tensor_list_list):
   return [tensor for tensor_list in tensor_list_list for tensor in tensor_list]
 
 
-class _SparseMetaData(object):
+class _SparseMetaData:
   """Store information about the Tensor: Is it sparse?, map_op, and rank."""
 
   def __init__(self, sparse, map_op, rank):

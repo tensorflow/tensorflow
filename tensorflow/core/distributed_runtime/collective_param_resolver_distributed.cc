@@ -267,7 +267,7 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
           absl::CEscape(previous_gr->group.runtime_details.communicator_key));
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 void CollectiveParamResolverDistributed::CompleteGroupDistributed(

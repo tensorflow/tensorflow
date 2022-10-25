@@ -26,7 +26,6 @@ namespace internal {
 // Gradient for the tanh function
 template <typename T>
 struct scalar_tanh_gradient_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_tanh_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
     return output_gradient * (T(1) - output * output);
@@ -49,7 +48,6 @@ struct functor_traits<scalar_tanh_gradient_op<T>> {
 // Gradient for the sigmoid function
 template <typename T>
 struct scalar_sigmoid_gradient_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_sigmoid_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
     return output_gradient * output * (T(1) - output);
@@ -72,7 +70,6 @@ struct functor_traits<scalar_sigmoid_gradient_op<T>> {
 // Gradient for the inverse function
 template <typename T>
 struct scalar_inverse_gradient_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_inverse_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
     if (output_gradient == T(0)) {
@@ -101,7 +98,6 @@ struct functor_traits<scalar_inverse_gradient_op<T>> {
 // Gradient for the sqrt function
 template <typename T>
 struct scalar_sqrt_gradient_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_sqrt_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
     if (output_gradient == T(0)) {
@@ -131,7 +127,6 @@ struct functor_traits<scalar_sqrt_gradient_op<T>> {
 // Gradient for the rsqrt function
 template <typename T>
 struct scalar_rsqrt_gradient_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_rsqrt_gradient_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T
   operator()(const T& output, const T& output_gradient) const {
     if (output_gradient == T(0)) {

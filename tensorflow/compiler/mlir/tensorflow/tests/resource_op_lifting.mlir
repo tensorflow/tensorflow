@@ -859,7 +859,7 @@ func.func @cluster_with_caseregion(%arg0: tensor<i32>) -> tensor<4xf32> {
 
 // Test that the pass can lift resources out of WhileRegion
 
-!tf_ref = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_ref = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // CHECK-LABEL: func @cluster_with_whileregion
 func.func @cluster_with_whileregion() -> () {
@@ -1154,7 +1154,7 @@ func.func @type_refinement_use_refined_type() -> tensor<4xi32> {
 
 // -----
 
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // Test all tf.VarIsInitializedOp's are set to true.
 // CHECK-LABEL: func @tpu_computation
@@ -1283,7 +1283,7 @@ func.func @callee(%arg0: !tf_res) -> tensor<i1> {
 
 // Tests passthrough tf.Cast ops are removed.
 
-!tf_res = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // CHECK-LABEL: func @tpu_computation
 func.func @tpu_computation(%arg0: !tf_res) {
@@ -1320,8 +1320,8 @@ func.func @while_body(%arg0: !tf_res) -> !tf_res {
 
 // Tests passthrough tf.Cast ops are removed.
 
-!tf_res_static = type tensor<!tf_type.resource<tensor<f32>>>
-!tf_res_dynamic = type tensor<*x!tf_type.resource<tensor<f32>>>
+!tf_res_static = tensor<!tf_type.resource<tensor<f32>>>
+!tf_res_dynamic = tensor<*x!tf_type.resource<tensor<f32>>>
 
 // CHECK-LABEL: func @tpu_computation
 func.func @tpu_computation(%arg0: !tf_res_static) {

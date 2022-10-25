@@ -210,12 +210,6 @@ def Clustering : Pass<"tf-jitrt-clustering", "mlir::func::FuncOp"> {
   ];
 }
 
-def VectorizeTiledOps : Pass<"tf-jitrt-vectorize-tiled-ops", "mlir::func::FuncOp"> {
-  let summary = "Vectorize tiled Linalg ops inside `tiled_loop`";
-  let constructor = "tensorflow::CreateVectorizeTiledOpsPass()";
-  let dependentDialects = ["mlir::linalg::LinalgDialect"];
-}
-
 def TileTranspose : Pass<"tf-jitrt-tile-transpose", "mlir::func::FuncOp"> {
   let summary = "Tile transpose operations";
   let constructor = "tensorflow::CreateTileTransposePass()";

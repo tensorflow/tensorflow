@@ -15,8 +15,6 @@
 """Test base for tf.data service tests."""
 import tempfile
 
-from absl import flags
-
 from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.service import server_lib
@@ -35,8 +33,6 @@ NO_WORK_DIR = ""
 TEST_HEARTBEAT_INTERVAL_MS = 100
 TEST_DISPATCHER_TIMEOUT_MS = 1000
 PROTOCOL = "grpc"
-TRANSFER_PROTOCOL = flags.DEFINE_string(
-    "tf_data_service_test_transfer_protocol", None, "Data plane protocol.")
 
 
 def all_cluster_configurations():
@@ -51,7 +47,8 @@ def _make_worker(dispatcher_address,
                  data_transfer_protocol,
                  shutdown_quiet_period_ms=0,
                  port=0,
-                 worker_tags=None):
+                 worker_tags=None,
+                 cross_trainer_cache_size_bytes=None):
   """Creates a worker server."""
   defaults = server_lib.WorkerConfig(dispatcher_address=dispatcher_address)
   config_proto = service_config_pb2.WorkerConfig(
@@ -64,26 +61,31 @@ def _make_worker(dispatcher_address,
       dispatcher_timeout_ms=TEST_DISPATCHER_TIMEOUT_MS,
       data_transfer_protocol=data_transfer_protocol,
       data_transfer_address=defaults.worker_address,
-      shutdown_quiet_period_ms=shutdown_quiet_period_ms)
+      shutdown_quiet_period_ms=shutdown_quiet_period_ms,
+      cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
   return server_lib.WorkerServer(config_proto, start=False)
 
 
 # pylint: disable=protected-access
-class TestWorker(object):
+class TestWorker:
   """A tf.data service worker."""
 
   def __init__(self,
                dispatcher_address,
                shutdown_quiet_period_ms,
                data_transfer_protocol=None,
-               worker_tags=None):
+               port=0,
+               worker_tags=None,
+               cross_trainer_cache_size_bytes=None):
     self._dispatcher_address = dispatcher_address
     self._shutdown_quiet_period_ms = shutdown_quiet_period_ms
     self._server = _make_worker(
         dispatcher_address,
         data_transfer_protocol,
         shutdown_quiet_period_ms,
-        worker_tags=worker_tags)
+        port=port,
+        worker_tags=worker_tags,
+        cross_trainer_cache_size_bytes=cross_trainer_cache_size_bytes)
     self._running = False
     self._data_transfer_protocol = data_transfer_protocol
 
@@ -120,7 +122,7 @@ class TestWorker(object):
     return self._server._address
 
 
-class TestCluster(object):
+class TestCluster:
   """Test tf.data service cluster."""
 
   def __init__(self,
@@ -154,14 +156,11 @@ class TestCluster(object):
         `False`, the servers can be started later by calling
         `start_dispatcher()` and `start_workers()`.
       data_transfer_protocol: (Optional.) The protocol to use for transferring
-        data with the tf.data service. The default can controlled via
-        tf_data_service_test_transfer_protocol flag.
+        data with the tf.data service.
     """
     if work_dir == TMP_WORK_DIR:
       work_dir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     self._worker_shutdown_quiet_period_ms = worker_shutdown_quiet_period_ms
-    if not data_transfer_protocol:
-      data_transfer_protocol = TRANSFER_PROTOCOL.value
     self._data_transfer_protocol = data_transfer_protocol
     self.dispatcher = server_lib.DispatchServer(
         server_lib.DispatcherConfig(
@@ -198,6 +197,9 @@ class TestCluster(object):
   def stop_dispatcher(self):
     # pylint: disable=protected-access
     self.dispatcher._stop()
+
+  def stop_worker(self, index):
+    self.workers[index].stop()
 
   def stop_workers(self):
     for worker in self.workers:
@@ -237,28 +239,6 @@ class TestCluster(object):
 class TestBase(test_base.DatasetTestBase):
   """Base class for tf.data service tests."""
 
-  def register_dataset(self, dispatcher_address, dataset):
-    compression = "AUTO"
-    if TRANSFER_PROTOCOL.value is not None:
-      compression = None
-
-    return data_service_ops.register_dataset(
-        dispatcher_address, dataset, compression=compression)
-
-  def from_dataset_id(self,
-                      processing_mode,
-                      cluster,
-                      dataset_id,
-                      element_spec,
-                      job_name=None):
-    return data_service_ops.from_dataset_id(
-        processing_mode,
-        cluster.dispatcher_address(),
-        dataset_id,
-        element_spec,
-        data_transfer_protocol=TRANSFER_PROTOCOL.value,
-        job_name=job_name)
-
   def make_distributed_dataset(self,
                                dataset,
                                cluster,
@@ -267,7 +247,9 @@ class TestBase(test_base.DatasetTestBase):
                                consumer_index=None,
                                num_consumers=None,
                                max_outstanding_requests=None,
+                               data_transfer_protocol=None,
                                compression="AUTO",
+                               cross_trainer_cache=None,
                                target_workers="AUTO"):
     # pylint: disable=protected-access
     return dataset.apply(
@@ -279,8 +261,9 @@ class TestBase(test_base.DatasetTestBase):
             num_consumers=num_consumers,
             max_outstanding_requests=max_outstanding_requests,
             task_refresh_interval_hint_ms=20,
-            data_transfer_protocol=TRANSFER_PROTOCOL.value,
+            data_transfer_protocol=data_transfer_protocol,
             compression=compression,
+            cross_trainer_cache=cross_trainer_cache,
             target_workers=target_workers))
 
   def make_distributed_range_dataset(self,
@@ -289,7 +272,9 @@ class TestBase(test_base.DatasetTestBase):
                                      processing_mode="parallel_epochs",
                                      job_name=None,
                                      max_outstanding_requests=None,
+                                     data_transfer_protocol=None,
                                      compression="AUTO",
+                                     cross_trainer_cache=None,
                                      target_workers="AUTO"):
     dataset = dataset_ops.Dataset.range(num_elements)
     return self.make_distributed_dataset(
@@ -298,7 +283,9 @@ class TestBase(test_base.DatasetTestBase):
         processing_mode=processing_mode,
         job_name=job_name,
         max_outstanding_requests=max_outstanding_requests,
+        data_transfer_protocol=data_transfer_protocol,
         compression=compression,
+        cross_trainer_cache=cross_trainer_cache,
         target_workers=target_workers)
 
   def make_coordinated_read_dataset(

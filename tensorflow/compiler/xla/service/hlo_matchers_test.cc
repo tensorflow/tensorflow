@@ -270,11 +270,11 @@ TEST_F(HloMatchersTest, ComparisonMatcher) {
 
 TEST_F(HloMatchersTest, AsyncCopyMatcher) {
   Shape shape_memspace1 = ShapeUtil::MakeShapeWithLayout(
-      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, /*memory_space=*/1);
+      F32, {16}, /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*memory_space=*/1);
   Shape shape_memspace2 = ShapeUtil::MakeShapeWithLayout(
-      F32, {16}, /*minor_to_major=*/{0}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, /*memory_space=*/2);
+      F32, {16}, /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
+      /*memory_space=*/2);
 
   auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
   auto copy_start = HloInstruction::CreateCopyStart(
@@ -337,7 +337,7 @@ TEST_F(HloMatchersTest, ReplicaGroupsMatcher) {
   std::unique_ptr<HloInstruction> all_to_all =
       HloInstruction::CreateAllToAll(shape, {p0.get()}, replica_groups,
                                      /*constrain_layout=*/false,
-                                     /*channel_id=*/absl::nullopt);
+                                     /*channel_id=*/std::nullopt);
 
   EXPECT_THAT(Explain(p0.get(), op::ReplicaGroups({})),
               "%param = f32[5,7]{1,0} parameter(0) not a collective op");

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_H_
 
 #include "tensorflow/core/lib/gtl/int_type.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/framework/device_id.h"
 
 namespace tensorflow {
 
@@ -81,8 +83,8 @@ namespace tensorflow {
 // for the StreamExecutor interface (as we don't change its API), whenever we
 // need a TF device id (or platform device id) we should use TfDeviceId (or
 // PlatformDeviceId) instead of a raw integer.
-TF_LIB_GTL_DEFINE_INT_TYPE(TfDeviceId, int32);
-TF_LIB_GTL_DEFINE_INT_TYPE(PlatformDeviceId, int32);
+using tsl::PlatformDeviceId;  // NOLINT
+using tsl::TfDeviceId;        // NOLINT
 
 }  // namespace tensorflow
 

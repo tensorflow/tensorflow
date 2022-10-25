@@ -12,15 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/// \file
-/// Defines tflite::Interpreter and tflite::InterpreterBuilder.
-///
 #ifndef TENSORFLOW_LITE_MODEL_H_
 #define TENSORFLOW_LITE_MODEL_H_
 
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/model_builder.h"
-
-// TODO(b/168725050): Address the issue of proxy header in this file.
+/// For documentation, see third_party/tensorflow/lite/core/model.h.
+#include "tensorflow/lite/core/model.h"
 
 #endif  // TENSORFLOW_LITE_MODEL_H_

@@ -63,7 +63,7 @@ struct PadInputWithNegativeInf {
     functor::PadInput<GPUDevice, T, int, 4>()(
         d, in, {{input_pad_top, input_pad_left}},
         {{input_pad_bottom, input_pad_right}}, out, format, padding_value);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -111,7 +111,7 @@ Status CheckPaddingSize(int64_t window_rows, int64_t window_cols,
                                    "window size ",
                                    window_cols);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 PoolParameters::PoolParameters(OpKernelContext* context,

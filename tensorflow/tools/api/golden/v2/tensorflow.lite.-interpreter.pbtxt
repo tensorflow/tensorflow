@@ -28,7 +28,7 @@ tf_class {
   }
   member_method {
     name: "get_tensor"
-    argspec: "args=[\'self\', \'tensor_index\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'tensor_index\', \'subgraph_index\'], varargs=None, keywords=None, defaults=[\'0\'], "
   }
   member_method {
     name: "get_tensor_details"

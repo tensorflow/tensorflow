@@ -50,7 +50,7 @@ HloValue::Id PhiGraph::FindOptimizedValue(const HloValue::Id id) {
 PhiGraph::Node* PhiGraph::CreateOrReuseNode(const HloValue& value) {
   auto iter = value_id_to_node_.find(value.id());
   if (iter == value_id_to_node_.end()) {
-    node_storage_.emplace_back(absl::make_unique<Node>());
+    node_storage_.emplace_back(std::make_unique<Node>());
     Node* node = node_storage_.back().get();
     node->value_id = value.id();
     value_id_to_node_[value.id()] = node;

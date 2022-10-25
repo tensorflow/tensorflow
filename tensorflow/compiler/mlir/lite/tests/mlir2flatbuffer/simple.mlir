@@ -23,7 +23,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "input",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 3, 2 ],
 // CHECK-NEXT:       type: INT32,
@@ -33,7 +34,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 3, 2 ],
 // CHECK-NEXT:       type: INT32,
@@ -43,7 +45,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ ],
 // CHECK-NEXT:       type: INT32,
@@ -53,7 +56,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "2",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 3, 2 ],
 // CHECK-NEXT:       type: INT32,
@@ -63,7 +67,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<3x2xi32>
 // STRIP-NEXT:       name: "SameNameAsOutput",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       has_rank: true
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0 ],
 // CHECK-NEXT:     outputs: [ 4 ],

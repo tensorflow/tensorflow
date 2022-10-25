@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_
 
 #include <functional>
+#include <optional>
 
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -31,7 +31,7 @@ namespace xla {
 // set the fields of any pass not currently running.
 class HloModuleMetadata {
  public:
-  explicit HloModuleMetadata(tensorflow::Env* env) : env_(env) {}
+  explicit HloModuleMetadata(tsl::Env* env) : env_(env) {}
 
   const HloModuleMetadataProto& proto() const { return module_metadata_; }
 
@@ -43,7 +43,7 @@ class HloModuleMetadata {
   // for the currently running pass cannot be found.
   Status RecordPassEnd();
 
-  const absl::optional<HloModuleMetadataProto>& prepartitioning_metadata()
+  const std::optional<HloModuleMetadataProto>& prepartitioning_metadata()
       const {
     return prepartitioning_metadata_;
   }
@@ -115,7 +115,7 @@ class HloModuleMetadata {
       const std::function<void(HloPassMetadata*)>& mutator);
 
   HloModuleMetadataProto module_metadata_;
-  tensorflow::Env* env_;
+  tsl::Env* env_;
   int64_t next_pass_id_ = 1;
 
   // Stack of metadata for passes that are currently running. Size > 1 iff
@@ -123,10 +123,10 @@ class HloModuleMetadata {
   std::vector<HloPassMetadata*> running_passes_;
 
   // Metadata from before the module was partitioned, if applicable.
-  absl::optional<HloModuleMetadataProto> prepartitioning_metadata_ =
-      absl::nullopt;
+  std::optional<HloModuleMetadataProto> prepartitioning_metadata_ =
+      std::nullopt;
 };
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_METADATA_H_

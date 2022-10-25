@@ -18,8 +18,6 @@ import collections
 import gc
 import time
 
-import six
-
 from tensorflow.python.eager import context
 
 # memory_profiler might not be available in the OSS version of TensorFlow.
@@ -57,7 +55,7 @@ def assert_no_leak(f, num_iters=100000, increase_threshold_absolute_mb=10):
     initial = memory_profiler.memory_usage(-1)[0]
     instance_count_by_class_before = _instance_count_by_class()
 
-    for _ in six.moves.range(num_iters):
+    for _ in range(num_iters):
       f()
 
     gc.collect()

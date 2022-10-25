@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -120,6 +121,10 @@ class ConcatBaseOp : public OpKernel {
     int64_t output_concat_dim = 0;
     for (int i = 0; i < N; ++i) {
       const auto& in = c->input(values_input_start_index_ + i);
+      OP_REQUIRES(
+          c, in.dims() > 0,
+          errors::InvalidArgument("ConcatOp : Can't concatenate scalars "
+                                  "(use tf.stack instead)"));
       OP_REQUIRES(
           c, in.dims() == input_dims,
           errors::InvalidArgument(

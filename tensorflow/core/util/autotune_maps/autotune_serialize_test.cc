@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/core/util/autotune_maps/autotune_serialize.h"
 
 #include "absl/types/variant.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/autotune_maps/conv_autotune_maps.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace tensorflow {
 namespace {
@@ -81,7 +81,7 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{1.0, 0.,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kNone,
                                  /*is_contrib=*/false},
@@ -99,7 +99,7 @@ TEST(AutotuneSerializeTest, Consistency) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{1.0, 0.,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kRelu,
                                  /*is_contrib=*/true}};
@@ -148,7 +148,7 @@ TEST(AutotuneSerializeTest, VersionControl) {
       /*dtype=*/DataType::DT_INT8,
       /*device_id=*/0,
       /*group_count=*/1,
-      ConvParameters::FusionInfo{1.0, 0.,
+      ConvParameters::FusionInfo{1.0, 0., 0.,
                                  /*activation_mode=*/
                                  se::dnn::ActivationMode::kNone,
                                  /*is_contrib=*/false},

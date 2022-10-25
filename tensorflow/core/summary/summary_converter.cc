@@ -58,7 +58,7 @@ Status TensorValueAt(Tensor t, int64_t i, T* out) {
                                      " not supported.");
   }
   // clang-format on
-  return Status::OK();
+  return OkStatus();
 #undef CASE
 #undef COMPLEX_CASE
 }
@@ -102,7 +102,7 @@ Status AddImages(const string& tag, int max_images, int batch_size, int w,
       return errors::Internal("PNG encoding failed");
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 template <class T>
@@ -211,7 +211,7 @@ Status AddTensorAsScalarToSummary(const Tensor& t, const string& tag,
   float value;
   TF_RETURN_IF_ERROR(TensorValueAt<float>(t, 0, &value));
   v->set_simple_value(value);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
@@ -231,7 +231,7 @@ Status AddTensorAsHistogramToSummary(const Tensor& t, const string& tag,
     histo.Add(double_val);
   }
   histo.EncodeToProto(v->mutable_histo(), false /* Drop zero buckets */);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
@@ -280,7 +280,7 @@ Status AddTensorAsImageToSummary(const Tensor& tensor, const string& tag,
         "Got ",
         DataTypeString(tensor.dtype()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
@@ -321,7 +321,7 @@ Status AddTensorAsAudioToSummary(const Tensor& tensor, const string& tag,
         channels_by_frames.data(), sample_rate_truncated, num_channels,
         length_frames, sa->mutable_encoded_audio_string()));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

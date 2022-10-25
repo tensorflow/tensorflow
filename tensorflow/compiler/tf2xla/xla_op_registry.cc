@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <string>
 
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
@@ -50,7 +51,7 @@ static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
                                    &kernel_class_name));
   VLOG(1) << "LaunchOpHasKernelForDevice"
           << " kernel_class_name: " << kernel_class_name;
-  return Status::OK();
+  return OkStatus();
 }
 
 XlaOpRegistry::XlaOpRegistry() = default;
@@ -343,10 +344,14 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   RegisterCompilationKernels();
   std::vector<const KernelDef*> kernels;
   XlaOpRegistry& registry = Instance();
+  std::string registered_backends =
+      absl::StrJoin(registry.BackendNames(), ", ");
   mutex_lock lock(registry.mutex_);
   auto it = registry.backends_.find(compilation_device_name);
+
   CHECK(it != registry.backends_.end())
-      << "Unknown backend " << compilation_device_name;
+      << "Unknown backend " << compilation_device_name
+      << "; Known backends are: " << registered_backends;
   for (const std::unique_ptr<KernelDef>& k : it->second.kernel_defs) {
     auto op_iter = registry.ops_.find(k->op());
     CHECK(op_iter != registry.ops_.end() && !op_iter->second.empty());
@@ -407,7 +412,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
     compile_time_constant_inputs =
         CompileTimeConstantInputArgNames(node_def.op());
     if (compile_time_constant_inputs->empty()) {
-      return Status::OK();
+      return OkStatus();
     }
   }
 
@@ -440,7 +445,7 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
   }
 
   absl::c_sort(*result);
-  return Status::OK();
+  return OkStatus();
 }
 
 /*static*/ bool XlaOpRegistry::IsMetadataOp(const string& op) {

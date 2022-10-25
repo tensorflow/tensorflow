@@ -142,8 +142,8 @@ bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 LogicalResult ParallelExecuteOp::verify() {
   ParallelExecuteOp op = *this;
   const auto& regions = op.getOperation()->getRegions();
-  if (regions.size() < 2) {
-    return op.emitOpError() << "must have at least two regions.";
+  if (regions.empty()) {
+    return op.emitOpError() << "must have at least one region.";
   }
 
   int output_index = 0;
@@ -177,7 +177,7 @@ LogicalResult ParallelExecuteOp::verify() {
 // static
 void ParallelExecuteOp::build(OpBuilder& builder, OperationState& state,
                               int num_regions, TypeRange output_types) {
-  DCHECK_GE(num_regions, 2);
+  DCHECK_GE(num_regions, 1);
   for (int i = 0; i < num_regions; ++i) {
     Region* region = state.addRegion();
     region->push_back(new Block);
@@ -240,15 +240,16 @@ ParseResult ParseReplicateOpOperands(
       packed_inputs->emplace_back(operand_type);
       if (parser->parseKeyword("as",
                                " between packed input and block argument") ||
-          parser->parseRegionArgument(packed_region_args.emplace_back()) ||
+          parser->parseOperand(packed_region_args.emplace_back(),
+                               /*allowResultNumber=*/false) ||
           parser->parseColonType(packed_region_arg_types.emplace_back()))
         return failure();
     } else if (parser->parseOperandList(replicated_inputs->emplace_back(),
                                         OpAsmParser::Delimiter::Square) ||
                parser->parseKeyword(
                    "as", " between replicated inputs and block argument") ||
-               parser->parseRegionArgument(
-                   replicated_region_args.emplace_back()) ||
+               parser->parseOperand(replicated_region_args.emplace_back(),
+                                    /*allowResultNumber=*/false) ||
                parser->parseColonType(
                    replicated_region_arg_types.emplace_back())) {
       return failure();
@@ -338,16 +339,22 @@ ParseResult ReplicateOp::parse(OpAsmParser& parser, OperationState& result) {
                                &region_arg_types) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       SetReplicateOpOperands(loc, &parser, &result, replicated_inputs,
-                             packed_inputs, region_arg_types, &n) ||
-      parser.parseRegion(body, region_args, region_arg_types))
+                             packed_inputs, region_arg_types, &n))
     return failure();
+
+  SmallVector<OpAsmParser::Argument> packed_args;
+  for (auto argAndType : llvm::zip(region_args, region_arg_types)) {
+    auto& arg = packed_args.emplace_back();
+    arg.ssaName = std::get<0>(argAndType);
+    arg.type = std::get<1>(argAndType);
+  }
+  if (parser.parseRegion(body, packed_args)) return failure();
 
   // Add derived `operand_segment_sizes` attribute based on parsed operands.
   if (!result.attributes.get(kOperandSegmentSizesAttr)) {
     int32_t num_replicated_inputs = replicated_inputs.size() * n;
     int32_t num_packed_inputs = packed_inputs.size();
-    auto attr = DenseIntElementsAttr::get(
-        VectorType::get({2}, parser.getBuilder().getI32Type()),
+    auto attr = parser.getBuilder().getDenseI32ArrayAttr(
         {num_replicated_inputs, num_packed_inputs});
     result.addAttribute(kOperandSegmentSizesAttr, attr);
   }
@@ -378,24 +385,23 @@ void ReplicateOp::print(OpAsmPrinter& p) {
   //     [%a, ...] as %block_arg0: type
   //   packed_input
   //     %b as %block_arg1: type
-  const int32_t n = this->n();
-  const int32_t num_replicated_inputs =
-      (*operand_segment_sizes().value_begin<APInt>()).getSExtValue();
+  const int32_t n = this->getN();
+  const int32_t num_replicated_inputs = getOperandSegmentSizes()[0];
   const int32_t num_replicated_block_args = num_replicated_inputs / n;
 
   if (getNumOperands()) {
     p << '(';
-    Block& block = body().front();
+    Block& block = getBody().front();
     interleaveComma(block.getArguments(), p, [&](BlockArgument arg) {
       const int block_arg_num = arg.getArgNumber();
       if (block_arg_num < num_replicated_block_args) {
         p << '[';
         p.printOperands(
-            std::next(replicated_inputs().begin(), block_arg_num * n),
-            std::next(replicated_inputs().begin(), (block_arg_num + 1) * n));
+            std::next(getReplicatedInputs().begin(), block_arg_num * n),
+            std::next(getReplicatedInputs().begin(), (block_arg_num + 1) * n));
         p << "]";
       } else {
-        p.printOperand(*std::next(packed_inputs().begin(),
+        p.printOperand(*std::next(getPackedInputs().begin(),
                                   block_arg_num - num_replicated_block_args));
       }
       p << " as " << arg << ": " << arg.getType();
@@ -410,7 +416,7 @@ void ReplicateOp::print(OpAsmPrinter& p) {
       getOperation()->getAttrs(),
       /*elidedAttrs=*/ArrayRef<StringRef>{kOperandSegmentSizesAttr});
   p << ' ';
-  p.printRegion(body(), /*printEntryBlockArgs=*/false);
+  p.printRegion(getBody(), /*printEntryBlockArgs=*/false);
 }
 
 namespace {
@@ -433,7 +439,7 @@ void BuildReplicateOp(
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
+  if (devices.has_value()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -458,8 +464,7 @@ void BuildReplicateOp(
   int32_t num_replicated_inputs = replicated_inputs.size() * n;
   int32_t num_packed_inputs = packed_inputs.size();
   auto operand_segment_sizes =
-      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
-                                {num_replicated_inputs, num_packed_inputs});
+      builder->getDenseI32ArrayAttr({num_replicated_inputs, num_packed_inputs});
   state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
 
   for (const auto& output_type : replica_output_types)
@@ -470,11 +475,11 @@ void BuildReplicateOp(
 
 LogicalResult ReplicateOp::verify() {
   ReplicateOp op = *this;
-  int32_t n = op.n();
+  int32_t n = op.getN();
 
   // Check number of devices, if set, matches `n`.
-  if (op.devices().hasValue()) {
-    for (auto device_attr : op.devices().getValue().getValue()) {
+  if (op.getDevices().has_value()) {
+    for (auto device_attr : op.getDevices().getValue().getValue()) {
       auto device_list = device_attr.getValue().dyn_cast_or_null<ArrayAttr>();
       if (!device_list)
         return op.emitError()
@@ -494,13 +499,11 @@ LogicalResult ReplicateOp::verify() {
     }
   }
 
-  Block& block = op.body().front();
+  Block& block = op.getBody().front();
 
-  auto operand_segment_sizes = op.operand_segment_sizes();
-  const int32_t num_replicated_inputs =
-      operand_segment_sizes.getValues<APInt>()[0].getSExtValue();
-  const int32_t num_packed_inputs =
-      operand_segment_sizes.getValues<APInt>()[1].getSExtValue();
+  auto operand_segment_sizes = op.getOperandSegmentSizes();
+  const int32_t num_replicated_inputs = operand_segment_sizes[0];
+  const int32_t num_packed_inputs = operand_segment_sizes[1];
 
   if (num_replicated_inputs % n != 0)
     return op.emitOpError()
@@ -595,7 +598,7 @@ void ReplicateOp::build(
 
 // Returns the number of packed block arguments.
 unsigned ReplicateOp::GetNumPackedBlockArguments() {
-  return packed_inputs().size();
+  return getPackedInputs().size();
 }
 
 // Returns the number of replicated block arguments.
@@ -659,7 +662,7 @@ MutableArrayRef<OpOperand> ReplicateOp::GetOperandsForBlockArgument(
 
   unsigned arg_number = block_arg.getArgNumber();
   unsigned num_replicated_args = GetNumReplicatedBlockArguments();
-  int32_t num_replicas = nAttr().getInt();
+  int32_t num_replicas = getNAttr().getInt();
   MutableArrayRef<OpOperand> operands = getOperation()->getOpOperands();
 
   // All replicated arguments are before packed arguments so return replicated

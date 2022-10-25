@@ -1,0 +1,11 @@
+op 	 {
+  name: "TpuHandleToProtoKey"
+  input_arg {
+    name: "uid"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "proto_keys"
+    type: DT_STRING
+  }
+}

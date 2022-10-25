@@ -38,8 +38,37 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 
 
+# TODO(b/136040013): Drop support for Defun.
 class Defun(object):
-  """Decorator used to define TensorFlow functions.
+  """Obsolete. Slated for deletion. Please use tf.function instead.
+
+  Known feature gaps while migrating to tf.function (could be outdated):
+  - tf.function doesn’t support Send/Recv capability since it doesn’t share
+    rendezvous with the main graph but always creates a new one.
+  - tf.function doesn’t support custom gradient function directly, instead you
+    need to define the function inside a tf.custom_gradient wrapper together
+    with the gradient function.
+  - Unlike Defun, Keras layers used inside a tf.function need to be created only
+    once to avoid variable recreation.
+  - Defun respects the device assignments and applies them to the function body
+    but tf.function needs it to be done manually.
+  - Defun might prune out unused ops automatically but tf.function doesn't.
+
+  Limitations of Defun:
+  - Original source locations are not preserved so errors do not include
+    full/valid stack traces.
+  - Only supports linear sequence of arguments and return values, putting the
+    burden on the caller to pack/unpack everything across a Defun boundary into
+    tuples (as opposed to passing list and dict-like structures directly).
+  - Does not support overloading or late-bound specializations.
+  - Has its own way for defining gradient overrides which does not follow
+    current conventions.
+  - Cannot support imperative control flow or automatic control dependencies.
+  - Does not reflect statefulness in the graph and has a calling convention that
+    differs from how more modern tools interact.
+  - Is only compatible with graph building mode.
+
+  Decorator used to define TensorFlow functions.
 
   Use this decorator to make a Python function usable directly as a TensorFlow
   function.
@@ -417,6 +446,7 @@ class _DefinedFunction(object):
         base_func_name += ("_%s" % self._grad_func.name)
     kwargs_attr = _parse_kwargs_as_attrs(base_func_name, **self._extra_kwargs)
 
+    # FIXME(feyu): C API is always enabled now. The if-true branch never runs.
     if not temp_graph._c_graph:  # pylint: disable=protected-access
       # Build the FunctionDef
       self._definition = graph_to_function_def.graph_to_function_def(
@@ -448,18 +478,19 @@ class _DefinedFunction(object):
                       if self._out_names else [])
       description = self._func.__doc__ or None
       # pylint: disable=protected-access
-      c_func = c_api.TF_GraphToFunction_wrapper(
-          temp_graph._c_graph,
-          base_func_name,
-          self._func_name is None,  # append_hash_to_fn_name
-          None,  # opers
-          [t._as_tf_output() for t in temp_graph.inputs],
-          [t._as_tf_output() for t in temp_graph.outputs],
-          output_names,
-          [], # control_outputs
-          [], # control_output_names
-          None,  # opts
-          description)
+      with temp_graph._c_graph.get() as c_graph:
+        c_func = c_api.TF_GraphToFunction_wrapper(
+            c_graph,
+            base_func_name,
+            self._func_name is None,  # append_hash_to_fn_name
+            None,  # opers
+            [t._as_tf_output() for t in temp_graph.inputs],
+            [t._as_tf_output() for t in temp_graph.outputs],
+            output_names,
+            [],  # control_outputs
+            [],  # control_output_names
+            None,  # opts
+            description)
       self._c_func = c_api_util.ScopedTFFunction(c_func, base_func_name)
       # pylint: enable=protected-access
       self._set_c_attrs(kwargs_attr)
@@ -855,12 +886,14 @@ class _FuncGraph(ops.Graph):
       if handle_data:
         handle_data = handle_data.SerializeToString()
     else:
-      handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
-                                                tensor._as_tf_output())
+      with tensor.graph._c_graph.get() as c_graph:
+        handle_data = c_api.GetHandleShapeAndType(c_graph,
+                                                  tensor._as_tf_output())
 
     if handle_data:
-      c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
-                                  compat.as_bytes(handle_data))
+      with ph.graph._c_graph.get() as c_graph:
+        c_api.SetHandleShapeAndType(c_graph, ph._as_tf_output(),
+                                    compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
     self._captured[tensor.ref()] = ph

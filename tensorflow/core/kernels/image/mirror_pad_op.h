@@ -33,7 +33,7 @@ struct traits<TensorMirrorPadOp<PaddingDimensions, XprType>>
   typedef typename XprTraits::StorageKind StorageKind;
   typedef typename XprTraits::Index Index;
   typedef typename XprType::Nested Nested;
-  typedef typename remove_reference<Nested>::type _Nested;
+  typedef std::remove_reference_t<Nested> _Nested;
   static constexpr int NumDimensions = XprTraits::NumDimensions;
   static constexpr int Layout = XprTraits::Layout;
 };
@@ -114,8 +114,7 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
   typedef internal::TensorBlockNotImplemented TensorBlock;
   //===--------------------------------------------------------------------===//
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE TensorEvaluator(const XprType& op,
-                                                        const Device& device)
+  EIGEN_STRONG_INLINE TensorEvaluator(const XprType& op, const Device& device)
       : impl_(op.expression(), device), padding_(op.padding()) {
     EIGEN_STATIC_ASSERT(Dims > 0, YOU_MADE_A_PROGRAMMING_MISTAKE)
 
@@ -156,12 +155,12 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     return dimensions_;
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE bool evalSubExprsIfNeeded(Scalar*) {
+  EIGEN_STRONG_INLINE bool evalSubExprsIfNeeded(Scalar*) {
     impl_.evalSubExprsIfNeeded(nullptr);
     return true;
   }
 
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void cleanup() { impl_.cleanup(); }
+  EIGEN_STRONG_INLINE void cleanup() { impl_.cleanup(); }
 
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE CoeffReturnType
   coeff(Index index) const {
@@ -229,8 +228,7 @@ struct TensorEvaluator<const TensorMirrorPadOp<PaddingDimensions, ArgType>,
     }
 
     // If the road is not contiguous, then fall back to coeff().
-    EIGEN_ALIGN_MAX typename internal::remove_const<CoeffReturnType>::type
-        values[kPacketSize];
+    EIGEN_ALIGN_MAX std::remove_const_t<CoeffReturnType> values[kPacketSize];
     values[0] = impl_.coeff(input_index);
     for (int i = 1; i < kPacketSize; ++i) {
       values[i] = coeff(index + i);

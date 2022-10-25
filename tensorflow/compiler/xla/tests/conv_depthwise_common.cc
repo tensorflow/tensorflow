@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/conv_depthwise_common.h"
 
-#include "absl/types/optional.h"
+#include <optional>
+
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"

@@ -18,12 +18,13 @@ limitations under the License.
 #include <stdarg.h>
 
 #include <memory>
+#include <mutex>  // NOLINT
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/signature_runner.h"
@@ -61,6 +62,15 @@ struct TfLiteOpResolverCallbacks {
   // that was passed to `TfLiteInterpreterOptionsSetOpResolver`.
   const TfLiteRegistration* (*find_custom_op)(void* user_data, const char* op,
                                               int version);
+
+  // `find_builtin_op` which returns `TfLiteRegistration_V1`.
+  const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
+                                                     TfLiteBuiltinOperator op,
+                                                     int version);
+  // `find_custom_op` which returns `TfLiteRegistration_V1`.
+  const TfLiteRegistration_V1* (*find_custom_op_v1)(void* user_data,
+                                                    const char* op,
+                                                    int version);
 };
 
 // This struct mirrors the tflite::ErrorResolver C++ abstract base class.
@@ -94,6 +104,14 @@ struct TfLiteInterpreterOptions {
   // then if Invoke with delegates fails, it will be
   // automatically retried without delegates.
   bool enable_delegate_fallback = false;
+
+  // TfLiteRegistrationExternal objects owned by caller of
+  // `TfLiteInterpreterOptionsAddRegistrationExternal` API.
+  std::vector<TfLiteRegistrationExternal*> op_registrations;
+
+  // Determines whether to allow to cancel invocations with
+  // `Interpreter::Cancel` or `SignatureRunner::Cancel`.
+  bool enable_cancellation = false;
 };
 
 struct TfLiteInterpreter {
@@ -121,6 +139,38 @@ struct TfLiteSignatureRunner {
 namespace tflite {
 namespace internal {
 
+/// `CallbackOpResolver` is a (C++) `tflite::OpResolver` that forwards the
+/// methods to (C ABI) callback functions from a `TfLiteOpResolverCallbacks`
+/// struct.
+///
+/// The SetCallbacks method must be called before calling any of the FindOp
+/// methods.
+class CallbackOpResolver : public ::tflite::OpResolver {
+ public:
+  CallbackOpResolver() {}
+  void SetCallbacks(
+      const struct TfLiteOpResolverCallbacks& op_resolver_callbacks) {
+    op_resolver_callbacks_ = op_resolver_callbacks;
+  }
+  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
+                                   int version) const override;
+
+  const TfLiteRegistration* FindOp(const char* op, int version) const override;
+
+ private:
+  CallbackOpResolver(const CallbackOpResolver&) = delete;
+  CallbackOpResolver& operator=(const CallbackOpResolver&) = delete;
+
+  struct TfLiteOpResolverCallbacks op_resolver_callbacks_ = {};
+
+  // mutable objects to store temporary `TfLiteRegistration`.
+  mutable std::mutex mutex_;
+  mutable std::vector<std::unique_ptr<TfLiteRegistration>>
+      temporary_builtin_registrations_;  // GUARDED_BY(mutex_)
+  mutable std::vector<std::unique_ptr<TfLiteRegistration>>
+      temporary_custom_registrations_;  // GUARDED_BY(mutex_)
+};
+
 // This adds the builtin and/or custom operators specified in options in
 // `optional_options` (if any) to `mutable_resolver`, and then returns a newly
 // created TfLiteInterpreter using `mutable_op_resolver` as the default
@@ -142,6 +192,65 @@ namespace internal {
 TfLiteInterpreter* InterpreterCreateWithOpResolver(
     const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options,
     tflite::MutableOpResolver* mutable_resolver);
+
+// Sets the initialization callback for the registration.
+//
+// The callback is called when the operator is initialized.  Please refer to
+// `init` of `TfLiteRegistration` for the detail. The supplied `data` passed via
+// the second parameter is expected to be passed back into the `init` function
+// pointer as the first `data` argument.
+//
+// The purpose of the `data` parameter is to allow the caller to make additional
+// state available to the callback.  If this is not required then use
+// `TfLiteRegistrationExternalSetInit` instead.
+void TfLiteRegistrationExternalSetInitWithData(
+    TfLiteRegistrationExternal* registration, void* data,
+    void* (*init)(void* data, TfLiteOpaqueContext* context, const char* buffer,
+                  size_t length));
+
+// Sets the preparation callback for the registration.
+//
+// The callback is called when the inputs of operator have been resized.
+// Please refer `prepare` of `TfLiteRegistration` for the detail.
+// The supplied `data` passed via the second parameter is expected to be passed
+// back into the `prepare` function pointer as the first `data` argument.
+//
+// The purpose of the `data` parameter is to allow the caller to make additional
+// state available to the callback.  If this is not required then use
+// `TfLiteRegistrationExternalSetPrepare` instead.
+void TfLiteRegistrationExternalSetPrepareWithData(
+    TfLiteRegistrationExternal* registration, void* data,
+    TfLiteStatus (*prepare)(void* data, TfLiteOpaqueContext* context,
+                            TfLiteOpaqueNode* node));
+
+// Sets the invocation callback for the registration.
+//
+// The callback is called when the operator is executed.  Please refer `invoke`
+// of `TfLiteRegistration` for the detail. The supplied `data` passed via the
+// second parameter is expected to be passed back into the `invoke` function
+// pointer as the first `data` argument.
+//
+// The purpose of the `data` parameter is to allow the caller to make additional
+// state available to the callback.  If this is not required then use
+// `TfLiteRegistrationExternalSetInvoke` instead.
+void TfLiteRegistrationExternalSetInvokeWithData(
+    TfLiteRegistrationExternal* registration, void* data,
+    TfLiteStatus (*invoke)(void* data, TfLiteOpaqueContext* context,
+                           TfLiteOpaqueNode* node));
+
+// Sets the free callback for the registration.
+//
+// The callback is called when the operator is no longer needed and allows the
+// callback to release any memory that might have been allocated earlier.  The
+// supplied `data` passed via the second parameter is expected to be passed back
+// into the `free` function pointer as the first `data` argument.
+//
+// The purpose of the `data` parameter is to allow the caller to make additional
+// state available to the callback.  If this is not required then use
+// `TfLiteRegistrationExternalSetFree` instead.
+void TfLiteRegistrationExternalSetFreeWithData(
+    TfLiteRegistrationExternal* registration, void* data,
+    void (*free)(void* data, TfLiteOpaqueContext* context, void* buffer));
 
 }  // namespace internal
 }  // namespace tflite

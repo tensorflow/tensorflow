@@ -14,14 +14,7 @@
 # ==============================================================================
 """Utilities for managing tf.data user-defined functions."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import sys
 import warnings
-
-import six
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
@@ -34,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
+from tensorflow.python.util import variable_utils
 
 autograph = lazy_loader.LazyLoader(
     "autograph", globals(),
@@ -175,17 +169,15 @@ class StructuredFunctionWrapper():
       if not _should_unpack(nested_args):
         nested_args = (nested_args,)
       ret = autograph.tf_convert(self._func, ag_ctx)(*nested_args)
+      ret = variable_utils.convert_variables_to_tensors(ret)
       if _should_pack(ret):
         ret = tuple(ret)
 
       try:
         self._output_structure = structure.type_spec_from_value(ret)
-      except (ValueError, TypeError):
-        six.reraise(
-            TypeError,
-            TypeError(f"Unsupported return value from function passed to "
-                      f"{transformation_name}: {ret}."),
-            sys.exc_info()[2])
+      except (ValueError, TypeError) as e:
+        raise TypeError(f"Unsupported return value from function passed to "
+                        f"{transformation_name}: {ret}.") from e
       return ret
 
     def trace_legacy_function(defun_kwargs):

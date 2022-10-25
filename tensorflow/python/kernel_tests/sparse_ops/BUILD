@@ -1,9 +1,6 @@
 # Tests of TensorFlow sparse ops written using the Python API.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -94,10 +91,13 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradient_checker",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:def_function",
         "//third_party/py/numpy",
     ],
 )
@@ -111,9 +111,12 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker",
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
+        "//tensorflow/python/eager:def_function",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -191,16 +194,8 @@ cuda_py_test(
 cuda_py_test(
     # Test name is shortened to workaround Windows Bazel's 259 char path limit.
     name = "sparse_tensor_dense_matmul_op_d9m_test",
-    size = "small",
+    size = "medium",
     srcs = ["sparse_tensor_dense_matmul_op_d9m_test.py"],
-    tags = [
-        "no_cuda_asan",
-        "noasan",
-        "notsan",
-    ],  # b/192492331
-    xla_tags = [
-        "no_cuda_asan",  # times out
-    ],  # b/192492331
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

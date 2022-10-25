@@ -25,4 +25,6 @@ tfg.graph #tf_type.version<producer = 42, min_consumer = 33> {
   %For, %ctl_3 = For(%Start, %Limit, %Delta, %Data)
                  {T = [f32], _some_attr, body = #tf_type.func<@body, {}>}
                  : (tensor<i32>, tensor<i32>, tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>)
+  // CHECK: Sink [%[[CTL_5]]]
+  %ctl_4 = Sink [%ctl_3]
 }

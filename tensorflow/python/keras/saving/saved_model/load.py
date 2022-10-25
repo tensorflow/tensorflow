@@ -46,8 +46,8 @@ from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.trackable import base as trackable
+from tensorflow.python.trackable import data_structures
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 

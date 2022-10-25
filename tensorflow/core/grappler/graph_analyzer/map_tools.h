@@ -25,17 +25,17 @@ namespace graph_analyzer {
 // Helpers for building maps of pointers.
 
 template <typename Ptr>
-struct LessAtPtr : std::binary_function<Ptr, Ptr, bool> {
+struct LessAtPtr : std::function<bool(Ptr, Ptr)> {
   bool operator()(const Ptr& x, const Ptr& y) const { return *x < *y; }
 };
 
 template <typename Ptr>
-struct EqAtPtr : std::binary_function<Ptr, Ptr, bool> {
+struct EqAtPtr : std::function<bool(Ptr, Ptr)> {
   bool operator()(const Ptr& x, const Ptr& y) const { return *x == *y; }
 };
 
 template <typename Ptr>
-struct HashAtPtr : std::unary_function<Ptr, size_t> {
+struct HashAtPtr : std::function<size_t(Ptr)> {
   size_t operator()(const Ptr& x) const { return x->Hash(); }
 };
 

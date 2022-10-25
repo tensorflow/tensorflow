@@ -41,7 +41,7 @@ Status RiscBinaryNonBroadcastOpShapeFn(shape_inference::InferenceContext* c) {
   if (handle_data != nullptr) {
     c->set_output_handle_shapes_and_types(0, *handle_data);
   }
-  return Status::OK();
+  return OkStatus();
 }
 }  // namespace
 

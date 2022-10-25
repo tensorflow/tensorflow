@@ -47,6 +47,8 @@ string DebugString(const DataType tf_type) {
       return "DT_INT8";
     case DT_BOOL:
       return "DT_BOOL";
+    case DT_UINT8:
+      return "DT_UINT8";
     default:
       return "Unknow TF DataType";
   }
@@ -64,6 +66,10 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
       return "kINT32";
     case nvinfer1::DataType::kBOOL:
       return "kBOOL";
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      return "kUINT8";
+#endif
     default:
       return "Invalid TRT data type";
   }
@@ -147,7 +153,7 @@ Status GetNetworkInputShapes(const nvinfer1::INetworkDefinition* network,
     TF_RETURN_IF_ERROR(DimsAdapter(input->getDimensions())
                            .PartialTensorShape(&input_shapes->at(i)));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
@@ -166,11 +172,16 @@ Status TfTypeToTrtType(DataType tf_type, nvinfer1::DataType* trt_type) {
       *trt_type = nvinfer1::DataType::kBOOL;
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case DT_UINT8:
+      *trt_type = nvinfer1::DataType::kUINT8;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Unsupported tensorflow data type ",
                                      DataTypeString(tf_type));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
@@ -189,10 +200,15 @@ Status TrtTypeToTfType(nvinfer1::DataType trt_type, DataType* tf_type) {
       *tf_type = DT_BOOL;
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      *tf_type = DT_UINT8;
+      break;
+#endif
     default:
       return errors::InvalidArgument("Invalid TRT data type");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
@@ -217,33 +233,33 @@ absl::string_view GetDeviceName(const Node* node) {
   return node->requested_device();
 }
 
-absl::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
+std::optional<DeviceNameUtils::ParsedName> GetDeviceParsedName(
     const Node* node) {
   absl::string_view device_name = GetDeviceName(node);
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return parsed_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a,
     const DeviceNameUtils::ParsedName& b) {
   DeviceNameUtils::ParsedName merged_name = a;
   if (!DeviceNameUtils::MergeDevNames(&merged_name, b,
                                       /*allow_soft_placement=*/false)
            .ok()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
   return merged_name;
 }
 
-absl::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
+std::optional<DeviceNameUtils::ParsedName> MergeIfCompatible(
     const DeviceNameUtils::ParsedName& a, absl::string_view b) {
   DeviceNameUtils::ParsedName b_parsed_name;
   if (!DeviceNameUtils::ParseFullName(b, &b_parsed_name)) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   return MergeIfCompatible(a, b_parsed_name);

@@ -28,7 +28,7 @@ namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_COPYCLEANUPPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 // A pass to remove memref::AllocOps and memref::CopyOps ops.
@@ -39,7 +39,7 @@ namespace {
 
 // Handles the pattern where an input operand of a linalg generic is copied
 // even though the producer is not mutated.
-void RemoveCopyIfTargetOnlyRead(FuncOp func) {
+void RemoveCopyIfTargetOnlyRead(func::FuncOp func) {
   llvm::SmallVector<memref::AllocOp, 8> allocs_to_remove;
   llvm::SmallVector<memref::CopyOp, 8> copies_to_remove;
 
@@ -124,7 +124,7 @@ void RemoveCopyIfTargetOnlyRead(FuncOp func) {
 
 // Handles the case where the last instructions of a function implements a copy
 // back to a function argument.
-void RemoveCopyIfTargetIsFunctionArg(FuncOp func) {
+void RemoveCopyIfTargetIsFunctionArg(func::FuncOp func) {
   // For now only support this on functions with a single block.
   if (!func.getBody().hasOneBlock()) return;
 
@@ -136,7 +136,7 @@ void RemoveCopyIfTargetIsFunctionArg(FuncOp func) {
     if (auto copy = dyn_cast<memref::CopyOp>(op)) {
       auto block_arg = copy.getTarget().dyn_cast<BlockArgument>();
       if (!block_arg) break;
-      if (!isa<FuncOp>(block_arg.getOwner()->getParentOp()) ||
+      if (!isa<func::FuncOp>(block_arg.getOwner()->getParentOp()) ||
           !block_arg.hasOneUse())
         break;
       auto alloc = copy.getSource().getDefiningOp<memref::AllocOp>();
@@ -154,7 +154,7 @@ void RemoveCopyIfTargetIsFunctionArg(FuncOp func) {
 
 }  // namespace
 
-struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
+struct CopyCleanupPass : public impl::CopyCleanupPassBase<CopyCleanupPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect>();
   }
@@ -165,7 +165,7 @@ struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
   }
 };
 
-std::unique_ptr<OperationPass<FuncOp>> CreateCopyCleanupPass() {
+std::unique_ptr<OperationPass<func::FuncOp>> CreateCopyCleanupPass() {
   return std::make_unique<CopyCleanupPass>();
 }
 

@@ -109,7 +109,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     }
     *result = StringPiece(scratch, region_left);
     return (region_left == to_read)
-               ? Status::OK()
+               ? OkStatus()
                : errors::OutOfRange("Read less bytes than requested.");
   }
 
@@ -132,7 +132,7 @@ Status AssetManagerFileSystem::FileExists(const string& fname,
   if (asset.get() == nullptr) {
     return errors::NotFound("File ", fname, " not found.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AssetManagerFileSystem::NewRandomAccessFile(
@@ -145,7 +145,7 @@ Status AssetManagerFileSystem::NewRandomAccessFile(
     return errors::NotFound("File ", fname, " not found.");
   }
   result->reset(new RandomAccessFileFromAsset(asset_manager_, path));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -183,7 +183,7 @@ Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
     memcpy(data.get(), asset_buffer, length);
   }
   result->reset(new ReadOnlyMemoryRegionFromAsset(std::move(data), length));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AssetManagerFileSystem::GetChildren(const string& prefixed_dir,
@@ -200,7 +200,7 @@ Status AssetManagerFileSystem::GetChildren(const string& prefixed_dir,
     r->push_back(next_file);
     next_file = AAssetDir_getNextFileName(dir.get());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AssetManagerFileSystem::GetFileSize(const string& fname,
@@ -209,7 +209,7 @@ Status AssetManagerFileSystem::GetFileSize(const string& fname,
   // AAsset, and would otherwise return NotFound.
   if (DirectoryExists(fname)) {
     *s = 0;
-    return Status::OK();
+    return OkStatus();
   }
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
@@ -218,7 +218,7 @@ Status AssetManagerFileSystem::GetFileSize(const string& fname,
     return errors::NotFound("File ", fname, " not found.");
   }
   *s = AAsset_getLength64(asset.get());
-  return Status::OK();
+  return OkStatus();
 }
 
 Status AssetManagerFileSystem::Stat(const string& fname,
@@ -228,7 +228,7 @@ Status AssetManagerFileSystem::Stat(const string& fname,
   stat->is_directory = DirectoryExists(fname);
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   stat->length = size;
-  return Status::OK();
+  return OkStatus();
 }
 
 string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {

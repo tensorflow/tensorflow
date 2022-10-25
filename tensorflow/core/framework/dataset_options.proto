@@ -82,7 +82,7 @@ message DistributeOptions {
   }
 }
 
-// next: 19
+// next: 20
 message OptimizationOptions {
   // Whether to apply default graph optimizations. If False, only graph
   // optimizations that have been explicitly enabled will be applied.
@@ -143,6 +143,11 @@ message OptimizationOptions {
   // Whether to parallelize stateless filter transformations.
   oneof optional_filter_parallelization {
     bool filter_parallelization = 18;
+  }
+  // Whether to inject 'Prefetch' as the last transformation. Only takes effect
+  // if the last transformation is synchronous; otherwise does nothing.
+  oneof optional_inject_prefetch {
+    bool inject_prefetch = 19;
   }
 }
 

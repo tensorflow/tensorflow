@@ -50,9 +50,9 @@ namespace tensorflow {
 
 // Maps function name to
 // - new function name, if the function body was functionalized
-// - absl::nullopt, if not
-using FuncMap = std::map<string, absl::optional<string>>;
-using FuncMapIter = std::map<string, absl::optional<string>>::const_iterator;
+// - std::nullopt, if not
+using FuncMap = std::map<string, std::optional<string>>;
+using FuncMapIter = std::map<string, std::optional<string>>::const_iterator;
 
 // Returns whether function has been processed before.
 bool FunctionHasBeenProcessed(FuncMapIter func_iter, const FuncMap* func_map) {
@@ -90,7 +90,7 @@ void UpdateFunctionMap(FuncMap* func_map, const string& canonicalized_name,
   // If function was modified store its new name, otherwise add empty entry to
   // record that function has been processed and does not need to be rewritten.
   (*func_map)[canonicalized_name] =
-      function_modified ? absl::make_optional(new_func_name) : absl::nullopt;
+      function_modified ? absl::make_optional(new_func_name) : std::nullopt;
 }
 
 // Adds new function def to graph's function library if necessary.
@@ -117,8 +117,7 @@ Status AddFunctionDefToGraphLibrary(
   // `graph->flib_def().default_registry()` which is done in the following line
   // (we have to use `LookUp` instead of `Contains` or `Find` because the latter
   // both don't check the default registry).
-  if (graph->flib_def().LookUp(func_name, &op_reg_data).ok())
-    return Status::OK();
+  if (graph->flib_def().LookUp(func_name, &op_reg_data).ok()) return OkStatus();
 
   const FunctionDef* new_fdef = fld->Find(func_name);
   DCHECK(new_fdef != nullptr);
@@ -198,7 +197,7 @@ Status FunctionalizeControlFlowForNodeAssociatedFunctions(
       }
     }
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeControlFlowForFunction(
@@ -211,7 +210,7 @@ Status FunctionalizeControlFlowForFunction(
   // Convert the function to a graph.
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(flr->Instantiate(func_name, AttrSlice(&attrs), &handle));
-  Status ret_status = Status::OK();
+  Status ret_status = OkStatus();
   auto cleanup_handle = gtl::MakeCleanup([&]() {
     auto s = flr->ReleaseHandle(handle);
     if (!s.ok()) {
@@ -280,7 +279,7 @@ Status FunctionalizeControlFlow(Graph* graph,
   if (include_functions) {
     // Functionalize control flow in functions that are (directly or indirectly)
     // associated with a node in `graph`.
-    auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+    auto pflr = std::make_unique<ProcessFunctionLibraryRuntime>(
         /*device_mgr=*/nullptr, tensorflow::Env::Default(),
         /*config=*/nullptr, TF_GRAPH_DEF_VERSION, library,
         tensorflow::OptimizerOptions());
@@ -305,7 +304,7 @@ Status FunctionalizeControlFlow(Graph* graph,
   VLOG(2) << "FunctionalizeControlFlow (final): "
           << DumpGraphToFile("functionalize_final", *graph, library);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
@@ -320,7 +319,7 @@ Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
                                               include_functions));
   graph.ToGraphDef(graph_def);
   std::swap(*graph_def->mutable_library(), function_lib);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status FunctionalizeControlFlowForXlaPass::Run(
@@ -389,7 +388,7 @@ Status FunctionalizeControlFlowForXlaPass::Run(
     DumpGraphToFile("functionalize_control_flow_after", *graph,
                     options.flib_def);
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorflow

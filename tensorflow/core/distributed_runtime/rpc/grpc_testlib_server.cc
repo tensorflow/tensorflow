@@ -69,7 +69,7 @@ Status FillServerDef(const string& job_spec, const string& job_name,
   ConfigProto* config = options->mutable_default_session_config();
   (*config->mutable_device_count())["CPU"] = num_cpus;
   (*config->mutable_device_count())["GPU"] = num_gpus;
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace

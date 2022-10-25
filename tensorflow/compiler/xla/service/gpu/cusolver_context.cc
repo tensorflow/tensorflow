@@ -66,8 +66,8 @@ struct GpuComplexT<std::complex<double>*> {
 using gpuStream_t = hipStream_t;
 
 #if TF_ROCM_VERSION >= 40500
-#define GPU_SOLVER_CONTEXT_PREFIX tensorflow::wrap::hipsolver
-#define GPU_SOLVER_PREFIX tensorflow::wrap::hipsolver
+#define GPU_SOLVER_CONTEXT_PREFIX se::wrap::hipsolver
+#define GPU_SOLVER_PREFIX se::wrap::hipsolver
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -87,8 +87,8 @@ struct GpuComplexT<std::complex<double>*> {
   typedef hipDoubleComplex* type;
 };
 #else
-#define GPU_SOLVER_CONTEXT_PREFIX tensorflow::wrap::rocblas_
-#define GPU_SOLVER_PREFIX tensorflow::wrap::rocsolver_
+#define GPU_SOLVER_CONTEXT_PREFIX se::wrap::rocblas_
+#define GPU_SOLVER_PREFIX se::wrap::rocsolver_
 
 template <>
 struct GpuComplexT<std::complex<float>> {
@@ -132,7 +132,7 @@ cublasFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(cusolverStatus_t status) {
   switch (status) {
     case CUSOLVER_STATUS_SUCCESS:
-      return Status::OK();
+      return OkStatus();
     case CUSOLVER_STATUS_NOT_INITIALIZED:
       return FailedPrecondition("cuSolver has not been initialized");
     case CUSOLVER_STATUS_ALLOC_FAILED:
@@ -175,7 +175,7 @@ hipsolverFillMode_t GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(hipsolverStatus_t status) {
   switch (status) {
     case HIPSOLVER_STATUS_SUCCESS:
-      return Status::OK();
+      return OkStatus();
     case HIPSOLVER_STATUS_NOT_INITIALIZED:
       return FailedPrecondition("hipsolver has not been initialized");
     case HIPSOLVER_STATUS_ALLOC_FAILED:
@@ -217,7 +217,7 @@ rocblas_fill GpuBlasUpperLower(se::blas::UpperLower uplo) {
 Status ConvertStatus(rocblas_status status) {
   switch (status) {
     case rocblas_status_success:
-      return Status::OK();
+      return OkStatus();
     case rocblas_status_invalid_handle:
       return FailedPrecondition("handle not initialized, invalid or null");
     case rocblas_status_not_implemented:

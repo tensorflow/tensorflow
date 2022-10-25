@@ -257,7 +257,7 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
     // Add default values for unspecified attrs.
     AddDefaultsToNodeDef(*op_def_, node_def);
 
-    return Status::OK();
+    return OkStatus();
   }
 }
 

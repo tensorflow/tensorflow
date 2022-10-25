@@ -651,7 +651,7 @@ def _flip(image, flip_index, scope_name):
 @tf_export('image.rot90')
 @dispatch.add_dispatch_support
 def rot90(image, k=1, name=None):
-  """Rotate image(s) counter-clockwise by 90 degrees.
+  """Rotate image(s) by 90 degrees.
 
 
   For example:
@@ -668,12 +668,17 @@ def rot90(image, k=1, name=None):
   >>> print(a_rot[...,0].numpy())
   [[3 1]
    [4 2]]
+  >>> # rotating `a` clockwise by 180 degrees
+  >>> a_rot=tf.image.rot90(a, k=-2)
+  >>> print(a_rot[...,0].numpy())
+  [[4 3]
+   [2 1]]
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    k: A scalar integer tensor. The number of times the image(s) are
-      rotated by 90 degrees.
+    k: A scalar integer tensor. The number of times the image(s) are rotated by
+      90 degrees.
     name: A name for this operation (optional).
 
   Returns:
@@ -848,8 +853,10 @@ def central_crop(image, central_fraction):
   """Crop the central region of the image(s).
 
   Remove the outer parts of an image but retain the central region of the image
-  along each dimension. If we specify central_fraction = 0.5, this function
-  returns the region marked with "X" in the below diagram.
+  along each dimension. If we specify `central_fraction = 0.5`, this function
+  returns the region marked with "X" in the below diagram. The larger the value
+  of `central_fraction`, the larger the dimension of the region to be cropped
+  and retained.
 
        --------
       |        |
@@ -1192,7 +1199,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
   Raises:
     ValueError: `image` is not a 3-D or 4-D `Tensor`.
     ValueError: `offset_width < 0` or `offset_height < 0`.
-    ValueError: `target_width <= 0` or `target_width <= 0`.
+    ValueError: `target_width <= 0` or `target_height <= 0`.
     ValueError: `width < offset_width + target_width` or
       `height < offset_height + target_height`.
   """
@@ -2244,6 +2251,8 @@ def adjust_contrast(images, contrast_factor):
   channel and then adjusts each component `x` of each pixel to
   `(x - mean) * contrast_factor + mean`.
 
+  `contrast_factor` must be in the interval `(-inf, inf)`.
+
   Usage Example:
 
   >>> x = [[[1.0, 2.0, 3.0],
@@ -2475,7 +2484,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
 
   Raises:
     AttributeError: Raises an attribute error when dtype is neither
-    float nor integer
+    float nor integer.
   """
   image = ops.convert_to_tensor(image, name='image')
   dtype = dtypes.as_dtype(dtype)
@@ -3083,6 +3092,8 @@ def adjust_saturation(image, saturation_factor, name=None):
   `image` is an RGB image or images.  The image saturation is adjusted by
   converting the images to HSV and multiplying the saturation (S) channel by
   `saturation_factor` and clipping. The images are then converted back to RGB.
+
+  `saturation_factor` must be in the interval `[0, inf)`.
 
   Usage Example:
 
@@ -4262,7 +4273,8 @@ def _ssim_per_channel(img1,
                       filter_size=11,
                       filter_sigma=1.5,
                       k1=0.01,
-                      k2=0.03):
+                      k2=0.03,
+                      return_index_map=False):
   """Computes SSIM index between img1 and img2 per color channel.
 
   This function matches the standard SSIM implementation from:
@@ -4284,6 +4296,7 @@ def _ssim_per_channel(img1,
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
       it would be better if we took the values in the range of 0 < K2 < 0.4).
+    return_index_map: If True returns local SSIM map instead of the global mean.
 
   Returns:
     A pair of tensors containing and channel-wise SSIM and contrast-structure
@@ -4332,9 +4345,12 @@ def _ssim_per_channel(img1,
                                k2)
 
   # Average over the second and the third from the last: height, width.
-  axes = constant_op.constant([-3, -2], dtype=dtypes.int32)
-  ssim_val = math_ops.reduce_mean(luminance * cs, axes)
-  cs = math_ops.reduce_mean(cs, axes)
+  if return_index_map:
+    ssim_val = luminance * cs
+  else:
+    axes = constant_op.constant([-3, -2], dtype=dtypes.int32)
+    ssim_val = math_ops.reduce_mean(luminance * cs, axes)
+    cs = math_ops.reduce_mean(cs, axes)
   return ssim_val, cs
 
 
@@ -4346,7 +4362,8 @@ def ssim(img1,
          filter_size=11,
          filter_sigma=1.5,
          k1=0.01,
-         k2=0.03):
+         k2=0.03,
+         return_index_map=False):
   """Computes SSIM index between img1 and img2.
 
   This function is based on the standard SSIM implementation from:
@@ -4399,11 +4416,15 @@ def ssim(img1,
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
       it would be better if we took the values in the range of 0 < K2 < 0.4).
+    return_index_map: If True returns local SSIM map instead of the global mean.
 
   Returns:
-    A tensor containing an SSIM value for each image in batch.  Returned SSIM
-    values are in range (-1, 1], when pixel values are non-negative. Returns
-    a tensor with shape: broadcast(img1.shape[:-3], img2.shape[:-3]).
+    A tensor containing an SSIM value for each image in batch or a tensor
+    containing an SSIM value for each pixel for each image in batch if
+    return_index_map is True. Returned SSIM values are in range (-1, 1], when
+    pixel values are non-negative. Returns a tensor with shape:
+    broadcast(img1.shape[:-3], img2.shape[:-3]) or broadcast(img1.shape[:-1],
+    img2.shape[:-1]).
   """
   with ops.name_scope(None, 'SSIM', [img1, img2]):
     # Convert to tensor if needed.
@@ -4421,7 +4442,8 @@ def ssim(img1,
     img1 = convert_image_dtype(img1, dtypes.float32)
     img2 = convert_image_dtype(img2, dtypes.float32)
     ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
-                                            filter_sigma, k1, k2)
+                                            filter_sigma, k1, k2,
+                                            return_index_map)
     # Compute average over color channels.
     return math_ops.reduce_mean(ssim_per_channel, [-1])
 
@@ -5581,6 +5603,11 @@ def non_max_suppression_padded_v2(boxes,
       x_min, x_max = control_flow_ops.cond(
           x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
       boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
+  # TODO(@bhack): https://github.com/tensorflow/tensorflow/issues/56089
+  # this will be required after deprecation
+  #else:
+  #  y_1, x_1, y_2, x_2 = array_ops.split(
+  #      value=boxes, num_or_size_splits=4, axis=2)
 
   if not sorted_input:
     scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)

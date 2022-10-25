@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/memory/memory.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -29,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -64,13 +63,13 @@ TEST_F(CpuNoAliasTest, Concat) {
   // Now that we have an HLO module, build an llvm_ir::AliasAnalysis for it.
   auto status_or_buffer_assn = BufferAssigner::Run(
       hlo_module.get(),
-      absl::make_unique<DependencyHloOrdering>(hlo_module.get()),
+      std::make_unique<DependencyHloOrdering>(hlo_module.get()),
       backend().compiler()->BufferSizeBytesFunction(),
       [](LogicalBuffer::Color) { return /*alignment=*/1; });
-  ASSERT_EQ(status_or_buffer_assn.status(), Status::OK());
+  ASSERT_EQ(status_or_buffer_assn.status(), OkStatus());
 
   llvm::LLVMContext context;
-  llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.ValueOrDie(),
+  llvm_ir::AliasAnalysis aa(*hlo_module, *status_or_buffer_assn.value(),
                             &context);
 
   // Construct an LLVM module containing loads that we annotate as being from

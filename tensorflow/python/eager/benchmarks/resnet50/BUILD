@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -71,7 +71,6 @@ cuda_py_test(
         ":resnet50_test_util",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python/eager:forwardprop",
-        "@six_archive//:six",
     ],
 )
 

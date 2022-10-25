@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERVICE_DATASET_STORE_H_
 #define TENSORFLOW_CORE_DATA_SERVICE_DATASET_STORE_H_
 
+#include <memory>
+#include <string>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/lib/core/status.h"

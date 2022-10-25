@@ -29,10 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
-
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 namespace mlir {
 namespace TFL {
 namespace {
+#define GEN_PASS_DEF_UNFOLDLARGESPLATCONSTANTPASS
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // The threshold of constant bits to be unfolded (1Mb). If there is a splat
 // constant with size equal or greater to this threshold, then it will be
@@ -41,24 +43,11 @@ constexpr int64_t kConstantSizeThresholdInBits = 1e+6;
 
 // Pass which will replace large splat constant tensors to `tfl.Fill` op to
 // reduce the size of the generated flatbuffer model size.
-class UnfoldLargeSplatConstant
-    : public PassWrapper<UnfoldLargeSplatConstant, OperationPass<ModuleOp>> {
+class UnfoldLargeSplatConstantPass
+    : public impl::UnfoldLargeSplatConstantPassBase<
+          UnfoldLargeSplatConstantPass> {
  public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfoldLargeSplatConstant)
-
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect>();
-  }
-
-  StringRef getArgument() const final {
-    // This is the argument used to refer to the pass in
-    // the textual format (on the commandline for example).
-    return "tfl-unfold-large-splat-constant";
-  }
-  StringRef getDescription() const final {
-    // This is a brief description of the pass.
-    return "Unfold large splat constant tensors";
-  }
+  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(UnfoldLargeSplatConstantPass)
 
   void runOnOperation() override {
     auto module = getOperation();
@@ -78,8 +67,9 @@ class UnfoldLargeSplatConstant
       return;
     }
     auto element_type = splat_elements_attr.getType().getElementType();
-    if (!(element_type.isF32() || element_type.isInteger(1) ||
-          element_type.isInteger(32) || element_type.isInteger(64))) {
+    if (!(element_type.isF32() || element_type.isF16() ||
+          element_type.isInteger(1) || element_type.isInteger(32) ||
+          element_type.isInteger(64))) {
       return;
     }
     if (splat_elements_attr.getNumElements() *
@@ -93,14 +83,15 @@ class UnfoldLargeSplatConstant
         op_builder->create<mlir::arith::ConstantOp>(
             const_op->getLoc(),
             DenseIntElementsAttr::get(
-                RankedTensorType::get({splat_elements_attr.getType().getRank()},
-                                      op_builder->getI64Type()),
+                tensorflow::GetTypeFromTFTensorShape(
+                    {splat_elements_attr.getType().getRank()},
+                    op_builder->getI64Type()),
                 splat_elements_attr.getType().getShape()));
     mlir::arith::ConstantOp fill_value =
         op_builder->create<mlir::arith::ConstantOp>(
             const_op->getLoc(),
             DenseElementsAttr::get(
-                RankedTensorType::get(
+                tensorflow::GetTypeFromTFTensorShape(
                     {}, splat_elements_attr.getType().getElementType()),
                 splat_elements_attr.getSplatValue<Attribute>()));
     TFL::FillOp fill = op_builder->create<TFL::FillOp>(
@@ -114,10 +105,8 @@ class UnfoldLargeSplatConstant
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateUnfoldLargeSplatConstantPass() {
-  return std::make_unique<UnfoldLargeSplatConstant>();
+  return std::make_unique<UnfoldLargeSplatConstantPass>();
 }
-
-static PassRegistration<UnfoldLargeSplatConstant> pass;
 
 }  // namespace TFL
 }  // namespace mlir

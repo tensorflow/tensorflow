@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -64,7 +64,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
     const Shape& shape, Client* client, DebugOptions* debug_opts) {
   XlaBuilder b(absl::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
   BuildFakeDataOpOnDevice(shape, &b);
-  XlaComputation computation = b.Build().ConsumeValueOrDie();
+  XlaComputation computation = b.Build().value();
 
   auto execution_options = CreateDefaultExecutionOptions();
   *execution_options.mutable_shape_with_output_layout() = shape.ToProto();
@@ -72,7 +72,7 @@ std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
     *execution_options.mutable_debug_options() = *debug_opts;
   }
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
-      .ConsumeValueOrDie();
+      .value();
 }
 
 }  // namespace
@@ -84,11 +84,10 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via
       // an on-device computation.
-      CHECK_EQ(literal_status.status().code(),
-               tensorflow::error::UNIMPLEMENTED);
+      CHECK_EQ(literal_status.status().code(), tsl::error::UNIMPLEMENTED);
       return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
     }
-    return client->TransferToServer(literal_status.ValueOrDie()).ValueOrDie();
+    return client->TransferToServer(literal_status.value()).value();
   }
 
   // If the data is large, generate it on-device.

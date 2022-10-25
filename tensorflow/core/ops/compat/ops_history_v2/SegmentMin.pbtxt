@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "SegmentMin"
   input_arg {
     name: "data"

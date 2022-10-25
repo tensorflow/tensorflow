@@ -91,7 +91,7 @@ StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
         absl::StrCat("p.", sort->operand_count(), ".rhs")));
     extra_parameter_ptrs.push_back(extra_parameters.back().get());
     sort->set_to_apply(sort->GetModule()->AddEmbeddedComputation(
-        comparator->CloneWithReplacements(std::move(replacements),
+        comparator->CloneWithReplacements(&replacements,
                                           extra_parameter_ptrs)));
 
     // Replace the original sort op.

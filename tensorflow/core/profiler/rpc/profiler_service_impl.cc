@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "grpcpp/support/status.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
@@ -32,14 +31,15 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/profiler/utils/file_system_utils.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
+#include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
-
-const absl::string_view kXPlanePb = "xplane.pb";
 
 // Collects data in XSpace format. The data is saved to a repository
 // unconditionally.
@@ -50,23 +50,11 @@ Status CollectDataToRepository(const ProfileRequest& request,
   // Read the profile data into xspace.
   XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  xspace.add_hostnames(request.host_name());
   VLOG(3) << "Collected XSpace to repository.";
   response->set_empty_trace(IsEmpty(xspace));
 
-  std::string log_dir_path =
-      ProfilerJoinPath(request.repository_root(), request.session_id());
-  VLOG(1) << "Creating " << log_dir_path;
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(log_dir_path));
-
-  std::string file_name = absl::StrCat(request.host_name(), ".", kXPlanePb);
-  // Windows file names do not support colons.
-  absl::StrReplaceAll({{":", "_"}}, &file_name);
-  // Dumps profile data to <repository_root>/<run>/<host>_<port>.<kXPlanePb>
-  std::string out_path = ProfilerJoinPath(log_dir_path, file_name);
-  LOG(INFO) << "Collecting XSpace to repository: " << out_path;
-
-  return WriteBinaryProto(Env::Default(), out_path, xspace);
+  return SaveXSpace(request.repository_root(), request.session_id(),
+                    request.host_name(), xspace);
 }
 
 class ProfilerServiceImpl : public grpc::ProfilerService::Service {
@@ -88,7 +76,9 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
     }
 
     Env* env = Env::Default();
-    for (uint64 i = 0; i < req->opts().duration_ms(); ++i) {
+    uint64 duration_ns = MilliToNano(req->opts().duration_ms());
+    uint64 deadline = GetCurrentTimeNanos() + duration_ns;
+    while (GetCurrentTimeNanos() < deadline) {
       env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
         return ::grpc::Status::CANCELLED;
@@ -132,7 +122,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 }  // namespace
 
 std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
-  return absl::make_unique<ProfilerServiceImpl>();
+  return std::make_unique<ProfilerServiceImpl>();
 }
 
 }  // namespace profiler

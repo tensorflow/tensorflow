@@ -88,7 +88,7 @@ TfLiteStatus ValidateAndResizeInputsIfNeeded(TfLiteContext* context,
             "node and the subgraph to invoke (input tensor %s[ %s], subgraph "
             "tensor %s[ %s])",
             __FILE__, __LINE__, node_input->name, node_input_dims.str().c_str(),
-            subgraph_input->name, node_input_dims.str().c_str());
+            subgraph_input->name, subgraph_input_dims.str().c_str());
         return kTfLiteError;
       }
       // Batch size of subgraph's input should be 1.

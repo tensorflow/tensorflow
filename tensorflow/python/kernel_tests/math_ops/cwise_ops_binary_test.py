@@ -802,11 +802,14 @@ class BinaryOpTest(test.TestCase):
 
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
+                   (1.0, 0.0), (-1.0, 0.0), (1.0, -0.0), (-1.0, -0.0),
+                   (0.0, 1.0), (0.0, -1.0), (-0.0, 1.0), (-0.0, -1.0),
                    (1.2345, float("inf")), (1.2345, -float("inf")),
                    (-4.321, float("inf")), (-4.125, -float("inf")),
                    (float("inf"), float("inf")), (float("inf"), -float("inf")),
                    (-float("inf"), float("inf")),
-                   (-float("inf"), -float("inf")))
+                   (-float("inf"), -float("inf")), (float("1"), float("nan")),
+                   (float("nan"), float("1")), (float("nan"), float("nan")))
     for dtype in np.float32, np.float64:
       x1 = np.array(x1l).astype(dtype)
       x2 = np.array(x2l).astype(dtype)
@@ -1027,6 +1030,7 @@ class ComparisonOpTest(test.TestCase):
         dtypes_lib.qint16,
         dtypes_lib.quint8,
         dtypes_lib.quint16,
+        dtypes_lib.qint32,
     ]
     x = np.asarray([0, 1, 2, 3, 4])
     y = np.asarray([0, 1, 2, 3, 4])

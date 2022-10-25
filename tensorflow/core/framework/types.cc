@@ -62,19 +62,6 @@ void map_dtype_to_tensor(const DataType& dtype, FullTypeDef& t) {
   }
 }
 
-bool DeviceType::operator<(const DeviceType& other) const {
-  return type_ < other.type_;
-}
-
-bool DeviceType::operator==(const DeviceType& other) const {
-  return type_ == other.type_;
-}
-
-std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
-  os << d.type();
-  return os;
-}
-
 const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";

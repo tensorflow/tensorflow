@@ -1,7 +1,8 @@
 load(":gen_saved_model.bzl", "gen_saved_model")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_binary")
 load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_cuda_cc_test")
 
 package(
     default_visibility = [":internal"],
@@ -259,6 +260,32 @@ pytype_strict_binary(
 )
 
 pytype_strict_binary(
+    name = "gen_matmul_gpu",
+    srcs = ["gen_matmul_gpu.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:save_options",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+    ],
+)
+
+pytype_strict_binary(
     name = "gen_variable_on_tpu",
     srcs = ["gen_variable_on_tpu.py"],
     python_version = "PY3",
@@ -416,6 +443,11 @@ gen_saved_model(
 )
 
 gen_saved_model(
+    model_name = "matmul_gpu",
+    script = "gen_matmul_gpu",
+)
+
+gen_saved_model(
     model_name = "variable_on_tpu",
     script = "gen_variable_on_tpu",
 )
@@ -566,6 +598,34 @@ tf_cc_test(
     ],
     tags = ["no_oss"],
     deps = [
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:resource_loader",
+        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/tfrt/fallback:cost_recorder",
+        "//tensorflow/core/tfrt/mla:mla_test_utils",
+        "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
+        "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
+        "//tensorflow/python/framework:test_ops_kernels",
+        "@com_google_googletest//:gtest",
+        "@tf_runtime//:core_runtime_alwayslink",
+        "@tf_runtime//backends/cpu:core_runtime_alwayslink",
+        "@tf_runtime//backends/cpu:tf_ops_alwayslink",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "saved_model_gpu_test",
+    srcs = ["saved_model_gpu_test.cc"],
+    data = [
+        "matmul_gpu/saved_model.pb",
+        "matmul_gpu/variables/variables.data-00000-of-00001",
+        "matmul_gpu/variables/variables.index",
+    ],
+    tags = ["no_oss"],
+    deps = [
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:tensorflow",
@@ -573,7 +633,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
-        "//tensorflow/core/tfrt/run_handler_thread_pool:run_handler_concurrent_work_queue",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
         "//tensorflow/python/framework:test_ops_kernels",
         "@com_google_googletest//:gtest",

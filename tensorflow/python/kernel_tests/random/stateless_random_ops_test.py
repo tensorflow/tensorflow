@@ -105,7 +105,9 @@ def float_cases(shape_dtypes=(None,)):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
     if (dtype == dtypes.float16 and device_type in ('XLA_GPU', 'XLA_CPU') or
-        dtype == dtypes.bfloat16 and device_type == 'GPU'):
+        dtype == dtypes.bfloat16 and device_type == 'GPU' and
+        not test_util.is_gpu_available(
+            cuda_only=True, min_cuda_compute_capability=(8, 0))):
       dtype = dtypes.float32
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)
@@ -196,6 +198,17 @@ def poisson_cases():
                                  (10,) + tuple(np.shape(lam))),
                functools.partial(wrap, random_ops.random_poisson, lam,
                                  lam_dtype, out_dtype, (10,)))
+
+
+def shuffle_cases():
+  for dtype in np.int32, np.int64, np.float32, np.float64:
+    # [], [0, ...] and [1, ...] are important corner cases
+    for shape in ([], [0], [1], [100], [0, 0], [1, 0], [0, 1], [1, 2], [5, 3],
+                  [7, 5, 3, 2]):
+      value = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
+      yield ('shuffle',
+             functools.partial(stateless.stateless_shuffle, value),
+             functools.partial(random_ops.random_shuffle, value))
 
 
 @test_util.with_eager_op_as_function
@@ -349,6 +362,17 @@ class StatelessOpsTest(test.TestCase, parameterized.TestCase):
     if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
       # This test was passing before because soft placement silently picked the
       # CPU kernels.
+      self.skipTest('Lacking XLA kernel')
+    self._test_match(case, seed)
+
+  @parameterized.named_parameters(
+      ('_%s_%s_%s' % (case[0], case_id, seed_id), case, seed)  # pylint: disable=g-complex-comprehension,undefined-variable
+      for seed_id, seed in enumerate(SEEDS)
+      for case_id, case in enumerate(shuffle_cases()))
+  def testMatchShuffle(self, case, seed):
+    if get_device().device_type == 'GPU':
+      self.skipTest('Lacking GPU kernel')
+    if get_device().device_type in ('XLA_GPU', 'XLA_CPU'):
       self.skipTest('Lacking XLA kernel')
     self._test_match(case, seed)
 

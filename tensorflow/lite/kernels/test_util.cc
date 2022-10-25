@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
@@ -86,7 +86,7 @@ int SingleOpModel::AddInput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {});
+    id = AddTensor<float>(t, nullptr, 0);
   }
   inputs_.push_back(id);
   return id;
@@ -97,7 +97,7 @@ int SingleOpModel::AddVariableInput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, true);
+    id = AddTensor<float>(t, nullptr, 0, true);
   }
   inputs_.push_back(id);
   return id;
@@ -112,7 +112,8 @@ int SingleOpModel::AddIntermediate(TensorType type,
       CreateQuantizationParameters(builder_, /*min=*/0, /*max=*/0,
                                    builder_.CreateVector<float>(scale),
                                    builder_.CreateVector<int64_t>(zero_point));
-  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
+  std::vector<int> empty;
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>(empty),
                                   type,
                                   /*buffer=*/0,
                                   /*name=*/0, q_params, false));
@@ -131,7 +132,7 @@ int SingleOpModel::AddOutput(const TensorData& t) {
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {});
+    id = AddTensor<float>(t, nullptr, 0);
   }
   outputs_.push_back(id);
   return id;
@@ -177,7 +178,8 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
-                                     bool allocate_and_delegate) {
+                                     bool allocate_and_delegate,
+                                     bool use_simple_allocator) {
   input_shapes_ = input_shapes;
   allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
   apply_delegate_ = apply_delegate;
@@ -202,7 +204,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
   uint8_t* buffer_pointer = builder_.GetBufferPointer();
   UpdateOpVersion(buffer_pointer);
 
-  bool use_simple_allocator =
+  use_simple_allocator |=
       tflite::KernelTestDelegateProviders::Get()->ConstParams().Get<bool>(
           tflite::KernelTestDelegateProviders::kUseSimpleAllocator);
 
@@ -287,13 +289,12 @@ TfLiteStatus SingleOpModel::ApplyDelegate() {
 
 TfLiteStatus SingleOpModel::Invoke() { return interpreter_->Invoke(); }
 
-TfLiteStatus SingleOpModel::InvokeUnchecked() { return interpreter_->Invoke(); }
-
-void SingleOpModel::BuildInterpreter(
-    std::vector<std::vector<int>> input_shapes) {
+void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                                     bool use_simple_allocator) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true,
+                   use_simple_allocator);
 }
 
 // static
@@ -377,8 +378,24 @@ int CountPartitionsExecutedByCpuKernel(const Interpreter* interpreter) {
 
 }  // namespace
 
+/*static*/ AccelerationValidator* AccelerationValidator::Get() {
+  static AccelerationValidator* const validator = new AccelerationValidator();
+  return validator;
+}
+
+void AccelerationValidator::AddCallback(Callback callback) {
+  callbacks_.push_back(std::move(callback));
+}
+
+void AccelerationValidator::Validate(const SingleOpModel& model) const {
+  for (const auto& callback : callbacks_) {
+    if (callback == nullptr) continue;
+    callback(model);
+  }
+}
+
 void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
-  absl::optional<NnapiAccelerationTestParams> validation_params =
+  std::optional<NnapiAccelerationTestParams> validation_params =
       GetNnapiAccelerationTestParam(test_id);
   if (!validation_params.has_value()) {
     return;
@@ -408,10 +425,15 @@ void SingleOpModel::ValidateAcceleration() {
   if (GetForceUseNnapi()) {
     ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
   }
+  AccelerationValidator::Get()->Validate(*this);
 }
 
 int SingleOpModel::CountOpsExecutedByCpuKernel() {
   return CountPartitionsExecutedByCpuKernel(interpreter_.get());
+}
+
+int SingleOpModel::CountNumberOfDelegatedPartitions() const {
+  return CountPartitionsDelegatedTo(interpreter_.get(), delegate_);
 }
 
 SingleOpModel::~SingleOpModel() { ValidateAcceleration(); }

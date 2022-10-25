@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/fb_storage.h"
 
+#include <algorithm>
+#include <string>
 #include <thread>  // NOLINT - only production use is on Android, where std::thread is allowed
 
 #include <gmock/gmock.h>
@@ -33,7 +35,10 @@ std::string GetTemporaryDirectory() {
   if (getenv("TEST_TMPDIR")) {
     return getenv("TEST_TMPDIR");
   }
-  return getenv("TEMP");
+  if (getenv("TEMP")) {
+    return getenv("TEMP");
+  }
+  return ".";
 #endif
 }
 

@@ -33,6 +33,9 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
             se::MultiPlatformManager::PlatformWithName("ROCM").ok()) {}
 
  protected:
+  // Converts LLVM match to be platform-specific.
+  std::string MakePlatformSpecificLlvm(absl::string_view input);
+
   // Like HloTestBase::CreateNewVerifiedModule(), with a flag for configuring
   // the ftz option.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModuleWithFTZ(bool ftz);

@@ -39,7 +39,8 @@ def TFFramework_Dialect : Dialect {
     static constexpr size_t kAllocationAlignment = 16;
   }];
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Raw;
+  let useDefaultTypePrinterParser = 1;
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
 }
 
 def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
@@ -182,7 +183,7 @@ def TFFramework_IsValidMemRefOp : TFFramework_Op<"is_valid_memref", []> {
 // NullContextOp
 //===----------------------------------------------------------------------===//
 def TFFramework_NullContextOp : TFFramework_Op<"null_context",
-    [NoSideEffect]> {
+    [Pure]> {
   let summary = "Creates a fake TF context that will be lowered to nullptr";
   let description = [{Needed for testing}];
   let results = (outs TFFramework_OpKernelContextType:$result);
@@ -252,7 +253,7 @@ def TFFramework_JITCompileOp : TFFramework_Op<"jit_compile", [SingleBlock]> {
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITCompileYieldOp : TFFramework_Op<"jit_compile_yield", [
-    NoSideEffect, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
+    Pure, ReturnLike, Terminator, HasParent<"JITCompileOp">]> {
   let summary = "Yields the results in a `tf_framework.jit_compile` op's body";
   let description = [{
     See `tf_framework.jit_compile`.
@@ -303,7 +304,10 @@ def TFFramework_JITCompileFromStrOp : TFFramework_Op<"jit_compile_from_str",
 //===----------------------------------------------------------------------===//
 
 def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
-    AttrSizedOperandSegments]> {
+    AttrSizedOperandSegments,
+    MemoryEffects<[MemAlloc<DefaultResource>]>,
+    DeclareOpInterfaceMethods<AllocationOpInterface,
+        ["buildDealloc", "buildClone"]>]> {
   let summary = "Executes a JIT-compiled function through the TF framework";
   let description = [{
     The op takes an optional TF context, so that it can be added at a later
@@ -318,20 +322,15 @@ def TFFramework_JITExecuteOp : TFFramework_Op<"jit_execute", [
   let arguments = (ins
     Optional<TFFramework_OpKernelContextType>:$ctx,
     TFFramework_JITCallableType:$callable,
-    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$operands
+    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$inputs
   );
   let results = (outs
-    Variadic<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]>>:$results
-  );
-
-  let builders = [
-    OpBuilder<(ins "Optional<Value>":$ctx, "Value":$callable,
-        "ValueRange":$operands)>
-  ];
+    Res<AnyTypeOf<[AnyRankedOrUnrankedMemRef, AnyTensor]> , "",
+        [MemAlloc<DefaultResource>]>:$result);
 
   let assemblyFormat = [{
-    (`ctx` `(` $ctx^ `)`)? $callable `(` $operands `)` attr-dict
-        `:` type($operands) `->` type($results)
+    (`ctx` `(` $ctx^ `)`)? $callable `(` $inputs `)` attr-dict
+        `:` type($inputs) `->` type($result)
   }];
 }
 

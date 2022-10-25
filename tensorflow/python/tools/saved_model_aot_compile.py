@@ -422,7 +422,8 @@ def _optimize_graph(meta_graph_def, signature_def):
     fetch_collection.node_list.value.append(tensor_info.name)
 
   new_meta_graph_def.collection_def['train_op'].CopyFrom(fetch_collection)
-
+  # We freeze the graph, so consider all variables to be readonly.
+  new_meta_graph_def.ClearField('saver_def')
   config = config_pb2.ConfigProto()
   rewrite_options = config.graph_options.rewrite_options
   rewrite_options.min_graph_nodes = -1  # do not skip small graphs

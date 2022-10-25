@@ -19,15 +19,15 @@ HloModule indexed_conditional
 
 // CHECK: "lmhlo.case"(%{{.*}}) ({
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.negate"
+// CHECK:   mhlo.negate
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.copy"
+// CHECK:   mhlo.copy
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.floor"
+// CHECK:   mhlo.floor
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: }) : (memref<i32>) -> ()
 
@@ -58,7 +58,7 @@ HloModule WhileWithScalarS32Result_module
 
 // CHECK: "lmhlo.while"(%{{.*}}) ({
 // CHECK:   %{{.*}} = memref.view
-// CHECK:   "mhlo.compare"
+// CHECK:   mhlo.compare
 // CHECK:   "lmhlo.terminator"() : () -> ()
 // CHECK: },  {
 // CHECK:   mhlo.add

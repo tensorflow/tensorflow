@@ -126,8 +126,10 @@ bool CheckCanonical(HloDotInstruction* dot) {
           dot->operand(0)->shape().rank() ||
       dimension_numbers.rhs_batch_dimensions_size() + 2 !=
           dot->operand(1)->shape().rank()) {
-    LOG(ERROR) << "Dot is not canonical: Expected all dimensions but 2 to be "
-                  "batch_dimensions.";
+    VLOG(2)
+        << dot->ToString()
+        << " is not canonical: Expected all dimensions but 2 to be "
+           "batch_dimensions. Hence, this dot is not a candidate for padding.";
     return false;
   }
 
@@ -138,8 +140,11 @@ bool CheckCanonical(HloDotInstruction* dot) {
                      canonical_batch_dims) ||
       !absl::c_equal(dimension_numbers.rhs_batch_dimensions(),
                      canonical_batch_dims)) {
-    LOG(ERROR) << "Dot is not canonical: Expected batch dimensions to be all "
-                  "dimensions except for the last 2 ones.";
+    VLOG(2)
+        << dot->ToString()
+        << " is not canonical: Expected batch dimensions to be all "
+           "dimensions except for the last 2 ones. Hence, this dot is not a "
+           "candidate for padding.";
     return false;
   }
 
@@ -164,9 +169,12 @@ static std::vector<HloDotInstruction*> GetRelevantDots(HloComputation* comp,
   return gemms;
 }
 
-StatusOr<bool> CublasPadForGemms::Run(HloModule* module) {
+StatusOr<bool> CublasPadForGemms::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (HloComputation* comp : module->MakeNonfusionComputations()) {
+  for (HloComputation* comp :
+       module->MakeNonfusionComputations(execution_threads)) {
     for (HloDotInstruction* dot : GetRelevantDots(comp, datatype_)) {
       TF_ASSIGN_OR_RETURN(bool result,
                           PadForGemm(dot, datatype_, pad_to_multiple_of_));

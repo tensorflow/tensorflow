@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_C_C_API_EXPERIMENTAL_H_
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/c_api.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,6 +113,21 @@ void TfLiteInterpreterOptionsSetOpResolver(
     const TfLiteRegistration* (*find_custom_op)(void* user_data,
                                                 const char* custom_op,
                                                 int version),
+    void* op_resolver_user_data);
+
+/// \private
+/// `TfLiteRegistration_V1` version of TfLiteInterpreterOptionsSetOpResolver.
+///
+/// WARNING: This function is deprecated / not an official part of the API, is
+/// only for binary backwards compatibility, and should not be called.
+void TfLiteInterpreterOptionsSetOpResolverV1(
+    TfLiteInterpreterOptions* options,
+    const TfLiteRegistration_V1* (*find_builtin_op_v1)(void* user_data,
+                                                       TfLiteBuiltinOperator op,
+                                                       int version),
+    const TfLiteRegistration_V1* (*find_custom_op_v1)(void* user_data,
+                                                      const char* op,
+                                                      int version),
     void* op_resolver_user_data);
 
 /// Returns a new interpreter using the provided model and options, or null on
@@ -221,7 +236,7 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorIndex(
 /// (ii) only using Interpreter APIs.
 ///
 /// NOTE:
-/// * Only use one of the above options to run inference, i.e, avoid mixing both
+/// * Only use one of the above options to run inference, i.e. avoid mixing both
 ///   SignatureRunner APIs and Interpreter APIs to run inference as they share
 ///   the same underlying data (e.g. updating an input tensor “A” retrieved
 ///   using the Interpreter APIs will update the state of the input tensor “B”
@@ -364,6 +379,18 @@ TFL_CAPI_EXPORT extern const char* TfLiteSignatureRunnerGetOutputName(
 /// WARNING: This is an experimental API and subject to change.
 TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteSignatureRunnerGetOutputTensor(
     const TfLiteSignatureRunner* signature_runner, const char* output_name);
+
+/// Attempts to cancel in flight invocation if any.
+/// This will not affect calls to `Invoke` that happend after this.
+/// Non blocking and thread safe.
+/// Returns kTfLiteError if cancellation is not enabled, otherwise returns
+/// kTfLiteOk.
+/// NOTE: Calling this function will cancel in-flight invocations
+/// in all SignatureRunners built from the same interpreter.
+///
+/// WARNING: This is an experimental API and subject to change.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteSignatureRunnerCancel(
+    TfLiteSignatureRunner* signature_runner);
 
 /// Destroys the signature runner.
 ///

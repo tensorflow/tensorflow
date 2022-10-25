@@ -24,6 +24,12 @@ OpCommentRenderer::OpCommentRenderer(RendererContext context, OpView op)
     : Renderer(context), op_(op) {}
 
 void OpCommentRenderer::Render() {
+  if (context_.mode == RendererContext::kHeader) {
+    // Add a short 1-line comment to the header files.
+    CommentLine(op_.Summary());
+    return;
+  }
+
   CommentLine("Op: $0()", op_.FunctionName());
   CommentLine("Summary: $0", op_.Summary());
   CommentLine("");

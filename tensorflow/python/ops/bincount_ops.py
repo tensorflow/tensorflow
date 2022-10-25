@@ -116,8 +116,11 @@ def bincount(arr,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # Somehow forward compatible needs to be False.
-    if not binary_output and axis is None:
+    # TODO(b/255381064) fix any internal tests that need the following codeblock
+    # and then delete this codeblock
+    if (not binary_output and (axis is None or axis == 0)
+        and not isinstance(arr, ragged_tensor.RaggedTensor)
+        and not isinstance(arr, sparse_tensor.SparseTensor)):
       arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
       array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
       output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
@@ -134,6 +137,7 @@ def bincount(arr,
         weights = ops.convert_to_tensor(weights, name="weights")
         return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
       weights = constant_op.constant([], dtype)
+      arr = array_ops.reshape(arr, [-1])
       return gen_math_ops.bincount(arr, output_size, weights)
 
     if not isinstance(arr, sparse_tensor.SparseTensor):
@@ -289,6 +293,8 @@ def sparse_bincount(values,
       * `0` (if `values` is empty);
       * `reduce_max(values) + 1` otherwise.
 
+  Raises:
+    `InvalidArgumentError` if negative values are provided as an input.
 
   Examples:
 

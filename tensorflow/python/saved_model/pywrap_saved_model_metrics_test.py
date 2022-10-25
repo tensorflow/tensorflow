@@ -60,6 +60,24 @@ class MetricsTest(test.TestCase):
         self._get_histogram_proto(
             metrics.GetCheckpointWriteDurations(api_label="foo")).max, 200)
 
+  def test_async_checkpoint_add_write_duration(self):
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).num, 0)
+
+    metrics.AddAsyncCheckpointWriteDuration(api_label="foo", microseconds=20)
+    metrics.AddAsyncCheckpointWriteDuration(api_label="foo", microseconds=50)
+
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).num, 2)
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).min, 20)
+    self.assertEqual(
+        self._get_histogram_proto(
+            metrics.GetAsyncCheckpointWriteDurations(api_label="foo")).max, 50)
+
   def test_checkpoint_add_read_duration(self):
     self.assertEqual(
         self._get_histogram_proto(

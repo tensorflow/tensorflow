@@ -1,6 +1,6 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/core/platform:build_config.bzl", "tf_stream_executor_deps")
-load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
+load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
 
 package(
     default_visibility = [":friends"],
@@ -20,7 +20,12 @@ cc_library(
         "platform.h",
         "port.h",
     ],
-    deps = ["//tensorflow/core:lib"] + tf_stream_executor_deps("platform", "//tensorflow/stream_executor/platform/"),
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+    ] + tf_stream_executor_deps("platform", "//tensorflow/stream_executor/platform/"),
 )
 
 cc_library(
@@ -28,5 +33,6 @@ cc_library(
     hdrs = ["dso_loader.h"],
     deps = [
         ":platform",
+        "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
     ] + tf_stream_executor_deps("dso_loader", "//tensorflow/stream_executor/platform/"),
 )

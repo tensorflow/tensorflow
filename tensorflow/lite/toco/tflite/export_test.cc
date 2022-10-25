@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/export.h"
 
+#include <algorithm>
+#include <initializer_list>
+#include <memory>
+#include <string>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -106,7 +111,7 @@ class ExportTest : public ::testing::Test {
     // Make the buffer large enough for QuantizeWeights transformation to take
     // effect.
     int buf_size = 1296;
-    auto weight_buf = absl::make_unique<float[]>(buf_size);
+    auto weight_buf = std::make_unique<float[]>(buf_size);
     for (int i = 0; i < buf_size; i++) {
       // Fill the array with some garbage values.
       weight_buf[i] = static_cast<float>(i % 128);
@@ -674,7 +679,7 @@ TEST_F(VersionedOpExportTest, Export) {
 
 TEST(OperatorKeyTest, TestBuiltinOp) {
   Model model;
-  auto op = absl::make_unique<ConvOperator>();
+  auto op = std::make_unique<ConvOperator>();
 
   // Test a normal float operation.
   op->inputs = {"input", "filter"};
@@ -697,7 +702,7 @@ TEST(OperatorKeyTest, TestBuiltinOp) {
 
 TEST(OperatorKeyTest, TestBuiltinOpWithVersionedInputTypes) {
   Model model;
-  auto op = absl::make_unique<DequantizeOperator>();
+  auto op = std::make_unique<DequantizeOperator>();
 
   op->inputs = {"input"};
   op->outputs = {"output"};
@@ -719,7 +724,7 @@ TEST(OperatorKeyTest, TestBuiltinOpWithVersionedInputTypes) {
 
 TEST(OperatorKeyTest, TestCustomOp) {
   Model model;
-  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto op = std::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "MyCrazyCustomOp";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
@@ -733,7 +738,7 @@ TEST(OperatorKeyTest, TestCustomOp) {
 
 TEST(OperatorKeyTest, TestFlexOp) {
   Model model;
-  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto op = std::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "BatchMatMul";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
@@ -763,7 +768,7 @@ TEST(OperatorKeyTest, TestFlexOp) {
 
 TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
   Model model;
-  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto op = std::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "Merge";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
@@ -781,7 +786,7 @@ TEST(OperatorKeyTest, TestFlexWithControlFlowOp) {
 
 TEST(OperatorKeyTest, TestFlexWithUnsupportedOp) {
   Model model;
-  auto op = absl::make_unique<TensorFlowUnsupportedOperator>();
+  auto op = std::make_unique<TensorFlowUnsupportedOperator>();
   op->tensorflow_op = "UnsupportedOp";
 
   const auto ops_by_type = BuildOperatorByTypeMap();
@@ -800,7 +805,7 @@ TEST(OperatorKeyTest, TestFlexWithPartiallySupportedOps) {
   Model model;
   // TODO(ycling): The test will be broken if TensorFlowAssert is implemented in
   // TFLite. Find a more robust way to test the fallback logic.
-  auto op = absl::make_unique<TensorFlowAssertOperator>();
+  auto op = std::make_unique<TensorFlowAssertOperator>();
 
   const auto ops_by_type = BuildOperatorByTypeMap();
 

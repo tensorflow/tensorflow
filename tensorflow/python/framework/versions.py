@@ -23,6 +23,7 @@ __git_version__ = pywrap_tf_session.__git_version__
 __compiler_version__ = pywrap_tf_session.__compiler_version__
 __cxx11_abi_flag__ = pywrap_tf_session.__cxx11_abi_flag__
 __monolithic_build__ = pywrap_tf_session.__monolithic_build__
+__cxx_version__ = pywrap_tf_session.__cxx_version__
 
 VERSION = __version__
 tf_export(
@@ -49,6 +50,12 @@ tf_export(
     "__cxx11_abi_flag__",
     v1=["sysconfig.CXX11_ABI_FLAG", "CXX11_ABI_FLAG",
         "__cxx11_abi_flag__"]).export_constant(__name__, "CXX11_ABI_FLAG")
+CXX_VERSION = __cxx_version__
+tf_export(
+    "sysconfig.CXX_VERSION",
+    "__cxx_version__",
+    v1=["sysconfig.CXX_VERSION", "CXX_VERSION",
+        "__cxx_version__"]).export_constant(__name__, "CXX_VERSION")
 MONOLITHIC_BUILD = __monolithic_build__
 tf_export(
     "sysconfig.MONOLITHIC_BUILD",

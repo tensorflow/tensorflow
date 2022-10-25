@@ -81,6 +81,10 @@ message DataServiceMetadata {
   int64 cardinality = 3;
 }
 
+message CrossTrainerCacheOptions {
+  string trainer_id = 1;
+}
+
 // Data service config available to the client through GetDataServiceConfig RPC.
 // Next tag: 2
 message DataServiceConfig {

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/reduce_scatter_utils.h"
 
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
@@ -248,25 +249,42 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
 
 }  // namespace
 
-absl::optional<ReduceScatterSpec> MatchReduceScatter(
+std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank) {
+  HloPredicate match_partition_id = [](const HloInstruction* i) {
+    return i->opcode() == HloOpcode::kPartitionId;
+  };
+  HloPredicate match_replica_id = [](const HloInstruction* i) {
+    return i->opcode() == HloOpcode::kReplicaId;
+  };
+  return MatchReduceScatter(ar, num_partitions, num_replicas,
+                            allow_multiple_split_dims,
+                            allow_intervening_reshape, min_rank,
+                            match_partition_id, match_replica_id);
+}
+
+std::optional<ReduceScatterSpec> MatchReduceScatter(
+    const HloAllReduceInstruction* ar, int64_t num_partitions,
+    int64_t num_replicas, bool allow_multiple_split_dims,
+    bool allow_intervening_reshape, int64_t min_rank,
+    HloPredicate match_partition_id, HloPredicate match_replica_id) {
   if (!ar->shape().IsArray() || ar->constrain_layout() ||
       (ar->IsCrossModuleAllReduce() &&
        !ar->GetModule()->config().use_spmd_partitioning())) {
     VLOG(2) << "Unsupported all-reduce: " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (ar->shape().rank() - absl::c_count(ar->shape().dimensions(), 1) <
       min_rank) {
     VLOG(2) << " Should be at least rank-" << min_rank
             << " excluding trivial dimensions " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (ar->user_count() != 1) {
     VLOG(2) << "All-reduce user_count > 1 " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   if (ar->replica_groups().size() > 1) {
     const int64_t size = ar->replica_groups()[0].replica_ids_size();
@@ -278,7 +296,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     if (!has_uniform_size) {
       VLOG(2) << "Unsupported non-uniform replica group size "
               << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -291,13 +309,13 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     if (reshape->user_count() != 1) {
       VLOG(2) << "Reshape following all-reduce has user count > 1"
               << reshape->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
     user = reshape->users().front();
   }
   if (user->opcode() != HloOpcode::kDynamicSlice) {
     VLOG(2) << "All-reduce user is not dynamic slice " << user->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   ReduceScatterSpec spec;
   int64_t group_size;
@@ -308,8 +326,8 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     group_size = ar->replica_groups().empty()
                      ? num_replicas
                      : ar->replica_groups()[0].replica_ids_size();
-    map_id = [](const HloInstruction* hlo, int64_t id) {
-      return hlo->opcode() == HloOpcode::kReplicaId ? id : -1;
+    map_id = [&](const HloInstruction* hlo, int64_t id) {
+      return match_replica_id(hlo) ? id : -1;
     };
   } else if (ar->use_global_device_ids()) {
     spec.sharded_replicas = num_replicas;
@@ -335,10 +353,10 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
       }
     }
     map_id = [&, orthogonal_replicas](const HloInstruction* hlo, int64_t id) {
-      if (hlo->opcode() == HloOpcode::kReplicaId) {
+      if (match_replica_id(hlo)) {
         return num_partitions == 1 ? id : -1;
       }
-      if (hlo->opcode() == HloOpcode::kPartitionId) {
+      if (match_partition_id(hlo)) {
         if (num_replicas == 1) {
           return id;
         }
@@ -356,9 +374,9 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
                      num_partitions));
       };
       if (hlo->opcode() == HloOpcode::kAdd &&
-          ((hlo->operand(0)->opcode() == HloOpcode::kPartitionId &&
+          ((match_partition_id(hlo->operand(0)) &&
             is_replica_mul_num_partitions(hlo->operand(1))) ||
-           (hlo->operand(1)->opcode() == HloOpcode::kPartitionId &&
+           (match_partition_id(hlo->operand(1)) &&
             is_replica_mul_num_partitions(hlo->operand(0))))) {
         return id;
       }
@@ -372,17 +390,17 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
       VLOG(2) << "Unsupported size > 1 replica groups for cross-partition, "
                  "non-global ID "
               << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
     spec.sharded_partitions = num_partitions;
     group_size = num_partitions;
     map_id = [&](const HloInstruction* hlo, int64_t id) {
-      return hlo->opcode() == HloOpcode::kPartitionId ? id : -1;
+      return match_partition_id(hlo) ? id : -1;
     };
   }
   if (group_size < 2) {
     VLOG(2) << "Group_size < 2, nothing to do " << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
   spec.group_size = group_size;
   spec.split_dim = -1;
@@ -421,7 +439,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
         if (!allow_multiple_split_dims || spec.split_dim != (dim - 1)) {
           VLOG(2) << "Only support split on consecutive dims "
                   << user->ToString();
-          return absl::nullopt;
+          return std::nullopt;
         }
         continue;
       }
@@ -438,7 +456,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
   if (Product(group_sizes) != group_size) {
     VLOG(2) << "Group size mismatch " << user->ToString() << " vs "
             << ar->ToString();
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   if (split_dims.size() > 1) {
@@ -452,14 +470,14 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
     if (!IsPerIdOffsets(absl::MakeSpan(offsets), shard_size, map_id,
                         group_sizes, ar)) {
       VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
   } else {
     if (!IsPerIdOffset(user->operand(spec.split_dim + 1),
                        user->dynamic_slice_sizes()[spec.split_dim], map_id,
                        group_size, ar)) {
       VLOG(2) << "IsPerIdOffsets() failed " << ar->ToString();
-      return absl::nullopt;
+      return std::nullopt;
     }
   }
 
@@ -482,7 +500,7 @@ absl::optional<ReduceScatterSpec> MatchReduceScatter(
         });
     if (!all_split_dims_unmodified) {
       VLOG(2) << "Split dimensions are modified by reshape";
-      return absl::nullopt;
+      return std::nullopt;
     }
 
     // rewrite the split dim and original_split_dims to be in terms of the

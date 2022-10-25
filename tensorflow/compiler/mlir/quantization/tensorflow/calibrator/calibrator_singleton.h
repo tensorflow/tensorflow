@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -35,18 +36,17 @@ class CalibratorSingleton {
   static void ClearData(absl::string_view id);
 
   // Collects min and max values from the TensorFlow operator executions.
-  static void ReportMinMax(absl::string_view id, float min, float max);
+  static void ReportMinMax(absl::string_view id, float min_val, float max_val);
 
   // Returns the min and max values of the given id.
-  static absl::optional<std::pair<float, float>> GetMinMax(
-      absl::string_view id);
+  static std::optional<std::pair<float, float>> GetMinMax(absl::string_view id);
 
  private:
   static CalibratorSingleton& GetInstance();
   static absl::Mutex lock_;
 
-  std::map<absl::string_view, float> id_to_min_;
-  std::map<absl::string_view, float> id_to_max_;
+  absl::flat_hash_map<std::string, float> id_to_min_;
+  absl::flat_hash_map<std::string, float> id_to_max_;
 
   CalibratorSingleton() = default;
   ~CalibratorSingleton() = default;

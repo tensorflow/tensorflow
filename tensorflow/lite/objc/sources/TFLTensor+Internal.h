@@ -15,6 +15,7 @@
 #import "tensorflow/lite/objc/apis/TFLTensor.h"
 
 @class TFLInterpreter;
+@class TFLSignatureRunner;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -38,6 +39,9 @@ typedef NS_ENUM(NSUInteger, TFLTensorType) {
 /** Index of the tensor. */
 @property(nonatomic, readonly) NSUInteger index;
 
+/** The input or output name of the tensor in the signatureDef. */
+@property(nonatomic, nullable, readonly) NSString *nameInSignature;
+
 /**
  * Initializes a `TFLTensor` with the given interpreter, name, data type, and quantization
  * parameters.
@@ -59,6 +63,27 @@ typedef NS_ENUM(NSUInteger, TFLTensorType) {
                                name:(NSString *)name
                            dataType:(TFLTensorDataType)dataType
              quantizationParameters:(nullable TFLQuantizationParameters *)quantizationParameters;
+
+/**
+ * Initializes a new `TFLTensor` instance.
+ *
+ * @param signatureRunner The signature runner backing the tensor.
+ * @param type Input or output tensor type.
+ * @param nameInSignature The input or output name of the tensor in the signatureDef.
+ * @param name Name of the tensor.
+ * @param dataType Data type of the tensor.
+ * @param quantizationParameters Quantization parameters of the tensor. `nil` if the tensor does not
+ *     use quantization.
+ *
+ * @return A new instance of `TFLTensor`.
+ */
+- (instancetype)initWithSignatureRunner:(TFLSignatureRunner *)signatureRunner
+                                   type:(TFLTensorType)type
+                        nameInSignature:(NSString *)nameInSignature
+                                   name:(NSString *)name
+                               dataType:(TFLTensorDataType)dataType
+                 quantizationParameters:
+                     (nullable TFLQuantizationParameters *)quantizationParameters;
 
 /**
  * Returns the string name of the given input or output tensor type.

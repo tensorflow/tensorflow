@@ -75,7 +75,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return absl::make_unique<Iterator>(Iterator::Params{
+    return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
 
@@ -93,7 +93,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
-    return Status::OK();
+    return OkStatus();
   }
 
   Status CheckExternalState() const override {
@@ -127,7 +127,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
                        {kPredicate, predicate_attr},
                        {kTarguments, other_arguments_types_attr}},
                       output));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -155,7 +155,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = GetAutotuneDefaultParallelism(ctx);
       }
-      cancellation_manager_ = absl::make_unique<CancellationManager>();
+      cancellation_manager_ = std::make_unique<CancellationManager>();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
@@ -174,7 +174,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       {
         mutex_lock l(*mu_);
         EnsureThreadsStarted(ctx);
-        while (ShouldWait(&result)) {
+        while (ShouldWait(ctx, &result)) {
           RecordStop(ctx);
           cond_var_->wait(l);
           RecordStart(ctx);
@@ -233,7 +233,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
               writer->WriteScalar(element_prefix, kEndOfInput, ""));
         }
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -262,7 +262,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
@@ -401,9 +401,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
-        RecordBufferDequeue(ctx, *out_tensors);
         *end_of_sequence = false;
-        return Status::OK();
+        return OkStatus();
       }
       if (errors::IsOutOfRange(result->status)) {
         // `predicate` may deliberately raise `errors::OutOfRange` to indicate
@@ -458,7 +457,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
     // Determines whether the caller needs to wait for a result. Upon returning
     // false, `result` will point to the result and the result is fully
     // resolved, i.e. the predicate computation is finished.
-    bool ShouldWait(std::shared_ptr<InvocationResult>* result)
+    bool ShouldWait(IteratorContext* ctx,
+                    std::shared_ptr<InvocationResult>* result)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (cancelled_) {
         return false;
@@ -479,6 +479,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
              invocation_results_.front()->notification.HasBeenNotified() &&
              PredicateReady(invocation_results_.front().get()) &&
              !GetPredicateValue(invocation_results_.front().get())) {
+        RecordBufferDequeue(ctx, invocation_results_.front()->return_values);
         invocation_results_.pop_front();
         // A buffer is freed, notify all so that a new call can start.
         cond_var_->notify_all();
@@ -506,6 +507,12 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
             invocation_results_.front()->notification.HasBeenNotified()) {
           std::swap(*result, invocation_results_.front());
           invocation_results_.pop_front();
+          // End of input result is not recorded in the model proto when the
+          // invocation result was created. It should not be recorded when it is
+          // popped either.
+          if (!(*result)->end_of_input) {
+            RecordBufferDequeue(ctx, (*result)->return_values);
+          }
           cond_var_->notify_all();
           return false;
         }
@@ -522,7 +529,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteTensor(
             prefix, absl::StrCat(kComponent, "[", j, "]"), values[j]));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadComponentsLocked(IteratorContext* ctx,
@@ -544,7 +551,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
             ctx->flr(), prefix, absl::StrCat(kComponent, "[", j, "]"),
             &values->back()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status WriteStatusLocked(IteratorStateWriter* writer,
@@ -556,7 +563,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(key, kErrorMessage, status.error_message()));
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
@@ -571,9 +578,9 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(key, kErrorMessage, &error_message));
         *status = Status(code, error_message);
       } else {
-        *status = Status::OK();
+        *status = OkStatus();
       }
-      return Status::OK();
+      return OkStatus();
     }
 
     // Used for coordination between the main thread and the runner thread.

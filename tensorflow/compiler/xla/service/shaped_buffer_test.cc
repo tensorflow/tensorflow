@@ -15,14 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 
-#include "absl/memory/memory.h"
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/util/ptr_util.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/util/ptr_util.h"
 
 namespace xla {
 namespace {
@@ -35,7 +37,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
   const xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {});
   const int kDeviceOrdinal = 0;
-  auto scoped_buffer = absl::make_unique<xla::ScopedShapedBuffer>(
+  auto scoped_buffer = std::make_unique<xla::ScopedShapedBuffer>(
       shape, shape, &allocator, kDeviceOrdinal);
   std::unique_ptr<xla::ShapedBuffer> buffer = std::move(scoped_buffer);
   buffer = nullptr;
@@ -44,8 +46,7 @@ TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
 class TestAllocator : public se::DeviceMemoryAllocator {
  public:
   TestAllocator()
-      : se::DeviceMemoryAllocator(
-            PlatformUtil::GetDefaultPlatform().ValueOrDie()) {}
+      : se::DeviceMemoryAllocator(PlatformUtil::GetDefaultPlatform().value()) {}
 
   ~TestAllocator() override {
     if (!allocations_.empty()) {
@@ -71,7 +72,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
 
   Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
     if (mem.is_null()) {
-      return Status::OK();
+      return OkStatus();
     }
 
     auto it = allocations_.find({device_ordinal, mem.opaque()});
@@ -81,7 +82,7 @@ class TestAllocator : public se::DeviceMemoryAllocator {
       free(mem.opaque());
       allocations_.erase(it);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   bool AllowsAsynchronousDeallocation() const override { return false; }
@@ -98,14 +99,12 @@ TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {
   Shape s = ShapeUtil::MakeShape(F32, {1});
   TestAllocator allocator;
   ScopedShapedBuffer sb1(s, &allocator, /*device_ordinal=*/0);
-  sb1.set_buffer(
-      allocator.Allocate(/*device_ordinal=*/0, /*size=*/42).ValueOrDie(),
-      /*index=*/{});
+  sb1.set_buffer(allocator.Allocate(/*device_ordinal=*/0, /*size=*/42).value(),
+                 /*index=*/{});
 
   ScopedShapedBuffer sb2(s, &allocator, /*device_ordinal=*/1);
-  sb2.set_buffer(
-      allocator.Allocate(/*device_ordinal=*/1, /*size=*/10).ValueOrDie(),
-      /*index=*/{});
+  sb2.set_buffer(allocator.Allocate(/*device_ordinal=*/1, /*size=*/10).value(),
+                 /*index=*/{});
 
   sb1 = std::move(sb2);
 
@@ -167,7 +166,7 @@ TEST(ScopedShapedBufferTest, TestSubShapeTree) {
       });
   auto ssb_statusor = sb.SubShapedBuffer({1});
   ASSERT_TRUE(ssb_statusor.ok());
-  auto ssb = ssb_statusor.ConsumeValueOrDie();
+  auto ssb = std::move(ssb_statusor).value();
   EXPECT_EQ(ssb.on_host_shape(), array_shape);
   EXPECT_EQ(ssb.on_device_shape(), array_shape);
 }

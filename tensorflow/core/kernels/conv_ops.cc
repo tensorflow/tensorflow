@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/blocking_counter.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/deep_conv2d.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -55,10 +57,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-#include "tensorflow/core/kernels/xsmm_conv2d.h"
-#endif
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -68,9 +66,9 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
-#include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/redzone_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -414,74 +412,6 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-template <typename Device, typename T>
-class LaunchXsmmConvOp {
- public:
-  static bool Run(OpKernelContext* ctx, const Tensor& input,
-                  const Tensor& filter, int batch, int input_rows,
-                  int input_cols, int in_depth, int filter_rows,
-                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
-                  int out_cols, int out_depth, int stride_rows, int stride_cols,
-                  int dilation_rows, int dilation_cols, Tensor* output,
-                  TensorFormat data_format) {
-    return false;
-  }
-};
-
-template <>
-class LaunchXsmmConvOp<CPUDevice, float> {
- public:
-  static bool Run(OpKernelContext* ctx, const Tensor& input,
-                  const Tensor& filter, int batch, int input_rows,
-                  int input_cols, int in_depth, int filter_rows,
-                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
-                  int out_cols, int out_depth, int dilation_rows,
-                  int dilation_cols, int stride_rows, int stride_cols,
-                  Tensor* output, TensorFormat data_format) {
-    auto num_threads =
-        ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
-    // See libxsmm_dnn.h for this struct definition.
-    libxsmm_dnn_conv_desc desc;
-    desc.N = batch;
-    desc.C = in_depth;
-    desc.H = input_rows;
-    desc.W = input_cols;
-    desc.K = out_depth;
-    desc.R = filter_rows;
-    desc.S = filter_cols;
-    desc.u = stride_rows;
-    desc.v = stride_cols;
-    desc.pad_h = pad_rows;
-    desc.pad_w = pad_cols;
-    desc.pad_h_in = 0;
-    desc.pad_w_in = 0;
-    desc.pad_h_out = 0;
-    desc.pad_w_out = 0;
-    desc.threads = num_threads;
-    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
-    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
-    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_OVERWRITE;
-    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
-    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    if (dilation_rows != 1 || dilation_cols != 1 ||
-        !CanUseXsmmConv2D(desc, data_format)) {
-      return false;
-    }
-
-    auto input_ptr = input.template flat<float>().data();
-    auto filter_ptr = filter.template flat<float>().data();
-    auto output_ptr = output->template flat<float>().data();
-
-    bool success = functor::XsmmFwdConv2D<CPUDevice, float>()(
-        ctx, desc, input_ptr, filter_ptr, output_ptr);
-    return success;
-  }
-};
-#endif
-
 #define TF_REQUIRES(EXP, STATUS)                \
   do {                                          \
     if (!TF_PREDICT_TRUE(EXP)) return (STATUS); \
@@ -535,33 +465,42 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
       dilation_h > 0 && dilation_w > 0,
       errors::InvalidArgument("Dilated rates should be larger than 0."));
 
-  TF_RETURN_IF_ERROR(CheckValidPadding(params->padding,
-                                       params->explicit_paddings,
-                                       /*num_dims=*/4, data_format));
+  int num_dims = data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
+  TF_RETURN_IF_ERROR(CheckValidPadding(
+      params->padding, params->explicit_paddings, num_dims, data_format));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status ComputeConv2DDimension(const Conv2DParameters& params,
                               const Tensor& input, const Tensor& filter,
                               Conv2DDimensions* dimensions) {
-  // Check that 2D convolution input and filter have exactly 4 dimensions.
-  TF_REQUIRES(input.dims() == 4,
-              errors::InvalidArgument("input must be 4-dimensional",
-                                      input.shape().DebugString()));
-  TF_REQUIRES(filter.dims() == 4,
-              errors::InvalidArgument("filter must be 4-dimensional: ",
-                                      filter.shape().DebugString()));
-  for (int i = 0; i < 3; i++) {
+  int required_dims =
+      params.data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
+  // Check that 2D convolution input and filter have exactly required_dims.
+  TF_REQUIRES(
+      input.dims() == required_dims,
+      errors::InvalidArgument("convolution input must be ", required_dims,
+                              "-dimensional: ", input.shape().DebugString()));
+  TF_REQUIRES(
+      filter.dims() == required_dims,
+      errors::InvalidArgument("convolution filter must be ", required_dims,
+                              "-dimensional: ", filter.shape().DebugString()));
+  for (int i = 0; i < required_dims - 1; i++) {
     TF_REQUIRES(
         FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
         errors::InvalidArgument("filter too large"));
   }
 
+  FilterTensorFormat filter_format =
+      params.data_format == TensorFormat::FORMAT_NCHW_VECT_C
+          ? FilterTensorFormat::FORMAT_OIHW_VECT_I
+          : FilterTensorFormat::FORMAT_HWIO;
+
   // The last dimension for input is in_depth. Check that it is the same as the
   // filter's in_depth or it is evenly divisible by filter's in_depth.
   const int64_t in_depth_raw = GetTensorDim(input, params.data_format, 'C');
-  const int64_t patch_depth_raw = filter.dim_size(2);
+  const int64_t patch_depth_raw = GetFilterDim(filter, filter_format, 'I');
   TF_REQUIRES(FastBoundsCheck(in_depth_raw, std::numeric_limits<int>::max()),
               errors::InvalidArgument("Input depth too large"));
   TF_REQUIRES(FastBoundsCheck(patch_depth_raw, std::numeric_limits<int>::max()),
@@ -577,7 +516,8 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
                   in_depth, " vs ", patch_depth));
 
   // The last dimension for filter is out_depth.
-  const int out_depth = static_cast<int>(filter.dim_size(3));
+  const int out_depth =
+      static_cast<int>(GetFilterDim(filter, filter_format, 'O'));
 
   // The second dimension for input is rows/height.
   // The first dimension for filter is rows/height.
@@ -585,7 +525,8 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   TF_REQUIRES(FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
               errors::InvalidArgument("Input rows too large"));
   const int input_rows = static_cast<int>(input_rows_raw);
-  const int filter_rows = static_cast<int>(filter.dim_size(0));
+  const int filter_rows =
+      static_cast<int>(GetFilterDim(filter, filter_format, 'H'));
 
   // The third dimension for input is columns/width.
   // The second dimension for filter is columns/width.
@@ -593,7 +534,8 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   TF_REQUIRES(FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
               errors::InvalidArgument("Input cols too large"));
   const int input_cols = static_cast<int>(input_cols_raw);
-  const int filter_cols = static_cast<int>(filter.dim_size(1));
+  const int filter_cols =
+      static_cast<int>(GetFilterDim(filter, filter_format, 'W'));
 
   // The first dimension for input is batch.
   const int64_t batch_raw = GetTensorDim(input, params.data_format, 'N');
@@ -646,7 +588,7 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   dimensions->pad_cols_before = pad_cols_before;
   dimensions->pad_cols_after = pad_cols_after;
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #undef TF_REQUIRES
@@ -700,19 +642,14 @@ class Conv2DOp : public BinaryOp<T> {
       return;
     }
 
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-    if (params_.padding != EXPLICIT &&
-        LaunchXsmmConvOp<Device, T>::Run(
-            context, input, filter, dimensions.batch, dimensions.input_rows,
-            dimensions.input_cols, dimensions.in_depth, dimensions.filter_rows,
-            dimensions.filter_cols, dimensions.pad_rows_before,
-            dimensions.pad_cols_before, dimensions.out_rows,
-            dimensions.out_cols, dimensions.out_depth, dimensions.dilation_rows,
-            dimensions.dilation_cols, dimensions.stride_rows,
-            dimensions.stride_cols, output, params_.data_format)) {
+    // If the input is empty, result can only be due to padding.
+    if (input.NumElements() == 0) {
+      // Zero-out output and return.
+      functor::SetZeroFunctor<Device, T>()(context->eigen_device<Device>(),
+                                           output->template flat<T>());
+
       return;
     }
-#endif
 
     if (params_.padding != EXPLICIT &&
         LaunchDeepConvOp<Device, T>::Run(
@@ -750,6 +687,7 @@ class Conv2DOp : public BinaryOp<T> {
 // If we're using the alternative GEMM-based implementation of Conv2D for the
 // CPU implementation, don't register this EigenTensor-based version.
 #if !defined(USE_GEMM_FOR_CONV)
+TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
@@ -757,6 +695,7 @@ TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
+template struct LaunchConv2DOp<CPUDevice, Eigen::bfloat16>;
 template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 template struct LaunchConv2DOp<CPUDevice, float>;
 template struct LaunchConv2DOp<CPUDevice, double>;
@@ -778,6 +717,11 @@ int64_t GetDnnWorkspaceLimit(const string& envvar_in_mb,
     }
   }
   return default_value_in_bytes;
+}
+
+int64_t GetDnnWorkspaceLimitOrDefault() {
+  return GetDnnWorkspaceLimit("TF_CUDNN_WORKSPACE_LIMIT_IN_MB",
+                              1LL << 33);  // 8GB by default
 }
 
 template <typename T>
@@ -835,8 +779,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
-                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                                  a_ptr, k, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   } else if (patch_rows == in_rows && patch_cols == in_cols &&
              !is_grouped_convolution && row_dilation == 1 &&
@@ -856,8 +802,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                 output->template flat<T>().size());
 
     auto no_transpose = se::blas::Transpose::kNoTranspose;
-    OP_REQUIRES_OK(ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m,
-                                             k, b_ptr, n, a_ptr, k, &c_ptr, n));
+    OP_REQUIRES_OK(
+        ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
+                                  a_ptr, k, &c_ptr, n,
+                                  se::blas::kDefaultComputePrecision));
     return;
   }
 
@@ -953,7 +901,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       return;
     }
     functor::PadInput<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(),
+        To32Bit(static_cast<const Tensor&>(input).tensor<T, 4>()),
         {{static_cast<int>(input_pad_top), static_cast<int>(input_pad_left)}},
         {{static_cast<int>(input_pad_bottom),
           static_cast<int>(input_pad_right)}},
@@ -1053,7 +1002,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         To32Bit(filter.tensor<T, 4>()),
         To32Bit(transformed_filter.tensor<T, 4>()));
 
-    return Status::OK();
+    return OkStatus();
   };
 
   if (compute_data_format == FORMAT_NCHW) {
@@ -1087,10 +1036,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       AsDeviceMemory(transformed_output.template flat<T>().data(),
                      transformed_output.template flat<T>().size());
 
-  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimit(
-      // default value is in bytes despite the name of the environment variable
-      "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-  );
+  static int64_t ConvolveScratchSize = GetDnnWorkspaceLimitOrDefault();
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();
@@ -1118,7 +1064,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       se::dnn::ConvolutionKind::FORWARD, input_desc, input_ptr, filter_desc,
       filter_ptr, conv_desc, output_desc, output_ptr, ConvolveScratchSize);
   OP_REQUIRES_OK(ctx, entry_or.status());
-  auto autotune_entry = entry_or.ConsumeValueOrDie();
+  auto autotune_entry = std::move(entry_or).value();
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   Status cudnn_launch_status = LaunchAutotunedConv(

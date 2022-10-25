@@ -24,9 +24,11 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_lib
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import backprop
@@ -134,6 +136,18 @@ def is_optimizer_v2_instance(optimizer_obj):
   # argument.
   arg_spec = tf_inspect.getfullargspec(optimizer_obj.minimize)
   return "var_list" in arg_spec.args[:-len(arg_spec.defaults)]
+
+
+def is_mirrored_strategy(strategy: distribute_lib.Strategy) -> bool:
+  return isinstance(
+      strategy,
+      (mirrored_lib.MirroredStrategy, mirrored_lib.MirroredStrategyV1))
+
+
+def is_multi_worker_mirrored_strategy(
+    strategy: distribute_lib.Strategy) -> bool:
+  return isinstance(strategy, (mwms_lib.CollectiveAllReduceStrategy,
+                               mwms_lib.CollectiveAllReduceStrategyV1))
 
 
 def is_tpu_strategy(strategy: distribute_lib.Strategy) -> bool:

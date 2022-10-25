@@ -272,8 +272,9 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
               tensorflow::OperationFromInterface(tensorflow::unwrap(send_func));
           EXPECT_TRUE(op->Reset("SendFunction", send_device.c_str(),
                                 /*remote=*/false, /*executor=*/nullptr,
-                                tensorflow::EagerFunctionParams{/*op_id=*/s,
-                                                                /*step_id=*/s})
+                                tensorflow::EagerFunctionParams{
+                                    /*op_id=*/s, /*is_component_function=*/true,
+                                    /*step_id=*/s})
                           .ok());
         }
 
@@ -314,8 +315,10 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
               tensorflow::OperationFromInterface(tensorflow::unwrap(recv_func));
           EXPECT_TRUE(op->Reset("RecvFunction", recv_device.c_str(),
                                 /*remote=*/false, /*executor=*/nullptr,
-                                tensorflow::EagerFunctionParams{/*op_id=*/s,
-                                                                /*step_id=*/s})
+                                tensorflow::EagerFunctionParams{
+                                    /*op_id=*/s,
+                                    /*is_component_function=*/true,
+                                    /*step_id=*/s})
                           .ok());
         }
 

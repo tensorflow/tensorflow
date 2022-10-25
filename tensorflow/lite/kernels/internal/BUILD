@@ -2,7 +2,7 @@ load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_arm_config_settings", "tflite_portable_test_suite_combined")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -287,17 +287,22 @@ cc_library(
         "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/leaky_relu.h",
+        "optimized/integer_ops/lut.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
         "optimized/integer_ops/sub.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
+        "optimized/optimized_ops_utils.h",
+        "optimized/reduce.h",
         "optimized/resize_bilinear.h",
         "optimized/sparse_ops/fully_connected.h",
+        "reduce_common.h",
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    defines = ["EIGEN_NEON_GEBP_NR=4"],
     deps = [
         ":avx2_quantization_utils",
         ":common",
@@ -305,6 +310,7 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":quantization_util",
+        ":reduce_utils",
         ":reference_base",
         ":strided_slice_logic",
         ":tensor",
@@ -315,6 +321,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
+        "//tensorflow/lite/kernels:kernel_util",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@ruy//ruy/profiler:instrumentation",
@@ -539,6 +546,7 @@ cc_library(
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/l2normalization.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/lut.h",
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
@@ -559,10 +567,12 @@ cc_library(
         "reference/process_broadcast_shapes.h",
         "reference/quantize.h",
         "reference/reduce.h",
+        "reduce_common.h",
         "reference/requantize.h",
         "reference/resize_bilinear.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -665,6 +675,7 @@ cc_library(
         "reference/requantize.h",
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
+        "reference/select.h",
         "reference/slice.h",
         "reference/softmax.h",
         "reference/space_to_batch_nd.h",
@@ -836,6 +847,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "reduce_utils",
+    hdrs = [
+        "optimized/reduce_utils.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+)
+
 # Audio support classes imported directly from TensorFlow.
 cc_library(
     name = "audio_utils",
@@ -862,6 +882,7 @@ cc_library(
 cc_library(
     name = "tensor_utils",
     srcs = [
+        "portable_tensor_utils.cc",
         "tensor_utils.cc",
     ],
     hdrs = [
@@ -1058,7 +1079,6 @@ cc_test(
     srcs = [
         "strided_slice_logic_test.cc",
     ],
-    shard_count = 4,
     deps = [
         ":strided_slice_logic",
         "@com_google_googletest//:gtest_main",
@@ -1214,6 +1234,16 @@ cc_test(
     deps = [
         ":avx2_quantization_utils",
         ":common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reduce_utils_test",
+    srcs = ["optimized/reduce_utils_test.cc"],
+    deps = [
+        ":common",
+        ":reduce_utils",
         "@com_google_googletest//:gtest_main",
     ],
 )

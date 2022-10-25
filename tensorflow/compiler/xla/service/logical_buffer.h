@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/int_type.h"
+#include "tensorflow/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 

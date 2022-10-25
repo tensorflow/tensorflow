@@ -34,7 +34,7 @@ add_subdirectory(
   EXCLUDE_FROM_ALL
 )
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 if(CMAKE_SYSTEM_NAME MATCHES "Windows"
     AND (MSVC AND (CMAKE_SIZEOF_VOID_P EQUAL 4)))
@@ -63,7 +63,7 @@ endif()
 add_library(tensorflowlite_c ${TFLITE_C_LIBTYPE}
   builtin_op_data.h
   common.h
-  common.c
+  common.cc
   c_api_types.h
   c_api.h
   c_api.cc

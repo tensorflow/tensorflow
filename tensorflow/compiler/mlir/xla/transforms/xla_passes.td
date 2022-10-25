@@ -15,22 +15,6 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def PrepareForExportPass : Pass<"xla-prepare-for-export", "mlir::func::FuncOp"> {
-  let summary = "Prepare for XLA export";
-
-  let description = [{
-    This pass transforms functions in preparation for exporting to XLA. This
-
-    * converts splat constants to constants and broadcasts to reduce size of
-      and speedup the creation of the generated proto during export.
-
-    Note: The result of this pass need not be a module in canonical form and
-    canonicalization may undo transformations.
-  }];
-
-  let constructor = "::mlir::mhlo::CreatePrepareForExport()";
-}
-
 def LegalizeXLAFrameworkToLLVM : Pass<"xla-legalize-xla-framework-to-llvm", "ModuleOp"> {
   let summary = "Legalize XLAFramework to bare pointers and LLVM memref descriptors";
   let dependentDialects = ["::mlir::LLVM::LLVMDialect"];

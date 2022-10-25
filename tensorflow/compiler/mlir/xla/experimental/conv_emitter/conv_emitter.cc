@@ -32,7 +32,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/Affine/LoopUtils.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/AffineExpr.h"  // from @llvm-project
@@ -65,10 +65,9 @@ struct ShapeInfo {
   mlir::Type element_type;
 };
 
-ShapeInfo GetShapeInfo(
-    const Shape& shape, int64_t n_dim, int64_t c_dim,
-    absl::Span<const tensorflow::protobuf_int64> spatial_dims,
-    mlir::Builder builder) {
+ShapeInfo GetShapeInfo(const Shape& shape, int64_t n_dim, int64_t c_dim,
+                       absl::Span<const tsl::protobuf_int64> spatial_dims,
+                       mlir::Builder builder) {
   ShapeInfo shape_info;
 
   std::vector<int64_t> physical_to_logical(
@@ -220,7 +219,7 @@ mlir::Operation* HoistAndFix(llvm::iplist<mlir::Operation>::iterator begin_op,
     for (int i = 0; i < ancestors.size(); i++) {
       replaceAllUsesInRegionWith(ancestors[i].getInductionVar(),
                                  new_loops[i].getInductionVar(),
-                                 new_loops.back().region());
+                                 new_loops.back().getRegion());
     }
     return new_loops.front();
   }
@@ -602,7 +601,7 @@ Status ConvIsImplemented(const HloInstruction* conv) {
   if (window_util::HasDilation(conv->window())) {
     return Unimplemented("Dilation is not implemented.");
   }
-  return Status::OK();
+  return ::tsl::OkStatus();
 }
 
 }  // namespace experimental

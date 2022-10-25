@@ -60,7 +60,7 @@ TEST(OpKernelRunnerTest, OpKernelRunState) {
   Tensor a(DT_FLOAT, TensorShape({}));
   Tensor b(DT_INT32, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> inputs{TensorValue(&a), TensorValue(&b)};
-  params.inputs = &inputs;
+  params.inputs = inputs;
 
   Tensor c(DT_UINT8, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> new_inputs{TensorValue(&c)};
@@ -69,7 +69,8 @@ TEST(OpKernelRunnerTest, OpKernelRunState) {
 
   EXPECT_THAT(run_state.input_tf_tensors, SizeIs(1));
   EXPECT_THAT(run_state.input_tf_tensor_values, SizeIs(1));
-  EXPECT_EQ(run_state.params.inputs, &run_state.input_tf_tensor_values);
+  EXPECT_EQ(run_state.params.inputs.data(),
+            run_state.input_tf_tensor_values.data());
   EXPECT_THAT(run_state.params.eigen_gpu_device, IsNull());
 }
 

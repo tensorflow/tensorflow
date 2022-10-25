@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 
 namespace tflite {
@@ -99,8 +100,8 @@ enum class AdrenoGpu {
 
 struct AMDInfo {
   AMDInfo() = default;
-  int shader_engines;
-  int compute_units_per_shader_engine;
+  int shader_engines = 0;
+  int compute_units_per_shader_engine = 0;
   int GetComputeUnitsCount() const {
     return shader_engines * compute_units_per_shader_engine;
   }
@@ -167,9 +168,12 @@ enum class AppleGpu {
   kA13,
   kA14,
   kA15,
+  kA16,
   kM1,
   kM1Pro,
   kM1Max,
+  kM1Ultra,
+  kM2,
 };
 
 struct AppleInfo {
@@ -249,6 +253,9 @@ struct MaliInfo {
   bool IsValhallGen2() const;
   bool IsValhallGen3() const;
   bool IsValhall() const;
+
+  // returns approximate compute units count using GPU name
+  int GetApproximateComputeUnitsCount() const;
 };
 
 struct OpenGlInfo {
@@ -277,6 +284,9 @@ struct OpenGlInfo {
   int max_compute_work_group_size_z;
 
   bool SupportsExplicitFp16() const;
+
+  bool IsApiOpenGl31OrAbove() const;
+  bool IsApiOpenGl32OrAbove() const;
 };
 
 struct VulkanInfo {
@@ -363,15 +373,16 @@ struct OpenClInfo {
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
 
-  bool supports_r_f16_tex2d = false;
-  bool supports_rg_f16_tex2d = false;
-  bool supports_rgb_f16_tex2d = false;
-  bool supports_rgba_f16_tex2d = false;
+  struct SupportedImage2dTypes {
+    absl::flat_hash_set<DataType> r_layout;
+    absl::flat_hash_set<DataType> rg_layout;
+    absl::flat_hash_set<DataType> rgb_layout;
+    absl::flat_hash_set<DataType> rgba_layout;
 
-  bool supports_r_f32_tex2d = false;
-  bool supports_rg_f32_tex2d = false;
-  bool supports_rgb_f32_tex2d = false;
-  bool supports_rgba_f32_tex2d = false;
+    bool SupportsImage2D(DataType data_type, int channels) const;
+  };
+
+  SupportedImage2dTypes supported_images_2d;
 
   bool IsImage2dFromBufferSupported() const;
 };
@@ -384,6 +395,8 @@ enum class MetalLanguageVersion {
   kMetal2_1,
   kMetal2_2,
   kMetal2_3,
+  kMetal2_4,
+  kMetal3_0,
   kUnknown,
 };
 
@@ -402,6 +415,10 @@ struct MetalInfo {
   uint64_t image3d_max_width;
   uint64_t image3d_max_height;
   uint64_t image3d_max_depth;
+
+  bool IsSIMDMatMulSupported() const;
+  // MSL is Metal shading language
+  bool IsMslVersionEqualOrHigher(int major, int minor = 0) const;
 };
 
 struct GpuInfo {
@@ -434,6 +451,9 @@ struct GpuInfo {
 
   bool SupportsFloatImage2D(DataType data_type, int channels) const;
   bool SupportsExtension(const std::string& extension) const;
+
+  bool SupportsZeroClampForImageBuffer() const;
+  bool SupportsZeroClampForImages() const;
 
   int GetComputeUnitsCount() const;
 

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/all_to_all_decomposer.h"
 
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
-#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 bool AllToAllDecomposer::InstructionMatchesPattern(
@@ -58,7 +58,7 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
   int64_t split_dim = *all_to_all->split_dimension();
   int64_t all_to_all_group_size =
       all_to_all->replica_groups().empty()
-          ? instruction->parent()->parent()->config().replica_count()
+          ? instruction->GetModule()->config().replica_count()
           : all_to_all->replica_groups()[0].replica_ids_size();
   int64_t split_size =
       all_to_all->shape().dimensions(split_dim) / all_to_all_group_size;
@@ -110,12 +110,12 @@ StatusOr<HloInstruction*> AllToAllDecomposer::ExpandInstruction(
     slice_starts[split_dim] = slice_limits[split_dim];
     slice_limits[split_dim] += split_size;
   }
-  Shape all_to_all_shape = ShapeUtil::MakeTupleShape(
-      std::vector<Shape>(all_to_all_group_size, slice_shape));
+  Shape all_to_all_shape = ShapeUtil::MakeTupleShapeWithPtrs(
+      std::vector<const Shape*>(all_to_all_group_size, &slice_shape));
   HloInstruction* new_all_to_all =
       all_to_all->parent()->AddInstruction(HloInstruction::CreateAllToAll(
           all_to_all_shape, slices, all_to_all->replica_groups(), false,
-          all_to_all->channel_id(), absl::nullopt));
+          all_to_all->channel_id(), std::nullopt));
   std::vector<HloInstruction*> gtes;
   gtes.reserve(all_to_all_group_size);
   for (int64_t i = 0; i < all_to_all_group_size; ++i) {

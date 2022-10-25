@@ -116,7 +116,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
     h(0) = cinfo_.container();
     h(1) = cinfo_.name();
     accumulator_set_ = true;
-    return Status::OK();
+    return OkStatus();
   }
 };
 

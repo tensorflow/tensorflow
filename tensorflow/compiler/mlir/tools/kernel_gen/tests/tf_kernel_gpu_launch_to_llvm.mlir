@@ -19,13 +19,11 @@ gpu.module @kernel_module attributes {gpu.binary_blob = "BLOB!"} {
 func.func @launch(%ctx: !tf_framework.op_kernel_context, %memref: memref<?x10xf32>) {
   // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
   // CHECK: %[[BLOB:.*]] = llvm.mlir.addressof @kernel_module_blob : !llvm.ptr<array<5 x i8>>
-  // CHECK: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
-  // CHECK: %[[BLOB_PTR:.*]] = llvm.getelementptr %[[BLOB]][%[[C0]], %[[C0]]] : (!llvm.ptr<array<5 x i8>>, i64, i64) -> !llvm.ptr<i8>
+  // CHECK: %[[BLOB_PTR:.*]] = llvm.getelementptr %[[BLOB]][0, 0] : (!llvm.ptr<array<5 x i8>>) -> !llvm.ptr<i8>
   // CHECK: %[[NAME:.*]] = llvm.mlir.addressof @kernel_module_the_kernel_kernel_name : !llvm.ptr<array<11 x i8>>
-  // CHECK: %[[C0_1:.*]] = llvm.mlir.constant(0 : index) : i64
-  // CHECK: %[[NAME_PTR:.*]] = llvm.getelementptr %[[NAME]][%[[C0_1]], %[[C0_1]]] : (!llvm.ptr<array<11 x i8>>, i64, i64) -> !llvm.ptr<i8>
+  // CHECK: %[[NAME_PTR:.*]] = llvm.getelementptr %[[NAME]][0, 0] : (!llvm.ptr<array<11 x i8>>) -> !llvm.ptr<i8>
   // CHECK: %[[C7:.*]] = llvm.mlir.constant(7 : i32) : i32
-  // CHECK: %[[ARGS:.*]] = llvm.alloca %24 x !llvm.ptr<i8> : (i32) -> !llvm.ptr<ptr<i8>>
+  // CHECK: %[[ARGS:.*]] = llvm.alloca %22 x !llvm.ptr<i8> : (i32) -> !llvm.ptr<ptr<i8>>
   // CHECK: llvm.call @_mlir_ciface_tf_launch_kernel(%[[CTX]], %[[BLOB_PTR]], %[[NAME_PTR]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[C1]], %[[ARGS]])
   %c1 = arith.constant 1 : index
   gpu.launch_func  @kernel_module::@the_kernel
