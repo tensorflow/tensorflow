@@ -99,11 +99,11 @@ static Value CreateTFCastOpI32(OpBuilder *builder, Location loc, Value x,
 // TODO(hinsu): Add and use TensorFlow dialect ops for the ops created in this
 // pass.
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPARETFPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public PrepareTFPassBase<PrepareTFPass> {
+class PrepareTFPass : public impl::PrepareTFPassBase<PrepareTFPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareTFPass)
 

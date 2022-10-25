@@ -188,6 +188,7 @@ class Mesh {
   // `mesh_name`.
   int GetMeshDimIndexWithName(const std::string& mesh_name) const;
   bool IsMeshDim(const std::string& dim_name) const;
+  std::vector<std::string> MeshDimNames() const;
 
   int64 rank() const;
   int64 size() const;

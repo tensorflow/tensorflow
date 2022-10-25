@@ -18,19 +18,24 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
+
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 
 namespace grpc {
 class ByteBuffer;
 }  // namespace grpc
 
+namespace tsl {
+class AsyncServiceInterface;
+}
+
 namespace tensorflow {
 
-class AsyncServiceInterface;
 class ConfigProto;
 struct WorkerEnv;
 class WorkerSession;
@@ -78,9 +83,9 @@ struct GrpcWorkerServiceOptions {
 };
 
 // Returns an implementation of WorkerService rpc service.
-std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+std::unique_ptr<tsl::AsyncServiceInterface> NewGrpcWorkerService(
     GrpcWorker* worker, ::grpc::ServerBuilder* builder,
-    GrpcWorkerServiceOptions opts = GrpcWorkerServiceOptions());
+    GrpcWorkerServiceOptions options = GrpcWorkerServiceOptions());
 
 }  // namespace tensorflow
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -93,7 +94,7 @@ using PjRtDeviceAttribute =
 
 class PjRtDevice {
  public:
-  virtual ~PjRtDevice() {}
+  virtual ~PjRtDevice() = default;
 
   // Return the client that owns this device.
   virtual PjRtClient* client() const = 0;
@@ -322,6 +323,16 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
+struct LoadOptions {
+  // Origin of the subslice of the target topology to run computation on.
+  struct ComputationOrigin {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  std::optional<ComputationOrigin> computation_origin;
+};
+
 class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -471,11 +482,9 @@ class PjRtClient {
   // LoadSerializedExecutable takes the serialized output of PjRtExecutable. The
   // returned executable is loaded by this client. The same checks are made as
   // in Load that the serialized executable is compatible with the client.
-  // LoadSerializedExecutable will materialize CompileOptions from within the
-  // serialized executable unlike 'DeserializeExecutable' above that accepts
-  // CompileOptions.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-  LoadSerializedExecutable(absl::string_view serialized) const {
+  LoadSerializedExecutable(absl::string_view serialized, CompileOptions options,
+                           const LoadOptions& load_options) {
     return Unimplemented("Loading serialized executable not supported.");
   }
 
@@ -486,7 +495,8 @@ class PjRtClient {
   // generate the executable. Load will use the CompileOptions from within the
   // executable.
   virtual StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
-      std::unique_ptr<PjRtExecutable> executable) {
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) {
     return Unimplemented("Loading executable not supported.");
   }
 
@@ -915,6 +925,51 @@ class PjRtBuffer {
           serialized_descriptors_and_callbacks,
       const ScatterDetails& scatter_details) = 0;
 
+  // Helper to allow a caller to indicate that it is going to do some "sends"
+  // of the buffer a later date, where a send is a transfer out of a device
+  // buffer, either copying to host, or to a remote device.
+  //
+  // An AsyncSendPlaceholder is associated with a particular buffer, and acts as
+  // a way for the caller to inform the system of a partial ordering on actions.
+  // If the caller writes:
+  //   1) auto placeholder = buffer->CreateAsyncSendPlaceholder();
+  //   2) auto results = client->ExecuteSharded(...);
+  //   3) [..] other client work
+  //   4) auto s = placeholder->ToLiteral(...);
+  // then that means that the ToLiteral in (4) is earlier than the work in
+  // (2+3) in the partial order. For example, the work in (2+3) may depend
+  // on the D2H in (4), for example via a cross-host dependency that is
+  // otherwise not visible to the PjRtClient.
+  //
+  // The AsyncSendPlaceholder may not outlive the buffer it was created by,
+  // and it should be destroyed as soon as possible after its last use.
+  class AsyncSendPlaceholder {
+   public:
+    virtual ~AsyncSendPlaceholder() = default;
+
+    // Equivalent to PjRtBuffer::ToLiteral on the underlying buffer;
+    virtual PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) = 0;
+
+    // Equivalent to PjRtBuffer::CopyRawToHost on the underlying buffer;
+    virtual PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
+                                             int64_t transfer_size) = 0;
+
+    // Equivalent to PjRtBuffer::CopyToRemoteDevice on the underlying buffer;
+    virtual void CopyToRemoteDevice(absl::string_view serialized_descriptor,
+                                    RemoteSendCallback on_done) = 0;
+
+    // Equivalent to PjRtBuffer::CopyToRemoteDeviceScattered on the underlying
+    // buffer;
+    virtual void CopyToRemoteDeviceScattered(
+        absl::Span<const std::pair<std::string, RemoteSendCallback>>
+            serialized_descriptors_and_callbacks,
+        const ScatterDetails& scatter_details) = 0;
+  };
+  virtual StatusOr<std::unique_ptr<AsyncSendPlaceholder>>
+  CreateAsyncSendPlaceholder() {
+    return Unimplemented("AsyncSendPlaceholder is not supported.");
+  }
+
   // Returns a future that can be used to discover when the data in the
   // PjRtBuffer has been computed, or an error has occurred.
   //
@@ -1046,14 +1101,6 @@ struct ExecuteOptions {
   // Currently it is only applied to CPU implementations
   enum class ExecutionMode { kDefault = 0, kSynchronous, kAsynchronous };
   ExecutionMode execution_mode = ExecutionMode::kDefault;
-
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
 };
 
 // Represents a compiled computation that can be executed given handles to

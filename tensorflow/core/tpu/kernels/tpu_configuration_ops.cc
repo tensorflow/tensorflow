@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -39,10 +41,8 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_configuration.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 
 namespace tensorflow {
 namespace {
@@ -275,6 +275,8 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
   XLA_SCOPED_LOGGING_TIMER("InitializeHostForDistributedTpuOp");
 
   auto* rmgr = GetTPUConfigResourceMgr();
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+              errors::InvalidArgument("argument at 0 place must be a scalar"));
   auto tpu_host_config = ctx->input(0).scalar<tstring>()();
 
   // Reset the TPU embedding engine interface if we are not the master.
@@ -444,6 +446,10 @@ void SetGlobalTPUArrayOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "SetGlobalTPUArrayOp";
   XLA_SCOPED_LOGGING_TIMER("SetGlobalTPUArrayOp");
 
+  OP_REQUIRES(
+      ctx, TensorShapeUtils::IsScalar(ctx->input(0).shape()),
+      errors::InvalidArgument("Expected argument 0 to be a scalar. Received",
+                              ctx->input(0).DebugString()));
   auto tpu_topology = ctx->input(0).scalar<tstring>()();
   TF_Status* status = TF_NewStatus();
 

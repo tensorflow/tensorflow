@@ -55,11 +55,11 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEJAXRANDOMPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 struct LegalizeJaxRandomPass
-    : public LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
+    : public impl::LegalizeJaxRandomPassBase<LegalizeJaxRandomPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeJaxRandomPass)
 

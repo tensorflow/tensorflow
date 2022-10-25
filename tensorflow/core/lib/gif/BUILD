@@ -15,7 +15,10 @@ load(
 
 package(
     default_visibility = ["//tensorflow/core:__pkg__"],
-    features = ["-parse_headers"],
+    features = [
+        "-layering_check",
+        "-parse_headers",
+    ],
     licenses = ["notice"],
 )
 

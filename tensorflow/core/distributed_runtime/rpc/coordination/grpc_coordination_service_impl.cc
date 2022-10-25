@@ -28,18 +28,19 @@ GrpcCoordinationServiceImpl::GrpcCoordinationServiceImpl(
 }
 
 void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
-#define ENQUEUE_REQUEST(method)                                                \
-  do {                                                                         \
-    tf_shared_lock l(shutdown_mu_);                                            \
-    if (shutdown_) {                                                           \
-      continue;                                                                \
-    }                                                                          \
-    Call<GrpcCoordinationServiceImpl, grpc::CoordinationService::AsyncService, \
-         method##Request, method##Response>::                                  \
-        EnqueueRequest(                                                        \
-            &service_, cq_.get(),                                              \
-            &grpc::CoordinationService::AsyncService::Request##method,         \
-            &GrpcCoordinationServiceImpl::method##Handler, false);             \
+#define ENQUEUE_REQUEST(method)                                         \
+  do {                                                                  \
+    tf_shared_lock l(shutdown_mu_);                                     \
+    if (shutdown_) {                                                    \
+      continue;                                                         \
+    }                                                                   \
+    tsl::Call<GrpcCoordinationServiceImpl,                              \
+              grpc::CoordinationService::AsyncService, method##Request, \
+              method##Response>::                                       \
+        EnqueueRequest(                                                 \
+            &service_, cq_.get(),                                       \
+            &grpc::CoordinationService::AsyncService::Request##method,  \
+            &GrpcCoordinationServiceImpl::method##Handler, false);      \
   } while (0)
   ENQUEUE_REQUEST(RegisterTask);
   ENQUEUE_REQUEST(WaitForAllTasks);
@@ -66,8 +67,8 @@ void GrpcCoordinationServiceImpl::HandleRPCsLoop() {
       // The queue is shutting down.
       break;
     }
-    GrpcCallTag<GrpcCoordinationServiceImpl>* callback_tag =
-        static_cast<GrpcCallTag<GrpcCoordinationServiceImpl>*>(tag);
+    tsl::GrpcCallTag<GrpcCoordinationServiceImpl>* callback_tag =
+        static_cast<tsl::GrpcCallTag<GrpcCoordinationServiceImpl>*>(tag);
 
     if (callback_tag) {
       callback_tag->OnCompleted(this, ok);

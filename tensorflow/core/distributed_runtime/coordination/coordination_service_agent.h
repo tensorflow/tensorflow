@@ -86,6 +86,13 @@ class CoordinationServiceAgent {
   // Return true if the coordination service agent has been initialized.
   virtual bool IsInitialized() = 0;
 
+  // Return true if the coordination service agent has successfully connected
+  // with the Coordination Service
+  virtual bool IsConnected() = 0;
+
+  // Return true if the coordination service agent has an error state.
+  virtual bool IsError() = 0;
+
   // Connect to coordination service with the following steps:
   //   - connect to service address specified in the config of `server_def`
   //   - register itself as a task to the service
@@ -102,11 +109,10 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status WaitForAllTasks(
-      const CoordinationServiceDeviceInfo& local_devices) = 0;
+  virtual Status WaitForAllTasks(const DeviceInfo& local_devices) = 0;
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  virtual const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() = 0;
+  virtual const DeviceInfo& GetClusterDeviceInfo() = 0;
 
   // State transition in coordination service agent:
   //

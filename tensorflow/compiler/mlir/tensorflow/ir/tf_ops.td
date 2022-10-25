@@ -38,7 +38,7 @@ include "mlir/IR/OpAsmInterface.td"
 include "mlir/IR/OpBase.td"
 include "mlir/IR/SymbolInterfaces.td"
 
-class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
+class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [Pure]> {
   let results = (outs
     TF_VariantTensor:$handle
   );
@@ -188,7 +188,7 @@ An n-way switch statement, implementing the following:
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
-def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
+def TF_ConstOp : TF_Op<"Const", [ConstantLike, Pure,
     DeclareOpInterfaceMethods<InferTypeOpInterface>,
     DeclareOpInterfaceMethods<OpAsmOpInterface, ["getAsmResultNames"]>]> {
   let summary = "Constant tensor op";
@@ -308,7 +308,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [NoSideEffect, ReturnLike, Terminator,
+      [Pure, ReturnLike, Terminator,
        ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
 
@@ -377,7 +377,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
-                            [CallOpInterface, NoSideEffect]> {
+                            [CallOpInterface, Pure]> {
   let summary =
     "returns `f(inputs)`, where `f` is a function.";
 
@@ -422,7 +422,7 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 }
 
 def TF_ParseExampleOp : TF_Op<"ParseExample",
-                               [NoSideEffect,
+                               [Pure,
                                 AttrSizedResultSegments,
                                 AttrSizedOperandSegments]> {
 
@@ -457,7 +457,7 @@ def TF_ParseExampleOp : TF_Op<"ParseExample",
 }
 
 def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
-                                [NoSideEffect,
+                                [Pure,
                                  AttrSizedResultSegments]> {
 
   let summary =
@@ -499,7 +499,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
   let hasVerifier = 1;
 }
 
-def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
+def TF_PlaceholderOp : TF_Op<"Placeholder", [Pure]> {
   let summary = "Placeholder op";
 
   let description = [{
@@ -516,7 +516,7 @@ Inserts a placeholder for a tensor that will be always fed.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
+def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [Pure]> {
   let summary = "Placeholder op";
 
   let description = [{
@@ -786,7 +786,7 @@ Example:
   let hasVerifier = 1;
 }
 
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect, TF_NoConstantFold]> {
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [Pure, TF_NoConstantFold]> {
   let summary = [{
 An op which shards the input based on the given sharding attribute.
   }];
@@ -842,7 +842,7 @@ Feeds multiple Tensor values into the computation as an XLA tuple.
 
 // This op is manually defined because the attribute name `template` (which is
 // a keyword) is changed to `strtemplate`.
-def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
+def TF_StringFormatOp : TF_Op<"StringFormat", [Pure]> {
   let summary = "Formats a string template using a list of tensors.";
 
   let description = [{
@@ -892,7 +892,7 @@ def TF_ReduceDatasetOp : TF_Op<"ReduceDataset", [SameVariadicOperandSize]> {
 }
 
 // Manually defined to restrict result type to `I1Tensor`.
-def TF_ToBoolOp : TF_Op<"ToBool", [DeclareOpInterfaceMethods<InferTypeOpInterface>, NoSideEffect]> {
+def TF_ToBoolOp : TF_Op<"ToBool", [DeclareOpInterfaceMethods<InferTypeOpInterface>, Pure]> {
   let summary = "Converts a tensor to a scalar predicate.";
 
   let description = [{
@@ -930,7 +930,7 @@ as true/false for a branch condition.
   }];
 }
 
-def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_BesselI0eOp : TF_Op<"BesselI0e", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the Bessel i0e function of `x` element-wise.";
 
   let description = [{
@@ -957,7 +957,7 @@ This function is faster and numerically stabler than `bessel_i0(x)`.
   }];
 }
 
-def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, TF_SameOperandsAndResultTypeResolveRef]> {
+def TF_BesselI1eOp : TF_Op<"BesselI1e", [Pure, TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Computes the Bessel i1e function of `x` element-wise.";
 
   let description = [{
@@ -1417,7 +1417,7 @@ summary_metadata: Serialized SummaryMetadata protocol buffer containing
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
-def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", [NoSideEffect]> {
+def TF__TPUDeviceOrdinalPlaceholderOp : TF_Op<"_TPUDeviceOrdinalPlaceholder", [Pure]> {
   let summary = [{
 Placeholder device ordinal that represents device ordinal of a replicated op.
   }];
@@ -1437,7 +1437,7 @@ operations inside a TPU host.
   );
 }
 
-def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [NoSideEffect]> {
+def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [Pure]> {
   let summary = [{
 An op that groups a list of partitioned inputs together. This op
   }];
@@ -1457,7 +1457,7 @@ An op that groups a list of partitioned inputs together. This op
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [NoSideEffect]> {
+def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [Pure]> {
   let summary = [{
 An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
   }];

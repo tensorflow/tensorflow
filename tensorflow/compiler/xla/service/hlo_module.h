@@ -516,7 +516,7 @@ class HloModule {
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
  private:
-  // This constructor is used in Clone() to copy the ComputationEnvironments.
+  // This constructor is used in Clone() to copy the CompilationEnvironments.
   // comp_envs may be null, in which case a clean one will be created.
   HloModule(const std::string& name, HloModuleConfig config,
             std::unique_ptr<CompilationEnvironments> comp_envs);

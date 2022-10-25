@@ -470,7 +470,7 @@ class TFL_Op<string mnemonic, list<Trait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index,
                  list<Trait> additional_traits = []> :
-    TFL_Op<mnemonic,[NoSideEffect,
+    TFL_Op<mnemonic,[Pure,
                      AccumulatorUniformScale<2, 0, 1>,
                      AffineQuantizedOpInterface,
                      AffineOpCoefficient<index, 1>,
@@ -487,18 +487,6 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index,
       `inputs[2]`: optional: the bias tensor
   }];
 
-  let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
-    TFL_TensorOf<[F32, QI8, QUI8]>:$filter,
-    TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
-    I32Attr:$dilation_h_factor,
-    I32Attr:$dilation_w_factor,
-    TFL_AFAttr:$fused_activation_function,
-    TFL_PaddingAttr:$padding,
-    I32Attr:$stride_h,
-    I32Attr:$stride_w
-  );
-
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$output);
 
   let hasOptions = 0b1;
@@ -509,7 +497,7 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index,
 // TFL op definitions.
 //===----------------------------------------------------------------------===//
 def TFL_AbsOp : TFL_Op<"abs", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultShape]> {
   let summary = "Absolute value operator";
@@ -531,7 +519,7 @@ def TFL_AddOp : TFL_Op<"add", [
     TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
       CPred<"TFL::VerifyAddOpShapeConstraints(llvm::cast<AddOp>($_op))">>,
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     Commutative,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -568,7 +556,7 @@ def TFL_AddOp : TFL_Op<"add", [
 
 def TFL_AddNOp : TFL_Op<"add_n", [
     Commutative,
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "add_n operator";
@@ -586,7 +574,7 @@ def TFL_AddNOp : TFL_Op<"add_n", [
   );
 }
 
-def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [NoSideEffect]> {
+def TFL_ReduceAnyOp : TFL_Op<"reduce_any", [Pure]> {
   let summary = [{
 Computes the "logical or" of elements across dimensions of a tensor.
   }];
@@ -613,7 +601,7 @@ retained with length 1.
   let customOption = "ReducerOptions";
 }
 
-def TFL_ReduceAllOp : TFL_Op<"reduce_all", [NoSideEffect]> {
+def TFL_ReduceAllOp : TFL_Op<"reduce_all", [Pure]> {
   let summary = [{
 Computes the "logical and" of elements across dimensions of a tensor.
   }];
@@ -641,7 +629,7 @@ retained with length 1.
 }
 
 def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
-    NoSideEffect,
+    Pure,
     TFL_OperandHasRank<0, 1>,
     TFL_OperandHasRank<1, 4>,
     TFL_OperandHasRank<2, 4>,
@@ -690,7 +678,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
 
 def TFL_AveragePool2DOp:
     TFL_Op<"average_pool_2d",
-           [NoSideEffect,
+           [Pure,
             SameOperandsAndResultsScale,
             QuantizableResult,
             DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -718,7 +706,7 @@ def TFL_AveragePool2DOp:
 
 def TFL_ArgMaxOp : TFL_Op<"arg_max", [
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "ArgMax operator";
 
   let description = [{
@@ -747,7 +735,7 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [
 
 def TFL_ArgMinOp : TFL_Op<"arg_min", [
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "ArgMin operator";
 
   let description = [{
@@ -778,7 +766,7 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [
 }
 
 def TFL_CeilOp: TFL_Op<"ceil", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Ceil operator";
 
@@ -800,7 +788,7 @@ def TFL_CeilOp: TFL_Op<"ceil", [
 
 def TFL_ConcatenationOp : TFL_Op<"concatenation",
   [
-    NoSideEffect,
+    Pure,
     TFL_SameFirstOperandAndFirstResultElementType,
     SameOperandsAndResultsScale,
     QuantizableResult
@@ -839,7 +827,7 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   }];
 }
 
-def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
+def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, Pure,
     FirstAttrDerivedResultType,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
@@ -874,7 +862,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
 }
 
 def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
-    NoSideEffect,
+    Pure,
     FirstAttrDerivedResultType,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
@@ -904,7 +892,7 @@ def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [
 }
 
 def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = "External const op.";
@@ -923,6 +911,18 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
       [DeclareOpInterfaceMethods<InferTypeOpInterface>,
        DeclareOpInterfaceMethods<TFL_ArithmeticCount>,
        DynamicRangeQuantizedOpInterface]> {
+  let arguments = (
+    ins TFL_TensorOf<[F32, QI8, QUI8, QI16]>:$input,
+    TFL_TensorOf<[F32, QI4, QI8, QUI8]>:$filter,
+    TFL_1DTensorOfOrNone<[F32, I32, I64]>:$bias,
+    I32Attr:$dilation_h_factor,
+    I32Attr:$dilation_w_factor,
+    TFL_AFAttr:$fused_activation_function,
+    TFL_PaddingAttr:$padding,
+    I32Attr:$stride_h,
+    I32Attr:$stride_w
+  );
+
   let hasCanonicalizer = 1;
 
   let extraClassDeclaration = [{
@@ -944,7 +944,7 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0,
 }
 
 def TFL_CosOp: TFL_Op<"cos", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Cosine operator";
 
@@ -968,7 +968,7 @@ def TFL_CosOp: TFL_Op<"cos", [
 }
 
 def TFL_CumsumOp: TFL_Op<"cumsum", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRank<1, 0>]> {
@@ -1025,7 +1025,7 @@ def TFL_DepthwiseConv2DOp :
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
-    NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
+    Pure, AccumulatorUniformScale<2, 0, 1>,
     AffineQuantizedOpInterface,
     AffineOpCoefficient<-1, 1>,
     TFL_SparseOp,
@@ -1076,7 +1076,7 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
 }
 
 def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
-   NoSideEffect,
+   Pure,
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
    QuantizableResult,
@@ -1129,7 +1129,7 @@ in the batch dimensions and broadcasting.
 }
 
 def TFL_GatherOp : TFL_Op<"gather", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     TFL_OperandHasAtleastRank<0, 1>,
@@ -1171,7 +1171,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
 }
 
 def TFL_GatherNdOp : TFL_Op<"gather_nd", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     PredOpTrait<"params and output must have same element type",
@@ -1193,7 +1193,7 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [
 }
 
 def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     TFL_OperandHasAtleastRank<0, 1>,
@@ -1228,7 +1228,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
     QuantizableResult,
     ComparisonOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Less_equal operator";
 
   let description = [{
@@ -1260,7 +1260,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
 def TFL_LocalResponseNormalizationOp : TFL_Op<"local_response_normalization", [
     TFL_OperandHasRank<0, 4>,
     TF_SameOperandsAndResultTypeResolveRef,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Local Response Normalization.";
 
   let description = [{
@@ -1304,7 +1304,7 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     ResultsBroadcastableShape,
     ComparisonOpSameElementTypeConstraint,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Greater_equal operator";
 
   let description = [{
@@ -1335,7 +1335,7 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
 
 def TFL_MatrixDiagOp : TFL_Op<"matrix_diag", [
   QuantizableResult,
-  NoSideEffect,
+  Pure,
   TFL_OperandHasAtleastRank<0, 1>,
   PredOpTrait<"operand and result must have the same element type",
     TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
@@ -1366,7 +1366,7 @@ def TFL_MatrixSetDiagOp : TFL_Op<"matrix_set_diag", [
     TFL_OperandHasAtleastRank<0, 2>,
     PredOpTrait<"input and result must have the same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect]> {
+    Pure]> {
   let summary = [{
     Returns a batched matrix tensor with new batched diagonal values.
   }];
@@ -1396,7 +1396,7 @@ innermost matrices.  These will be overwritten by the values in `diagonal`.
 // NonMaxSuppressionV4 performs hard NMS.
 
 def TFL_NonMaxSuppressionV4Op : TFL_Op<"non_max_suppression_v4", [
-  NoSideEffect,
+  Pure,
   // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
   TFL_OperandHasRank<0, 2>,
   PredOpTrait<"boxes should have dim[1] == 4",
@@ -1445,7 +1445,7 @@ using the `tf.gather operation`.  For example:
 }
 
 def TFL_NonMaxSuppressionV5Op : TFL_Op<"non_max_suppression_v5", [
-  NoSideEffect,
+  Pure,
   // Operand 0 (boxes) should have rank 2 with the dim[1] == 4 (box corners)
   TFL_OperandHasRank<0, 2>,
   PredOpTrait<"boxes should have dim[1] == 4",
@@ -1505,7 +1505,7 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
     ComparisonOpSameElementTypeConstraint,
     ResultsBroadcastableShape,
     Commutative,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Not_equal operator";
 
   let description = [{
@@ -1544,7 +1544,7 @@ def TFL_DivOp : TFL_Op<"div", [
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Division operator";
 
@@ -1578,7 +1578,7 @@ def TFL_DivOp : TFL_Op<"div", [
 }
 
 def TFL_EluOp: TFL_Op<"elu", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape,
     TFL_SameFirstOperandAndFirstResultElementType]> {
   let summary = "Exponential Linear Unit operator";
@@ -1596,7 +1596,7 @@ def TFL_EluOp: TFL_Op<"elu", [
 }
 
 def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
-    [NoSideEffect,
+    [Pure,
      PredOpTrait<"value and output must have same element type",
        TFL_TCresVTEtIsSameAsOp<0, 1>>,
      TFL_OperandHasRank<0, 1>,
@@ -1627,7 +1627,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
-    NoSideEffect,
+    Pure,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     QuantizableResult,
@@ -1650,7 +1650,7 @@ def TFL_EqualOp: TFL_Op<"equal", [
 }
 
 def TFL_ExpOp: TFL_Op<"exp", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Natural exponentiation operator";
 
@@ -1673,7 +1673,7 @@ def TFL_ExpOp: TFL_Op<"exp", [
 }
 
 def TFL_ExpandDimsOp: TFL_Op<"expand_dims", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
@@ -1721,7 +1721,7 @@ size 1.
   let hasOptions = 1;
 }
 
-def TFL_SqueezeOp: TFL_Op<"squeeze", [NoSideEffect,
+def TFL_SqueezeOp: TFL_Op<"squeeze", [Pure,
                                       QuantizableResult,
                                       SameOperandsAndResultsScale]> {
   let summary = "Removes dimensions of size 1 from the shape of a tensor.";
@@ -1763,7 +1763,7 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
 }
 
 def TFL_FillOp: TFL_Op<"fill", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     QuantizableResult,
     PredOpTrait<"input and result must have same element type",
@@ -1782,7 +1782,7 @@ def TFL_FillOp: TFL_Op<"fill", [
 }
 
 def TFL_FloorOp: TFL_Op<"floor", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Floor operator";
 
@@ -1804,7 +1804,7 @@ def TFL_FloorOp: TFL_Op<"floor", [
 
 def TFL_FloorDivOp : TFL_Op<"floor_div", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"lhs and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -1836,7 +1836,7 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
 
 def TFL_FloorModOp : TFL_Op<"floor_mod", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"lhs and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -1861,7 +1861,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
     ComparisonOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1889,7 +1889,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
@@ -1908,7 +1908,7 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [
   let hasOptions = 0;
 }
 
-def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
+def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [Pure,
     FixedOutputRangeInterface,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
@@ -1946,7 +1946,7 @@ def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
 def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
     SameOperandsAndResultShape,
     QuantizableResult,
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Leaky Relu operator";
@@ -1972,7 +1972,7 @@ def TFL_LessOp : TFL_Op<"less", [
     ComparisonOpSameElementTypeConstraint,
     QuantizableResult,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Less operator";
 
   let description = [{
@@ -1999,7 +1999,7 @@ def TFL_LessOp : TFL_Op<"less", [
   }];
 }
 
-def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
+def TFL_LogicalAndOp : TFL_Op<"logical_and", [Pure]> {
   let summary = "Logical AND operator";
 
   let description = [{
@@ -2025,7 +2025,7 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
 }
 
 def TFL_LogicalNotOp : TFL_Op<"logical_not", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape]> {
   let summary = "Logical NOT operator";
 
@@ -2038,7 +2038,7 @@ def TFL_LogicalNotOp : TFL_Op<"logical_not", [
   let results = (outs TFL_BoolTensor:$output);
 }
 
-def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
+def TFL_LogicalOrOp : TFL_Op<"logical_or", [Pure]> {
   let summary = "Logical OR operator";
 
   let description = [{
@@ -2064,7 +2064,7 @@ def TFL_LogicalOrOp : TFL_Op<"logical_or", [NoSideEffect]> {
 }
 
 def TFL_LogisticOp: TFL_Op<"logistic", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
@@ -2106,7 +2106,7 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 }
 
 def TFL_LogOp: TFL_Op<"log", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Natural logarithm operator";
 
@@ -2129,7 +2129,7 @@ def TFL_LogOp: TFL_Op<"log", [
 }
 
 def TFL_LogSoftmaxOp : TFL_Op<"log_softmax", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape,
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -2180,7 +2180,7 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
     TFL_OperandHasRank<0, 4>,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     MaxPoolOperandAndResultConstraints,
     SameOperandsAndResultsScale,
     QuantizableResult,
@@ -2213,7 +2213,7 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     Commutative,
@@ -2241,7 +2241,7 @@ def TFL_MeanOp : TFL_Op<"mean", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Mean operator";
 
   let description = [{
@@ -2267,7 +2267,7 @@ def TFL_MeanOp : TFL_Op<"mean", [
 
 def TFL_OneHotOp : TFL_Op<"one_hot", [
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "OneHot operator";
 
   let description = [{
@@ -2296,7 +2296,7 @@ def TFL_OneHotOp : TFL_Op<"one_hot", [
 }
 
 def TFL_RoundOp: TFL_Op<"round", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Round operator";
 
@@ -2324,7 +2324,7 @@ def TFL_SliceOp : TFL_Op<"slice", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRankAtMost<1, 1>,
@@ -2364,8 +2364,9 @@ def TFL_SumOp: TFL_Op<"sum", [
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
-    SameOperandsAndResultsScale]> {
+    // TODO(b/215655380): Re-enable this once there is 16-bit MLIR quantizer.
+    // SameOperandsAndResultsScale,
+    Pure]> {
 
   let summary = "Sum operator";
 
@@ -2384,19 +2385,21 @@ def TFL_SumOp: TFL_Op<"sum", [
   let hasOptions = 1;
   let customOption = "ReducerOptions";
 
-  let extraClassDeclaration = [{
-    // SameScalesOpInterface:
-    bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
-      // Eight-bit types don't require same operands and results scales.
-      return bit_width != 8;
-    }
-  }];
+  // TODO(b/215655380): Re-enable this once there is 16-bit MLIR quantizer.
+  //
+  //let extraClassDeclaration = [{
+  //  // SameScalesOpInterface:
+  //  bool RequiredSameOperandsAndResultsScale(bool sign, int bit_width) {
+  //    // Eight-bit types don't require same operands and results scales.
+  //    return bit_width != 8;
+  //  }
+  //}];
 }
 
 def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale]> {
   let summary = "Min-reduction operator";
@@ -2421,7 +2424,7 @@ def TFL_ReduceMinOp: TFL_Op<"reduce_min", [
 def TFL_ReduceMaxOp: TFL_Op<"reduce_max", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale]> {
   let summary = "Max-reduction operator";
@@ -2447,7 +2450,7 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Prod-reduction operator";
 
   let description = [{
@@ -2469,7 +2472,7 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 5>,
     Commutative,
     QuantizableResult,
@@ -2495,7 +2498,7 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
 
 def TFL_MulOp : TFL_Op<"mul", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     Commutative,
     QuantizableResult,
     BinaryOpSameElementTypeConstraint,
@@ -2534,7 +2537,7 @@ def TFL_MulOp : TFL_Op<"mul", [
 }
 
 def TFL_NegOp: TFL_Op<"neg", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Negation operator";
 
@@ -2560,7 +2563,7 @@ def TFL_NegOp: TFL_Op<"neg", [
 
 def TFL_PackOp : TFL_Op<"pack", [
     TFL_SameFirstOperandAndFirstResultElementType,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale]> {
   let summary = "Packs a list of tensors along a dimension into one tensor";
@@ -2613,7 +2616,7 @@ def TFL_PackOp : TFL_Op<"pack", [
 def TFL_PadOp : TFL_Op<"pad", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 2>,
@@ -2662,7 +2665,7 @@ def TFL_PadOp : TFL_Op<"pad", [
 def TFL_PadV2Op : TFL_Op<"padv2", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     TFL_OperandHasRankAtMost<0, 5>,
@@ -2745,7 +2748,7 @@ def TFL_PolyCallOp : Op<TFL_Dialect, "poly_call", [
 
 def TFL_PowOp : TFL_Op<"pow", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>]> {
   let summary = "Power operator";
 
@@ -2774,7 +2777,7 @@ def TFL_PowOp : TFL_Op<"pow", [
 }
 
 def TFL_PReluOp : TFL_Op<"prelu", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
@@ -2809,7 +2812,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
 
 def TFL_RankOp: TFL_Op<"rank", [
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Rank operator.";
   let description = [{
     Returns the rank of a tensor.
@@ -2825,7 +2828,7 @@ def TFL_RankOp: TFL_Op<"rank", [
 def TFL_ReluOp: TFL_Op<"relu", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultShape]> {
   let summary = "Relu operator";
@@ -2854,7 +2857,7 @@ def TFL_ReluOp: TFL_Op<"relu", [
 def TFL_Relu6Op: TFL_Op<"relu6", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultShape]> {
   let summary = "Relu6 operator";
@@ -2883,7 +2886,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [
 def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
     PredOpTrait<"x and y must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultShape]> {
   let summary = "Relu1 operator";
@@ -2911,7 +2914,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [
 
 def TFL_ReshapeOp: TFL_Op<"reshape", [
     QuantizableResult,
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Reshape operator";
@@ -2938,7 +2941,7 @@ def TFL_ReshapeOp: TFL_Op<"reshape", [
 def TFL_ReverseSequenceOp : TFL_Op<"reverse_sequence", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     TFL_OperandHasRank<1, 1>]> {
   let summary = "Reverses variable length slices.";
@@ -2971,7 +2974,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   let hasOptions = 1;
 }
 
-def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
+def TFL_RsqrtOp: TFL_Op<"rsqrt", [Pure,
                                   QuantizableResult,
                                   TFL_SameFirstOperandAndFirstResultElementType,
                                   SameOperandsAndResultShape]> {
@@ -2990,7 +2993,7 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
 
 def TFL_ShapeOp: TFL_Op<"shape", [
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Shape operator";
 
   let description = [{
@@ -3011,7 +3014,7 @@ def TFL_ShapeOp: TFL_Op<"shape", [
 }
 
 def TFL_RangeOp: TFL_Op<"range", [
-    NoSideEffect,
+    Pure,
     TFL_OperandHasRank<0, 0>,
     TFL_OperandHasRank<1, 0>,
     TFL_OperandHasRank<2, 0>,
@@ -3038,7 +3041,7 @@ def TFL_RangeOp: TFL_Op<"range", [
 def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     TFL_OperandHasRank<1, 1>]> {
   let summary = "ReverseV2 Operator";
@@ -3073,7 +3076,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 // Select has many instances in TF models where one or more of its operands
 // are unranked. Therefore, we skip adding shape constraints here.
 def TFL_SelectOp : TFL_Op<"select", [
-  NoSideEffect,
+  Pure,
   SameOperandsAndResultsScale,
   QuantizableResult,
   PredOpTrait<"operands have same element type", TFL_TCopVTEtAreSameAt<1, 2>>,
@@ -3111,7 +3114,7 @@ def TFL_SelectOp : TFL_Op<"select", [
 
 def TFL_SelectV2Op : TFL_Op<"select_v2", [
     ResultsBroadcastableShape,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1, 2], 5>,
@@ -3146,7 +3149,7 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [
 }
 
 def TFL_SinOp: TFL_Op<"sin", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Sine operator";
 
@@ -3169,7 +3172,7 @@ def TFL_SinOp: TFL_Op<"sin", [
 }
 
 def TFL_SoftmaxOp : TFL_Op<"softmax", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRankAtLeast<0, 1>,
@@ -3208,7 +3211,7 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Square root operator";
 
@@ -3231,7 +3234,7 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
 }
 
 def TFL_SquareOp: TFL_Op<"square", [
-    NoSideEffect,
+    Pure,
     TF_SameOperandsAndResultTypeResolveRef]> {
   let summary = "Square operator";
 
@@ -3260,7 +3263,7 @@ def TFL_SubOp : TFL_Op<"sub", [
     BinaryOpSameElementTypeConstraint,
     TFL_RuntimePredOpTrait<"Operands do not have valid shapes",
       CPred<"TFL::VerifySubOpShapeConstraints(llvm::cast<SubOp>($_op))">>,
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     DeclareOpInterfaceMethods<TFL_ArithmeticCount>]> {
   let summary = "Subtraction operator";
@@ -3300,7 +3303,7 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
     TFL_SameFirstOperandAndFirstResultElementType,
     ResultsBroadcastableShape,
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Squared difference operator";
 
   let description = [{
@@ -3328,7 +3331,7 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
 }
 
 def TFL_TanhOp: TFL_Op<"tanh", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3371,7 +3374,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
 }
 
 def TFL_TileOp: TFL_Op<"tile", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
@@ -3402,7 +3405,7 @@ def TFL_TileOp: TFL_Op<"tile", [
 // TODO(jpienaar): Check that k is less or equal the internal dimension
 def TFL_TopKV2Op: TFL_Op<"topk_v2", [
     QuantizableResult,
-    NoSideEffect,
+    Pure,
     TFL_OperandHasRankAtLeast<0, 1>,
     TFL_OperandHasRank<1, 0>,
     PredOpTrait<"result and input element type match",
@@ -3434,7 +3437,7 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [
 }
 
 def TFL_TransposeOp : TFL_Op<"transpose", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     TFL_OperandHasRankAtMost<0, 5>,
     TFL_OperandHasRank<1, 1>,
@@ -3472,7 +3475,7 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
 }
 
 def TFL_UnpackOp : TFL_Op<"unpack", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultElementType,
     SameOperandsAndResultsScale,
@@ -3518,7 +3521,7 @@ def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultShape,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "ZerosLike operator";
 
   let description = [{
@@ -3533,7 +3536,7 @@ def TFL_ZerosLikeOp: TFL_Op<"zeros_like", [
 }
 
 def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultsScale,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
@@ -3560,7 +3563,7 @@ def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
 }
 
 def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     TFL_OperandHasRankRange<0, 3, 4>,
@@ -3585,7 +3588,7 @@ def TFL_SpaceToBatchNdOp: TFL_Op<"space_to_batch_nd", [
 }
 
 def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
@@ -3614,7 +3617,7 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
 }
 
 def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
@@ -3645,7 +3648,7 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
 }
 
 def TFL_SplitOp : TFL_Op<"split", [
-    NoSideEffect,
+    Pure,
     TFL_Operand0DOr1ElementTensor<0>,
     QuantizableResult,
     SameOperandsAndResultsScale]> {
@@ -3673,7 +3676,7 @@ def TFL_SplitOp : TFL_Op<"split", [
 }
 
 def TFL_SplitVOp : TFL_Op<"split_v", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
@@ -3701,7 +3704,7 @@ def TFL_SplitVOp : TFL_Op<"split_v", [
 }
 
 def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3729,7 +3732,7 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
 }
 
 def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3757,7 +3760,7 @@ def TFL_ResizeNearestNeighborOp : TFL_Op<"resize_nearest_neighbor", [
 }
 
 def TFL_SparseToDenseOp : TFL_Op<"sparse_to_dense", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     PredOpTrait<"sparse_values and dense must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
@@ -3808,7 +3811,7 @@ are checked during execution.
 }
 
 def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
-    NoSideEffect,
+    Pure,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
@@ -3854,7 +3857,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
 // after the TF -> TFL legalization pass is done.
 // LINT.IfChange
 def TFL_CastOp : TFL_Op<"cast", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape]> {
   let summary = "Cast operator";
 
@@ -3879,7 +3882,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
                      SameOperandsAndResultsScale,
                      QuantizableResult,
-                     NoSideEffect,
+                     Pure,
                      TFL_OperandHasRank<1, 2>]> {
   let summary = "MirrorPad Operator. Pads a tensor with mirrored values.";
 
@@ -3917,7 +3920,7 @@ def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
 def TFL_UniqueOp: TFL_Op<"unique", [
     TFL_OperandHasRank<0, 1>,
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Unique Op.";
 
   let description = [{
@@ -3948,7 +3951,7 @@ value of `input` in the unique output `output`. In other words:
 }
 
 def TFL_GeluOp: TFL_Op<"gelu", [
-    NoSideEffect,
+    Pure,
     SameOperandsAndResultShape,
     QuantizableResult,
     PredOpTrait<"input and output must have same element type",
@@ -3969,7 +3972,7 @@ def TFL_GeluOp: TFL_Op<"gelu", [
 }
 
 def TFL_DynamicUpdateSliceOp: TFL_Op<"dynamic_update_slice", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "DynamicUpdateSlice.";
@@ -4003,13 +4006,13 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", []> {
     quantization parameters.
   }];
 
-  let arguments = (ins TFL_TensorOf<[QI8, QUI8, QI16, F16]>:$input);
+  let arguments = (ins TFL_TensorOf<[QI4, QI8, QUI8, QI16, F16]>:$input);
 
   let results = (outs TFL_FpTensor:$output);
 }
 
 def TFL_FakeQuantOp : TFL_Op<"fake_quant", [
-    NoSideEffect,
+    Pure,
     QuantizableResult]> {
   let summary = "FakeQuant operator";
 
@@ -4038,7 +4041,7 @@ def TFL_FakeQuantOp : TFL_Op<"fake_quant", [
 
 // TODO(b/200841823): consider adding TFL_RuntimeVerification trait.
 def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
-    NoSideEffect,
+    Pure,
     FirstAttrDerivedResultType]> {
   let summary = "Quantized constant pseudo op";
 
@@ -4066,7 +4069,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
 }
 
 def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
-    NoSideEffect,
+    Pure,
     FirstAttrDerivedResultType,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = "Sparse quantized constant pseudo op";
@@ -4110,15 +4113,15 @@ def TFL_QuantizeOp: TFL_Op<"quantize", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, QI8, QUI8, QI16, TFL_Quint8]>:$input,
+    ins TFL_TensorOf<[F32, QI4, QI8, QUI8, QI16, TFL_Quint8]>:$input,
     TensorTypeAttr:$qtype
   );
 
-  let results = (outs TFL_TensorOf<[QI8, QUI8, QI16, TFL_Quint8]>:$output);
+  let results = (outs TFL_TensorOf<[QI4, QI8, QUI8, QI16, TFL_Quint8]>:$output);
 }
 
 def TFL_DensifyOp: TFL_Op<"densify", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Densify operator";
@@ -4190,7 +4193,7 @@ def LstmResultConstraint : PredOpTrait<
 // This is the basic kernel type LSTM op.
 // TODO(b/142417845): Refactor this part to return its tflite node name as
 // "lstm".
-def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
+def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [Pure,
     TFL_OperandHasRank<0, 2>,
     TFL_OperandHasRank<1, 2>,
     TFL_OperandHasRank<2, 2>,
@@ -4764,7 +4767,7 @@ def TFL_UnidirectionalSequenceRNNOp : TFL_Op<"unidirectional_sequence_rnn", [
   }];
 }
 
-def TFL_WhereOp : TFL_Op<"where", [NoSideEffect]> {
+def TFL_WhereOp : TFL_Op<"where", [Pure]> {
   let summary = "Returns locations of nonzero / true values in a tensor.";
 
   let description = [{
@@ -4876,7 +4879,7 @@ def TFL_SVDFOp :
 }
 
 def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "SegmentSum operator";
@@ -4893,7 +4896,7 @@ def TFL_SegmentSumOp: TFL_Op<"segment_sum", [
 }
 
 def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
-    NoSideEffect,
+    Pure,
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "UnsortedSegmentProd operator";
@@ -4911,7 +4914,7 @@ def TFL_UnsortedSegmentProdOp: TFL_Op<"unsorted_segment_prod", [
 }
 
 def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
-    NoSideEffect, PredOpTrait<"input and output must have same element type",
+    Pure, PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
 
   let summary = "UnsortedSegmentMax operator";
@@ -4936,7 +4939,7 @@ def TFL_UnsortedSegmentMaxOp: TFL_Op<"unsorted_segment_max", [
 }
 
 def TFL_UnsortedSegmentMinOp: TFL_Op<"unsorted_segment_min", [
-    NoSideEffect, PredOpTrait<"input and output must have same element type",
+    Pure, PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
 
   let summary = "UnsortedSegmentMin operator";
@@ -4961,7 +4964,7 @@ def TFL_UnsortedSegmentMinOp: TFL_Op<"unsorted_segment_min", [
 }
 
 def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
-    NoSideEffect, PredOpTrait<"input and output must have same element type",
+    Pure, PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
 
   let summary = "UnsortedSegmentSum operator";
@@ -4986,7 +4989,7 @@ def TFL_UnsortedSegmentSumOp: TFL_Op<"unsorted_segment_sum", [
 }
 
 def TFL_Atan2Op: TFL_Op<"atan2", [
-  NoSideEffect,
+  Pure,
   SameOperandsAndResultShape,
   SameOperandsAndResultElementType]> {
 
@@ -5007,7 +5010,7 @@ def TFL_Atan2Op: TFL_Op<"atan2", [
 }
 
 def TFL_SignOp: TFL_Op<"sign", [
-  NoSideEffect,
+  Pure,
   SameOperandsAndResultShape,
   SameOperandsAndResultElementType
   ]> {
@@ -5027,7 +5030,7 @@ def TFL_SignOp: TFL_Op<"sign", [
 }
 
 def TFL_YieldOp : Op<TFL_Dialect, "yield",
-  [NoSideEffect,
+  [Pure,
    Terminator,
    QuantizableResult,
    DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
@@ -5052,7 +5055,7 @@ def TFL_YieldOp : Op<TFL_Dialect, "yield",
 def TFL_IfOp : Op<TFL_Dialect, "if", [
     DeclareOpInterfaceMethods<RegionBranchOpInterface>,
     SingleBlockImplicitTerminator<"YieldOp">,
-    RecursiveSideEffects,
+    RecursiveMemoryEffects,
     NoRegionArguments,
     DeclareOpInterfaceMethods<TFL_RuntimeVerification>]> {
   let summary = [{if-then-else operation}];
@@ -5199,7 +5202,7 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [
 }
 
 def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
-  RecursiveSideEffects,
+  RecursiveMemoryEffects,
   IsolatedFromAbove,
   SingleBlockImplicitTerminator<"YieldOp">,
   DeclareOpInterfaceMethods<InferTypeOpInterface>,
@@ -5237,7 +5240,7 @@ def TFL_BroadcastToOp : TFL_Op<"broadcast_to", [
       Or<[TFL_OperandIsUnrankedPred<1>,
           TFL_OperandDimIsAtMost<1, 0, 8>]>>,
     QuantizableResult,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Broadcast an array for a compatible shape.";
 
   let description = [{
@@ -5282,7 +5285,7 @@ subsequent operation and then be optimized away, however.)
   let hasCanonicalizer = 1;
 }
 
-def TFL_RFFT2dOp : TFL_Op<"rfft2d", [NoSideEffect]> {
+def TFL_RFFT2dOp : TFL_Op<"rfft2d", [Pure]> {
   let summary = "2D real-valued fast Fourier transform.";
 
   let description = [{
@@ -5359,7 +5362,7 @@ Read variable data identified by 'resource_id'.
 }
 
 def TFL_Conv3DOp : TFL_Op<"conv_3d", [
-    NoSideEffect,
+    Pure,
     AccumulatorUniformScale<2, 0, 1>,
     TFL_OperandHasRank<0, 5>,
     TFL_OperandHasRank<1, 5>,
@@ -5407,7 +5410,7 @@ def TFL_Conv3DOp : TFL_Op<"conv_3d", [
 }
 
 def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
-    NoSideEffect,
+    Pure,
     AccumulatorUniformScale<2, 0, 1>,
     TFL_OperandHasRank<0, 1>,
     TFL_OperandHasRank<1, 5>,
@@ -5459,7 +5462,7 @@ def TFL_Conv3DTransposeOp : TFL_Op<"conv_3d_transpose", [
 }
 
 def TFL_ComplexAbsOp : TFL_Op<"complex_abs", [
-  NoSideEffect,
+  Pure,
   SameOperandsAndResultShape]> {
   let summary = "Computes the complex absolute value of a tensor.";
 
@@ -5480,7 +5483,7 @@ value is computed as \\( \sqrt{a^2 + b^2}\\).
 }
 
 def TFL_RealOp : TFL_Op<"real", [
-  NoSideEffect,
+  Pure,
   SameOperandsAndResultShape]> {
   let summary = "Returns the real part of a complex number.";
 
@@ -5501,7 +5504,7 @@ type `float` that is the real part of each element in `input`. All elements in
 }
 
 def TFL_ImagOp : TFL_Op<"imag", [
-  NoSideEffect,
+  Pure,
   SameOperandsAndResultShape]> {
   let summary = "Returns the imaginary part of a complex number.";
 
@@ -5598,7 +5601,7 @@ def TFL_BroadcastArgsOp : TFL_Op<"broadcast_args",[
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
     TFL_OperandHasRank<0, 1>,
     TFL_OperandHasRank<1, 1>,
-    NoSideEffect]> {
+    Pure]> {
   let summary = "Return the shape of s0 op s1 with broadcast.";
 
   let description = [{
@@ -5617,7 +5620,7 @@ broadcasted shape. `s0`, `s1` and `r0` are all integer vectors.
 }
 
 def TFL_BucketizeOp
-    : TFL_Op<"bucketize", [NoSideEffect, SameOperandsAndResultShape]> {
+    : TFL_Op<"bucketize", [Pure, SameOperandsAndResultShape]> {
   let summary = "Bucketizes 'input' based on 'boundaries'.";
 
   let description = [{
@@ -5701,7 +5704,7 @@ or unnormalized log-probabilities provided for all classes.
   let customOption = "RandomOptions";
 }
 
-def TFL_NoValueOp : Op<TFL_Dialect, "no_value", [ConstantLike, NoSideEffect]> {
+def TFL_NoValueOp : Op<TFL_Dialect, "no_value", [ConstantLike, Pure]> {
   let summary = "constant representing no value.";
 
   let description = [{
@@ -5722,7 +5725,7 @@ No value constant op.
 }
 
 def TFL_ControlNodeOp : Op<TFL_Dialect, "control_node",
-    [HasParent<"mlir::func::FuncOp">, RecursiveSideEffects, SingleBlockImplicitTerminator<"YieldOp">]> {
+    [HasParent<"mlir::func::FuncOp">, RecursiveMemoryEffects, SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = [{
     The `TFL.control_node` operation wraps single-block operations in order to attach control edges.
   }];

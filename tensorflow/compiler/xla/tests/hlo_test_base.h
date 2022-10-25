@@ -119,6 +119,24 @@ class HloTestBase : public ManifestCheckingTest {
   // generally used for CPU:AOT compilation.
   static void SetAotFastMathDebugOptions(DebugOptions* options);
 
+  // Compiles the given `hlo` with optimizations, and verifies that optimized
+  // HLO matches the given FileCheck pattern.
+  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern,
+                         bool print_operand_shape = false);
+
+  // LikeMatchOptimizedHlo, but checks operand shapes as well.
+  void MatchOptimizedHloWithShapes(absl::string_view hlo,
+                                   absl::string_view pattern) {
+    MatchOptimizedHlo(hlo, pattern, /*print_operand_shape=*/true);
+  }
+
+  // Compiles and returns module with optimizations from a given HLO.
+  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
+      absl::string_view hlo);
+
+  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
+      std::unique_ptr<HloModule> hlo_module);
+
  protected:
   // This uses the interpreter backend as the reference backend and
   // automatically finds another supported backend as the test backend. If the
@@ -360,12 +378,17 @@ class HloTestBase : public ManifestCheckingTest {
       HloModule*, std::unique_ptr<HloComputation> computation);
   void UpdateEntryComputationLayout(HloModule* module);
 
+  StatusOr<std::unique_ptr<HloRunnerInterface>> GetHloRunner();
+
  protected:
   // Helper functions to get test and reference platforms.
   static se::Platform* GetReferencePlatform();
   static se::Platform* GetTestPlatform();
 
  private:
+  std::unique_ptr<HloRunnerInterface> runner_;
+  se::Platform* test_platform_;
+
   // Given the test module, makes a reference module that is ready to run on the
   // reference platform. This assumes that the given module is ready to run on
   // the test platform.

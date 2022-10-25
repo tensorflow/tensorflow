@@ -839,6 +839,8 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
     os_ << "\n";
   }
 
+  void printCustomOrGenericOp(mlir::Operation* op) override { print(*op); }
+
   // Print an operand, this could be both the OpResult or a BlockArgument.
   // We also print the layout if it exists and the type.
   void printOperand(mlir::Value value, llvm::raw_ostream& os) override {

@@ -17,7 +17,7 @@
 from absl.testing import parameterized
 
 from tensorflow.core.function import trace_type
-from tensorflow.core.function.function_type import function_type as function_type_lib
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.eager.polymorphic_function import function_spec
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/platform/env.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 
 namespace tensorflow {
 namespace {
@@ -169,7 +169,7 @@ class PreemptionSyncManagerTest : public ::testing::Test {
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
   std::unique_ptr<::grpc::Server> grpc_server_;
   std::unique_ptr<thread::ThreadPool> coord_compute_pool_;
-  std::unique_ptr<AsyncServiceInterface> coord_rpc_service_;
+  std::unique_ptr<tsl::AsyncServiceInterface> coord_rpc_service_;
   std::unique_ptr<Thread> coord_rpc_thread_;
   // Owned by task 1.
   std::unique_ptr<CoordinationServiceAgent> coord_agent_ =

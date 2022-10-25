@@ -755,6 +755,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "ragged_batch_test",
+    size = "small",
+    srcs = ["ragged_batch_test.py"],
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "random_test",
     size = "small",
     srcs = ["random_test.py"],
@@ -1098,8 +1114,9 @@ tf_py_test(
 
 tf_py_test(
     name = "unique_test",
-    size = "small",
+    size = "medium",
     srcs = ["unique_test.py"],
+    shard_count = 3,
     deps = [
         ":checkpoint_test_base",
         ":test_base",

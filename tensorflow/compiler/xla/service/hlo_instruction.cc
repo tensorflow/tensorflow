@@ -54,7 +54,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/human_readable_json.h"
@@ -1846,11 +1845,21 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kCollectivePermuteStart:
     case HloOpcode::kCollectivePermuteDone:
       return true;
-    case HloOpcode::kAllReduce:
-      return channel_id().has_value() ||
-             Cast<HloAllReduceInstruction>(this)->constrain_layout();
+
     case HloOpcode::kAllToAll:
-      return Cast<HloAllToAllInstruction>(this)->constrain_layout();
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kReduceScatter:
+      if (Cast<HloCollectiveInstruction>(this)->constrain_layout()) {
+        return true;
+      }
+      [[fallthrough]];
+    case HloOpcode::kCollectivePermute:
+      // Collective instructions with channel_id are side effecting only if
+      // they are used in non-spmd context.
+      return Cast<HloChannelInstruction>(this)->channel_id().has_value() &&
+             !GetModule()->config().use_spmd_partitioning();
+
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();

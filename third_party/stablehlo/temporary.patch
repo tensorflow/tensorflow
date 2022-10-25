@@ -1,46 +1,38 @@
-diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/dialect/CMakeLists.txt
---- stablehlo/stablehlo/dialect/CMakeLists.txt
-+++ stablehlo/stablehlo/dialect/CMakeLists.txt
-@@ -65,7 +65,7 @@
-   LINK_LIBS PUBLIC
-   StablehloBase
-   StablehloBroadcastUtils
--  MLIRArithmeticDialect
-+  MLIRArithDialect
-   MLIRControlFlowInterfaces
-   MLIRInferTypeOpInterface
-   MLIRIR
-@@ -105,7 +105,7 @@
- 
-   LINK_LIBS PUBLIC
-   StablehloBase
--  MLIRArithmeticDialect
-+  MLIRArithDialect
-   MLIRInferTypeOpInterface
-   MLIRIR
-   MLIRQuantDialect
 diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
 --- stablehlo/stablehlo/dialect/StablehloOps.cpp
 +++ stablehlo/stablehlo/dialect/StablehloOps.cpp
-@@ -45,7 +45,7 @@
- #include "llvm/Support/FormatVariadic.h"
- #include "llvm/Support/MathExtras.h"
- #include "llvm/Support/Regex.h"
--#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-+#include "mlir/Dialect/Arith/IR/Arith.h"
- #include "mlir/Dialect/Complex/IR/Complex.h"
- #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"
- #include "mlir/Dialect/Tensor/IR/Tensor.h"
-diff --ruN a/stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp b/stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
---- stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
-+++ stablehlo/stablehlo/tools/StablehloInterpreterMain.cpp
-@@ -22,7 +22,7 @@
- namespace mlir {
+@@ -2813,19 +2813,6 @@
+   }
  
- TranslateFromMLIRRegistration stablehlo_interpreter(
--    "interpret",
-+    "interpret", "interpret stable hlo",
-     [](ModuleOp module, raw_ostream &os) {
-       auto walkResult = module.walk([&](func::FuncOp funcOp) {
-         os << "\nEvaluated results of function: " << funcOp.getSymName()
+   return RankedTensorType::get(shape, elementTy);
+-}
+-
+-void ReduceOp::build(OpBuilder& builder, OperationState& state,
+-                     ValueRange operands, ValueRange initValues,
+-                     DenseIntElementsAttr dimensions) {
+-  SmallVector<Type, 1> resultTy;
+-  resultTy.reserve(operands.size());
+-
+-  for (Value operand : operands) {
+-    resultTy.push_back(
+-        getReduceResultType(operand.getType(), dimensions, &builder));
+-  }
+-  build(builder, state, resultTy, operands, initValues, dimensions);
+ }
+ 
+ bool hasSameOperandAndResultTypes(Operation& op) {
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.td b/stablehlo/stablehlo/dialect/StablehloOps.td
+--- stablehlo/stablehlo/dialect/StablehloOps.td
++++ stablehlo/stablehlo/dialect/StablehloOps.td
+@@ -1341,10 +1341,6 @@
+ 
+   let results = (outs Variadic<HLO_Tensor>);
+ 
+-  let builders = [
+-    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
+-      "DenseIntElementsAttr":$dimensions)>];
+-
+   let hasCustomAssemblyFormat = 1;
+ 
+   // TODO(hinsu): Verify that the attached body arguments and results are
 

@@ -113,6 +113,10 @@ tf_class {
     argspec: "args=[\'self\', \'buffer_size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "ragged_batch"
+    argspec: "args=[\'self\', \'batch_size\', \'drop_remainder\', \'row_splits_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \"<dtype: \'int64\'>\", \'None\'], "
+  }
+  member_method {
     name: "random"
     argspec: "args=[\'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }

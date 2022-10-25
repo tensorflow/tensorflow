@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "minibenchmark_visibility_allowlist")
+
 default_visibility_group = [
     "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
-]
+] + minibenchmark_visibility_allowlist()
 
 package(
     default_visibility = default_visibility_group,
@@ -26,6 +28,8 @@ cc_library(
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     deps = [
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
@@ -39,6 +43,7 @@ cc_test(
     srcs = ["c_api_test.cc"],
     deps = [
         ":c_api",
+        "//tensorflow/lite/core/api:error_reporter",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",

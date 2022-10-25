@@ -33,9 +33,6 @@ _COMPARE_WITH_TENSORFLOW = flags.DEFINE_boolean(
     'Whether the results should be compared to Tensorflow')
 _INPUT_DATA_SEED = flags.DEFINE_integer(
     'input_data_seed', None, 'The random seed to be used for initializing.')
-_ONE_SHOT_BUFFERIZE = flags.DEFINE_boolean(
-    'one_shot_bufferize', None,
-    'Whether one-shot bufferization should be enabled')
 _TEST_FILE_NAME = flags.DEFINE_string(
     'test_file_name', None,
     'The filename of the file containing the MLIR IR that should be tested')
@@ -113,8 +110,7 @@ class CompileAndRunTest(test.TestCase):
           mlir_function,
           function_name,
           tf_jitrt.Specialization.ENABLED,
-          vectorize=_VECTORIZE.value,
-          one_shot_bufferize=_ONE_SHOT_BUFFERIZE.value)
+          vectorize=_VECTORIZE.value)
       end = time.perf_counter()
       logging.info(f'compiled {filename} in {end-start:0.4f} seconds')
       np.random.seed(_INPUT_DATA_SEED.value)
@@ -161,7 +157,6 @@ class CompileAndRunTest(test.TestCase):
 if __name__ == '__main__':
   flags.mark_flag_as_required('compare_with_tensorflow')
   flags.mark_flag_as_required('input_data_seed')
-  flags.mark_flag_as_required('one_shot_bufferize')
   flags.mark_flag_as_required('test_file_name')
   flags.mark_flag_as_required('vectorize')
   test.main()

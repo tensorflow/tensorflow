@@ -259,7 +259,8 @@ HloSharding HloSharding::Tuple(const Shape& tuple_shape,
   CHECK(tuple_shape.IsTuple()) << ShapeUtil::HumanString(tuple_shape);
   for (auto& sharding : shardings) {
     CHECK(!sharding.IsTuple())
-        << sharding.ToString() << ShapeUtil::HumanString(tuple_shape);
+        << sharding.ToString()
+        << ", tuple shape = " << ShapeUtil::HumanString(tuple_shape);
   }
   std::vector<HloSharding> flattened_list(shardings.begin(), shardings.end());
   if (!flattened_list.empty()) {

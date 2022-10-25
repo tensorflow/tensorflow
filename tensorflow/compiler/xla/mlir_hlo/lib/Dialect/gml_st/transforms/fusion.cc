@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
+
 #include <memory>
 #include <utility>
 
@@ -30,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -64,15 +67,18 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
     Operation* def = op.getSource().getDefiningOp();
     if (!def) return failure();
 
+    // TODO(pifon): Split this pattern into many.
     // Case MaterializeOp.
     if (auto materializeOp = llvm::dyn_cast<MaterializeOp>(def)) {
       assert(materializeOp->getNumResults() == 1 && "assume single result");
-      Value set = materializeOp.getSet();
-      if (!set.getType().isa<TileType>()) return failure();
-      rewriter.replaceOpWithNewOp<gml_st::SizeOp>(op, set, op.getIndex());
+      auto dimConstantIndex = op.getConstantIndex();
+      if (!dimConstantIndex.has_value()) return failure();
+
+      auto tileOp = materializeOp.getSet().getDefiningOp<TileOp>();
+      if (!tileOp) return failure();
+      rewriter.replaceOp(op, tileOp.getSizes()[*dimConstantIndex]);
       return success();
     }
-
     // Case GenericOp.
     if (auto genericOp = llvm::dyn_cast<linalg::GenericOp>(def)) {
       if (genericOp.getNumResults() != 1 || !genericOp.hasTensorSemantics()) {
@@ -124,87 +130,47 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
   }
 };
 
-// Helper function to extract indices from the subset-based representation in.
-// This is to adapt to the tiling interface.
-void getOrMaterializeMixedOffsetsAndSizes(OpBuilder& b, Location loc,
-                                          Value tile,
-                                          SmallVector<OpFoldResult>& offsets,
-                                          SmallVector<OpFoldResult>& sizes) {
-  // If the tile is not nested, we can extract the indices from the op.
-  if (auto tileOp = tile.getDefiningOp<TileOp>()) {
-    if (tileOp.getSuperset().getDefiningOp<SpaceOp>()) {
-      offsets = tileOp.getMixedOffsets();
-      sizes = tileOp.getMixedSizes();
-      return;
-    }
-  }
-
-  // Otherwise, we have to materialize ops to extract the needed offstes and
-  // sizes.
-  int64_t rank = tile.getType().cast<TileType>().getRank();
-  offsets.clear();
-  offsets.reserve(rank);
-  sizes.clear();
-  sizes.reserve(rank);
-  for (int64_t i = 0; i < rank; i++) {
-    auto iCst = b.create<arith::ConstantIndexOp>(loc, i);
-    Value offset = b.create<OffsetOp>(loc, tile, iCst);
-    offsets.push_back(offset);
-    Value size = b.create<SizeOp>(loc, tile, iCst);
-    sizes.push_back(size);
-  }
-}
-
-FailureOr<Value> fuseIntoMaterializeOp(OpBuilder& b, Location loc,
-                                       MaterializeOp materializeOp) {
-  auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
-  if (!tileableOp) return failure();
-
-  Value tile = materializeOp.getSet();
-  if (!tile.getType().isa<TileType>()) return failure();
-
-  SmallVector<OpFoldResult> offsets;
-  SmallVector<OpFoldResult> sizes;
-  getOrMaterializeMixedOffsetsAndSizes(b, loc, tile, offsets, sizes);
-
-  // Tile the producer.
-  OpBuilder::InsertionGuard guard(b);
-  b.setInsertionPoint(materializeOp);
-  FailureOr<Value> tiledProducer =
-      tileableOp.generateResultTileValue(b, /*resultNumber=*/0, offsets, sizes);
-  if (failed(tiledProducer)) return failure();
-  return tiledProducer;
-}
-
 class FusionPattern : public OpRewritePattern<MaterializeOp> {
  public:
-  FusionPattern(MLIRContext* context, OpFilterFn filterFn,
+  FusionPattern(MLIRContext* context,
+                function_ref<LogicalResult(Operation*)> filterFn,
                 mlir::PatternBenefit benefit = 1)
       : OpRewritePattern<MaterializeOp>(context, benefit), filterFn(filterFn) {}
 
   LogicalResult matchAndRewrite(MaterializeOp materializeOp,
                                 PatternRewriter& rewriter) const override {
     assert(filterFn && "expect filter function");
-    if (failed(filterFn(materializeOp))) return failure();
+    if (failed(filterFn(materializeOp)))
+      return rewriter.notifyMatchFailure(materializeOp, "filtered");
 
     Location loc = materializeOp.getLoc();
-    FailureOr<Value> fused =
-        fuseIntoMaterializeOp(rewriter, loc, materializeOp);
-    if (failed(fused)) return failure();
+    FailureOr<Value> fusedOr = createFusedOp(rewriter, materializeOp);
+    if (failed(fusedOr)) return failure();  // Match failure aleady notified.
 
     // Insert cast if needed.
-    if (fused->getType() != materializeOp.getType()) {
-      fused =
-          rewriter.create<tensor::CastOp>(loc, materializeOp.getType(), *fused)
-              .getResult();
+    Value fused = *fusedOr;
+    if (fused.getType() != materializeOp.getType()) {
+      if (!materializeOp.getType().isa<RankedTensorType>()) {
+        // the result should be a scalar, insert tensor.extract
+        auto tensorType = fused.getType().dyn_cast<RankedTensorType>();
+        assert(tensorType && tensorType.getNumElements() == 1 &&
+               "resulting tensor should contain a single element");
+        auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+        fused = rewriter.create<tensor::ExtractOp>(
+            loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
+      } else {
+        // the result should be a tensor, cast it to the correct shape
+        fused = rewriter.create<tensor::CastOp>(loc, materializeOp.getType(),
+                                                fused);
+      }
     }
 
-    rewriter.replaceOp(materializeOp, *fused);
+    rewriter.replaceOp(materializeOp, fused);
     return success();
   }
 
  private:
-  OpFilterFn filterFn;
+  function_ref<LogicalResult(Operation*)> filterFn;
 };
 
 struct FusionPass : public impl::FusionPassBase<FusionPass> {
@@ -256,7 +222,38 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
 }  // namespace
 
-void populateFusionPatterns(MLIRContext* ctx, OpFilterFn filterFn,
+FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
+                               MaterializeOp materializeOp) {
+  auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
+  if (!tileableOp) {
+    return rewriter.notifyMatchFailure(
+        materializeOp, "expected source to be defined by tiling interface op ");
+  }
+
+  auto tileOp = materializeOp.getSet().getDefiningOp<gml_st::TileOp>();
+  if (!tileOp) {
+    return rewriter.notifyMatchFailure(
+        materializeOp, "expected set to be defined by gml_st.tile");
+  }
+
+  SmallVector<OpFoldResult> offsets = tileOp.getMixedOffsets();
+  SmallVector<OpFoldResult> sizes = tileOp.getMixedSizes();
+
+  // Tile the producer.
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(materializeOp);
+  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
+      rewriter, /*resultNumber=*/0, offsets, sizes);
+  if (failed(tiledProducer)) {
+    return rewriter.notifyMatchFailure(tileableOp,
+                                       "failed to tile the producer");
+  }
+
+  return tiledProducer;
+}
+
+void populateFusionPatterns(MLIRContext* ctx,
+                            function_ref<LogicalResult(Operation*)> filterFn,
                             RewritePatternSet* patterns) {
   patterns->insert<FusionPattern>(ctx, filterFn);
   // clang-format off

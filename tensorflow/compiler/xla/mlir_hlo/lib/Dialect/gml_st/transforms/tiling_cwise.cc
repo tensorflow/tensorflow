@@ -21,8 +21,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/linalg_utils.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/transforms.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -38,26 +40,20 @@ namespace {
 #define GEN_PASS_DEF_TILINGCWISEPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
-bool isElementwiseLinalgGenericOp(Operation *op) {
-  auto linalgGenericOp = llvm::dyn_cast_or_null<linalg::GenericOp>(op);
-  return linalgGenericOp &&
-         llvm::all_of(linalgGenericOp.getIndexingMapsArray(),
-                      [](AffineMap map) { return map.isIdentity(); });
-}
-
 bool isRootOfCwiseExpr(Operation *op) {
-  return isElementwiseLinalgGenericOp(op) &&
+  return isCwiseGenericOp(op) &&
          llvm::none_of(op->getUsers(), [](Operation *user) {
-           return isElementwiseLinalgGenericOp(user) ||
-                  llvm::isa<MaterializeOp>(user);
+           return isCwiseGenericOp(user) || llvm::isa<MaterializeOp>(user);
          });
 }
 
 struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
   TilingCwisePass() = default;
-  TilingCwisePass(bool distribute, ArrayRef<int64_t> tileSizes) {
+  TilingCwisePass(bool distribute, ArrayRef<int64_t> tileSizes,
+                  StringRef distributionLabel) {
     distribute_ = distribute;
     tileSizes_ = tileSizes;
+    distributionLabel_ = distributionLabel.str();
   }
 
   void getDependentDialects(DialectRegistry &registry) const final {
@@ -89,6 +85,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
 
       return tileSizesValues;
     };
+    opts.distributionLabel = distributionLabel_;
 
     // Tile the roots of cwise expressions and fuse all cwise operands greedily.
     auto tileRootOfCwiseExprFn = [](Operation *op) {
@@ -98,7 +95,7 @@ struct TilingCwisePass : public impl::TilingCwisePassBase<TilingCwisePass> {
     auto fuseCwiseOperandsGreedilyFn = [](Operation *op) {
       Operation *producerOp =
           llvm::cast<MaterializeOp>(op).getSource().getDefiningOp();
-      if (!isElementwiseLinalgGenericOp(producerOp)) return failure();
+      if (!isCwiseGenericOp(producerOp)) return failure();
       return success();
     };
 
@@ -123,8 +120,9 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass() {
 }
 
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
-    bool distribute, ArrayRef<int64_t> tileSizes) {
-  return std::make_unique<TilingCwisePass>(distribute, tileSizes);
+    bool distribute, ArrayRef<int64_t> tileSizes, StringRef distributionLabel) {
+  return std::make_unique<TilingCwisePass>(distribute, tileSizes,
+                                           distributionLabel);
 }
 
 }  // namespace gml_st

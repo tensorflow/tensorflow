@@ -106,64 +106,19 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   return corresponding_op;
 }
 
-// Lowers DTensorRecv op to either one of XlaRecvAtHost or XlaRecvFromHost,
-// depending on src mesh cluster configuration.
-StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
-    mlir::TF::DTensorRecv dtensor_recv);
+// Lowers DTensorSend to a number of different device-specific ops:
+// _HostSend, XlaSendFromHost, XlaSendToHost, etc.
+StatusOr<mlir::Operation*> LowerDTensorRecv(mlir::Operation* send_op,
+                                            mlir::Operation* recv_op);
 
-// Lowers DTensorRecv op to either one of XlaRecvAtHost or XlaRecvFromHost,
-// depending on src mesh cluster configuration. `output_type` can be set to the
-// specific local tensor type needed, if different from the Recv op output type.
-StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
-    mlir::TF::DTensorRecv dtensor_recv, mlir::Type output_type);
+// Lowers DTensorRecv to a number of different device-specific ops:
+// _HostRecv, XlaRecvAtHost, XlaRecvFromHost, etc.
+StatusOr<mlir::Operation*> LowerDTensorSend(mlir::Operation* send_op,
+                                            mlir::Operation* recv_op);
 
-// Lowers DTensorRecv Op to either XlaRecvAtHost or XlaRecvFromHost.
-StatusOr<mlir::Operation*> LowerDTensorRecvToXlaOp(
-    const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv,
-    mlir::Type output_type);
-
-// Lowers DTensorRecv Op to a single TF HostRecv op.
-// GPU counterpart to LowerDTensorRecvToXlaOp (TPU).
-StatusOr<mlir::Operation*> LowerDTensorRecvToTFOp(
-    const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv,
-    mlir::Type output_type);
-
-// Lowers DTensorSend Op to either one of XlaSendFromHost op or XlaSendToHost,
-// depending on the src mesh cluster. `send_from_device_zero` should be set if
-// control flow needs to be inserted to gather data onto and only sent from the
-// zero'th device.
-StatusOr<mlir::Operation*> LowerDTensorSendToXlaOp(
-    const Layout& send_input_layout, mlir::Value send_input,
-    mlir::TF::DTensorSend dtensor_send, bool send_from_device_zero);
-
-// Lowers DTensorSend Op to a single TF HostSend op.
-// GPU counterpart to LowerDTensorSendToXlaOp (TPU).
-StatusOr<mlir::Operation*> LowerDTensorSendToTFOp(
-    const Layout& send_input_layout, mlir::Value send_input,
-    mlir::TF::DTensorSend dtensor_send);
-
-// Lowers DTensorSend Op to one or more TF HostSend op(s);
-// one for each receiving device, all sends from sender 0.
-StatusOr<mlir::Operation*> LowerDTensorSendFromCPUToTFOp(
-    const Layout& send_input_layout, mlir::Value send_input,
-    mlir::TF::DTensorSend dtensor_send);
-
-// Lowers DTensorRecv Op to one or more TF HostRecv op(s);
-// one for each receiving device, all sends from sender 0.
-StatusOr<mlir::Operation*> LowerDTensorRecvFromCPUToTFOp(
-    const Mesh& send_mesh, mlir::TF::DTensorRecv dtensor_recv);
-
-// Half of the lowering process for one-to-one send/recvs, used for GPUs.
-// (Generates a CaseOp with send ops for each device pair.)
-StatusOr<mlir::Operation*> LowerOneToOneDTensorSendToTFHostSend(
-    const Layout& send_layout, const Mesh& recv_mesh,
-    mlir::TF::DTensorSend dtensor_send);
-
-// Half of the lowering process for one-to-one send/recvs, used for GPUs.
-// (Generates a CaseOp with recv ops for each device pair.)
-StatusOr<mlir::Operation*> LowerOneToOneDTensorRecvToTFHostRecv(
-    const Mesh& send_mesh, const Layout& recv_layout,
-    mlir::TF::DTensorRecv dtensor_recv);
+// Lowers a DTensorSend and DTensorRecv pair to XLA ops
+StatusOr<mlir::Operation*> LowerDTensorSendAndRecv(mlir::Operation* send_op,
+                                                   mlir::Operation* recv_op);
 
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -121,7 +121,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Clamp", &Clamp, py::arg("min"), py::arg("operand"), py::arg("max"));
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
   ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
-          py::arg("source_target_pairs"));
+          py::arg("source_target_pairs"), py::arg("channel_id") = std::nullopt);
   ops.def("ConcatInDim", &ConcatInDim, py::arg("builder"), py::arg("operands"),
           py::arg("dimension"));
   ops.def("Conditional",

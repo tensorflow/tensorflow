@@ -911,14 +911,6 @@ bool ShapeInference::InferShapeForCast(Operation* op) {
   Value result = op->getResult(0);
   if (!CanBeRefined(result.getType())) return false;
 
-  Type operand_type = op->getOperand(0).getType();
-  auto ranked_op_type = operand_type.dyn_cast<RankedTensorType>();
-  if (!ranked_op_type) return false;
-  auto ranked_res_type = result.getType().dyn_cast<RankedTensorType>();
-  if (ranked_res_type &&
-      ranked_op_type.getShape() == ranked_res_type.getShape())
-    return false;
-
   // Avoid inserting a cast where no users types could be refined (e.g., where
   // there would need to be a cast inserted for every user again).
   if (llvm::all_of(result.getUses(), [this](OpOperand& use) {
@@ -926,11 +918,26 @@ bool ShapeInference::InferShapeForCast(Operation* op) {
       }))
     return false;
 
-  auto new_type = tensorflow::GetTypeFromTFTensorShape(
-      ranked_op_type.getShape(),
-      result.getType().cast<ShapedType>().getElementType());
+  // Combine shape information including shape info in subtypes.
+  Type operand_type = op->getOperand(0).getType();
+  Type result_type = result.getType();
+  auto new_type = GetCastCompatibleType(operand_type, result_type);
+  if (!new_type) {
+    // Combine shape information when leaf element types are not the same, not
+    // including shape info in subtypes.
+    auto ranked_operand_type = operand_type.dyn_cast<RankedTensorType>();
+    if (!ranked_operand_type) return false;
+    auto ranked_res_type = result.getType().dyn_cast<RankedTensorType>();
+    if (ranked_res_type &&
+        ranked_operand_type.getShape() == ranked_res_type.getShape())
+      return false;
 
-  return UpdateTypeAndInsertIncompatibleUseCasts(new_type, op->getResult(0));
+    auto shaped_res_type = result_type.dyn_cast<ShapedType>();
+    if (!shaped_res_type) return false;
+    new_type = tensorflow::GetTypeFromTFTensorShape(
+        ranked_operand_type.getShape(), shaped_res_type.getElementType());
+  }
+  return UpdateTypeAndInsertIncompatibleUseCasts(new_type, result);
 }
 
 bool ShapeInference::InferShapeForIf(IfOp op) {

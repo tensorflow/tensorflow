@@ -328,6 +328,24 @@ func.func @float_logistic(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // -----
 
+// CHECK-LABEL: func @complex_logistic
+func.func @complex_logistic(%arg0: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK-DAG: %[[C0:.*]] = arith.constant 0
+  // CHECK-DAG: %[[C1:.*]] = arith.constant 1
+  // CHECK: linalg.generic
+  // CHECK: ^bb0(%[[ARG:.*]]: complex<f32>, %{{.*}}: complex<f32>):
+  // CHECK: %[[NEG_ARG:.*]] = complex.neg %[[ARG]]
+  // CHECK: %[[EXP_NEG_ARG:.*]] = complex.exp %[[NEG_ARG]]
+  // CHECK: %[[CC1:.*]] = complex.create %[[C1]], %[[C0]] : complex<f32>
+  // CHECK: %[[ONE_ADD_EXP_NEG_ARG:.*]] = complex.add %[[EXP_NEG_ARG]], %[[CC1]]
+  // CHECK: %[[RESULT:.*]] = complex.div %[[CC1]], %[[ONE_ADD_EXP_NEG_ARG]]
+  // CHECK: linalg.yield %[[RESULT]]
+  %0 = "mhlo.logistic"(%arg0) : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  func.return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_ceil
 func.func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
@@ -1201,6 +1219,58 @@ func.func @bitcast_convert_dynamic(%input: tensor<?x?xi32>) -> tensor<?x?xf32> {
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %{{.*}}: f32):
 // CHECK-NEXT:   %[[RESULT:.*]] = arith.bitcast %[[OPERAND_IN]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @bitcast_convert_expand
+func.func @bitcast_convert_expand(%input: tensor<6xi32>) -> tensor<6x4xi8> {
+  %result = "mhlo.bitcast_convert"(%input) : (tensor<6xi32>) -> tensor<6x4xi8>
+  func.return %result : tensor<6x4xi8>
+}
+
+// CHECK: %[[C8:.*]] = arith.constant 8 : i32
+// CHECK: tensor.empty() : tensor<6x4xi8>
+// CHECK: %[[RESULT:.*]] = linalg.generic {
+// CHECK:    indexing_maps = [#[[MAP0]], #[[MAP1]]],
+// CHECK:    iterator_types = ["parallel", "parallel"]}
+// CHECK:    ^bb0(%[[IN:.*]]: i32, %[[OUT:.*]]: i8):
+// CHECK:      %[[IOTA:.*]] = linalg.index 1 : index
+// CHECK:      %[[IOTA_CASTED:.*]] = arith.index_cast %[[IOTA]] : index to i32
+// CHECK:      %[[AMT:.*]] = arith.muli %[[IOTA_CASTED]], %[[C8]] : i32
+// CHECK:      %[[SHIFT:.*]] = arith.shrui %[[IN]], %[[AMT]] : i32
+// CHECK:      %[[TRUNC:.*]] = arith.trunci %[[SHIFT]] : i32 to i8
+// CHECK:      linalg.yield %[[TRUNC]] : i8
+// CHECK:    } -> tensor<6x4xi8>
+// CHECK:    return %[[RESULT]] : tensor<6x4xi8>
+
+// -----
+
+// CHECK: #[[MAP0:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @bitcast_convert_contract
+func.func @bitcast_convert_contract(%input: tensor<7x4xi8>) -> tensor<7xi32> {
+  %result = "mhlo.bitcast_convert"(%input) : (tensor<7x4xi8>) -> tensor<7xi32>
+  func.return %result : tensor<7xi32>
+}
+// CHECK-DAG: %[[C0:.*]] = arith.constant 0 : i32
+// CHECK-DAG: %[[C8:.*]] = arith.constant 8 : i32
+// CHECK: %[[EMPTY:.*]] = tensor.empty() : tensor<7xi32>
+// CHECK: linalg.fill ins(%[[C0]] : i32) outs(%[[EMPTY]] : tensor<7xi32>) -> tensor<7xi32>
+// CHECK: %[[RESULT:.*]] = linalg.generic {
+// CHECK:    indexing_maps = [#[[MAP0]], #[[MAP1]]],
+// CHECK:    iterator_types = ["parallel", "reduction"]}
+// CHECK:    ^bb0(%[[IN:.*]]: i8, %[[OUT:.*]]: i32):
+// CHECK:      %[[IOTA:.*]] = linalg.index 1 : index
+// CHECK:      %[[IOTA_CASTED:.*]] = arith.index_cast %[[IOTA]] : index to i32
+// CHECK:      %[[AMT:.*]] = arith.muli %[[IOTA_CASTED]], %[[C8]] : i3
+// CHECK:      %[[EXT:.*]] = arith.extui %[[IN]] : i8 to i32
+// CHECK:      %[[SHIFT:.*]] = arith.shli %[[EXT]], %[[AMT]] : i32
+// CHECK:      %[[OR:.*]] = arith.ori %[[SHIFT]], %[[OUT]] : i32
+// CHECK:      linalg.yield %[[OR]] : i32
+// CHECK: } -> tensor<7xi32>
+// CHECK: return %[[RESULT]] : tensor<7xi32>
 
 // -----
 
@@ -2420,8 +2490,8 @@ func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
                        %arg1: tensor<?xcomplex<f32>>) -> tensor<?xi1> {
   %0 = "mhlo.map"(%arg0, %arg1) ({
   ^bb0(%arg2: tensor<complex<f32>>, %arg3: tensor<complex<f32>>):
-    %1 = mhlo.real(%arg2) : (tensor<complex<f32>>) -> tensor<f32>
-    %2 = mhlo.real(%arg3) : (tensor<complex<f32>>) -> tensor<f32>
+    %1 = mhlo.real %arg2 : (tensor<complex<f32>>) -> tensor<f32>
+    %2 = mhlo.real %arg3 : (tensor<complex<f32>>) -> tensor<f32>
     %3 = "mhlo.compare"(%1, %2)
        {comparison_direction = #mhlo<comparison_direction EQ>}
        : (tensor<f32>, tensor<f32>) -> tensor<i1>
@@ -2572,13 +2642,13 @@ func.func @reduce_lexicographic_min_complex(%arg0: tensor<?x3x4xcomplex<f64>>,
    across dimensions = [0, 1, 2]
    : (tensor<?x3x4xcomplex<f64>>, tensor<complex<f64>>) -> tensor<complex<f64>>
    reducer(%arg3: tensor<complex<f64>>, %arg4: tensor<complex<f64>>)  {
-    %1 = mhlo.real(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
-    %2 = mhlo.convert(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %1 = mhlo.real %arg3 : (tensor<complex<f64>>) -> tensor<f64>
+    %2 = mhlo.convert %arg4 : (tensor<complex<f64>>) -> tensor<f64>
     %3 = "mhlo.compare"(%1, %2)
       {comparison_direction = #mhlo<comparison_direction EQ>}
       : (tensor<f64>, tensor<f64>) -> tensor<i1>
-    %4 = mhlo.imag(%arg3) : (tensor<complex<f64>>) -> tensor<f64>
-    %5 = mhlo.imag(%arg4) : (tensor<complex<f64>>) -> tensor<f64>
+    %4 = mhlo.imag %arg3 : (tensor<complex<f64>>) -> tensor<f64>
+    %5 = mhlo.imag %arg4 : (tensor<complex<f64>>) -> tensor<f64>
     %6 = "mhlo.compare"(%4, %5)
       {comparison_direction = #mhlo<comparison_direction LT>}
       : (tensor<f64>, tensor<f64>) -> tensor<i1>
@@ -2789,6 +2859,21 @@ func.func @dynamic_slice(%arg: tensor<3x4xf32>, %start1: tensor<i64>, %start2: t
 
 // -----
 
+func.func @dynamic_slice_unsigned_index(
+    %arg: tensor<3x4xui32>, %start1: tensor<ui64>, %start2: tensor<ui64>) 
+    -> tensor<1x4xui32> {
+  %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
+    slice_sizes = dense<[1, 4]> : tensor<2xi64>
+  } : (tensor<3x4xui32>, tensor<ui64>, tensor<ui64>) -> tensor<1x4xui32>
+  func.return %0 : tensor<1x4xui32>
+}
+
+// CHECK-LABEL: func @dynamic_slice_unsigned_index(
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract
+// CHECK:         arith.index_castui %[[EXTRACT1]]
+
+// -----
+
 func.func @dynamic_slice_unsigned(%arg: tensor<3x4xui32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xui32> {
   %0 = "mhlo.dynamic_slice"(%arg, %start1, %start2) {
     slice_sizes = dense<[1, 4]> : tensor<2xi64>
@@ -2838,6 +2923,20 @@ func.func @dynamic_update_slice(%target: tensor<3x3xi32>, %update: tensor<2x2xi3
 // CHECK-SAME:      [%[[CLAMPED1]], %[[CLAMPED2]]] [2, 2] [1, 1]
 // CHECK-SAME:    : tensor<2x2xi32> into tensor<3x3xi32>
 // CHECK:         return %[[RES]] : tensor<3x3xi32>
+
+// -----
+
+func.func @dynamic_update_slice_unsigned_index(
+    %target: tensor<3x3xi32>, %update: tensor<2x2xi32>,
+    %idx: tensor<ui32>) -> tensor<3x3xi32> {
+  %0 = "mhlo.dynamic_update_slice"(%target, %update, %idx, %idx)
+    : (tensor<3x3xi32>, tensor<2x2xi32>, tensor<ui32>, tensor<ui32>) -> tensor<3x3xi32>
+  func.return %0 : tensor<3x3xi32>
+}
+
+// CHECK-LABEL: func @dynamic_update_slice_unsigned_index(
+// CHECK:         %[[EXTRACT1:.*]] = tensor.extract
+// CHECK:         arith.index_castui %[[EXTRACT1]]
 
 // -----
 
@@ -3667,6 +3766,23 @@ func.func @reduce_window_sum_max_nhwc(%arg0: tensor<1x17x17x64xf32>,
 
 // -----
 
+func.func @reduce_window_unsigned(%arg0: tensor<1x1xui32>) -> tensor<1x1xui32> {
+  %0 = mhlo.constant dense<0> : tensor<ui32>
+  %1 = "mhlo.reduce_window"(%arg0, %0) ({
+  ^bb0(%arg1: tensor<ui32>, %arg2: tensor<ui32>):
+    mhlo.return %arg1 : tensor<ui32>
+  }) {
+    window_dimensions = dense<[1, 1]> : tensor<2xi64>,
+    window_strides = dense<[1, 1]> : tensor<2xi64>
+  } : (tensor<1x1xui32>, tensor<ui32>) -> tensor<1x1xui32>
+  return %1 : tensor<1x1xui32>
+}
+
+// Just check that this lowers successfully.
+// CHECK-LABEL: func @reduce_window_unsigned
+
+// -----
+
 func.func @dynamic_reduce_window_sum_nhwc(%arg0: tensor<?x?x?x?xf32>,
                                       %arg1: tensor<f32>) -> tensor<?x?x?x?xf32>{
   %0 = "mhlo.reduce_window"(%arg0, %arg1) ({
@@ -3982,6 +4098,33 @@ func.func @gather(%operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xi3
 // CHECK:             %[[Y:.+]] = tensor.extract %[[OPERAND]][%[[IN0]], %[[IN1]], %[[IDX2]]] : tensor<1x4x8xi32>
 // CHECK:             linalg.yield %[[Y]] : i32
 // CHECK-DAG:       return %[[RES]]
+
+// -----
+
+func.func @gather_unsigned_index(
+    %operand : tensor<1x4x8xi32>, %start_indices : tensor<1x8x2xui32>)
+    -> tensor<1x8x8xi32> {
+  %res = "mhlo.gather"(%operand, %start_indices) {
+    dimension_numbers = #mhlo.gather<
+      collapsed_slice_dims = [0, 1],
+      index_vector_dim = 2,
+      offset_dims = [2],
+      start_index_map = [0, 1]
+    >,
+    indices_are_sorted = false,
+    slice_sizes = dense<[1, 1, 8]> : tensor<3xi64>,
+    someattr
+  } : (tensor<1x4x8xi32>, tensor<1x8x2xui32>) -> tensor<1x8x8xi32>
+  func.return %res : tensor<1x8x8xi32>
+}
+
+// CHECK-LABEL:   func @gather_unsigned_index(
+// CHECK-DAG:       %[[C0:.+]] = arith.constant 0
+// CHECK-DAG:       %[[C1:.+]] = arith.constant 1
+// CHECK:           %[[S0_INT:.+]] = tensor.extract {{.*}}[{{.*}}, %[[C0]]]
+// CHECK:           arith.index_castui %[[S0_INT]] : i32 to index
+// CHECK:           %[[S0_INT:.+]] = tensor.extract {{.*}}[{{.*}}, %[[C1]]]
+// CHECK:           arith.index_castui %[[S1_INT]] : i32 to index
 
 // -----
 
@@ -4943,8 +5086,11 @@ func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
 // CHECK-DAG: %[[C6:.*]] = arith.constant 1090519040 : i32
 // CHECK-DAG: %[[C7:.*]] = arith.constant 1040187392 : i32
 // CHECK-DAG: %[[C8:.*]] = arith.constant -2147483648 : i32
+// CHECK-DAG: %[[C9:.*]] = arith.constant 2147483647 : i32
 // CHECK: linalg.generic
-// CHECK: %[[X_AS_INT:.*]] = arith.bitcast %{{.*}} : f32 to i32
+// CHECK: %[[X_AS_INT:.*]] = arith.bitcast %[[IN:.*]] : f32 to i32
+// CHECK: %[[ABS_X:.*]] = arith.andi %[[X_AS_INT]], %[[C9]]
+// CHECK: %[[IS_NAN:.*]] = arith.cmpi ugt, %[[ABS_X]], %[[C5]]
 // CHECK: %[[MASKED:.*]] = arith.andi %[[X_AS_INT]], %[[C2]] : i32
 // CHECK: %[[V0:.*]] = arith.shrui %[[MASKED]], %[[C_21]] : i32
 // CHECK: %[[V1:.*]] = arith.addi %[[V0]], %[[C3]] : i32
@@ -4957,7 +5103,9 @@ func.func @dot_general_multiple_batch_dimensions(%arg0: tensor<3x4x2x4xi32>,
 // CHECK: %[[V8:.*]] = arith.ori %[[V7]], %[[C5]] : i32
 // CHECK: %[[V9:.*]] = arith.select %[[V5]], %[[V8]], %[[V3]] : i32
 // CHECK: %[[V10:.*]] = arith.select %[[V6]], %[[V7]], %[[V9]] : i32
-// CHECK: arith.bitcast %[[V10]] : i32 to f32
+// CHECK: %[[CONVERTED:.*]] = arith.bitcast %[[V10]] : i32 to f32
+// CHECK: %[[RESULT:.*]] = arith.select %[[IS_NAN]], %[[IN]], %[[CONVERTED]]
+// CHECK: linalg.yield %[[RESULT]]
 func.func @reduce_precision(%arg0: tensor<1x2x3x4xf32>)
                             -> tensor<1x2x3x4xf32> {
   %0 = "mhlo.reduce_precision"(%arg0) {exponent_bits=3:i32, mantissa_bits=3:i32} : (tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32>

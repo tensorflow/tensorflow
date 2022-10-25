@@ -510,6 +510,10 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // memory.
     session_options.config.mutable_experimental()
         ->set_optimize_for_static_graph(true);
+    LOG_FIRST_N(INFO, 10) << "SessionOptions: "
+                          << session_options.config.DebugString();
+    LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
+                          << options.graph_execution_options;
 
     // Creating the fallback_state using the original function def library
     // without applying placer or grappler, it is OK for now because it's only

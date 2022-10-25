@@ -1014,8 +1014,9 @@ ENTRY e {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), 3);
   // 2-element tuple (pointers) + its 3-element shape #0
   EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 2 * kPointerSize + 3);
-  EXPECT_EQ(analysis.bytes_accessed(*root), 2 * kPointerSize + 3 + 3);
-  EXPECT_EQ(analysis.bytes_accessed(), 2 * kPointerSize + 3 + 3);
+  // Same as above + non-scalar constant c1 + output.
+  EXPECT_EQ(analysis.bytes_accessed(*root), 2 * kPointerSize + 3 + 3 + 3);
+  EXPECT_EQ(analysis.bytes_accessed(), 2 * kPointerSize + 3 + 3 + 3);
 }
 
 TEST_F(FusionCostAnalysis, InfeedOutfeed) {

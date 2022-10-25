@@ -35,15 +35,13 @@ func.func @simple(%arg2: memref<2048xf32>) -> memref<2048xf32> {
 // CHECK-LABEL: @simple
 // CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
 // CHECK-DAG:   %[[C1:.*]] = arith.constant 1 : index
+// CHECK-DAG:   %[[C4:.*]] = arith.constant 4 : index
+// CHECK-DAG:   %[[C16:.*]] = arith.constant 16 : index
 // CHECK-DAG:   %[[C32:.*]] = arith.constant 32 : index
 // CHECK-DAG:   %[[C128:.*]] = arith.constant 128 : index
-// CHECK-DAG:   %[[C2048:.*]] = arith.constant 2048 : index
-// CHECK-DAG:   %[[GRID:.*]] = affine.apply {{.*}}(%[[C2048]])[%[[C0]], %[[C128]]]
-// CHECK-DAG:   %[[BLOCK:.*]] = affine.apply {{.*}}(%[[C128]])[%[[C0]], %[[C32]]]
-// CHECK-DAG:   %[[WARP:.*]] = affine.apply {{.*}}(%[[C32]])[%[[C0]], %[[C1]]]
 // CHECK:       gpu.launch blocks
-// CHECK-SAME:  ({{.*}}) in ({{.*}} = %[[GRID]], {{.*}} = %[[C1]], {{.*}} = %[[C1]]) threads
-// CHECK-SAME:  ({{.*}}) in ({{.*}} = %[[WARP]], {{.*}} = %[[BLOCK]], {{.*}} = %[[C1]])
+// CHECK-SAME:  ({{.*}}) in ({{.*}} = %[[C16]], {{.*}} = %[[C1]], {{.*}} = %[[C1]]) threads
+// CHECK-SAME:  ({{.*}}) in ({{.*}} = %[[C32]], {{.*}} = %[[C4]], {{.*}} = %[[C1]])
 // CHECK:       affine.apply {{.*}}[%[[C0]], %[[C128]]]
 // CHECK:       affine.apply {{.*}}[%[[C0]], %[[C32]]]
 // CHECK:       affine.apply {{.*}}[%[[C0]], %[[C1]]]
@@ -107,11 +105,13 @@ func.func @sibling_parallels(%arg2: memref<2048xf32>) -> memref<2048xf32> {
 func.func @too_deep_nesting() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
-  // expected-error@+1 {{failed to legalize}}
+  %alloc = memref.alloc() : memref<index>
   gml_st.parallel (%arg3) = (%c0) to (%c1) step (%c1) {
     gml_st.parallel (%arg4) = (%c0) to (%c1) step (%c1) {
       gml_st.parallel (%arg5) = (%c0) to (%c1) step (%c1) {
         gml_st.parallel (%arg6) = (%c0) to (%c1) step (%c1) {
+          memref.store %c0, %alloc[] : memref<index>
+          // expected-error@+1 {{failed to simtfy}}
           gml_st.set_yield
         }
         gml_st.set_yield
@@ -130,13 +130,17 @@ func.func @mismatched_bounds() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
-  // expected-error@+1 {{failed to legalize}}
+  %alloc1 = memref.alloc() : memref<index>
+  %alloc2 = memref.alloc() : memref<index>
   gml_st.parallel (%arg3) = (%c0) to (%c1) step (%c1) {
     gml_st.parallel (%arg4) = (%c0) to (%c1) step (%c1) {
       gml_st.parallel (%arg5) = (%c0) to (%c1) step (%c1) {
+        memref.store %c0, %alloc1[] : memref<index>
+        // expected-error@+1 {{failed to simtfy}}
         gml_st.set_yield
       }
       gml_st.parallel (%arg6) = (%c0) to (%c2) step (%c1) {
+        memref.store %c0, %alloc2[] : memref<index>
         gml_st.set_yield
       }
       gml_st.set_yield
@@ -152,8 +156,10 @@ func.func @mmultple_induction_vars() {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
   %c2 = arith.constant 2 : index
-  // expected-error@+1 {{failed to legalize}}
+  %alloc = memref.alloc() : memref<index>
   gml_st.parallel (%arg1, %arg2) = (%c0, %c0) to (%c1, %c1) step (%c1, %c1) {
+    memref.store %c0, %alloc[] : memref<index>
+    // expected-error@+1 {{failed to simtfy}}
     gml_st.set_yield
   }
   return
@@ -206,3 +212,64 @@ func.func @imperfect_tiling(%arg0: memref<2051xf32>) -> memref<2051xf32> {
 // CHECK:       memref.load
 // CHECK:       math.log
 // CHECK:       memref.store
+
+// -----
+
+#layout = strided<[1], offset: ?>
+
+func.func @vectorized_tiling(%arg0: memref<2048xf32>) -> memref<2048xf32> {
+  %c2048 = arith.constant 2048 : index
+  %c0 = arith.constant 0 : index
+  %c1024 = arith.constant 1024 : index
+  %c128 = arith.constant 128 : index
+  %c4 = arith.constant 4 : index
+  %cst = arith.constant 0.000000e+00 : f32
+  %alloc = memref.alloc() {alignment = 64 : i64} : memref<2048xf32>
+  gml_st.parallel (%arg1) = (%c0) to (%c2048) step (%c1024) {
+    %subview = memref.subview %arg0[%arg1] [1024] [1]
+      : memref<2048xf32> to memref<1024xf32, #layout>
+    %subview_0 = memref.subview %alloc[%arg1] [1024] [1]
+      : memref<2048xf32> to memref<1024xf32, #layout>
+    gml_st.parallel (%arg2) = (%c0) to (%c1024) step (%c128) {
+      %subview_1 = memref.subview %subview[%arg2] [128] [1]
+        : memref<1024xf32, #layout> to memref<128xf32, #layout>
+      %0 = vector.transfer_read %subview_1[%c0], %cst {in_bounds = [true]}
+        : memref<128xf32, #layout>, vector<128xf32>
+      %subview_2 = memref.subview %subview_0[%arg2] [128] [1]
+        : memref<1024xf32, #layout> to memref<128xf32, #layout>
+      %1 = vector.transfer_read %subview_2[%c0], %cst {in_bounds = [true]}
+        : memref<128xf32, #layout>, vector<128xf32>
+      %2 = gml_st.parallel (%arg3) = (%c0) to (%c128) step (%c4) {
+        %4 = gml_st.tile [%arg3] [4] [1] : !gml_st.tile<4>
+        %5 = gml_st.materialize %0[%4]
+          : vector<128xf32>[!gml_st.tile<4>] to vector<4xf32>
+        %6 = math.absf %5 : vector<4xf32>
+        gml_st.set_yield %6 into %1[%4]
+          : vector<4xf32> into vector<128xf32>[!gml_st.tile<4>]
+      } : vector<128xf32>
+      vector.transfer_write %2, %subview_2[%c0] {in_bounds = [true]}
+        : vector<128xf32>, memref<128xf32, #layout>
+      gml_st.set_yield
+    }
+    gml_st.set_yield
+  }
+  return %alloc : memref<2048xf32>
+}
+// CHECK-LABEL: @vectorized_tiling
+// CHECK-SAME: %[[ARG:.*]]: memref
+// CHECK:      %[[OUT:.*]] = memref.alloc
+// CHECK:      gpu.launch {{.*}} threads(%[[TID:.*]], %{{.*}}, %{{.*}}) in
+// CHECK-NOT:    gml_st.parallel
+// CHECK-DAG:    %[[BARG:.*]] = memref.subview %[[ARG]]
+// CHECK-DAG:    %[[BOUT:.*]] = memref.subview %[[OUT]]
+// CHECK-NOT:    gml_st.parallel
+// CHECK-DAG:    %[[WARG:.*]] = memref.subview %[[BARG]]
+// CHECK-DAG:    %[[WOUT:.*]] = memref.subview %[[BOUT]]
+// CHECK-NOT:    gml_st.parallel
+// CHECK-DAG:    %[[OFS:.*]] = affine.apply {{.*}}(%[[TID]])
+// CHECK-DAG:    %[[TARG:.*]] = memref.subview %[[WARG]][%[[OFS]]] [4] [1]
+// CHECK-DAG:    %[[TVARG:.*]] = vector.transfer_read %[[TARG]][%c0]
+// CHECK-SAME:      vector<4xf32>
+// CHECK-DAG:    %[[TVOUT:.*]] = math.absf %[[TVARG]]
+// CHECK-DAG:    %[[TOUT:.*]] = memref.subview %[[WOUT]][%[[OFS]]] [4] [1]
+// CHECK-DAG:    vector.transfer_write %[[TVOUT]], %[[TOUT]][%c0]

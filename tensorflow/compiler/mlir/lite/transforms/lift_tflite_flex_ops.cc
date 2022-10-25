@@ -55,7 +55,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LIFTTFLITEFLEXOPSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 using ::tensorflow::StatusOr;
@@ -225,7 +225,7 @@ class LiftFlexCustomOp : public OpRewritePattern<TFL::CustomOp> {
 };
 
 class LiftTfliteFlexOpsPass
-    : public LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
+    : public impl::LiftTfliteFlexOpsPassBase<LiftTfliteFlexOpsPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<TF::TensorFlowDialect>();
   }

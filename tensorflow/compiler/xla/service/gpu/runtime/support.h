@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_
 
+#include <utility>
+
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 
 namespace xla {
@@ -47,6 +50,24 @@ inline se::DeviceMemoryBase GetDeviceAddress(
   uint64_t size = primitive_util::ByteWidth(memref.dtype);
   for (auto dim : memref.sizes) size *= dim;
   return se::DeviceMemoryBase(memref.data, size);
+}
+
+inline Shape ToShape(const runtime::StridedMemrefView& memref) {
+  // Recover `minor_to_major` dimensions permutation from strides.
+  auto indexed_strides_range =
+      llvm::map_range(llvm::enumerate(memref.strides), [](auto pair) {
+        return std::pair<int64_t, size_t>{pair.value(), pair.index()};
+      });
+
+  auto indexed_strides = llvm::to_vector(indexed_strides_range);
+  llvm::stable_sort(indexed_strides);
+
+  llvm::SmallVector<int64_t> minor_to_major;
+  minor_to_major.reserve(indexed_strides.size());
+  for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
+
+  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
+                                        minor_to_major);
 }
 
 }  // namespace gpu

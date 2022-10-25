@@ -63,16 +63,6 @@ class InternalTracingContext(trace.TracingContext):
     self._global_to_local_id = {}
     self._is_legacy_signature = is_legacy_signature
 
-  # TODO(b/202772221): Consider dropping after alias pattern matching is
-  # supported.
-  def make_reference_type(self, base_type: trace.TraceType,
-                          global_id: Hashable) -> trace.TraceType:
-    if global_id not in self._global_to_local_id:
-      self._global_to_local_id[global_id] = len(self._global_to_local_id)
-
-    return default_types.Reference(base_type,
-                                   self._global_to_local_id[global_id])
-
   def alias_global_id(self, global_id: Hashable) -> Hashable:
     if global_id not in self._global_to_local_id:
       self._global_to_local_id[global_id] = len(self._global_to_local_id)

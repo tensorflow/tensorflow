@@ -39,7 +39,6 @@ tf_cuda_library(
     name = "runtime_fallback_alwayslink",
     srcs = [
         "conversion_function.cc",
-        "runtime_fallback_batch_kernels.cc",
         "runtime_fallback_batch_tf_opkernels.cc",
         "runtime_fallback_gpu_allocator.cc",
         "runtime_fallback_gpu_allocator.h",

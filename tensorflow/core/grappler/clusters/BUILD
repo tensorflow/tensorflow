@@ -11,12 +11,6 @@ package(
     licenses = ["notice"],
 )
 
-config_setting(
-    name = "xsmm",
-    define_values = {"tensorflow_xsmm": "1"},
-    licenses = ["notice"],
-)
-
 tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
@@ -26,15 +20,12 @@ tf_cuda_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
-        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-    ] + select({
-        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
-        "//conditions:default": [],
-    }),
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cc_test(

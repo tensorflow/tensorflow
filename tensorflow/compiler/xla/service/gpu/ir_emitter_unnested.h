@@ -369,7 +369,8 @@ class IrEmitterUnnested : public IrEmitter {
       absl::string_view name, absl::Span<const BufferAllocation* const> args);
 
   // Helper for writing extra outputs from inside a reduce kernel.
-  Status EmitExtraOutputsForReduce(const ReductionOutputMap& result_ir_arrays,
+  Status EmitExtraOutputsForReduce(const Shape& reduction_operand_shape,
+                                   const ReductionOutputMap& result_ir_arrays,
                                    const llvm_ir::IrArray::Index& index,
                                    const ReductionCodegenInfo& reduction_info,
                                    const ExtraOutputGensMap& extra_output_gens);

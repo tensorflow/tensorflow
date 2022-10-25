@@ -80,7 +80,7 @@ Operation* GetHandleSource(Operation* op, DataFlowSolver& solver) {
 
 Attribute GetInitialValue(Operation* source) {
   if (auto global = dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
-    return global.value();
+    return global.getValue();
   }
   return nullptr;
 }
@@ -98,7 +98,7 @@ Type GetGlobalType(Operation* source) {
     return resource.getSubtypes().front();
   } else if (auto global_tensor_op =
                  dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
-    return global_tensor_op.type();
+    return global_tensor_op.getType();
   }
   // Likely can't actually happen, assuming tf_saved_model.semantics checks
   // already ran.

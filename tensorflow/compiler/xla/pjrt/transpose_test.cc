@@ -120,7 +120,7 @@ TEST(TransposeTest, InvalidTilings) {
       TransposePlan::Create(sizeof(float), {3, 4, 5}, {0, 1, 2},
                             /*input_layout=*/TransposePlan::Tiling{{8, 128}},
                             /*output_tiling=*/TransposePlan::Tiling{{4}});
-  EXPECT_EQ(plan.status().code(), tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(plan.status().code(), tsl::error::UNIMPLEMENTED);
   EXPECT_THAT(
       plan.status().error_message(),
       testing::HasSubstr(

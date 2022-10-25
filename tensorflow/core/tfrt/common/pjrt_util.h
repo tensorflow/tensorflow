@@ -32,6 +32,9 @@ Status SetPjRtClientInTFGlobalResourceManager(
 Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
     const DeviceType& device_type);
 
+StatusOr<xla::PjRtClient*> GetPjRtClientFromTFGlobalResourceManager(
+    const DeviceType& device_type);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TFRT_COMMON_PJRT_UTIL_H_

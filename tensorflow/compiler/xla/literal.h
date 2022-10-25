@@ -67,7 +67,7 @@ class LiteralBase {
   bool operator!=(const LiteralBase& other) const { return !(*this == other); }
 
   // Returns the shape of the literal.
-  const Shape& shape() const { return root_piece().subshape(); }
+  const Shape& shape() const;
 
   // Serialize to proto.
   LiteralProto ToProto() const;
@@ -457,7 +457,7 @@ class LiteralBase {
     void AllocateBuffers();
     void DeallocateBuffers();
     // Gets/sets the buffer holding the array data.
-    const char* buffer() const { return std::visit(BufferVisitor{}, rep_); }
+    const char* buffer() const;
     char* buffer() {
       return const_cast<char*>(const_cast<const Piece*>(this)->buffer());
     }
@@ -746,15 +746,7 @@ class LiteralBase {
     ArrayValueState array_value_state_ = ArrayValueState::kKnown;
   };  // class Piece
 
-  const Piece& piece(const ShapeIndex& shape_index) const {
-    Piece* piece = &const_cast<Piece&>(root_piece());
-    for (const auto i : shape_index) {
-      DCHECK_GE(i, 0);
-      DCHECK_LT(i, piece->children_size());
-      piece = &piece->child(i);
-    }
-    return *piece;
-  }
+  const Piece& piece(const ShapeIndex& shape_index) const;
 
   // Returns the piece at the root of the shape.
   virtual const Piece& root_piece() const = 0;
@@ -886,14 +878,16 @@ class MutableLiteralBase : public LiteralBase {
   // NativeT(absl::Span<const int64_t> indexes) or compatible.
   //
   // This literal must have a dense layout.
-  template <typename NativeT, typename FnType>
-  Status Populate(const FnType& generator);
+  template <typename NativeT>
+  Status Populate(
+      const std::function<NativeT(absl::Span<const int64_t>)>& generator);
 
   // A parallel version of Populate(). This can be used if the generator is
   // thread-safe and the values for the shape's different elements are
   // independent.
-  template <typename NativeT, typename FnType>
-  Status PopulateParallel(const FnType& generator);
+  template <typename NativeT>
+  Status PopulateParallel(
+      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator);
 
   // Fills this literal with the given value.
   template <typename NativeT>
@@ -1043,8 +1037,12 @@ class MutableLiteralBase : public LiteralBase {
   MaybeOwningShapePtr shape_;
 
   // Implementation details shared between Populate() and PopulateParallel()
-  template <typename NativeT, typename FnType>
-  Status PopulateInternal(const FnType& generator, bool parallel);
+  //  template <typename NativeT, typename FnType>
+  //  Status PopulateInternal(const FnType& generator, bool parallel);
+  template <typename NativeT>
+  Status PopulateInternal(
+      const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+      bool parallel);
 
   friend class LiteralBase;
   friend class MutableBorrowingLiteral;
@@ -1280,7 +1278,7 @@ NativeT LiteralBase::GetFirstElement() const {
 }
 
 template <typename NativeT>
-void LiteralBase::EachCell(
+TF_ATTRIBUTE_NOINLINE void LiteralBase::EachCell(
     std::function<void(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
@@ -1298,7 +1296,7 @@ void LiteralBase::EachCell(
 }
 
 template <typename NativeT>
-void MutableLiteralBase::MutableEachCell(
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::MutableEachCell(
     std::function<NativeT(absl::Span<const int64_t> indices, NativeT value)>
         per_cell) {
   if (ShapeUtil::IsZeroElementArray(shape())) {
@@ -1315,7 +1313,8 @@ void MutableLiteralBase::MutableEachCell(
 }
 
 template <typename NativeT>
-inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR1(
+    absl::Span<const NativeT> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 1);
   if (shape().is_static()) {
@@ -1330,7 +1329,7 @@ inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
 }
 
 template <typename NativeT>
-void MutableLiteralBase::PopulateR2(
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().rank(), 2);
@@ -1362,7 +1361,8 @@ void MutableLiteralBase::PopulateR2(
 }
 
 template <typename NativeT>
-void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
+TF_ATTRIBUTE_NOINLINE void MutableLiteralBase::PopulateFromArray(
+    const Array<NativeT>& values) {
   CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1393,9 +1393,10 @@ void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
-template <typename NativeT, typename FnType>
-Status MutableLiteralBase::PopulateInternal(const FnType& generator,
-                                            bool parallel) {
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateInternal(
+    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator,
+    bool parallel) {
   const Shape& this_shape = shape();
   const int64_t rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
@@ -1412,7 +1413,8 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
     int64_t minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](absl::Span<const int64_t> indexes, int thread_id) {
+    auto init_function = [&](absl::Span<const int64_t> indexes,
+                             int thread_id) -> StatusOr<bool> {
       DimensionVector minor_scan_indexes(rank, 0);
       const int64_t index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
@@ -1421,6 +1423,7 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
         minor_scan_indexes[stride_config.minor_dimension] = i;
         literal_data.at(index + i) = generator(minor_scan_indexes, thread_id);
       }
+      return true;
     };
     if (parallel) {
       ShapeUtil::ForEachIndexParallel(this_shape, stride_config.base,
@@ -1430,8 +1433,9 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
       ShapeUtil::ForEachIndex(
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
-          [&init_function](absl::Span<const int64_t> indexes) {
-            init_function(indexes, /*thread_id=*/-1);
+          [&init_function](
+              absl::Span<const int64_t> indexes) -> StatusOr<bool> {
+            auto result_ignored = init_function(indexes, /*thread_id=*/-1);
             return true;
           });
     }
@@ -1441,8 +1445,10 @@ Status MutableLiteralBase::PopulateInternal(const FnType& generator,
   }
   return OkStatus();
 }
-template <typename NativeT, typename FnType>
-Status MutableLiteralBase::Populate(const FnType& generator) {
+
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
+    const std::function<NativeT(absl::Span<const int64_t>)>& generator) {
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
         return generator(indexes);
@@ -1450,8 +1456,9 @@ Status MutableLiteralBase::Populate(const FnType& generator) {
       /*parallel=*/false);
 }
 
-template <typename NativeT, typename FnType>
-Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
+template <typename NativeT>
+TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
+    const std::function<NativeT(absl::Span<const int64_t>, int)>& generator) {
   return PopulateInternal<NativeT>(
       [&](absl::Span<const int64_t> indexes, int thread_id) {
         return generator(indexes, thread_id);

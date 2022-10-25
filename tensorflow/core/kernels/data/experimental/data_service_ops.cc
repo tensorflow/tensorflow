@@ -62,8 +62,7 @@ RegisterDatasetOp::RegisterDatasetOp(OpKernelConstruction* ctx)
   int64_t external_state_policy_int;
   OP_REQUIRES_OK(
       ctx, ctx->GetAttr(kExternalStatePolicy, &external_state_policy_int));
-  external_state_policy_ =
-      SerializationContext::ExternalStatePolicy(external_state_policy_int);
+  external_state_policy_ = ExternalStatePolicy(external_state_policy_int);
 
   if (ctx->HasAttr(kElementSpec)) {
     tstring element_spec;

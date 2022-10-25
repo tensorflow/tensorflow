@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -172,12 +173,14 @@ GatherOutputShardingFromOperandOperandPassthroughDimensions(
 // Returns an output sharding of gather by passing through the data operand's
 // sharding on index parallel dimensions
 std::optional<HloSharding> GatherOperandShardingFromOutputParallelDimensions(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter,
+    const CallGraph& call_graph);
 
 // Returns a data operand sharding of gather by passing through the output's
 // sharding.
 std::optional<HloSharding> GatherOperandShardingFromOutput(
-    const HloSharding& output_sharding, const HloInstruction& hlo);
+    const HloSharding& output_sharding, const HloInstruction& hlo,
+    const CallGraph& call_graph);
 
 // Returns the slice size for a scatter with given operand and update shapes.
 std::vector<int64_t> GetScatterSliceSize(const Shape& operand_shape,
@@ -193,7 +196,7 @@ std::optional<HloSharding> ScatterOutputShardingFromUpdate(
 // sharding.
 std::optional<HloSharding> ScatterUpdateShardingFromOutput(
     const HloSharding& per_output_sharding,
-    const HloScatterInstruction& scatter);
+    const HloScatterInstruction& scatter, const CallGraph& call_graph);
 
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding on operand pass-through dimensions.
@@ -211,7 +214,8 @@ ScatterUpdateShardingFromOutputOperandPassthroughDimensions(
 // Returns an update operand sharding of scatter by passing through the output's
 // sharding on index parallel dimensions.
 std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
-    const HloSharding& output_sharding, const HloScatterInstruction& scatter);
+    const HloSharding& output_sharding, const HloScatterInstruction& scatter,
+    const CallGraph& call_graph);
 
 // Returns an output sharding of gather or update operand sharding of scatter by
 // passing through the indices' sharding on index parallel dimensions.
@@ -268,15 +272,16 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 
 // Returns the iota dimension if maybe_iota is an kIota instruction or
 // equivalent to kIota.
-std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota);
+std::optional<int64_t> GetDimensionForIota(const HloInstruction* maybe_iota,
+                                           const CallGraph& call_graph);
 
 // Returns identified parallel dimensions of operands and indices for Gather.
 std::optional<GatherScatterParallelDims> GetGatherParallelBatchDims(
-    const HloInstruction& hlo);
+    const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns identified parallel dimensions of operands and indices for Scatter.
 std::optional<GatherScatterParallelDims> GetScatterParallelBatchDims(
-    const HloInstruction& hlo);
+    const HloInstruction& hlo, const CallGraph& call_graph);
 
 // Returns the parallel dimensions of the output of a gather based on the
 // parallel dimensions of the operands and indices.

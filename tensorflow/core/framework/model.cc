@@ -2112,17 +2112,23 @@ Status Node::FromProto(ModelProto::Node node_proto,
   return FromProtoHelper(node_proto, *node);
 }
 
-Model::Model() : optimization_period_ms_(kOptimizationPeriodMinMs) {
+Model::Model()
+    : optimization_period_ms_(kOptimizationPeriodMinMs),
+      safe_to_collect_metrics_(std::make_shared<GuardedBool>(true)) {
   model_gauge_cell_ = metrics::GetTFDataModelGauge(
       strings::StrCat(reinterpret_cast<uint64>(this)));
-  model_gauge_cell_->Set([&]() { return DebugString(); });
+  // Capture `safe_to_collect_metrics_` by value to avoid use-after-free issues
+  // when the callback is invoked after the model has been destroyed.
+  model_gauge_cell_->Set(
+      [this, my_safe_to_collect_metrics = this->safe_to_collect_metrics_]() {
+        mutex_lock l(my_safe_to_collect_metrics->mu);
+        return my_safe_to_collect_metrics->val ? DebugString() : std::string();
+      });
 }
 
 Model::~Model() {
-  // Before the model is destroyed, we record an empty string in the gauge to
-  // prevent race condition where the gauge callback is called after the Model
-  // is destroyed.
-  model_gauge_cell_->Set([]() { return std::string(); });
+  mutex_lock l(safe_to_collect_metrics_->mu);
+  safe_to_collect_metrics_->val = false;
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,

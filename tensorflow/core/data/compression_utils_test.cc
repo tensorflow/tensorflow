@@ -58,6 +58,8 @@ std::vector<std::vector<Tensor>> TestCases() {
       {CreateTensor<tstring>(TensorShape{1}, {"a"}),
        CreateTensor<int64_t>(TensorShape{1}, {1})},  // mixed tstring/int64
       {},                                            // empty
+      {CreateTensor<int64_t>(TensorShape{128, 128}),
+       CreateTensor<int64_t>(TensorShape{64, 2})},  // larger components
   };
 }
 

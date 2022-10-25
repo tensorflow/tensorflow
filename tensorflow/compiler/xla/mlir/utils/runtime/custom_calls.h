@@ -54,6 +54,8 @@ class CustomCallDeclarations {
   mlir::func::FuncOp GetOrCreate(mlir::ImplicitLocOpBuilder& b,
                                  llvm::StringRef target, mlir::Operation* op);
 
+  mlir::SymbolTable& sym_table() { return sym_table_; }
+
  private:
   mlir::SymbolTable sym_table_;
 

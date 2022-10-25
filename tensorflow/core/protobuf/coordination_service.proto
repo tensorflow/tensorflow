@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/compiler/xla/pjrt/distributed/protocol.proto";
-import "tensorflow/core/framework/device_attributes.proto";
+import "google/protobuf/any.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
@@ -48,18 +47,9 @@ message CoordinatedTaskStateInfo {
   CoordinationServiceError error_payload = 5;
 }
 
-// Represent device information from different runtimes.
-message TfDeviceList {
-  repeated DeviceAttributes devices = 1;
-}
-message XlaDeviceList {
-  xla.GlobalTopologyProto devices = 1;
-}
-message CoordinationServiceDeviceInfo {
-  oneof type {
-    TfDeviceList tf = 1;
-    XlaDeviceList xla = 2;
-  }
+// Placeholder message to be extended by other runtimes' device representations.
+message DeviceInfo {
+  repeated google.protobuf.Any device = 1;
 }
 
 // Request and response messages for registering a task to the cluster leader.
@@ -99,18 +89,18 @@ message WaitForAllTasksRequest {
   // Removed fields which used to specify the remote task.
   reserved 1, 2;
   // Removed field that specifically used TF device info.
-  reserved 3;
-  // All local device attributes on the request sender.
-  CoordinationServiceDeviceInfo local_device_info = 4;
+  reserved 3, 4;
   CoordinatedTask source_task = 5;
+  // All local device attributes on the request sender;
+  DeviceInfo device_info = 6;
 }
 
 message WaitForAllTasksResponse {
   fixed64 leader_incarnation = 1;
   // Removed field that specifically used TF device info.
-  reserved 2;
+  reserved 2, 3;
   // All devices in the cluster.
-  CoordinationServiceDeviceInfo cluster_device_info = 3;
+  DeviceInfo device_info = 4;
 }
 
 // Request and response messages for disconnecting a task from the service.

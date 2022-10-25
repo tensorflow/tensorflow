@@ -36,7 +36,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_LEGALIZEHASHTABLESPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This file has Legalize hash tables pass which is responsible for:
@@ -170,7 +170,7 @@ bool checkWhetherGraphHasValidStaticLookupTables(ModuleOp module) {
 // Pass which legalizes TF hash tables only when they are covered by the
 // TensorFlow Lite hash table kernels.
 class LegalizeHashTablesPass
-    : public LegalizeHashTablesPassBase<LegalizeHashTablesPass> {
+    : public impl::LegalizeHashTablesPassBase<LegalizeHashTablesPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(LegalizeHashTablesPass)
 

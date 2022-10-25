@@ -66,7 +66,8 @@ func.func @tiled_reduction_2d(%in: tensor<80x60xf32>) -> tensor<80xf32> {
   %sum = gml_st.loop (%i, %j) = (%c0, %c0) to (%c80, %c60) step (%c4, %c4)
           ins (%in_ = %in: tensor<80x60xf32>, %cst_ = %cst: f32)
           outs (%out_ = %out: tensor<80xf32>)
-          iterators["parallel", "reduction"] {
+          iterators[#gml_st.iterator_type<parallel>,
+                    #gml_st.iterator_type<reduction>] {
     %in_sub = tensor.extract_slice %in_[%i, %j] [4, 4] [1, 1]
         : tensor<80x60xf32> to tensor<4x4xf32>
     %out_sub = tensor.extract_slice %out_[%i] [4] [1]
@@ -128,7 +129,7 @@ func.func @reduction_1d(%arg0: tensor<16xf32>) -> tensor<f32> {
   %4 = gml_st.loop (%arg1) = (%c0) to (%c16) step (%c8)
       ins (%arg2 = %arg0: tensor<16xf32>)
       outs (%arg3 = %3: tensor<8xf32>)
-      iterators["reduction"] {
+      iterators[#gml_st.iterator_type<reduction>] {
     %6 = tensor.extract_slice %arg2[%arg1] [8] [1]
       : tensor<16xf32> to tensor<8xf32>
     %7 = tensor.expand_shape %6 [[0, 1]]
@@ -193,6 +194,61 @@ func.func @test_transfer_read_of_one_dim_expand_shape(
 // CHECK: %[[MULTI_REDUCTION:.*]] = vector.multi_reduction <maxf>, %[[SHAPE_CAST]], %[[MIN_FLOAT]] [0] : vector<2x5xf32> to vector<5xf32>
 // CHECK: %[[TRANSFER_WRITE:.*]] = vector.transfer_write %[[MULTI_REDUCTION]], %[[INIT_TENSOR]][%[[C0]]] {in_bounds = [true]} : vector<5xf32>, tensor<5xf32>
 // CHECK: return %[[TRANSFER_WRITE]] : tensor<5xf32>
+
+// -----
+
+func.func @tiled_matmul(%arg0: tensor<128x16xf32>, %arg1: tensor<16x64xf32>,
+                        %arg2: tensor<128x64xf32>) -> tensor<128x64xf32> {
+  %c2 = arith.constant 2 : index
+  %c16 = arith.constant 16 : index
+  %c8 = arith.constant 8 : index
+  %c4 = arith.constant 4 : index
+  %c0 = arith.constant 0 : index
+  %c128 = arith.constant 128 : index
+  %c64 = arith.constant 64 : index
+  %0 = gml_st.parallel (%arg3, %arg4) =
+        (%c0, %c0) to (%c128, %c64) step (%c8, %c4) {
+    %1 = gml_st.tile [%arg3, 0] [8, 16] [1, 1] : !gml_st.tile<8x16>
+    %2 = gml_st.materialize %arg0[%1] :
+            tensor<128x16xf32>[!gml_st.tile<8x16>] to tensor<8x16xf32>
+    %3 = gml_st.tile [0, %arg4] [16, 4] [1, 1] : !gml_st.tile<16x4>
+    %4 = gml_st.materialize %arg1[%3] :
+            tensor<16x64xf32>[!gml_st.tile<16x4>] to tensor<16x4xf32>
+    %5 = gml_st.tile [%arg3, %arg4] [8, 4] [1, 1] : !gml_st.tile<8x4>
+    %6 = gml_st.materialize %arg2[%5] :
+            tensor<128x64xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+    %7 = gml_st.for (%arg5) =
+                (%c0) to (%c16) step (%c2) outs (%arg6 = %6: tensor<8x4xf32>) {
+      %8 = gml_st.tile [0, %arg5] [8, 2] [1, 1] : !gml_st.tile<8x2>
+      %9 = gml_st.materialize %2[%8] :
+                tensor<8x16xf32>[!gml_st.tile<8x2>] to tensor<8x2xf32>
+      %10 = gml_st.tile [%arg5, 0] [2, 4] [1, 1] : !gml_st.tile<2x4>
+      %11 = gml_st.materialize %4[%10] :
+                tensor<16x4xf32>[!gml_st.tile<2x4>] to tensor<2x4xf32>
+      %12 = gml_st.tile [0, 0] [8, 4] [1, 1] : !gml_st.tile<8x4>
+      %13 = gml_st.materialize %arg6[%12] :
+                tensor<8x4xf32>[!gml_st.tile<8x4>] to tensor<8x4xf32>
+      %14 = linalg.matmul ins(%9, %11 : tensor<8x2xf32>, tensor<2x4xf32>)
+                          outs(%13 : tensor<8x4xf32>) -> tensor<8x4xf32>
+      gml_st.set_yield %14 into %arg6[%12] :
+                tensor<8x4xf32> into tensor<8x4xf32>[!gml_st.tile<8x4>]
+    } : tensor<8x4xf32>
+    gml_st.set_yield %7 into %arg2[%5] :
+            tensor<8x4xf32> into tensor<128x64xf32>[!gml_st.tile<8x4>]
+  } : tensor<128x64xf32>
+  return %0 : tensor<128x64xf32>
+}
+
+// CHECK-LABEL: func @tiled_matmul
+
+// CHECK: gml_st.for
+
+// CHECK: %[[LHS:.*]] = vector.transfer_read {{.*}} : tensor<8x2xf32>, vector<8x2xf32>
+// CHECK: %[[RHS:.*]] = vector.transfer_read {{.*}} : tensor<2x4xf32>, vector<2x4xf32>
+// CHECK: %[[OUT:.*]] = vector.transfer_read {{.*}} : tensor<8x4xf32>, vector<8x4xf32>
+// CHECK: vector.contract {{{.*}}} %[[LHS]], %[[RHS]], %[[OUT]]
+
+// CHECK-NOT: linalg.matmul
 
 // -----
 

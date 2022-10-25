@@ -1618,28 +1618,28 @@ TEST_F(ConditionalCodeMotionTest, ShapeChangingMovePreservesSharding) {
 HloModule RemoveIdenticalInstruction
 
 %on_true (arg_tuple.1: (f32[10])) -> (f32[10]) {
-  %arg_tuple.1 = (f32[10]{0}) parameter(0), sharding={{devices=[2,2]0,1,2,3}}
-  %get-tuple-element.1 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.1), index=0, sharding={devices=[2,2]0,1,2,3}
-  %add.1 = f32[10]{0} add(f32[10]{0} %get-tuple-element.1, f32[10]{0} %get-tuple-element.1), sharding={devices=[2,2]0,1,2,3}
-  ROOT %tuple.3 = (f32[10]{0}) tuple(f32[10]{0} %add.1), sharding={{devices=[2,2]0,1,2,3}}
+  %arg_tuple.1 = (f32[10]{0}) parameter(0), sharding={{devices=[4]0,1,2,3}}
+  %get-tuple-element.1 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.1), index=0, sharding={devices=[4]0,1,2,3}
+  %add.1 = f32[10]{0} add(f32[10]{0} %get-tuple-element.1, f32[10]{0} %get-tuple-element.1), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.3 = (f32[10]{0}) tuple(f32[10]{0} %add.1), sharding={{devices=[4]0,1,2,3}}
 }
 
 %on_false (arg_tuple.2: (f32[10])) -> (f32[10]) {
-  %arg_tuple.2 = (f32[10]{0}) parameter(0), sharding={{devices=[2,2]0,1,2,3}}
-  %get-tuple-element.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.2), index=0, sharding={devices=[2,2]0,1,2,3}
-  %mul.1 = f32[10]{0} multiply(f32[10]{0} %get-tuple-element.2, f32[10]{0} %get-tuple-element.2), sharding={devices=[2,2]0,1,2,3}
-  ROOT %tuple.4 = (f32[10]{0}) tuple(f32[10]{0} %mul.1), sharding={{devices=[2,2]0,1,2,3}}
+  %arg_tuple.2 = (f32[10]{0}) parameter(0), sharding={{devices=[4]0,1,2,3}}
+  %get-tuple-element.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %arg_tuple.2), index=0, sharding={devices=[4]0,1,2,3}
+  %mul.1 = f32[10]{0} multiply(f32[10]{0} %get-tuple-element.2, f32[10]{0} %get-tuple-element.2), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.4 = (f32[10]{0}) tuple(f32[10]{0} %mul.1), sharding={{devices=[4]0,1,2,3}}
 }
 
 ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10], f32[10]) {
   %pred.1 = pred[] parameter(0), sharding={replicated}
   %tuple.1 = (f32[10]{0}) parameter(1), sharding={{replicated}}
-  %tuple.2 = (f32[10]{0}) parameter(2), sharding={{devices=[2,2]0,1,2,3}}
-  %conditional = (f32[10]{0}) conditional(pred[] %pred.1, (f32[10]{0}) %tuple.1, (f32[10]{0}) %tuple.2), true_computation=%on_true, false_computation=%on_false, sharding={{devices=[2,2]0,1,2,3}}
-  %get-first-index = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[2,2]0,1,2,3}
-  %get-first-index.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[2,2]0,1,2,3}
-  %pow.1 = f32[10]{0} power(f32[10]{0} %get-first-index, f32[10]{0} %get-first-index.2), sharding={devices=[2,2]0,1,2,3}
-  ROOT %tuple.0 = (f32[10]{0}, f32[10]{0}) tuple(f32[10]{0} %pow.1, f32[10]{0} %get-first-index.2), sharding={{devices=[2,2]0,1,2,3}, {devices=[2,2]0,1,2,3}}
+  %tuple.2 = (f32[10]{0}) parameter(2), sharding={{devices=[4]0,1,2,3}}
+  %conditional = (f32[10]{0}) conditional(pred[] %pred.1, (f32[10]{0}) %tuple.1, (f32[10]{0}) %tuple.2), true_computation=%on_true, false_computation=%on_false, sharding={{devices=[4]0,1,2,3}}
+  %get-first-index = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[4]0,1,2,3}
+  %get-first-index.2 = f32[10]{0} get-tuple-element((f32[10]{0}) %conditional), index=0, sharding={devices=[4]0,1,2,3}
+  %pow.1 = f32[10]{0} power(f32[10]{0} %get-first-index, f32[10]{0} %get-first-index.2), sharding={devices=[4]0,1,2,3}
+  ROOT %tuple.0 = (f32[10]{0}, f32[10]{0}) tuple(f32[10]{0} %pow.1, f32[10]{0} %get-first-index.2), sharding={{devices=[4]0,1,2,3}, {devices=[4]0,1,2,3}}
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -1655,7 +1655,7 @@ ENTRY %main (pred.1: pred[], tuple.1: (f32[10]), tuple.2: (f32[10])) -> (f32[10]
   EXPECT_THAT(
       conditional,
       AnyOf(op::NoSharding(),
-            op::Sharding("{{devices=[2,2]0,1,2,3},{devices=[2,2]0,1,2,3}}")));
+            op::Sharding("{{devices=[4]0,1,2,3},{devices=[4]0,1,2,3}}")));
 }
 
 TEST_F(ConditionalCodeMotionTest, ConvertDuplicate) {

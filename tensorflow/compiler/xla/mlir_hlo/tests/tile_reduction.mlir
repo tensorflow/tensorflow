@@ -15,17 +15,17 @@ func.func @tile_reduction(%arg0 : tensor<1x?xf32>) -> tensor<1xf32> {
   // CHECK:      %[[PARTIAL0:.*]] = tensor.empty() : tensor<32xf32>
   // CHECK:      %[[PARTIAL1:.*]] = gml_st.parallel
   // CHECK-SAME:     (%[[LANE:.*]]) = (%c0) to (%c32) step (%c1)
-  // CHECK-SAME:     distribution ("warp")
-  // CHECK:        gml_st.set_yield %[[RESULT1]] into %[[PARTIAL0]]
+  // CHECK-SAME:     distribution ("thread")
+  // CHECK:        %[[RESULTVAL:.*]] = gml_st.materialize %[[RESULT1]]
+  // CHECK:        gml_st.set_yield %[[RESULTVAL]] into %[[PARTIAL0]]
   // CHECK:      %[[PARTIAL2:.*]] = gml_st.parallel
   // CHECK-SAME:     (%[[LANE:.*]]) = (%c0) to (%c32) step (%c1)
-  // CHECK-SAME:     distribution ("warp")
+  // CHECK-SAME:     distribution ("thread")
   // CHECK:        %[[INITVAL:.*]] = gml_st.materialize %[[PARTIAL1]]
   // CHECK:        %[[PARTVAL:.*]] = gml_st.for
   // CHECK-SAME:       (%[[COL:.*]]) = (%[[LANE]]) to (%[[RDIM]]) step (%c32)
   // CHECK-SAME:       outs (%[[OUTVAL:.*]] = %[[INITVAL]]: tensor<1xf32>)
-  // CHECK:          %[[SPACE:.*]] = gml_st.space [1, %[[RDIM]]] : !gml_st.tile<1x?>
-  // CHECK:          %[[TILE:.*]] = gml_st.tile %[[SPACE]] [0, %arg2] [1, 1] [1, 1]
+  // CHECK:          %[[TILE:.*]] = gml_st.tile [0, %arg2] [1, 1] [1, 1]
   // CHECK:          %[[INVAL:.*]] = gml_st.materialize %arg0
   // CHECK:          %[[ACCVAL:.*]] = linalg.generic
   // CHECK-SAME:         ins(%[[INVAL]] : tensor<1x1xf32>)

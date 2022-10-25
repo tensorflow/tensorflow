@@ -48,7 +48,9 @@
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -59,6 +61,10 @@
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#if GOOGLE_CUDA
+#include "tensorflow/compiler/xla/service/gpu/runtime/graph_launch.h"
+#endif  // GOOGLE_CUDA
 
 namespace xla {
 namespace gpu {
@@ -253,24 +259,6 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 }
 
 // -------------------------------------------------------------------------- //
-
-static Shape ToShape(const runtime::StridedMemrefView& memref) {
-  // Recover `minor_to_major` dimensions permutation from strides.
-  auto indexed_strides_range =
-      llvm::map_range(llvm::enumerate(memref.strides), [](auto pair) {
-        return std::pair<int64_t, size_t>{pair.value(), pair.index()};
-      });
-
-  auto indexed_strides = llvm::to_vector(indexed_strides_range);
-  llvm::stable_sort(indexed_strides);
-
-  llvm::SmallVector<int64_t> minor_to_major;
-  minor_to_major.reserve(indexed_strides.size());
-  for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
-
-  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
-                                        minor_to_major);
-}
 
 static StatusOr<GemmConfig> GetGemmConfig(const runtime::StridedMemrefView& lhs,
                                           const runtime::StridedMemrefView& rhs,
@@ -1114,73 +1102,6 @@ static bool MemsetFn(runtime::ExecutionContext* ctx, void** args, void** attrs,
                              .To<RuntimeChecks()>(Memset::Handler())
                              .release();
 
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-// -------------------------------------------------------------------------- //
-
-namespace {
-struct Fft {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(const ServiceExecutableRunOptions* run_options,
-                          runtime::StridedMemrefView input,
-                          runtime::StridedMemrefView output,
-                          ArrayRef<int64_t> fft_length,
-                          se::fft::Type fft_type) const;
-  static Fft Handler() { return Fft(); }
-};
-}  // namespace
-
-absl::Status Fft::operator()(const ServiceExecutableRunOptions* run_options,
-                             runtime::StridedMemrefView input,
-                             runtime::StridedMemrefView output,
-                             ArrayRef<int64_t> fft_length,
-                             se::fft::Type fft_type) const {
-  // TODO(ezhulenev): Cache FFT plans in the GpuExecutable.
-  FftPlanCache fft_plan_cache;
-
-  se::Stream* stream = run_options->stream();
-  se::StreamExecutor* executor = stream->parent();
-
-  if (input.dtype == PrimitiveType::F64 || input.dtype == PrimitiveType::C128) {
-    // Adjust FFT type to reflect double precision.
-    switch (fft_type) {
-      case se::fft::Type::kC2CForward:
-        fft_type = se::fft::Type::kZ2ZForward;
-        break;
-      case se::fft::Type::kC2CInverse:
-        fft_type = se::fft::Type::kZ2ZInverse;
-        break;
-      case se::fft::Type::kR2C:
-        fft_type = se::fft::Type::kD2Z;
-        break;
-      case se::fft::Type::kC2R:
-        fft_type = se::fft::Type::kZ2D;
-        break;
-      default:
-        return absl::InvalidArgumentError("Unsupported FFT type");
-    }
-  }
-
-  auto st =
-      RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
-             ToShape(output), fft_type, fft_length, executor->device_ordinal(),
-             &fft_plan_cache, stream, run_options->allocator());
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
-}
-
-static bool Fft(runtime::ExecutionContext* ctx, void** args, void** attrs,
-                void** rets) {
-  static auto* handler = CustomCall::Bind("xla.gpu.fft")
-                             .UserData<const ServiceExecutableRunOptions*>()
-                             .Arg<runtime::StridedMemrefView>()  // input
-                             .Arg<runtime::StridedMemrefView>()  // output
-                             .Attr<ArrayRef<int64_t>>("fft_length")
-                             .Attr<se::fft::Type>("fft_type")
-                             .To<RuntimeChecks()>(Fft::Handler())
-                             .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
@@ -2099,7 +2020,12 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   RegisterKernelLaunchCustomCalls(registry);
   RegisterTracingCustomCalls(registry);
 
-  registry.Register("xla.gpu.fft", &xla::gpu::Fft);
+#if GOOGLE_CUDA
+  // Graph launch kernels depend on Cuda Graph API.
+  RegisterGraphLaunchCustomCalls(registry);
+#endif  // GOOGLE_CUDA
+
+  RegisterFftCustomCalls(registry);
   registry.Register("xla.gpu.cholesky", &xla::gpu::Cholesky);
   registry.Register("xla.gpu.collective_permute", &xla::gpu::CollectivePermute);
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);

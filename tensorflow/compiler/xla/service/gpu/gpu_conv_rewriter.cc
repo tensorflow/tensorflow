@@ -661,6 +661,10 @@ CudnnConvBackendConfig GetDefaultBackendConfig() {
 // Helper function to create a custom_call instruction to replace the given
 // conv instruction
 static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
+  if (conv->batch_group_count() > 1) {
+    conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
+  }
+
   if (ConvolutionMatch m = MatchBackwardInput(conv)) {
     auto& [window, dnums, rhs] = *m;
     return CreateGpuConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
@@ -677,10 +681,6 @@ static StatusOr<HloInstruction*> CreateCustomCallHelper(HloInstruction* conv) {
 
   // If all else fails, try a forward convolution.
   if (CanImplementAsGpuForwardConv(conv)) {
-    if (conv->batch_group_count() > 1) {
-      conv = ConvertBatchGroupedToFeatureGroupedConvolution(conv);
-    }
-
     return CreateGpuConv(kCudnnConvForwardCallTarget, conv->shape(),
                          conv->mutable_operand(0), conv->mutable_operand(1),
                          conv->window(), conv->convolution_dimension_numbers(),

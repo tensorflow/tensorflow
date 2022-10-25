@@ -84,7 +84,7 @@ class CoordinationServiceRpcHandler {
 
  private:
   mutex agent_mu_;
-  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_);
+  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_) = nullptr;
 };
 
 }  // namespace tensorflow

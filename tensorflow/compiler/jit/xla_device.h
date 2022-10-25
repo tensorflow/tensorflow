@@ -300,6 +300,11 @@ struct XlaDeviceOpRegistrations {
   std::vector<std::unique_ptr<kernel_factory::OpKernelRegistrar>>
       op_kernel_registrars;
 };
+
+XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(
+    const char* device, const char* jit_device,
+    OpKernel* (*factory)(OpKernelConstruction*), StringPiece kernel_class_name);
+
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
 

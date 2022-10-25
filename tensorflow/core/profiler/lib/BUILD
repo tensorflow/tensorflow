@@ -89,6 +89,7 @@ cc_library(
     deps = [
         ":profiler_interface",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_factory",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -97,7 +98,6 @@ cc_library(
 cc_library(
     name = "profiler_factory_impl",
     srcs = [
-        "profiler_factory.cc",
         "profiler_factory.h",
     ],
     copts = tf_profiler_copts(),
@@ -109,23 +109,10 @@ cc_library(
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/lib:profiler_factory_impl",
     ],
     alwayslink = True,
-)
-
-tf_cc_test(
-    name = "profiler_factory_test",
-    srcs = ["profiler_factory_test.cc"],
-    deps = [
-        ":profiler_factory",
-        ":profiler_interface",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/memory",
-    ],
 )
 
 cc_library(
@@ -156,12 +143,12 @@ cc_library(
 
 cc_library(
     name = "profiler_controller",
-    srcs = ["profiler_controller.cc"],
     hdrs = ["profiler_controller.h"],
     deps = [
         ":profiler_interface",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/lib:profiler_controller",
     ],
 )
 
@@ -272,6 +259,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
@@ -285,46 +273,21 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
 )
 
-tf_cc_test(
-    name = "scoped_annotation_test",
-    size = "small",
-    srcs = ["scoped_annotation_test.cc"],
-    deps = [
-        ":scoped_annotation",
-        ":scoped_annotation_stack",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler/backends/cpu:annotation_stack",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 cc_library(
     name = "profiler_lock",
-    srcs = ["profiler_lock.cc"],
     hdrs = ["profiler_lock.h"],
     copts = tf_profiler_copts(),
     visibility = ["//tensorflow/core/profiler:internal"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_cc_test(
-    name = "profiler_lock_test",
-    srcs = ["profiler_lock_test.cc"],
-    deps = [
-        ":profiler_lock",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/profiler/lib:profiler_lock",
     ],
 )
 

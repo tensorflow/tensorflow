@@ -15,37 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
-#include "tensorflow/lite/model.h"  // Legacy.
-#include "tensorflow/lite/mutable_op_resolver.h"
-
-namespace tflite {
-namespace ops {
-namespace builtin {
-
-// This built-in op resolver provides a list of TfLite delegates that could be
-// applied by TfLite interpreter by default.
-class BuiltinOpResolver : public MutableOpResolver {
- public:
-  // NOTE: we *deliberately* don't define any virtual functions here to avoid
-  // behavior changes when users pass a derived instance by value or assign a
-  // derived instance to a variable of this class. See "object slicing"
-  // (https://en.wikipedia.org/wiki/Object_slicing)) for details.
-  BuiltinOpResolver();
-};
-
-// TfLite interpreter could apply a TfLite delegate by default. To completely
-// disable this behavior, one could choose to use the following class
-// BuiltinOpResolverWithoutDefaultDelegates.
-class BuiltinOpResolverWithoutDefaultDelegates : public BuiltinOpResolver {
- public:
-  BuiltinOpResolverWithoutDefaultDelegates() : BuiltinOpResolver() {
-    delegate_creators_.clear();
-    opaque_delegate_creators_.clear();
-  }
-};
-
-}  // namespace builtin
-}  // namespace ops
-}  // namespace tflite
+/// For documentation, see third_party/tensorflow/lite/core/kernels/register.h.
+#include "tensorflow/lite/core/kernels/register.h"
 
 #endif  // TENSORFLOW_LITE_KERNELS_REGISTER_H_

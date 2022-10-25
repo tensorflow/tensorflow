@@ -192,6 +192,24 @@ void BuildTracebackSubmodule(py::module& m) {
       },
       "Python wrapper around the Python C API function PyCode_Addr2Line");
 
+#if PY_VERSION_HEX >= 0x030b0000
+  traceback.def_static(
+      "code_addr2location",
+      [](py::handle code, int lasti) {
+        if (!PyCode_Check(code.ptr())) {
+          throw xla::XlaRuntimeError("code argument must be a code object");
+        }
+        int start_line, start_column, end_line, end_column;
+        if (!PyCode_Addr2Location(reinterpret_cast<PyCodeObject*>(code.ptr()),
+                                  lasti, &start_line, &start_column, &end_line,
+                                  &end_column)) {
+          throw py::error_already_set();
+        }
+        return py::make_tuple(start_line, start_column, end_line, end_column);
+      },
+      "Python wrapper around the Python C API function PyCode_Addr2Location");
+#endif  // PY_VERSION_HEX >= 0x030b0000
+
 #if PY_VERSION_HEX < 0x030b0000
   // This function replaces the exception traceback associated with the current
   // Python thread.

@@ -27,6 +27,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include <atomic>
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/initialization_status.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
@@ -212,6 +214,13 @@ class Interpreter {
       const int* dims, TfLiteQuantizationParams quantization,
       bool is_variable = false, const size_t rank_dims_signature = 0,
       const int* dims_signature = nullptr);
+
+  /// Enables application to cancel in flight invocation with `Cancel`.
+  /// This can be only set when building the interpreter and should not called
+  /// directly.
+  /// NOTE: This function does not affect cancellation triggered by the callback
+  /// passed in `SetCancellationFunction`.
+  TfLiteStatus EnableCancellation();
 #endif  // DOXYGEN_SKIP
   // Functions to access tensor data
 
@@ -527,6 +536,14 @@ class Interpreter {
   /// WARNING: This is an experimental API and subject to change.
   void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
 
+  /// Attempts to cancel in flight invocation if any.
+  /// This will not affect `Invoke`s that happends after the cancellation.
+  /// Non blocking. Thread safe.
+  /// Returns kTfLiteError if cancellation is not enabled, otherwise returns
+  /// kTfLiteOk.
+  /// WARNING: This is an experimental API and subject to change.
+  TfLiteStatus Cancel();
+
   /// Allow a delegate to look at the graph and modify the graph to handle
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
@@ -547,6 +564,7 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
@@ -908,6 +926,23 @@ class Interpreter {
 
   // InterpreterOptions object which is being used.
   std::unique_ptr<InterpreterOptions> options_;
+
+  // Stores control edges that are encoded in the metadata of the model. Updated
+  // in SetMetadata; model_control_dependencies_.empty() means that there were
+  // no control dependencies encoded in the metadata, or that we were unable to
+  // parse them. We assume that, if we were able to parse them, they are
+  // consistent with the model and no further consistency check (e.g., bounds
+  // checks when dereferencing by subgraph and operator index) will take place.
+  ModelControlDependencies model_control_dependencies_;
+
+  // Flag indicating whether to continue or cancel in flight invocation.
+  // If false, the in flight invocation will be cancelled.
+  // Will be set true when application starts a new invocation.
+  // The flag is shared across all subgraphs in the interpreter.
+  // When the application calls `Cancel`, the flag will be set to false.
+  // It "resets" to true at the beginning of each `Invoke`.
+  std::atomic_flag continue_invocation_{false};
+  bool cancellation_enabled_ = false;
 };
 
 }  // namespace tflite

@@ -44,8 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -784,7 +784,7 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
 PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
                                   PyObject* kwargs) {
   JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
-  tensorflow::profiler::TraceMe traceme([&] {
+  tsl::profiler::TraceMe traceme([&] {
     return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
   });
   py::kwargs py_kwargs;

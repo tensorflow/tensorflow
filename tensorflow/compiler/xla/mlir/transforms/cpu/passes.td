@@ -22,15 +22,15 @@ include "mlir/Pass/PassBase.td"
 // Auxiliary passes for lowering to XLA Cpu runtime.
 //===----------------------------------------------------------------------===//
 
-def TileThloForCpuPass :
-    Pass<"xla-cpu-tile-thlo", "mlir::func::FuncOp"> {
-  let summary = "Tiles thlo ops for running on CPU";
+def ConvertLmhloToCpuRuntimePass :
+    Pass<"xla-lmhlo-to-cpu-runtime", "mlir::ModuleOp"> {
+  let summary = "Converts lmhlo operations to XLA Cpu runtime custom calls";
 
   let description = [{
-    Tiles thlo ops with the preferred factors of the CPU backend.
+      Converts lmhlo dialect operations to XLA Cpu runtime custom calls.
   }];
 
-  let constructor = "createTileThloForCpuPass()";
+  let constructor = "createConvertLmhloToCpuRuntimePass()";
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_MLIR_TRANSFORMS_CPU_PASSES_TD_

@@ -191,6 +191,22 @@ TEST(DataServiceClientTest, RecordBufferEvents) {
   client.Cancel();
 }
 
+TEST(DataServiceClientTest, Cancel) {
+  TestCluster test_cluster(/*num_workers=*/1);
+  TF_ASSERT_OK(test_cluster.Initialize());
+  DatasetClient<int64_t> dataset_client(test_cluster);
+  TF_ASSERT_OK_AND_ASSIGN(std::string dataset_id,
+                          dataset_client.RegisterDataset(RangeDataset(10)));
+
+  DataServiceParams params = GetDataServiceParams(
+      dataset_id, test_cluster.DispatcherAddress(), ProcessingModeDef::OFF);
+  DataServiceClient client(params);
+  TF_ASSERT_OK(client.Initialize());
+  client.Cancel();
+  EXPECT_THAT(client.GetNext(GetTestDataServiceContext),
+              StatusIs(error::CANCELLED));
+}
+
 TEST(DataServiceClientTest, ValidationError) {
   DataServiceParams params = GetDataServiceParams(
       "dataset_id", "tf_data_service_address", ProcessingModeDef::OFF);

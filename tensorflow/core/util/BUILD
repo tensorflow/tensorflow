@@ -18,15 +18,7 @@ load(
     "tf_kernel_library",
     "tf_mkl_kernel_library",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.default.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "get_compatible_with_portable", "tf_version_info_genrule")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -87,7 +79,6 @@ filegroup(
         "bcast.h",
         "command_line_flags.h",
         "determinism.h",
-        "device_name_utils.cc",
         "device_name_utils.h",
         "dump_graph.cc",
         "dump_graph.h",
@@ -218,7 +209,6 @@ filegroup(
         "batch_util.cc",
         "bcast.cc",
         "debug_events_writer.cc",
-        "device_name_utils.cc",
         "dump_graph.cc",
         "equal_graph_def.cc",
         "events_writer.cc",
@@ -392,16 +382,31 @@ cc_library(
 
 cc_library(
     name = "stats_calculator_portable",
-    srcs = [
-        "stat_summarizer_options.h",
-        "stats_calculator.cc",
-    ],
     hdrs = [
+        "stat_summarizer_options.h",
         "stats_calculator.h",
     ],
     copts = tf_copts(),
     visibility = [
         "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/tsl/util:stats_calculator_portable",
+    ],
+)
+
+cc_library(
+    name = "stat_summarizer",
+    hdrs = [
+        "stat_summarizer.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":stats_calculator_portable",
+        "//tensorflow/core:framework",
     ],
 )
 
@@ -458,16 +463,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test(
-    name = "stats_calculator_test",
-    srcs = ["stats_calculator_test.cc"],
-    deps = [
-        ":stats_calculator_portable",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
 cc_library(
     name = "reporter",
     hdrs = ["reporter.h"],
@@ -496,6 +491,11 @@ cc_library(
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":env_var",
+        "//tensorflow/core/platform:platform_port",
+        "@com_google_absl//absl/base",
     ],
     alwayslink = 1,
 )
@@ -639,8 +639,8 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        ":env_var",
         "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/util:env_var",
         "//tensorflow/tsl/util:determinism",
     ],
     alwayslink = 1,
@@ -836,7 +836,6 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
-        "device_name_utils_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
         "events_writer_test.cc",

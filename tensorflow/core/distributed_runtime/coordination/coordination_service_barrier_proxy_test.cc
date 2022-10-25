@@ -61,10 +61,11 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
                       std::unique_ptr<CoordinationClient> leader_client,
                       StatusCallback error_fn));
   MOCK_METHOD0(IsInitialized, bool());
+  MOCK_METHOD0(IsConnected, bool());
+  MOCK_METHOD0(IsError, bool());
   MOCK_METHOD0(Connect, Status());
-  MOCK_METHOD1(WaitForAllTasks,
-               Status(const CoordinationServiceDeviceInfo& local_devices));
-  MOCK_METHOD0(GetClusterDeviceInfo, const CoordinationServiceDeviceInfo&());
+  MOCK_METHOD1(WaitForAllTasks, Status(const DeviceInfo& local_devices));
+  MOCK_METHOD0(GetClusterDeviceInfo, const DeviceInfo&());
   MOCK_METHOD0(GetOwnTask, StatusOr<CoordinatedTask>());
   MOCK_METHOD1(GetTaskState, StatusOr<std::vector<CoordinatedTaskStateInfo>>(
                                  const std::vector<CoordinatedTask>& task));

@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/c/c_api.h"
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/signature_runner.h"
 
@@ -190,6 +190,11 @@ const char* TfLiteSignatureRunnerGetOutputName(
 const TfLiteTensor* TfLiteSignatureRunnerGetOutputTensor(
     const TfLiteSignatureRunner* signature_runner, const char* output_name) {
   return signature_runner->impl->output_tensor(output_name);
+}
+
+TfLiteStatus TfLiteSignatureRunnerCancel(
+    TfLiteSignatureRunner* signature_runner) {
+  return signature_runner->impl->Cancel();
 }
 
 void TfLiteSignatureRunnerDelete(TfLiteSignatureRunner* signature_runner) {

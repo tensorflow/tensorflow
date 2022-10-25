@@ -1,4 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
+    "tsl_cc_test",
+)
 
 # Snappy targets.
 
@@ -76,7 +79,7 @@ cc_library(
     alwayslink = True,
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "snappy_test",
     size = "small",
     srcs = ["snappy_test.cc"],

@@ -34,7 +34,7 @@ namespace TFL {
 
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_DENSETOSPARSEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // If sparsity level is below this threshold, keep the tensor in dense format.
@@ -277,7 +277,8 @@ std::vector<T> BuildSparsityParameterAttribute(
   return compressed_data;
 }
 
-struct DenseToSparsePass : public DenseToSparsePassBase<DenseToSparsePass> {
+struct DenseToSparsePass
+    : public impl::DenseToSparsePassBase<DenseToSparsePass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(DenseToSparsePass)
 
   void runOnOperation() override;

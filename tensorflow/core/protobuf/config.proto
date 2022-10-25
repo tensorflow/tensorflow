@@ -627,13 +627,10 @@ message ConfigProto {
     // Session::Extend() may not be supported.
     bool optimize_for_static_graph = 12;
 
-    // This field will eventually be deprecated and replaced by
-    // mlir_bridge_rollout (b/166038521).
+    // Whether to enable the MLIR-based TF->XLA bridge. This is only used if set
+    // to true. Default value or false is ignored. Use mlir_bridge_rollout for
+    // finer control.
     //
-    // Whether to enable the MLIR-based TF->XLA bridge.
-    //
-    // This is a replacement to the existing bridge, and not ready for
-    // production usage yet.
     // If this option is set to true when a session is created, MLIR is used to
     // perform the set of graph transformations to put the graph in a form that
     // can be executed with delegation of some computations to an accelerator.
@@ -665,9 +662,6 @@ message ConfigProto {
       // to process the TF graph.
       MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
     }
-    // This field is underdevelopment, for now use enable_mlir_bridge
-    // (b/166038521).
-    //
     // Whether to enable the MLIR-based TF->XLA bridge.
     MlirBridgeRollout mlir_bridge_rollout = 17;
 

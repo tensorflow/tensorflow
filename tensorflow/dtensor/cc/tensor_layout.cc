@@ -397,6 +397,12 @@ bool Mesh::IsMeshDim(const std::string& dim_name) const {
   return false;
 }
 
+std::vector<std::string> Mesh::MeshDimNames() const {
+  std::vector<std::string> mesh_names;
+  for (const auto& mesh_dim : dims()) mesh_names.push_back(mesh_dim.name);
+  return mesh_names;
+}
+
 int Mesh::GetMeshDimIndexWithName(const std::string& mesh_name) const {
   int mesh_index = -1;
   for (int i = 0; i < dims().size(); ++i) {

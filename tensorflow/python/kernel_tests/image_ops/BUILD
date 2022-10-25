@@ -96,7 +96,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "draw_bounding_box_op_test",
     size = "small",
     srcs = ["draw_bounding_box_op_test.py"],

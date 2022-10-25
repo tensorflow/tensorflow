@@ -22,8 +22,6 @@ from absl.testing import parameterized
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.trace_type import default_types
 from tensorflow.python.compat import v2_compat
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -34,7 +32,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
-from tensorflow.python.types import trace
 
 
 class TestAttr:
@@ -64,25 +61,6 @@ class DummyGenericClass:
 
 
 class TraceTypeBuilderTest(test.TestCase, parameterized.TestCase):
-
-  @combinations.generate(combinations.combine(mode=['eager']))
-  def testIteratorAliasing(self):
-    it1 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
-    it2 = iter(dataset_ops.DatasetV2.from_tensor_slices([1, 2, 3]))
-
-    self.assertEqual(
-        trace_type.from_value((it1, it1)), trace_type.from_value((it2, it2)))
-    self.assertEqual(
-        trace_type.from_value((it1, it2)), trace_type.from_value((it2, it1)))
-    self.assertNotEqual(
-        trace_type.from_value((it1, it1)), trace_type.from_value((it1, it2)))
-
-  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
-  def testIteratorTypesImplementTracing(self):
-    self.assertTrue(
-        issubclass(iterator_ops.OwnedIterator, trace.SupportsTracingProtocol))
-    self.assertTrue(
-        issubclass(iterator_ops.IteratorSpec, trace.SupportsTracingProtocol))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testCompositeAndSpec(self):

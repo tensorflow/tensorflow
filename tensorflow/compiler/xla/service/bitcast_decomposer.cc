@@ -113,8 +113,25 @@ StatusOr<bool> BitcastDecomposer::Run(
         CHECK(ShapeUtil::TransposeIsBitcast(input->shape(), shape, perm))
             << "from=" << input->shape() << " to=" << shape
             << " perm=" << absl::StrJoin(perm, ",");
-        HloInstruction* ret = comp->AddInstruction(
-            HloInstruction::CreateTranspose(shape, input, perm));
+
+        // Simplify a potential chain of bitcast-transposes to a single one, as
+        // algebraic simplifier does not operate inside fusions.
+        HloInstruction* arg = input;
+        std::vector<int64_t> permutation(perm.begin(), perm.end());
+        while (arg->opcode() == HloOpcode::kTranspose &&
+               ShapeUtil::TransposeIsBitcast(arg->operand(0)->shape(),
+                                             arg->shape(), arg->dimensions())) {
+          permutation = ComposePermutations(arg->dimensions(), permutation);
+          arg = arg->mutable_operand(0);
+        }
+
+        // Do not create a transpose if it's an identity.
+        bool is_identity_transpose = absl::c_is_sorted(permutation);
+        HloInstruction* ret =
+            is_identity_transpose
+                ? arg
+                : comp->AddInstruction(
+                      HloInstruction::CreateTranspose(shape, arg, permutation));
         VLOG(3) << "Transposed " << input->ToString()
                 << " to: " << ret->ToString();
         return ret;

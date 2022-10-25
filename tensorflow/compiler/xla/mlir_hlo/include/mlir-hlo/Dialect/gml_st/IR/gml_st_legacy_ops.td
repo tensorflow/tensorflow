@@ -25,7 +25,7 @@ include "mlir/Interfaces/SideEffectInterfaces.td"
 def GMLST_LoopOp : GMLST_Op<"loop", [
      AttrSizedOperandSegments,
      DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-     RecursiveSideEffects,
+     RecursiveMemoryEffects,
      SingleBlockImplicitTerminator<"gml_st::YieldOp">
     ]> {
   let summary = "Loop-like operation";
@@ -102,7 +102,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
                        Variadic<Index>:$step,
                        Variadic<AnyType>:$inputs,
                        Variadic<AnyShaped>:$outputs,
-                       ArrayAttr:$iterator_types,
+                       IteratorTypeArrayAttr:$iterator_types,
                        OptionalAttr<ArrayAttr>:$distribution_types);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
@@ -293,9 +293,6 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
              });
     }
 
-    static constexpr StringRef getParallelIteratorTypeName() {
-      return "parallel";
-    }
     static constexpr StringRef getDistributionTypesAttrStrName() {
       return "distribution_types";
     }
@@ -306,8 +303,9 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
 
     /// Return whether the loop dimension is parallel or not.
     bool isParallelDimension(unsigned dim) {
-      StringAttr attr = this->getIteratorTypes()[dim].cast<StringAttr>();
-      return attr.getValue() == getParallelIteratorTypeName();
+      IteratorTypeAttr attr =
+          this->getIteratorTypes()[dim].cast<IteratorTypeAttr>();
+      return attr.getValue() == utils::IteratorType::parallel;
     }
   }];
 
@@ -316,7 +314,7 @@ def GMLST_LoopOp : GMLST_Op<"loop", [
   let hasFolder = 1;
 }
 
-def GMLST_YieldOp : GMLST_Op<"yield", [NoSideEffect, ReturnLike, Terminator,
+def GMLST_YieldOp : GMLST_Op<"yield", [Pure, ReturnLike, Terminator,
     HasParent<"::mlir::gml_st::LoopOp, ::mlir::gml_st::SetYieldOp">]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "Yield operation";

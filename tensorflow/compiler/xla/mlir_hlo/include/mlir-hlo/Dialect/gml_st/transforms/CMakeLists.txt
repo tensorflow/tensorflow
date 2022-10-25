@@ -26,8 +26,3 @@ set(LLVM_TARGET_DEFINITIONS tiling_interface.td)
 mlir_tablegen(tiling_interface.h.inc -gen-op-interface-decls)
 mlir_tablegen(tiling_interface.cc.inc -gen-op-interface-defs)
 add_public_tablegen_target(MLIRGmlStTilingInterfaceIncGen)
-
-set(LLVM_TARGET_DEFINITIONS compose_set_interface.td)
-mlir_tablegen(compose_set_interface.h.inc -gen-op-interface-decls)
-mlir_tablegen(compose_set_interface.cc.inc -gen-op-interface-defs)
-add_public_tablegen_target(MLIRGmlStComposeSetInterfaceIncGen)

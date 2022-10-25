@@ -329,6 +329,13 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
   });
   py::class_<Mesh>(m, "Mesh")
       .def(py::init(&Mesh::CreateMesh))
+      .def_property_readonly("name", &Mesh::name)
+      .def_property_readonly("dim_names", &Mesh::MeshDimNames)
+      .def("__contains__", &Mesh::IsMeshDim, py::arg("dim_name"))
       .def("to_string", &Mesh::ToString,
-           "Returns string representation of Mesh.");
+           "Returns string representation of Mesh.")
+      .def("contains_dim", &Mesh::IsMeshDim, py::arg("dim_name"),
+           "Returns True if a Mesh contains the given dimension name.")
+      .def("device_type", &Mesh::device_type,
+           "Returns the device_type of a Mesh.");
 }

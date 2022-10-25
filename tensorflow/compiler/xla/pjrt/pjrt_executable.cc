@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -39,6 +40,44 @@ StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
     output.set_serialized_multi_slice_config(multi_slice_config->Serialize());
   }
   return output;
+}
+
+void GetOpSharding(std::vector<OpSharding>& out, const OpSharding& sharding) {
+  if (sharding.type() == OpSharding::TUPLE) {
+    for (const OpSharding& s : sharding.tuple_shardings()) {
+      GetOpSharding(out, s);
+    }
+  } else {
+    out.push_back(sharding);
+  }
+}
+
+std::optional<std::vector<OpSharding>> PjRtExecutable::GetOutputShardings()
+    const {
+  auto modules = GetHloModules();
+  if (!modules.ok() || (*modules).empty() ||
+      !(*modules)[0]->has_spmd_output_sharding()) {
+    return std::nullopt;
+  }
+
+  std::vector<OpSharding> out;
+  GetOpSharding(out, (*modules)[0]->spmd_output_sharding().ToProto());
+  return out;
+}
+
+std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
+    const {
+  auto modules = GetHloModules();
+  if (!modules.ok() || (*modules).empty() ||
+      !(*modules)[0]->has_spmd_parameters_shardings()) {
+    return std::nullopt;
+  }
+
+  std::vector<OpSharding> out;
+  for (const auto& s : (*modules)[0]->spmd_parameters_shardings()) {
+    GetOpSharding(out, s.ToProto());
+  }
+  return out;
 }
 
 }  // namespace xla
