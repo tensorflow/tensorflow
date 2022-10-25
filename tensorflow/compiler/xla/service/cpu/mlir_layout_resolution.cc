@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
@@ -104,6 +106,9 @@ HloInstruction* NormalizeValue(HloInstruction* value, const Shape& shape,
 // Inserts reshapes and transposes for entry computation parameters and results
 // that have non-default layouts.
 Status NormalizeEntryComputationLayout(xla::HloModule* module) {
+  if (!EntryComputationLayoutCanBeNormalized(*module)) {
+    return ::tsl::OkStatus();
+  }
   auto* computation = module->entry_computation();
   const auto& computation_layout = module->entry_computation_layout();
   for (int i = 0; i < computation->num_parameters(); ++i) {
@@ -122,13 +127,44 @@ Status NormalizeEntryComputationLayout(xla::HloModule* module) {
   return ::tsl::OkStatus();
 }
 
+Status NormalizeCustomCallLayouts(xla::HloModule* module) {
+  for (auto* computation : module->computations()) {
+    for (auto* instruction : computation->instructions()) {
+      auto* call = DynCast<HloCustomCallInstruction>(instruction);
+      if (!call) {
+        continue;
+      }
+
+      std::vector<HloInstruction*> users = instruction->users();
+
+      // Normalize the output, if necessary. Note that the output of the custom
+      // call is an "input" from the MLIR perspective.
+      auto* normalized = NormalizeValue(call, call->shape(), /*is_input=*/true);
+      if (normalized != call) {
+        TF_RETURN_IF_ERROR(call->ReplaceUsesWith(users, normalized));
+      }
+
+      // Normalize any operands that require it.
+      if (call->layout_constrained()) {
+        const auto& operand_shapes = call->operand_shapes_with_layout();
+        for (int64_t i = 0, e = call->operand_count(); i != e; ++i) {
+          auto* normalized_operand = NormalizeValue(
+              call->mutable_operand(i), operand_shapes[i], /*is_input=*/false);
+          TF_RETURN_IF_ERROR(call->ReplaceOperandWith(i, normalized_operand));
+        }
+      }
+    }
+  }
+  return ::tsl::OkStatus();
+}
+
 }  // namespace
 
 StatusOr<bool> MlirLayoutResolution::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  if (!EntryComputationLayoutCanBeNormalized(*module)) return false;
   TF_RETURN_IF_ERROR(NormalizeEntryComputationLayout(module));
+  TF_RETURN_IF_ERROR(NormalizeCustomCallLayouts(module));
   return true;
 }
 
