@@ -104,8 +104,7 @@ class CustomCall {
 
     // Check only the types of the arguments and attributes. If an attribute
     // with the same type but different name is passed to the custom call
-    // handler,
-    // it will happily proceed ignoring the name mismatch.
+    // handler, it will happily proceed ignoring the name mismatch.
     kTypes = 1,
 
     // Do not check the number of arguments and attributes and their types, and
@@ -114,6 +113,16 @@ class CustomCall {
     // passed to the handler, and can easily lead to segfaults if the data
     // doesn't match the expected custom call signature.
     kNone = 2
+  };
+
+  struct Options {
+    // Check that attributes passed at run time exactly match the attributes
+    // defined by the custom call binding. If `false` then custom call handler
+    // will happily ignore any additional attributes passed at run time. It is
+    // unsafe to disable run-time checks for custom calls that support non-exact
+    // attributes, as the custom call handler uses pre-computed attributes
+    // offsets based on the binding specification.
+    bool exact_attrs = true;
   };
 
   static constexpr bool CheckNames(RuntimeChecks checks) {
@@ -149,6 +158,7 @@ class CustomCall {
                              const DiagnosticEngine* diagnostic) const = 0;
 
   static CustomCallBinding<> Bind(std::string callee);
+  static CustomCallBinding<> Bind(std::string callee, const Options& opts);
 };
 
 // Forward declare template defined below.
@@ -218,6 +228,7 @@ using HasRemainingArgs =
 template <typename... Ts>
 class CustomCallBinding {
  public:
+  using Options = CustomCall::Options;
   using RuntimeChecks = CustomCall::RuntimeChecks;
 
   template <typename T>
@@ -259,7 +270,7 @@ class CustomCallBinding {
     return std::unique_ptr<CustomCallHandler<checks, Fn, Ts...>>(
         new CustomCallHandler<checks, Fn, Ts...>(
             std::forward<Fn>(fn), std::move(callee_), std::move(attrs_),
-            std::move(values_)));
+            std::move(values_), opts_));
   }
 
  private:
@@ -267,7 +278,8 @@ class CustomCallBinding {
   friend class CustomCallBinding;
   friend class CustomCall;
 
-  explicit CustomCallBinding(std::string callee) : callee_(std::move(callee)) {
+  CustomCallBinding(std::string callee, const Options& opts)
+      : callee_(std::move(callee)), opts_(opts) {
     static_assert(sizeof...(Ts) == 0, "custom call arguments must be empty");
   }
 
@@ -275,17 +287,24 @@ class CustomCallBinding {
   CustomCallBinding(CustomCallBinding<TTs...>&& other)  // NOLINT
       : callee_(std::move(other.callee_)),
         attrs_(std::move(other.attrs_)),
-        values_(std::move(other.values_)) {}
+        values_(std::move(other.values_)),
+        opts_(other.opts_) {}
 
   CustomCallBinding(CustomCallBinding&) = delete;
 
   std::string callee_;              // custom call target
   std::vector<std::string> attrs_;  // names of bound attributes
   std::vector<std::any> values_;    // values bound to arguments
+  Options opts_;
 };
 
 inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
-  return CustomCallBinding<>(std::move(callee));
+  return Bind(std::move(callee), Options());
+}
+
+inline CustomCallBinding<> CustomCall::Bind(std::string callee,
+                                            const Options& opts) {
+  return CustomCallBinding<>(std::move(callee), opts);
 }
 
 // Custom calls return results to the caller through the template
@@ -892,12 +911,14 @@ class CustomCallHandler : public CustomCall {
       return diagnostic->EmitError(InvalidArgument(
           "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
 
-    // Check that we have enough attributes passed to the custom call. Each
-    // individual attribute decoding will check the name and the type.
-    if (LLVM_UNLIKELY(eval(num_attrs < attrs_.size())))
+    // Check that we have a correct number of attributes passed to the custom
+    // call. Each individual attribute decoding will check the name and the
+    // type of the attribute.
+    if (LLVM_UNLIKELY(eval(opts_.exact_attrs ? num_attrs != attrs_.size()
+                                             : num_attrs < attrs_.size())))
       return diagnostic->EmitError(InvalidArgument(
-          "Wrong number of attributes: expected at least %d got %d",
-          attrs_.size(), num_attrs));
+          "Wrong number of attributes: expected %s%d got %d",
+          opts_.exact_attrs ? "" : "at least ", attrs_.size(), num_attrs));
 
     // Define index sequences to access custom call operands.
     using Is = std::make_index_sequence<kSize>;
@@ -976,11 +997,12 @@ class CustomCallHandler : public CustomCall {
   friend class CustomCallBinding;
 
   CustomCallHandler(Fn fn, std::string callee, std::vector<std::string> attrs,
-                    std::vector<std::any> values)
+                    std::vector<std::any> values, const Options& opts)
       : fn_(std::move(fn)),
         callee_(std::move(callee)),
         attrs_(std::move(attrs)),
         values_(std::move(values)),
+        opts_(opts),
         attrs_idx_(attrs_.size()) {
     // Sort attributes names.
     std::vector<std::string> sorted = attrs_;
@@ -997,6 +1019,8 @@ class CustomCallHandler : public CustomCall {
   std::string callee_;
   std::vector<std::string> attrs_;
   std::vector<std::any> values_;
+  Options opts_;
+
   // A mapping from the attribute index to its index in the lexicographically
   // sorter vector of attribute names. Attributes passed in the custom call
   // handler sorted by the name, we use this index to efficiently find the
