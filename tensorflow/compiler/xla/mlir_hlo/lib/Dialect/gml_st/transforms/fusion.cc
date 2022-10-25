@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -139,35 +140,32 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
   LogicalResult matchAndRewrite(MaterializeOp materializeOp,
                                 PatternRewriter& rewriter) const override {
     assert(filterFn && "expect filter function");
-    if (failed(filterFn(materializeOp))) return failure();
+    if (failed(filterFn(materializeOp)))
+      return rewriter.notifyMatchFailure(materializeOp, "filtered");
 
     Location loc = materializeOp.getLoc();
-    FailureOr<Value> fused = createFusedOp(rewriter, materializeOp);
-    if (failed(fused)) return failure();
+    FailureOr<Value> fusedOr = createFusedOp(rewriter, materializeOp);
+    if (failed(fusedOr)) return failure();  // Match failure aleady notified.
 
     // Insert cast if needed.
-    if (fused->getType() != materializeOp.getType()) {
+    Value fused = *fusedOr;
+    if (fused.getType() != materializeOp.getType()) {
       if (!materializeOp.getType().isa<RankedTensorType>()) {
         // the result should be a scalar, insert tensor.extract
-        auto tensorType = fused->getType().dyn_cast<RankedTensorType>();
+        auto tensorType = fused.getType().dyn_cast<RankedTensorType>();
         assert(tensorType && tensorType.getNumElements() == 1 &&
                "resulting tensor should contain a single element");
         auto zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
-        fused =
-            rewriter
-                .create<tensor::ExtractOp>(
-                    loc, *fused, SmallVector<Value>(tensorType.getRank(), zero))
-                .getResult();
+        fused = rewriter.create<tensor::ExtractOp>(
+            loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
       } else {
         // the result should be a tensor, cast it to the correct shape
-        fused =
-            rewriter
-                .create<tensor::CastOp>(loc, materializeOp.getType(), *fused)
-                .getResult();
+        fused = rewriter.create<tensor::CastOp>(loc, materializeOp.getType(),
+                                                fused);
       }
     }
 
-    rewriter.replaceOp(materializeOp, *fused);
+    rewriter.replaceOp(materializeOp, fused);
     return success();
   }
 
@@ -224,23 +222,32 @@ struct FusionPass : public impl::FusionPassBase<FusionPass> {
 
 }  // namespace
 
-FailureOr<Value> createFusedOp(OpBuilder& b, MaterializeOp materializeOp) {
+FailureOr<Value> createFusedOp(PatternRewriter& rewriter,
+                               MaterializeOp materializeOp) {
   auto tileableOp = materializeOp.getSource().getDefiningOp<TilingInterface>();
-  if (!tileableOp) return failure();
+  if (!tileableOp) {
+    return rewriter.notifyMatchFailure(
+        materializeOp, "expected source to be defined by tiling interface op ");
+  }
 
   auto tileOp = materializeOp.getSet().getDefiningOp<gml_st::TileOp>();
-  if (!tileOp) return failure();
+  if (!tileOp) {
+    return rewriter.notifyMatchFailure(
+        materializeOp, "expected set to be defined by gml_st.tile");
+  }
 
   SmallVector<OpFoldResult> offsets = tileOp.getMixedOffsets();
   SmallVector<OpFoldResult> sizes = tileOp.getMixedSizes();
-  ;
 
   // Tile the producer.
-  OpBuilder::InsertionGuard guard(b);
-  b.setInsertionPoint(materializeOp);
-  FailureOr<Value> tiledProducer =
-      tileableOp.generateResultTileValue(b, /*resultNumber=*/0, offsets, sizes);
-  if (failed(tiledProducer)) return failure();
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(materializeOp);
+  FailureOr<Value> tiledProducer = tileableOp.generateResultTileValue(
+      rewriter, /*resultNumber=*/0, offsets, sizes);
+  if (failed(tiledProducer)) {
+    return rewriter.notifyMatchFailure(tileableOp,
+                                       "failed to tile the producer");
+  }
 
   return tiledProducer;
 }

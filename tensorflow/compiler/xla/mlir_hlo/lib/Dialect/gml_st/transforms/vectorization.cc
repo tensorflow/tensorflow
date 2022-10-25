@@ -263,9 +263,12 @@ struct ParallelOpVectorizationPattern : public OpRewritePattern<ParallelOp> {
         builder.clone(bodyMember, bvm);
       }
     };
+    Optional<StringAttr> distTypeAttr;
+    if (auto distType = op.getDistributionType())
+      distTypeAttr = rewriter.getStringAttr(*distType);
     auto vectorParallel = rewriter.create<ParallelOp>(
         loc, resultTypes, op.getLowerBound(), op.getUpperBound(), op.getStep(),
-        op.getDistributionTypeAttr(), bodyBuilder);
+        distTypeAttr, bodyBuilder);
     bvm.map(op.getResults(), vectorParallel.getResults());
 
     convertVectorResultsToTensor(op, op.getTerminator().getDsts(), bvm,

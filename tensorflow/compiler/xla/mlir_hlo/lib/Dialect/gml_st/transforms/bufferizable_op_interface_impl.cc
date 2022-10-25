@@ -323,9 +323,12 @@ struct ParallelOpInterface
     auto loopOp = cast<ParallelOp>(op);
 
     // Create new TiledLoopOp.
+    Optional<StringAttr> distTypeAttr;
+    if (auto distType = cast<ParallelOp>(op).getDistributionType())
+      distTypeAttr = rewriter.getStringAttr(*distType);
     auto newLoopOp = rewriter.create<ParallelOp>(
         loopOp.getLoc(), TypeRange{llvm::None}, loopOp.getLowerBound(),
-        loopOp.getUpperBound(), loopOp.getStep());
+        loopOp.getUpperBound(), loopOp.getStep(), distTypeAttr);
 
     // Move the old body into the new loop.
     rewriter.mergeBlocks(loopOp.getBody(), newLoopOp.getBody(),

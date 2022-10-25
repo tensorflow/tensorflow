@@ -89,7 +89,7 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
   Value reductionDim = rewriter.create<tensor::DimOp>(loc, input, c1);
   OpFoldResult zeroAttr = rewriter.getIndexAttr(0);
   OpFoldResult oneAttr = rewriter.getIndexAttr(1);
-  auto warpDist = rewriter.getStringAttr("warp");
+  auto threadDist = rewriter.getStringAttr("thread");
 
   // Create warp-sized partial reduction result tensor.
   Value partial = rewriter.create<tensor::EmptyOp>(loc, kWarpSize,
@@ -101,7 +101,7 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
 
   // Create gml_st.parallel initializing the partial result.
   partial = getResult(rewriter.create<gml_st::ParallelOp>(
-      loc, partial.getType(), c0, cWarpSize, c1, warpDist,
+      loc, partial.getType(), c0, cWarpSize, c1, threadDist,
       [&](OpBuilder& builder, Location loc, ValueRange ivs) {
         OpFoldResult laneIdx = ivs.front();
         Value partPoint =
@@ -111,7 +111,7 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
 
   // Create gml_st.parallel finalizing the partial result.
   partial = getResult(rewriter.create<gml_st::ParallelOp>(
-      loc, partial.getType(), c0, cWarpSize, c1, warpDist,
+      loc, partial.getType(), c0, cWarpSize, c1, threadDist,
       [&](OpBuilder& builder, Location loc, ValueRange ivs) {
         Value laneIdx = ivs.front();
         Value partPoint = builder.create<gml_st::TileOp>(
