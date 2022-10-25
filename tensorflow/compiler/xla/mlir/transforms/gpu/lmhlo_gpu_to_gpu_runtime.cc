@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/transforms/gpu/uid_generator.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -70,23 +71,11 @@ class ConvertLmhloGpuToGpuRuntimePass
 
 //===----------------------------------------------------------------------===//
 
-// Every Gemm operation in the module gets assigned a unique id, that is passed
-// to the custom call handler. This id is used for caching resources between the
-// different invocations of the same gemm operation.
-class GemmUidGenerator {
- public:
-  GemmUidGenerator() : cnt_(0) {}
-  int64_t uid() { return cnt_.fetch_add(1); }
-
- private:
-  std::atomic<int64_t> cnt_;
-};
-
 class GemmOpLowering : public OpRewritePattern<GEMMOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.gemm";
 
  public:
-  GemmOpLowering(MLIRContext* ctx, GemmUidGenerator& uid,
+  GemmOpLowering(MLIRContext* ctx, UidGenerator& uid,
                  CustomCallDeclarations& custom_calls)
       : OpRewritePattern<GEMMOp>(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
@@ -121,7 +110,7 @@ class GemmOpLowering : public OpRewritePattern<GEMMOp> {
   }
 
  private:
-  GemmUidGenerator& uid_;
+  UidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
@@ -132,7 +121,7 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
   static constexpr const char kCustomCallTarget[] = "xla.gpu.cublas.lt.matmul";
 
  public:
-  CublasLtMatmulOpLowering(MLIRContext* ctx, GemmUidGenerator& uid,
+  CublasLtMatmulOpLowering(MLIRContext* ctx, UidGenerator& uid,
                            CustomCallDeclarations& custom_calls)
       : OpRewritePattern<CublasLtMatmulOp>(ctx),
         uid_(uid),
@@ -193,7 +182,7 @@ class CublasLtMatmulOpLowering : public OpRewritePattern<CublasLtMatmulOp> {
   }
 
  private:
-  GemmUidGenerator& uid_;
+  UidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
@@ -219,9 +208,9 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
   }
 
  public:
-  explicit ConvOpLowering(MLIRContext* ctx,
+  explicit ConvOpLowering(MLIRContext* ctx, UidGenerator& uid,
                           CustomCallDeclarations& custom_calls)
-      : OpRewritePattern<Conv>(ctx), custom_calls_(custom_calls) {}
+      : OpRewritePattern<Conv>(ctx), uid_(uid), custom_calls_(custom_calls) {}
 
   LogicalResult matchAndRewrite(Conv op,
                                 PatternRewriter& rewriter) const override {
@@ -255,6 +244,9 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
                       attr->getValues<bool>().end());
       set_attr(name, b.getI64TensorAttr(values));
     };
+
+    // Assign a unique id to this instance of a conv operation.
+    call->setAttr(b.getStringAttr("uid"), b.getI64IntegerAttr(uid_.uid()));
 
     // Copy dimension number attributes.
     call->setAttr(b.getStringAttr("conv_dims"), op.getDimensionNumbers());
@@ -293,6 +285,7 @@ class ConvOpLowering : public OpRewritePattern<Conv> {
   }
 
  private:
+  UidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
@@ -384,16 +377,19 @@ void ConvertLmhloGpuToGpuRuntimePass::runOnOperation() {
   RewritePatternSet patterns(ctx);
 
   // Each unique Gemm/Matmul operation in the module will get assigned a uid.
-  GemmUidGenerator gemm_uid;
-  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering>(ctx, gemm_uid,
+  UidGenerator matmul_uid;
+  patterns.insert<GemmOpLowering, CublasLtMatmulOpLowering>(ctx, matmul_uid,
                                                             custom_calls);
 
+  // Each unique Conv operation in the module will get assigned a uid.
+  UidGenerator conv_uid;
+  patterns.insert<ConvForwardOpLowering, ConvForwardFusedOpLowering,
+                  ConvForwardFusedSideInputOpLowering,
+                  ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(
+      ctx, conv_uid, custom_calls);
+
   // Patterns for every other Gpu operation.
-  patterns
-      .insert<CholeskyOpLowering, ConvForwardOpLowering,
-              ConvForwardFusedOpLowering, ConvForwardFusedSideInputOpLowering,
-              ConvBackwardFilterOpLowering, ConvBackwardInputOpLowering>(
-          ctx, custom_calls);
+  patterns.insert<CholeskyOpLowering>(ctx, custom_calls);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns))))
     return signalPassFailure();

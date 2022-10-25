@@ -645,7 +645,7 @@ struct Conv {
       std::optional<runtime::FlatMemrefView> bias,
       std::optional<runtime::StridedMemrefView> side_input,
       runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
-      ConvDimensionNumbers conv_dims,
+      int64_t uid, ConvDimensionNumbers conv_dims,
       // Window config
       ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
       ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
@@ -712,6 +712,8 @@ struct Conv {
 template <typename... Ts>
 static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
+      // Unique convolution id for caching state.
+      .template Attr<int64_t>("uid")
       // Convolution dimensions numbers
       .template Attr<ConvDimensionNumbers>("conv_dims")
       // Window config

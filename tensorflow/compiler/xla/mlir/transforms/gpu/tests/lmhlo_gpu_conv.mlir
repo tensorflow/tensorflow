@@ -19,6 +19,7 @@ func.func @conv_forward(%input: memref<1x4x4x1024xf16, #map1>,
   // CHECK: call @xla.gpu.conv.forward(
   // CHECK-SAME: %[[INPUT]], %[[FILTER]], %[[OUTPUT]], %[[SCRATCH]])
 
+  // CHECK-DAG: uid = 0 : i64
   // CHECK-DAG: conv_dims = #mhlo.conv<[b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f]>
 
   // CHECK-DAG: window_strides = dense<1> : tensor<2xi64>

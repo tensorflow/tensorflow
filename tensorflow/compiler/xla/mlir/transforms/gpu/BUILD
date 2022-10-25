@@ -35,6 +35,7 @@ cc_library(
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
         "passes.cc",
+        "uid_generator.h",
     ],
     hdrs = ["passes.h"],
     # Override cc_library()'s internal default value of ["//buildenv/target:gce"].`
