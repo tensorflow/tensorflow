@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/legalize_to_linalg_utils.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_mhlo_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/type_conversion.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -1638,7 +1639,7 @@ class DotGeneralBatchMatMulOpConversion
   }
 };
 
-class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
+class MapOpToGenericConverter : public OpConversionPattern<mhlo::MapOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1677,6 +1678,46 @@ class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
               it.value().getType().cast<ShapedType>().getElementType()));
     }
     signatureConverter.addInputs(resultType.getElementType());
+
+    rewriter.applySignatureConversion(&region, signatureConverter,
+                                      getTypeConverter());
+    rewriter.replaceOp(op, linalgOp.getResults());
+    return success();
+  }
+};
+
+class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::MapOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!verifyHloOpBufferOrTensorSemantics(op)) return failure();
+
+    auto resultType =
+        typeConverter->convertType(op.getType()).cast<ShapedType>();
+    assert(op.getDimensions().size() == resultType.getRank() &&
+           "Expected a pointwise map");
+
+    Location loc = op.getLoc();
+    Value output =
+        getEmptyTensorFor(rewriter, loc, resultType, op, adaptor.getOperands());
+
+    auto linalgOp = rewriter.create<linalg::MapOp>(
+        loc, resultType, adaptor.getOperands(), output);
+
+    // Convert the signature of the body. We scalarize the operands and add a
+    // scalar operand representing the output tensor.
+    Region& region = linalgOp.getRegion();
+    rewriter.inlineRegionBefore(op.getComputation(), region, region.end());
+    TypeConverter::SignatureConversion signatureConverter(op.getNumOperands());
+
+    for (const auto& it : llvm::enumerate(op.getOperation()->getOperands())) {
+      signatureConverter.addInputs(
+          it.index(),
+          typeConverter->convertType(
+              it.value().getType().cast<ShapedType>().getElementType()));
+    }
 
     rewriter.applySignatureConversion(&region, signatureConverter,
                                       getTypeConverter());
@@ -3398,7 +3439,8 @@ struct HloLegalizeToLinalgPass
 
     auto typeConverter = createHloToLinalgTypeConverter();
     auto func = getOperation();
-    mhlo::populateHloToLinalgConversionPattern(&ctx, *typeConverter, &patterns);
+    mhlo::populateHloToLinalgConversionPattern(&ctx, *typeConverter, &patterns,
+                                               enablePrimitiveOps);
     if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -3409,7 +3451,8 @@ struct HloLegalizeToLinalgPass
 
 void populateHloToLinalgConversionPattern(MLIRContext* context,
                                           TypeConverter& typeConverter,
-                                          RewritePatternSet* patterns) {
+                                          RewritePatternSet* patterns,
+                                          bool enablePrimitiveOps) {
   // clang-format off
   patterns->add<
       BitcastConvertConverter,
@@ -3418,7 +3461,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
       IotaConverter<mhlo::DynamicIotaOp>,
-      MapOpConverter,
       PointwiseToLinalgConverter<mhlo::AbsOp>,
       PointwiseToLinalgConverter<mhlo::AddOp>,
       PointwiseToLinalgConverter<mhlo::AndOp>,
@@ -3482,6 +3524,17 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       RngUniformConversion,
       TorchIndexSelectOpConversion,
       ReduceRegionReturnOpConversion>(typeConverter, context);
+
+  if (enablePrimitiveOps) {
+    patterns->add<
+      MapOpConverter
+    >(typeConverter, context);
+  } else {
+    patterns->add<
+      MapOpToGenericConverter
+    >(typeConverter, context);
+  }
+
   // Ensure specialized patterns are higher priority than their generic
   // versions.
   patterns->add<

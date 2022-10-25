@@ -74,7 +74,8 @@ void populateHloShapeOpsToStandardConversionPattern(
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHloToLinalgConversionPattern(MLIRContext *context,
                                           TypeConverter &typeConverter,
-                                          RewritePatternSet *patterns);
+                                          RewritePatternSet *patterns,
+                                          bool enablePrimitiveOps = false);
 
 // Collection of rewrite patterns for lowering of HLO dim operations.
 void populateShapeComputationPatterns(MLIRContext *context,

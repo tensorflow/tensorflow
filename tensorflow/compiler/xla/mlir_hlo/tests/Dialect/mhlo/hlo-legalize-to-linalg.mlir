@@ -1,4 +1,10 @@
-// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file --canonicalize | FILECHECK_OPTS="" FileCheck %s
+// RUN: mlir-hlo-opt %s --hlo-legalize-to-linalg --split-input-file \
+// RUN:   --canonicalize | \
+// RUN: FILECHECK_OPTS="" FileCheck %s
+
+// RUN: mlir-hlo-opt %s --hlo-legalize-to-linalg="enable-primitive-ops=true" \
+// RUN:   --split-input-file --canonicalize | \
+// RUN: FILECHECK_OPTS="" FileCheck %s --check-prefix=CHECK-PRIMITIVE
 
 // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
@@ -2518,6 +2524,21 @@ func.func @map_compare(%arg0: tensor<?xcomplex<f32>>,
 // CHECK: }
 // CHECK: return %[[MAP]] : tensor<?xi1>
 
+// CHECK-PRIMITIVE-LABEL: @map_compare
+// CHECK-PRIMITIVE-SAME: %[[ARG0:.*]]: tensor<?xcomplex<f32>>,
+// CHECK-PRIMITIVE-SAME: %[[ARG1:.*]]: tensor<?xcomplex<f32>>)
+
+// CHECK-PRIMITIVE: %[[INIT:.+]] = tensor.empty
+// CHECK-PRIMITIVE: %[[MAP:.+]] = linalg.map
+// CHECK-PRIMITIVE-SAME: ins(%[[ARG0]], %[[ARG1]]
+// CHECK-PRIMITIVE-SAME: outs(%[[INIT]] : tensor<?xi1>)
+// CHECK-PRIMITIVE-SAME: (%[[A:.+]]: complex<f32>, %[[B:.+]]: complex<f32>) {
+// CHECK-PRIMITIVE: %[[RE1:.+]] = complex.re %[[A]] : complex<f32>
+// CHECK-PRIMITIVE: %[[RE2:.+]] = complex.re %[[B]] : complex<f32>
+// CHECK-PRIMITIVE: %[[CMP:.+]] = arith.cmpf oeq, %[[RE1]], %[[RE2]] : f32
+// CHECK-PRIMITIVE: linalg.yield %[[CMP]] : i1
+// CHECK-PRIMITIVE: }
+// CHECK-PRIMITIVE: return %[[MAP]] : tensor<?xi1>
 // -----
 
 func.func @reduce_add(%arg0: tensor<5x4xi32>, %arg1: tensor<i32>) -> tensor<5xi32> {
