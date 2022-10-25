@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s --split-input-file --gml-tiling-cwise-gpu-warps | \
+// RUN: mlir-hlo-opt %s --split-input-file --gml-tiling-gpu-warp | \
 // RUN: FileCheck %s
 
 #map = affine_map<(d0) -> (d0)>

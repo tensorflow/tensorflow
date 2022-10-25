@@ -70,7 +70,7 @@ add_mlir_library(GmlStPasses
   linalg_utils.cc
   tiling.cc
   tiling_cwise.cc
-  tiling_cwise_gpu_warps.cc
+  tiling_gpu_warp.cc
   tiling_reduction.cc
   tiling_softmax.cc
   transform_map_for_cpu.cc

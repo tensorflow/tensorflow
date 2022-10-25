@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
-#define GEN_PASS_DEF_TILINGCWISEGPUWARPSPASS
+#define GEN_PASS_DEF_TILINGGPUWARPPASS
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 
 namespace mlir {
@@ -56,7 +56,7 @@ bool isFusible(Operation* op) {
 
 constexpr const char* kThreadDistributionLabel = "thread";
 
-struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
+struct TilingGPUWarpPattern : OpRewritePattern<linalg::GenericOp> {
   using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(linalg::GenericOp genericOp,
@@ -175,10 +175,11 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
   }
 };
 
-struct TilingCwiseGPUWarpsPass
-    : public ::impl::TilingCwiseGPUWarpsPassBase<TilingCwiseGPUWarpsPass> {
+struct TilingGPUWarpPass
+    : public ::impl::TilingGPUWarpPassBase<TilingGPUWarpPass> {
   void getDependentDialects(DialectRegistry& registry) const final {
-    registry.insert<GmlStDialect>();
+    ::impl::TilingGPUWarpPassBase<TilingGPUWarpPass>::getDependentDialects(
+        registry);
     registerGmlStTilingInterfaceExternalModels(registry);
   }
 
@@ -187,7 +188,7 @@ struct TilingCwiseGPUWarpsPass
 
     // Populate patterns
     RewritePatternSet patterns(ctx);
-    patterns.add<TilingCwiseGPUWarpsPattern>(ctx);
+    patterns.add<TilingGPUWarpPattern>(ctx);
     auto fuseGreedilyFilterFn = [](Operation* op) {
       auto materializeOp = llvm::dyn_cast<MaterializeOp>(op);
       Operation* source = materializeOp.getSource().getDefiningOp();
@@ -205,8 +206,8 @@ struct TilingCwiseGPUWarpsPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwiseGPUWarpsPass() {
-  return std::make_unique<TilingCwiseGPUWarpsPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createTilingGPUWarpPass() {
+  return std::make_unique<TilingGPUWarpPass>();
 }
 
 }  // namespace gml_st
