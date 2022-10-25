@@ -1295,7 +1295,6 @@ cc_library(
         "lib/Dialect/gml_st/transforms/tiling.cc",
         "lib/Dialect/gml_st/transforms/tiling_cwise.cc",
         "lib/Dialect/gml_st/transforms/tiling_gpu_warp.cc",
-        "lib/Dialect/gml_st/transforms/tiling_reduction.cc",
         "lib/Dialect/gml_st/transforms/tiling_softmax.cc",
         "lib/Dialect/gml_st/transforms/transform_map_for_cpu.cc",
         "lib/Dialect/gml_st/transforms/transform_matmul_for_cpu.cc",

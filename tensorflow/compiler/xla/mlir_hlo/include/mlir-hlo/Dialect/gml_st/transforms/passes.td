@@ -55,13 +55,6 @@ def TilingCwisePass : Pass<"gml-tiling-cwise", "mlir::func::FuncOp"> {
   ];
 }
 
-def TilingReductionPass : Pass<"gml-tiling-reduction", "mlir::func::FuncOp"> {
-  let summary = "Tile linalg.generic reductions";
-  let constructor = "::mlir::gml_st::createTilingReductionPass()";
-  let dependentDialects = ["::mlir::gml_st::GmlStDialect",
-                           "::mlir::arith::ArithDialect"];
-}
-
 def TilingGPUWarpPass : Pass<"gml-tiling-gpu-warp", "mlir::func::FuncOp"> {
   let summary = "Tile warp-level ops for GPU";
   let constructor = "::mlir::gml_st::createTilingGPUWarpPass()";

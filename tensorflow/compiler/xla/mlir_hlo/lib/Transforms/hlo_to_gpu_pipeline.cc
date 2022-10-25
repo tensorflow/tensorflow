@@ -82,8 +82,8 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
 
-    // GPU-specific tiling for reductions on the warp level.
-    pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
+    // GPU-specific tiling for ops on the warp level.
+    pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
     pm.addNestedPass<FuncOp>(createScalarizationPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
@@ -108,7 +108,6 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
         /*distribute=*/true, options.warpTileDim));
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwisePass(
         /*distribute=*/true, options.threadTileDim));
-    pm.addNestedPass<FuncOp>(gml_st::createTilingReductionPass());
     pm.addNestedPass<FuncOp>(createScalarizationPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());

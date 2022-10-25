@@ -43,9 +43,6 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass(
     StringRef distributionLabel = "");
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingCwisePass();
 
-/// Pass to tile a linalg.generic reduction.
-std::unique_ptr<OperationPass<func::FuncOp>> createTilingReductionPass();
-
 /// Pass to tile warp-level ops on GPU.
 std::unique_ptr<OperationPass<func::FuncOp>> createTilingGPUWarpPass();
 
