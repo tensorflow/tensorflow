@@ -7230,7 +7230,7 @@ inline void Transpose3D(const TransposeParams& params,
   }
 }
 
-template <typename T, int N>
+template <typename T>
 void TransposeImpl(const TransposeParams& params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& output_shape, T* output_data) {
@@ -7261,19 +7261,17 @@ void TransposeImpl(const TransposeParams& params,
 
   // Reroute to the reference version if an optimized method for the given data
   // is not available.
-  reference_ops::Transpose<T, N>(params, input_shape, input_data, output_shape,
-                                 output_data);
+  reference_ops::Transpose<T>(params, input_shape, input_data, output_shape,
+                              output_data);
 }
 
-template <typename T, int N = 5>
+template <typename T, int N = 6>
 void Transpose(const TransposeParams& unshrinked_params,
                const RuntimeShape& unshrinked_input_shape, const T* input_data,
                const RuntimeShape& unshrinked_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Transpose");
 
   const int output_size = unshrinked_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(output_size, N);
   TFLITE_DCHECK_EQ(output_size, unshrinked_params.perm_count);
 
   RuntimeShape shrinked_input_shape = RuntimeShape(unshrinked_input_shape);
@@ -7314,16 +7312,16 @@ void Transpose(const TransposeParams& unshrinked_params,
     TFLITE_DCHECK_NE(non_flatten_params.perm[0], 0);
 
     for (int i = 0; i < total_size; i += non_flatten_size) {
-      TransposeImpl<T, N>(non_flatten_params, non_flatten_input_shape,
-                          input_data + i, non_flatten_output_shape,
-                          output_data + i);
+      TransposeImpl<T>(non_flatten_params, non_flatten_input_shape,
+                       input_data + i, non_flatten_output_shape,
+                       output_data + i);
     }
     return;
   }
 
   // Call non-flattened case.
-  TransposeImpl<T, N>(shrinked_params, shrinked_input_shape, input_data,
-                      shrinked_output_shape, output_data);
+  TransposeImpl<T>(shrinked_params, shrinked_input_shape, input_data,
+                   shrinked_output_shape, output_data);
 }
 
 // Assume input1 & input2 have the same scale & zero point.
