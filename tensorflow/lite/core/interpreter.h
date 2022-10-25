@@ -564,6 +564,7 @@ class Interpreter {
   /// 5. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteOpaqueDelegateStruct* delegate);
 
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =

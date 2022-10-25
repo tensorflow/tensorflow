@@ -412,12 +412,7 @@ TEST_F(TestFP16Delegation,
   g_opaque_delegate_struct = opaque_delegate;
   EXPECT_EQ(g_nodes_to_replace->size(), 0);
   EXPECT_EQ(interpreter_->execution_plan().size(), 8);
-  // The following cast is safe only because this code is part of the
-  // TF Lite runtime tests.  Apps using TF Lite should not rely on
-  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
-  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(
-                reinterpret_cast<TfLiteDelegate*>(opaque_delegate)),
-            kTfLiteOk);
+  ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(opaque_delegate), kTfLiteOk);
   EXPECT_EQ(interpreter_->execution_plan().size(), 7);
 
   // The delegate should have been applied.

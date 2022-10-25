@@ -79,6 +79,14 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   return ModifyGraphWithDelegateImpl(delegate);
 }
 
+TfLiteStatus Interpreter::ModifyGraphWithDelegate(
+    TfLiteOpaqueDelegateStruct* delegate) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime tests.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueDelegateStruct and TfLiteDelegate being equivalent.
+  return ModifyGraphWithDelegate(reinterpret_cast<TfLiteDelegate*>(delegate));
+}
+
 bool Interpreter::HasDelegates() { return primary_subgraph().HasDelegates(); }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
