@@ -1405,6 +1405,8 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
+# TODO(jakeharmon): Replace with or implement in terms of tsl_gpu_cc_test, which doesn't add a
+# dependency on core:common_runtime
 def tf_gpu_cc_test(
         name,
         srcs = [],

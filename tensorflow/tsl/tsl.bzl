@@ -34,6 +34,8 @@ load(
 )
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 
+two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
+
 def clean_dep(target):
     """Returns string to 'target' in @org_tensorflow repository.
 
