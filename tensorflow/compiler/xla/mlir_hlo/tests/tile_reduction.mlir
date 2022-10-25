@@ -16,7 +16,8 @@ func.func @tile_reduction(%arg0 : tensor<1x?xf32>) -> tensor<1xf32> {
   // CHECK:      %[[PARTIAL1:.*]] = gml_st.parallel
   // CHECK-SAME:     (%[[LANE:.*]]) = (%c0) to (%c32) step (%c1)
   // CHECK-SAME:     distribution ("thread")
-  // CHECK:        gml_st.set_yield %[[RESULT1]] into %[[PARTIAL0]]
+  // CHECK:        %[[RESULTVAL:.*]] = gml_st.materialize %[[RESULT1]]
+  // CHECK:        gml_st.set_yield %[[RESULTVAL]] into %[[PARTIAL0]]
   // CHECK:      %[[PARTIAL2:.*]] = gml_st.parallel
   // CHECK-SAME:     (%[[LANE:.*]]) = (%c0) to (%c32) step (%c1)
   // CHECK-SAME:     distribution ("thread")

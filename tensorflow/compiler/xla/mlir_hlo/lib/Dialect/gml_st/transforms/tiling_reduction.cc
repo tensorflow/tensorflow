@@ -106,7 +106,9 @@ LogicalResult TilingReductionPattern::matchAndRewrite(
         OpFoldResult laneIdx = ivs.front();
         Value partPoint =
             builder.create<gml_st::TileOp>(loc, laneIdx, oneAttr, oneAttr);
-        builder.create<gml_st::SetYieldOp>(loc, output, partial, partPoint);
+        Value outElement =
+            rewriter.create<gml_st::MaterializeOp>(loc, output, outPoint);
+        builder.create<gml_st::SetYieldOp>(loc, outElement, partial, partPoint);
       }));
 
   // Create gml_st.parallel finalizing the partial result.
