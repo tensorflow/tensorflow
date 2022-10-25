@@ -84,6 +84,9 @@ extern "C" void PyArray_tp_dealloc(PyObject* self) {
 
   GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
 
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
+
   tp->tp_free(self);
   Py_DECREF(tp);
 }
