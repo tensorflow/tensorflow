@@ -289,38 +289,8 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
 
-const KernelDef* GetKernelDef(const EagerOperation& op, const NodeDef* node_def,
-                              const Device* op_device) {
-  if (node_def == nullptr || op_device == nullptr) return nullptr;
-  const KernelDef* kernel_def = nullptr;
-  Status s = FindKernelDef(DeviceType(op_device->device_type()), *node_def,
-                           &kernel_def,
-                           /*kernel_class_name=*/nullptr);
-  if (!s.ok()) return nullptr;
-  return kernel_def;
-}
-
-bool IsHostMemoryArg(const EagerOperation& op, const NodeDef* node_def,
-                     const Device* op_device, const KernelDef* kernel_def,
-                     const int port_id) {
-  if (op.is_function()) return false;
-  if (node_def == nullptr) return false;
-  if (kernel_def == nullptr || op_device == nullptr) return false;
-  const auto& host_memory_args = kernel_def->host_memory_arg();
-  const OpDef& op_def = OpRegistry::Global()->LookUp(op.Name())->op_def;
-  const int arg_id = OpPortIdToArgId(*node_def, op_def.input_arg(), port_id);
-  // Fail if argument ID not found.
-  if (arg_id < 0) {
-    return false;
-  }
-  return std::find(host_memory_args.begin(), host_memory_args.end(),
-                   op_def.input_arg(arg_id).name()) != host_memory_args.end();
-}
-
-Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
-                         const bool is_host_memory_arg,
-                         TensorHandle* tensor_handle, Device** result) {
->>>>>>> f5381e0e10b (Fix OOB error when op input sizes do not match.)
+Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
+                         Device** result) {
   Device* cpu_device = ctx.HostCPU();
   string device_name;
   if (tensor_handle->Type() != TensorHandle::LOCAL) {
