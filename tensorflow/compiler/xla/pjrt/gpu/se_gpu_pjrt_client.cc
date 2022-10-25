@@ -251,10 +251,12 @@ Status BuildDistributedDevices(
     device_proto->set_name(desc->name());
     device_proto->set_vendor(desc->device_vendor());
   }
+  VLOG(3) << "GPU Local Topology:\n" << local_topology.DebugString();
 
   GlobalTopologyProto global_topology;
   TF_RETURN_IF_ERROR(
       distributed_client->EnumerateDevices(local_topology, &global_topology));
+  VLOG(3) << "GPU Global Topology:\n" << global_topology.DebugString();
 
   std::map<int, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, int> device_to_node;
