@@ -29,7 +29,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compiler",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:passes",
-        "//tensorflow/compiler/xla/runtime:compiler_headers",
+        "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:AsyncDialect",
         "@llvm-project//mlir:AsyncToLLVM",

@@ -51,26 +51,31 @@ void RegisterTestlibDialect(DialectRegistry& dialects) {
   dialects->insert<TestlibDialect>();
 }
 
-void CreateDefaultXlaGpuRuntimeCompilationPipeline(
-    PassManager& passes, const CompilationPipelineOptions& opts) {
-  passes->addPass(mlir::createConvertSCFToCFPass());
+static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
+    mlir::OpPassManager& pm, const CompilationPipelineOptions& opts) {
+  pm.addPass(mlir::createConvertSCFToCFPass());
 
   // Export functions to the XLA runtime.
-  passes->addPass(CreateExportRuntimeFunctionsPass());
-  passes->addPass(CreateConvertCustomCallsPass());
-  passes->addPass(CreateConvertAssertsPass());
+  pm.addPass(CreateExportRuntimeFunctionsPass());
+  pm.addPass(CreateConvertCustomCallsPass());
+  pm.addPass(CreateConvertAssertsPass());
 
   // Convert runtime operations and custom calls to LLVM dialect.
   ConvertRuntimeToLLvmOpts rt_to_llvm_opts = {
       opts.populate_type_id_names, opts.populate_type_conversions,
       opts.populate_arg_encodings, opts.populate_ret_encodings,
       opts.populate_attr_encodings};
-  passes->addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
+  pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert everythinG else to LLVM dialect.
-  passes->addPass(mlir::createMemRefToLLVMConversionPass());
-  passes->addPass(mlir::createConvertFuncToLLVMPass());
-  passes->addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addPass(mlir::createMemRefToLLVMConversionPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+}
+
+void CreateDefaultXlaGpuRuntimeCompilationPipeline(
+    PassManager& passes, const CompilationPipelineOptions& opts) {
+  CreateDefaultXlaGpuRuntimeCompilationPipeline(*passes, opts);
 }
 
 void AppendXlaGpuDialectRegistry(mlir::MLIRContext& context) {
@@ -81,8 +86,7 @@ void AppendXlaGpuDialectRegistry(mlir::MLIRContext& context) {
 
 static void CreateDefaultGpuPipeline(mlir::OpPassManager& pm) {
   CompilationPipelineOptions copts;
-  PassManager passes(&pm);
-  CreateDefaultXlaGpuRuntimeCompilationPipeline(passes, copts);
+  CreateDefaultXlaGpuRuntimeCompilationPipeline(pm, copts);
 }
 
 static mlir::PassPipelineRegistration<> kXlaRuntimePipeline(

@@ -392,7 +392,7 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
-        "//tensorflow/compiler/xla/runtime:compiler_headers",
+        "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:ArithTransforms",
         "@llvm-project//mlir:BufferizationToMemRef",
         "@llvm-project//mlir:BufferizationTransforms",

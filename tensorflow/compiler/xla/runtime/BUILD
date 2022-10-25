@@ -400,7 +400,7 @@ cc_library(
 )
 
 cc_library(
-    name = "compiler_headers",
+    name = "compiler",
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
