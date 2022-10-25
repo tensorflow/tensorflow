@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
+#include "mlir-hlo/Dialect/thlo/transforms/passes.h"
 #include "mlir-hlo/Transforms/gpu_passes.h"
 #include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
@@ -41,6 +42,7 @@ int main(int argc, char **argv) {
   mlir::registerLMHLOGPUTransformsPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
+  mlir::thlo::registerAllThloPasses();
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
 

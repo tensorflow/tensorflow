@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
 
-add_subdirectory(IR)
-add_subdirectory(transforms)
+set(LLVM_TARGET_DEFINITIONS thlo_passes.td)
+mlir_tablegen(thlo_passes.h.inc -gen-pass-decls -name AllThlo)
+add_public_tablegen_target(MLIRThloPassIncGen)
