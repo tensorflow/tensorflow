@@ -73,6 +73,7 @@ add_mlir_library(GmlStPasses
   tiling_cwise_gpu_warps.cc
   tiling_reduction.cc
   tiling_softmax.cc
+  transform_map_for_cpu.cc
   transform_matmul_for_cpu.cc
   transform_scatter_for_cpu.cc
   vectorization.cc

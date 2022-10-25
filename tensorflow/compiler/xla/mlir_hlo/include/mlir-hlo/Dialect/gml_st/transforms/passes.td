@@ -139,3 +139,15 @@ def TransformMatmulForCpuPass :
                "Tile sizes for a `linalg.matmul`">,
   ];
 }
+
+def TransformMapForCpuPass :
+    Pass <"gml-st-cpu-transform-map", "mlir::func::FuncOp"> {
+  let summary = "Transform map ops for running on CPU";
+
+  let constructor = "::mlir::gml_st::createTransformMapForCpuPass()";
+
+  let options = [
+    Option<"tileSize", "tile-size", "int64_t", "1",
+           "Tile size for the innermost dimension of `linalg.map`">,
+  ];
+}

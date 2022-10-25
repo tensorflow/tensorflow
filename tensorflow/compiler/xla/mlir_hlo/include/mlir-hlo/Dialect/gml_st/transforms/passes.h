@@ -75,6 +75,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> createTransformScatterForCpuPass();
 std::unique_ptr<OperationPass<func::FuncOp>> createTransformMatmulForCpuPass(
     ArrayRef<int64_t> tileSizes = llvm::None);
 
+/// Pass to transform a linalg.map op for CPU backend.
+std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
+createTransformMapForCpuPass(int64_t tileSize = 1);
+
 #define GEN_PASS_REGISTRATION
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h.inc"
 

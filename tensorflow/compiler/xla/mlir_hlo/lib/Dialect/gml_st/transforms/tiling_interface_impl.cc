@@ -161,6 +161,8 @@ void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
     linalg::GenericOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::GenericOp>>(*ctx);
+    linalg::MapOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::MapOp>>(*ctx);
     linalg::MatmulOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::MatmulOp>>(*ctx);
   });
