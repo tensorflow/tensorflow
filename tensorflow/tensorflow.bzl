@@ -20,6 +20,7 @@ load(
 load(
     "//tensorflow/tsl:tsl.bzl",
     "tsl_gpu_library",
+    _clean_dep = "clean_dep",
     _if_cuda_or_rocm = "if_cuda_or_rocm",
 )
 load(
@@ -75,16 +76,7 @@ two_gpu_tags = ["requires-gpu-nvidia:2", "notap", "manual", "no_pip"]
 # external project.
 workspace_root = Label("//:WORKSPACE").workspace_root or "."
 
-def clean_dep(target):
-    """Returns string to 'target' in @org_tensorflow repository.
-
-    Use this function when referring to targets in the @org_tensorflow
-    repository from macros that may be called from external repositories.
-    """
-
-    # A repo-relative label is resolved relative to the file in which the
-    # Label() call appears, i.e. @org_tensorflow.
-    return str(Label(target))
+clean_dep = _clean_dep
 
 def if_oss(oss_value, google_value = []):
     """Returns one of the arguments based on the non-configurable build env.
