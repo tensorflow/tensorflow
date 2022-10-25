@@ -328,3 +328,28 @@ func.func @fusion_into_materialize_element(
 // CHECK-LABEL: @fusion_into_materialize_element
 // CHECK: %[[RES:.*]] = tensor.extract
 // CHECK: return {{.*}} %[[RES]]
+
+// -----
+
+#id_map = affine_map<(d0, d1) -> (d0, d1)>
+
+// CHECK:      @fill
+// CHECK-SAME: %[[I:.*]]: index, %[[M:.*]]: index
+func.func @fill(%i : index, %m : index) -> tensor<1xf32> {
+  // CHECK:      %[[CST:.*]] = arith.constant 0.0{{.*}}+00 : f32
+  // CHECK:      %[[EMPTY:.*]] = tensor.empty(%[[M]]) : tensor<?xf32>
+  // CHECK:      %[[TILE:.*]] = gml_st.tile [%[[I]]] [1] [1] : !gml_st.tile<1>
+  // CHECK:      %[[MATERIALIZE:.*]] = gml_st.materialize %[[EMPTY]][%[[TILE]]]
+  // CHECK:      %[[FILL:.*]] = linalg.fill
+  // CHECK-SAME:     ins(%[[CST]] : f32)
+  // CHECK-SAME:     outs(%[[MATERIALIZE]] : tensor<1xf32>)
+  // CHECK:      return {op_label = "consumer"} %[[FILL]]
+  %zero = arith.constant 0.0 : f32
+  %init = tensor.empty(%m) : tensor<?xf32>
+  %fill = linalg.fill { op_label = "producer" } ins(%zero : f32)
+      outs(%init : tensor<?xf32>)  -> tensor<?xf32>
+  %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
+  %elem =  gml_st.materialize %fill[%tile]
+      : tensor<?xf32>[!gml_st.tile<1>] to tensor<1xf32>
+  return { op_label = "consumer" } %elem : tensor<1xf32>
+}

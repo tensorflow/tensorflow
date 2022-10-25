@@ -79,10 +79,16 @@ struct ExternalLinalgOpTilingInterface
                                           offsets, sizes, {}, true);
 
     SmallVector<Value> tiledOperands;
-    for (auto item : llvm::zip(valuesToTile, allSliceParams)) {
-      Value valueToTile = std::get<0>(item);
-      auto valueToTileTy = valueToTile.getType().cast<RankedTensorType>();
-      const Optional<linalg::SliceParameters> &sliceParams = std::get<1>(item);
+    for (const auto &[valueToTile, sliceParams] :
+         llvm::zip(valuesToTile, allSliceParams)) {
+      // Use the original operand if it is not a ranked tensor. This could be a
+      // scalar, e.g. for `linalg.fill`.
+      auto valueToTileTy =
+          valueToTile.getType().template dyn_cast<RankedTensorType>();
+      if (!valueToTileTy) {
+        tiledOperands.push_back(valueToTile);
+        continue;
+      }
 
       int64_t rank = valueToTileTy.getRank();
       SmallVector<OpFoldResult> valueToTileSizes{
@@ -159,6 +165,8 @@ struct ExternalLinalgOpTilingInterface
 
 void registerGmlStTilingInterfaceExternalModels(DialectRegistry &registry) {
   registry.addExtension(+[](MLIRContext *ctx, linalg::LinalgDialect *) {
+    linalg::FillOp::attachInterface<
+        ExternalLinalgOpTilingInterface<linalg::FillOp>>(*ctx);
     linalg::GenericOp::attachInterface<
         ExternalLinalgOpTilingInterface<linalg::GenericOp>>(*ctx);
     linalg::MapOp::attachInterface<
