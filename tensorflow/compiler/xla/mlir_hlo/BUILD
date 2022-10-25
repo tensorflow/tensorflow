@@ -1514,7 +1514,6 @@ gentbl_cc_library(
     td_file = "include/mlir-hlo/Dialect/gml_st/IR/gml_st_ops.td",
     td_srcs = [
         "include/mlir-hlo/Dialect/gml_st/IR/gml_st_legacy_ops.td",
-        "include/mlir-hlo/Dialect/gml_st/IR/gml_st_set_ops.td",
     ],
     deps = [":gml_st_ops_td_files"],
 )
