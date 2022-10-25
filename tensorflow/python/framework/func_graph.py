@@ -1183,6 +1183,7 @@ def func_graph_from_py_func(name,
     if signature is not None:
       args = signature
       kwargs = {}
+   # Get placeholders for args and kwargs
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
 
