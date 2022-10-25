@@ -727,7 +727,7 @@ def tf_additional_core_deps():
         clean_dep("//tensorflow/tsl:ios"): [],
         clean_dep("//tensorflow/tsl:linux_s390x"): [],
         "//conditions:default": [
-            "//tensorflow/core/platform/cloud:gcs_file_system",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
     })
 
