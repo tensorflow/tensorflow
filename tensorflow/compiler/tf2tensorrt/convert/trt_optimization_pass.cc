@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 namespace tensorflow {
@@ -181,6 +182,17 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
     return OkStatus();
   }
 
+  static const string tftrt_graph_dump_path = [] {
+    string _tftrt_graph_dump_path;
+    TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_GRAPH_DUMP_PATH", /*default_value=*/"",
+                                     &_tftrt_graph_dump_path));
+    return _tftrt_graph_dump_path;
+  }();
+
+  if (!tftrt_graph_dump_path.empty()) {
+    DumpGraphDefToFile("before_TRTOptimizer_tf_graph", item.graph, tftrt_graph_dump_path);
+  }
+
   if (params_.use_calibration &&
       params_.precision_mode != TrtPrecisionMode::INT8) {
     LOG(WARNING) << "Calibration with FP32 or FP16 is not implemented. "
@@ -232,8 +244,15 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
         UpdateFunctionSpecificConversionParams(params_, func_item.func_attr()));
   }
 
-  return ConvertGraph(params_, optimized_item, nodes_to_preserve, cluster,
+  auto status = ConvertGraph(params_, optimized_item, nodes_to_preserve, cluster,
                       optimized_graph);
+
+  if (!tftrt_graph_dump_path.empty()) {
+    DumpGraphDefToFile(strings::StrCat("after_TRTOptimizer_tf_graph"),
+                      *optimized_graph, tftrt_graph_dump_path);
+  }
+
+  return status;
 }
 
 static grappler::CustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
