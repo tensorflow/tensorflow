@@ -41,6 +41,7 @@ cc_library(
         "c_api.h",
     ],
     copts = tflite_copts(),
+    tags = ["avoid_dep"],
     # This is a private target, its visibility is set to public only to be
     # used by "tflite_custom_c_library".
     # Do not use this target directly and don't consider it as a part of the public API.
@@ -89,7 +90,10 @@ tflite_cc_library_with_c_headers_test(
     name = "private_c_api_without_op_resolver",
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
-    tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
+    tags = [
+        "allow_undefined_symbols",  # For tflite::CreateOpResolver().
+        "avoid_dep",
+    ],
     visibility = [
         "//visibility:public",
     ],
