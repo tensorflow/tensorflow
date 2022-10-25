@@ -30,11 +30,9 @@ from tensorflow.python.platform import test
 
 
 def GetRandomNormalInput(shape, dtype):
-  # float16 or bfloat16 has limited range so we reduce the variance of the
-  # scalars.
-  is_16bit = dtype in (np.float16, dtypes.bfloat16.as_numpy_dtype)
-  scale = 0.1 if is_16bit else 10.0
-  loc = 0.1 if is_16bit else -10.0
+  # float16 has limited range so we reduce the variance of the scalars.
+  scale = 10.0 if dtype != np.float16 else 0.1
+  loc = -10.0 if dtype != np.float16 else 0.1
   vals = np.array(np.random.normal(loc, scale, np.prod(shape)), dtype=dtype)
   if dtype in (np.complex64, np.complex128):
     imag = np.array(np.random.normal(loc, scale, np.prod(shape)), dtype=dtype)
@@ -176,7 +174,12 @@ class BatchMatmulGradientTest(test.TestCase):
     delta = 10 * epsilon**(1.0 / 3.0)
 
     def Loss(x, y):
-      return math_ops.reduce_sum(math_ops.matmul(x, y, adjoint_a, adjoint_b))
+      z = math_ops.matmul(x, y, adjoint_a, adjoint_b)
+      # To avoid the high error when reduce_sum over the bfloat16 values, we
+      # cast the results to float32.
+      if z.dtype == dtypes.bfloat16:
+        z = math_ops.cast(z, dtype=dtypes.float32)
+      return math_ops.reduce_sum(z)
 
     with self.cached_session():
       ((x_jacob_t, y_jacob_t),
