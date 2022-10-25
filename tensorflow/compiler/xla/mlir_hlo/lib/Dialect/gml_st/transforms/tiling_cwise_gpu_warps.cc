@@ -84,24 +84,34 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
     Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, 32);
+    Value cWarpSizeMinusOne = rewriter.create<arith::ConstantIndexOp>(loc, 31);
     Attribute oneAttr = rewriter.getIndexAttr(1);
     Attribute warpSizeAttr = rewriter.getIndexAttr(32);
     StringAttr threadDist = rewriter.getStringAttr(kThreadDistributionLabel);
 
     // Create `gml_st.parallel` loop to distribute among lanes.
     Value init = genericOp.getOutputs().front();
+    Value genericOpResult = genericOp.getResults().front();
+    Value dimSize =
+        rewriter.createOrFold<tensor::DimOp>(loc, genericOpResult, c0);
+    Value dimSizePlusWarpSizeMinusOne =
+        rewriter.create<arith::AddIOp>(loc, dimSize, cWarpSizeMinusOne);
     auto ploop = rewriter.create<gml_st::ParallelOp>(
         loc, genericOpTy, c0, cWarpSize, c1, threadDist,
         [&](OpBuilder& b, Location loc, ValueRange ivs) {
-          // Compute the lane tile with stride 32. This tile defines the subset
-          // of the result that is produced by the lane.
+          // Compute the lane tile with a stride of `warpSize`. This tile
+          // defines the subset of the result that is produced by the lane.
+          // The `laneId` defines the initial offset into the tensor. The
+          // remaining length to be addressed by the lane is
+          //     `dimSize` - `laneId`.
+          // With a stride of `warpSize`, every lane addresses a total of
+          //     ceil((`dimSize` - `laneId`) / `cWarpSize`)
+          //     = (`dimSize` + `cWarpSize` - 1 - `laneId`) / `cWarpSize`
+          // elements.
           Value laneId = ivs.front();
-          Value genericOpResult = genericOp.getResults().front();
           Value laneTileSize = b.create<arith::DivUIOp>(
               loc,
-              b.create<arith::SubIOp>(
-                  loc, b.createOrFold<tensor::DimOp>(loc, genericOpResult, c0),
-                  laneId),
+              b.create<arith::SubIOp>(loc, dimSizePlusWarpSizeMinusOne, laneId),
               cWarpSize);
           Value laneTile = b.createOrFold<gml_st::TileOp>(
               loc, OpFoldResult(laneId), OpFoldResult(laneTileSize),
@@ -133,8 +143,8 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
                         }));
 
                 // Create scalar computation from `linalg.generic` body by (i)
-                // mapping its block arguments to the newly materialized scalar
-                // operands, and (ii) cloning the body.
+                // mapping its block arguments to the newly materialized
+                // scalar operands, and (ii) cloning the body.
                 BlockAndValueMapping bvm;
                 for (const auto& [blockArg, iterOperand] : llvm::zip(
                          genericOp.getBlock()->getArguments(), iterOperands)) {
@@ -156,8 +166,8 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
                 b.create<gml_st::SetYieldOp>(loc, iterResult, aggr,
                                              iterTileInLaneTile);
               });
-          b.create<gml_st::SetYieldOp>(loc, sloop.getResults().front(),
-                                       laneInit, laneTile);
+          b.create<gml_st::SetYieldOp>(loc, sloop.getResults().front(), init,
+                                       laneTile);
         });
 
     rewriter.replaceOp(genericOp, ploop.getResults());
