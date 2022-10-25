@@ -144,6 +144,8 @@ void convertVectorResultsToTensor(ValueRange results, ValueRange destinations,
                                   OpBuilder &builder) {
   for (auto [result, dest] : llvm::zip(results, destinations)) {
     Value mappedResult = bvm.lookupOrDefault(result);
+    // Skip over scalars and leave them as is.
+    if (!mappedResult.getType().isa<ShapedType>()) continue;
     assert(mappedResult.getType().isa<VectorType>() &&
            "op's result should be a vector");
     assert(dest.getType().isa<RankedTensorType>() &&
@@ -293,21 +295,25 @@ struct LoopLikeOpVectorizationPattern : public OpRewritePattern<LoopLikeOp> {
     for (auto [srcType, dstType] : llvm::zip(setYield.getSrcs().getTypes(),
                                              setYield.getDsts().getTypes())) {
       // gcc is failing without `template dyn_cast` here.
-      auto tensorType = srcType.template dyn_cast<RankedTensorType>();
+      auto dstTensor = dstType.template dyn_cast<RankedTensorType>();
       // TODO(b/244314345): Support imperfect tiling, which results in dynamic
       // shapes.
-      if (!tensorType || tensorType.getNumDynamicDims() > 0 ||
-          dstType.template cast<RankedTensorType>().getNumDynamicDims() > 0)
-        return failure();
-
+      if (!dstTensor || dstTensor.getNumDynamicDims() > 0)
+        return rewriter.notifyMatchFailure(
+            op, "destination tensors should be statically shaped");
       hasTensor = true;
+      if (!srcType.template isa<ShapedType>()) continue;
+      auto srcTensor = srcType.template dyn_cast<RankedTensorType>();
+      if (!srcTensor || srcTensor.getNumDynamicDims() > 0)
+        return rewriter.notifyMatchFailure(
+            op, "source tensors should be statically shaped");
     }
-    // We currently only support set_yield without an accumulator, since this
-    // pattern is only needed for GPU, where accumulators are not used.
     if (!hasTensor) {
       return rewriter.notifyMatchFailure(
           op, "should yield at least one tensor to be vectorized");
     }
+    // We currently only support set_yield without an accumulator, since this
+    // pattern is only needed for GPU, where accumulators are not used.
     if (!setYield.getAccumulators().empty()) {
       return rewriter.notifyMatchFailure(
           op, "shoud not use set_yield accumulators");

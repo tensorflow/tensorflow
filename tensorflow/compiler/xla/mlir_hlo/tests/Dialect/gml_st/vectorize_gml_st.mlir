@@ -113,6 +113,52 @@ func.func @vectorize_gml_st_for_op(
 
 // -----
 
+// CHECK-LABEL: @vectorize_loop_on_scalars(
+func.func @vectorize_loop_on_scalars(
+    %arg0: tensor<32xf32>, %arg1: tensor<32xf32>)
+    -> tensor<32xf32> {
+  %c4 = arith.constant 4 : index
+  %c1 = arith.constant 1 : index
+  %c0 = arith.constant 0 : index
+  %c32 = arith.constant 32 : index
+  %tile32 = gml_st.tile [0][32][1] : !gml_st.tile<32>
+  // We need this outer trivial loop to make sure the inner loop has a parent
+  // with the correct distribution label.
+  %2 = gml_st.parallel (%unused) = (%c0) to (%c1) step (%c1)
+          distribution ("test") {
+    %arg0tile = gml_st.materialize %arg0[%tile32]
+      : tensor<32xf32>[!gml_st.tile<32>] to tensor<32xf32>
+    %arg1tile = gml_st.materialize %arg1[%tile32]
+      : tensor<32xf32>[!gml_st.tile<32>] to tensor<32xf32>
+    %3 = gml_st.for (%i) = (%c0) to (%c32) step (%c4)
+          outs(%out = %arg1tile : tensor<32xf32>) {
+      %tile = gml_st.tile [%i] [1] [1] : !gml_st.tile<1>
+      %6 = gml_st.materialize %arg0tile[%tile]
+        : tensor<32xf32>[!gml_st.tile<1>] to f32
+      %9 = arith.negf %6 : f32
+      gml_st.set_yield %9 into %out[%tile]
+        : f32 into tensor<32xf32>[!gml_st.tile<1>]
+    } : tensor<32xf32>
+    gml_st.set_yield %3 into %arg1[%tile32]
+      : tensor<32xf32> into tensor<32xf32>[!gml_st.tile<32>]
+  } : tensor<32xf32>
+  func.return %2 : tensor<32xf32>
+}
+// CHECK:      gml_st.parallel
+// CHECK-DAG:  %[[ARG0TILE:.*]] = gml_st.materialize %arg0
+// CHECK-DAG:  %[[ARG1TILE:.*]] = gml_st.materialize %arg1
+// CHECK-DAG:  %[[LHS:.*]] = vector.transfer_read %[[ARG0TILE]][%c0]
+// CHECK-DAG:  %[[RES:.*]] = vector.transfer_read %[[ARG1TILE]][%c0]
+// CHECK:      %[[RESULT:.*]] = gml_st.for
+// CHECK-SAME:     outs (%[[OUT:.*]] = %[[RES]]: vector<32xf32>)
+// CHECK-DAG:    %[[LHSTILE:.*]] = gml_st.materialize %[[LHS]]
+// CHECK:        %[[NEG:.*]] = arith.negf %[[LHSTILE]] : f32
+// CHECK:        gml_st.set_yield %[[NEG]] into %[[OUT]]
+// CHECK-SAME:   f32 into vector<32xf32>
+// CHECK:      vector.transfer_write %[[RESULT]], %[[ARG1TILE]][%c0]
+
+// -----
+
 #map0 = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @skip_vectorization_with_wrong_label(
