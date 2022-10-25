@@ -1487,13 +1487,10 @@ def HLO_ReduceOp: HLO_ShapedInterfaceOp<"reduce", [
 
   let results = (outs Variadic<HLO_Tensor>);
 
-  let builders = [
-    OpBuilder<(ins "ValueRange":$inputs, "ValueRange":$init_values,
-      "DenseIntElementsAttr":$dimensions)>];
-
   let hasCanonicalizer = 1;
   let hasCustomAssemblyFormat = 1;
   let hasFolder = 1;
+  let hasVerifier = 1;
 
   // TODO(hinsu): Verify that the attached body arguments and results are
   // compatible with reduce op's operands.
@@ -2549,6 +2546,8 @@ def HLO_SortOp : HLO_Op<"sort",
   let hasCustomHLOConverter = 1;
 
   let hasCanonicalizer = 1;
+
+  let hasVerifier = 1;
 }
 
 def HLO_ReverseOp: HLO_Op<"reverse",

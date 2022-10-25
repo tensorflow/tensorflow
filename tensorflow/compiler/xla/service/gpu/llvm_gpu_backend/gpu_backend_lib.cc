@@ -127,7 +127,6 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeCore(*pass_registry);
   llvm::initializeCodeGen(*pass_registry);
   llvm::initializeScalarOpts(*pass_registry);
-  llvm::initializeObjCARCOpts(*pass_registry);
   llvm::initializeVectorization(*pass_registry);
   llvm::initializeIPO(*pass_registry);
   llvm::initializeAnalysis(*pass_registry);

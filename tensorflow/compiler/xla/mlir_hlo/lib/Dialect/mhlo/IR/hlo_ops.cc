@@ -4644,8 +4644,7 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // Returns the result type after reducing operand of the given type across the
 // specified dimensions.
 static TensorType getReduceResultType(Type operandTy,
-                                      DenseIntElementsAttr dimensions,
-                                      Builder* builder) {
+                                      DenseIntElementsAttr dimensions) {
   Type elementTy = getElementTypeOrSelf(operandTy);
 
   auto rankedTy = operandTy.dyn_cast<RankedTensorType>();
@@ -4661,19 +4660,6 @@ static TensorType getReduceResultType(Type operandTy,
   }
 
   return RankedTensorType::get(shape, elementTy);
-}
-
-void ReduceOp::build(OpBuilder& builder, OperationState& state,
-                     ValueRange operands, ValueRange initValues,
-                     DenseIntElementsAttr dimensions) {
-  SmallVector<Type, 1> resultTy;
-  resultTy.reserve(operands.size());
-
-  for (Value operand : operands) {
-    resultTy.push_back(
-        getReduceResultType(operand.getType(), dimensions, &builder));
-  }
-  build(builder, state, resultTy, operands, initValues, dimensions);
 }
 
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
@@ -5017,13 +5003,22 @@ ParseResult ReduceOp::parse(OpAsmParser& parser, OperationState& result) {
 }
 
 LogicalResult ReduceOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    MLIRContext*, Optional<Location>, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   ReduceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferReduceOp(location, adaptor.getInputs(),
-                            adaptor.getInitValues(), adaptor.getDimensions(),
-                            adaptor.getBody(), inferredReturnShapes);
+  for (auto input : adaptor.getInputs()) {
+    ShapedType outputType =
+        getReduceResultType(input.getType(), adaptor.getDimensions());
+    inferredReturnShapes.emplace_back(outputType);
+  }
+  return success();
+}
+
+LogicalResult ReduceOp::verify() {
+  SmallVector<ShapedTypeComponents> unusedReturnShapes;
+  return hlo::inferReduceOp(getLoc(), getInputs(), getInitValues(),
+                            getDimensions(), getBody(), unusedReturnShapes);
 }
 
 // Enable constant folding to occur within the region of the ReduceOp
@@ -6715,12 +6710,19 @@ void SortOp::build(OpBuilder& builder, OperationState& state,
 }
 
 LogicalResult SortOp::inferReturnTypeComponents(
-    MLIRContext*, Optional<Location> location, ValueShapeRange operands,
+    MLIRContext*, Optional<Location>, ValueShapeRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   SortOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferSortOp(location, adaptor.getInputs(), adaptor.getDimension(),
-                          adaptor.getComparator(), inferredReturnShapes);
+  for (auto resultType : adaptor.getInputs().getTypes())
+    inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
+  return success();
+}
+
+LogicalResult SortOp::verify() {
+  SmallVector<ShapedTypeComponents> unusedReturnShapes;
+  return hlo::inferSortOp(getLoc(), getInputs(), getDimension(),
+                          getComparator(), unusedReturnShapes);
 }
 
 /// Drops the operands if the results are not used and they are not used in
