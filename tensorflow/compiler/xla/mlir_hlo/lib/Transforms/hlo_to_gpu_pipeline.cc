@@ -94,8 +94,10 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     pm.addPass(createCSEPass());
 
     // GPU-specific tiling for cwise ops on the warp level.
+    // TODO(frgossen): This should be merged with the above tiling-reduction
+    // pass.
     pm.addNestedPass<FuncOp>(gml_st::createTilingCwiseGPUWarpsPass());
-    pm.addNestedPass<FuncOp>(gml_st::createFusionPass());
+    pm.addNestedPass<FuncOp>(createScalarizationPass());
     pm.addPass(createCanonicalizerPass());
     pm.addPass(createCSEPass());
   } else {

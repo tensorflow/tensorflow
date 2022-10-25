@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/fusion.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/linalg_utils.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/tiling_interface_impl.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -35,12 +37,24 @@ namespace gml_st {
 
 namespace {
 
-bool isFusable(linalg::GenericOp genericOp) {
-  // The cwise op will be fusable if any user is also a cwise op.
-  return llvm::any_of(genericOp->getUsers(), [&](Operation* user) {
-    return llvm::isa<MaterializeOp>(user) || isCwiseGenericOp(user);
-  });
+bool isFusible(Operation* op) {
+  if (!op) return false;
+
+  // Do not fuse reductions on the warp level.
+  if (isSimpleReduction(op)) return false;
+
+  // Fuse into materializes, cwise, reductions, and bcasts.
+  if (llvm::any_of(op->getUsers(), [](Operation* user) {
+        return llvm::isa<MaterializeOp>(user) || isCwiseGenericOp(user) ||
+               isSimpleReduction(user) || isSimpleBcastReduction(user);
+      })) {
+    return true;
+  }
+
+  return false;
 }
+
+constexpr const char* kThreadDistributionLabel = "thread";
 
 struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
   using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
@@ -50,8 +64,20 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
     // Only match on cwise ops.
     if (!isCwiseGenericOp(genericOp)) return failure();
 
-    // Tile only the root and fuse all other cwise ops.
-    if (isFusable(genericOp)) return failure();
+    // Expect ops on rank 1.
+    auto genericOpTy =
+        genericOp.getResultTypes().front().cast<RankedTensorType>();
+    if (genericOpTy.getRank() != 1) return failure();
+
+    // Tile only on thread level.
+    auto parentPloop = genericOp->getParentOfType<ParallelOp>();
+    if (parentPloop && parentPloop.getDistributionType() &&
+        *parentPloop.getDistributionType() == kThreadDistributionLabel) {
+      return failure();
+    }
+
+    // Tile only the roots and fuse if possible.
+    if (isFusible(genericOp)) return failure();
 
     // Constants and attributes.
     Location loc = genericOp.getLoc();
@@ -60,14 +86,12 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
     Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, 32);
     Attribute oneAttr = rewriter.getIndexAttr(1);
     Attribute warpSizeAttr = rewriter.getIndexAttr(32);
-    StringAttr warpDist = rewriter.getStringAttr("warp");
+    StringAttr threadDist = rewriter.getStringAttr(kThreadDistributionLabel);
 
     // Create `gml_st.parallel` loop to distribute among lanes.
-    auto genericOpTy =
-        genericOp.getResultTypes().front().cast<RankedTensorType>();
     Value init = genericOp.getOutputs().front();
     auto ploop = rewriter.create<gml_st::ParallelOp>(
-        loc, genericOpTy, c0, cWarpSize, c1, warpDist,
+        loc, genericOpTy, c0, cWarpSize, c1, threadDist,
         [&](OpBuilder& b, Location loc, ValueRange ivs) {
           // Compute the lane tile with stride 32. This tile defines the subset
           // of the result that is produced by the lane.
@@ -143,12 +167,24 @@ struct TilingCwiseGPUWarpsPattern : OpRewritePattern<linalg::GenericOp> {
 
 struct TilingCwiseGPUWarpsPass
     : public ::impl::TilingCwiseGPUWarpsPassBase<TilingCwiseGPUWarpsPass> {
+  void getDependentDialects(DialectRegistry& registry) const final {
+    registry.insert<GmlStDialect>();
+    registerGmlStTilingInterfaceExternalModels(registry);
+  }
+
   void runOnOperation() override {
     MLIRContext* ctx = &getContext();
 
     // Populate patterns
     RewritePatternSet patterns(ctx);
     patterns.add<TilingCwiseGPUWarpsPattern>(ctx);
+    auto fuseGreedilyFilterFn = [](Operation* op) {
+      auto materializeOp = llvm::dyn_cast<MaterializeOp>(op);
+      Operation* source = materializeOp.getSource().getDefiningOp();
+      if (isFusible(source)) return success();
+      return failure();
+    };
+    populateFusionPatterns(ctx, fuseGreedilyFilterFn, &patterns);
 
     if (failed(applyPatternsAndFoldGreedily(getOperation(),
                                             std::move(patterns)))) {
