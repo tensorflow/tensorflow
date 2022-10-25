@@ -130,6 +130,13 @@ std::string Gensym(mlir::ModuleOp op, std::string name) {
   return fresh_name;
 }
 
+mlir::TypeRange Untuple(const mlir::Type& type) {
+  if (type.isa<mlir::TupleType>()) {
+    return llvm::dyn_cast<mlir::TupleType>(type).getTypes();
+  }
+  return type;
+}
+
 template <typename sync_op>
 StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
     llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
@@ -141,20 +148,22 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
     return tsl::errors::InvalidArgument(
         "async_bundle must contain at least two values");
   }
-  auto func_type =
-      mlir::FunctionType::get(context_, result_types[0], result_types[1]);
+  auto func_type = mlir::FunctionType::get(context_, Untuple(result_types[0]),
+                                           Untuple(result_types[1]));
   auto sym = Gensym(module_, func_name);
   auto function = mlir::OpBuilder(module_.getBodyRegion())
                       .create<FuncOp>(loc, sym, func_type);
   function.setPrivate();
   auto async_builder = mlir::OpBuilder(function.getBody());
 
+  llvm::SmallVector<mlir::Location, 1> locs(Untuple(result_types[0]).size(),
+                                            loc);
   auto sync_operand =
       async_builder
-          .createBlock(&function.getBody(), {}, result_types[0], {loc})
+          .createBlock(&function.getBody(), {}, Untuple(result_types[0]), locs)
           ->getArguments();
-  auto sync_operation = async_builder.create<sync_op>(loc, result_types[1],
-                                                      sync_operand, attributes);
+  auto sync_operation = async_builder.create<sync_op>(
+      loc, Untuple(result_types[1]), sync_operand, attributes);
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
@@ -1017,6 +1026,35 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           [](auto) { return ::tsl::OkStatus(); });
     }
     case HloOpcode::kCopyDone: {
+      return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
+                                     func_builder);
+    }
+    case HloOpcode::kSend: {
+      // old-style send returns a bundle of (arg, sync flag, token) to be passed
+      // along to send-done.
+      // However, the new-style async ops have a shared bundle
+      // format of (args, results, scratchpad), so to rewrite the `send` and
+      // `send-done` ops to use the new-style async API, we need to reorder the
+      // arguments to be in (args, token, sync flag) order.
+      auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+      if (result_types.size() != 3)
+        return InvalidArgument("send should return a 3-tuple");
+      auto async_arg_type =
+          mlir::TupleType::get(context_, {result_types[0], result_types[2]});
+      auto async_bundled_tuple = mlir::TupleType::get(
+          context_, {async_arg_type, result_types[2], result_types[1]});
+      auto send_op = Cast<HloSendInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "is_host_transfer",
+          builder_->getBoolAttr(send_op->is_host_transfer())));
+      if (send_op->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(send_op->channel_id().value()));
+      return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
+          attributes, operands, loc, async_bundled_tuple, func_builder, "send_",
+          [](auto) { return Status::OK(); });
+    }
+    case HloOpcode::kSendDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                      func_builder);
     }

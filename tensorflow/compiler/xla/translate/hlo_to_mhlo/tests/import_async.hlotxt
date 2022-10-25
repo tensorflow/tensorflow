@@ -8,6 +8,10 @@ HloModule foobar
 
 // Compiler-generated functions
 
+// CHECK:  func private [[SEND_GENSYM:@.*send.*]]([[INPUT:%.*]]: tensor<128x32xf32>, %arg1: !mhlo.token) -> !mhlo.token attributes {execution_thread = "main"} {
+  // CHECK-NEXT:  "mhlo.send"([[INPUT]]
+  // CHECK-SAME{LITERAL}: {channel_handle = #mhlo.channel_handle<handle = 5, type = 0>, is_host_transfer = true}
+
 // CHECK:  func private [[COPY_GENSYM:@.*copy.*]]([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
   // CHECK-NEXT:  mhlo.copy [[INPUT]]
 
@@ -89,4 +93,18 @@ add {
   // CHECK-NEXT: "mhlo.async_done"([[COPY_START]])
   // CHECK-SAME: called_computation = [[COPY_GENSYM]], execution_thread = "main"
   ROOT copy-done = f32[128,32] copy-done(copy-start)
+}
+
+// CHECK:  func private @test_send
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>, [[TOK:%.*]]: !mhlo.token)
+%test_send_start {
+  input = f32[128,32] parameter(0)
+  tok = token[] parameter(1)
+  // CHECK-NEXT:  [[SEND_START:%.*]] = "mhlo.async_start"([[INPUT]], [[TOK]])
+  // CHECK-SAME: called_computation = [[SEND_GENSYM]], execution_thread = "main"
+  // CHECK-SAME{LITERAL}: -> !mhlo.async_bundle<tuple<tensor<128x32xf32>, !mhlo.token>, !mhlo.token, tensor<ui32>>
+  send-start = (f32[128,32], u32[], token[]) send(input, tok), channel_id=5, is_host_transfer=true
+  // CHECK-NEXT: "mhlo.async_done"([[SEND_START]])
+  // CHECK-SAME: called_computation = [[SEND_GENSYM]], execution_thread = "main"
+  ROOT send-done = token[] send-done(send-start), channel_id=5, is_host_transfer=true
 }
