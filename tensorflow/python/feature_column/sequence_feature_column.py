@@ -31,6 +31,14 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
+
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
+    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    """
 
 
 # pylint: disable=protected-access
@@ -83,6 +91,7 @@ def concatenate_context_input(context_input, sequence_input):
   return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_identity')
 def sequence_categorical_column_with_identity(
     key, num_buckets, default_value=None):
@@ -132,6 +141,7 @@ def sequence_categorical_column_with_identity(
           default_value=default_value))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_hash_bucket')
 def sequence_categorical_column_with_hash_bucket(
     key, hash_bucket_size, dtype=dtypes.string):
@@ -178,6 +188,8 @@ def sequence_categorical_column_with_hash_bucket(
           dtype=dtype))
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_vocabulary_file')
 def sequence_categorical_column_with_vocabulary_file(
     key, vocabulary_file, vocabulary_size=None, num_oov_buckets=0,
@@ -243,6 +255,8 @@ def sequence_categorical_column_with_vocabulary_file(
           dtype=dtype))
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_categorical_column_with_vocabulary_list')
 def sequence_categorical_column_with_vocabulary_list(
     key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
@@ -305,6 +319,7 @@ def sequence_categorical_column_with_vocabulary_list(
           num_oov_buckets=num_oov_buckets))
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.sequence_numeric_column')
 def sequence_numeric_column(
     key,
@@ -378,6 +393,8 @@ def _assert_all_equal_and_return(tensors, name=None):
       assert_equal_ops.append(check_ops.assert_equal(tensors[0], t))
     with ops.control_dependencies(assert_equal_ops):
       return array_ops.identity(tensors[0])
+
+
 
 
 class SequenceNumericColumn(

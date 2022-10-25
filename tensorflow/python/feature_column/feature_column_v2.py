@@ -163,12 +163,19 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
 
 
 _FEATURE_COLUMN_DEPRECATION_DATE = None
 _FEATURE_COLUMN_DEPRECATION = ('The old _FeatureColumn APIs are being '
                                'deprecated. Please use the new FeatureColumn '
                                'APIs instead.')
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
+    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    """
 
 
 class StateManager(object):
@@ -449,6 +456,8 @@ def _transform_features_v2(features, feature_columns, state_manager):
   return outputs
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.make_parse_example_spec', v1=[])
 def make_parse_example_spec_v2(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
@@ -511,6 +520,8 @@ def make_parse_example_spec_v2(feature_columns):
   return result
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.embedding_column')
 def embedding_column(categorical_column,
                      dimension,
@@ -625,6 +636,8 @@ def embedding_column(categorical_column,
       use_safe_embedding_lookup=use_safe_embedding_lookup)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(v1=['feature_column.shared_embedding_columns'])
 def shared_embedding_columns(categorical_columns,
                              dimension,
@@ -809,6 +822,8 @@ def shared_embedding_columns(categorical_columns,
   return result
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.shared_embeddings', v1=[])
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
@@ -984,6 +999,8 @@ def shared_embedding_columns_v2(categorical_columns,
   return result
 
 
+
+
 @tf_export('feature_column.numeric_column')
 def numeric_column(key,
                    shape=(1,),
@@ -1083,6 +1100,8 @@ def numeric_column(key,
       normalizer_fn=normalizer_fn)
 
 
+
+
 @tf_export('feature_column.bucketized_column')
 def bucketized_column(source_column, boundaries):
   """Represents discretized dense input bucketed by `boundaries`.
@@ -1169,6 +1188,8 @@ def bucketized_column(source_column, boundaries):
   return BucketizedColumn(source_column, tuple(boundaries))
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_hash_bucket')
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
@@ -1237,6 +1258,8 @@ def categorical_column_with_hash_bucket(key,
   fc_utils.assert_string_or_int(dtype, prefix='column_name: {}'.format(key))
 
   return HashedCategoricalColumn(key, hash_bucket_size, dtype)
+
+
 
 
 @tf_export(v1=['feature_column.categorical_column_with_vocabulary_file'])
@@ -1345,6 +1368,8 @@ def categorical_column_with_vocabulary_file(key,
       num_oov_buckets)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_vocabulary_file', v1=[])
 def categorical_column_with_vocabulary_file_v2(key,
                                                vocabulary_file,
@@ -1479,6 +1504,8 @@ def categorical_column_with_vocabulary_file_v2(key,
       file_format=file_format)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_vocabulary_list')
 def categorical_column_with_vocabulary_list(key,
                                             vocabulary_list,
@@ -1596,6 +1623,8 @@ def categorical_column_with_vocabulary_list(key,
       num_oov_buckets=num_oov_buckets)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.categorical_column_with_identity')
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `CategoricalColumn` that returns identity values.
@@ -1672,6 +1701,8 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, number_buckets=num_buckets, default_value=default_value)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.indicator_column')
 def indicator_column(categorical_column):
   """Represents multi-hot representation of given categorical column.
@@ -1715,6 +1746,8 @@ def indicator_column(categorical_column):
   return IndicatorColumn(categorical_column)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.weighted_categorical_column')
 def weighted_categorical_column(categorical_column,
                                 weight_feature_key,
@@ -1791,6 +1824,8 @@ def weighted_categorical_column(categorical_column,
       dtype=dtype)
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('feature_column.crossed_column')
 def crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
@@ -1917,6 +1952,8 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
           'Instead, use the feature name as a string. Given: {}'.format(key))
   return CrossedColumn(
       keys=tuple(keys), hash_bucket_size=hash_bucket_size, hash_key=hash_key)
+
+
 
 
 # TODO(b/181853833): Add a tf.type for instance type checking.
