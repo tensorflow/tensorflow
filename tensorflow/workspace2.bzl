@@ -304,10 +304,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "org_sqlite",
         build_file = "//third_party:sqlite.BUILD",
-        sha256 = "87775784f8b22d0d0f1d7811870d39feaa7896319c7c20b849a4181c5a50609b",
-        strip_prefix = "sqlite-amalgamation-3390200",
+        sha256 = "9c99955b21d2374f3a385d67a1f64cbacb1d4130947473d25c77ad609c03b4cd",
+        strip_prefix = "sqlite-amalgamation-3390400",
         system_build_file = "//third_party/systemlibs:sqlite.BUILD",
-        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3390200.zip"),
+        urls = tf_mirror_urls("https://www.sqlite.org/2022/sqlite-amalgamation-3390400.zip"),
     )
 
     tf_http_archive(
