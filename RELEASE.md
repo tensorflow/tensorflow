@@ -2,6 +2,9 @@
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
+*   `tf.keras`:
+    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+
 # Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
