@@ -302,7 +302,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateHoistLoopInvariantPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateLocalizeVarHandlesPass();
 
 // Removes all TF attributes
-std::unique_ptr<OperationPass<func::FuncOp>> CreateStripTfAttributesPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripTfAttributesPass();
 
 // Converts AnonymousIteratorOps to (named) IteratorOps.
 std::unique_ptr<OperationPass<ModuleOp>> CreateNameAnonymousIteratorsPass();
