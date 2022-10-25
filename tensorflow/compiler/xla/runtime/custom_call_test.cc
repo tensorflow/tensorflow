@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -977,6 +978,40 @@ TEST(CustomCallTest, FunctionOrdinalAttr) {
   std::vector<std::string_view> exported = {"test", "call_init"};
   EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts, exported).ok());
   EXPECT_TRUE(called_init);
+}
+
+TEST(CustomCallTest, OptionalAttr) {
+  absl::string_view module = R"(
+    func.func private @custom_call()
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test() {
+      call @custom_call() { attr0, attr1 = 42 : i64 }: () -> ()
+      return
+    }
+  )";
+
+  std::vector<std::optional<int64_t>> attrs;
+
+  auto handler = [&](std::optional<int64_t> attr0,
+                     std::optional<int64_t> attr1) -> LogicalResult {
+    attrs.push_back(attr0);
+    attrs.push_back(attr1);
+    return success();
+  };
+
+  TestOpts opts;
+  opts.dynamic_custom_calls = [&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Attr<std::optional<int64_t>>("attr0")
+                          .Attr<std::optional<int64_t>>("attr1")
+                          .To(handler));
+  };
+
+  EXPECT_TRUE(CompileAndExecute(module, /*args=*/{}, opts).ok());
+  ASSERT_EQ(attrs.size(), 2);
+  EXPECT_EQ(attrs[0], std::nullopt);
+  EXPECT_EQ(attrs[1], 42);
 }
 
 //===----------------------------------------------------------------------===//

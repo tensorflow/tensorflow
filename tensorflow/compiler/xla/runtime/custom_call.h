@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -1334,6 +1335,25 @@ struct CustomCallAttrDecoding<CustomCall::FunctionOrdinal, checks> {
 
     unsigned ordinal = *reinterpret_cast<int32_t*>(value);
     return FunctionOrdinal{ordinal};
+  }
+};
+
+template <typename T, CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<std::optional<T>, checks> {
+  using ValueDecoding = CustomCallAttrDecoding<T, checks>;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<std::optional<T>> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    // Convert nullptr to empty optional.
+    bool is_nullopt = CustomCall::Isa<std::nullopt_t>(checks, type_id);
+    if (is_nullopt && value == nullptr) return std::optional<T>();
+
+    // Try to decode the underlying value if it is present.
+    if (auto decoded = ValueDecoding::Decode(name, type_id, value);
+        succeeded(decoded)) {
+      return std::optional<T>(std::move(*decoded));
+    }
+    return failure();
   }
 };
 
