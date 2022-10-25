@@ -51,38 +51,142 @@ using ::xla::LogicalBufferProto;
 using ::xla::Shape;
 using ::xla::ShapeUtil;
 
+const Shape* ResolveShapeIndex(const Shape* shape,
+                               absl::Span<const int64_t> shape_index) {
+  for (int64_t value : shape_index) {
+    shape = &shape->tuple_shapes(value);
+  }
+  return shape;
+}
+
+// A wrapper of HLO BufferAssignment, with lookup maps for logical buffers and
+// buffer allocations.
+class HloProtoBufferWrapper {
+ public:
+  explicit HloProtoBufferWrapper(const ::xla::HloProto& hlo_proto)
+      : hlo_proto_(hlo_proto) {
+    Init();
+  }
+
+  // Get the raw HLO proto.
+  const ::xla::HloProto& GetHloProto() const { return hlo_proto_; }
+
+  // Helper functions to get LogicalBuffer and BufferAllocation.
+  // We use map.at() directly in these function assuming the HLO proto is
+  // invalid.
+  const xla::LogicalBufferProto& GetLogicalBuffer(
+      int64_t logical_buffer_id) const {
+    return *id_to_logical_buffer_.at(logical_buffer_id);
+  }
+
+  const xla::BufferAllocationProto& GetBufferAllocation(
+      const xla::LogicalBufferProto& logical_buffer) const {
+    return *logical_buffer_to_buffer_allocation_.at(&logical_buffer);
+  }
+
+  const xla::HloInstructionProto& GetHloInstruction(
+      const xla::LogicalBufferProto& logical_buffer) const {
+    return *name_to_hlo_.at(logical_buffer.defined_at().instruction_name());
+  }
+
+  const std::vector<const ::xla::LogicalBufferProto*>&
+  GetLogicalBuffersFromBufferAllocation(
+      const xla::BufferAllocationProto& buffer_allocation) const {
+    return buffer_allocation_to_logical_buffers_.at(&buffer_allocation);
+  }
+
+  const xla::Shape& GetLogicalBufferShape(
+      const xla::LogicalBufferProto& logical_buffer) const {
+    return logical_buffer_to_shape_.at(&logical_buffer);
+  }
+
+ private:
+  // Initialize the mappings of logical buffers and buffer allocations.
+  void Init() {
+    for (const auto& computation : hlo_proto_.hlo_module().computations()) {
+      for (const auto& instruction : computation.instructions()) {
+        name_to_hlo_[instruction.name()] = &instruction;
+      }
+    }
+    for (const auto& logical_buffer :
+         hlo_proto_.buffer_assignment().logical_buffers()) {
+      id_to_logical_buffer_[logical_buffer.id()] = &logical_buffer;
+      // Get shape of logical buffer.
+      const auto& instruction_name =
+          logical_buffer.defined_at().instruction_name();
+      const Shape top_level_shape(name_to_hlo_.at(instruction_name)->shape());
+      const Shape* shape = ResolveShapeIndex(
+          &top_level_shape, logical_buffer.defined_at().shape_index());
+      logical_buffer_to_shape_[&logical_buffer] = *shape;
+    }
+    for (const auto& buffer_allocation :
+         hlo_proto_.buffer_assignment().buffer_allocations()) {
+      for (const auto& assigned : buffer_allocation.assigned()) {
+        const auto* logical_buffer =
+            id_to_logical_buffer_.at(assigned.logical_buffer_id());
+        buffer_allocation_to_logical_buffers_[&buffer_allocation].push_back(
+            logical_buffer);
+        logical_buffer_to_buffer_allocation_[logical_buffer] =
+            &buffer_allocation;
+      }
+    }
+  }
+
+  // Reference to the original HLO proto.
+  const ::xla::HloProto& hlo_proto_;
+
+  // A mapping from name to HLO instruction.
+  absl::flat_hash_map<absl::string_view, const ::xla::HloInstructionProto*>
+      name_to_hlo_;
+
+  // A mapping from logical buffer ID to logical buffer.
+  absl::flat_hash_map<int64_t, const ::xla::LogicalBufferProto*>
+      id_to_logical_buffer_;
+
+  // A mapping from logical buffer to the buffer allocation it exists inside
+  // (there must be only one).
+  absl::flat_hash_map<const ::xla::LogicalBufferProto*,
+                      const ::xla::BufferAllocationProto*>
+      logical_buffer_to_buffer_allocation_;
+
+  // The reverse mapping from buffer allocation to all the logical buffers that
+  // exist inside it.
+  absl::flat_hash_map<const ::xla::BufferAllocationProto*,
+                      std::vector<const ::xla::LogicalBufferProto*>>
+      buffer_allocation_to_logical_buffers_;
+
+  // A mapping from logical buffer to its shape.
+  absl::flat_hash_map<const ::xla::LogicalBufferProto*, xla::Shape>
+      logical_buffer_to_shape_;
+};
+
 double BytesToMiB(int64_t bytes) {
   return static_cast<double>(bytes) / tensorflow::MathUtil::IPow(2, 20);
 }
 
 // Get buffer allocation property.
 std::string GetAllocationGroupName(
-    const BufferAllocationProto* buffer_allocation) {
-  if (buffer_allocation == nullptr) {
-    return "";
-  }
-  if (buffer_allocation->is_entry_computation_parameter()) {
+    const BufferAllocationProto& buffer_allocation) {
+  if (buffer_allocation.is_entry_computation_parameter()) {
     return "Parameter";
-  } else if (buffer_allocation->maybe_live_out()) {
+  } else if (buffer_allocation.maybe_live_out()) {
     return "Output";
-  } else if (buffer_allocation->is_thread_local()) {
+  } else if (buffer_allocation.is_thread_local()) {
     return "Thread-local";
   } else {
     return "Temporary";
   }
 }
 
-// Get the instruction associated with the logical buffer.
-std::string GetInstructionName(const LogicalBufferProto* logical_buffer) {
-  if (logical_buffer == nullptr) {
-    return "";
-  }
-  if (logical_buffer->defined_at().shape_index().empty()) {
-    return logical_buffer->defined_at().instruction_name();
+// Get the instruction name with shape index for a logical buffer.
+std::string GetInstructionNameWithShapeIndex(
+    const LogicalBufferProto& logical_buffer) {
+  if (logical_buffer.defined_at().shape_index().empty()) {
+    return logical_buffer.defined_at().instruction_name();
   } else {
     return absl::StrCat(
-        logical_buffer->defined_at().instruction_name(), "{",
-        absl::StrJoin(logical_buffer->defined_at().shape_index(), ""), "}");
+        logical_buffer.defined_at().instruction_name(), "{",
+        absl::StrJoin(logical_buffer.defined_at().shape_index(), ""), "}");
   }
 }
 
@@ -134,17 +238,9 @@ BufferSpan MakeBufferSpan(int32 start, int32 limit) {
   return result;
 }
 
-const Shape* ResolveShapeIndex(const Shape* shape,
-                               absl::Span<const int64_t> shape_index) {
-  for (int64_t value : shape_index) {
-    shape = &shape->tuple_shapes(value);
-  }
-  return shape;
-}
-
 // A wrapper around ShapeUtil::ByteSizeOf that clears out the layout/padding,
 // since that is considered in the ByteSizeOf calculation.
-int64_t UnpaddedSize(Shape shape) {
+int64_t ShapeUnpaddedSize(Shape shape) {
   // Ensure the layout has no padding by making it the default layout.
   LayoutUtil::SetToDefaultLayout(&shape);
   // Note: we make a simplifying assumption here that a "minimal" size for a
@@ -154,23 +250,30 @@ int64_t UnpaddedSize(Shape shape) {
   return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
 }
 
+std::string ShapeDescription(const Shape& shape) {
+  return ShapeUtil::HumanStringWithLayout(shape);
+}
+
+std::string BufferAllocationDescription(
+    const BufferAllocationProto& buffer_allocation) {
+  // Clear out the assigned logical buffers when stringifying the buffer
+  // allocation, as it can be a long list.
+  auto copy = buffer_allocation;
+  copy.mutable_assigned()->Clear();
+  return copy.ShortDebugString();
+}
+
 void Convert(const xla::BufferAllocationProto_Assigned& assigned,
-             const absl::flat_hash_map<int64_t, const LogicalBufferProto*>&
-                 id_to_logical_buffer,
-             const absl::flat_hash_map<absl::string_view,
-                                       const HloInstructionProto*>& name_to_hlo,
-             LogicalBuffer* result) {
+             const HloProtoBufferWrapper& wrapper, LogicalBuffer* result) {
   result->set_id(assigned.logical_buffer_id()),
       result->set_size_mib(BytesToMiB(assigned.size()));
-  const LogicalBufferProto* proto =
-      id_to_logical_buffer.at(assigned.logical_buffer_id());
-  const std::string& instruction_name = proto->defined_at().instruction_name();
+  const LogicalBufferProto& proto =
+      wrapper.GetLogicalBuffer(assigned.logical_buffer_id());
+  const std::string& instruction_name = proto.defined_at().instruction_name();
   result->set_hlo_name(instruction_name);
-  result->mutable_shape_index()->CopyFrom(proto->defined_at().shape_index());
-  const Shape top_level_shape(name_to_hlo.at(instruction_name)->shape());
-  const Shape* shape =
-      ResolveShapeIndex(&top_level_shape, proto->defined_at().shape_index());
-  result->set_shape(ShapeUtil::HumanStringWithLayout(*shape));
+  result->mutable_shape_index()->CopyFrom(proto.defined_at().shape_index());
+  const Shape& shape = wrapper.GetLogicalBufferShape(proto);
+  result->set_shape(ShapeDescription(shape));
 }
 
 bool IsReusable(const BufferAllocationProto& buffer_allocation) {
@@ -178,11 +281,7 @@ bool IsReusable(const BufferAllocationProto& buffer_allocation) {
 }
 
 void Convert(const BufferAllocationProto& proto,
-             const absl::flat_hash_map<int64_t, const LogicalBufferProto*>&
-                 id_to_logical_buffer,
-             const absl::flat_hash_map<absl::string_view,
-                                       const HloInstructionProto*>& name_to_hlo,
-             BufferAllocation* result) {
+             const HloProtoBufferWrapper& wrapper, BufferAllocation* result) {
   result->set_id(proto.index());
   result->set_size_mib(BytesToMiB(proto.size()));
   if (proto.is_entry_computation_parameter()) {
@@ -195,8 +294,7 @@ void Convert(const BufferAllocationProto& proto,
     result->add_attributes("reusable");
   }
   for (const auto& assigned : proto.assigned()) {
-    Convert(assigned, id_to_logical_buffer, name_to_hlo,
-            result->add_logical_buffers());
+    Convert(assigned, wrapper, result->add_logical_buffers());
   }
   // Check whether all logical buffers for this buffer allocation have a common
   // shape.
@@ -214,35 +312,29 @@ void Convert(const BufferAllocationProto& proto,
   }
 }
 
-void NoteSpecialAllocations(
-    const absl::flat_hash_set<const BufferAllocationProto*>&
-        all_buffer_allocations,
-    const absl::flat_hash_map<int64_t, const LogicalBufferProto*>&
-        id_to_logical_buffer,
-    const absl::flat_hash_map<absl::string_view, const HloInstructionProto*>&
-        name_to_hlo,
-    int64_t small_buffer_size, PreprocessResult* result) {
+void NoteSpecialAllocations(const HloProtoBufferWrapper& wrapper,
+                            int64_t small_buffer_size,
+                            PreprocessResult* result) {
   int64_t entry_parameters_bytes = 0;
   int64_t non_reusable_bytes = 0;
   int64_t maybe_live_out_bytes = 0;
-  for (const BufferAllocationProto* buffer_allocation :
-       all_buffer_allocations) {
-    if (buffer_allocation->is_entry_computation_parameter()) {
-      entry_parameters_bytes += buffer_allocation->size();
+  for (const BufferAllocationProto& buffer_allocation :
+       wrapper.GetHloProto().buffer_assignment().buffer_allocations()) {
+    if (buffer_allocation.is_entry_computation_parameter()) {
+      entry_parameters_bytes += buffer_allocation.size();
     }
-    if (!IsReusable(*buffer_allocation)) {
-      non_reusable_bytes += buffer_allocation->size();
+    if (!IsReusable(buffer_allocation)) {
+      non_reusable_bytes += buffer_allocation.size();
     }
-    if (buffer_allocation->maybe_live_out()) {
-      if (buffer_allocation->size() > small_buffer_size) {
+    if (buffer_allocation.maybe_live_out()) {
+      if (buffer_allocation.size() > small_buffer_size) {
         VLOG(1) << "Maybe live out buffer allocation: "
-                << buffer_allocation->size()
-                << " bytes :: " << buffer_allocation->ShortDebugString();
+                << buffer_allocation.size()
+                << " bytes :: " << buffer_allocation.ShortDebugString();
       }
-      maybe_live_out_bytes += buffer_allocation->size();
+      maybe_live_out_bytes += buffer_allocation.size();
     }
-    Convert(*buffer_allocation, id_to_logical_buffer, name_to_hlo,
-            result->add_indefinite_lifetimes());
+    Convert(buffer_allocation, wrapper, result->add_indefinite_lifetimes());
   }
 
   result->set_entry_computation_parameters_mib(
@@ -251,73 +343,12 @@ void NoteSpecialAllocations(
   result->set_maybe_live_out_mib(BytesToMiB(maybe_live_out_bytes));
 }
 
-const int64_t GetUnpaddedSizeFromLogicalBufferProto(
-    const LogicalBufferProto* logical_buffer,
-    const absl::flat_hash_map<absl::string_view, const HloInstructionProto*>&
-        name_to_hlo) {
-  const auto& instruction_name =
-      logical_buffer->defined_at().instruction_name();
-  const Shape top_level_shape(name_to_hlo.at(instruction_name)->shape());
-  const Shape* shape = ResolveShapeIndex(
-      &top_level_shape, logical_buffer->defined_at().shape_index());
-  return UnpaddedSize(*shape);
-}
-
 }  // namespace
 
 absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     const HloProto& hlo_proto, int64_t small_buffer_size,
     int64_t heap_simulator_trace_id, int64_t memory_color) {
-  // Construct a mapping from name to HLO proto.
-  absl::flat_hash_map<absl::string_view, const HloInstructionProto*>
-      name_to_hlo;
-  for (const auto& computation : hlo_proto.hlo_module().computations()) {
-    for (const auto& instruction : computation.instructions()) {
-      name_to_hlo[instruction.name()] = &instruction;
-      VLOG(1) << "HLO: " << instruction.ShortDebugString();
-    }
-  }
-
-  // Mapping from logical buffer ID to logical buffer, and set of all logical
-  // buffer protos.
-  absl::flat_hash_map<int64_t, const LogicalBufferProto*> id_to_logical_buffer;
-  absl::flat_hash_set<const LogicalBufferProto*> all_logical_buffers;
-  for (const auto& logical_buffer :
-       hlo_proto.buffer_assignment().logical_buffers()) {
-    VLOG(1) << "Logical buffer: " << logical_buffer.ShortDebugString();
-    id_to_logical_buffer[logical_buffer.id()] = &logical_buffer;
-    all_logical_buffers.insert(&logical_buffer);
-  }
-
-  // Mapping from logocal buffer proto to the buffer allocation that it exists
-  // inside (there must be only one).
-  //
-  // Also a reverse mapping from buffer allocation proto to the set of logical
-  // buffer protos that exist inside of it.
-  absl::flat_hash_map<const LogicalBufferProto*, const BufferAllocationProto*>
-      logical_buffer_to_buffer_allocation;
-  absl::flat_hash_map<const BufferAllocationProto*,
-                      absl::flat_hash_set<const LogicalBufferProto*>>
-      buffer_allocation_to_logical_buffers;
-  absl::flat_hash_set<const BufferAllocationProto*> all_buffer_allocations;
-  for (const BufferAllocationProto& buffer_allocation :
-       hlo_proto.buffer_assignment().buffer_allocations()) {
-    all_buffer_allocations.insert(&buffer_allocation);
-    for (const xla::BufferAllocationProto_Assigned& assigned :
-         buffer_allocation.assigned()) {
-      const LogicalBufferProto* logical_buffer =
-          id_to_logical_buffer.at(assigned.logical_buffer_id());
-      buffer_allocation_to_logical_buffers[&buffer_allocation].insert(
-          logical_buffer);
-      auto insert_result = logical_buffer_to_buffer_allocation.insert(
-          {logical_buffer, &buffer_allocation});
-      if (!insert_result.second) {
-        return absl::InvalidArgumentError(
-            "A logical buffer appears to be associated with multiple buffer "
-            "allocations.");
-      }
-    }
-  }
+  HloProtoBufferWrapper wrapper(hlo_proto);
 
   std::vector<int64_t> logical_buffers;
   std::vector<int64_t> peak_logical_buffers;
@@ -343,11 +374,12 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 
   // Increase memory usage using canonical logical buffer.
   auto update_on_increase =
-      [&](const LogicalBufferProto* canonical_logical_buffer) {
-        logical_buffers.push_back(canonical_logical_buffer->id());
-        heap_size_bytes += canonical_logical_buffer->size();
-        unpadded_heap_size_bytes += GetUnpaddedSizeFromLogicalBufferProto(
-            canonical_logical_buffer, name_to_hlo);
+      [&](const LogicalBufferProto& canonical_logical_buffer) {
+        logical_buffers.push_back(canonical_logical_buffer.id());
+        heap_size_bytes += canonical_logical_buffer.size();
+        const Shape& shape =
+            wrapper.GetLogicalBufferShape(canonical_logical_buffer);
+        unpadded_heap_size_bytes += ShapeUnpaddedSize(shape);
         // Update max memory.
         int64_t prior_peak_heap_size_bytes = peak_heap_size_bytes;
         peak_heap_size_bytes = std::max(peak_heap_size_bytes, heap_size_bytes);
@@ -373,16 +405,16 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
     for (const auto& event : simulator_events) {
       heap_sizes.push_back(BytesToMiB(heap_size_bytes));
       unpadded_heap_sizes.push_back(BytesToMiB(unpadded_heap_size_bytes));
-      const auto* logical_buffer = id_to_logical_buffer.at(event.buffer_id());
-      seen.insert(logical_buffer);
+      const auto& logical_buffer = wrapper.GetLogicalBuffer(event.buffer_id());
+      seen.insert(&logical_buffer);
       seen_buffer_allocations.insert(
-          logical_buffer_to_buffer_allocation.at(logical_buffer));
+          &wrapper.GetBufferAllocation(logical_buffer));
       if (event.kind() == xla::HeapSimulatorTrace_Event::ALLOC) {
         // The first time a canonical buffer is allocated.
         canonical_buffer_ref_count[event.buffer_id()] = 1;
         update_on_increase(logical_buffer);
         // Initialize the buffer span from the current event to the last event.
-        logical_buffer_spans[logical_buffer->id()] = {
+        logical_buffer_spans[logical_buffer.id()] = {
             heap_sizes.size() - 1, simulator_events.size() - 1};
       } else if (event.kind() == xla::HeapSimulatorTrace_Event::FREE) {
         // Get the canonical buffer ID of this free event.
@@ -402,24 +434,19 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
           // There is no more reference to the canonical buffer, the canonical
           // buffer is finally freed. Update memory usage and memory timespan
           // using the metadata of canonical buffer.
-          const auto* canonical_buffer =
-              id_to_logical_buffer.at(canonical_buffer_id);
-          if (!canonical_buffer) {
-            return absl::InvalidArgumentError(
-                absl::StrCat("Unable to find canonical buffer with ID: ",
-                             canonical_buffer_id));
-          }
+          const auto& canonical_buffer =
+              wrapper.GetLogicalBuffer(canonical_buffer_id);
           logical_buffers.erase(
               std::remove(logical_buffers.begin(), logical_buffers.end(),
                           canonical_buffer_id),
               logical_buffers.end());
-          heap_size_bytes -= canonical_buffer->size();
+          heap_size_bytes -= canonical_buffer.size();
           if (heap_size_bytes < 0) {
             return absl::InvalidArgumentError(absl::StrCat(
                 "heap_size_bytes should be non-negative: ", heap_size_bytes));
           }
-          unpadded_heap_size_bytes -= GetUnpaddedSizeFromLogicalBufferProto(
-              canonical_buffer, name_to_hlo);
+          const Shape& shape = wrapper.GetLogicalBufferShape(canonical_buffer);
+          unpadded_heap_size_bytes -= ShapeUnpaddedSize(shape);
           logical_buffer_spans[canonical_buffer_id].second =
               heap_sizes.size() - 1;
         }
@@ -432,13 +459,8 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
         ++ref_count;
         if (ref_count == 1) {
           // SHARE_WITH happens after the FREE of a canonical buffer.
-          const auto* canonical_buffer =
-              id_to_logical_buffer.at(event.share_with_canonical_id());
-          if (!canonical_buffer) {
-            return absl::InvalidArgumentError(
-                absl::StrCat("Unable to find canonical buffer with ID: ",
-                             event.share_with_canonical_id()));
-          }
+          const auto& canonical_buffer =
+              wrapper.GetLogicalBuffer(event.share_with_canonical_id());
           update_on_increase(canonical_buffer);
         }
       } else {
@@ -472,71 +494,64 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
 
   // Helper lambda that adds the logical buffer as an element in the "max heap"
   // view with constitutent logical buffers.
-  auto add_heap_object = [&](const LogicalBufferProto* logical_buffer,
-                             const BufferAllocationProto* buffer_allocation) {
-    if (logical_buffer->size() <= small_buffer_size) {
-      rest += logical_buffer->size();
+  auto add_heap_object = [&](const LogicalBufferProto& logical_buffer,
+                             const BufferAllocationProto& buffer_allocation) {
+    if (logical_buffer.size() <= small_buffer_size) {
+      rest += logical_buffer.size();
       return;
     }
-    const std::string& instruction_name =
-        logical_buffer->defined_at().instruction_name();
-    const Shape top_level_shape(name_to_hlo.at(instruction_name)->shape());
-    const Shape* shape = ResolveShapeIndex(
-        &top_level_shape, logical_buffer->defined_at().shape_index());
-    std::string shape_string = ShapeUtil::HumanStringWithLayout(*shape);
-    int64 unpadded_shape_bytes = UnpaddedSize(*shape);
-    const HloInstructionProto* hlo_instruction =
-        name_to_hlo.at(instruction_name);
-    std::string label = StrFormat("%s: %s # %s", instruction_name, shape_string,
-                                  hlo_instruction->metadata().op_name());
+
+    const Shape& shape = wrapper.GetLogicalBufferShape(logical_buffer);
+    const HloInstructionProto& hlo_instruction =
+        wrapper.GetHloInstruction(logical_buffer);
+    std::string shape_string = ShapeDescription(shape);
+    int64_t unpadded_shape_bytes = ShapeUnpaddedSize(shape);
+    std::string label =
+        StrFormat("%s: %s # %s", logical_buffer.defined_at().instruction_name(),
+                  shape_string, hlo_instruction.metadata().op_name());
     max_heap.push_back(MakeHeapObject(
-        hlo_instruction->metadata().op_name(), shape_string,
-        hlo_instruction->opcode(), GetInstructionName(logical_buffer),
+        hlo_instruction.metadata().op_name(), shape_string,
+        hlo_instruction.opcode(),
+        GetInstructionNameWithShapeIndex(logical_buffer),
         GetAllocationGroupName(buffer_allocation), std::move(label), colorno++,
-        logical_buffer->id(), logical_buffer->size(), unpadded_shape_bytes));
+        logical_buffer.id(), logical_buffer.size(), unpadded_shape_bytes));
   };
 
   // Now look for all logical buffers which have not been seen, and assume they
   // have indefinite lifetime if they are not in thread-local buffer
   // allocations.
   absl::flat_hash_set<const LogicalBufferProto*> unseen;
-  for (const LogicalBufferProto* logical_buffer : all_logical_buffers) {
-    if (!seen.contains(logical_buffer)) {
-      unseen.insert(logical_buffer);
+  for (const LogicalBufferProto& logical_buffer :
+       wrapper.GetHloProto().buffer_assignment().logical_buffers()) {
+    if (!seen.contains(&logical_buffer)) {
+      unseen.insert(&logical_buffer);
     }
   }
   for (const LogicalBufferProto* logical_buffer : unseen) {
-    const BufferAllocationProto* buffer_allocation =
-        logical_buffer_to_buffer_allocation.at(logical_buffer);
-    if (buffer_allocation->is_thread_local()) {
+    const BufferAllocationProto& buffer_allocation =
+        wrapper.GetBufferAllocation(*logical_buffer);
+    if (buffer_allocation.is_thread_local()) {
       continue;
     }
     if (logical_buffer->color() != memory_color) {
       continue;
     }
-    // Clear out the assigned logical buffers when stringifying the buffer
-    // allocation, as it can be a long list.
-    auto to_string = [](const BufferAllocationProto* p) {
-      BufferAllocationProto copy = *p;
-      copy.mutable_assigned()->Clear();
-      return copy.ShortDebugString();
-    };
-    if (seen_buffer_allocations.insert(buffer_allocation).second) {
-      indefinite_memory_usage_bytes += buffer_allocation->size();
+    if (seen_buffer_allocations.insert(&buffer_allocation).second) {
+      indefinite_memory_usage_bytes += buffer_allocation.size();
       const auto& logical_buffers =
-          buffer_allocation_to_logical_buffers.at(buffer_allocation);
+          wrapper.GetLogicalBuffersFromBufferAllocation(buffer_allocation);
       if (logical_buffers.size() == 1) {
-        add_heap_object(*logical_buffers.begin(), buffer_allocation);
+        add_heap_object(*logical_buffers.front(), buffer_allocation);
       } else {
         VLOG(1) << "Indefinite lifetime, no heap object shown due to "
                    "multiple logical buffers in buffer allocation: "
                 << logical_buffer->ShortDebugString()
-                << " :: " << to_string(buffer_allocation) << std::endl;
+                << " :: " << BufferAllocationDescription(buffer_allocation);
       }
-      if (buffer_allocation->size() > small_buffer_size) {
+      if (buffer_allocation.size() > small_buffer_size) {
         VLOG(1) << "Indefinite memory usage now: "
                 << indefinite_memory_usage_bytes << " bytes (+"
-                << buffer_allocation->size() << " bytes)";
+                << buffer_allocation.size() << " bytes)";
       }
     }
   }
@@ -558,9 +573,8 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
   // into the logical_buffers sequence above was program order, and we iterate
   // that order to create data points.
   for (int logical_buffer_id : peak_logical_buffers) {
-    const auto* logical_buffer = id_to_logical_buffer.at(logical_buffer_id);
-    const auto* buffer_allocation =
-        logical_buffer_to_buffer_allocation.at(logical_buffer);
+    const auto& logical_buffer = wrapper.GetLogicalBuffer(logical_buffer_id);
+    const auto& buffer_allocation = wrapper.GetBufferAllocation(logical_buffer);
     add_heap_object(logical_buffer, buffer_allocation);
   }
   if (rest != 0) {
@@ -619,8 +633,7 @@ absl::StatusOr<PreprocessResult> ConvertHloProtoToPreprocessResult(
         MakeBufferSpan(item.second.first, item.second.second.value());
   }
 
-  NoteSpecialAllocations(all_buffer_allocations, id_to_logical_buffer,
-                         name_to_hlo, small_buffer_size, &result);
+  NoteSpecialAllocations(wrapper, small_buffer_size, &result);
   return result;
 }
 
