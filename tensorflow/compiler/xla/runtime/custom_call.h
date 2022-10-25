@@ -866,36 +866,38 @@ class CustomCallHandler : public CustomCall {
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();
 
     // If all runtime checks are disabled we are just reinterpreting opaque
-    // `args` and `attrs` memory acording to the requested handler signature.
-    if (checks != RuntimeChecks::kNone) {
-      // Check that the number of passed arguments matches the signature. Each
-      // individual argument decoding will check the actual type.
-      if (internal::HasRemainingArgs<Ts...>::value) {
-        if (LLVM_UNLIKELY(num_args < kNumArgs - 1))
-          return diagnostic->EmitError(InvalidArgument(
-              "Wrong number of arguments: expected at least %d got %d",
-              kNumArgs - 1, num_args));
-      } else {
-        if (LLVM_UNLIKELY(num_args != kNumArgs))
-          return diagnostic->EmitError(
-              InvalidArgument("Wrong number of arguments: expected %d got %d",
-                              kNumArgs, num_args));
-      }
+    // `args`, `attrs` and `rets` memory acording to the custom call handler
+    // signature and skip all checks (these checks will be optimized out).
+    auto eval = [](bool condition) {
+      return checks == RuntimeChecks::kNone ? false : condition;
+    };
 
-      // Check that we have enough attributes passed to the custom call. Each
-      // individual attribute decoding will check the name and the type.
-      if (LLVM_UNLIKELY(num_attrs < attrs_.size()))
+    // Check that the number of passed arguments matches the signature. Each
+    // individual argument decoding will check the actual type.
+    if (internal::HasRemainingArgs<Ts...>::value) {
+      if (LLVM_UNLIKELY(eval(num_args < kNumArgs - 1)))
         return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of attributes: expected at least %d got %d",
-            attrs_.size(), num_attrs));
-
-      // Check that the number of returns matches the signature. The return
-      // decoding will check the actual type.
-      if (LLVM_UNLIKELY(num_rets != kNumRets)) {
-        return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
-      }
+            "Wrong number of arguments: expected at least %d got %d",
+            kNumArgs - 1, num_args));
+    } else {
+      if (LLVM_UNLIKELY(eval(num_args != kNumArgs)))
+        return diagnostic->EmitError(
+            InvalidArgument("Wrong number of arguments: expected %d got %d",
+                            kNumArgs, num_args));
     }
+
+    // Check that the number of returns matches the signature. The return
+    // decoding will check the actual type.
+    if (LLVM_UNLIKELY(eval(num_rets != kNumRets)))
+      return diagnostic->EmitError(InvalidArgument(
+          "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
+
+    // Check that we have enough attributes passed to the custom call. Each
+    // individual attribute decoding will check the name and the type.
+    if (LLVM_UNLIKELY(eval(num_attrs < attrs_.size())))
+      return diagnostic->EmitError(InvalidArgument(
+          "Wrong number of attributes: expected at least %d got %d",
+          attrs_.size(), num_attrs));
 
     // Define index sequences to access custom call operands.
     using Is = std::make_index_sequence<kSize>;
