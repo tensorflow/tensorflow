@@ -5,12 +5,17 @@ load(
     "if_cuda",
 )
 load(
+    "//tensorflow/tsl/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm",
+    "if_rocm_is_configured",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -39,6 +44,36 @@ def clean_dep(target):
     # A repo-relative label is resolved relative to the file in which the
     # Label() call appears, i.e. @org_tensorflow.
     return str(Label(target))
+
+def if_cuda_or_rocm(if_true, if_false = []):
+    """Shorthand for select()'ing whether to build for either CUDA or ROCm.
+
+      Returns a select statement which evaluates to
+         if_true if we're building with either CUDA or ROCm enabled.
+         if_false, otherwise.
+
+      Sometimes a target has additional CUDa or ROCm specific dependencies.
+      The `if_cuda` / `if_rocm` functions are used to specify these additional
+      dependencies. For eg, see the `//tensorflow/core/kernels:bias_op` target
+
+      If the same additional dependency is needed for both CUDA and ROCm
+      (for eg. `reduction_ops` dependency for the `bias_op` target above),
+      then specifying that dependency in both `if_cuda` and `if_rocm` will
+      result in both those functions returning a select statement, which contains
+      the same dependency, which then leads to a duplicate dependency bazel error.
+
+      In order to work around this error, any additional dependency that is common
+      to both the CUDA and ROCm platforms, should be specified using this function.
+      Doing so will eliminate the cause of the bazel error (i.e. the  same
+      dependency showing up in two different select statements)
+
+      """
+    return select({
+        "@local_config_cuda//cuda:using_nvcc": if_true,
+        "@local_config_cuda//cuda:using_clang": if_true,
+        "@local_config_rocm//rocm:using_hipcc": if_true,
+        "//conditions:default": if_false,
+    })
 
 def if_oss(oss_value, google_value = []):
     """Returns one of the arguments based on the non-configurable build env.
@@ -215,6 +250,45 @@ def tf_openmp_copts():
         # copybara:comment_end
         "//conditions:default": [],
     })
+
+def tsl_gpu_library(deps = None, cuda_deps = None, copts = tsl_copts(), **kwargs):
+    """Generate a cc_library with a conditional set of CUDA dependencies.
+
+    When the library is built with --config=cuda:
+
+    - Both deps and cuda_deps are used as dependencies.
+    - The cuda runtime is added as a dependency (if necessary).
+    - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
+    - In addition, when the library is also built with TensorRT enabled, it
+        additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
+
+    Args:
+      cuda_deps: BUILD dependencies which will be linked if and only if:
+        '--config=cuda' is passed to the bazel command line.
+      deps: dependencies which will always be linked.
+      copts: copts always passed to the cc_library.
+      **kwargs: Any other argument to cc_library.
+    """
+    if not deps:
+        deps = []
+    if not cuda_deps:
+        cuda_deps = []
+
+    kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
+    deps = deps + if_cuda_or_rocm(cuda_deps)
+    if "default_copts" in kwargs:
+        copts = kwargs["default_copts"] + copts
+        kwargs.pop("default_copts", None)
+    cc_library(
+        deps = deps + if_cuda([
+            clean_dep("//tensorflow/tsl/cuda:cudart_stub"),
+            "@local_config_cuda//cuda:cuda_headers",
+        ]) + if_rocm_is_configured([
+            "@local_config_rocm//rocm:rocm_headers",
+        ]),
+        copts = (copts + if_cuda(["-DGOOGLE_CUDA=1", "-DNV_CUDNN_DISABLE_EXCEPTION"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_xla_available(["-DTENSORFLOW_USE_XLA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
+        **kwargs
+    )
 
 # Traverse the dependency graph along the "deps" attribute of the
 # target and return a struct with one field called 'tf_collected_deps'.
