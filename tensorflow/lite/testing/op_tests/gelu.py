@@ -45,6 +45,7 @@ def make_gelu_tests(options):
       "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
                       [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
       "fully_quantize": [False, True],
+      "quant_16x8": [False, True],
       "input_range": [(-10, 10)],
       "approximate": [True, False],
   }]
