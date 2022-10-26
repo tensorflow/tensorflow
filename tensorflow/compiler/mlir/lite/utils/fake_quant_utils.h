@@ -145,7 +145,7 @@ class InsertTFLQuantOpsAfterTFFakeQuantOp {
     auto quantize = rewriter.create<TFL::QuantizeOp>(
         tf_op.getLoc(), qtype.getValue(), value, qtype);
     auto dequantize = rewriter.create<TFL::DequantizeOp>(
-        tf_op.getLoc(), res_type, quantize.output());
+        tf_op.getLoc(), res_type, quantize.getOutput());
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 

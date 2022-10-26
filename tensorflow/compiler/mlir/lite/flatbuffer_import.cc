@@ -1077,8 +1077,8 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
         builder.setInsertionPointAfter(cst.getOperation());
         auto new_op = builder.create<tfl::QConstOp>(
             cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
-            cst.valueAttr());
-        full_range_const = new_op.output();
+            cst.getValueAttr());
+        full_range_const = new_op.getOutput();
       }
       use.set(full_range_const);
     }
@@ -1220,7 +1220,7 @@ mlir::ResultRange MaybeWrapInControlNode(mlir::Operation* op,
   auto ctrl_op = op_builder.create<mlir::TFL::ControlNodeOp>(
       op_loc, cloned_op->getResultTypes(),
       mlir::TFL::ControlType::get(op->getContext()), control_tokens);
-  ctrl_op.body().takeBody(region);
+  ctrl_op.getBody().takeBody(region);
 
   // Store the control_token output for use by downstream nodes.
   maybe_control_node->second.outgoing = ctrl_op.getControl();
@@ -1512,11 +1512,11 @@ void AddRegionsForTflWhileOp(mlir::ModuleOp module) {
   module.walk([&](mlir::TFL::WhileOp while_op) {
     auto cond = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("cond").cast<mlir::FlatSymbolRefAttr>().getValue());
-    AddCallOpInWhileOpRegion(while_op.cond(), cond);
+    AddCallOpInWhileOpRegion(while_op.getCond(), cond);
     while_op->removeAttr("cond");
     auto body = symbol_table.lookup<mlir::func::FuncOp>(
         while_op->getAttr("body").cast<mlir::FlatSymbolRefAttr>().getValue());
-    AddCallOpInWhileOpRegion(while_op.body(), body);
+    AddCallOpInWhileOpRegion(while_op.getBody(), body);
     while_op->removeAttr("body");
   });
 }
