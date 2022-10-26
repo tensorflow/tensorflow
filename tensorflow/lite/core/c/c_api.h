@@ -79,6 +79,10 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// This header should be valid in both C (e.g. C99) and C++,
+// so 'void' in parameters is not redundant.
+// NOLINTBEGIN(modernize-redundant-void-arg)
+
 // --------------------------------------------------------------------------
 // Opaque types used by the C API.
 
@@ -482,6 +486,8 @@ TFL_CAPI_EXPORT extern void TfLiteRegistrationExternalSetInvoke(
     TfLiteRegistrationExternal* registration,
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
                            TfLiteOpaqueNode* node));
+
+// NOLINTEND(modernize-redundant-void-arg)
 
 #ifdef __cplusplus
 }  // extern "C"
