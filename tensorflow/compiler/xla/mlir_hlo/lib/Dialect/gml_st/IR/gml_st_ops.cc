@@ -1761,7 +1761,7 @@ ParseResult SetYieldOp::parse(OpAsmParser &parser, OperationState &result) {
 
   auto parseElt = [&]() -> ParseResult {
     OpAsmParser::UnresolvedOperand src;
-    auto parseResult = parser.parseOptionalOperand(src, false);
+    auto parseResult = parser.parseOptionalOperand(src);
 
     if (!parseResult.has_value()) return success();
     srcs.push_back(src);
