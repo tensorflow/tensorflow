@@ -1142,17 +1142,24 @@ bool CoordinationServiceStandaloneImpl::ValidateTaskArgs(
 
 void CoordinationServiceStandaloneImpl::AggregateClusterDevices() {
   assert(cluster_devices_.device_size() == 0);
-  std::vector<std::string> ordered_tasks;
+  std::vector<CoordinatedTask> ordered_tasks;
   // Sort by task name to set deterministic order for cluster devices.
   ordered_tasks.reserve(cluster_state_.size());
   for (const auto& task : cluster_state_) {
-    ordered_tasks.push_back(task.first);
+    ordered_tasks.push_back(GetTaskFromName(task.first));
   }
-  std::sort(ordered_tasks.begin(), ordered_tasks.end());
+  std::sort(ordered_tasks.begin(), ordered_tasks.end(),
+            [](const CoordinatedTask& task1, const CoordinatedTask& task2) {
+              if (task1.job_name() != task2.job_name()) {
+                return task1.job_name() < task2.job_name();
+              }
+              return task1.task_id() < task2.task_id();
+            });
 
   // Aggregate to global device list.
   for (const auto& task : ordered_tasks) {
-    cluster_devices_.MergeFrom(cluster_state_[task]->GetDeviceInfo());
+    cluster_devices_.MergeFrom(
+        cluster_state_[GetTaskName(task)]->GetDeviceInfo());
   }
 
   if (post_aggregate_device_fn_ != nullptr) {

@@ -350,6 +350,7 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
   WaitForAllTasksRequest request;
   *request.mutable_source_task() = task_;
   *request.mutable_device_info() = local_devices;
+  VLOG(3) << "WaitForAllTasksRequest: " << request.DebugString();
   WaitForAllTasksResponse response;
   Status status;
   absl::Notification n;
@@ -362,7 +363,8 @@ Status CoordinationServiceAgentImpl::WaitForAllTasks(
     SetError(status);
     return status;
   }
-  cluster_devices_.MergeFrom(response.device_info());
+  VLOG(3) << "WaitForAllTasksResponse: " << response.DebugString();
+  cluster_devices_ = response.device_info();
   return OkStatus();
 }
 
