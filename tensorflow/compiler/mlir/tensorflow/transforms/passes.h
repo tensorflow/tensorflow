@@ -462,7 +462,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 
 // Creates a pass that rewrites partitioned calls with `_xla_compile_device
 // type` with `tf.XlaLaunch` ops.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateXlaRewritePass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass();
 }  // namespace TFDevice
 
 namespace TFTPU {
