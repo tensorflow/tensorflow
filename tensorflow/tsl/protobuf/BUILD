@@ -42,14 +42,21 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "rpc_options_proto",
+    srcs = ["rpc_options.proto"],
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
     name = "protos_all",
     create_go_proto = False,
     make_default_target_header_only = True,
     protodeps = [
         ":bfc_memory_map_proto",
+        ":distributed_runtime_payloads_proto",
         ":error_codes_proto_impl",
         ":histogram_proto",
-        ":distributed_runtime_payloads_proto",
+        ":rpc_options_proto",
     ],
     visibility = ["//visibility:public"],
 )
