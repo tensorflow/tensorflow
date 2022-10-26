@@ -21,7 +21,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -66,8 +66,8 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:coordination_config_proto_cc",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 

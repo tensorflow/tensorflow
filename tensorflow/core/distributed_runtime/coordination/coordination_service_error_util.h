@@ -18,7 +18,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

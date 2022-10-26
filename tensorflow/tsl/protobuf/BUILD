@@ -36,6 +36,23 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "coordination_config_proto",
+    srcs = ["coordination_config.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "coordination_service_proto",
+    srcs = ["coordination_service.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    cc_stubby_versions = ["2"],
+    create_grpc_library = True,
+    create_service = True,
+)
+
+tf_proto_library(
     name = "distributed_runtime_payloads_proto",
     srcs = ["distributed_runtime_payloads.proto"],
     make_default_target_header_only = True,
@@ -53,6 +70,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":bfc_memory_map_proto",
+        ":coordination_config_proto",
         ":distributed_runtime_payloads_proto",
         ":error_codes_proto_impl",
         ":histogram_proto",

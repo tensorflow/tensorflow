@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/threadpool.h"
-#include "tensorflow/core/protobuf/coordination_service.grpc.pb.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/tsl/protobuf/coordination_service.grpc.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

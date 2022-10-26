@@ -6,9 +6,9 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
-import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
+import "tensorflow/tsl/protobuf/coordination_config.proto";
 import "tensorflow/tsl/protobuf/rpc_options.proto";
 
 option cc_enable_arenas = true;

@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tsl {
 class Env;

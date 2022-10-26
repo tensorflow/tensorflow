@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_service.pb.h"
 
 namespace tensorflow {
 

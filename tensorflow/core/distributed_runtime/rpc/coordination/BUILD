@@ -13,7 +13,6 @@ cc_library(
     srcs = ["grpc_coordination_client.cc"],
     hdrs = ["grpc_coordination_client.h"],
     deps = [
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/distributed_runtime:call_options",
@@ -21,6 +20,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -30,8 +30,6 @@ cc_library(
     hdrs = ["grpc_coordination_service_impl.h"],
     deps = [
         "//tensorflow/core/platform:thread_annotations",
-        "//tensorflow/core/protobuf:coordination_service_proto_cc",
-        "//tensorflow/core/protobuf:coordination_service_cc_grpc_proto",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core:platform_base",
@@ -43,5 +41,7 @@ cc_library(
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/platform",
+        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "//tensorflow/tsl/protobuf:coordination_service_cc_grpc_proto",
     ] + tf_grpc_cc_dependencies(),
 )
