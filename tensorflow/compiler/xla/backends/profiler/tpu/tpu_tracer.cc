@@ -22,16 +22,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/lib/profiler_factory.h"
-#include "tensorflow/core/profiler/lib/profiler_interface.h"
 #include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/profiler/lib/profiler_factory.h"
+#include "tensorflow/tsl/profiler/lib/profiler_interface.h"
+#include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
-namespace tensorflow {
+namespace xla {
 namespace profiler {
 namespace {
 
@@ -125,7 +125,7 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
   if (tpu::OpsApiFn()->TpuProfiler_CreateFn == nullptr) {
     return nullptr;
   }
-  return absl::make_unique<TpuTracer>();
+  return std::make_unique<TpuTracer>();
 }
 
 auto register_tpu_tracer_factory = [] {
@@ -134,4 +134,4 @@ auto register_tpu_tracer_factory = [] {
 }();
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace xla

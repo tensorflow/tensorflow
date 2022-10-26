@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow:tensorflow.bzl", "if_with_tpu_support")
 
 package(
@@ -15,14 +15,14 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/tpu:status_helper",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_api",
         "//tensorflow/compiler/xla/stream_executor/tpu:tpu_ops_c_api_hdrs",
-        "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_factory",
-        "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:time_utils",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/lib:profiler_interface",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
