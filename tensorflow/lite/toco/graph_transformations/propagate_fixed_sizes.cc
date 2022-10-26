@@ -1928,21 +1928,11 @@ void ProcessTileOperator(Model* model, TensorFlowTileOperator* op) {
     // Yield until the multiples is constant.
     return;
   }
-  std::vector<int64_t> multiples;
-  if (multiples_array.data_type == ArrayDataType::kInt32) {
-    const auto& data = multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
-    for (auto elem : data) {
-      multiples.push_back(static_cast<int64_t>(elem));
-    }
-  } else if (multiples_array.data_type == ArrayDataType::kInt64) {
-    const auto& data = multiples_array.GetBuffer<ArrayDataType::kInt64>().data;
-    for (auto elem : data) {
-      multiples.push_back(elem);
-    }
-  } else {
-    CHECK(multiples_array.data_type == ArrayDataType::kInt64 ||
-          multiples_array.data_type == ArrayDataType::kInt32);
-  }
+  CHECK(multiples_array.data_type == ArrayDataType::kInt32)
+      << "Tile multiples input must be int32";
+
+  std::vector<int32> const& multiples =
+      multiples_array.GetBuffer<ArrayDataType::kInt32>().data;
   CHECK_EQ(multiples.size(), input_shape.dimensions_count())
       << "Tile multiples input " << op->inputs[1]
       << " must be same length as input dimensions";
