@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 

@@ -211,7 +211,6 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/tsl/protobuf:bfc_memory_map_proto",
         "//tensorflow/tsl/protobuf:coordination_config_proto",
-        "//tensorflow/tsl/protobuf:rpc_options_proto",
     ],
     tags = ["alt_dep=//third_party/tensorflow/core:protos_all"],
     exports = ["//tensorflow/tsl/protobuf:bfc_memory_map_proto"],

@@ -123,7 +123,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
+        "//tensorflow/core:protos_all_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -215,7 +215,6 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_session",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
