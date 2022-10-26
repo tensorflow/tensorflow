@@ -98,14 +98,16 @@ class CustomCall {
   // doesn't match the custom call handler, it can lead to undefined behavior.
   enum class RuntimeChecks : uint8_t {
     // Check arguments and attributes types, also check attribute names. It is
-    // safe to pass extra arguments to the custom call handler when name
-    // checking is enabled, because it will safely skip irrelevant attributes.
+    // safe to pass extra attributes (if `exact_attrs` is false) to the custom
+    // call when name checking is enabled, because it will safely skip
+    // irrelevant attributes.
     kDefault = 0,
 
-    // Check only the types of the arguments and attributes. If an attribute
-    // with the same type but different name is passed to the custom call
-    // handler, it will happily proceed ignoring the name mismatch.
-    kTypes = 1,
+    // Check only the types of the arguments and attributes. At this check level
+    // custom calls never check the names of the attributes because it can be
+    // too expensive, however type checking should prevent catastrophic
+    // segfaults. This is the recommended checks level in optimized builds.
+    kLess = 1,
 
     // Do not check the number of arguments and attributes and their types, and
     // do not check that the user data was passed to the custom call. This is

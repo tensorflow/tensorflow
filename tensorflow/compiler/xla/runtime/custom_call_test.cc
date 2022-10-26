@@ -1025,7 +1025,7 @@ using RuntimeChecks = CustomCall::RuntimeChecks;
 
 // Give short aliases to enums for benchmarks pretty printing.
 static constexpr RuntimeChecks all = RuntimeChecks::kDefault;
-static constexpr RuntimeChecks types = RuntimeChecks::kTypes;
+static constexpr RuntimeChecks less = RuntimeChecks::kLess;
 static constexpr RuntimeChecks none = RuntimeChecks::kNone;
 
 static void BenchmarkCustomCall(
@@ -1439,10 +1439,10 @@ static void I32AttrX1(State& state) {
 
 static void BM_I32AttrX1All(State& s) { I32AttrX1<all>(s); }
 static void BM_I32AttrX1None(State& s) { I32AttrX1<none>(s); }
-static void BM_I32AttrX1Types(State& s) { I32AttrX1<types>(s); }
+static void BM_I32AttrX1Less(State& s) { I32AttrX1<less>(s); }
 
 BENCHMARK(BM_I32AttrX1All);
-BENCHMARK(BM_I32AttrX1Types);
+BENCHMARK(BM_I32AttrX1Less);
 BENCHMARK(BM_I32AttrX1None);
 
 //===----------------------------------------------------------------------===//
@@ -1502,7 +1502,7 @@ static void I32AttrX12(State& state) {
 
 static void BM_I32AttrX12All(State& s) { I32AttrX12<all>(s); }
 static void BM_I32AttrX12None(State& s) { I32AttrX12<none>(s); }
-static void BM_I32AttrX12Types(State& s) { I32AttrX12<types>(s); }
+static void BM_I32AttrX12Types(State& s) { I32AttrX12<less>(s); }
 
 BENCHMARK(BM_I32AttrX12All);
 BENCHMARK(BM_I32AttrX12Types);
@@ -1557,10 +1557,10 @@ static void AggregateAttrX1(State& state) {
 
 static void BM_AggregateAttrX1All(State& s) { AggregateAttrX1<all>(s); }
 static void BM_AggregateAttrX1None(State& s) { AggregateAttrX1<none>(s); }
-static void BM_AggregateAttrX1Types(State& s) { AggregateAttrX1<types>(s); }
+static void BM_AggregateAttrX1Less(State& s) { AggregateAttrX1<less>(s); }
 
 BENCHMARK(BM_AggregateAttrX1All);
-BENCHMARK(BM_AggregateAttrX1Types);
+BENCHMARK(BM_AggregateAttrX1Less);
 BENCHMARK(BM_AggregateAttrX1None);
 
 }  // namespace runtime
