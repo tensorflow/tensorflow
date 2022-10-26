@@ -162,6 +162,10 @@ class GpuCompiler : public LLVMCompiler {
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
+  virtual StatusOr<bool> CanUseLinkModules(const HloModuleConfig& config) {
+    return false;
+  }
+
   virtual StatusOr<std::vector<uint8_t>> LinkModules(
       se::StreamExecutor* stream_exec,
       std::vector<std::vector<uint8_t>> modules) {

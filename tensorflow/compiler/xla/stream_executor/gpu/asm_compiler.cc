@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 
+#include <array>
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -41,7 +43,7 @@ limitations under the License.
 namespace stream_executor {
 
 static port::StatusOr<absl::string_view> GetPtxasVersionString(
-    const std::string& binary_path) {
+    absl::string_view binary_path) {
   static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
       new absl::flat_hash_map<std::string, std::string>();
@@ -54,7 +56,8 @@ static port::StatusOr<absl::string_view> GetPtxasVersionString(
   }
 
   tsl::SubProcess binary;
-  binary.SetProgram(binary_path, {binary_path, "--version"});
+  std::string binary_path_str(binary_path);
+  binary.SetProgram(binary_path_str, {binary_path_str, "--version"});
   binary.SetChannelAction(tsl::CHAN_STDOUT, tsl::ACTION_PIPE);
   if (!binary.Start()) {
     return port::InternalError(
@@ -72,53 +75,47 @@ static port::StatusOr<absl::string_view> GetPtxasVersionString(
   return absl::string_view(emplace_it.first->second);
 }
 
+port::StatusOr<std::array<int64_t, 3>> GetPtxasVersion(
+    absl::string_view ptxas_path) {
+  port::StatusOr<absl::string_view> ptxas_version =
+      GetPtxasVersionString(ptxas_path);
+  if (!ptxas_version.ok()) {
+    return tsl::errors::FailedPrecondition(
+        "Couldn't get ptxas version string: ", ptxas_version.status());
+  }
+  std::array<int64_t, 3> version;
+  std::string vmaj_str, vmin_str, vdot_str;
+  if (!RE2::PartialMatch(ptxas_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
+                         &vmaj_str, &vmin_str, &vdot_str) ||
+      !absl::SimpleAtoi(vmaj_str, &version[0]) ||
+      !absl::SimpleAtoi(vmin_str, &version[1]) ||
+      !absl::SimpleAtoi(vdot_str, &version[2])) {
+    return tsl::errors::FailedPrecondition(
+        "Couldn't parse ptxas version in output of ", ptxas_path,
+        " --version:\n", ptxas_version.value());
+  }
+  return version;
+}
+
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
 // Only prints a warning the first time it's called for a particular value of
 // ptxas_path.
 //
-// Locks on entry.
-static void WarnIfBadPtxasVersion(const std::string& ptxas_path) {
-  port::StatusOr<absl::string_view> ptxas_version =
-      GetPtxasVersionString(ptxas_path);
-  if (!ptxas_version.ok()) {
-    LOG(WARNING) << "Couldn't get ptxas version string: "
-                 << ptxas_version.status();
+// Locks on entry.˝
+static void WarnIfBadPtxasVersion(absl::string_view ptxas_path) {
+  port::StatusOr<std::array<int64_t, 3>> version = GetPtxasVersion(ptxas_path);
+  if (!version.ok()) {
+    LOG(WARNING) << "Couldn't get ptxas version : " << version.status();
     return;
   }
 
-  int64_t vmaj, vmin, vdot;
-  std::string vmaj_str, vmin_str, vdot_str;
-  if (!RE2::PartialMatch(ptxas_version.value(), R"(\bV(\d+)\.(\d+)\.(\d+)\b)",
-                         &vmaj_str, &vmin_str, &vdot_str) ||
-      !absl::SimpleAtoi(vmaj_str, &vmaj) ||
-      !absl::SimpleAtoi(vmin_str, &vmin) ||
-      !absl::SimpleAtoi(vdot_str, &vdot)) {
-    LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
-                 << " --version:\n"
-                 << ptxas_version.value();
-    return;
-  }
-
-  // We need ptxas >= 9.0 as a hard requirement, because we compile targeting
-  // PTX 6.0.  An older ptxas will just fail to compile any of our code.
-  //
-  // ptxas versions before the version that shipped with CUDA 11.1 are known to
-  // miscompile XLA code.
-  if (vmaj < 9) {
-    LOG(ERROR)
-        << "You are using ptxas 8.x, but TF requires ptxas 9.x (and strongly "
-           "prefers >= 11.1).  Compilation of XLA kernels below will likely "
-           "fail.\n\nYou may not need to update CUDA; cherry-picking the ptxas "
-           "binary is often sufficient.";
-  } else if (std::make_tuple(vmaj, vmin) < std::make_tuple(11, 1)) {
-    LOG(WARNING)
-        << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
-        << vdot
-        << ", which is older than 11.1. ptxas before 11.1 is known to "
-           "miscompile XLA code, leading to incorrect results or "
-           "invalid-address errors.\n\nYou may not need to update to CUDA "
-           "11.1; cherry-picking the ptxas binary is often sufficient.";
+  if (std::make_tuple((*version)[0], (*version)[1]) < std::make_tuple(11, 1)) {
+    LOG(ERROR) << "*** WARNING *** You are using ptxas " << (*version)[0] << "."
+               << (*version)[1] << "." << (*version)[2]
+               << ", which is older than 11.1. ptxas before 11.1 is known to "
+                  "miscompile XLA code, leading to incorrect results or "
+                  "invalid-address errors.\n";
   }
 }
 
@@ -166,8 +163,8 @@ port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int device_ordinal,
   return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
 }
 
-static std::string FindCudaExecutable(const std::string binary_name,
-                                      const std::string preferred_cuda_dir) {
+static std::string FindCudaExecutable(const std::string& binary_name,
+                                      const std::string& preferred_cuda_dir) {
   static absl::Mutex mu(absl::kConstInit);
   static auto* seen_binary_paths ABSL_GUARDED_BY(mu) =
       new absl::flat_hash_map<std::pair<std::string, std::string>,
@@ -245,6 +242,12 @@ static void AppendArgsFromOptions(GpuAsmOpts options,
   }
   args.insert(args.end(), options.extra_flags.begin(),
               options.extra_flags.end());
+}
+
+port::StatusOr<std::array<int64_t, 3>> GetAsmCompilerVersion(
+    const std::string& preferred_cuda_dir) {
+  std::string ptxas_path = FindCudaExecutable("ptxas", preferred_cuda_dir);
+  return GetPtxasVersion(ptxas_path);
 }
 
 port::StatusOr<std::vector<uint8_t>> CompileGpuAsm(int cc_major, int cc_minor,
@@ -497,9 +500,10 @@ port::StatusOr<std::vector<uint8_t>> BundleGpuAsm(
   int exit_status = clang_offload_bundler.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
   if (exit_status != 0) {
-    return port::InternalError(absl::StrFormat(
-        "clang_offload_bundler exited with non-zero error code %d, output: %s",
-        exit_status, stderr_output));
+    return port::InternalError(
+        absl::StrFormat("clang_offload_bundler exited with non-zero error "
+                        "code %d, output: %s",
+                        exit_status, stderr_output));
   }
   if (!stderr_output.empty()) {
     VLOG(2) << stderr_output;

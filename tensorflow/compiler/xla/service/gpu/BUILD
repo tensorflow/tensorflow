@@ -1818,6 +1818,7 @@ cc_library(
         ":nvptx_helper",
         ":target_constants",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/container:node_hash_map",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Support",

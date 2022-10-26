@@ -1270,8 +1270,9 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   // Test whether LinkModules is supported.
-  if (this->LinkModules(stream_exec, {}).status().code() ==
-      tsl::error::Code::UNIMPLEMENTED) {
+  TF_ASSIGN_OR_RETURN(bool can_use_link_modules,
+                      CanUseLinkModules(module_config));
+  if (!can_use_link_modules) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false,
                                  /*shard_number=*/std::nullopt);
   }
