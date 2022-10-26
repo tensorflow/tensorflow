@@ -792,6 +792,22 @@ class Context:
     else:
       raise ValueError("Context is not initialized.")
 
+  def get_task_states(self, job_configs):
+    """Get task states from the Coordination Service.
+
+    Args:
+      job_configs: A list of tuples of job name and task number.
+
+    Returns:
+      A list of TF_Status.
+    """
+    if self._context_handle:
+      job_names, task_nums = zip(*job_configs)
+      return pywrap_tfe.TFE_GetTaskStates(self._context_handle, job_names,
+                                          task_nums)
+    else:
+      raise ValueError("Context is not initialized.")
+
   def clear_kernel_cache(self):
     """Clear kernel cache and reset all stateful kernels."""
     if self._context_handle is not None:

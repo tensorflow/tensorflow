@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
+#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -847,4 +848,48 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
   tensorflow::Status s(static_cast<tensorflow::error::Code>(error_code),
                        error_message);
   status->status = coord_agent->ReportError(s);
+}
+
+void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
+                       TF_Status* status) {
+  tensorflow::ImmediateExecutionDistributedManager* dist_mgr =
+      tensorflow::unwrap(ctx)->GetDistributedManager();
+  tensorflow::CoordinationServiceAgent* coord_agent =
+      dist_mgr->GetCoordinationServiceAgent();
+  if (coord_agent == nullptr) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Coordination service is not enabled.");
+    return;
+  }
+  std::vector<tensorflow::CoordinatedTask> task_vec(tasks.length);
+  auto* task_iter = static_cast<const tensorflow::CoordinatedTask*>(tasks.data);
+  for (size_t i = 0; i < tasks.length; ++i) {
+    task_vec[i].set_job_name(task_iter->job_name());
+    task_vec[i].set_task_id(task_iter->task_id());
+    ++task_iter;
+  }
+  auto results = coord_agent->GetTaskState(task_vec);
+  if (!results.ok()) {
+    status->status = results.status();
+    return;
+  }
+  auto* state_iter = static_cast<TF_Status*>(states);
+  for (size_t i = 0; i < tasks.length; ++i) {
+    const auto& result = (*results)[i];
+    TF_Status s;
+    TF_SetStatus(&s, static_cast<TF_Code>(result.error_code()),
+                 result.error_message().data());
+    if (TF_GetCode(&s) != TF_Code::TF_OK) {
+      // The type url is replaced by job name so we can translate the error
+      // payload in the Coordination Service to the payload in tensorflow
+      // status.
+      tensorflow::CoordinationServiceError error;
+      *error.mutable_source_task() = result.error_payload().source_task();
+      TF_SetPayload(&s, tensorflow::CoordinationErrorPayloadKey().data(),
+                    error.SerializeAsString().c_str());
+    }
+    *state_iter = std::move(s);
+    ++state_iter;
+  }
+  status->status = tensorflow::OkStatus();
 }
