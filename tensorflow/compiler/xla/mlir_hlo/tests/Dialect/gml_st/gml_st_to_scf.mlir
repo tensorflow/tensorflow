@@ -180,9 +180,9 @@ func.func @loop_row_reduction(%A: memref<10x8xf32>,
 // CHECK:     scf.parallel (%[[J:.*]]) = (%[[C0]]) to (%[[C8]]) step (%[[C4]])
 // CHECK-NEXT:  scf.for %[[I:.*]] = %[[C0]] to %[[C10]] step %[[C2]]
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]], %[[J]]] [2, 4] [1, 1]
-// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]*}}>
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[J]]] [4] [1]
-// CHECK-SAME:      : memref<8xf32> to memref<4xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<8xf32> to memref<4xf32, #map{{[0-9]*}}>
 
 // -----
 
@@ -233,6 +233,6 @@ func.func @loop_col_reduction(%A: memref<10x8xf32>,
 // CHECK:     scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C10]]) step (%[[C2]])
 // CHECK-NEXT:  scf.for %[[J:.*]] = %[[C0]] to %[[C8]] step %[[C4]]
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]], %[[J]]] [2, 4] [1, 1]
-// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<10x8xf32> to memref<2x4xf32, #map{{[0-9]*}}>
 // CHECK-NEXT:    memref.subview %arg{{[0-9]+}}[%[[I]]] [2] [1]
-// CHECK-SAME:      : memref<10xf32> to memref<2xf32, #map{{[0-9]+}}>
+// CHECK-SAME:      : memref<10xf32> to memref<2xf32, #map{{[0-9]*}}>

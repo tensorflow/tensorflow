@@ -1,5 +1,5 @@
 // RUN: mlir-hlo-opt %s --split-input-file --gml-tiling-gpu-warp | \
-// RUN: FileCheck %s
+// RUN: FILECHECK_OPTS="" FileCheck %s
 
 #map0 = affine_map<(d0, d1) -> (d0, d1)>
 #map1 = affine_map<(d0, d1) -> (d0)>
@@ -178,6 +178,8 @@ func.func @bcast_cwise(%arg0: tensor<1x4096xf32>, %arg1: tensor<f32>)
 #map0 = affine_map<(d0) -> (d0)>
 #map1 = affine_map<(d0) -> ()>
 
+// CHECK: #[[MAP0:.*]] = affine_map<(d0) -> (d0)>
+// CHECK: #[[MAP1:.*]] = affine_map<(d0) -> ()>
 // CHECK-LABEL: @softmax
 // CHECK-SAME:  %[[ARG0:.*]]: tensor<2048x4096xf32>
 func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
@@ -219,7 +221,7 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   // CHECK:         gml_st.set_yield %[[MAXF]] into %[[ARG5]][%[[TILE_3]]] : f32 into tensor<1xf32>[!gml_st.tile<1>]
   // CHECK:       gml_st.set_yield %[[FOR]] into %[[PARALLEL_1]][%[[TILE_5]]] : tensor<1xf32> into tensor<32xf32>[!gml_st.tile<1>]
   // CHECK:     %[[COLLAPSED:.*]] = tensor.collapse_shape %[[FILL]] [] : tensor<1xf32> into tensor<f32>
-  // CHECK:     %[[GENERIC:.*]] = linalg.generic {indexing_maps = [#map0, #map1], iterator_types = ["reduction"]} ins(%[[PARALLEL_2]] : tensor<32xf32>) outs(%[[COLLAPSED]] : tensor<f32>) {
+  // CHECK:     %[[GENERIC:.*]] = linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP1]]], iterator_types = ["reduction"]} ins(%[[PARALLEL_2]] : tensor<32xf32>) outs(%[[COLLAPSED]] : tensor<f32>) {
   // CHECK:     ^bb0(%[[IN:.*]]: f32, %[[OUT:.*]]: f32):
   // CHECK:       %[[MAXF_0:.*]] = arith.maxf %[[OUT]], %[[IN]] : f32
   // CHECK:       linalg.yield %[[MAXF_0]] : f32
@@ -239,12 +241,12 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   // CHECK:         %[[MATERIALIZE_7:.*]] = gml_st.materialize %[[GENERIC]][%[[TILE_9]]] : tensor<f32>[!gml_st.tile<>] to tensor<f32>
   // CHECK:         %[[TILE_10:.*]] = gml_st.tile [%[[MULI]]] [1] [1] : !gml_st.tile<1>
   // CHECK:         %[[MATERIALIZE_8:.*]] = gml_st.materialize %[[COLLAPSED_1]][%[[TILE_10]]] : tensor<4096xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  // CHECK:         %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#map1, #map0], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_7]] : tensor<f32>) outs(%[[MATERIALIZE_8]] : tensor<1xf32>) {
+  // CHECK:         %[[GENERIC_0:.*]] = linalg.generic {indexing_maps = [#[[MAP1]], #[[MAP0]]], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_7]] : tensor<f32>) outs(%[[MATERIALIZE_8]] : tensor<1xf32>) {
   // CHECK:         ^bb0(%[[IN_0:.*]]: f32, %[[OUT_0:.*]]: f32):
   // CHECK:           linalg.yield %[[IN_0]] : f32
   // CHECK:         %[[TILE_11:.*]] = gml_st.tile [%[[MULI]]] [1] [1] : !gml_st.tile<1>
   // CHECK:         %[[MATERIALIZE_9:.*]] = gml_st.materialize %[[COLLAPSED_1]][%[[TILE_11]]] : tensor<4096xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  // CHECK:         %[[GENERIC_1:.*]] = linalg.generic {indexing_maps = [#map0, #map0, #map0], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_6]], %[[GENERIC_0]] : tensor<1xf32>, tensor<1xf32>) outs(%[[MATERIALIZE_9]] : tensor<1xf32>) {
+  // CHECK:         %[[GENERIC_1:.*]] = linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP0]], #[[MAP0]]], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_6]], %[[GENERIC_0]] : tensor<1xf32>, tensor<1xf32>) outs(%[[MATERIALIZE_9]] : tensor<1xf32>) {
   // CHECK:         ^bb0(%[[IN_1:.*]]: f32, %[[IN_5:.*]]: f32, %[[OUT_1:.*]]: f32):
   // CHECK:           %[[SUBF:.*]] = arith.subf %[[IN_1]], %[[IN_5]] : f32
   // CHECK:           linalg.yield %[[SUBF]] : f32
@@ -272,7 +274,7 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   // CHECK:       } : tensor<1xf32>
   // CHECK:       gml_st.set_yield %[[FOR_1]] into %[[PARALLEL_4]][%[[TILE_15]]] : tensor<1xf32> into tensor<32xf32>[!gml_st.tile<1>]
   // CHECK:     %[[COLLAPSED_3:.*]] = tensor.collapse_shape %[[FILL_0]] [] : tensor<1xf32> into tensor<f32>
-  // CHECK:     %[[GENERIC_2:.*]] = linalg.generic {indexing_maps = [#map0, #map1], iterator_types = ["reduction"]} ins(%[[PARALLEL_5]] : tensor<32xf32>) outs(%[[COLLAPSED_3]] : tensor<f32>) {
+  // CHECK:     %[[GENERIC_2:.*]] = linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP1]]], iterator_types = ["reduction"]} ins(%[[PARALLEL_5]] : tensor<32xf32>) outs(%[[COLLAPSED_3]] : tensor<f32>) {
   // CHECK:     ^bb0(%[[IN_2:.*]]: f32, %[[OUT_2:.*]]: f32):
   // CHECK:       %[[ADDF_0:.*]] = arith.addf %[[OUT_2]], %[[IN_2]] : f32
   // CHECK:       linalg.yield %[[ADDF_0]] : f32
@@ -289,18 +291,18 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   // CHECK:         %[[MATERIALIZE_15:.*]] = gml_st.materialize %[[GENERIC]][%[[TILE_19]]] : tensor<f32>[!gml_st.tile<>] to tensor<f32>
   // CHECK:         %[[TILE_20:.*]] = gml_st.tile [%[[MULI_0]]] [1] [1] : !gml_st.tile<1>
   // CHECK:         %[[MATERIALIZE_16:.*]] = gml_st.materialize %[[COLLAPSED_1]][%[[TILE_20]]] : tensor<4096xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  // CHECK:         %[[GENERIC_3:.*]] = linalg.generic {indexing_maps = [#map1, #map0], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_15]] : tensor<f32>) outs(%[[MATERIALIZE_16]] : tensor<1xf32>) {
+  // CHECK:         %[[GENERIC_3:.*]] = linalg.generic {indexing_maps = [#[[MAP1]], #[[MAP0]]], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_15]] : tensor<f32>) outs(%[[MATERIALIZE_16]] : tensor<1xf32>) {
   // CHECK:         ^bb0(%[[IN_3:.*]]: f32, %[[OUT_3:.*]]: f32):
   // CHECK:           linalg.yield %[[IN_3]] : f32
   // CHECK:         %[[TILE_21:.*]] = gml_st.tile [%[[MULI_0]]] [1] [1] : !gml_st.tile<1>
   // CHECK:         %[[MATERIALIZE_17:.*]] = gml_st.materialize %[[COLLAPSED_1]][%[[TILE_21]]] : tensor<4096xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  // CHECK:         %[[GENERIC_4:.*]] = linalg.generic {indexing_maps = [#map0, #map0, #map0], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_14]], %[[GENERIC_3]] : tensor<1xf32>, tensor<1xf32>) outs(%[[MATERIALIZE_17]] : tensor<1xf32>) {
+  // CHECK:         %[[GENERIC_4:.*]] = linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP0]], #[[MAP0]]], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_14]], %[[GENERIC_3]] : tensor<1xf32>, tensor<1xf32>) outs(%[[MATERIALIZE_17]] : tensor<1xf32>) {
   // CHECK:         ^bb0(%[[IN_4:.*]]: f32, %[[IN_6:.*]]: f32, %[[OUT_4:.*]]: f32):
   // CHECK:           %[[SUBF_0:.*]] = arith.subf %[[IN_4]], %[[IN_6]] : f32
   // CHECK:           linalg.yield %[[SUBF_0]] : f32
   // CHECK:         %[[TILE_22:.*]] = gml_st.tile [%[[MULI_0]]] [1] [1] : !gml_st.tile<1>
   // CHECK:         %[[MATERIALIZE_18:.*]] = gml_st.materialize %[[COLLAPSED_1]][%[[TILE_22]]] : tensor<4096xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  // CHECK:         %[[GENERIC_5:.*]] = linalg.generic {indexing_maps = [#map0, #map0], iterator_types = ["parallel"]} ins(%[[GENERIC_4]] : tensor<1xf32>) outs(%[[MATERIALIZE_18]] : tensor<1xf32>) {
+  // CHECK:         %[[GENERIC_5:.*]] = linalg.generic {indexing_maps = [#[[MAP0]], #[[MAP0]]], iterator_types = ["parallel"]} ins(%[[GENERIC_4]] : tensor<1xf32>) outs(%[[MATERIALIZE_18]] : tensor<1xf32>) {
   // CHECK:         ^bb0(%[[IN_7:.*]]: f32, %[[OUT_5:.*]]: f32):
   // CHECK:           %[[EXP_0:.*]] = math.exp %[[IN_7]] : f32
   // CHECK:           linalg.yield %[[EXP_0]] : f32
@@ -309,7 +311,7 @@ func.func @softmax(%arg0: tensor<2048x4096xf32>) -> tensor<2048x4096xf32> {
   // CHECK:         %[[MATERIALIZE_19:.*]] = gml_st.materialize %[[GENERIC_2]][%[[TILE_23]]] : tensor<f32>[!gml_st.tile<>] to tensor<f32>
   // CHECK:         %[[TILE_24:.*]] = gml_st.tile [%[[MULI_0]]] [1] [1] : !gml_st.tile<1>
   // CHECK:         %[[MATERIALIZE_20:.*]] = gml_st.materialize %[[COLLAPSED_1]][%[[TILE_24]]] : tensor<4096xf32>[!gml_st.tile<1>] to tensor<1xf32>
-  // CHECK:         %[[GENERIC_6:.*]] = linalg.generic {indexing_maps = [#map1, #map0], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_19]] : tensor<f32>) outs(%[[MATERIALIZE_20]] : tensor<1xf32>) {
+  // CHECK:         %[[GENERIC_6:.*]] = linalg.generic {indexing_maps = [#[[MAP1]], #[[MAP0]]], iterator_types = ["parallel"]} ins(%[[MATERIALIZE_19]] : tensor<f32>) outs(%[[MATERIALIZE_20]] : tensor<1xf32>) {
   // CHECK:         ^bb0(%[[IN_8:.*]]: f32, %[[OUT_6:.*]]: f32):
   // CHECK:           linalg.yield %[[IN_8]] : f32
   // CHECK:         %[[EXTRACTED_5:.*]] = tensor.extract %[[GENERIC_6]][%[[C0]]] : tensor<1xf32>

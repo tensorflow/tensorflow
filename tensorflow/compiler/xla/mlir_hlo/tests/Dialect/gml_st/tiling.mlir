@@ -97,8 +97,8 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-FOR-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-FOR-SAME:      step (%[[C256]], %[[C512]])
 // CHECK-FOR-SAME:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<?x?xf32>)
-// CHECK-FOR:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[LHS_DIM_0]]]
-// CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[LHS_DIM_1]]]
+// CHECK-FOR:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[ARG2]])[%[[LHS_DIM_0]]]
+// CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[ARG3]])[%[[LHS_DIM_1]]]
 // CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-FOR:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[ARG0]][%[[TILE]]]
 // CHECK-FOR:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[ARG1]][%[[TILE]]]
@@ -128,8 +128,8 @@ func.func @add(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>)
 // CHECK-PARALLEL:       %[[PARALLEL:.*]] = gml_st.parallel (%[[ARG2:.*]], %[[ARG3:.*]]) = (%[[C0]], %[[C0]])
 // CHECK-PARALLEL-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-PARALLEL-SAME:      step (%[[C256]], %[[C512]])
-// CHECK-PARALLEL:         %[[MIN:.*]] = affine.min #map0(%[[ARG2]])[%[[LHS_DIM_0]]]
-// CHECK-PARALLEL:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG3]])[%[[LHS_DIM_1]]]
+// CHECK-PARALLEL:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[ARG2]])[%[[LHS_DIM_0]]]
+// CHECK-PARALLEL:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[ARG3]])[%[[LHS_DIM_1]]]
 // CHECK-PARALLEL:         %[[TILE:.*]] = gml_st.tile [%[[ARG2]], %[[ARG3]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-PARALLEL:         %[[MATERIALIZE:.*]] = gml_st.materialize %[[LHS]][%[[TILE]]]
 // CHECK-PARALLEL:         %[[MATERIALIZE_0:.*]] = gml_st.materialize %[[RHS]][%[[TILE]]]
@@ -189,8 +189,8 @@ func.func @reduce_row(%lhs: tensor<?x?xf32>,
 // CHECK-FOR-SAME:      to (%[[LHS_DIM_0]], %[[LHS_DIM_1]])
 // CHECK-FOR-SAME:      step (%[[C256_0]], %[[C512_0]])
 // CHECK-FOR-SAME:      outs (%[[OUT_0:.*]] = %[[FILL]]: tensor<?xf32>)
-// CHECK-FOR:         %[[MIN_1:.*]] = affine.min #map0(%[[ARG2_0]])[%[[LHS_DIM_0]]]
-// CHECK-FOR:         %[[MIN_2:.*]] = affine.min #map1(%[[ARG3_0]])[%[[LHS_DIM_1]]]
+// CHECK-FOR:         %[[MIN_1:.*]] = affine.min #map{{[0-9]*}}(%[[ARG2_0]])[%[[LHS_DIM_0]]]
+// CHECK-FOR:         %[[MIN_2:.*]] = affine.min #map{{[0-9]*}}(%[[ARG3_0]])[%[[LHS_DIM_1]]]
 // CHECK-FOR:         %[[TILE_2:.*]] = gml_st.tile [%[[ARG2_0]], %[[ARG3_0]]] [%[[MIN_1]], %[[MIN_2]]] [1, 1]
 // CHECK-FOR:         %[[MATERIALIZE_2:.*]] = gml_st.materialize %[[LHS]][%[[TILE_2]]]
 // CHECK-FOR:         %[[MATERIALIZE_3:.*]] = gml_st.materialize %[[RHS]][%[[TILE_2]]]
@@ -365,8 +365,8 @@ func.func @dynamic_broadcast_in_dim_at_tile(%init : tensor<?x?x?xf32>,
 // CHECK-FOR-SAME:      to (%[[INIT_DIM_0]], %[[INIT_DIM_1]])
 // CHECK-FOR-SAME:      step (%[[C256]], %[[C512]])
 // CHECK-FOR-SAME:      outs (%[[OUT:.*]] = %[[INIT]]: tensor<?x?x?xf32>)
-// CHECK-FOR:         %[[MIN:.*]] = affine.min #map0(%[[I]])[%[[INIT_DIM_0]]]
-// CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map1(%[[J]])[%[[INIT_DIM_1]]]
+// CHECK-FOR:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[I]])[%[[INIT_DIM_0]]]
+// CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[J]])[%[[INIT_DIM_1]]]
 // CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[I]], %[[J]], %[[C0]]] [%[[MIN]], %[[MIN_0]], %[[INIT_DIM_2]]] [1, 1, 1]
 // CHECK-FOR:         %[[ARG_DIM_0:.*]] = tensor.dim %[[ARG]], %[[C0]]
 // CHECK-FOR:         %[[ARG_DIM_1:.*]] = tensor.dim %[[ARG]], %[[C1]]
@@ -487,8 +487,8 @@ func.func @concatenate_at_tile(%init : tensor<?x?xi32>, %a: tensor<?x?xi32>,
 // CHECK-FOR-SAME:      to (%[[DIM]], %[[DIM_0]])
 // CHECK-FOR-SAME:      step (%[[C256]], %[[C512]])
 // CHECK-FOR-SAME:      outs (%[[ARG6:.*]] = %[[ARG0]]: tensor<?x?xi32>)
-// CHECK-FOR:         %[[MIN:.*]] = affine.min #map0(%[[ARG4]])[%[[DIM]]]
-// CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map1(%[[ARG5]])[%[[DIM_0]]]
+// CHECK-FOR:         %[[MIN:.*]] = affine.min #map{{[0-9]*}}(%[[ARG4]])[%[[DIM]]]
+// CHECK-FOR:         %[[MIN_0:.*]] = affine.min #map{{[0-9]*}}(%[[ARG5]])[%[[DIM_0]]]
 // CHECK-FOR:         %[[TILE:.*]] = gml_st.tile [%[[ARG4]], %[[ARG5]]] [%[[MIN]], %[[MIN_0]]] [1, 1]
 // CHECK-FOR:         %[[DIM_4:.*]] = tensor.dim %[[ARG1]], %[[C1]]
 // CHECK-FOR:         %[[MINUI:.*]] = arith.minui %[[ARG5]], %[[DIM_4]]
@@ -554,8 +554,8 @@ func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
 // CHECK-FOR-SAME:      (%[[START0:.*]], %[[START2:.*]]) = (%[[C0]], %[[C0]]) to (%[[DIM0]], %[[DIM2]])
 // CHECK-FOR-SAME:      outs (%[[INIT0_:.*]] = %[[INIT0]]: tensor<?x?x?xf32>,
 // CHECK-FOR-SAME:            %[[INIT1_:.*]] = %[[INIT1]]: tensor<?x?x?xi32>) {
-// CHECK-FOR-DAG:     %[[TILE_SIZE0:.*]] = affine.min #map0(%[[START0]])[%[[DIM0]]]
-// CHECK-FOR-DAG:     %[[TILE_SIZE2:.*]] = affine.min #map1(%[[START2]])[%[[DIM2]]]
+// CHECK-FOR-DAG:     %[[TILE_SIZE0:.*]] = affine.min #map{{[0-9]*}}(%[[START0]])[%[[DIM0]]]
+// CHECK-FOR-DAG:     %[[TILE_SIZE2:.*]] = affine.min #map{{[0-9]*}}(%[[START2]])[%[[DIM2]]]
 // CHECK-FOR-DAG:     %[[DIM1:.*]] = tensor.dim %[[IN0]], %[[C1]]
 // CHECK-FOR:         %[[TILE:.*]] = gml_st.tile
 // CHECK-FOR-SAME:        [%[[START0]], 0, %[[START2]]]

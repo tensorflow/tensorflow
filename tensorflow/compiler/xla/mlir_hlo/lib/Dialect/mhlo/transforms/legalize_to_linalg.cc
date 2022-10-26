@@ -1956,9 +1956,8 @@ struct PadOpConversion : public OpConversionPattern<mhlo::PadOp> {
                      [](const APInt& intVal) { return intVal.isZero(); })) {
       SmallVector<OpFoldResult, 4> high(
           op.getEdgePaddingHigh().getValues<IntegerAttr>());
-      auto padTensorOp = tensor::createPadScalarOp(
-          resultType, adaptor.getOperand(), paddingVal, low, high,
-          /*nofold=*/false, loc, rewriter);
+      auto padTensorOp = rewriter.create<tensor::PadOp>(
+          loc, resultType, adaptor.getOperand(), low, high, paddingVal);
       rewriter.replaceOp(op, padTensorOp.getResult());
       return success();
     }
