@@ -25,7 +25,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -40,8 +42,20 @@ cc_library(
 #     ],
 #     pkg = "//tensorflow/core",
 #     deps = [
+#         "//third_party/mediapipe/framework/port:parse_text_proto",
+#         "//tensorflow/c/kernels:bitcast_op",
 #         "//tensorflow/cc:cc_ops",
 #         "//tensorflow/core/kernels:array",
+#         "//tensorflow/core/kernels:check_numerics_op",
+#         "//tensorflow/core/kernels:fake_quant_ops",
+#         "//tensorflow/core/kernels:quantized_ops",
+#         "//tensorflow/core/kernels:scatter_nd_op",
+#         "//tensorflow/core/kernels/image:extract_image_patches_op",
+#         "//tensorflow/core/kernels/image:extract_volume_patches_op",
+#         "//tensorflow/core/kernels/image:mirror_pad_op",
+#         "//tensorflow/core/kernels/linalg:matrix_band_part_op",
+#         "//tensorflow/core/kernels/linalg:matrix_diag_op",
+#         "//tensorflow/core/kernels/linalg:matrix_set_diag_op",
 #     ],
 # )
 # copybara:uncomment_end
