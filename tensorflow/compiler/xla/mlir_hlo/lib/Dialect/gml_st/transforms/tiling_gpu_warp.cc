@@ -210,26 +210,17 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     OpFoldResult oneAttr = rewriter.getIndexAttr(1);
     auto threadDist = rewriter.getStringAttr("thread");
 
-    // Create warp-sized partial reduction result tensor.
-    Value partial = rewriter.create<tensor::EmptyOp>(loc, kWarpSize,
-                                                     outType.getElementType());
-    Value outPoint =
-        rewriter.create<gml_st::TileOp>(loc, zeroAttr, oneAttr, oneAttr);
-
     auto getResult = [](Operation* op) { return op->getResult(0); };
 
-    // Create gml_st.parallel initializing the partial result.
-    partial = getResult(rewriter.create<gml_st::ParallelOp>(
-        loc, partial.getType(), c0, cWarpSize, c1, threadDist,
-        [&](OpBuilder& builder, Location loc, ValueRange ivs) {
-          OpFoldResult laneIdx = ivs.front();
-          Value partPoint =
-              builder.create<gml_st::TileOp>(loc, laneIdx, oneAttr, oneAttr);
-          Value outElement =
-              rewriter.create<gml_st::MaterializeOp>(loc, output, outPoint);
-          builder.create<gml_st::SetYieldOp>(loc, outElement, partial,
-                                             partPoint);
-        }));
+    // Create warp-sized partial reduction result tensor.
+    Type elType = outType.getElementType();
+    Value partial = rewriter.create<tensor::EmptyOp>(loc, kWarpSize, elType);
+    Value outPoint =
+        rewriter.create<gml_st::TileOp>(loc, zeroAttr, oneAttr, oneAttr);
+    Value outElement =
+        rewriter.create<gml_st::MaterializeOp>(loc, elType, output, outPoint);
+    partial =
+        getResult(rewriter.create<linalg::FillOp>(loc, outElement, partial));
 
     // Create gml_st.parallel finalizing the partial result.
     partial = getResult(rewriter.create<gml_st::ParallelOp>(
