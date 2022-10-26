@@ -56261,7 +56261,10 @@ func XlaBroadcastHelper(scope *Scope, lhs tf.Output, rhs tf.Output, broadcast_di
 //
 // to the HLO module.
 //
-//	module: A serialized computation, a text representation of mlir.Module.
+//	module: A serialized computation, a text or bytecode representation of
+//
+// an mlir.Module.
+//
 //	Sout: List of output tensor shapes.
 //	Tout: List of output tensor data types.
 //	dim_args_spec: the specification for the dimension arguments, one for each
