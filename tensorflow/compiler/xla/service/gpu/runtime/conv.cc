@@ -69,6 +69,19 @@ struct SideInputAttrs {
 
 }  // namespace
 
+absl::StatusOr<ConvRunnerCache::Entry> ConvRunnerCache::GetOrCreate(
+    int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config) {
+  absl::MutexLock lock(&mutex_);
+  auto it = runners_.find(uid);
+  if (it != runners_.end()) return Entry{&it->second.first, &it->second.second};
+
+  absl::StatusOr<GpuConvConfig> cfg = config();
+  if (!cfg.ok()) return cfg.status();
+
+  auto emplaced = runners_.try_emplace(uid, *cfg, *cfg);
+  return Entry{&emplaced.first->second.first, &emplaced.first->second.second};
+}
+
 static GpuConvDescriptor GetConvDescriptor(
     CudnnConvKind kind,
     // Arguments
@@ -168,7 +181,7 @@ struct Conv {
       std::optional<runtime::FlatMemrefView> bias,
       std::optional<runtime::StridedMemrefView> side_input,
       runtime::StridedMemrefView output, runtime::FlatMemrefView scratch,
-      int64_t uid, ConvDimensionNumbers conv_dims,
+      int64_t uid, ConvRunnerCache* runners, ConvDimensionNumbers conv_dims,
       // Window config
       ArrayRef<int64_t> window_strides, ArrayRef<int64_t> padding,
       ArrayRef<int64_t> lhs_dilation, ArrayRef<int64_t> rhs_dilation,
@@ -187,16 +200,23 @@ struct Conv {
     std::optional<SideInputAttrs> side_input_attrs = std::nullopt;
     if (side_input_scale.has_value()) side_input_attrs = {*side_input_scale};
 
-    // Prepare a descriptor for the XLA convolution.
-    GpuConvDescriptor descriptor = GetConvDescriptor(
-        kind, operand0, operand1, output, scratch, conv_dims,
-        {window_strides, padding, lhs_dilation, rhs_dilation, window_reversal},
-        backend_config, {feature_group_count, result_scale}, fused_attrs,
-        side_input_attrs);
+    // Get the convolution runner from the cache.
+    absl::StatusOr<ConvRunnerCache::Entry> runner =
+        runners->GetOrCreate(uid, [&]() -> absl::StatusOr<GpuConvConfig> {
+          GpuConvDescriptor descriptor = GetConvDescriptor(
+              kind, operand0, operand1, output, scratch, conv_dims,
+              {window_strides, padding, lhs_dilation, rhs_dilation,
+               window_reversal},
+              backend_config, {feature_group_count, result_scale}, fused_attrs,
+              side_input_attrs);
 
-    // Convert descriptor to the Conv config.
-    StatusOr<GpuConvConfig> config = GetGpuConvConfig(descriptor, "");
-    if (!config.ok()) return ToAbslStatus(config.status());
+          StatusOr<GpuConvConfig> conv_config =
+              GetGpuConvConfig(descriptor, "");
+          if (!conv_config.ok()) return ToAbslStatus(conv_config.status());
+
+          return *conv_config;
+        });
+    if (!runner.ok()) return runner.status();
 
     // Prepare buffer arguments.
     std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
@@ -209,14 +229,11 @@ struct Conv {
     se::DeviceMemoryBase scratch_buffer = GetDeviceAddress(scratch);
 
     RunConvOptions opts;
-
-    // Create a runner for the given config.
-    MaybeFusedConvRunner runner(*config);
-    opts.runner_cache = &runner;
+    opts.runner_cache = runner->runner;
 
     // Run the convolution.
-    auto st = RunGpuConv(*config, buffers, result_buffer, scratch_buffer,
-                         run_options->stream(), opts);
+    auto st = RunGpuConv(*runner->config, buffers, result_buffer,
+                         scratch_buffer, run_options->stream(), opts);
     if (!st.ok() || !run_options->stream()->ok()) {
       return ToAbslStatus(st);
     }
@@ -237,6 +254,7 @@ static auto BindConvAttributes(runtime::CustomCallBinding<Ts...> binding) {
   return std::move(binding)
       // Unique convolution id for caching state.
       .template Attr<int64_t>("uid")
+      .template UserData<ConvRunnerCache*>()
       // Convolution dimensions numbers
       .template Attr<ConvDimensionNumbers>("conv_dims")
       // Window config

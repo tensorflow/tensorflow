@@ -16,9 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CONV_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CONV_H_
 
+#include <utility>
+
+#include "absl/functional/function_ref.h"
+#include "absl/synchronization/mutex.h"
+#include "llvm/ADT/DenseMap.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -53,6 +59,27 @@ struct ConvBackendConfig {
 
 // Registers XLA Gpu runtime Conv custom calls.
 void RegisterConvCustomCalls(runtime::DirectCustomCallRegistry& registry);
+
+// Cache conv runners between invocations of convolution custom calls.
+class ConvRunnerCache {
+ public:
+  struct Entry {
+    MaybeFusedConvRunner* runner;
+    GpuConvConfig* config;
+  };
+
+  // Returns cached conv runner and the gpu config it was constructed from for
+  // the given id, or creates a new one using user-provided config construction
+  // function.
+  absl::StatusOr<Entry> GetOrCreate(
+      int64_t uid, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config);
+
+ private:
+  mutable absl::Mutex mutex_;
+
+  llvm::SmallDenseMap<int64_t, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
+      runners_ ABSL_GUARDED_BY(mutex_);
+};
 
 }  // namespace gpu
 }  // namespace xla
