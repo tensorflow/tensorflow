@@ -1373,7 +1373,8 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
   to the HLO module.
-module: A serialized computation, a text representation of mlir.Module.
+module: A serialized computation, a text or bytecode representation of
+  an mlir.Module.
 Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
 dim_args_spec: the specification for the dimension arguments, one for each

@@ -261,13 +261,14 @@ Status LoadAndPreprocessModule(mlir::OwningOpRef<mlir::ModuleOp> *module,
   context->loadDialect<mlir::func::FuncDialect>();
   context->loadDialect<mlir::mhlo::MhloDialect>();
   context->loadDialect<mlir::chlo::ChloDialect>();
-  // context->loadDialect<mlir::tensor::TensorDialect>();
-  VLOG(3) << "Parsing serialized module\n" << module_str;
+  // Parses both IR text and bytecode.
   *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
                                                     context);
   if (!*module) {
     return errors::InvalidArgument("Cannot deserialize MHLO computation");
   }
+  VLOG(3) << "Parsed serialized module\n" << debugString(**module);
+
   if (failed((*module)->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     (*module)->dump();
