@@ -38,6 +38,7 @@ tf_proto_library(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
     visibility = ["//visibility:public"],
 )

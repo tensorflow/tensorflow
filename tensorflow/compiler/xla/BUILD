@@ -79,6 +79,7 @@ tf_proto_library(
     srcs = ["xla_data.proto"],
     cc_api_version = 2,
     create_grpc_library = True,
+    make_default_target_header_only = True,
     visibility = ["//visibility:public"],
 )
 
