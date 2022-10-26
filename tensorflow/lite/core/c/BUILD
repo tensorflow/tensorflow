@@ -28,7 +28,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
@@ -54,7 +53,6 @@ cc_library(
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 # LINT.ThenChange(:c_api)
@@ -80,7 +78,6 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/core:headers",
         "//tensorflow/lite/delegates:interpreter_utils",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
