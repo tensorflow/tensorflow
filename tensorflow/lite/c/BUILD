@@ -195,7 +195,10 @@ cc_library(
     srcs = ["c_api_internal.cc"],
     hdrs = ["c_api_internal.h"],
     copts = tflite_copts(),
-    visibility = ["//tensorflow/lite/core/c:__subpackages__"],
+    visibility = [
+        "//tensorflow/lite/core/c:__subpackages__",
+        "//tensorflow/lite/delegates/utils:__pkg__",
+    ],
     deps = [
         ":common",
         ":common_internal",
