@@ -429,7 +429,9 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
                                      "Softsign",
                                      "SoftsignGrad",
                                      "Sqrt",
+                                     "Square",
                                      "SquaredDifference",
+                                     "Sum"
                                      "Tanh",
                                      "TanhGrad"};
     UpdateList("INFERLIST", &list);
@@ -448,7 +450,6 @@ class AutoMixedPrecisionListsMkl : public AutoMixedPrecisionLists {
         "SaveV2",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
-        "Sum",
     };
     UpdateList("DENYLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
