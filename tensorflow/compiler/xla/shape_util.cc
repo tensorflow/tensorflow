@@ -1799,7 +1799,7 @@ static Shape MergeDimensions(absl::Span<const size_t> segs,
         shape.dimensions().begin() + segs[i - 1],
         shape.dimensions().begin() +
             (segs.size() == i ? shape.dimensions().size() : segs[i]),
-        1, std::multiplies<int64_t>()));
+        int64_t{1}, std::multiplies<int64_t>()));
   }
   return ShapeUtil::MakeShapeWithDescendingLayout(shape.element_type(),
                                                   dimensions);
