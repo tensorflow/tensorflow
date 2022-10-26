@@ -481,7 +481,11 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "initialize",
           [](tensorflow::PreemptionSyncManager& manager,
-             DistributedRuntimeClient* client) { manager.Initialize(client); },
+             DistributedRuntimeClient* client) {
+            TF_ASSIGN_OR_RETURN(tensorflow::CoordinationServiceAgent * agent,
+                                client->GetCoordinationServiceAgent());
+            return manager.Initialize(agent);
+          },
           py::arg("distributed_client"))
       .def("reached_sync_point",
            [](tensorflow::PreemptionSyncManager& manager, int step_counter) {

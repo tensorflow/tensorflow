@@ -14,7 +14,6 @@ cc_library(
     hdrs = ["preemption_sync_manager.h"],
     deps = [
         ":preemption_notifier",
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform",
