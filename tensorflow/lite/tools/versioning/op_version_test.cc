@@ -850,12 +850,12 @@ TEST(OpVersionTest, VersioningTileOperatorTest) {
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8),
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  
+
   fake_op_sig = {
       .op = BuiltinOperator_TILE,
       .inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16),
   };
-  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 TEST(OpVersionTest, VersioningTransposeTest) {
   OpSignature fake_op_sig = {

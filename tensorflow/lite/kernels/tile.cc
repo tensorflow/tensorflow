@@ -244,8 +244,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point,
                       output->params.zero_point);
   }
+
   if (input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   }
 
   if (IsConstantTensor(multipliers)) {
@@ -287,9 +289,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteUInt8:
       Tile<uint8_t>(*(input->dims), input, multipliers, output);
-      break;
-    case kTfLiteInt8:
-      Tile<int8_t>(*(input->dims), input, multipliers, output);
       break;
     case kTfLiteInt16:
       Tile<int16_t>(*(input->dims), input, multipliers, output);

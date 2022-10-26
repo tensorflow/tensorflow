@@ -27,23 +27,33 @@ def make_tile_tests(options):
           "input_dtype": [tf.float32, tf.int32, tf.bool, tf.string],
           "input_shape": [[3, 2, 1], [2, 2, 2]],
           "multiplier_dtype": [tf.int32, tf.int64],
-          "multiplier_shape": [[3]],
-          "fully_quantize": [False],
+          "multiplier_shape": [[3]]
+      },
       {
           "input_dtype": [tf.float32, tf.int32],
           "input_shape": [[]],
           "multiplier_dtype": [tf.int32, tf.int64],
-          "multiplier_shape": [[0]],
-          "fully_quantize": [False],
-      }, {
+          "multiplier_shape": [[0]]
+      },
+      {
           "input_dtype": [tf.float32],
           "input_shape": [[3, 2, 1], [2, 2, 2]],
           "multiplier_dtype": [tf.int32, tf.int64],
           "multiplier_shape": [[3]],
           "fully_quantize": [True],
-          "quantize_mode_16x8": [True, False],
+          "quant_16x8": [True, False],
+          # The input range is used to create representative dataset for both
           # input and multiplier so it needs to be positive.
           "input_range": [(1, 10)],
+      },
+      {
+          "input_dtype": [tf.float32],
+          "input_shape": [[]],
+          "multiplier_dtype": [tf.int32, tf.int64],
+          "multiplier_shape": [[0]],
+          "fully_quantize": [True],
+          "quant_16x8": [True, False],
+          "input_range": [(-10, 10)]
       }
   ]
 
@@ -53,21 +63,29 @@ def make_tile_tests(options):
         dtype=parameters["input_dtype"],
         shape=parameters["input_shape"],
         name="input")
-    multiplier_value = create_tensor_data(
-        parameters["multiplier_dtype"],
-        parameters["multiplier_shape"],
-        min_value=0)
+    multiplier_value = tf.compat.v1.placeholder(
+        dtype=parameters["multiplier_dtype"],
+        shape=parameters["multiplier_shape"],
+        name="multiplier")
     out = tf.tile(input_value, multiplier_value)
-    return [input_value], [out]
+    return [input_value, multiplier_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
     min_value, max_value = parameters.get("input_range", (-10, 10))
     input_value = create_tensor_data(
-    return [input_value], sess.run(
+        parameters["input_dtype"],
         parameters["input_shape"],
+        min_value=min_value,
+        max_value=max_value)
+    multipliers_value = create_tensor_data(
+        parameters["multiplier_dtype"],
+        parameters["multiplier_shape"],
+        min_value=0)
+    return [input_value, multipliers_value], sess.run(
         outputs,
         feed_dict={
-            inputs[0]: input_value
+            inputs[0]: input_value,
+            inputs[1]: multipliers_value
         })
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
