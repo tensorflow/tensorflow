@@ -174,6 +174,8 @@ cc_library(
         ":compiler",
         ":passes",
         "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/compiler/xla/runtime:compiler",
         "@llvm-project//mlir:FuncDialect",

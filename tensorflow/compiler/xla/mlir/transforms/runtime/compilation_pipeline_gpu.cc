@@ -29,7 +29,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/ir/runtime/tests/testlib.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/transforms/runtime/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 
 namespace xla {
 namespace runtime {
@@ -37,7 +39,9 @@ namespace runtime {
 void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
   dialects->insert<mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
-                   mlir::func::FuncDialect, RuntimeDialect>();
+                   mlir::func::FuncDialect, mlir::lmhlo_gpu::LmhloGpuDialect,
+                   mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerLLVMDialectTranslation(*dialects);
