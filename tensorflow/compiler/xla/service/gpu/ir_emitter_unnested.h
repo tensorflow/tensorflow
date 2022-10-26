@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
@@ -665,6 +667,9 @@ class IrEmitterUnnested : public IrEmitter {
     mlir::Value value;
     BufferSlice slice;
   };
+
+  StatusOr<KernelArgument> ValueToKernelArgument(mlir::Value operand, int order,
+                                                 bool is_written);
 
   // Build a kernel thunk, add it to list of thunks, and return IrArrays backing
   // kernel arguments.

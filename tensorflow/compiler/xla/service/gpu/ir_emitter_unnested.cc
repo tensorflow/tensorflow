@@ -2470,7 +2470,7 @@ Status IrEmitterUnnested::EmitSort(mlir::Operation* op) {
   auto sort_op = mlir::cast<mlir::lmhlo::SortOp>(op);
 
   std::string op_name = GetIrNameFromLoc(sort_op.getLoc());
-  std::vector<mlir::Value> operands = GetHloOperands(sort_op);
+  llvm::SmallVector<mlir::Value> operands = GetHloOperands(sort_op);
   const Shape& keys_shape = GetShape(operands[0]);
   int64_t dimension_to_sort = sort_op.getDimension();
   for (int64_t i = 0; i < operands.size(); ++i) {
@@ -2891,27 +2891,22 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
     auto result = buffers_needed.insert(slice.buffer_slice.allocation());
     if (!result.second) continue;
 
-    auto already_seen = [&](mlir::Value buffer_alloc_arg) {
-      bool seen = false;
-      for (mlir::Value seen_value : values_needed) {
-        if (buffer_alloc_arg == seen_value) {
-          seen = true;
-          break;
-        }
+    auto add_if_not_exists = [&](mlir::Value buffer_alloc_arg) {
+      if (!absl::c_linear_search(values_needed, buffer_alloc_arg)) {
+        values_needed.push_back(buffer_alloc_arg);
       }
-      return seen;
     };
 
     mlir::Value argument = kernel_argument.value;
     auto defining_op = argument.getDefiningOp();
     if (defining_op == nullptr) {
-      if (!already_seen(argument)) values_needed.push_back(argument);
+      add_if_not_exists(argument);
       continue;
     }
 
     if (auto view_op = llvm::dyn_cast<mlir::memref::ViewOp>(defining_op)) {
       argument = view_op.getOperand(0);
-      if (!already_seen(argument)) values_needed.push_back(argument);
+      add_if_not_exists(argument);
       continue;
     }
 
@@ -2922,7 +2917,7 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
               llvm::dyn_cast<mlir::memref::ViewOp>(argument.getDefiningOp())) {
         argument = view_op.getOperand(0);
       }
-      if (!already_seen(argument)) values_needed.push_back(argument);
+      add_if_not_exists(argument);
       continue;
     }
 
@@ -3035,23 +3030,30 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunkImpl(
   return ir_arrays;
 }
 
+StatusOr<IrEmitterUnnested::KernelArgument>
+IrEmitterUnnested::ValueToKernelArgument(mlir::Value operand, int order,
+                                         bool is_written) {
+  KernelArgument kernel_argument;
+  kernel_argument.order = order;
+  kernel_argument.value = operand;
+  BufferSlice& slice = kernel_argument.slice;
+  TF_ASSIGN_OR_RETURN(slice.buffer_slice,
+                      GetAllocationSlice(operand, &slice.constant_name));
+  slice.written = is_written;
+  slice.shape = GetShape(operand);
+  return kernel_argument;
+}
+
 StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
     mlir::Operation* op, mlir::ValueRange operands, Thunk::ThunkInfo thunk_info,
     const LaunchDimensions& launch_dimensions) {
   TF_RET_CHECK(!mlir::isa<mlir::lmhlo::FusionOp>(op));
 
-  std::vector<KernelArgument> kernel_arguments;
-  kernel_arguments.reserve(operands.size());
-  int i = 0;
-  for (mlir::Value operand : operands) {
-    auto& kernel_argument = kernel_arguments.emplace_back();
-    kernel_argument.order = i++;
-    kernel_argument.value = operand;
-    auto& slice = kernel_argument.slice;
-    TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                        GetAllocationSlice(operand, &slice.constant_name));
-    slice.written = WritesMlirBuffer(op, operand);
-    slice.shape = GetShape(operand);
+  std::vector<KernelArgument> kernel_arguments(operands.size());
+  for (auto& [i, operand] : llvm::enumerate(operands)) {
+    TF_ASSIGN_OR_RETURN(
+        kernel_arguments[i],
+        ValueToKernelArgument(operand, i, WritesMlirBuffer(op, operand)));
   }
   std::string name = GetIrNameFromLoc(op->getLoc());
   return BuildKernelThunkImpl(name, thunk_info, std::move(kernel_arguments),
@@ -3062,34 +3064,21 @@ StatusOr<std::vector<llvm_ir::IrArray>> IrEmitterUnnested::BuildKernelThunk(
     mlir::Operation* op, Thunk::ThunkInfo thunk_info,
     const LaunchDimensions& launch_dimensions) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    auto operands = GetHloOperands(op);
-    auto outputs = GetHloOutputs(op);
+    llvm::SmallVector<mlir::Value> operands = GetHloOperands(op);
+    llvm::SmallVector<mlir::Value> outputs = GetHloOutputs(op);
 
-    std::vector<KernelArgument> kernel_arguments;
-    kernel_arguments.reserve(operands.size() + outputs.size());
+    std::vector<KernelArgument> kernel_arguments(operands.size() +
+                                                 outputs.size());
     int i = 0;
-    for (mlir::Value operand : operands) {
-      auto& kernel_argument = kernel_arguments.emplace_back();
-      kernel_argument.order = i++;
-      kernel_argument.value = operand;
-      BufferSlice& slice = kernel_argument.slice;
-      TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                          GetAllocationSlice(operand, &slice.constant_name));
-      slice.written = false;
-      slice.shape = GetShape(operand);
+    for (mlir::Value op : llvm::concat<mlir::Value>(operands, outputs)) {
+      TF_ASSIGN_OR_RETURN(
+          kernel_arguments[i],
+          ValueToKernelArgument(op, i, /*is_written=*/i >= operands.size()));
+      i++;
     }
-    for (mlir::Value output : outputs) {
-      auto& kernel_argument = kernel_arguments.emplace_back();
-      kernel_argument.order = i++;
-      kernel_argument.value = output;
-      BufferSlice& slice = kernel_argument.slice;
-      TF_ASSIGN_OR_RETURN(slice.buffer_slice,
-                          GetAllocationSlice(output, &slice.constant_name));
-      slice.written = true;
-      slice.shape = GetShape(output);
-    }
+
     std::string name = GetIrNameFromLoc(op->getLoc());
-    return BuildKernelThunkImpl(name, thunk_info, std::move(kernel_arguments),
+    return BuildKernelThunkImpl(name, thunk_info, kernel_arguments,
                                 launch_dimensions);
   }
   return BuildKernelThunk(op, op->getOperands(), thunk_info, launch_dimensions);

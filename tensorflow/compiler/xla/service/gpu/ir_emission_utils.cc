@@ -457,41 +457,38 @@ int PartitionLmhloOperandsAndOutputs(mlir::Operation* op) {
   return i + 1;
 }
 
-std::vector<mlir::Value> GetHloOperands(mlir::Operation* op) {
+llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return ToStdVector(fusion.getInputBuffers());
+    return fusion.getInputBuffers();
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
     int output_start = PartitionLmhloOperandsAndOutputs(op);
-    std::vector<mlir::Value> operands;
-    operands.reserve(output_start);
+    llvm::SmallVector<mlir::Value> operands;
     for (int i = 0; i < output_start; i++) {
       operands.push_back(op->getOperand(i));
     }
     return operands;
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return std::vector<mlir::Value>(op->getOperands().begin(),
-                                    op->getOperands().end());
+    return op->getOperands();
   }
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
 
-std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
+llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return ToStdVector(fusion.getOutputBuffers());
+    return fusion.getOutputBuffers();
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
     int output_start = PartitionLmhloOperandsAndOutputs(op);
-    std::vector<mlir::Value> outputs;
+    llvm::SmallVector<mlir::Value> outputs;
     for (int i = output_start; i < op->getNumOperands(); i++) {
       outputs.push_back(op->getOperand(i));
     }
     return outputs;
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return std::vector<mlir::Value>(op->getResults().begin(),
-                                    op->getResults().end());
+    return op->getResults();
   }
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }

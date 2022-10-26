@@ -157,8 +157,8 @@ inline std::string MlirToString(const mlir::Location& loc) {
 }
 
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
-std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
-std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
+llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
