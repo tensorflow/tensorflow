@@ -12,19 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
-#define TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#define TENSORFLOW_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
 
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/convert/post_process_single_host_xplane.h"
+#include "tensorflow/tsl/platform/types.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-using tsl::profiler::PostProcessSingleHostXSpace;  // NOLINT
+// Post process XSpaces collected locally from multiple profilers.
+void PostProcessSingleHostXSpace(tensorflow::profiler::XSpace* space,
+                                 uint64 start_time_ns);
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_

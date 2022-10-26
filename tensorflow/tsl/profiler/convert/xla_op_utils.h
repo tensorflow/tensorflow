@@ -12,23 +12,30 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XLA_OP_UTILS_H_
-#define TENSORFLOW_CORE_PROFILER_CONVERT_XLA_OP_UTILS_H_
+#ifndef TENSORFLOW_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
+#define TENSORFLOW_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
 
 #include <string>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/tsl/profiler/convert/xla_op_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 namespace profiler {
 
-using tsl::profiler::HloModuleNameWithProgramId;  // NOLINT
-using tsl::profiler::IsFusion;                    // NOLINT
+// Return if a category is fusion.
+inline bool IsFusion(absl::string_view category) {
+  return absl::EndsWith(category, " fusion");
+}
+
+// Return a concatenation of the program name with program id.
+inline std::string HloModuleNameWithProgramId(absl::string_view hlo_module_name,
+                                              uint64_t program_id) {
+  return absl::StrCat(hlo_module_name, "(", program_id, ")");
+}
 
 }  // namespace profiler
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_XLA_OP_UTILS_H_
+#endif  // TENSORFLOW_TSL_PROFILER_CONVERT_XLA_OP_UTILS_H_
