@@ -11,6 +11,22 @@ package_group(
 )
 
 cc_library(
+    name = "conv",
+    srcs = ["conv.cc"],
+    hdrs = ["conv.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service/gpu:gpu_conv_runner",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "fft",
     srcs = ["fft.cc"],
     hdrs = ["fft.h"],
