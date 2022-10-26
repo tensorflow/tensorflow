@@ -27,7 +27,6 @@ filegroup(
         "naming.h",
         "tensor_bundle.cc",
         "tensor_bundle.h",
-        "//tensorflow/tsl/util:mobile_srcs_byteswaparray",
     ],
 )
 

@@ -27,7 +27,7 @@ package(
 )
 
 filegroup(
-    name = "mobile_srcs_byteswaparray",
+    name = "mobile_srcs_no_runtime",
     srcs = [
         "byte_swap_array.cc",
         "byte_swap_array.h",
@@ -37,8 +37,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "byte_swap_array.cc",
-        "byte_swap_array.h",
         "command_line_flags.cc",
         "command_line_flags.h",
         "determinism.cc",
