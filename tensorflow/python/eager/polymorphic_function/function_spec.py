@@ -15,7 +15,6 @@
 """Defines an input type specification for tf.function."""
 
 import functools
-import itertools
 import weakref
 
 import numpy as np
@@ -32,7 +31,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
 # Sentinel value used by with ConcreteFunction's structured signature to
@@ -68,69 +66,6 @@ class FunctionSpec(object):
     fullargspec = tf_inspect.getfullargspec(python_function)
     # Checks if the `fullargspec` contains self or cls as its first argument.
     is_method = tf_inspect.isanytargetmethod(python_function)
-
-    # Treat a wrapped partial function as a special case. For all arguments that
-    # were overridden with keywords in the partial:
-    #   - remove the corresponding arguments,
-    #   - remove the corresponding keywords.
-    _, unwrapped = tf_decorator.unwrap(python_function)
-    if isinstance(unwrapped, functools.partial):
-      # Also consider the Python3 case with kwonlydefaults.
-      if fullargspec.defaults or fullargspec.kwonlydefaults:
-        new_defaults = fullargspec.defaults
-        new_args = fullargspec.args
-        if fullargspec.defaults:
-          # To be able to canonicalize the function properly, we want to ignore
-          # default values that are overridden via a partial kwarg. For example:
-          #
-          #   def func(a, b, c, d=5, e=7):
-          #     return a, b, c, d, e
-          #   p_func = tf.function(functools.partial(func, 10, e=9))
-          #
-          # Here we want to drop from the defaults the parameter `e`. If we
-          # forwarded the call to the partial function with a default for `e`
-          # we would get an error for passing two values for one parameter.
-          #
-          # Note that this has a limitation: we can only override parameters at
-          # the end of the parameter list.
-          #
-          # In this case we want to end up with 3 arguments (b, c, d) and 1
-          # default value (5). We do this by constructing a mask where 0 stands
-          # for a value that was overridden by a partial kwarg. The seemingly
-          # complicated logic below does just that - for arguments (b, c, d, e)
-          # we would get a mask (1, 1, 1, 0).
-          old_args = fullargspec.args
-          old_defaults = fullargspec.defaults
-
-          no_default = object()
-          num_args_without_defaults = len(old_args) - len(old_defaults)
-          left_padding = tuple([no_default] * num_args_without_defaults)
-
-          args_with_defaults = zip(old_args, left_padding + old_defaults)
-
-          # Create a mask where 0 stands for args that had a partial kwarg
-          # defined.
-          non_keyword_defaults_mask = [
-              0 if key in unwrapped.keywords else 1 for key in old_args
-          ]
-          # Keep only arguments and defaults that were not kwargs of partial.
-          new_args_with_defaults = list(
-              itertools.compress(args_with_defaults, non_keyword_defaults_mask))
-          # Keep all args.
-          new_args = [arg for arg, _ in new_args_with_defaults]
-          # Keep only real default values.
-          new_defaults = [
-              default for _, default in new_args_with_defaults
-              if default is not no_default
-          ]
-        fullargspec = tf_inspect.FullArgSpec(
-            args=new_args,
-            varargs=fullargspec.varargs,
-            varkw=fullargspec.varkw,
-            defaults=new_defaults,
-            kwonlyargs=[],
-            kwonlydefaults={},
-            annotations=fullargspec.annotations)
 
     # Get the function's name.  Remove functools.partial wrappers if necessary.
     while isinstance(python_function, functools.partial):
