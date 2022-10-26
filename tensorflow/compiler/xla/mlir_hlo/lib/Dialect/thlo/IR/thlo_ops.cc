@@ -1469,13 +1469,13 @@ mlir::gml_st::TilingInterface SortOp::getTiledImplementation(
   tiledInputsAndInits.reserve(numOutputs * 2);
   tiledResultTypes.reserve(numOutputs);
 
-  auto oneInputShape = oneInput.getType().cast<ShapedType>().getShape();
+  auto tileShape = tile.getType().cast<gml_st::TileType>().getShape();
 
   for (const auto &input : getInputs()) {
     tiledInputsAndInits.push_back(
         b.create<gml_st::MaterializeOp>(loc, input, tile));
     tiledResultTypes.push_back(RankedTensorType::get(
-        oneInputShape, input.getType().cast<ShapedType>().getElementType()));
+        tileShape, input.getType().cast<ShapedType>().getElementType()));
   }
 
   for (const auto &init : getInits()) {

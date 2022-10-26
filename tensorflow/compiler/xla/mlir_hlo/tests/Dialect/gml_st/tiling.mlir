@@ -571,3 +571,26 @@ func.func @sort(%input1: tensor<?x?x?xf32>, %input2: tensor<?x?x?xi32>,
 // CHECK-FOR:         gml_st.set_yield
 // CHECK-FOR-SAME:        %[[RESULT_TILE:.*]]#0 into %[[INIT0_]][%[[TILE]]]
 // CHECK-FOR:             %[[RESULT_TILE]]#1 into %[[INIT1_]][%[[TILE]]]
+
+// -----
+
+func.func @sort2(%input1: tensor<1024x2048x4096xf32>,
+                %input2: tensor<1024x2048x4096xi32>,
+                %init1: tensor<1024x2048x4096xf32>,
+                %init2: tensor<1024x2048x4096xi32>)
+    -> (tensor<1024x2048x4096xf32>, tensor<1024x2048x4096xi32>) {
+  %sorted1, %sorted2 = thlo.sort
+      ins(%input1: tensor<1024x2048x4096xf32>,
+          %input2: tensor<1024x2048x4096xi32>)
+      outs(%init1: tensor<1024x2048x4096xf32>,
+           %init2: tensor<1024x2048x4096xi32>)
+      { dimension = 1 : i64, is_stable = true, op_label = "tile-3d" }
+      (%e11: f32, %e12: f32, %e21: i32, %e22: i32) {
+        %gt = arith.cmpf ogt, %e11, %e12: f32
+        thlo.yield %gt : i1
+      }
+  func.return
+    %sorted1, %sorted2 : tensor<1024x2048x4096xf32>, tensor<1024x2048x4096xi32>
+}
+
+// CHECK-FOR-LABEL: func.func @sort2
