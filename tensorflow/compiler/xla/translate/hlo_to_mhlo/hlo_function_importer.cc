@@ -255,6 +255,28 @@ static bool IsNestedTupleInData(Type type) {
   return false;
 }
 
+static bool HasCustomLayout(const xla::Shape& shape) {
+  if (shape.IsTuple()) {
+    return llvm::any_of(shape.tuple_shapes(), HasCustomLayout);
+  }
+  return shape.has_layout() && !shape.layout().minor_to_major().empty() &&
+         shape.layout() != xla::LayoutUtil::GetDefaultLayoutForShape(shape);
+}
+
+static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
+                                          const xla::Shape& shape) {
+  if (shape.IsTuple()) {
+    llvm::SmallVector<mlir::Attribute> element_attrs;
+    for (const auto& tuple_shape : shape.tuple_shapes()) {
+      element_attrs.push_back(GetLayoutAttribute(b, tuple_shape));
+    }
+    return b.getArrayAttr(element_attrs);
+  }
+  return b.getI64ArrayAttr(
+      llvm::SmallVector<int64_t>{shape.layout().minor_to_major().begin(),
+                                 shape.layout().minor_to_major().end()});
+}
+
 void HloFunctionImporter::FlattenTupleType(
     Type type, llvm::SmallVectorImpl<Type>& flattened_types) {
   auto tuple_type = type.dyn_cast<mlir::TupleType>();
@@ -373,6 +395,34 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
                       builder_->getStringAttr(computation.execution_thread()));
+  }
+
+  // The MLIR CPU pipeline assumes default layouts throughout the program. At
+  // the boundaries, this may not be the case, so layout information needs to
+  // be propagated to adapt the data layouts.
+  if (computation.IsEntryComputation()) {
+    const auto& computation_layout =
+        computation.parent()->entry_computation_layout();
+    if (computation_layout.LayoutIsSet()) {
+      if (HasCustomLayout(computation_layout.result_layout().shape())) {
+        function->setAttr(
+            "xla_entry_computation_result_layout",
+            GetLayoutAttribute(*builder_,
+                               computation_layout.result_layout().shape()));
+      }
+      if (llvm::any_of(computation_layout.parameter_layouts(),
+                       [](const xla::ShapeLayout& shape) {
+                         return HasCustomLayout(shape.shape());
+                       })) {
+        llvm::SmallVector<mlir::Attribute> parameter_layouts;
+        for (auto& layout : computation_layout.parameter_layouts()) {
+          parameter_layouts.push_back(
+              GetLayoutAttribute(*builder_, layout.shape()));
+        }
+        function->setAttr("xla_entry_computation_parameter_layouts",
+                          builder_->getArrayAttr(parameter_layouts));
+      }
+    }
   }
 
   module_.push_back(function);
