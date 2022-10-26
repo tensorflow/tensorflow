@@ -576,6 +576,12 @@ class ShapeUtil {
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
+  // If the given bitcast is a transpose, deduce and return `dimensions`
+  // attribute of such a transpose. Otherwise, return nullptr.
+  static std::optional<std::vector<int64_t>>
+  DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
+                                      const Shape& output_shape);
+
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns
   // true (where 'output_shape_with_layout' is 'output_shape' with the found

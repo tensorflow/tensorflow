@@ -816,6 +816,22 @@ TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
                                                       {4, 3, 2, 1, 0}));
 }
 
+TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcast) {
+  Shape input_shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0});
+  Shape output_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {0, 1});
+  std::vector<int64_t> expected_permutation = {1, 0};
+  EXPECT_EQ(std::make_optional(expected_permutation),
+            ShapeUtil::DeduceTransposeDimensionsForBitcast(input_shape,
+                                                           output_shape));
+}
+
+TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcastNegative) {
+  Shape input_shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0});
+  Shape output_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {1, 0});
+  EXPECT_EQ(std::nullopt, ShapeUtil::DeduceTransposeDimensionsForBitcast(
+                              input_shape, output_shape));
+}
+
 TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2, 7, 9}, {2, 0, 1, 4, 3});

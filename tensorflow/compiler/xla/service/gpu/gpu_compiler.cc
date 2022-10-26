@@ -67,7 +67,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
-#include "tensorflow/compiler/xla/service/bitcast_decomposer.h"
 #include "tensorflow/compiler/xla/service/bitcast_dtypes_expander.h"
 #include "tensorflow/compiler/xla/service/broadcast_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -688,7 +687,6 @@ Status GpuCompiler::OptimizeHloModule(
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
     pipeline.AddPass<OptimizationBarrierExpander>();
-    pipeline.AddPass<BitcastDecomposer>();
     pipeline.AddPass<TupleSimplifier>();
 
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());

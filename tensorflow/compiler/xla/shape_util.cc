@@ -1480,6 +1480,29 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
          check_input_unit_indices(output_shape, input_shape);
 }
 
+static absl::Span<const int64_t> LayoutPerm(const Shape& s) {
+  return s.layout().minor_to_major();
+}
+
+/* static */ std::optional<std::vector<int64_t>>
+ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
+                                               const Shape& output_shape) {
+  if (output_shape.rank() != input_shape.rank()) {
+    return std::nullopt;
+  }
+
+  std::vector<int64_t> transpose_perm = ComposePermutations(
+      LayoutPerm(input_shape), InversePermutation(LayoutPerm(output_shape)));
+
+  std::vector<int64_t> new_dims =
+      ComposePermutations(input_shape.dimensions(), transpose_perm);
+  if (!absl::c_equal(output_shape.dimensions(), new_dims)) {
+    return std::nullopt;
+  }
+  CHECK(TransposeIsBitcast(input_shape, output_shape, transpose_perm));
+  return transpose_perm;
+}
+
 /* static */ std::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(input_shape.IsArray());

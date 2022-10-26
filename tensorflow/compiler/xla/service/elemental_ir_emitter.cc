@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -2631,8 +2633,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                ShapeUtil::ElementsIn(hlo->operand(0)->shape()));
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
         const HloInstruction* operand = hlo->operand(0);
-        return operand_to_generator.at(operand)(
-            GetSourceIndexOfBitcast(index, hlo));
+        IrArray::Index operand_index = GetSourceIndexOfBitcast(index, hlo);
+        return operand_to_generator.at(operand)(operand_index);
       };
     case HloOpcode::kReshape:
       CHECK_EQ(ShapeUtil::ElementsIn(hlo->shape()),
@@ -2654,8 +2656,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         return operand_value;
       };
     case HloOpcode::kTranspose:
-      return [this, hlo,
-              &operand_to_generator](const IrArray::Index& target_index) {
+      return [hlo, &operand_to_generator](const IrArray::Index& target_index) {
         return operand_to_generator.at(hlo->operand(0))(
             target_index.SourceIndexOfTranspose(
                 hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions()));
