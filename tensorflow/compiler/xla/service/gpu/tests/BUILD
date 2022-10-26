@@ -760,7 +760,6 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
-        "//tensorflow/core:framework_internal",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/tsl/platform:platform_port",

@@ -335,7 +335,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
-        "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:MC",

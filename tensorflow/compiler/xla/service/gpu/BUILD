@@ -83,7 +83,6 @@ cc_library(
     hdrs = ["gpu_constants.h"],
     deps = [
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework",
     ],
 )
 
@@ -760,7 +759,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
@@ -788,7 +786,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
@@ -870,7 +867,6 @@ cc_library(
         ":thunk",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
@@ -2653,7 +2649,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/stream_executor/lib",
-        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
     ],

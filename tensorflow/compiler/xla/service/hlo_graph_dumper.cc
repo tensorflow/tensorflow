@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
