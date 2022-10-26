@@ -283,19 +283,19 @@ Status HloControlFlowFlattening::RemoveRecvDone(
   HloInstruction* custom_call_recv =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           recv->shape(), recv->operands(), kNopCustomCallTarget));
-  auto replaced_recv_str = recv->ToString();
-  custom_call_recv->set_metadata_replaced_op(replaced_recv_str);
+  std::string original_recv_name = recv->name();
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, recv, custom_call_recv);
   }
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(recv, custom_call_recv));
+  custom_call_recv->SetAndSanitizeName(original_recv_name);
 
-  HloInstruction* custom_call_recv_done =
-      computation->AddInstruction(HloInstruction::CreateCustomCall(
-          recv_done->shape(), recv_done->operands(), kNopCustomCallTarget));
-  auto replaced_recv_done_str = recv_done->ToString();
-  custom_call_recv_done->set_metadata_replaced_op(replaced_recv_done_str);
+  std::string original_recv_done_name = recv_done->name();
+  HloInstruction* custom_call_recv_done = computation->AddInstruction(
+      HloInstruction::CreateCustomCall(
+          recv_done->shape(), recv_done->operands(), kNopCustomCallTarget),
+      recv_done->name());
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, recv_done,
@@ -303,6 +303,7 @@ Status HloControlFlowFlattening::RemoveRecvDone(
   }
   TF_RETURN_IF_ERROR(
       computation->ReplaceInstruction(recv_done, custom_call_recv_done));
+  custom_call_recv_done->SetAndSanitizeName(original_recv_done_name);
 
   return OkStatus();
 }
@@ -337,21 +338,20 @@ Status HloControlFlowFlattening::RemoveSendDone(
   HloInstruction* custom_call_send =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           send->shape(), send->operands(), kNopCustomCallTarget));
-  auto replaced_send_str = send->ToString();
-  custom_call_send->set_metadata_replaced_op(replaced_send_str);
+  std::string original_send_name = send->name();
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, send, custom_call_send);
   }
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(send, custom_call_send));
+  custom_call_send->SetAndSanitizeName(original_send_name);
 
   HloInstruction* custom_call_send_done =
       computation->AddInstruction(HloInstruction::CreateCustomCall(
           send_done->shape(), send_done->operands(), "NopReturnToken"));
+  std::string original_send_done_name = send_done->name();
   Cast<HloCustomCallInstruction>(custom_call_send_done)
       ->set_custom_call_has_side_effect(true);
-  auto replaced_send_done_str = send_done->ToString();
-  custom_call_send_done->set_metadata_replaced_op(replaced_send_done_str);
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, send_done,
@@ -359,6 +359,7 @@ Status HloControlFlowFlattening::RemoveSendDone(
   }
   TF_RETURN_IF_ERROR(
       computation->ReplaceInstruction(send_done, custom_call_send_done));
+  custom_call_send_done->SetAndSanitizeName(original_send_done_name);
 
   return OkStatus();
 }
@@ -371,19 +372,14 @@ Status HloControlFlowFlattening::RemoveCollective(HloInstruction* hlo) const {
   // Copy backend config. This is necessary for a collective op in megacore
   // fusion.
   custom_call->CopyBackendConfigFrom(hlo);
-  auto hlo_print_option = HloPrintOptions();
-  hlo_print_option.set_print_subcomputation_mode(
-      HloPrintOptions::PrintSubcomputationMode::kFullBodies);
-  hlo_print_option.set_print_program_shape(false);
-  hlo_print_option.set_print_percent(false);
-  auto replaced_collective_op_str = hlo->ToString(hlo_print_option);
   HloModule* module = computation->parent();
   if (module->has_schedule() &&
       module->schedule().is_computation_scheduled(computation)) {
     module->schedule().replace_instruction(computation, hlo, custom_call);
   }
+  std::string original_op_name = hlo->name();
   TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, custom_call));
-  custom_call->set_metadata_replaced_op(replaced_collective_op_str);
+  custom_call->SetAndSanitizeName(original_op_name);
   return OkStatus();
 }
 

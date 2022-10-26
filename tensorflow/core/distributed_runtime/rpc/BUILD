@@ -10,11 +10,7 @@ load(
     "tf_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test", "tf_cuda_cc_tests", "tf_grpc_cc_dependencies", "tf_grpc_dependencies")
 
 # For platform specific build config
 load(
@@ -55,6 +51,7 @@ cc_library(
         # Required to be able to overload TensorResponse parsing.
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
 )
 
@@ -126,7 +123,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -143,23 +140,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
     ] + tf_grpc_cc_dependencies(),
-)
-
-cc_library(
-    name = "grpc_call",
-    srcs = [],
-    hdrs = ["grpc_call.h"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ] + tf_grpc_cc_dependencies(),
-)
-
-cc_library(
-    name = "async_service_interface",
-    srcs = [],
-    hdrs = ["async_service_interface.h"],
-    deps = [],
 )
 
 cc_library(
@@ -217,8 +197,6 @@ tf_cuda_library(
     srcs = ["grpc_worker_service.cc"],
     hdrs = ["grpc_worker_service.h"],
     deps = [
-        ":async_service_interface",
-        ":grpc_call",
         ":grpc_response_cache",
         ":grpc_tensor_coding",
         ":grpc_util",
@@ -237,6 +215,9 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_session",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -274,8 +255,6 @@ cc_library(
     srcs = ["grpc_master_service.cc"],
     hdrs = ["grpc_master_service.h"],
     deps = [
-        ":async_service_interface",
-        ":grpc_call",
         ":grpc_master_service_impl",
         ":grpc_util",
         "//tensorflow/core:lib",
@@ -283,6 +262,8 @@ cc_library(
         "//tensorflow/core/distributed_runtime:master",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -319,7 +300,6 @@ cc_library(
     hdrs = ["grpc_server_lib.h"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
-        ":async_service_interface",
         ":grpc_channel",
         ":grpc_master_service",
         ":grpc_worker_cache",
@@ -348,6 +328,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc/coordination:grpc_coordination_service_impl",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_service_impl",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )

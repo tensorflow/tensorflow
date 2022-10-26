@@ -588,6 +588,28 @@ func.func @func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 }
 
 // -----
+
+// CHECK-LABEL: func @check_propagation_through_same_operands_and_result_type_trait_ops
+func.func @check_propagation_through_same_operands_and_result_type_trait_ops(%arg0: tensor<4xf32>) {
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: output_sharding_configuration = ["\01\02\03"]
+  "tf_device.cluster_func"(%arg0) {
+      func = @func,
+      use_spmd_for_xla_partitioning = false, num_cores_per_replica = 1 : i64
+  } : (tensor<4xf32>) -> tensor<4xf32>
+  func.return
+}
+
+// CHECK-LABEL: func @func
+// CHECK-SAME: ->{{.*}}mhlo.sharding = "\01\02\03"
+func.func @func(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03"} : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "tf.Abs"(%0) : (tensor<4xf32>) -> (tensor<4xf32>)
+  func.return %1 : tensor<4xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @check_propagation_for_output_sharding_from_tf_matmul
 // CHECK:      tf_device.cluster_func
 // CHECK-SAME: input_sharding_configuration = ["", ""]

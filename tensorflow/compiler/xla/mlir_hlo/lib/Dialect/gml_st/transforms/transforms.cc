@@ -18,16 +18,20 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/Utils/Utils.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Matchers.h"
 
 namespace mlir {
 namespace gml_st {
+bool isZero(Value v) { return matchPattern(v, m_Zero()); }
 namespace {
 
 /// Rewrite a LoopOp with bounds/step that potentially do not divide evenly
@@ -46,8 +50,8 @@ namespace {
 /// The return value indicates whether the LoopOp was rewritten or not.
 static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
                               LoopOp &result, Value &splitBound) {
-  Value lb = loopOp.lowerBound()[idx], ub = loopOp.upperBound()[idx],
-        step = loopOp.step()[idx];
+  Value lb = loopOp.getLowerBound()[idx], ub = loopOp.getUpperBound()[idx],
+        step = loopOp.getStep()[idx];
   auto ubInt = getConstantIntValue(ub);
 
   auto loc = loopOp.getLoc();
@@ -73,21 +77,22 @@ static LogicalResult peelLoop(RewriterBase &b, LoopOp loopOp, int64_t idx,
   // loop's outputs.
   SmallVector<Value> remainderOutputs;
   for (unsigned o = 0, t = 0; o < loopOp.getNumOutputs(); ++o) {
-    remainderOutputs.push_back(loopOp.outputs()[o].getType().isa<MemRefType>()
-                                   ? loopOp.outputs()[o]
-                                   : loopOp->getResult(t++));
+    remainderOutputs.push_back(
+        loopOp.getOutputs()[o].getType().isa<MemRefType>()
+            ? loopOp.getOutputs()[o]
+            : loopOp->getResult(t++));
   }
-  remainderLoop.outputsMutable().assign(remainderOutputs);
+  remainderLoop.getOutputsMutable().assign(remainderOutputs);
 
   // Set new loop bounds.
   b.updateRootInPlace(loopOp, [&]() {
-    SmallVector<Value> ubs = loopOp.upperBound();
+    SmallVector<Value> ubs = loopOp.getUpperBound();
     ubs[idx] = splitBound;
-    loopOp.upperBoundMutable().assign(ubs);
+    loopOp.getUpperBoundMutable().assign(ubs);
   });
-  SmallVector<Value> lbs = remainderLoop.lowerBound();
+  SmallVector<Value> lbs = remainderLoop.getLowerBound();
   lbs[idx] = splitBound;
-  remainderLoop.lowerBoundMutable().assign(lbs);
+  remainderLoop.getLowerBoundMutable().assign(lbs);
 
   result = remainderLoop;
   return success();
@@ -112,11 +117,6 @@ static void rewriteAffineOpAfterPeeling(RewriterBase &rewriter, LoopOp mainLoop,
   });
 }
 
-bool isZero(Value v) {
-  if (auto cst = v.getDefiningOp<arith::ConstantIndexOp>())
-    return cst.value() == 0;
-  return false;
-}
 using ::mlir::linalg::LinalgOp;
 
 void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
@@ -142,8 +142,8 @@ void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
     nestedBuilder.create<gml_st::YieldOp>(nestedLoc, results);
   };
 
-  SmallVector<Value> inputOperands = linalgOp.getInputOperands();
-  SmallVector<Value> outputOperands = linalgOp.getOutputOperands();
+  SmallVector<Value> inputs{linalgOp.getInputOperands()};
+  SmallVector<Value> outputs{linalgOp.getOutputOperands()};
 
   SmallVector<Value> lbsValue =
       mlir::getValueOrCreateConstantIndexOp(b, loc, lbs);
@@ -151,9 +151,9 @@ void generateLoopNest(OpBuilder &b, Location loc, ArrayRef<Range> loopRanges,
       mlir::getValueOrCreateConstantIndexOp(b, loc, ubs);
   SmallVector<Value> stepsValue =
       mlir::getValueOrCreateConstantIndexOp(b, loc, steps);
-  auto tiledLoop = b.create<LoopOp>(
-      loc, lbsValue, ubsValue, stepsValue, inputOperands, outputOperands,
-      b.getArrayAttr(iteratorTypes), wrappedBuilderFn);
+  auto tiledLoop =
+      b.create<LoopOp>(loc, lbsValue, ubsValue, stepsValue, inputs, outputs,
+                       b.getArrayAttr(iteratorTypes), wrappedBuilderFn);
   if (!distributionTypes.empty())
     tiledLoop.setDistributionTypes(b, distributionTypes);
 }
@@ -200,10 +200,10 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
                                         allShapeSizes, tileSizesFold);
 
   SmallVector<Attribute, 4> iteratorTypes;
-  for (const auto &attr :
-       enumerate(op.iterator_types().cast<ArrayAttr>().getValue())) {
+  for (const auto &attr : enumerate(op.getIteratorTypesArray())) {
     if (loopIndexToRangeIndex.count(attr.index()))
-      iteratorTypes.push_back(attr.value());
+      iteratorTypes.push_back(IteratorTypeAttr::get(
+          b.getContext(), utils::symbolizeIteratorType(attr.value()).value()));
   }
 
   // 2. Create the tiled loops.
@@ -216,8 +216,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
 
     // Tile the `operandValuesToUse` that either match the `op` operands
     // themselves or the tile loop arguments forwarding them.
-    assert(operandValuesToUse.size() ==
-               static_cast<size_t>(op.getNumInputsAndOutputs()) &&
+    assert(operandValuesToUse.size() == op->getNumOperands() &&
            "expect the number of operands and inputs and outputs to match");
     SmallVector<Value> valuesToTile = operandValuesToUse;
     auto sizeBounds = makeComposedFoldedMultiResultAffineApply(
@@ -228,7 +227,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
         /*omitPartialTileCheck=*/false);
 
     SmallVector<Type, 4> resultTensorTypes;
-    for (OpOperand *opOperand : op.getOutputTensorOperands())
+    for (OpOperand *opOperand : op.getOutputOperands())
       resultTensorTypes.push_back(
           tiledOperands[opOperand->getOperandNumber()].getType());
 
@@ -236,7 +235,7 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
 
     // Insert a insert_slice for each output tensor.
     unsigned resultIdx = 0;
-    for (OpOperand *opOperand : op.getOutputTensorOperands()) {
+    for (OpOperand *opOperand : op.getOutputOperands()) {
       Value outputTensor = tiledOperands[opOperand->getOperandNumber()];
       IRRewriter rewriter(b);
       if (auto sliceOp = outputTensor.getDefiningOp<tensor::ExtractSliceOp>()) {
@@ -283,17 +282,17 @@ FailureOr<linalg::TiledLinalgOp> tileLinalgOpImpl(
 LogicalResult peelAndCanonicalizeGmlStLoop(RewriterBase &rewriter,
                                            LoopOp loopOp, int64_t idx,
                                            LoopOp &result) {
-  int64_t numLoops = loopOp.iterator_types().size();
+  int64_t numLoops = loopOp.getIteratorTypes().size();
   if (idx < 0 || numLoops <= idx) return failure();
 
-  Value ub = loopOp.upperBound()[idx];
+  Value ub = loopOp.getUpperBound()[idx];
   LoopOp remainderLoop;
   Value splitBound;
   if (failed(peelLoop(rewriter, loopOp, idx, remainderLoop, splitBound)))
     return failure();
 
   // Rewrite affine.min and affine.max ops.
-  Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.step()[idx],
+  Value mainIv = loopOp.getInductionVars()[idx], step = loopOp.getStep()[idx],
         remainderIv = remainderLoop.getInductionVars()[idx];
 
   rewriteAffineOpAfterPeeling<AffineMinOp, /*IsMin=*/true>(

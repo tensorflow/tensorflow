@@ -1,7 +1,7 @@
 # Description:
 # gif test data packages.
 
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
 
 package(
     licenses = ["notice"],

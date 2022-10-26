@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/cl/qcom_thin_filter.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
@@ -115,6 +116,16 @@ absl::Status CreateCLObject(GPUObjectDescriptor* desc, CLContext* context,
     Tensor gpu_tensor;
     RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, context));
     *result = std::make_unique<Tensor>(std::move(gpu_tensor));
+    return absl::OkStatus();
+  }
+
+  const auto* qcom_thin_filter_desc =
+      dynamic_cast<const QcomThinFilterDescriptor*>(desc);
+  if (qcom_thin_filter_desc) {
+    QcomThinFilter thin_filter;
+    RETURN_IF_ERROR(
+        thin_filter.CreateFromDescriptor(*qcom_thin_filter_desc, context));
+    *result = std::make_unique<QcomThinFilter>(std::move(thin_filter));
     return absl::OkStatus();
   }
 

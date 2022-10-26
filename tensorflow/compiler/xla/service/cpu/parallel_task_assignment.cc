@@ -242,7 +242,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
     auto* new_root = call->to_apply()->root_instruction();
     BackendConfig backend_config;
     absl::c_copy(dim_partition_counts,
-                 tensorflow::protobuf::RepeatedFieldBackInserter(
+                 tsl::protobuf::RepeatedFieldBackInserter(
                      backend_config.mutable_outer_dimension_partitions()));
     TF_CHECK_OK(new_root->set_backend_config(backend_config));
 

@@ -482,8 +482,7 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
-      /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   EXPECT_THAT(mul, op::ShapeWithLayout(shape));
@@ -544,8 +543,7 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
-      /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -861,7 +859,7 @@ TEST_P(MemorySpaceAssignmentTest, While) {
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
@@ -1200,7 +1198,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
 }
@@ -1255,7 +1253,7 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(fusion->operand(0)->operand(0),
               op::ShapeWithLayout(shape_in_alternate_mem));
@@ -1760,7 +1758,7 @@ TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
     %prev.12 = s32[6]{0:T(128)} parameter(0)
     %bitcast.1 = s32[1]{0:T(128)} bitcast(s32[6]{0:T(128)} %prev.12)
     %bitcast = s32[]{:T(128)} bitcast(s32[1]{0:T(128)} %bitcast.1)
-    ROOT %compare.16 = pred[]{:T(128)E(32)} compare(s32[]{:T(128)} %constant.15, s32[]{:T(128)} %bitcast), direction=GT
+    ROOT %compare.16 = pred[]{:T(128)} compare(s32[]{:T(128)} %constant.15, s32[]{:T(128)} %bitcast), direction=GT
   }
 
   ENTRY %WhileWithPrngScalarResult.18 () -> s32[6] {
@@ -3104,17 +3102,17 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-          /*element_size_in_bits=*/0, kAlternateMemorySpace);
+          kAlternateMemorySpace);
   // Index {1} is a scalar, so it is always placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*tiles=*/{},
-          /*element_size_in_bits=*/0, kDefaultMemorySpace);
+          kDefaultMemorySpace);
   // Index {2} of the while loop is placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-          /*element_size_in_bits=*/0, kDefaultMemorySpace);
+          kDefaultMemorySpace);
 
   // Expect the layout for the while loop and its aliased buffers.
   EXPECT_THAT(while_op, op::ShapeWithLayout(tuple_shape));
@@ -3548,7 +3546,7 @@ TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -3618,7 +3616,7 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {4, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kDefaultMemorySpace);
+      kDefaultMemorySpace);
   // Expect only negates to be in alternate memory space. Not all might fit but
   // make sure at least one does.
   std::vector<HloInstruction*> negate_instructions = {negate0, negate1, negate2,
@@ -3726,15 +3724,15 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {4, 6},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kDefaultMemorySpace);
+      kDefaultMemorySpace);
   Shape s32_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       xla::S32, {},
       /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kDefaultMemorySpace);
+      kDefaultMemorySpace);
   Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {1},
       /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kDefaultMemorySpace);
+      kDefaultMemorySpace);
   Shape t_s32_f32v1_in_default_mem =
       ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
   EXPECT_THAT(param, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
@@ -3845,7 +3843,7 @@ TEST_P(MemorySpaceAssignmentTest,
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   // p0 is in the default memory space.
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
@@ -5146,6 +5144,125 @@ ENTRY entry {
   EXPECT_EQ(cp_done2->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
 }
 
+TEST_P(MemorySpaceAssignmentTest,
+       TupleInPlaceAsyncCollectivePermuteSameBuffer) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  param2 = bf16[48]{0} parameter(1)
+  negate0.1 = bf16[48]{0} negate(param2)
+  negate0.2 = bf16[48]{0} negate(param2)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0.0 = (s32[]) tuple(const0)
+  tuple0 = ((s32[]), (s32[])) tuple(tuple0.0, tuple0.0)
+  tuple1.0 = (s32[]) tuple(const1)
+  tuple1 = ((s32[]), (s32[])) tuple(tuple1.0, tuple1.0)
+  tuple2 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.1, negate0.1)
+  tuple3 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.2, negate0.2)
+  collective-permute-start.1 = ((bf16[48]{0}, bf16[48]{0}), (bf16[48]{0}, bf16[48]{0}), u32[], u32[]) collective-permute-start(tuple2, tuple3, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  negate2 = bf16[4]{0} negate(param)
+  negate3 = bf16[4]{0} negate(negate2)
+  negate4 = bf16[4]{0} negate(negate3)
+  collective-permute-done.1 = (bf16[48]{0}, bf16[48]{0}) collective-permute-done(collective-permute-start.1)
+  gte = bf16[48]{0} get-tuple-element(collective-permute-done.1), index=0
+  ROOT root = (bf16[48]{0}, bf16[4]{0}) tuple(gte, negate4)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* cp_done1 =
+      FindInstruction(module.get(), "collective-permute-done.1");
+  EXPECT_EQ(cp_done1->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
+}
+
+TEST_P(MemorySpaceAssignmentTest,
+       TupleInPlaceAsyncCollectivePermuteSameBufferRoot) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  param = bf16[4]{0} parameter(0)
+  param2 = bf16[48]{0} parameter(1)
+  negate0.1 = bf16[48]{0} negate(param2)
+  negate0.2 = bf16[48]{0} negate(param2)
+  const0 = s32[] constant(0)
+  const1 = s32[] constant(1)
+  tuple0.0 = (s32[]) tuple(const0)
+  tuple0 = ((s32[]), (s32[])) tuple(tuple0.0, tuple0.0)
+  tuple1.0 = (s32[]) tuple(const1)
+  tuple1 = ((s32[]), (s32[])) tuple(tuple1.0, tuple1.0)
+  tuple2 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.1, negate0.1)
+  tuple3 = (bf16[48]{0}, bf16[48]{0}) tuple(negate0.2, negate0.2)
+  collective-permute-start.1 = ((bf16[48]{0}, bf16[48]{0}), (bf16[48]{0}, bf16[48]{0}), u32[], u32[]) collective-permute-start(tuple2, tuple3, tuple0, tuple1), source_target_pairs={{0,1},{1,2},{2,3}}, slice_sizes={{1}}
+  ROOT collective-permute-done.1 = (bf16[48]{0}, bf16[48]{0}) collective-permute-done(collective-permute-start.1)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* cp_done1 =
+      FindInstruction(module.get(), "collective-permute-done.1");
+  EXPECT_EQ(cp_done1->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
+  ShapeUtil::ForEachSubshape(
+      cp_done1->shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.IsArray() && subshape.has_layout()) {
+          EXPECT_EQ(subshape.layout().memory_space(), kDefaultMemorySpace);
+        }
+      });
+}
+
+TEST_P(MemorySpaceAssignmentTest, TupleInPlaceAsyncCollectivePermuteRoot) {
+  absl::string_view hlo_string = R"(
+ HloModule inplace_collective_permute, is_scheduled=true
+
+ ENTRY %inplace_collective_permute {
+   %param.0 = u32[8,1,1] parameter(0)
+   %constant.1000 = u32[] constant(1000)
+   %broadcast.1 = u32[8,1,1] broadcast(u32[] %constant.1000), dimensions={}
+   %broadcast.2 = u32[8,1,1] broadcast(u32[] %constant.1000), dimensions={}
+   %tuple.input = (u32[8,1,1], u32[8,1,1]) tuple(u32[8,1,1] %param.0, u32[8,1,1] %param.0)
+   %tuple.output = (u32[8,1,1], u32[8,1,1]) tuple(u32[8,1,1] %broadcast.1, u32[8,1,1] %broadcast.2)
+   %constant.0 = s32[] constant(0)
+   %constant.1 = s32[] constant(1)
+   %constant.2 = s32[] constant(2)
+   %indices.0.0.0 = (s32[], s32[], s32[]) tuple(s32[] %constant.0, s32[] %constant.0, s32[] %constant.0)
+   %indices.1.0.0 = (s32[], s32[], s32[]) tuple(s32[] %constant.1, s32[] %constant.0, s32[] %constant.0)
+   %indices.2.0.0 = (s32[], s32[], s32[]) tuple(s32[] %constant.2, s32[] %constant.0, s32[] %constant.0)
+   %indices.000.100 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple((s32[], s32[], s32[]) %indices.0.0.0, (s32[], s32[], s32[]) %indices.1.0.0)
+   %indices.000.200 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple((s32[], s32[], s32[]) %indices.0.0.0, (s32[], s32[], s32[]) %indices.2.0.0)
+   %indices.000.0 = ((s32[], s32[], s32[]), (s32[], s32[], s32[])) tuple((s32[], s32[], s32[]) %indices.0.0.0, (s32[], s32[], s32[]) %indices.0.0.0)
+   %input.indices = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.100, ((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.0)
+   %output.indices = (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) tuple(((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.100, ((s32[], s32[], s32[]), (s32[], s32[], s32[])) %indices.000.200)
+   %collective-permute-start = ((u32[8,1,1], u32[8,1,1]), (u32[8,1,1], u32[8,1,1]), u32[], u32[]) collective-permute-start((u32[8,1,1], u32[8,1,1]) %tuple.input, (u32[8,1,1], u32[8,1,1]) %tuple.output, (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) %input.indices, (((s32[], s32[], s32[]), (s32[], s32[], s32[])), ((s32[], s32[], s32[]), (s32[], s32[], s32[]))) %output.indices), channel_id=42, source_target_pairs={{0,1},{1,0},{1,0},{0,1}}, slice_sizes={{4},{4},{4},{4}}
+   ROOT %collective-permute-done = (u32[8,1,1], u32[8,1,1]) collective-permute-done(((u32[8,1,1], u32[8,1,1]), (u32[8,1,1], u32[8,1,1]), u32[], u32[]) %collective-permute-start)
+ }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* cp_done =
+      FindInstruction(module.get(), "collective-permute-done");
+  EXPECT_EQ(cp_done->operand(0)->opcode(), HloOpcode::kCollectivePermuteStart);
+  ShapeUtil::ForEachSubshape(
+      cp_done->shape(),
+      [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+        if (subshape.IsArray() && subshape.has_layout()) {
+          EXPECT_EQ(subshape.layout().memory_space(), kDefaultMemorySpace);
+        }
+      });
+}
+
 TEST_P(MemorySpaceAssignmentTest, ReservedScopedMemory) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
@@ -6188,6 +6305,11 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
     EXPECT_EQ(cross_program_prefetches[0].first, 1);
     EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({}));
   }
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Dot(op::Parameter(0),
+                      op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                                    op::Parameter(1))));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleTest) {
@@ -6569,7 +6691,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
       F32, {kFeature, kOutput},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
@@ -6616,7 +6738,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
       F32, {kFeature, kOutput},
       /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      /*element_size_in_bits=*/0, kAlternateMemorySpace);
+      kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(
@@ -6673,7 +6795,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupMayAlias) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+  EXPECT_THAT(FindInstruction(module.get(), "dup")->operand(0),
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
@@ -6693,7 +6817,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDup) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+  EXPECT_THAT(FindInstruction(module.get(), "dup")->operand(0),
+              op::Parameter(0));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
@@ -6717,6 +6843,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDupDot) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dup")->operand(0),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
@@ -6736,6 +6865,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootDotMayAlias) {
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
   EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_THAT(FindInstruction(module.get(), "dot")->operand(1),
+              op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
+                            op::Parameter(0)));
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
@@ -6753,7 +6885,7 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramRootParameter) {
       /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
 
   auto cross_program_prefetches = module->CrossProgramPrefetches();
-  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
 TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
@@ -7030,6 +7162,57 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTupleReuse) {
   EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.GetUses(),
                              is_end_of_program_prefetch),
             0);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchBufferUnused) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+%fused_computation {
+  %param_0.2 = f32[32]{0} parameter(0)
+  %param_1.4 = s32[100]{0} parameter(1)
+  %custom-call.1 = s32[100]{0} custom-call(s32[100]{0} %param_1.4), custom_call_target="AssumeGatherIndicesInBound", operand_layout_constraints={s32[100]{0}}
+  %slice.1 = s32[32]{0} slice(s32[100]{0} %custom-call.1), slice={[0:32]}
+  %reshape.7 = s32[32]{0} reshape(s32[32]{0} %slice.1)
+  %transpose.5 = s32[32]{0} transpose(s32[32]{0} %reshape.7), dimensions={0}
+  %gather.1 = f32[32]{0} gather(f32[32]{0} %param_0.2, s32[32]{0} %transpose.5), offset_dims={}, collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1, slice_sizes={1}
+  %transpose.4 = f32[32]{0} transpose(f32[32]{0} %gather.1), dimensions={0}
+  ROOT %reshape.6 = f32[32]{0} reshape(f32[32]{0} %transpose.4)
+}
+
+%i.reduce_sub_computation {
+  %rhs = s32[] parameter(1)
+  %lhs = s32[] parameter(0)
+  ROOT %add = s32[] add(s32[] %lhs, s32[] %rhs)
+}
+
+%fused_computation.1 {
+  %constant.4 = s32[] constant(0)
+  %broadcast.4 = s32[100]{0} broadcast(s32[] %constant.4), dimensions={}
+  %param_0.4 = s32[32]{0} parameter(0)
+  %pad.1 = s32[100]{0} pad(s32[32]{0} %param_0.4, s32[] %constant.4), padding=0_68
+  %constant.3 = s32[] constant(76031)
+  %broadcast.3 = s32[100]{0} broadcast(s32[] %constant.3), dimensions={}
+  ROOT %clamp.1 = s32[100]{0} clamp(s32[100]{0} %broadcast.4, s32[100]{0} %pad.1, s32[100]{0} %broadcast.3)
+}
+
+ENTRY %main {
+  %constant = s32[] constant(0)
+  %i = s32[32,1]{0,1} parameter(1)
+  %o = f32[32]{0} parameter(0)
+  %reduce = s32[32]{0} reduce(s32[32,1]{0,1} %i, s32[] %constant), dimensions={1}, to_apply=%i.reduce_sub_computation
+  %fusion.1 = s32[100]{0} fusion(s32[32]{0} %reduce), kind=kLoop, calls=%fused_computation.1
+  ROOT %fusion = f32[32]{0} fusion(f32[32]{0} %o, s32[100]{0} %fusion.1), kind=kCustom, calls=%fused_computation
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Fusion(op::AsyncCopy(kAlternateMemorySpace,
+                                       kDefaultMemorySpace, op::Parameter(0)),
+                         op::Fusion()));
 }
 
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;

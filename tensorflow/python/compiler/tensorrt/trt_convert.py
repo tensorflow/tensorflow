@@ -49,6 +49,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import asset
+from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import saver
 from tensorflow.python.util import deprecation
@@ -1015,12 +1016,21 @@ def _save_calibration_table(node):
 
 
 def _convert_to_tensor(inp):
-  if isinstance(inp, dict):
-    args = []
-    kwargs = {k: ops.convert_to_tensor(v) for k, v in inp.items()}
-  else:
-    args = map(ops.convert_to_tensor, inp)
-    kwargs = {}
+  try:
+    if isinstance(inp, dict):
+      args = []
+      kwargs = {k: ops.convert_to_tensor(v) for k, v in inp.items()}
+    else:
+      kwargs = {}
+      if isinstance(inp, (list, tuple)):
+        args = map(ops.convert_to_tensor, inp)
+      else:
+        args = [ops.convert_to_tensor(inp)]
+  except:
+    error_msg = "Failed to convert input to tensor."
+    logging.error(error_msg + "\ninp = `{0}`\n".format(inp))
+    raise RuntimeError(error_msg)
+
   return args, kwargs
 
 
@@ -1126,8 +1136,6 @@ class TrtGraphConverterV2(object):
        inputs with the same dimensions as the input it is created for. The GPU
        engine will be run with optimal performance with such inputs.
      * `Range+Optimal`: create the profiles for both `Range` and `Optimal`.
-     * `ImplicitBatchModeCompatible`: create the profiles that will produce the
-       same GPU engines as the implicit_batch_mode would produce.
   """
 
   def _verify_profile_strategy(self, strategy):
@@ -1136,6 +1144,11 @@ class TrtGraphConverterV2(object):
       raise ValueError(
           ("profile_strategy '{}' is not supported. It should be one of {}"
           ).format(strategy, supported_profile_strategies()))
+    if strategy == "ImplicitBatchModeCompatible":
+      logging.warn(
+          "ImplicitBatchModeCompatible strategy is deprecated, and"
+          " using it may result in errors during engine building. Please"
+          " consider using a different profile strategy.")
 
   @deprecation.deprecated_args(None,
                                "Use individual converter parameters instead",
@@ -1415,16 +1428,29 @@ class TrtGraphConverterV2(object):
     will be performed while we build the TensorRT engines.
 
     Args:
-      input_fn: a generator function that yields input data as a list or tuple
-        or dict, which will be used to execute the converted signature to
-        generate TRT engines. Example:
-        `def input_fn(): # Let's assume a network with 2 input tensors. We
-          generate 3 sets
-             # of dummy input data: input_shapes = [[(1, 16), (2, 16)], # 1st
-               input list [(2, 32), (4, 32)], # 2nd list of two tensors [(4,
-               32), (8, 32)]] # 3rd input list
-             for shapes in input_shapes: # return a list of input tensors yield
-               [np.zeros(x).astype(np.float32) for x in shapes]`
+      input_fn: a generator function that provides the input data as a single
+        array, OR a list or tuple of the arrays OR a dict, which will be used
+        to execute the converted signature to generate TRT engines.
+        Example 1:
+        `def input_fn():
+             # Let's assume a network with 1 input tensor.
+             # We generate 2 sets of dummy input data:
+             input_shapes = [(1, 16),    # 1st shape
+                             (2, 32)]    # 2nd shape
+             for shapes in input_shapes:
+                 # return an input tensor
+                 yield np.zeros(shape).astype(np.float32)'
+
+        Example 2:
+        `def input_fn():
+             # Let's assume a network with 2 input tensors.
+             # We generate 3 sets of dummy input data:
+             input_shapes = [[(1, 16), (2, 16)], # 1st input list
+                             [(2, 32), (4, 32)], # 2nd list of two tensors
+                             [(4, 32), (8, 32)]] # 3rd input list
+             for shapes in input_shapes:
+                 # return a list of input tensors
+                 yield [np.zeros(x).astype(np.float32) for x in shapes]`
 
     Raises:
       NotImplementedError: build() is already called.
@@ -1463,7 +1489,7 @@ class TrtGraphConverterV2(object):
     #   Builds TRT engines if self._need_trt_profiles is False.
     #   Builds TRT optimization profiles if self._need_trt_profiles is True.
     for inp in input_fn():
-      if not first_input:
+      if first_input is None:
         first_input = inp
       args, kwargs = _convert_to_tensor(inp)
       func(*args, **kwargs)
@@ -1484,11 +1510,8 @@ class TrtGraphConverterV2(object):
       # the inputs can be used because the shape of this input does not
       # determine the engine and instead the shapes collected in profiles
       # determine the engine.
-      if isinstance(first_input, dict):
-        self._converted_func(
-            **{k: ops.convert_to_tensor(v) for k, v in first_input.items()})
-      else:
-        self._converted_func(*map(ops.convert_to_tensor, first_input))
+      args, kwargs = _convert_to_tensor(first_input)
+      self._converted_func(*args, **kwargs)
 
     self._build_called_once = True
 
@@ -1551,12 +1574,10 @@ class TrtGraphConverterV2(object):
 
     self._for_each_trt_node(self._converted_graph_def,
                             _serialize_and_track_engine)
-    self._saved_model.trt_engine_resources = resource_map
-
-    # Rewrite the signature map using the optimized ConcreteFunction.
-    signatures = {
-        key: value for key, value in self._saved_model.signatures.items()
-    }
+    # If the graph is frozen, tracked variables are not needed by the converted model.
+    trackable = autotrackable.AutoTrackable(
+    ) if self.freeze else self._saved_model
+    trackable.trt_engine_resources = resource_map
 
     # Set allow_build_at_runtime=False if asked by user.
     #
@@ -1581,9 +1602,9 @@ class TrtGraphConverterV2(object):
           self._converted_func.structured_input_signature)
       self._converted_func = reset_converted_func
 
-    signatures[self._input_saved_model_signature_key] = self._converted_func
-    save.save(
-        self._saved_model, output_saved_model_dir, signatures, options=options)
+    # Rewrite the signature map using the optimized ConcreteFunction.
+    signatures = {self._input_saved_model_signature_key: self._converted_func}
+    save.save(trackable, output_saved_model_dir, signatures, options=options)
 
   def summary(self, line_length=160, detailed=True, print_fn=None):
     """This method describes the results of the conversion by TF-TRT.

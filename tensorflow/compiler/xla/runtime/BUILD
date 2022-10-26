@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
-load("//tensorflow/core/platform:build_config.bzl", "tf_platform_deps")
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_platform_deps")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -36,8 +36,9 @@ tf_cc_test(
     deps = [
         ":arguments",
         ":types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -48,11 +49,10 @@ cc_library(
     hdrs = ["async_runtime.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
-        "//third_party/eigen3",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
         "@tf_runtime//:hostcontext",
     ],
 )
@@ -62,7 +62,7 @@ cc_library(
     hdrs = ["async_values_cache.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/tsl/platform:platform",
+        "//tensorflow/tsl/platform",
     ] + tf_platform_deps(
         "async_values_cache",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
@@ -116,8 +116,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/mlir/ir/runtime/tests:testlib",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/transforms/runtime:custom_call_encoding",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -150,8 +151,8 @@ tf_cc_test(
     srcs = ["diagnostics_test.cc"],
     deps = [
         ":diagnostics",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/status",
     ],
 )
@@ -196,6 +197,25 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "executable_test",
+    srcs = ["executable_test.cc"],
+    tags = ["nomsan"],  # TODO(ezhulenev): Find msan error in LLVM coroutine passes
+    deps = [
+        ":arguments",
+        ":async_runtime",
+        ":diagnostics",
+        ":executable",
+        ":jit_executable",
+        ":results",
+        "//tensorflow/compiler/xla/mlir/transforms/runtime/tests:testlib_pipeline",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/base:dynamic_annotations",
+    ],
+)
+
 cc_library(
     name = "execution_engine",
     srcs = ["execution_engine.cc"],
@@ -206,6 +226,8 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
+        "@llvm-project//llvm:AArch64AsmParser",
+        "@llvm-project//llvm:AArch64CodeGen",
         "@llvm-project//llvm:ARMAsmParser",
         "@llvm-project//llvm:ARMCodeGen",
         "@llvm-project//llvm:Core",
@@ -260,8 +282,9 @@ tf_cc_test(
     srcs = ["map_by_type_test.cc"],
     deps = [
         ":map_by_type",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -271,7 +294,7 @@ cc_library(
     hdrs = ["memory_mapper.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "//tensorflow/tsl/platform:platform",
+        "//tensorflow/tsl/platform",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:Support",
     ] + tf_platform_deps(
@@ -287,6 +310,19 @@ cc_library(
     deps = [
         ":logical_result",
         ":types",
+    ],
+)
+
+tf_cc_test(
+    name = "results_test",
+    srcs = ["results_test.cc"],
+    deps = [
+        ":logical_result",
+        ":results",
+        ":types",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )
 
@@ -320,8 +356,9 @@ tf_cc_test(
         ":constraints",
         ":symbolic_shape",
         ":types",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -342,6 +379,16 @@ cc_library(
 )
 
 cc_library(
+    name = "tracing",
+    hdrs = ["tracing.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":custom_call",
+        ":type_id",
+    ],
+)
+
+cc_library(
     name = "type_id",
     srcs = ["type_id.cc"],
     hdrs = ["type_id.h"],
@@ -352,12 +399,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "compiler",
+    hdrs = ["compiler.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 tf_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],
     deps = [
         ":type_id",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_benchmark",
+        "//tensorflow/tsl/platform:test_main",
     ],
 )

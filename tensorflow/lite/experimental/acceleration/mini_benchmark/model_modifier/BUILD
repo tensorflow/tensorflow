@@ -13,7 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
+    ],
     licenses = ["notice"],
 )
 
@@ -39,6 +41,7 @@ cc_library(
         ":validation_graph_builder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg_status",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_common",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:jpeg_header_parser",
@@ -71,9 +74,11 @@ cc_library(
 cc_binary(
     name = "embedder_cmdline",
     srcs = ["embedder_main.cc"],
+    visibility = ["//visibility:public"],
     deps = [
         ":embedder",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
@@ -105,6 +110,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:model_builder",
         "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core:headers",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:mini_benchmark_test_helper",

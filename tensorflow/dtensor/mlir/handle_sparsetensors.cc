@@ -40,14 +40,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORSPARSETENSORTODENSETENSOR
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kEntryFuncAttr[] = "tf.entry_function";
 constexpr char kSparseIndicesStr[] = "op_input_sparse_indices";
@@ -168,7 +170,7 @@ void UpdateFunctionWithSparseTensorComponents(
 }
 
 struct DTensorSparseTensorToDenseTensor
-    : public DTensorSparseTensorToDenseTensorBase<
+    : public impl::DTensorSparseTensorToDenseTensorBase<
           DTensorSparseTensorToDenseTensor> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
@@ -208,11 +210,12 @@ struct DTensorSparseTensorToDenseTensor
 
       // Emit a SparseToDenseOp and replace the SparseTensor with the result of
       // this new op.
-      auto zero_scalar = CreateZeroScalarConst(builder, front_op->getLoc(),
-                                               sparse_tensor_value.getType()
-                                                   .cast<mlir::TensorType>()
-                                                   .getElementType());
-      if (!zero_scalar.has_value()) return signalPassFailure();
+      StatusOr<mlir::Value> zero_scalar =
+          CreateZeroScalarConst(builder, front_op->getLoc(),
+                                sparse_tensor_value.getType()
+                                    .cast<mlir::TensorType>()
+                                    .getElementType());
+      if (!zero_scalar.ok()) return signalPassFailure();
       mlir::TF::SparseToDenseOp sparse_to_dense_op =
           builder.create<mlir::TF::SparseToDenseOp>(
               front_op->getLoc(), sparse_tensor_value.getType(),

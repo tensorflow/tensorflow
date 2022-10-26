@@ -156,11 +156,14 @@ class AsyncCheckpointingTest(test.TestCase):
 
     # save called by hook in `after_create_session` and every `after_run`
     num_save_calls = 1 + max_steps // checkpoint_interval
-    sync_count, async_count = _get_checkpoint_metrics_counts()
+    sync_count_1, async_count_1 = _get_checkpoint_metrics_counts()
     # save might be called one extra time in `end` hook based on timing of
     # `_last_checkpoint_step` update in the final `after_run` call
-    self.assertIn(sync_count, [num_save_calls, num_save_calls + 1])
-    self.assertLessEqual(async_count, num_save_calls)
+    self.assertIn(sync_count_1, [num_save_calls, num_save_calls + 1])
+    self.assertLessEqual(async_count_1, num_save_calls)
+    training_time_saved = metrics.GetTrainingTimeSaved(
+        api_label=async_checkpoint._ASYNC_CHECKPOINT_V1)
+    self.assertGreater(training_time_saved, 0)
 
   def testAsyncCheckpointHookWithoutListeners(self):
     resolver = tpu_cluster_resolver.TPUClusterResolver(
@@ -209,11 +212,14 @@ class AsyncCheckpointingTest(test.TestCase):
 
     # save called by hook in `after_create_session` and every `after_run`
     num_save_calls = 1 + max_steps // checkpoint_interval
-    sync_count, async_count = _get_checkpoint_metrics_counts()
+    sync_count_1, async_count_1 = _get_checkpoint_metrics_counts()
     # save might be called one extra time in `end` hook based on timing of
     # `_last_checkpoint_step` update in the final `after_run` call
-    self.assertIn(sync_count, [num_save_calls, num_save_calls + 1])
-    self.assertLessEqual(async_count, num_save_calls)
+    self.assertIn(sync_count_1, [num_save_calls, num_save_calls + 1])
+    self.assertLessEqual(async_count_1, num_save_calls)
+    training_time_saved = metrics.GetTrainingTimeSaved(
+        api_label=async_checkpoint._ASYNC_CHECKPOINT_V1)
+    self.assertGreater(training_time_saved, 0)
 
 
 if __name__ == '__main__':

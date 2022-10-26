@@ -129,6 +129,11 @@ Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
 // Returns pointers to inputs stored in `ctx`.
 std::vector<const Tensor*> InputsFromContext(OpKernelContext* ctx);
 
+StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
+    OpKernelContext* ctx);
+
+std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx);
+
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {

@@ -191,3 +191,25 @@ func.func private @some_func(%arg: tensor<i1>) -> tensor<i32> {
 }
 
 }
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+
+// Test not hoisting in TPU functions.
+
+// CHECK-LABEL: func @_tfrt_resource_init
+// CHECK-NEXT: return
+
+// CHECK-LABEL: func private @func2
+func.func private @func2(%arg: tensor<i1>) -> tensor<i32> {
+  // CHECK-NOT: tf._TfrtGetResource
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "0",  allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], num_cores_per_replica = 4 : i64, num_replicas = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", tpu_compile_options_proto = "", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+  %const = "tf.Const"() {device = "/CPU:0", value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %handle = "tf.VarHandleOp"() {container = "", shared_name = "x"} : () -> tensor<!tf_type.resource<tensor<i32>>>
+  %0 = "tf.ReadVariableOp"(%handle) {device = "/CPU:0"} : (tensor<!tf_type.resource<tensor<i32>>>) -> tensor<i32>
+  %r = "tf.SelectV2"(%arg, %const, %0) {device = "/CPU:0"} : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  func.return %r : tensor<i32>
+}
+
+}

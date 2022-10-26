@@ -43,6 +43,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/mlir',
     'tensorflow/compiler/xla/mlir_hlo',
     'tensorflow/compiler/xla/mlir_hlo/tosa',
+    'tensorflow/compiler/xla/translate',
     'tensorflow/compiler/mlir/lite',
     'tensorflow/compiler/mlir/lite/experimental/tac',
     'tensorflow/compiler/mlir/quantization/tensorflow',
@@ -53,8 +54,7 @@ mlir_tf_tools_dirs = [
     'tensorflow/compiler/aot',
     'tensorflow/compiler/xla/service/mlir_gpu',
     'tensorflow/compiler/xla/service/gpu/tests',
-    'tensorflow/compiler/xla/mlir/tools/gpu',
-    'tensorflow/compiler/xla/mlir/tools/runtime',
+    'tensorflow/compiler/xla/mlir/tools',
     'tensorflow/compiler/mlir/lite/stablehlo',
 ]
 config.mlir_tf_tools_dirs = [

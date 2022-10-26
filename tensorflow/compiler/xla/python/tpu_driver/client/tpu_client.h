@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -154,7 +154,7 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
 
   tpu_driver::TpuDriver* driver() { return driver_.get(); }
 
-  tensorflow::thread::ThreadPool* GetThreadPool() { return pool_.get(); }
+  tsl::thread::ThreadPool* GetThreadPool() { return pool_.get(); }
 
  protected:
   std::string platform_name_;
@@ -170,7 +170,7 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
   int process_index_;
 
   // A thread pool for scheduling core executions in parallel.
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> pool_;
 };
 
 // Manages a buffer shared amongst multiple users. Buffers are asynchronously

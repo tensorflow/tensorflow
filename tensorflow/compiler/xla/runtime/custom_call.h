@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -86,21 +87,27 @@ class CustomCall {
     llvm::ArrayRef<T> data;
   };
 
+  // An ordinal of a function exported from executable.
+  struct FunctionOrdinal {
+    unsigned ordinal;
+  };
+
   // Custom call handler can check arguments and attributes types and names
   // at runtime, however this comes at extra cost and can be optionally
   // disabled. If the version of the compiler that generated the XLA executable
   // doesn't match the custom call handler, it can lead to undefined behavior.
   enum class RuntimeChecks : uint8_t {
     // Check arguments and attributes types, also check attribute names. It is
-    // safe to pass extra arguments to the custom call handler when name
-    // checking is enabled, because it will safely skip irrelevant attributes.
+    // safe to pass extra attributes (if `exact_attrs` is false) to the custom
+    // call when name checking is enabled, because it will safely skip
+    // irrelevant attributes.
     kDefault = 0,
 
-    // Check only the types of the arguments and attributes. If an attribute
-    // with the same type but different name is passed to the custom call
-    // handler,
-    // it will happily proceed ignoring the name mismatch.
-    kTypes = 1,
+    // Check only the types of the arguments and attributes. At this check level
+    // custom calls never check the names of the attributes because it can be
+    // too expensive, however type checking should prevent catastrophic
+    // segfaults. This is the recommended checks level in optimized builds.
+    kLess = 1,
 
     // Do not check the number of arguments and attributes and their types, and
     // do not check that the user data was passed to the custom call. This is
@@ -108,6 +115,16 @@ class CustomCall {
     // passed to the handler, and can easily lead to segfaults if the data
     // doesn't match the expected custom call signature.
     kNone = 2
+  };
+
+  struct Options {
+    // Check that attributes passed at run time exactly match the attributes
+    // defined by the custom call binding. If `false` then custom call handler
+    // will happily ignore any additional attributes passed at run time. It is
+    // unsafe to disable run-time checks for custom calls that support non-exact
+    // attributes, as the custom call handler uses pre-computed attributes
+    // offsets based on the binding specification.
+    bool exact_attrs = true;
   };
 
   static constexpr bool CheckNames(RuntimeChecks checks) {
@@ -143,6 +160,7 @@ class CustomCall {
                              const DiagnosticEngine* diagnostic) const = 0;
 
   static CustomCallBinding<> Bind(std::string callee);
+  static CustomCallBinding<> Bind(std::string callee, const Options& opts);
 };
 
 // Forward declare template defined below.
@@ -212,6 +230,7 @@ using HasRemainingArgs =
 template <typename... Ts>
 class CustomCallBinding {
  public:
+  using Options = CustomCall::Options;
   using RuntimeChecks = CustomCall::RuntimeChecks;
 
   template <typename T>
@@ -253,7 +272,7 @@ class CustomCallBinding {
     return std::unique_ptr<CustomCallHandler<checks, Fn, Ts...>>(
         new CustomCallHandler<checks, Fn, Ts...>(
             std::forward<Fn>(fn), std::move(callee_), std::move(attrs_),
-            std::move(values_)));
+            std::move(values_), opts_));
   }
 
  private:
@@ -261,7 +280,8 @@ class CustomCallBinding {
   friend class CustomCallBinding;
   friend class CustomCall;
 
-  explicit CustomCallBinding(std::string callee) : callee_(std::move(callee)) {
+  CustomCallBinding(std::string callee, const Options& opts)
+      : callee_(std::move(callee)), opts_(opts) {
     static_assert(sizeof...(Ts) == 0, "custom call arguments must be empty");
   }
 
@@ -269,17 +289,24 @@ class CustomCallBinding {
   CustomCallBinding(CustomCallBinding<TTs...>&& other)  // NOLINT
       : callee_(std::move(other.callee_)),
         attrs_(std::move(other.attrs_)),
-        values_(std::move(other.values_)) {}
+        values_(std::move(other.values_)),
+        opts_(other.opts_) {}
 
   CustomCallBinding(CustomCallBinding&) = delete;
 
   std::string callee_;              // custom call target
   std::vector<std::string> attrs_;  // names of bound attributes
   std::vector<std::any> values_;    // values bound to arguments
+  Options opts_;
 };
 
 inline CustomCallBinding<> CustomCall::Bind(std::string callee) {
-  return CustomCallBinding<>(std::move(callee));
+  return Bind(std::move(callee), Options());
+}
+
+inline CustomCallBinding<> CustomCall::Bind(std::string callee,
+                                            const Options& opts) {
+  return CustomCallBinding<>(std::move(callee), opts);
 }
 
 // Custom calls return results to the caller through the template
@@ -546,25 +573,31 @@ struct FnArgType<internal::Value<T>> {
 };
 
 // A template for counting regular arguments in the Ts pack.
+template <typename... Ts>
+struct NumArgs;
+
 template <typename T, typename... Ts>
-struct NumArgs {
+struct NumArgs<T, Ts...> {
   static constexpr int64_t value = !IsWrapped<T>::value + NumArgs<Ts...>::value;
 };
 
-template <typename T>
-struct NumArgs<T> {
-  static constexpr int64_t value = !IsWrapped<T>::value;
+template <>
+struct NumArgs<> {
+  static constexpr int64_t value = 0;
 };
 
 // A template for counting returns in the Ts pack.
+template <typename... Ts>
+struct NumRets;
+
 template <typename T, typename... Ts>
-struct NumRets {
+struct NumRets<T, Ts...> {
   static constexpr int64_t value = IsResult<T>::value + NumRets<Ts...>::value;
 };
 
-template <typename T>
-struct NumRets<T> {
-  static constexpr int64_t value = IsResult<T>::value;
+template <>
+struct NumRets<> {
+  static constexpr int64_t value = 0;
 };
 
 // Unwrap return type to get the type expected by result `Set` method.
@@ -625,6 +658,13 @@ struct IndexArgs<idx, T, Ts...> {
       typename ConsIdx<idx, typename IndexArgs<idx + 1, Ts...>::Is>::Type,
       typename IndexArgs<idx + 1, Ts...>::Is>;
 };
+
+template <size_t... FnArgsIs, size_t... ResultIs, typename FnArgs,
+          typename Result>
+void SetResultsFromTuple(std::index_sequence<ResultIs...>, FnArgs fn_args,
+                         Result tuple) {
+  ((*std::get<FnArgsIs>(fn_args)).Set(std::get<ResultIs>(tuple)), ...);
+}
 
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
@@ -847,36 +887,40 @@ class CustomCallHandler : public CustomCall {
       diagnostic = DiagnosticEngine::DefaultDiagnosticEngine();
 
     // If all runtime checks are disabled we are just reinterpreting opaque
-    // `args` and `attrs` memory acording to the requested handler signature.
-    if (checks != RuntimeChecks::kNone) {
-      // Check that the number of passed arguments matches the signature. Each
-      // individual argument decoding will check the actual type.
-      if (internal::HasRemainingArgs<Ts...>::value) {
-        if (LLVM_UNLIKELY(num_args < kNumArgs - 1))
-          return diagnostic->EmitError(InvalidArgument(
-              "Wrong number of arguments: expected at least %d got %d",
-              kNumArgs - 1, num_args));
-      } else {
-        if (LLVM_UNLIKELY(num_args != kNumArgs))
-          return diagnostic->EmitError(
-              InvalidArgument("Wrong number of arguments: expected %d got %d",
-                              kNumArgs, num_args));
-      }
+    // `args`, `attrs` and `rets` memory acording to the custom call handler
+    // signature and skip all checks (these checks will be optimized out).
+    auto eval = [](bool condition) {
+      return checks == RuntimeChecks::kNone ? false : condition;
+    };
 
-      // Check that we have enough attributes passed to the custom call. Each
-      // individual attribute decoding will check the name and the type.
-      if (LLVM_UNLIKELY(num_attrs < attrs_.size()))
+    // Check that the number of passed arguments matches the signature. Each
+    // individual argument decoding will check the actual type.
+    if (internal::HasRemainingArgs<Ts...>::value) {
+      if (LLVM_UNLIKELY(eval(num_args < kNumArgs - 1)))
         return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of attributes: expected at least %d got %d",
-            attrs_.size(), num_attrs));
-
-      // Check that the number of returns matches the signature. The return
-      // decoding will check the actual type.
-      if (LLVM_UNLIKELY(num_rets != kNumRets)) {
-        return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
-      }
+            "Wrong number of arguments: expected at least %d got %d",
+            kNumArgs - 1, num_args));
+    } else {
+      if (LLVM_UNLIKELY(eval(num_args != kNumArgs)))
+        return diagnostic->EmitError(
+            InvalidArgument("Wrong number of arguments: expected %d got %d",
+                            kNumArgs, num_args));
     }
+
+    // Check that the number of returns matches the signature. The return
+    // decoding will check the actual type.
+    if (LLVM_UNLIKELY(eval(num_rets != kNumRets)))
+      return diagnostic->EmitError(InvalidArgument(
+          "Wrong number of returns: expected %d got %d", kNumRets, num_rets));
+
+    // Check that we have a correct number of attributes passed to the custom
+    // call. Each individual attribute decoding will check the name and the
+    // type of the attribute.
+    if (LLVM_UNLIKELY(eval(opts_.exact_attrs ? num_attrs != attrs_.size()
+                                             : num_attrs < attrs_.size())))
+      return diagnostic->EmitError(InvalidArgument(
+          "Wrong number of attributes: expected %s%d got %d",
+          opts_.exact_attrs ? "" : "at least ", attrs_.size(), num_attrs));
 
     // Define index sequences to access custom call operands.
     using Is = std::make_index_sequence<kSize>;
@@ -897,20 +941,17 @@ class CustomCallHandler : public CustomCall {
     // arguments, attributes or results.
     internal::DecodingOffsets offsets;
 
-    // Check if all operands and results were decoded.
-    bool all_decoded = true;
-    auto check_all_decoded = [&](auto result) {
-      all_decoded &= succeeded(result);
-      return std::move(result);
-    };
-
     // Decode all operands into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<FnArgType<Ts>>...> fn_args = {
-        check_all_decoded(internal::Decode<Ts, checks>::call(
-            offsets, args, rets, attrs_, attrs_idx_, attrs, values_,
-            user_data))...};
+        internal::Decode<Ts, checks>::call(offsets, args, rets, attrs_,
+                                           attrs_idx_, attrs, values_,
+                                           user_data)...};
+
+    // Check if all operands and results were decoded.
+    bool all_decoded = (succeeded(std::get<Is>(fn_args)) && ...);
+
     if (LLVM_UNLIKELY(!all_decoded))
       return diagnostic->EmitError(
           InvalidArgument("Failed to decode all custom call operands"));
@@ -928,19 +969,25 @@ class CustomCallHandler : public CustomCall {
       return success();
     }
 
+    // Custom call returns result(s) as `absl::StatusOr`.
     if constexpr (kIsStatusOrResult) {
       auto status_or = fn_(std::move(*std::get<ArgsIs>(fn_args))...);
       if (!status_or.ok()) {
         return diagnostic->EmitError(status_or.status());
       }
 
+      static_assert(sizeof...(RetsIs) >= 1, "unsupported number or results");
+
       if constexpr (sizeof...(RetsIs) == 1) {
         (*std::get<RetsIs...>(fn_args)).Set(status_or.value());
         return success();
-      } else {
-        // TODO(b/244763765): Support handlers that return a tuple.
-        return diagnostic->EmitError(InvalidArgument(
-            "Wrong number of rets: expected 1 got %d", sizeof...(RetsIs)));
+      }
+
+      if constexpr (sizeof...(RetsIs) > 1) {
+        using ResultIs = std::make_index_sequence<kNumRets>;
+        internal::SetResultsFromTuple<RetsIs...>(ResultIs{}, std::move(fn_args),
+                                                 std::move(status_or.value()));
+        return success();
       }
     }
 
@@ -952,11 +999,12 @@ class CustomCallHandler : public CustomCall {
   friend class CustomCallBinding;
 
   CustomCallHandler(Fn fn, std::string callee, std::vector<std::string> attrs,
-                    std::vector<std::any> values)
+                    std::vector<std::any> values, const Options& opts)
       : fn_(std::move(fn)),
         callee_(std::move(callee)),
         attrs_(std::move(attrs)),
         values_(std::move(values)),
+        opts_(opts),
         attrs_idx_(attrs_.size()) {
     // Sort attributes names.
     std::vector<std::string> sorted = attrs_;
@@ -973,6 +1021,8 @@ class CustomCallHandler : public CustomCall {
   std::string callee_;
   std::vector<std::string> attrs_;
   std::vector<std::any> values_;
+  Options opts_;
+
   // A mapping from the attribute index to its index in the lexicographically
   // sorter vector of attribute names. Attributes passed in the custom call
   // handler sorted by the name, we use this index to efficiently find the
@@ -1103,6 +1153,8 @@ struct CustomCallArgDecoding<FlatMemrefView, checks> {
   }
 
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(bool);
+XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int8_t);
+XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int16_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int32_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(float);
@@ -1110,19 +1162,26 @@ XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING(double);
 
 #undef XLA_RUNTIME_REGISTER_SCALAR_ARG_DECODING
 
-template <CustomCall::RuntimeChecks checks>
-struct CustomCallArgDecoding<Eigen::half, checks> {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<Eigen::half> Decode(
-      TypeID type_id, void* value) {
-    if (!CustomCall::Isa<Eigen::half>(checks, type_id)) {
-      return failure();
-    }
-
-    auto* src = reinterpret_cast<uint16_t*>(value);
-    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(uint16_t));
-    return Eigen::numext::bit_cast<Eigen::half>(*src);
+// Register decoding for special floating point types defined in Eigen.
+#define XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(T, STORAGE)              \
+  template <CustomCall::RuntimeChecks checks>                               \
+  struct CustomCallArgDecoding<T, checks> {                                 \
+    LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<T> Decode(TypeID type_id, \
+                                                            void* value) {  \
+      if (!CustomCall::Isa<T>(checks, type_id)) {                           \
+        return failure();                                                   \
+      }                                                                     \
+                                                                            \
+      auto* src = reinterpret_cast<STORAGE*>(value);                        \
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(value, sizeof(STORAGE));          \
+      return Eigen::numext::bit_cast<T>(*src);                              \
+    }                                                                       \
   }
-};
+
+XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::bfloat16, uint16_t);
+XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING(Eigen::half, uint16_t);
+
+#undef XLA_RUNTIME_REGISTER_EIGEN_FP_ARG_DECODING
 
 //===----------------------------------------------------------------------===//
 // Opaque arguments at run time passed as pointers and decoded by wrapping them
@@ -1184,7 +1243,6 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(int64_t);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(float);
 XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
 
-#undef XLA_RUNTIME_REGISTER_SCALAR_RESULT
 #undef XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING
 
 //===----------------------------------------------------------------------===//
@@ -1222,6 +1280,61 @@ XLA_RUNTIME_REGISTER_SCALAR_RET_DECODING(double);
 XLA_RUNTIME_REGISTER_OPAQUE_RET_DECODING(void*, void*);
 
 //===----------------------------------------------------------------------===//
+
+// Custom call memref result decoding
+template <>
+class Result<MemrefView> {
+  using EncodedMemref = internal::EncodedMemref;
+
+ public:
+  explicit Result(EncodedMemref* storage) : storage_(storage) {}
+  void Set(MemrefView value) {
+    assert(IsCompatible(value) &&
+           "Custom call return types is not compatible with types in MLIR");
+    storage_->data = value.data;
+    for (unsigned i = 0; i < storage_->rank; ++i) {
+      storage_->dims[i] = value.sizes[i];
+    }
+  }
+
+  PrimitiveType GetDType() { return PrimitiveType{storage_->dtype}; }
+  absl::Span<const int64_t> GetDims() {
+    return absl::Span<const int64_t>(storage_->dims, storage_->rank);
+  }
+
+ private:
+  bool IsCompatible(MemrefView value) {
+    bool is_compatible =
+        storage_->dtype == value.dtype && storage_->rank == value.sizes.size();
+    if (!is_compatible) return false;
+
+    for (unsigned i = 0; i < storage_->rank; ++i) {
+      is_compatible = (storage_->dims[i] == value.sizes[i]) ||
+                      (storage_->dims[i] == /*MemrefType::kDynamicSize=*/-1);
+    }
+    return is_compatible;
+  }
+
+  EncodedMemref* storage_;
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallRetDecoding<MemrefView, checks> {
+  using EncodedMemref = internal::EncodedMemref;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE
+  static FailureOr<Result<MemrefView>> Decode(TypeID type_id, void* value) {
+    if (!CustomCall::Isa<MemrefView>(checks, type_id)) return failure();
+
+    auto* encoded = reinterpret_cast<EncodedMemref*>(value);
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(
+        encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
+    return Result<MemrefView>(encoded);
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // Custom call attributes decoding.
 //===----------------------------------------------------------------------===//
 
@@ -1235,6 +1348,40 @@ struct CustomCallAttrDecoding<std::string_view, checks> {
 
     auto* encoded = reinterpret_cast<internal::EncodedArray<char>*>(value);
     return std::string_view(encoded->data, encoded->size);
+  }
+};
+
+template <CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<CustomCall::FunctionOrdinal, checks> {
+  using FunctionOrdinal = CustomCall::FunctionOrdinal;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<FunctionOrdinal> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    if (!CustomCall::Isa<FunctionOrdinal>(checks, type_id)) {
+      return failure();
+    }
+
+    unsigned ordinal = *reinterpret_cast<int32_t*>(value);
+    return FunctionOrdinal{ordinal};
+  }
+};
+
+template <typename T, CustomCall::RuntimeChecks checks>
+struct CustomCallAttrDecoding<std::optional<T>, checks> {
+  using ValueDecoding = CustomCallAttrDecoding<T, checks>;
+
+  LLVM_ATTRIBUTE_ALWAYS_INLINE static FailureOr<std::optional<T>> Decode(
+      std::string_view name, TypeID type_id, void* value) {
+    // Convert nullptr to empty optional.
+    bool is_nullopt = CustomCall::Isa<std::nullopt_t>(checks, type_id);
+    if (is_nullopt && value == nullptr) return std::optional<T>();
+
+    // Try to decode the underlying value if it is present.
+    if (auto decoded = ValueDecoding::Decode(name, type_id, value);
+        succeeded(decoded)) {
+      return std::optional<T>(std::move(*decoded));
+    }
+    return failure();
   }
 };
 
@@ -1413,19 +1560,14 @@ struct DecodeAggregateAttr {
         if (attrs[i].name != names[i]) return failure();
     }
 
-    // Check if all members were decoded.
-    bool all_decoded = true;
-    auto check_all_decoded = [&](auto result) {
-      all_decoded &= succeeded(result);
-      return std::move(result);
-    };
-
     // Decode all arguments into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<Ts>...> members = {
-        check_all_decoded(CustomCallAttrDecoding<Ts, checks>::Decode(
-            attrs[Is].name, attrs[Is].type_id, attrs[Is].value))...};
+        CustomCallAttrDecoding<Ts, checks>::Decode(
+            attrs[Is].name, attrs[Is].type_id, attrs[Is].value)...};
+
+    bool all_decoded = (succeeded(std::get<Is>(members)) && ...);
     if (LLVM_UNLIKELY(!all_decoded)) return failure();
 
     // Forward unpacked members to the type constructor.

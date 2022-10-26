@@ -19,9 +19,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/c/tf_attrtype.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 
 extern "C" {
 

@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -42,6 +42,8 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/Register.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_util.h"
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/tf_mhlo_pass.h"
@@ -51,8 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/ChloOps.h"
-#include "tensorflow/compiler/xla/mlir_hlo/stablehlo/stablehlo/dialect/Register.h"
 
 namespace mlir {
 namespace TFL {
@@ -71,7 +71,7 @@ class TFPolyPass
   void getDependentDialects(DialectRegistry &registry) const override {
     mlir::mhlo::registerAllMhloDialects(registry);
     mlir::stablehlo::registerAllDialects(registry);
-    registry.insert<mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+    registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                     mlir::TFL::TensorFlowLiteDialect>();
   }
 
@@ -102,7 +102,7 @@ class TFPolyPass
           /*prefer_tf2xla=*/false, &patterns);
 
       ConversionTarget target(*context);
-      target.addLegalDialect<arith::ArithmeticDialect>();
+      target.addLegalDialect<arith::ArithDialect>();
       target.addLegalDialect<func::FuncDialect>();
       target.addLegalDialect<::mlir::mhlo::MhloDialect>();
 
@@ -160,7 +160,7 @@ void TFPolyPass::runOnOperation() {
     // Create TF region.
     Region tf_region;
     (void)CopyTfAndCreateRegion(&builder, op, &tf_region);
-    poly_op.calls()
+    poly_op.getCalls()
         .take_back(num_transformation + 1)
         .data()
         ->takeBody(tf_region);
@@ -169,7 +169,7 @@ void TFPolyPass::runOnOperation() {
     for (int i = 0; i < num_transformation; i++) {
       Region region;
       to_transform[i].push_back(CopyTfAndCreateRegion(&builder, op, &region));
-      poly_op.calls().take_back(i + 1).data()->takeBody(region);
+      poly_op.getCalls().take_back(i + 1).data()->takeBody(region);
     }
 
     // Replace original func with polycall.

@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/tsl/platform/numbers.h"
 #include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
@@ -236,7 +236,7 @@ std::optional<int64_t> HloLexer::LexNanPayload(absl::string_view& consumable) {
   CHECK(absl::EndsWith(slice, ")"));
   slice.remove_suffix(std::strlen(")"));
   uint64_t payload_value;
-  if (tensorflow::strings::HexStringToUint64(slice, &payload_value)) {
+  if (tsl::strings::HexStringToUint64(slice, &payload_value)) {
     if (payload_value <= 0 || payload_value > NanPayloadBitMask<double>()) {
       LOG(ERROR) << "NaN payload out of range: " << payload_value;
       return std::nullopt;

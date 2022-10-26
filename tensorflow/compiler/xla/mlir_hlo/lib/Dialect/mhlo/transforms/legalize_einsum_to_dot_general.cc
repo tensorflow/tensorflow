@@ -37,7 +37,7 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
 
   LogicalResult matchAndRewrite(EinsumOp einsum,
                                 PatternRewriter &rewriter) const override {
-    StringRef equation = einsum.einsum_config();
+    StringRef equation = einsum.getEinsumConfig();
     SmallVector<char> lhsTokens, rhsTokens;
     SmallVector<char> resultTokens;
     size_t index = 0;
@@ -65,8 +65,8 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
       index++;
     }
 
-    auto lhsType = einsum.lhs().getType().cast<RankedTensorType>();
-    auto rhsType = einsum.rhs().getType().cast<RankedTensorType>();
+    auto lhsType = einsum.getLhs().getType().cast<RankedTensorType>();
+    auto rhsType = einsum.getRhs().getType().cast<RankedTensorType>();
     assert(static_cast<int64_t>(lhsTokens.size()) == lhsType.getRank());
     assert(static_cast<int64_t>(rhsTokens.size()) == rhsType.getRank());
 
@@ -152,10 +152,10 @@ struct EinsumToDotGeneralPattern : public OpRewritePattern<EinsumOp> {
     auto dimNumbers = mhlo::DotDimensionNumbersAttr::get(
         rewriter.getContext(), lhsBatchingDims, rhsBatchingDims,
         lhsContractingDims, rhsContractingDims);
-    auto dotGeneralOp =
-        rewriter.create<DotGeneralOp>(einsum.getLoc(), dotGeneralResultType,
-                                      einsum.lhs(), einsum.rhs(), dimNumbers,
-                                      /*precision_config=*/ArrayAttr{});
+    auto dotGeneralOp = rewriter.create<DotGeneralOp>(
+        einsum.getLoc(), dotGeneralResultType, einsum.getLhs(), einsum.getRhs(),
+        dimNumbers,
+        /*precision_config=*/ArrayAttr{});
 
     if (isNaturalOrder) {
       // The dot_general is already in an appropriate result order.

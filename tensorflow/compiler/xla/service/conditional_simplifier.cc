@@ -38,14 +38,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
 namespace {
 
 // A computation with array type that only contains parameters and tuples is
-// considered emtpy.
+// considered empty.
 bool ComputationIsEmptyWithArrayRoot(const HloComputation* computation) {
   bool empty_operations = absl::c_all_of(
       computation->MakeInstructionPostOrder(), [](const HloInstruction* inst) {

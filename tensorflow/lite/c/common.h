@@ -641,8 +641,23 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
 // quantization, sparsity, ...
 TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst);
 
-// Resize the allocated data of a (dynamic) tensor. Tensors with allocation
-// types other than kTfLiteDynamic will be ignored.
+// Change the size of the memory block owned by `tensor` to `num_bytes`.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// `tensor`'s internal data buffer will be assigned a pointer
+// which can safely be passed to free or realloc if `num_bytes` is zero.
+// Behaviour is undefined if `tensor` is NULL.
+// If `preserve_data` is true, tensor data will be unchanged in the range from
+// the start of the region up to the minimum of the old and new sizes.
+void TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
+                                 bool preserve_data);
+
+// Change the size of the memory block owned by `tensor` to `num_bytes`.
+// Tensors with allocation types other than kTfLiteDynamic will be ignored.
+// `tensor`'s internal data buffer will be assigned a pointer
+// which can safely be passed to free or realloc if `num_bytes` is zero.
+// Behaviour is undefined if `tensor` is NULL.
+// Tensor data will be unchanged in the range from the start of the region up to
+// the minimum of the old and new sizes.
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor);
 #endif  // TF_LITE_STATIC_MEMORY
 
@@ -659,6 +674,22 @@ typedef struct TfLiteDelegateParams {
   TfLiteIntArray* input_tensors;
   TfLiteIntArray* output_tensors;
 } TfLiteDelegateParams;
+
+// WARNING: This is an experimental interface that is subject to change.
+//
+// Currently, TfLiteOpaqueDelegateParams has to be allocated in a way that it's
+// trivially destructable. It will be stored as `builtin_data` field in
+// `TfLiteNode` of the delegate node.
+//
+// See also the `CreateOpaqueDelegateParams` function in `subgraph.cc`
+// details.
+typedef struct TfLiteOpaqueDelegateParams {
+  struct TfLiteOpaqueDelegateStruct* delegate;
+  void* delegate_data;
+  TfLiteIntArray* nodes_to_replace;
+  TfLiteIntArray* input_tensors;
+  TfLiteIntArray* output_tensors;
+} TfLiteOpaqueDelegateParams;
 
 typedef struct TfLiteContext {
   // Number of tensors in the context.

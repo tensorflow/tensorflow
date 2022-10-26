@@ -39,8 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"  // IWYU pragma: keep
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"  // IWYU pragma: keep
 
 namespace xla {
 
@@ -137,17 +137,6 @@ class ScopedLoggingTimer {
   bool enabled_;
 };
 
-// Given a vector<T>, returns a Span<char> that points at its
-// internals.
-//
-// Warning: if the vector is updated its storage pointer may change, so use this
-// with caution (ideally in limited scopes with temporary lifetimes).
-template <typename T>
-absl::Span<uint8_t> MutableByteSlice(std::vector<T>* v) {
-  return absl::Span<uint8_t>(reinterpret_cast<uint8_t*>(v->data()),
-                             v->size() * sizeof(T));
-}
-
 // Turns an immutable slice of type T into an immutable slice of bytes with the
 // same byte size.
 template <typename T>
@@ -210,57 +199,57 @@ template <typename... Args>
 Status InvalidArgument(const absl::FormatSpec<Args...>& format,
                        const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::InvalidArgument(absl::StrFormat(format, args...)));
+      tsl::errors::InvalidArgument(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unimplemented(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unimplemented(absl::StrFormat(format, args...)));
+      tsl::errors::Unimplemented(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status InternalError(const absl::FormatSpec<Args...>& format,
                      const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status FailedPrecondition(const absl::FormatSpec<Args...>& format,
                           const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::FailedPrecondition(absl::StrFormat(format, args...)));
+      tsl::errors::FailedPrecondition(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Cancelled(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Cancelled(absl::StrFormat(format, args...)));
+      tsl::errors::Cancelled(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status ResourceExhausted(const absl::FormatSpec<Args...>& format,
                          const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::ResourceExhausted(absl::StrFormat(format, args...)));
+      tsl::errors::ResourceExhausted(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status NotFound(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::NotFound(absl::StrFormat(format, args...)));
+      tsl::errors::NotFound(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unavailable(const absl::FormatSpec<Args...>& format,
                    const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unavailable(absl::StrFormat(format, args...)));
+      tsl::errors::Unavailable(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Unknown(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Unknown(absl::StrFormat(format, args...)));
+      tsl::errors::Unknown(absl::StrFormat(format, args...)));
 }
 template <typename... Args>
 Status Internal(const absl::FormatSpec<Args...>& format, const Args&... args) {
   return WithLogBacktrace(
-      tensorflow::errors::Internal(absl::StrFormat(format, args...)));
+      tsl::errors::Internal(absl::StrFormat(format, args...)));
 }
 
 template <typename... Args>
@@ -365,14 +354,14 @@ bool HasInteriorPadding(const PaddingConfig& config);
 // namespace, as it is very commonly used.
 template <typename T>
 T FloorOfRatio(T dividend, T divisor) {
-  return tensorflow::MathUtil::FloorOfRatio<T>(dividend, divisor);
+  return tsl::MathUtil::FloorOfRatio<T>(dividend, divisor);
 }
 
 // Imports the templated CeilOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.
 template <typename T>
 T CeilOfRatio(T dividend, T divisor) {
-  return tensorflow::MathUtil::CeilOfRatio<T>(dividend, divisor);
+  return tsl::MathUtil::CeilOfRatio<T>(dividend, divisor);
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
@@ -521,7 +510,7 @@ typename SignedIntegerTypeForSize<sizeof(T)>::type ToSignMagnitude(T input) {
       absl::bit_cast<typename SignedIntegerTypeForSize<sizeof(T)>::type>(input);
   auto sign_mask =
       absl::bit_cast<typename UnsignedIntegerTypeForSize<sizeof(T)>::type>(
-          tensorflow::MathUtil::Sign(as_bits));
+          tsl::MathUtil::Sign(as_bits));
   return as_bits ^ (sign_mask >> 1);
 }
 
@@ -677,16 +666,16 @@ using Vector3 = std::array<int64_t, 3>;
 #define XLA_LOG_LINES(SEV, STRING) \
   ::xla::LogLines(SEV, STRING, __FILE__, __LINE__)
 
-#define XLA_VLOG_LINES(LEVEL, STRING)                                 \
-  do {                                                                \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tensorflow::INFO, STRING); \
+#define XLA_VLOG_LINES(LEVEL, STRING)                          \
+  do {                                                         \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(::tsl::INFO, STRING); \
   } while (false);
 
 // Utility macro that performs the equivalent of what one would expect
 // LOG_LINES(FATAL, X) to do but can be used at the end of a function that
 // returns a value without getting a compiler warning that no value is returned.
-#define XLA_FATAL_LOG(X)                 \
-  XLA_LOG_LINES(::tensorflow::ERROR, X); \
+#define XLA_FATAL_LOG(X)          \
+  XLA_LOG_LINES(::tsl::ERROR, X); \
   LOG(FATAL) << "Aborting in " << __FUNCTION__ << " due to previous errors.";
 
 #endif  // TENSORFLOW_COMPILER_XLA_UTIL_H_

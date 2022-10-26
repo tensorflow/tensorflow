@@ -68,7 +68,29 @@ class SimpleMemoryArena {
         arena_alignment_(arena_alignment),
         high_water_mark_(0),
         underlying_buffer_size_(0),
-        ordered_allocs_() {}
+        active_allocs_() {}
+
+  // Delete all allocs. This should be called when allocating the first node of
+  // a subgraph.
+  void ResetAllocs();
+
+  // Delete all allocs which are deallocated before `node`. This should be
+  // called before allocating tensors associated with a series of nodes. It
+  // deletes allocs which are no longer required for allocating the next batch
+  // of tensors. Not calling it will have no impact on the result but it may be
+  // much slower.
+  void PurgeActiveAllocs(int32_t node);
+
+  // Delete all allocs which are allocated after `node`. This should be
+  // called when resetting allocs after `node`. It  deletes allocs which are no
+  // longer required for allocating the next batch of tensors. Not calling it
+  // will have no impact on the result but it may be much slower.
+  void PurgeAfter(int32_t node);
+
+  // Calculate the active allocs at `node`. Call this if the active allocs at
+  // `node` are unknown.
+  void CalculateActiveAllocs(
+      const std::vector<ArenaAllocWithUsageInterval>& allocs, int32_t node);
 
   // Schedule memory allocation for a tensor with a given size, assuming that it
   // needs to be allocated before the execution of first_node, and deallocated
@@ -77,9 +99,6 @@ class SimpleMemoryArena {
                         int32_t tensor, int32_t first_node, int32_t last_node,
                         ArenaAllocWithUsageInterval* new_alloc);
 
-  TfLiteStatus Deallocate(TfLiteContext* context,
-                          const ArenaAllocWithUsageInterval& alloc);
-
   inline size_t RequiredBufferSize() {
     // Add in a small amount of padding to reduce the chance of resize events
     // for small allocations.
@@ -87,7 +106,7 @@ class SimpleMemoryArena {
     return arena_alignment_ + high_water_mark_ + padding;
   }
 
-  TfLiteStatus Commit(TfLiteContext* context);
+  TfLiteStatus Commit(TfLiteContext* context, bool* arena_reallocated);
 
   TfLiteStatus ResolveAlloc(TfLiteContext* context,
                             const ArenaAllocWithUsageInterval& alloc,
@@ -136,7 +155,7 @@ class SimpleMemoryArena {
   std::unique_ptr<char[]> underlying_buffer_;
   size_t underlying_buffer_size_;
   char* underlying_buffer_aligned_ptr_;
-  std::vector<ArenaAllocWithUsageInterval> ordered_allocs_;
+  std::vector<ArenaAllocWithUsageInterval> active_allocs_;
 };
 
 }  // namespace tflite

@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 
 package(
     default_visibility = [
@@ -21,7 +21,6 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -38,12 +37,11 @@ cc_library(
         "//tensorflow/core:platform_base",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_rpc_handler",
-        "//tensorflow/core/distributed_runtime/rpc:async_service_interface",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
+        "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_call",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_cache",
         "//tensorflow/core/platform",
-        "//tensorflow/core/distributed_runtime:worker_env",
     ] + tf_grpc_cc_dependencies(),
 )

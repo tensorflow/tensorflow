@@ -23,6 +23,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
+#include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -220,7 +222,8 @@ class SpmdPartitioner : public HloModulePass {
   StatusOr<bool> PartitionComputation(HloComputation* computation,
                                       const HloSharding& root_sharding,
                                       int64_t* next_channel_id,
-                                      SpmdLogger* logger);
+                                      SpmdLogger* logger,
+                                      const CallGraph& call_graph);
 
   // Creates all-gather(s) based on HloSharding. Can be overridden to customize.
   // The default uses a single all-gather even if there are multiple sharded
@@ -249,7 +252,7 @@ class SpmdPartitioner : public HloModulePass {
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, SpmdLogger* logger,
-      SpmdPartitionerOptions options);
+      SpmdPartitionerOptions options, const CallGraph& call_graph);
 
   HloInstruction* AllGatherShardsInternal(
       SpmdBuilder* b, HloInstruction* operand, const HloSharding& sharding,
@@ -271,6 +274,12 @@ class SpmdPartitioner : public HloModulePass {
   // replicated sharding.
   virtual bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) {
+    if (hlo->opcode() == HloOpcode::kCustomCall) {
+      if (auto* partitioner =
+              GetCustomCallPartitioner(hlo->custom_call_target())) {
+        return partitioner->CanSideEffectingHaveReplicatedSharding();
+      }
+    }
     return hlo->opcode() == HloOpcode::kInfeed ||
            hlo->opcode() == HloOpcode::kOutfeed;
   }
@@ -381,6 +390,9 @@ class PartitionedHlo {
   // Returns the sharding of the SPMD instruction.
   const HloSharding& sharding() const { return hlo_->sharding(); }
 
+  // Returns the rank of the SPMD instruction.
+  const int64_t rank() const { return base_shape_.rank(); }
+
   // Original full shape of the data.
   const Shape& base_shape() const { return base_shape_; }
 
@@ -474,7 +486,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, SpmdLogger* logger,
-      SpmdPartitionerOptions options, SpmdPartitioner* partitioner);
+      SpmdPartitionerOptions options, SpmdPartitioner* partitioner,
+      const CallGraph& call_graph);
 
   Status DefaultAction(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* hlo) override;
@@ -580,6 +593,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::vector<ReplicaGroup> CreateReplicaGroups(
       std::vector<std::vector<int64_t>>& groups);
 
+  const CallGraph& call_graph() { return call_graph_; }
+
   // Information about a loop created for windowed dot-general. Used when
   // DoCodeMotionForWindowedDotGeneralLoops() executes after the visitor
   // finishes traversing the graph.
@@ -636,6 +651,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   std::optional<HloInstruction*> visiting_partition_id_;
   std::vector<PartitionedHlo::PartitioningState> visiting_state_;
   std::vector<std::vector<int64_t>> device_groups_;
+  const CallGraph& call_graph_;
 };
 
 }  // namespace spmd

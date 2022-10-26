@@ -40,6 +40,9 @@ std::string GetOneInputCode(const GpuInfo& gpu_info,
     case OperationType::ABS:
       result = "$0 = fabs($1);";
       break;
+    case OperationType::CEIL:
+      result = "$0 = ceil($1);";
+      break;
     case OperationType::COS:
       if (use_native_opencl_functions) {
         result = "$0 = convert_half4(native_cos(convert_float4($1)));";

@@ -18,13 +18,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/thread_options.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::Thread;
-using tensorflow::thread::ThreadPool;
+using tsl::Thread;              // NOLINT(misc-unused-using-decls)
+using tsl::thread::ThreadPool;  // NOLINT(misc-unused-using-decls)
 
 }  // namespace port
 }  // namespace stream_executor

@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
@@ -70,8 +69,11 @@ using MapToOperationVec2D = llvm::SmallDenseMap<Value, OperationVec2D>;
 using IfOpIterConst =
     llvm::SmallVectorTemplateCommon<mlir::TF::IfRegionOp>::const_iterator;
 
+#define GEN_PASS_DEF_MERGECONTROLFLOWPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct MergeControlFlowPass
-    : public TF::MergeControlFlowPassBase<MergeControlFlowPass> {
+    : public impl::MergeControlFlowPassBase<MergeControlFlowPass> {
   void runOnOperation() override;
 };
 

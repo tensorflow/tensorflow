@@ -1,6 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
-    "//tensorflow/core/platform:rules_cc.bzl",
+    "//tensorflow/tsl/platform:rules_cc.bzl",
     "cc_library",
 )
 
@@ -9,6 +9,8 @@ cc_library(
     srcs = ["proto_serialization.cc"],
     hdrs = ["proto_serialization.h"],
     visibility = [
+        "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/compiler/xla/service:__pkg__",
         "//tensorflow/compiler/xla/stream_executor:__pkg__",
         "//tensorflow/core/lib/strings:__pkg__",
     ],

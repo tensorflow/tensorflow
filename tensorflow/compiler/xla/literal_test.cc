@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -1493,14 +1493,11 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
   conv = f16.Convert(C128).value();
   EXPECT_EQ(conv, c128);
 
-  EXPECT_EQ(s32.Convert(TUPLE).status().code(),
-            tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c64.Convert(F32).status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c64.Convert(S32).status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c128.Convert(F32).status().code(),
-            tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(c128.Convert(S32).status().code(),
-            tensorflow::error::UNIMPLEMENTED);
+  EXPECT_EQ(s32.Convert(TUPLE).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c64.Convert(F32).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c64.Convert(S32).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c128.Convert(F32).status().code(), tsl::error::UNIMPLEMENTED);
+  EXPECT_EQ(c128.Convert(S32).status().code(), tsl::error::UNIMPLEMENTED);
 }
 
 TEST_F(LiteralUtilTest, BitcastConvert) {

@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/save_restore_util.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
+#include "tensorflow/dtensor/mlir/collectives.h"
 #include "tensorflow/dtensor/mlir/device_utils.h"
 #include "tensorflow/dtensor/mlir/dtensor_send_recv.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
@@ -73,9 +74,9 @@ namespace {
 // This is needed for DTensorCheckpointV2 tf.MergeV2Checkpoint SPMD expansion
 // to generate all candidate checkpoint prefix string that we generated
 // during tf.SaveV2 SPMD Expansion.
-mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
-                                              mlir::Value prefix,
-                                              const Mesh& mesh) {
+StatusOr<mlir::Value> GetAllCandidateCheckpointPrefixes(
+    mlir::OpBuilder& builder, mlir::Value prefix, mlir::Value zero_const,
+    const Mesh& mesh) {
   if (mesh.num_devices() == 0) return prefix;
 
   mlir::Value new_prefix =
@@ -104,7 +105,7 @@ mlir::Value GetAllCandidateCheckpointPrefixes(mlir::OpBuilder& builder,
                          prefix.getLoc(),
                          /*output=*/prefix.getType(),
                          /*concat_dim=*/
-                         IntConst(builder, prefix.getLoc(), /*values=*/{0}),
+                         zero_const,
                          llvm::SmallVector<mlir::Value, 4>{
                              new_prefix, prefix_plus_dtensor_suffix})
                      .getResult();
@@ -191,11 +192,6 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
 
   llvm::SmallVector<mlir::func::FuncOp, 8> branch_funs;
 
-  // Try to extract prefix out as constants and build new shard prefix base on
-  // it.
-  TF_ASSIGN_OR_RETURN(std::string prefix, ExtractConstScalarStringFromValue(
-                                              original_save.prefix()));
-
   // Best effort extraction on shape_and_slices and verify they are empty. If
   // the extraction failed to just ignore those values and work as if those are
   // empty.
@@ -268,6 +264,7 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       mlir::Block* fn_block = new_save.addEntryBlock();
       mlir::OpBuilder fn_builder = mlir::OpBuilder::atBlockBegin(fn_block);
 
+      mlir::Value prefix = new_save.getArgument(0);
       mlir::Value tensor_names = new_save.getArgument(1);
       // It is currently unsupported if user passes in shape_and_slices.
       // TODO(hthu): Implement this.
@@ -294,8 +291,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
       // Builds the per device saving spec, that takes care of tensor_name
       // uniqueness requirement. Each save op should use new_tensor_indices and
       // new_specs to map the corresponding saving tensor and its slice spec.
-      SaveOpSpecs specs = BuildPerDeviceSave(per_device_specs, device_id,
-                                             prefix, mesh.num_devices());
+      SaveOpSpecs specs = BuildPerDeviceSave(
+          fn_builder, per_device_specs, device_id, prefix, mesh.num_devices());
       const std::vector<std::vector<int>>& new_tensor_indices =
           specs.tensor_indices;
       const std::vector<std::vector<std::string>>& new_specs =
@@ -336,16 +333,8 @@ StatusOr<mlir::TF::CaseOp> ConditionalSave(
                   .getResult();
         }
 
-        // Builds a unique prefix for this device and this save_op.
-        std::string new_prefix =
-            prefix +
-            llvm::formatv("_device_{0}_save_op_{1}", device_id, save_op_index)
-                .str();
-
         fn_builder.create<mlir::TF::SaveV2Op>(
-            location,
-            StringConst(fn_builder, location,
-                        {specs.new_prefixes[save_op_index]}),
+            location, specs.new_prefixes[save_op_index],
             /*tensor_name=*/tensor_names,
             /*shape_and_slices=*/
             StringConst(
@@ -454,9 +443,30 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   auto location = merge_v2.getLoc();
   mlir::OpBuilder builder(merge_v2);
 
-  auto func_type =
-      mlir::FunctionType::get(builder.getContext(), merge_v2.getOperandTypes(),
-                              llvm::ArrayRef<mlir::Type>{});
+  TF_ASSIGN_OR_RETURN(auto device_id, DeviceId(merge_v2));
+  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
+
+  // Emit a barrier before every merge to ensure that every device's save
+  // finishes running before the merge is called and use this as the
+  // suffix for the new prefix string tensors so that it is not
+  // removed from dead node analysis.
+  //
+  // Note that this barrier is implemented with a DTensorAllReduce which
+  // gets lowered to a CollectiveReduce op, which is a SideEffect op. Since
+  // both Merge and Save ops are maximally conservative SideEffect ops,
+  // the execution order is guaranteed to be Save -> Barrier -> Merge, which
+  // is the desired execution order to guarantee correctness of IO.
+  TF_ASSIGN_OR_RETURN(
+      mlir::Operation * rank_1_zero,
+      EmitBarrierWithConstValue(builder, location, mesh, /*value=*/0));
+
+  // Add a zero value to the end of the function types, used for
+  // adding a barrier before every merge op.
+  llvm::SmallVector<mlir::Type> input_types(merge_v2.getOperandTypes());
+  input_types.push_back(rank_1_zero->getResult(0).getType());
+
+  auto func_type = mlir::FunctionType::get(builder.getContext(), input_types,
+                                           llvm::ArrayRef<mlir::Type>{});
   // Build then_func that is the branch of device_id != 0, which only contains a
   // single NoOp.
   mlir::func::FuncOp then_func = mlir::func::FuncOp::create(
@@ -489,9 +499,12 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
       mlir::OpBuilder::atBlockBegin(else_fn_block);
   mlir::Value checkpoint_prefixes = else_fn_block->getArgument(0);
 
-  TF_ASSIGN_OR_RETURN(Mesh mesh, ExtractDeviceMeshEnclosingCluster(op));
-  checkpoint_prefixes = GetAllCandidateCheckpointPrefixes(
-      else_fn_builder, checkpoint_prefixes, mesh);
+  mlir::Value zero_value =
+      else_fn_block->getArgument(else_fn_block->getNumArguments() - 1);
+  TF_ASSIGN_OR_RETURN(
+      checkpoint_prefixes,
+      GetAllCandidateCheckpointPrefixes(else_fn_builder, checkpoint_prefixes,
+                                        zero_value, mesh));
 
   mlir::Value destination_prefixes = else_fn_block->getArgument(1);
 
@@ -506,10 +519,23 @@ StatusOr<mlir::Operation*> ExpandMergeV2Op(mlir::Operation* op) {
   symbol_table.insert(then_func);
   symbol_table.insert(else_func);
 
-  TF_ASSIGN_OR_RETURN(mlir::Value device_id, DeviceId(merge_v2));
+  auto new_operands = llvm::to_vector<4>(merge_v2.getOperands());
+  new_operands.push_back(rank_1_zero->getResult(0));
+
+  TF_ASSIGN_OR_RETURN(
+      mlir::Value zero_scalar,
+      CreateZeroScalarConst(
+          builder, location,
+          device_id.getType().cast<mlir::TensorType>().getElementType()));
+
+  mlir::TF::NotEqualOp not_equal = builder.create<mlir::TF::NotEqualOp>(
+      location, device_id, zero_scalar,
+      /*incompatible_shape_error=*/builder.getBoolAttr(false));
+
   auto if_op = builder.create<mlir::TF::IfOp>(
-      location, then_func.getFunctionType().getResults(), /*cond=*/device_id,
-      /*input=*/merge_v2.getOperands(),
+      location, then_func.getFunctionType().getResults(),
+      /*cond=*/not_equal.getResult(),
+      /*input=*/new_operands,
       /*then_branch=*/then_func.getSymName(),
       /*else_branch=*/else_func.getSymName(), /*is_stateless=*/false);
 
@@ -790,10 +816,10 @@ StatusOr<llvm::SmallVector<Layout>> GetLayoutsFromAssignVariableOps(
     // and the AssignVariableOp.
     for (auto consuming_op : result.getUsers()) {
       // To get to the AssignVariableOp that consumes `result`, we expect
-      // an IdentityOp or a DTensorSend op on the path. So, skip past
+      // an IdentityOp, CastOp, or a DTensorSend op on the path. So, skip past
       // these ops first.
-      while (llvm::isa<mlir::TF::IdentityOp, mlir::TF::DTensorSend>(
-          consuming_op)) {
+      while (llvm::isa<mlir::TF::CastOp, mlir::TF::IdentityOp,
+                       mlir::TF::DTensorSend>(consuming_op)) {
         if (auto send_op =
                 mlir::dyn_cast_or_null<mlir::TF::DTensorSend>(consuming_op)) {
           TF_ASSIGN_OR_RETURN(

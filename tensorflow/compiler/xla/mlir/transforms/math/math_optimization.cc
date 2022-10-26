@@ -28,11 +28,11 @@ namespace runtime {
 
 using namespace mlir;  // NOLINT
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_MATHOPTIMIZATIONPASS
 #include "tensorflow/compiler/xla/mlir/transforms/math/passes.h.inc"
 
 struct MathOptimizationPass
-    : public MathOptimizationPassBase<MathOptimizationPass> {
+    : public impl::MathOptimizationPassBase<MathOptimizationPass> {
   explicit MathOptimizationPass(bool enable_avx2) {
     enable_avx2_ = enable_avx2;
   }

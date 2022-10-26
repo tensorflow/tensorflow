@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 #define TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/platform.h"
 
 #ifdef PLATFORM_WINDOWS

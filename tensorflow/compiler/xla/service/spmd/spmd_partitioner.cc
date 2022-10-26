@@ -75,10 +75,9 @@ std::string SpmdLogger::MakeReport() {
             });
   for (int64_t i = 0;
        i < std::min<int64_t>(report_instruction_count_, entries_.size()); ++i) {
-    absl::StrAppend(
-        &report, "\n  ",
-        tensorflow::strings::HumanReadableNumBytes(entries_[i].first), " : ",
-        entries_[i].second, "\n");
+    absl::StrAppend(&report, "\n  ",
+                    tsl::strings::HumanReadableNumBytes(entries_[i].first),
+                    " : ", entries_[i].second, "\n");
   }
 
   return report;
@@ -166,7 +165,7 @@ template <typename F>
     for (int64_t i = 0;
          i < std::min<int64_t>(report_instruction_count, insts->size()); ++i) {
       absl::StrAppend(&report, "  ",
-                      tensorflow::strings::HumanReadableNumBytes(
+                      tsl::strings::HumanReadableNumBytes(
                           ShapeSizeInBytes((*insts)[i]->shape())),
                       " : ", (*insts)[i]->ToString(), "\n");
     }
@@ -2053,7 +2052,8 @@ SpmdPartitioningVisitor::SpmdPartitioningVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdLogger* logger,
-    SpmdPartitionerOptions options, SpmdPartitioner* partitioner)
+    SpmdPartitionerOptions options, SpmdPartitioner* partitioner,
+    const CallGraph& call_graph)
     : changed_(false),
       module_(computation->parent()),
       num_partitions_(num_partitions),
@@ -2064,7 +2064,8 @@ SpmdPartitioningVisitor::SpmdPartitioningVisitor(
       partition_id_(collective_ops_creator_.create_partition_id(&b_)),
       logger_(logger),
       options_(std::move(options)),
-      partitioner_(partitioner) {}
+      partitioner_(partitioner),
+      call_graph_(call_graph) {}
 
 PartitionedHlo::PartitioningState
 SpmdPartitioningVisitor::MakePartitioningState() {
@@ -2165,8 +2166,9 @@ Status SpmdPartitioningVisitor::Preprocess(HloInstruction* hlo) {
       }
       return HloSharding::Tuple(shape, subshardings);
     }
-    // Delay manual sharding substitution for CustomCalls.
-    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall) {
+    // Delay manual sharding substitution for CustomCalls and PartitionIds.
+    if (sharding.IsManual() && opcode != HloOpcode::kCustomCall &&
+        opcode != HloOpcode::kPartitionId) {
       return HloSharding::AssignDevice(0);
     }
     return sharding;
@@ -2477,8 +2479,29 @@ Status SpmdPartitioningVisitor::HandleSlice(HloInstruction* hlo) {
 
 Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
   HloSharding sharding = hlo->sharding();
+  int64_t input_count = 1;
+  if (hlo->shape().IsTuple()) {
+    input_count = hlo->shape().tuple_shapes_size();
+    CHECK_GT(input_count, 0);
+  }
   if (sharding.HasUniqueDevice()) {
-    return DefaultAction(hlo);
+    std::vector<HloInstruction*> new_operands(input_count, nullptr);
+    for (auto i = 0; i != input_count; ++i) {
+      // Handle variadic sort sharding.
+      HloSharding subsharding =
+          hlo->sharding().IsTuple()
+              ? hlo->sharding().GetSubSharding(hlo->shape(), {i})
+              : hlo->sharding();
+      CHECK(!subsharding.IsTuple() && subsharding.HasUniqueDevice());
+      new_operands[i] =
+          GetPartitionedHlo(hlo->operand(i)).Reshard(subsharding).hlo();
+    }
+    auto clone = b_.AddInstruction(
+        hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+    clone->set_sharding(sharding);
+    SetPartitionedHlo(
+        hlo, PartitionedHlo(clone, hlo->shape(), MakePartitioningState()));
+    return OkStatus();
   }
   // Special handling for sort in TopK when first operand partitioined at
   // sort dimension.
@@ -3167,7 +3190,7 @@ Status SpmdPartitioningVisitor::HandleDynamicUpdateSlice(HloInstruction* hlo) {
                 1) /
                per_partition_size)) {
         handle_with_replicate_slice_dims();
-        return Status::OK();
+        return OkStatus();
       }
 
       // within_partition = (offset >= partition_id * per_partition_size) &&
@@ -3621,11 +3644,13 @@ Status SpmdPartitioningVisitor::HandleWhile(HloInstruction* hlo) {
                                                 cond_root_sharding.IsManual()
                                                     ? cond_root_sharding
                                                     : HloSharding::Replicate(),
-                                                next_channel_id_, logger_)
+                                                next_channel_id_, logger_,
+                                                call_graph_)
                          .status());
   TF_RETURN_IF_ERROR(partitioner_
                          ->PartitionComputation(hlo->while_body(), sharding,
-                                                next_channel_id_, logger_)
+                                                next_channel_id_, logger_,
+                                                call_graph_)
                          .status());
   SetPartitionedHlo(hlo, [&] {
     return b_.AddInstruction(HloInstruction::CreateWhile(
@@ -3654,7 +3679,8 @@ Status SpmdPartitioningVisitor::HandleConditional(HloInstruction* hlo) {
     HloComputation* computation = hlo->branch_computation(i);
     TF_RETURN_IF_ERROR(partitioner_
                            ->PartitionComputation(computation, hlo->sharding(),
-                                                  next_channel_id_, logger_)
+                                                  next_channel_id_, logger_,
+                                                  call_graph_)
                            .status());
   }
   SetPartitionedHlo(hlo, [&] {
@@ -4212,6 +4238,11 @@ StatusOr<bool> SpmdPartitioningVisitor::DoPartition(
 }
 
 Status SpmdPartitioningVisitor::HandlePartitionId(HloInstruction* hlo) {
+  if (hlo->has_sharding() && hlo->sharding().IsManual()) {
+    hlo->set_sharding(HloSharding::AssignDevice(0));
+    return DefaultAction(hlo);
+  }
+
   return Unimplemented(
       "PartitionId instruction is not supported for SPMD partitioning since "
       "the meaning is ambiguous -- whether the instruction is replicated or "
@@ -4461,10 +4492,10 @@ HloInstruction* SpmdPartitioner::AllReduceAlongShardingDimsInternal(
 
 StatusOr<bool> SpmdPartitioner::PartitionComputation(
     HloComputation* computation, const HloSharding& root_sharding,
-    int64_t* next_channel_id, SpmdLogger* logger) {
-  auto visitor =
-      CreateVisitor(computation, num_partitions_, num_replicas_,
-                    collective_ops_creator_, next_channel_id, logger, options_);
+    int64_t* next_channel_id, SpmdLogger* logger, const CallGraph& call_graph) {
+  auto visitor = CreateVisitor(computation, num_partitions_, num_replicas_,
+                               collective_ops_creator_, next_channel_id, logger,
+                               options_, call_graph);
   return visitor->DoPartition(computation, root_sharding, options_);
 }
 
@@ -4472,10 +4503,10 @@ std::unique_ptr<SpmdPartitioningVisitor> SpmdPartitioner::CreateVisitor(
     HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64_t* next_channel_id, SpmdLogger* logger,
-    SpmdPartitionerOptions options) {
+    SpmdPartitionerOptions options, const CallGraph& call_graph) {
   return std::make_unique<SpmdPartitioningVisitor>(
       computation, num_partitions, num_replicas, collective_ops_creator,
-      next_channel_id, logger, std::move(options), this);
+      next_channel_id, logger, std::move(options), this, call_graph);
 }
 
 StatusOr<bool> SpmdPartitioner::Run(
@@ -4511,10 +4542,13 @@ StatusOr<bool> SpmdPartitioner::Run(
   // Copy the root sharding since the partitioner visitor may temporarily change
   // the sharding to work around manual sharding.
   HloSharding root_sharding = entry_root->sharding();
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  CHECK(call_graph->IsFlattened());
   TF_ASSIGN_OR_RETURN(
       bool partition_changed,
       PartitionComputation(module->entry_computation(), root_sharding,
-                           &next_channel_id, &logger));
+                           &next_channel_id, &logger, *call_graph));
   changed |= partition_changed;
 
   // For the entry computation, make sure that the root instruction and the

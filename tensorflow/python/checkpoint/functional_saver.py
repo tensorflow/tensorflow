@@ -28,6 +28,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.saved_model import registration
+from tensorflow.python.trackable import trackable_utils
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
@@ -76,7 +77,9 @@ class _SingleDeviceSaver(object):
           tensor_names.append(checkpoint_key)
           tensors.append(tensor)
           slice_specs.append(slice_spec)
-    save_device = options.experimental_io_device or "cpu:0"
+    save_device = options.experimental_io_device or (
+        len(tensors) and saveable_object_util.set_cpu0(tensors[0].device))
+    save_device = save_device or "cpu:0"
     with ops.device(save_device):
       return io_ops.save_v2(file_prefix, tensor_names, slice_specs, tensors)
 
@@ -437,13 +440,31 @@ class MultiDeviceSaver(object):
             for slice_spec, tensor in slice_and_tensor.items():
               restore_fn = self._keys_to_restore_fn[(checkpoint_key,
                                                      slice_spec)]
-              (restore_fn_inputs
-               .setdefault(restore_fn, {})
-               .setdefault(checkpoint_key, {})[slice_spec]) = tensor
+
+              # Processing the returned restored_tensor_dict to prepare for the
+              # Trackable `restore` function. The `restore` function expects a
+              # map of `string name (checkpoint_key) -> Tensor`. Unless there is
+              # a slice_spec, in which case the map will be of
+              # `string name (checkpoint_key)-> slice_spec -> Tensor`.
+              if slice_spec:
+                (restore_fn_inputs.setdefault(restore_fn, {}).setdefault(
+                    checkpoint_key, {})[slice_spec]) = tensor
+              else:
+                restore_fn_inputs.setdefault(restore_fn,
+                                             {})[checkpoint_key] = tensor
               restore_fn_input_count[restore_fn] -= 1
 
               if restore_fn_input_count[restore_fn] == 0:
-                ret = restore_fn(restore_fn_inputs[restore_fn])
+                restored_tensors = {}
+                # Extracts the substring after the "/.ATTRIBUTES/" in the
+                # ckpt_key from restore_fn_inputs[restore_fn] to
+                # restored_tensors. For example, if restore_fn_input[restore_fn]
+                # is dict { "/.ATTIBUTES/a": Tensor}, restored_tensors will be
+                # changed to dict {"a": Tensor}
+                for ckpt_key, tensor in restore_fn_inputs[restore_fn].items():
+                  restored_tensors[trackable_utils.extract_local_name(
+                      ckpt_key)] = tensor
+                ret = restore_fn(restored_tensors)
                 if isinstance(ret, dict):
                   restore_ops.update(ret)
       # Run registered restore methods after the default restore ops.
@@ -451,21 +472,29 @@ class MultiDeviceSaver(object):
         restore_fn(file_prefix)
       return restore_ops
 
-    restore_device = options.experimental_io_device or "cpu:0"
-
-    # Since this will causes a function re-trace on each restore, limit this to
+    has_custom_device_saver = any([
+        context.is_custom_device(d) for d in self._single_device_savers.keys()
+    ])
+    # Since this will cause a function re-trace on each restore, limit this to
     # cases where it is needed: eager and when there are multiple tasks/single
-    # device savers. Note that the retrace is needed to ensure we pickup the
-    # latest values of options like experimental_io_device.
+    # device savers or any single device saver is a custom device. Note that the
+    # retrace is needed to ensure we pickup the latest values of options like
+    # experimental_io_device.
+    #
+    # We run in a function when there is a custom device saver because custom
+    # devices, such as DTensor, usually do a sharded save and restore.
+    # Doing a sharded save and restore requires knowledge about what shards
+    # of variables we are restoring to. In practice, this means that custom
+    # devices need the AssignVariableOps along with the Restore op within the
+    # same graph to infer shapes and shard specs for Restore op.
     if context.executing_eagerly() and (len(self._single_device_savers) > 1 or
-                                        options.experimental_io_device):
+                                        has_custom_device_saver):
       @def_function.function(jit_compile=False, autograph=False)
       def tf_function_restore():
         restore_fn()
         return {}
 
-      with ops.device(restore_device):
-        restore_ops = tf_function_restore()
+      restore_ops = tf_function_restore()
     else:
       restore_ops = restore_fn()
 

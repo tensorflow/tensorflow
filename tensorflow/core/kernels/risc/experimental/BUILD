@@ -1,6 +1,6 @@
 # TF-RISC
 
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_kernel_library")
 
 package(
     default_visibility = ["//visibility:public"],

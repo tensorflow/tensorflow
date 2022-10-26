@@ -226,7 +226,7 @@ Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
     if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
       *ptr = buf;
       *ptr_owner = utemp;
-      return Status::OK();
+      return OkStatus();
     }
     Py_XDECREF(utemp);
 #endif

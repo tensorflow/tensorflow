@@ -16,7 +16,6 @@
 import itertools
 import os
 from typing import List, Mapping, Optional
-import warnings
 
 from absl.testing import parameterized
 import numpy as np
@@ -36,11 +35,13 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import save as saved_model_save
@@ -205,15 +206,14 @@ class QuantizationMethodTest(quantize_model_test_base.QuantizedModelTest):
 
 class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
-  def _any_warning_contains(
-      self, substring: str,
-      warnings_list: List[warnings.WarningMessage]) -> bool:
+  def _any_warning_contains(self, substring: str,
+                            warnings_list: List['LogRecord']) -> bool:
     """Returns True if any of the warnings contains a given substring.
 
     Args:
       substring: A piece of string to check whether it exists in the warning
         message.
-      warnings_list: A list of `WarningMessage`s.
+      warnings_list: A list of `absl.logging.LogRecord`s.
 
     Returns:
       True if and only if the substring exists in any of the warnings in
@@ -270,6 +270,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             out, min=-0.3, max=0.4, num_bits=8, narrow_range=False)
         return {'output': q_out}
 
+    np.random.seed(1234)
     model = ConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -477,6 +478,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
+    np.random.seed(1234)
     model = ConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -584,6 +586,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           out = activation_fn(out)
         return {'output': out}
 
+    np.random.seed(1234)
     model = DepthwiseConvModel()
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -618,7 +621,9 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_loader = saved_model_loader.SavedModelLoader(output_directory)
     output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
     if target_opset == quant_opts_pb2.XLA:
-      self.assertTrue(self._contains_op(output_meta_graphdef, 'XlaConvV2'))
+      # Quantization for DepthwiseConv is disabled for XLA opset.
+      self.assertTrue(
+          self._contains_op(output_meta_graphdef, 'DepthwiseConv2dNative'))
     else:
       self.assertTrue(
           self._contains_quantized_function_call(output_meta_graphdef))
@@ -634,6 +639,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   @test_util.run_in_graph_and_eager_modes
   def test_matmul_ptq_model(self, activation_fn: Optional[ops.Operation],
                             has_bias: bool, target_opset: quant_opts_pb2.OpSet):
+    np.random.seed(1234)
     model = self._create_matmul_model(has_bias, activation_fn)
     input_saved_model_path = self.create_tempdir('input').full_path
     saved_model_save.save(model, input_saved_model_path)
@@ -698,7 +704,7 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         input_tensor=ops.convert_to_tensor(input_data))
     # The difference between TF and target path is expected to be small (smaller
     # or equal to 1 in the quantized domain).
-    self.assertAllClose(new_outputs, got_outputs, atol=0.0734)
+    self.assertAllClose(new_outputs, got_outputs, atol=0.1048)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.1023)
 
   @parameterized.named_parameters(
@@ -940,24 +946,33 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as warnings_list:
-      converted_model = quantize_model.quantize(
-          input_savedmodel_dir,
-          ['serving_default'],
-          tags,
-          output_savedmodel_dir,
-          quantization_options,
-          # Put no sample into the representative dataset to make calibration
-          # impossible.
-          representative_dataset=[])
+    with self.assertLogs(level='WARN') as warning_logs:
+      # Save the logger verbosity.
+      prev_log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARN)
 
-      self.assertNotEmpty(warnings_list)
+      try:
+        converted_model = quantize_model.quantize(
+            input_savedmodel_dir,
+            ['serving_default'],
+            tags,
+            output_savedmodel_dir,
+            quantization_options,
+            # Put no sample into the representative dataset to make calibration
+            # impossible.
+            representative_dataset=[])
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(prev_log_level)
+
+      self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name.
-      self.assertTrue(self._any_warning_contains('matmul', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('matmul', warning_logs.records))
       self.assertTrue(
           self._any_warning_contains('does not have min or max values',
-                                     warnings_list))
+                                     warning_logs.records))
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -1024,24 +1039,34 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             experimental_method=_ExperimentalMethod.STATIC_RANGE))
 
-    with warnings.catch_warnings(record=True) as warnings_list:
-      converted_model = quantize_model.quantize(
-          input_saved_model_path, ['serving_default'],
-          tags,
-          output_directory,
-          quantization_options,
-          representative_dataset=data_gen())
+    with self.assertLogs(level='WARN') as warning_logs:
+      # Save the logger verbosity.
+      log_level = logging.get_verbosity()
+      logging.set_verbosity(logging.WARN)
 
-      self.assertNotEmpty(warnings_list)
+      try:
+        converted_model = quantize_model.quantize(
+            input_saved_model_path, ['serving_default'],
+            tags,
+            output_directory,
+            quantization_options,
+            representative_dataset=data_gen())
+      finally:
+        # Restore the logger verbosity.
+        logging.set_verbosity(log_level)
+
+      self.assertNotEmpty(warning_logs.records)
 
       # Warning message should contain the function name. The uncalibrated path
       # is when the condition is true, so 'cond_true' function must be part of
       # the warning message.
-      self.assertTrue(self._any_warning_contains('cond_true', warnings_list))
-      self.assertFalse(self._any_warning_contains('cond_false', warnings_list))
+      self.assertTrue(
+          self._any_warning_contains('cond_true', warning_logs.records))
+      self.assertFalse(
+          self._any_warning_contains('cond_false', warning_logs.records))
       self.assertTrue(
           self._any_warning_contains('does not have min or max values',
-                                     warnings_list))
+                                     warning_logs.records))
 
     self.assertIsNotNone(converted_model)
     self.assertCountEqual(converted_model.signatures._signatures.keys(),
@@ -1477,6 +1502,215 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           output_directory,
           quantization_options,
           representative_dataset=data_gen)
+
+  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
+  @test_util.deprecated_graph_mode_only
+  def test_ptq_vocab_table_lookup_model(self):
+    tags = {tag_constants.SERVING}
+    signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    input_model_dir = self.create_tempdir('input').full_path
+
+    with session.Session() as sess:
+      input_vocabs_placeholder, lookup_tensor, output_tensor = (
+          self._create_vocab_table_lookup_model_tf1(sess))
+
+      self._save_tf1_model(
+          sess,
+          input_model_dir,
+          signature_def_key,
+          tags,
+          inputs={'input_vocabs': input_vocabs_placeholder},
+          outputs={
+              'lookup': lookup_tensor,  # Table lookup values.
+              'output': output_tensor,
+          },
+          init_op=lookup_ops.tables_initializer(),
+          assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS))
+
+    # Representative dataset is composed of a set of vocabs for table lookup.
+    repr_ds = [{
+        'input_vocabs': np.array([b'hello', b'model', b'quantization'])
+    } for _ in range(4)]
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE))
+
+    signature_def_keys = [signature_def_key]
+    output_model_dir = self.create_tempdir('output').full_path
+
+    quantize_model.quantize(
+        input_model_dir,
+        signature_def_keys,
+        tags,
+        output_model_dir,
+        quantization_options,
+        representative_dataset=repr_ds)
+
+    # Tests table lookup to make sure the table has been initialized
+    # successfully.
+    with session.Session(graph=ops.Graph()) as sess:
+      output_meta_graph_def = saved_model_loader.load(
+          sess, tags=tags, export_dir=output_model_dir)
+
+      # The graph should contain a quantized function call (it contains a
+      # single f32 matmul node).
+      self.assertTrue(
+          self._contains_quantized_function_call(output_meta_graph_def))
+      self.assertCountEqual(output_meta_graph_def.signature_def.keys(),
+                            signature_def_keys)
+
+      signature_def = output_meta_graph_def.signature_def[signature_def_key]
+
+      input_tensor_name = signature_def.inputs['input_vocabs'].name
+      input_tensor = sess.graph.get_tensor_by_name(input_tensor_name)
+
+      lookup_tensor_name = signature_def.outputs['lookup'].name
+      lookup_tensor = sess.graph.get_tensor_by_name(lookup_tensor_name)
+
+      lookup_val = sess.run(
+          lookup_tensor,
+          feed_dict={
+              input_tensor: np.array([b'model', b'quantization', b'hello'])
+          })
+
+      self.assertAllClose(lookup_val, [1., 2., 0.])
+
+  @parameterized.named_parameters(
+      ('none', None, False, False, quant_opts_pb2.TF, False, 'SAME'),
+      ('relu', nn_ops.relu, False, False, quant_opts_pb2.TF, False, 'SAME'),
+      ('relu6', nn_ops.relu6, False, False, quant_opts_pb2.TF, False, 'SAME'),
+      ('with_bias', None, True, False, quant_opts_pb2.TF, False, 'SAME'),
+      ('with_bias_and_relu', nn_ops.relu, True, False, quant_opts_pb2.TF, False,
+       'SAME'),
+      ('with_bias_and_relu6', nn_ops.relu6, True, False, quant_opts_pb2.TF,
+       False, 'SAME'),
+      ('none_to_xla', None, False, False, quant_opts_pb2.XLA, False, 'SAME'),
+      ('with_bias_and_relu6_to_xla', nn_ops.relu6, True, False,
+       quant_opts_pb2.XLA, False, 'SAME'),
+      ('with_bias_to_xla_dynamic', None, True, False, quant_opts_pb2.XLA, True,
+       'SAME'),
+      ('none_to_xla_padding_valid', None, False, False, quant_opts_pb2.XLA,
+       False, 'VALID'),
+      ('with_bias_and_relu6_to_xla_padding_valid', nn_ops.relu6, True, False,
+       quant_opts_pb2.XLA, False, 'VALID'),
+      ('with_bias_to_xla_dynamic_padding_valid', None, True, False,
+       quant_opts_pb2.XLA, True, 'VALID'),
+  )
+  def test_conv3d_ptq_model(self, activation_fn: Optional[ops.Operation],
+                            has_bias: bool, has_bn: bool,
+                            target_opset: quant_opts_pb2.OpSet,
+                            input_shape_dynamic: bool, padding: str):
+    input_shape = [1, 3, 4, 3, 3]
+    if input_shape_dynamic:
+      input_shape = [None, None, None, None, 3]
+
+    class ConvModel(module.Module):
+
+      def __init__(self):
+        self.filters = np.random.uniform(
+            low=-0.5, high=0.5, size=(2, 3, 3, 3, 2)).astype('f4')
+        self.bias = np.random.uniform(low=0.0, high=0.2, size=(2)).astype('f4')
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=input_shape, dtype=dtypes.float32)
+      ])
+      def conv3d(self, input_tensor: core.Tensor) -> Mapping[str, core.Tensor]:
+        """Performs a 3D convolution operation.
+
+        Args:
+          input_tensor: Input tensor to perform convolution on.
+
+        Returns:
+          A map of: output key -> output result.
+        """
+        out = nn_ops.conv3d(
+            input_tensor,
+            self.filters,
+            strides=[1, 1, 2, 1, 1],
+            dilations=[1, 1, 1, 1, 1],
+            padding=padding,
+            data_format='NDHWC')
+        if has_bias:
+          out = nn_ops.bias_add(out, self.bias)
+        if activation_fn is not None:
+          out = activation_fn(out)
+        return {'output': out}
+
+    np.random.seed(1234)
+    model = ConvModel()
+    input_saved_model_path = self.create_tempdir('input').full_path
+    saved_model_save.save(model, input_saved_model_path)
+
+    repr_ds = []
+    for _ in range(500):
+      repr_ds.append({
+          'input_tensor':
+              ops.convert_to_tensor(
+                  np.random.uniform(low=-0.1, high=0.2,
+                                    size=(1, 3, 4, 3, 3)).astype('f4')),
+      })
+
+    signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+    tags = [tag_constants.SERVING]
+
+    # Check the converted model with TF opset as the baseline.
+    output_directory = self.create_tempdir().full_path
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=quant_opts_pb2.TF)
+
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, [signature_key],
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=repr_ds)
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+
+    input_data = np.random.uniform(
+        low=-0.1, high=0.2, size=(1, 3, 4, 3, 3)).astype('f4')
+    expected_outputs = model.conv3d(input_data)
+    got_outputs = converted_model.signatures[signature_key](
+        input_tensor=ops.convert_to_tensor(input_data))
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.00494)
+
+    output_loader = saved_model_loader.SavedModelLoader(output_directory)
+    output_meta_graphdef = output_loader.get_meta_graph_def_from_tags(tags)
+    self.assertTrue(
+        self._contains_quantized_function_call(output_meta_graphdef))
+
+    # Check the converted model in the target opset.
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.STATIC_RANGE),
+        op_set=target_opset)
+
+    output_directory = self.create_tempdir().full_path
+    converted_model = quantize_model.quantize(
+        input_saved_model_path, [signature_key],
+        tags,
+        output_directory,
+        quantization_options,
+        representative_dataset=repr_ds)
+
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(converted_model.signatures._signatures.keys(),
+                          {signature_key})
+    loader = saved_model_loader.SavedModelLoader(output_directory)
+    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
+    if target_opset == quant_opts_pb2.XLA:
+      self.assertTrue(self._contains_op(meta_graphdef, 'XlaConvV2'))
+
+    new_outputs = converted_model.signatures[signature_key](
+        input_tensor=ops.convert_to_tensor(input_data))
+    # The quantized model in XLA opset is expected to have similar fidelity
+    # compared to the quantized model in TF opset.
+    self.assertAllClose(new_outputs, got_outputs, atol=0.00306)
+    self.assertAllClose(new_outputs, expected_outputs, atol=0.00494)
 
 
 class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):

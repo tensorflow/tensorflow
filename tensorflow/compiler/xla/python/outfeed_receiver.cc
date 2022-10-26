@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 // Implementation notes:
 //
@@ -220,7 +220,7 @@ class OutfeedReceiverImpl {
       ABSL_GUARDED_BY(mu_);
   // The threadpool must come last to ensure the queue exists
   // when the pool destructor is called.
-  std::unique_ptr<tensorflow::thread::ThreadPool> threads_;
+  std::unique_ptr<tsl::thread::ThreadPool> threads_;
 };
 
 OutfeedReceiverImpl::OutfeedReceiverImpl(
@@ -250,8 +250,8 @@ void OutfeedReceiverImpl::Start() {
   }
 
   int num_threads = 2 * devices_.size();
-  threads_ = std::make_unique<tensorflow::thread::ThreadPool>(
-      tensorflow::Env::Default(), "outfeed_receiver", num_threads);
+  threads_ = std::make_unique<tsl::thread::ThreadPool>(
+      tsl::Env::Default(), "outfeed_receiver", num_threads);
   for (int device_idx = 0; device_idx < devices_.size(); ++device_idx) {
     threads_->Schedule(
         [this, device_idx]() { DeviceListenerThreadLoop(device_idx); });
@@ -384,7 +384,7 @@ void OutfeedReceiverImpl::CallbackThreadLoop(int device_idx) {
       return;
     }
     {
-      tensorflow::profiler::TraceMe traceme("OutfeedReceiver::Callback");
+      tsl::profiler::TraceMe traceme("OutfeedReceiver::Callback");
       callback_(received->device(), received->consumer_id(),
                 received->literal());
     }

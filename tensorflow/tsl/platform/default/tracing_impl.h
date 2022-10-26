@@ -30,12 +30,12 @@ limitations under the License.
   do {                           \
   } while (0)
 
-namespace tensorflow {
+namespace tsl {
 namespace tracing {
 
 inline bool EventCollector::IsEnabled() { return false; }
 
 }  // namespace tracing
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_TRACING_IMPL_H_

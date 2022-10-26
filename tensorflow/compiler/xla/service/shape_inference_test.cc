@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "absl/types/span.h"
@@ -1342,8 +1343,7 @@ TEST_F(ShapeInferenceTest, InferInvalidStride) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {127, 0}, {129, 2}, {0, 1});
   ASSERT_FALSE(inferred_status.ok());
-  ASSERT_EQ(tensorflow::error::INVALID_ARGUMENT,
-            inferred_status.status().code());
+  ASSERT_EQ(tsl::error::INVALID_ARGUMENT, inferred_status.status().code());
 }
 
 TEST_F(ShapeInferenceTest, InferOobSliceShapeRank2) {
@@ -1351,8 +1351,7 @@ TEST_F(ShapeInferenceTest, InferOobSliceShapeRank2) {
   auto inferred_status =
       ShapeInference::InferSliceShape(matrix_shape, {127, 0}, {129, 2}, {1, 1});
   ASSERT_FALSE(inferred_status.ok());
-  ASSERT_EQ(tensorflow::error::INVALID_ARGUMENT,
-            inferred_status.status().code());
+  ASSERT_EQ(tsl::error::INVALID_ARGUMENT, inferred_status.status().code());
 }
 
 TEST_F(ShapeInferenceTest, InferSliceShapeRank1) {
@@ -2444,6 +2443,46 @@ TEST_F(ShapeInferenceTest, SortManyValues) {
   EXPECT_TRUE(ShapeUtil::Compatible(
       inferred_shape,
       ShapeUtil::MakeTupleShape({keys, values_s32, values_u32})));
+}
+
+TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(U32, {4, 3});
+  const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
+
+  auto inferred_sr_shape =
+      ShapeInference::InferStochasticConvertShape(operand, random, S8);
+  EXPECT_TRUE(inferred_sr_shape.ok());
+  EXPECT_TRUE(ShapeUtil::Equal(inferred_sr_shape.value(), expected_shape));
+}
+
+TEST_F(ShapeInferenceTest, InvalidStochasticConvert_MismatchRandomElementType) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(U16, {4, 3});
+  const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
+
+  auto status_or =
+      ShapeInference::InferStochasticConvertShape(operand, random, S8);
+  ASSERT_FALSE(status_or.ok());
+  EXPECT_THAT(
+      status_or.status().error_message(),
+      HasSubstr(
+          "The random number is required to have same bits as the operand."));
+}
+
+TEST_F(ShapeInferenceTest,
+       InvalidStochasticConvert_DisallowedRandomElementType) {
+  const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
+  const Shape random = ShapeUtil::MakeShape(S32, {4, 3});
+  const Shape expected_shape = ShapeUtil::MakeShape(S8, {4, 3});
+
+  auto status_or =
+      ShapeInference::InferStochasticConvertShape(operand, random, S8);
+  ASSERT_FALSE(status_or.ok());
+  EXPECT_THAT(
+      status_or.status().error_message(),
+      HasSubstr(
+          "Random numbers for stochastic convert must be unsigned integers"));
 }
 
 class GatherShapeInferenceTest : public ShapeInferenceTest {

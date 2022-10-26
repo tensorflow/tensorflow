@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -69,8 +69,8 @@ using ShapeIndexView = absl::Span<const int64_t>;
 // For indexing into array shapes, the index is always trivially empty, ie {}.
 struct ShapeIndex : public absl::InlinedVector<int64_t, 2> {
   using InlinedVector::InlinedVector;
+  TF_ATTRIBUTE_NOINLINE ShapeIndex() = default;
 
-  ShapeIndex() = default;  // Needed to make MSVC work for some reason.
   explicit ShapeIndex(ShapeIndexView view)
       : ShapeIndex(view.begin(), view.end()) {}
 
@@ -351,8 +351,7 @@ class ShapeUtil {
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
       absl::Span<const DimLevelType> dim_level_types = {},
-      absl::Span<const Tile> tiles = {}, int64_t element_size_in_bits = 0,
-      int64_t memory_space = 0,
+      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major
@@ -577,6 +576,12 @@ class ShapeUtil {
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
+  // If the given bitcast is a transpose, deduce and return `dimensions`
+  // attribute of such a transpose. Otherwise, return nullptr.
+  static std::optional<std::vector<int64_t>>
+  DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
+                                      const Shape& output_shape);
+
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns
   // true (where 'output_shape_with_layout' is 'output_shape' with the found
@@ -612,27 +617,18 @@ class ShapeUtil {
   static bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
                                        const xla::Shape& bounded_shape);
 
+  using ForEachVisitorFunction =
+      std::function<StatusOr<bool>(absl::Span<const int64_t>)>;
+
   // Iterates through all the shape indexes, in minor to major order,
   // starting from the base indexes, incrementing by the incr steps, up to
   // count (index[i] < base[i] + count[i]), and calls the visitor_function
   // with the current index. The visitor_function visitor function should
   // return true if it wants to continue, or false otherwise.
-  //
-  // visitor_function must be a callable of type
-  // StatusOr<bool>(absl::Span<int64_t>) or compatible.
-  template <typename FnType>
-  static Status ForEachIndexWithStatus(const Shape& shape,
-                                       absl::Span<const int64_t> base,
-                                       absl::Span<const int64_t> count,
-                                       absl::Span<const int64_t> incr,
-                                       const FnType& visitor_function) {
-    return ForEachIndexInternal(
-        shape, base, count, incr,
-        [&visitor_function](absl::Span<const int64_t> indexes,
-                            int /*thread_id*/) {
-          return visitor_function(indexes);
-        });
-  }
+  static Status ForEachIndexWithStatus(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachVisitorFunction& visitor_function);
 
   // Simple ergonomic wrapper around ShapeUtil::ForEachIndexWithStatus.
   struct IndexIterationSpace {
@@ -650,24 +646,16 @@ class ShapeUtil {
         iteration_space.index_incr, std::forward<FnTy>(function));
   }
 
-  template <typename FnType>
   static void ForEachIndex(const Shape& shape, absl::Span<const int64_t> base,
                            absl::Span<const int64_t> count,
                            absl::Span<const int64_t> incr,
-                           const FnType& visitor_function) {
-    ForEachIndexWithStatus(shape, base, count, incr,
-                           [&](absl::Span<const int64_t> indices) {
-                             return StatusOr<bool>(visitor_function(indices));
-                           })
-        .IgnoreError();
-  }
+                           const ForEachVisitorFunction& visitor_function);
 
   // These convenience wrappers don't take `base`, `count` and `incr`
   // explicitly, but iterate over every element in `shape` instead.
 
-  template <typename FnType>
-  static Status ForEachIndexWithStatus(const Shape& shape,
-                                       const FnType& visitor_function) {
+  static Status ForEachIndexWithStatus(
+      const Shape& shape, const ForEachVisitorFunction& visitor_function) {
     std::vector<int64_t> base(shape.dimensions_size());
     std::vector<int64_t> incr(shape.dimensions_size(), 1);
     return ForEachIndexWithStatus(shape, base,
@@ -675,47 +663,29 @@ class ShapeUtil {
                                   visitor_function);
   }
 
-  template <typename FnType>
-  static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
+  static void ForEachIndex(const Shape& shape,
+                           const ForEachVisitorFunction& visitor_function) {
     ForEachIndexWithStatus(shape, [&](absl::Span<const int64_t> indices) {
       return StatusOr<bool>(visitor_function(indices));
     }).IgnoreError();
   }
 
+  using ForEachParallelVisitorFunction =
+      std::function<StatusOr<bool>(absl::Span<const int64_t>, int)>;
+
   // A parallel version of ForEachIndex(WithStatus). This can only be used if
   // the visitor_function is thread-safe and the order of iteration does not
   // matter.
-  //
-  // visitor_function must be a callable of type
-  // void(Span<int64_t>, int thread_id) or compatible.
-  template <typename FnType>
-  static void ForEachIndexParallel(const Shape& shape,
-                                   absl::Span<const int64_t> base,
-                                   absl::Span<const int64_t> count,
-                                   absl::Span<const int64_t> incr,
-                                   const FnType& visitor_function) {
-    // The parallel version of ForEachIndexInternal can never fail.
-    CHECK(ForEachIndexInternal(
-              shape, base, count, incr,
-              [&visitor_function](absl::Span<const int64_t> indexes,
-                                  int thread_id) -> StatusOr<bool> {
-                visitor_function(indexes, thread_id);
-                return true;
-              },
-              /*parallel=*/true)
-              .ok());
-  }
+  static void ForEachIndexParallel(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachParallelVisitorFunction& visitor_function);
+
   // Convenience wrapper which doesn't take `base`, `count` and `incr`
   // explicitly, but iterates over every element in `shape` instead.
-  template <typename FnType>
-  static void ForEachIndexParallel(const Shape& shape,
-                                   const FnType& visitor_function) {
-    std::vector<int64_t> base(shape.dimensions_size());
-    std::vector<int64_t> incr(shape.dimensions_size(), 1);
-    return ForEachIndexParallel(shape, base,
-                                /*count=*/shape.dimensions(), incr,
-                                visitor_function);
-  }
+  static void ForEachIndexParallel(
+      const Shape& shape,
+      const ForEachParallelVisitorFunction& visitor_function);
 
   // About 0-2-1 transpose:
   //
@@ -731,6 +701,11 @@ class ShapeUtil {
   // normalized shape of `b` or the 0-2-1 shape.
   static std::optional<Vector3> FindTranspose021(const Shape& input_shape,
                                                  const Shape& output_shape);
+
+  // Entry point for physical + logical transposition.
+  static std::optional<Vector3> FindLogicalTranspose021(
+      const Shape& input_shape, const Shape& output_shape,
+      absl::Span<int64_t const> dimensions);
 
   // Strips device-specific information, namely tiling and memory-space
   // information, from a shape.
@@ -767,65 +742,32 @@ class ShapeUtil {
   // used by both the layout-optional and layout-required public method.
   static Status ValidateShapeWithOptionalLayoutInternal(const Shape& shape);
 
-  template <typename FnType>
-  static Status ForEachIndexInternal(const Shape& shape,
-                                     absl::Span<const int64_t> base,
-                                     absl::Span<const int64_t> count,
-                                     absl::Span<const int64_t> incr,
-                                     const FnType& visitor_function,
-                                     bool parallel = false) {
-    if (ShapeUtil::IsZeroElementArray(shape)) {
-      return OkStatus();
-    }
-    CHECK_EQ(shape.rank(), base.size());
-    CHECK_EQ(incr.size(), base.size());
-    CHECK_EQ(count.size(), base.size());
-    const int64_t rank = LayoutUtil::MinorToMajor(shape).size();
-    // Allows handling R0 arrays, such that the visitor function will be called
-    // once with the proper empty indexes.
-    int64_t n = -1;
-    std::vector<int64_t> indexes(base.begin(), base.end());
-    const int kNumThreads = tsl::port::MaxParallelism();
-    std::optional<tensorflow::thread::ThreadPool> pool;
-    if (parallel) {
-      pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
-    }
+  // Keeps track of the iteration state for the ForEach...Internal routines
+  struct ForEachState {
+    ForEachState(const Shape& s, absl::Span<const int64_t> b,
+                 absl::Span<const int64_t> c, absl::Span<const int64_t> i);
+    ~ForEachState();
 
-    absl::Mutex mu;
-    Status status;  // Guarded by mu
+    const Shape& shape;
+    const absl::Span<const int64_t> base;
+    const absl::Span<const int64_t> count;
+    const absl::Span<const int64_t> incr;
+    const int64_t rank;
+    std::vector<int64_t> indexes;  // The mutable set of indices we go through
 
-    while (n < rank) {
-      if (pool != std::nullopt) {
-        pool->Schedule([indexes, &visitor_function, &mu, &status, &pool] {
-          const int thread_id = pool->CurrentThreadId();
-          StatusOr<bool> result = visitor_function(indexes, thread_id);
-          if (!result.ok()) {
-            absl::MutexLock lock(&mu);
-            status = status.ok() ? result.status() : status;
-          }
-        });
-      } else {
-        TF_ASSIGN_OR_RETURN(bool should_continue,
-                            visitor_function(indexes, /*thread_id=*/-1));
-        if (!should_continue) {
-          break;
-        }
-      }
-      // Increments dimensions in minor to major order.
-      for (n = 0; n < rank; ++n) {
-        int64_t dim = LayoutUtil::Minor(shape.layout(), n);
-        indexes[dim] += incr[dim];
-        if (indexes[dim] < base[dim] + count[dim]) {
-          break;
-        }
-        indexes[dim] = base[dim];
-      }
-    }
+    int64_t IncrementDim();
+    bool IsZeroElementArray() const;
+  };
 
-    // Waits for the scheduled work to complete.
-    pool.reset();
-    return status;
-  }
+  static Status ForEachIndexInternal(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachVisitorFunction& visitor_function);
+
+  static Status ForEachIndexInternalParallel(
+      const Shape& shape, absl::Span<const int64_t> base,
+      absl::Span<const int64_t> count, absl::Span<const int64_t> incr,
+      const ForEachParallelVisitorFunction& visitor_function);
 
   ShapeUtil(const ShapeUtil&) = delete;
   ShapeUtil& operator=(const ShapeUtil&) = delete;

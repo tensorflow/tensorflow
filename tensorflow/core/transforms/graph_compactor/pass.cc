@@ -106,27 +106,27 @@ class NameCompressPass : public impl::NameCompressBase<NameCompressPass> {
     // Rename the arguments and results.
     NamedAttrList attrs = func->getAttrDictionary();
     if (func.getNumArguments()) {
-      assert(func.arg_attrs().has_value() && "expected argument attributes");
+      assert(func.getArgAttrs().has_value() && "expected argument attributes");
       SmallVector<Attribute> arg_attrs;
       arg_attrs.reserve(func.getNumArguments());
       // Iterate over the function arguments, skipping the control tokens.
       for (int i = 0, e = func.getNumArguments(); i != e; i += 2) {
-        NamedAttrList attrs = func.arg_attrsAttr()[i].cast<DictionaryAttr>();
+        NamedAttrList attrs = func.getArgAttrsAttr()[i].cast<DictionaryAttr>();
         attrs.set(dialect_->getTfgNameAttrIdentifier(), encode_new_name());
         arg_attrs.append({attrs.getDictionary(&getContext()), empty_dict_});
       }
-      attrs.set(func.arg_attrsAttrName(), b.getArrayAttr(arg_attrs));
+      attrs.set(func.getArgAttrsAttrName(), b.getArrayAttr(arg_attrs));
     }
     if (func.getNumResults()) {
-      assert(func.res_attrs().has_value() && "expected result attributes");
+      assert(func.getResAttrs().has_value() && "expected result attributes");
       SmallVector<Attribute> res_attrs;
       res_attrs.reserve(func.getNumResults());
       for (NamedAttrList attrs :
-           func.res_attrsAttr().getAsRange<DictionaryAttr>()) {
+           func.getResAttrsAttr().getAsRange<DictionaryAttr>()) {
         attrs.set(dialect_->getTfgNameAttrIdentifier(), encode_new_name());
         res_attrs.push_back(attrs.getDictionary(&getContext()));
       }
-      attrs.set(func.res_attrsAttrName(), b.getArrayAttr(res_attrs));
+      attrs.set(func.getResAttrsAttrName(), b.getArrayAttr(res_attrs));
     }
     if (func.getNumArguments() || func.getNumResults()) {
       func->setAttrs(attrs.getDictionary(&getContext()));
@@ -135,7 +135,7 @@ class NameCompressPass : public impl::NameCompressBase<NameCompressPass> {
     // Rename the control results.
     ReturnOp terminator =
         cast<ReturnOp>(func.SingleBlock::getBody()->getTerminator());
-    ArrayAttr control_attrs = terminator.control_ret_attrs();
+    ArrayAttr control_attrs = terminator.getControlRetAttrs();
     if (!attrs.empty()) {
       SmallVector<Attribute> control_ret_attrs;
       control_ret_attrs.reserve(control_attrs.size());
@@ -143,7 +143,7 @@ class NameCompressPass : public impl::NameCompressBase<NameCompressPass> {
         attrs.set(dialect_->getTfgNameAttrIdentifier(), encode_new_name());
         control_ret_attrs.push_back(attrs.getDictionary(&getContext()));
       }
-      terminator.control_ret_attrsAttr(b.getArrayAttr(control_ret_attrs));
+      terminator.setControlRetAttrsAttr(b.getArrayAttr(control_ret_attrs));
     }
 
     // Rename all non-intrisic operations.

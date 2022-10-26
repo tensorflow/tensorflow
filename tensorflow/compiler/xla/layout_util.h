@@ -37,7 +37,6 @@ class LayoutUtil {
   static Layout MakeLayout(absl::Span<const int64_t> minor_to_major,
                            absl::Span<const DimLevelType> dim_level_types = {},
                            absl::Span<const Tile> tiles = {},
-                           int64_t element_size_in_bits = 0,
                            int64_t memory_space = 0,
                            std::optional<Shape> physical_shape = std::nullopt);
 
@@ -142,6 +141,8 @@ class LayoutUtil {
   // * R0 and R1: this is always trivially true.
   // * R2+: equivalent to row-major. Dimension 0 is the major, dimension 1 is
   //        more minor, and so on until dimension N-1 which is the minor.
+  //
+  // Returns `true` for "default", major-to-minor layouts (e.g. {3,2,1,0}).
   static bool IsMonotonicWithDim0Major(const Layout& layout);
 
   // Returns whether the given shape has a layout. For tuple shapes, true is

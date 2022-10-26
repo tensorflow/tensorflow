@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/random.h"
 
 namespace xla {
 class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
@@ -103,7 +103,7 @@ class DistributedRuntimeClientImpl : public DistributedRuntimeClient {
   absl::Notification stop_heartbeats_;
 
   // Thread responsible for performing heartbeats.
-  std::unique_ptr<tensorflow::Thread> heartbeat_thread_;
+  std::unique_ptr<tsl::Thread> heartbeat_thread_;
 };
 
 class DistributedRuntimeCoordinationServiceClient
@@ -198,7 +198,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     ::grpc::ClientContext ctx;
     ctx.set_fail_fast(false);
     ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.rpc_timeout));
-    request.set_client_id(tensorflow::random::New64());
+    request.set_client_id(tsl::random::New64());
     response.Clear();
     status = stub_->Connect(&ctx, request, &response);
     if (!status.ok()) {
@@ -218,7 +218,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
     LOG(ERROR) << "Connect() failed after " << attempt << " retries in "
                << options_.init_timeout
                << "; most recent failure status: " << FromGrpcStatus(status);
-    return tensorflow::errors::DeadlineExceeded(
+    return tsl::errors::DeadlineExceeded(
         absl::StrFormat("Connect() timed out after %s with %d attempts. Most "
                         "recent failure was: %s",
                         absl::FormatDuration(options_.init_timeout), attempt,
@@ -232,7 +232,7 @@ xla::Status DistributedRuntimeClientImpl::Connect() {
   session_id_ = response.session_id();
 
   heartbeat_thread_.reset(options_.env->StartThread(
-      tensorflow::ThreadOptions(), "pjrt_distributed_heartbeat",
+      tsl::ThreadOptions(), "pjrt_distributed_heartbeat",
       [this]() { HeartbeatLoop(); }));
   LOG(INFO) << "Connected to distributed JAX controller";
   return OkStatus();
@@ -470,37 +470,20 @@ DistributedRuntimeCoordinationServiceClient::
     ~DistributedRuntimeCoordinationServiceClient() {}
 
 xla::Status DistributedRuntimeCoordinationServiceClient::Connect() {
-  Status s = tensorflow::errors::Unknown("Connection not attempted yet.");
-  absl::Duration timeout =
+  const absl::Time deadline =
+      absl::Now() +
       absl::Milliseconds(config_.cluster_register_timeout_in_ms());
-  absl::Time deadline = absl::Now() + timeout;
-  int attempt = 0;
-  std::default_random_engine generator;
-  std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
-  do {
-    ++attempt;
-    s = coord_agent_->Connect();
-    if (s.ok()) {
-      absl::Duration barrier_timeout = deadline - absl::Now();
-      // Note: `init_timeout` in client options may be set to 0 so that the
-      // client only attempts to connect once. In that case, we provide some
-      // buffer time to wait for all tasks.
-      barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
-      s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
-                                      /*tasks=*/{});
-    }
-    // Exponential backoff with jitter. Note we will retry for `init_timeout`
-    // time in total; the `14` here corresponds to an ~16s maximum interval
-    // between connection attempts.
-
-    int backoff = 1 << std::min(14, attempt);
-    absl::SleepFor(absl::Milliseconds(backoff * distribution(generator)));
-  } while (!s.ok() && absl::Now() < deadline &&
-           // Retries are only made for RPC errors. If a valid service error is
-           // returned, fail immediately.
-           s.GetPayload(tensorflow::CoordinationErrorPayloadKey()) ==
-               std::nullopt);
+  Status s = coord_agent_->Connect();
+  if (s.ok()) {
+    absl::Duration barrier_timeout = deadline - absl::Now();
+    // Note: `init_timeout` in client options may be set to 0 so that the
+    // client only attempts to connect once. In that case, we provide some
+    // buffer time to wait for all tasks.
+    barrier_timeout = std::max(barrier_timeout, min_connect_barrier_timeout_);
+    s = coord_agent_->WaitAtBarrier("PjRT_Client_Connect", barrier_timeout,
+                                    /*tasks=*/{});
+  }
   if (s.ok()) {
     LOG(INFO) << "Connected to distributed JAX controller";
   } else {
@@ -519,14 +502,20 @@ xla::Status DistributedRuntimeCoordinationServiceClient::Shutdown() {
 xla::Status DistributedRuntimeCoordinationServiceClient::EnumerateDevices(
     const LocalTopologyProto& local_topology,
     GlobalTopologyProto* global_topology) {
-  tensorflow::CoordinationServiceDeviceInfo devices;
-  LocalTopologyProto* device =
-      devices.mutable_xla()->mutable_devices()->add_nodes();
-  *device = local_topology;
-  device->set_node_id(task_id_);
+  LocalTopologyProto local_device = local_topology;
+  local_device.set_node_id(task_id_);
+  tensorflow::DeviceInfo devices;
+  devices.mutable_device()->Add()->PackFrom(local_device);
+  // Client sends LocalTopologyProto.
   Status s = coord_agent_->WaitForAllTasks(devices);
   if (!s.ok()) return s;
-  *global_topology = coord_agent_->GetClusterDeviceInfo().xla().devices();
+  // Server responds with GlobalTopologyProto (refer to service.cc for details).
+  tensorflow::DeviceInfo global_devices = coord_agent_->GetClusterDeviceInfo();
+  if (global_devices.device_size() != 1) {
+    return tsl::errors::Internal(
+        "Unexpected cluster device response from EnumerateDevices().");
+  }
+  global_devices.device().Get(0).UnpackTo(global_topology);
   return OkStatus();
 }
 

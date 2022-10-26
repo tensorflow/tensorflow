@@ -17,7 +17,7 @@ limitations under the License.
 // capacity of codegen backend.
 
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
@@ -124,7 +124,7 @@ struct HloCanonicalizeReductionPass
     getOperation().walk([&](ReduceOp op) {
       SmallVector<int64_t, 4> dimsToReduce;
       DenseSet<int64_t> dimsToReduceSet;
-      for (auto dim : op.dimensions().getValues<APInt>()) {
+      for (auto dim : op.getDimensions().getValues<APInt>()) {
         dimsToReduce.push_back(dim.getSExtValue());
         dimsToReduceSet.insert(dimsToReduce.back());
       }
@@ -209,7 +209,7 @@ struct HloCanonicalizeReductionPass
           b.create<tensor::FromElementsOp>(loc, newOperandDims);
 
       SmallVector<Value, 4> newOperands;
-      for (Value operand : op.operands()) {
+      for (Value operand : op.getInputs()) {
         newOperands.push_back(b.create<DynamicReshapeOp>(
             loc,
             RankedTensorType::get(
@@ -218,8 +218,9 @@ struct HloCanonicalizeReductionPass
                 elemTy),
             operand, newOperandShape));
       }
-      auto newOp = b.create<ReduceOp>(loc, newOperands, op.init_values(), attr);
-      newOp.body().takeBody(op.body());
+      auto newOp =
+          b.create<ReduceOp>(loc, newOperands, op.getInitValues(), attr);
+      newOp.getBody().takeBody(op.getBody());
 
       SmallVector<Value, 4> newResults;
       if (dimsToKeep.empty()) {

@@ -182,8 +182,8 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
   ssize_t length = fread(buffer, 1, kPidBufferLength, fstream);
   int pid;
   if (length != kPidBufferLength || !absl::SimpleAtoi(buffer, &pid)) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
-                    "Failed to get Validator subprocess id: %s", buffer);
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed to get Validator subprocess id: %s", buffer);
     return false;
   }
   struct pollfd pfd[1];
@@ -196,17 +196,17 @@ bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
     kill(pid, SIGKILL);
     return true;
   } else if (poll_ret < 0) {
-    TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Validator timer failed: %s",
-                    strerror(errno));
+    TF_LITE_REPORT_ERROR(error_reporter_, "Validator timer failed: %s",
+                         strerror(errno));
   }
   return false;
 }
 #endif  // _WIN32
 
-MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
-                                       const std::vector<std::string>& args,
-                                       std::string* output, int* exitcode,
-                                       int* signal) {
+MinibenchmarkStatus ProcessRunner::Run(
+    const flatbuffers::FlatBufferBuilder* model,
+    const std::vector<std::string>& args, std::string* output, int* exitcode,
+    int* signal) {
 #ifdef _WIN32
   return kMinibenchmarkUnsupportedPlatform;
 #else  // !_WIN32
@@ -310,8 +310,9 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
 #define __W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
 #endif
 
-int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
+int ProcessRunner::RunInprocess(const flatbuffers::FlatBufferBuilder* model,
                                 const std::vector<std::string>& user_args) {
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running Validator in-process.");
   std::vector<std::string> args_string;
   args_string.push_back("inprocess");
   args_string.push_back("inprocess");
@@ -331,24 +332,26 @@ int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
 
     // When running MiniBenchmark in-process, we start a separate thread for
     // writing to pipe.
-    write_thread = std::thread([pipe_fds, model]() {
-      int written_bytes = 0;
-      int remaining_bytes = model->GetSize();
-      uint8_t* buffer = model->GetBufferPointer();
-      while (remaining_bytes > 0 &&
-             (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) >
-                 0) {
-        remaining_bytes -= written_bytes;
-        buffer += written_bytes;
-      }
-      close(pipe_fds[1]);
-      if (written_bytes < 0 || remaining_bytes > 0) {
-        TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
-                        "Failed to write Model to pipe: %s. Expect to write %d "
-                        "bytes, %d bytes written.",
-                        strerror(errno), remaining_bytes, written_bytes);
-      }
-    });
+    write_thread =
+        std::thread([pipe_fds, model, error_reporter = error_reporter_]() {
+          int written_bytes = 0;
+          int remaining_bytes = model->GetSize();
+          uint8_t* buffer = model->GetBufferPointer();
+          while (remaining_bytes > 0 &&
+                 (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) >
+                     0) {
+            remaining_bytes -= written_bytes;
+            buffer += written_bytes;
+          }
+          close(pipe_fds[1]);
+          if (written_bytes < 0 || remaining_bytes > 0) {
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
+                "Failed to write Model to pipe: %s. Expect to write %d "
+                "bytes, %d bytes written.",
+                strerror(errno), remaining_bytes, written_bytes);
+          }
+        });
   }
 
   for (int i = 0; i < user_args.size(); i++) {

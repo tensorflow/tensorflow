@@ -18,7 +18,7 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 
 #include "mlir-hlo/Transforms/rewriters.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Complex/IR/Complex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -96,7 +96,7 @@ struct BufferizeAndConvertMinimumBroadcastShapesOp
     auto loc = broadcastShapesOp.getLoc();
     ImplicitLocOpBuilder lb(loc, rewriter);
     Value zero = lb.create<arith::ConstantIndexOp>(0);
-    SmallVector<Value> shapes = adaptor.shapes();
+    SmallVector<Value> shapes = adaptor.getShapes();
     size_t k = shapes.size();
     SmallVector<Value> ranks;
     ranks.reserve(k);

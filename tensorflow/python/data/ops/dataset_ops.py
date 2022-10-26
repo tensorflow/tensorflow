@@ -42,7 +42,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed as core_random_seed
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -1757,7 +1756,7 @@ class DatasetV2(
       sharding strategy within a complete pipeline:
 
     ```python
-    d = Dataset.list_files(pattern)
+    d = Dataset.list_files(pattern, shuffle=False)
     d = d.shard(num_workers, worker_index)
     d = d.repeat(num_epochs)
     d = d.shuffle(shuffle_buffer_size)
@@ -1985,19 +1984,11 @@ class DatasetV2(
     Returns:
       A new `Dataset` with the transformation applied as described above.
     """
-    if num_parallel_calls is None or DEBUG_MODE:
-      if deterministic is not None and not DEBUG_MODE:
-        warnings.warn("The `deterministic` argument has no effect unless the "
-                      "`num_parallel_calls` argument is specified.")
-      return BatchDataset(self, batch_size, drop_remainder, name=name)
-    else:
-      return ParallelBatchDataset(
-          self,
-          batch_size,
-          drop_remainder,
-          num_parallel_calls,
-          deterministic,
-          name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops -> batch_op ->
+    # dataset_ops).
+    from tensorflow.python.data.ops import batch_op  # pylint: disable=g-import-not-at-top,redefined-outer-name
+    return batch_op.batch(self, batch_size, drop_remainder, num_parallel_calls,
+                          deterministic, name)
 
   def padded_batch(self,
                    batch_size,
@@ -2119,20 +2110,72 @@ class DatasetV2(
         types is documented in
         https://www.tensorflow.org/guide/data#dataset_structure.
     """
-    if padded_shapes is None:
-      padded_shapes = get_legacy_output_shapes(self)
-      for i, shape in enumerate(nest.flatten(padded_shapes)):
-        # A `tf.TensorShape` is only false if its *rank* is unknown.
-        if not shape:
-          raise ValueError(f"You must provide `padded_shapes` argument because "
-                           f"component {i} has unknown rank.")
-    return PaddedBatchDataset(
-        self,
-        batch_size,
-        padded_shapes,
-        padding_values,
-        drop_remainder,
-        name=name)
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # padded_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import padded_batch_op  # pylint: disable=g-import-not-at-top
+    return padded_batch_op.padded_batch(self, batch_size, padded_shapes,
+                                        padding_values, drop_remainder, name)
+
+  def ragged_batch(self,
+                   batch_size,
+                   drop_remainder=False,
+                   row_splits_dtype=dtypes.int64,
+                   name=None):
+    """Combines consecutive elements of this dataset into `tf.RaggedTensor`s.
+
+    Like `tf.data.Dataset.batch`, the components of the resulting element will
+    have an additional outer dimension, which will be `batch_size` (or
+    `N % batch_size` for the last element if `batch_size` does not divide the
+    number of input elements `N` evenly and `drop_remainder` is `False`). If
+    your program depends on the batches having the same outer dimension, you
+    should set the `drop_remainder` argument to `True` to prevent the smaller
+    batch from being produced.
+
+    Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
+    different shapes:
+
+    *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` is
+    fully defined, then it is batched as normal.
+    *  If an input element is a `tf.Tensor` whose static `tf.TensorShape`
+    contains one or more axes with unknown size (i.e., `shape[i]=None`), then
+    the output will contain a `tf.RaggedTensor` that is ragged up to any of such
+    dimensions.
+    *  If an input element is a `tf.RaggedTensor` or any other type, then it is
+    batched as normal.
+
+    Example:
+
+    >>> dataset = tf.data.Dataset.range(6)
+    >>> dataset = dataset.map(lambda x: tf.range(x))
+    >>> dataset.element_spec.shape
+    TensorShape([None])
+    >>> dataset = dataset.ragged_batch(2)
+    >>> for batch in dataset:
+    ...   print(batch)
+    <tf.RaggedTensor [[], [0]]>
+    <tf.RaggedTensor [[0, 1], [0, 1, 2]]>
+    <tf.RaggedTensor [[0, 1, 2, 3], [0, 1, 2, 3, 4]]>
+
+    Args:
+      batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+        consecutive elements of this dataset to combine in a single batch.
+      drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+        whether the last batch should be dropped in the case it has fewer than
+        `batch_size` elements; the default behavior is not to drop the smaller
+        batch.
+      row_splits_dtype: The dtype that should be used for the `row_splits` of
+        any new ragged tensors.  Existing `tf.RaggedTensor` elements do not have
+        their row_splits dtype changed.
+      name: (Optional.) A string indicating a name for the `tf.data` operation.
+
+    Returns:
+      A new `Dataset` with the transformation applied as described above.
+    """
+    # Loaded lazily due to a circular dependency (dataset_ops ->
+    # ragged_batch_op -> dataset_ops).
+    from tensorflow.python.data.ops import ragged_batch_op  # pylint: disable=g-import-not-at-top
+    return ragged_batch_op.ragged_batch(self, batch_size, drop_remainder,
+                                        row_splits_dtype, name)
 
   def map(self,
           map_func,
@@ -3248,7 +3291,7 @@ name=None))
 
     >>> ds1 = tf.data.Dataset.random(seed=4).take(10)
     >>> ds2 = tf.data.Dataset.random(seed=4).take(10)
-    >>> print(list(ds2.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
+    >>> print(list(ds1.as_numpy_iterator())==list(ds2.as_numpy_iterator()))
     True
 
     Args:
@@ -4815,6 +4858,15 @@ class _VariantTracker(resource_lib.CapturableResource):
     return children
 
 
+# TODO(b/254291122): Remove.
+# Loaded lazily due to a circular dependency (dataset_ops ->
+# batch_op -> dataset_ops).
+batch_op = lazy_loader.LazyLoader(
+    "batch_op", globals(),
+    "tensorflow.python.data.ops.batch_op")
+BatchDataset = batch_op.BatchDataset
+
+
 class TensorDataset(DatasetSource):
   """A `Dataset` with a single element."""
 
@@ -5180,307 +5232,6 @@ class ShardDataset(UnaryUnchangedStructureDataset):
         index=self._index,
         **self._common_args)
     super(ShardDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class BatchDataset(UnaryDataset):
-  """A `Dataset` that batches contiguous elements from its input."""
-
-  def __init__(self, input_dataset, batch_size, drop_remainder, name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    # pylint: disable=protected-access
-    if constant_drop_remainder:
-      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
-      # or `False` (explicitly retaining the remainder).
-      # pylint: disable=g-long-lambda
-      constant_batch_size = tensor_util.constant_value(self._batch_size)
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(constant_batch_size),
-          input_dataset.element_spec)
-    else:
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(None),
-          input_dataset.element_spec)
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.batch_dataset_v2(
-        input_dataset._variant_tensor,
-        batch_size=self._batch_size,
-        drop_remainder=self._drop_remainder,
-        **self._common_args)
-    super(BatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-class ParallelBatchDataset(UnaryDataset):
-  """A `Dataset` that batches contiguous elements from its input in parallel."""
-
-  def __init__(self,
-               input_dataset,
-               batch_size,
-               drop_remainder,
-               num_parallel_calls,
-               deterministic,
-               name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-    self._num_parallel_calls = ops.convert_to_tensor(
-        num_parallel_calls, dtype=dtypes.int64, name="num_parallel_calls")
-    if deterministic is None:
-      self._deterministic = "default"
-    elif deterministic:
-      self._deterministic = "true"
-    else:
-      self._deterministic = "false"
-
-    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder)
-    # pylint: disable=protected-access
-    if constant_drop_remainder:
-      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
-      # or `False` (explicitly retaining the remainder).
-      # pylint: disable=g-long-lambda
-      constant_batch_size = tensor_util.constant_value(self._batch_size)
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(constant_batch_size),
-          input_dataset.element_spec)
-    else:
-      self._structure = nest.map_structure(
-          lambda component_spec: component_spec._batch(None),
-          input_dataset.element_spec)
-
-    self._name = name
-    variant_tensor = gen_dataset_ops.parallel_batch_dataset(
-        input_dataset._variant_tensor,
-        batch_size=self._batch_size,
-        num_parallel_calls=self._num_parallel_calls,
-        drop_remainder=self._drop_remainder,
-        deterministic=self._deterministic,
-        **self._common_args)
-
-    super(ParallelBatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
-
-
-def _is_padded_shape_compatible_with(padded_shape, input_component_shape):
-  """Returns `True` if `input_component_shape` can be padded to `padded_shape`.
-
-  Args:
-    padded_shape: A `tf.TensorShape`.
-    input_component_shape: A `tf.TensorShape`.
-
-  Returns:
-    `True` if `input_component_shape` can be padded to `padded_shape`, otherwise
-    `False`.
-  """
-
-  if padded_shape.dims is None or input_component_shape.dims is None:
-    return True
-  if len(padded_shape.dims) != len(input_component_shape.dims):
-    return False
-  for padded_dim, input_dim in zip(
-      padded_shape.dims, input_component_shape.dims):
-    if (padded_dim.value is not None and input_dim.value is not None
-        and padded_dim.value < input_dim.value):
-      return False
-  return True
-
-
-def _padded_shape_to_tensor(padded_shape, input_component_shape):
-  """Converts `padded_shape` to a `tf.Tensor` representing that shape.
-
-  Args:
-    padded_shape: A shape-like object, which may be a `tf.TensorShape`, a Python
-      sequence, or a 1-D `tf.Tensor` of `tf.int64` elements.
-    input_component_shape: A `tf.TensorShape`, with which `padded_shape` must
-      be compatible.
-
-  Returns:
-    A 1-D `tf.Tensor` of `tf.int64` elements, representing `padded_shape`.
-
-  Raises:
-    ValueError: If `padded_shape` is not a shape or not compatible with
-      `input_component_shape`.
-    TypeError: If `padded_shape` is not convertible to a `tf.int64` tensor.
-  """
-  try:
-    # Try to convert the `padded_shape` to a `tf.TensorShape`
-    padded_shape_as_shape = tensor_shape.as_shape(padded_shape)
-    # We will return the "canonical" tensor representation, which uses
-    # `-1` in place of `None`.
-    ret = ops.convert_to_tensor(
-        [dim if dim is not None else -1
-         for dim in padded_shape_as_shape.as_list()], dtype=dtypes.int64)
-  except (TypeError, ValueError) as e:
-    # The argument was not trivially convertible to a
-    # `tf.TensorShape`, so fall back on the conversion to tensor
-    # machinery.
-    ret = ops.convert_to_tensor(padded_shape, preferred_dtype=dtypes.int64)
-    if ret.shape.dims is not None and len(ret.shape.dims) != 1:
-      raise ValueError(
-          f"Padded shape {padded_shape} must be a `tf.int64` vector tensor, "
-          f"but its shape was {ret.shape}.") from e
-    if ret.dtype != dtypes.int64:
-      raise TypeError(
-          f"Padded shape {padded_shape} must be a `tf.int64` vector "
-          f"tensor, but its element type was {ret.dtype.name}.") from e
-    padded_shape_as_shape = tensor_util.constant_value_as_shape(ret)
-
-  if not _is_padded_shape_compatible_with(padded_shape_as_shape,
-                                          input_component_shape):
-    raise ValueError(f"The padded shape {padded_shape_as_shape} is not "
-                     f"compatible with the shape {input_component_shape} of "
-                     f"the corresponding input component.")
-
-  return ret
-
-
-def _padding_value_to_tensor(value, output_type):
-  """Converts the padding value to a tensor.
-
-  Args:
-    value: The padding value.
-    output_type: Its expected dtype.
-
-  Returns:
-    A scalar `Tensor`.
-
-  Raises:
-    ValueError: if the padding value is not a scalar.
-    TypeError: if the padding value's type does not match `output_type`.
-  """
-  value = ops.convert_to_tensor(value, name="padding_value")
-  if not value.shape.is_compatible_with(tensor_shape.TensorShape([])):
-    raise ValueError(f"Invalid `padding_values`. `padding_values` values "
-                     f"should be scalars, but got {value.shape}.")
-  if value.dtype != output_type:
-    raise TypeError(f"Invalid `padding_values`. `padding_values` values "
-                    f"type {value.dtype} does not match type {output_type} "
-                    f"of the corresponding input component.")
-  return value
-
-
-def _padding_values_or_default(padding_values, input_dataset):
-  """Returns padding values with None elements replaced with default values."""
-
-  def make_zero(t):
-    if t.base_dtype == dtypes.string:
-      return ""
-    elif t.base_dtype == dtypes.variant:
-      raise TypeError("Unable to create default padding value for a component "
-                      "of type 'variant'.")
-    elif t.base_dtype == dtypes.bfloat16:
-      # Special case `bfloat16` because it is not supported by NumPy.
-      return constant_op.constant(0, dtype=dtypes.bfloat16)
-    else:
-      return np.zeros_like(t.as_numpy_dtype())
-
-  def value_or_default(value, default):
-    return default if value is None else value
-
-  default_padding = nest.map_structure(
-      make_zero,
-      get_legacy_output_types(input_dataset))
-  return nest.map_structure_up_to(padding_values, value_or_default,
-                                  padding_values, default_padding)
-
-
-class PaddedBatchDataset(UnaryDataset):
-  """A `Dataset` that batches and pads contiguous elements from its input."""
-
-  def __init__(self,
-               input_dataset,
-               batch_size,
-               padded_shapes,
-               padding_values,
-               drop_remainder,
-               name=None):
-    """See `Dataset.batch()` for details."""
-    self._input_dataset = input_dataset
-
-    def check_types(component_spec):
-      if not isinstance(component_spec, tensor_spec.TensorSpec):
-        raise TypeError(f"`padded_batch` is only supported for datasets that "
-                        f"produce tensor elements but the input dataset "
-                        f"produces elements of unsupported type "
-                        f"{component_spec.value_type()}.")
-
-    nest.map_structure(check_types, input_dataset.element_spec)
-    self._input_dataset = input_dataset
-    self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
-    padding_values = _padding_values_or_default(padding_values, input_dataset)
-
-    input_shapes = get_legacy_output_shapes(input_dataset)
-    flat_padded_shapes = nest.flatten_up_to(input_shapes, padded_shapes)
-
-    flat_padded_shapes_as_tensors = []
-
-    for input_component_shape, padded_shape in zip(
-        nest.flatten(input_shapes), flat_padded_shapes):
-      flat_padded_shapes_as_tensors.append(
-          _padded_shape_to_tensor(padded_shape, input_component_shape))
-
-    self._padded_shapes = nest.pack_sequence_as(input_shapes,
-                                                flat_padded_shapes_as_tensors)
-
-    # If padding_values is a single element and input_shapes is a structure,
-    # "broadcast" padding_values to the same structure as input_shapes.
-    if nest.is_nested(input_shapes) and not nest.is_nested(padding_values):
-      padding_values = nest.map_structure(lambda _: padding_values,
-                                          input_shapes)
-
-    self._padding_values = nest.map_structure_up_to(
-        input_shapes, _padding_value_to_tensor, padding_values,
-        get_legacy_output_types(input_dataset))
-    self._drop_remainder = ops.convert_to_tensor(
-        drop_remainder, dtype=dtypes.bool, name="drop_remainder")
-
-    def _padded_shape_to_batch_shape(s):
-      return tensor_shape.TensorShape([
-          tensor_util.constant_value(self._batch_size)
-          if smart_cond.smart_constant_value(self._drop_remainder) else None
-      ]).concatenate(tensor_util.constant_value_as_shape(s))
-
-    output_shapes = nest.map_structure(
-        _padded_shape_to_batch_shape, self._padded_shapes)
-    self._structure = structure.convert_legacy_structure(
-        get_legacy_output_types(self._input_dataset), output_shapes,
-        get_legacy_output_classes(self._input_dataset))
-
-    self._name = name
-    # pylint: disable=protected-access
-    variant_tensor = gen_dataset_ops.padded_batch_dataset_v2(
-        input_dataset._variant_tensor,  # pylint: disable=protected-access
-        batch_size=self._batch_size,
-        padded_shapes=[
-            ops.convert_to_tensor(s, dtype=dtypes.int64)
-            for s in nest.flatten(self._padded_shapes)
-        ],
-        padding_values=nest.flatten(self._padding_values),
-        drop_remainder=self._drop_remainder,
-        output_shapes=structure.get_flat_tensor_shapes(self._structure),
-        metadata=self._metadata.SerializeToString())
-    super(PaddedBatchDataset, self).__init__(input_dataset, variant_tensor)
-
-  @property
-  def element_spec(self):
-    return self._structure
 
 
 class MapDataset(UnaryDataset):

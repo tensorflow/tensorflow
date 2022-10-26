@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
-#include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
@@ -61,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/async_service_interface.h"
 
 namespace tensorflow {
 
@@ -109,7 +109,7 @@ GrpcServer::~GrpcServer() {
   delete eager_service_;
 
   for (auto& kv : extra_services_) {
-    AsyncServiceInterface* service = kv.second;
+    tsl::AsyncServiceInterface* service = kv.second;
     delete service;
   }
 
@@ -434,7 +434,7 @@ Status GrpcServer::Start() {
 
       for (const auto& kv : extra_services_) {
         const std::string& service_name = kv.first;
-        AsyncServiceInterface* service = kv.second;
+        tsl::AsyncServiceInterface* service = kv.second;
         std::unique_ptr<Thread> extra_service_thread;
         extra_service_thread.reset(env_->StartThread(
             ThreadOptions(), service_name,

@@ -1,5 +1,5 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
@@ -27,12 +27,15 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
+        "launch_func_to_cuda_graph.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
         "lmhlo_to_gpu_launch.cc",
         "lmhlo_to_gpu_runtime.cc",
         "memref_get_global_to_arg.cc",
         "passes.cc",
+        "uid_generator.h",
     ],
     hdrs = ["passes.h"],
     # Override cc_library()'s internal default value of ["//buildenv/target:gce"].`
@@ -40,6 +43,8 @@ cc_library(
     compatible_with = [],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/mlir:name_utils",
+        "//tensorflow/compiler/xla/mlir/ir/runtime:rt",
         "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
@@ -51,7 +56,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithmeticDialect",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:ControlFlowDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:GPUDialect",

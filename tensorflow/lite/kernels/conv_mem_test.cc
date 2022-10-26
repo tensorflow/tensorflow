@@ -16,8 +16,8 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"

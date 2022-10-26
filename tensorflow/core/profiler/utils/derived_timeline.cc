@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/gpu_event_stats.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
@@ -40,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
-#include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/tsl/util/stats_calculator.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -292,7 +293,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
                                std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
-    Stat<uint64_t> stat;
+    tsl::Stat<uint64_t> stat;
 
     void AddEventTimespan(Timespan event_span) {
       if (stat.count() == 0) {
@@ -407,6 +408,7 @@ void DeriveLinesFromStats(XPlane* device_trace) {
     std::optional<absl::string_view> tf_op_name;
     std::optional<absl::string_view> source_info;
     std::optional<uint64_t> group_id;
+    std::optional<uint64_t> is_async;
     auto for_each_stat = [&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kTfOp) {
         tf_op_name = stat.StrOrRefValue();
@@ -414,10 +416,14 @@ void DeriveLinesFromStats(XPlane* device_trace) {
         group_id = stat.IntOrUintValue();
       } else if (stat.Type() == StatType::kSourceInfo) {
         source_info = stat.StrOrRefValue();
+      } else if (stat.Type() == StatType::kIsAsync) {
+        is_async = stat.IntOrUintValue();
       }
     };
     event.Metadata().ForEachStat(for_each_stat);
     event.ForEachStat(for_each_stat);
+
+    if (is_async && *is_async) continue;  // Disregard asynchronous events.
 
     if (tf_op_name && !tf_op_name->empty()) {
       ProcessTfOpEvent(*tf_op_name, event_span, group_id, plane_builder,

@@ -40,7 +40,7 @@ std::ostream& operator<<(std::ostream& out, const BufferValue& buffer) {
     const HloInstruction& instruction, const ShapeIndex& index) {
   LogicalBufferProto::Location proto;
   proto.set_instruction_id(instruction.unique_id());
-  absl::c_copy(index, tensorflow::protobuf::RepeatedFieldBackInserter(
+  absl::c_copy(index, tsl::protobuf::RepeatedFieldBackInserter(
                           proto.mutable_shape_index()));
   return proto;
 }

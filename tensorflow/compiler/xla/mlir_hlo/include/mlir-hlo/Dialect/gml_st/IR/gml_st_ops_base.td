@@ -16,14 +16,18 @@ limitations under the License.
 #ifndef GML_ST_OPS_BASE
 #define GML_ST_OPS_BASE
 
+include "mlir/Dialect/Utils/StructuredOpsUtils.td"
+include "mlir/IR/EnumAttr.td"
 include "mlir/IR/OpBase.td"
 
 def GmlSt_Dialect : Dialect {
   let name = "gml_st";
   let cppNamespace = "::mlir::gml_st";
 
-  let emitAccessorPrefix = kEmitAccessorPrefix_Both;
+  let dependentDialects = ["tensor::TensorDialect"];
+  let emitAccessorPrefix = kEmitAccessorPrefix_Prefixed;
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
   let hasConstantMaterializer = 1;
 }
 
@@ -31,5 +35,12 @@ class GMLST_Op<string mnemonic, list<Trait> traits> :
     Op<GmlSt_Dialect, mnemonic, traits> {
   let hasVerifier = 1;
 }
+
+def IteratorTypeEnum : EnumAttr<GmlSt_Dialect, IteratorType, "iterator_type"> {
+  let assemblyFormat = "`<` $value `>`";
+}
+
+def IteratorTypeArrayAttr : TypedArrayAttrBase<IteratorTypeEnum,
+    "Iterator type should be an enum.">;
 
 #endif // GML_ST_OPS_BASE

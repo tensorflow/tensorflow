@@ -1,9 +1,11 @@
-# Release 2.11.0
+# Release 2.12.0
 
 <INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
 
-* `tensorflow::StatusOr::ConsumeValueOrDie`, deprecated in TF 2.10 has been
-  removed.
+*   `tf.keras`:
+    *   Added `jit_compile` as a settable property to `tf.keras.Model`.
+
+# Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
@@ -16,6 +18,98 @@
 
 # Major Features and Improvements
 
+* `tf.lite`:
+
+  * Add 16-bit float type support for built-in op `fill`.
+
+* `tf.keras`:
+
+  * Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
+    layer. The layer now accepts a new boolean argument `sparse`. If
+    `sparse` is set to True, the layer returns a SparseTensor instead of a
+    dense Tensor. Defaults to False.
+
+# Bug Fixes and Other Changes
+
+* <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
+* <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
+* <NOTES SHOULD BE GROUPED PER AREA>
+
+# Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+<INSERT>, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
+
+# Release 2.11.0
+
+<INSERT SMALL BLURB ABOUT RELEASE FOCUS AREA AND POTENTIAL TOOLCHAIN CHANGES>
+
+* `StatusOr::ConsumeValueOrDie` and `StatusOr::ValueOrDie`, both deprecated in
+  TF 2.10 has been removed.
+
+
+## Breaking Changes
+*   `tf.keras.optimizers.Optimizer` now points to the new Keras optimizer, and
+    old optimizers have moved to the `tf.keras.optimizers.legacy` namespace.
+    If you find your workflow failing due to this change,
+    you may be facing one of the following issues:
+
+    *   **Checkpoint loading failure.** The new optimizer handles optimizer
+        state differently from the old optimizer, which simplies the logic of
+        checkpoint saving/loading, but at the cost of breaking checkpoint
+        backward compatibility in some cases. If you want to keep using an old
+        checkpoint, please change your optimizer to
+        `tf.keras.optimizers.legacy.XXX` (e.g.
+        `tf.keras.optimizers.legacy.Adam`).
+    *   **TF1 compatibility.** The new optimizer does not support TF1 any more,
+        so please use the legacy optimizer `tf.keras.optimizer.legacy.XXX`.
+        We highly recommend to migrate your workflow to TF2 for stable
+        support and new features.
+    *   **API not found.** The new optimizer has a different set of public APIs
+        from the old optimizer. These API changes are mostly related to
+        getting rid of slot variables and TF1 support. Please check the API
+        documentation to find alternatives to the missing API. If you must
+        call the deprecated API, please change your optimizer to the legacy
+        optimizer.
+    *   **Learning rate schedule access.** When using a `LearningRateSchedule`,
+        The new optimizer's `learning_rate` property returns the
+        current learning rate value instead of a `LearningRateSchedule` object
+        as before. If you need to access the `LearningRateSchedule` object,
+        please use `optimizer._learning_rate`.
+    *   **You implemented a custom optimizer based on the old optimizer.**
+        Please set your optimizer to subclass
+        `tf.keras.optimizer.legacy.XXX`. If you want to migrate to the new
+        optimizer and find it does not support your optimizer, please file
+        an issue in the Keras GitHub repo.
+    *   **Error such as `Cannot recognize variable...`.** The new optimizer
+        requires all optimizer variables to be created at the first
+        `apply_gradients()` or `minimize()` call. If your workflow calls
+        optimizer to update different parts of model in multiple stages,
+        please call `optimizer.build(model.trainable_variables)` before the
+        training loop.
+    *   **Performance regression on `ParameterServerStrategy`.** This could be
+        significant if you have many PS servers. We are aware of this issue and
+        working on fixes, for now we suggest using the legacy optimizers when
+        using `ParameterServerStrategy`.
+    *   **Timeout or performance loss.** We don't anticipate this to happen, but
+        if you see such issues, please use the legacy optimizer, and file
+        an issue in the Keras GitHub repo.
+
+    The old Keras optimizer will never be deleted, but will not see any
+    new feature additions.
+    New optimizers (e.g., `Adafactor`) will
+    only be implemented based on `tf.keras.optimizers.Optimizer`, the new
+    base class.
+
+## Known Caveats
+
+* <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
+* <ADDING/BUMPING DEPENDENCIES SHOULD GO HERE>
+* <KNOWN LACK OF SUPPORT ON SOME PLATFORM, SHOULD GO HERE>
+
+## Major Features and Improvements
+
 *   `tf.lite`:
 
     *   New operations supported:
@@ -25,7 +119,49 @@
     *   Updates to existing operations:
           * tfl.mul now supports complex32 inputs.
 
-# Bug Fixes and Other Changes
+*   `tf.experimental.StructuredTensor`
+
+    *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible
+        and Tensorflow-native way to encode structured data such as protocol
+        buffers or pandas dataframes.
+
+*   `tf.keras`:
+
+    *   Added method `get_metrics_result()` to `tf.keras.models.Model`.
+        *   Returns the current metrics values of the model as a dict.
+    *   Added group normalization layer `tf.keras.layers.GroupNormalization`.
+    *   Added weight decay support for all Keras optimizers.
+    *   Added Adafactor optimizer `tf.keras.optimizers.Adafactor`.
+    *   Added `warmstart_embedding_matrix` to `tf.keras.utils`.
+        This utility can be used to warmstart an embeddings matrix so you
+        reuse previously-learned word embeddings when working with a new set
+        of words which may include previously unseen words (the embedding
+        vectors for unseen words will be randomly initialized).
+
+*   `tf.Variable`:
+
+    *   Added `CompositeTensor` as a baseclass to `ResourceVariable`. This
+        allows `tf.Variable`s to be nested in `tf.experimental.ExtensionType`s.
+    *   Added a new constructor argument `experimental_enable_variable_lifting`
+        to `tf.Variable`, defaulting to True. When it's `False`, the variable
+        won't be lifted out of `tf.function`, thus it can be used as a
+        `tf.function`-local variable: during each execution of the
+        `tf.function`, the variable will be created and then disposed, similar
+        to a local (i.e. stack-allocated) variable in C/C++. Currently
+        `experimental_enable_variable_lifting=False` only works on non-XLA
+        devices (e.g. under `@tf.function(jit_compile=False)`).
+
+*   TF SavedModel:
+    *   Added `fingerprint.pb` to the SavedModel directory. The `fingerprint.pb`
+        file is a protobuf containing the "fingerprint" of the SavedModel. See
+        the [RFC](https://github.com/tensorflow/community/pull/415) for more
+        details regarding its design and properties.
+  
+*   `tf.data`:
+    *   Graduated experimental APIs:
+        * [`tf.data.Dataset.ragged_batch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ragged_batch), which batches elements of `tf.data.Dataset`s into `tf.RaggedTensor`s.
+
+## Bug Fixes and Other Changes
 
 *   `tf.image`
     *   Added an optional parameter `return_index_map` to `tf.image.ssim` which
@@ -36,8 +172,15 @@
 
     *   `tf.custom_gradient` can now be applied to functions that accept
         "composite" tensors, such as `tf.RaggedTensor`, as inputs.
+    *   Fix device placement issues related to datasets with ragged tensors of
+        strings (i.e. variant encoded data with types not supported on GPU).
+    *   'experimental_follow_type_hints' for tf.function has been deprecated.
+        Please use input_signature or reduce_retracing to minimize retracing.
 
-# Thanks to our Contributors
+*   `tf.SparseTensor`:
+    *   Introduced `set_shape`, which sets the static dense shape of the sparse tensor and has the same semantics as `tf.Tensor.set_shape`.
+
+## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
@@ -47,111 +190,240 @@ This release contains contributions from many people at Google, as well as:
 
 ## Breaking Changes
 
-*   Causal attention in `keras.layers.Attention` and `keras.layers.AdditiveAttention` is now specified in the `call()` method via the `use_causal_mask` argument (rather than in the constructor), for consistency with other layers.
-*   Some files in `tensorflow/python/training` have been moved to `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please update your imports accordingly, the old files will be removed in Release 2.11.
-*   `tf.keras.optimizers.experimental.Optimizer` will graduate in Release 2.11, which means `tf.keras.optimizers.Optimizer` will be an alias of `tf.keras.optimizers.experimental.Optimizer`. The current `tf.keras.optimizers.Optimizer` will continue to be supported as `tf.keras.optimizers.legacy.Optimizer`, e.g.,`tf.keras.optimizers.legacy.Adam`. Most users won't be affected by this change, but please check the [API doc](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental) if any API used in your workflow is changed or deprecated, and make adaptions. If you decide to keep using the old optimizer, please explicitly change your optimizer to `tf.keras.optimizers.legacy.Optimizer`.
-*   RNG behavior change for `tf.keras.initializers`. Keras initializers will now use stateless random ops to generate random numbers.
-    *   Both seeded and unseeded initializers will always generate the same values every time they are called (for a given variable shape). For unseeded initializers (`seed=None`), a random seed will be created and assigned at initializer creation (different initializer instances get different seeds).
-    *   An unseeded initializer will raise a warning if it is reused (called) multiple times. This is because it would produce the same values each time, which may not be intended.
+*   Causal attention in `keras.layers.Attention` and
+    `keras.layers.AdditiveAttention` is now specified in the `call()` method via
+    the `use_causal_mask` argument (rather than in the constructor), for
+    consistency with other layers.
+*   Some files in `tensorflow/python/training` have been moved to
+    `tensorflow/python/tracking` and `tensorflow/python/checkpoint`. Please
+    update your imports accordingly, the old files will be removed in Release
+    2.11.
+*   `tf.keras.optimizers.experimental.Optimizer` will graduate in Release 2.11,
+    which means `tf.keras.optimizers.Optimizer` will be an alias of
+    `tf.keras.optimizers.experimental.Optimizer`. The current
+    `tf.keras.optimizers.Optimizer` will continue to be supported as
+    `tf.keras.optimizers.legacy.Optimizer`,
+    e.g.,`tf.keras.optimizers.legacy.Adam`. Most users won't be affected by this
+    change, but please check the
+    [API doc](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental)
+    if any API used in your workflow is changed or deprecated, and make
+    adaptations. If you decide to keep using the old optimizer, please
+    explicitly change your optimizer to `tf.keras.optimizers.legacy.Optimizer`.
+*   RNG behavior change for `tf.keras.initializers`. Keras initializers will now
+    use stateless random ops to generate random numbers.
+    *   Both seeded and unseeded initializers will always generate the same
+        values every time they are called (for a given variable shape). For
+        unseeded initializers (`seed=None`), a random seed will be created and
+        assigned at initializer creation (different initializer instances get
+        different seeds).
+    *   An unseeded initializer will raise a warning if it is reused (called)
+        multiple times. This is because it would produce the same values each
+        time, which may not be intended.
 *   API changes under `tf.experimental.dtensor`:
-    * New API for initialization of CPU/GPU/TPU in dtensor.
-      `dtensor.initialize_accelerator_system` and
-      `dtensor.shutdown_accelerator_system`.
-    * The following existing API will be removed:
-      `dtensor.initialize_multi_client`, `dtensor.initialize_tpu_system`, and
-      `dtensor.shutdown_tpu_system`.
+    *   New API for initialization of CPU/GPU/TPU in dtensor.
+        `dtensor.initialize_accelerator_system` and
+        `dtensor.shutdown_accelerator_system`.
+    *   The following existing API will be removed:
+        `dtensor.initialize_multi_client`, `dtensor.initialize_tpu_system`, and
+        `dtensor.shutdown_tpu_system`.
 
 ## Deprecations
 
-*   The C++ `tensorflow::Code` and `tensorflow::Status` will become aliases of respectively `absl::StatusCode` and `absl::Status` in some future release.
+*   The C++ `tensorflow::Code` and `tensorflow::Status` will become aliases of
+    respectively `absl::StatusCode` and `absl::Status` in some future release.
     *   Use `tensorflow::OkStatus()` instead of `tensorflow::Status::OK()`.
     *   Stop constructing `Status` objects from `tensorflow::error::Code`.
-    *   One MUST NOT access `tensorflow::errors::Code` fields. Accessing `tensorflow::error::Code` fields is fine.
-        *   Use the constructors such as `tensorflow::errors:InvalidArgument` to create status using an error  code without accessing it.
-        *   Use the free functions such as `tensorflow::errors::IsInvalidArgument` if needed.
-        *   In the last resort, use e.g.`static_cast<tensorflow::errors::Code>(error::Code::INVALID_ARGUMENT)` or `static_cast<int>(code)` for comparisons.
-*   `tensorflow::StatusOr` will also become in the future alias to `absl::StatusOr`, so use `StatusOr::value` instead of `StatusOr::ConsumeValueOrDie`.
+    *   One MUST NOT access `tensorflow::errors::Code` fields. Accessing
+        `tensorflow::error::Code` fields is fine.
+        *   Use the constructors such as `tensorflow::errors:InvalidArgument` to
+            create status using an error code without accessing it.
+        *   Use the free functions such as
+            `tensorflow::errors::IsInvalidArgument` if needed.
+        *   In the last resort, use
+            e.g.`static_cast<tensorflow::errors::Code>(error::Code::INVALID_ARGUMENT)`
+            or `static_cast<int>(code)` for comparisons.
+*   `tensorflow::StatusOr` will also become in the future an alias to
+    `absl::StatusOr`, so use `StatusOr::value` instead of
+    `StatusOr::ConsumeValueOrDie`.
 
 ## Major Features and Improvements
 
 *   `tf.lite`:
 
     *   New operations supported:
-          * tflite SelectV2 now supports 5D.
-          * tf.einsum is supported with multiple unknown shapes.
-          * tf.unsortedsegmentprod op is supported.
-          * tf.unsortedsegmentmax op is supported.
-          * tf.unsortedsegmentsum op is supported.
+        *   tflite SelectV2 now supports 5D.
+        *   `tf.einsum` is supported with multiple unknown shapes.
+        *   `tf.unsortedsegmentprod` op is supported.
+        *   `tf.unsortedsegmentmax` op is supported.
+        *   `tf.unsortedsegmentsum` op is supported.
     *   Updates to existing operations:
-          * tfl.scatter_nd now supports I1 for update arg.
+        *   `tfl.scatter_nd` now supports I1 for the `update` arg.
     *   Upgrade Flatbuffers v2.0.5 from v1.12.0
 
 *   `tf.keras`:
 
-    *   `EinsumDense` layer is moved from experimental to core. Its import path is moved from `tf.keras.layers.experimental.EinsumDense` to `tf.keras.layers.EinsumDense`.
-    *   Added `tf.keras.utils.audio_dataset_from_directory` utility to easily generate audio classification datasets from directories of `.wav` files.
-    *   Added `subset="both"` support in `tf.keras.utils.image_dataset_from_directory`,`tf.keras.utils.text_dataset_from_directory`, and `audio_dataset_from_directory`, to be used with the `validation_split` argument, for returning both dataset splits at once, as a tuple.
-    *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
-    *   Added step granularity to `BackupAndRestore` callback for handling distributed training failures & restarts. The training state can now be restored at the exact epoch and step at which it was previously saved before failing.
-    *   Added [`tf.keras.dtensor.experimental.optimizers.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/dtensor/experimental/optimizers/AdamW). This optimizer is similar as the existing [`keras.optimizers.experimental.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental/AdamW), and works in the DTensor training use case.
-    *   Improved masking support for [`tf.keras.layers.MultiHeadAttention`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/MultiHeadAttention).
-        *   Implicit masks for `query`, `key` and `value` inputs will automatically be used to compute a correct attention mask for the layer. These padding masks will be combined with any `attention_mask` passed in directly when calling the layer. This can be used with [`tf.keras.layers.Embedding`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/Embedding) with `mask_zero=True` to automatically infer a correct padding mask.
-        *   Added a `use_causal_mask` call time arugment to the layer. Passing `use_causal_mask=True` will compute a causal attention mask, and optionally combine it with any `attention_mask` passed in directly when calling the layer.
-    *   Added `ignore_class` argument in the loss `SparseCategoricalCrossentropy` and metrics `IoU` and `MeanIoU`, to specify a class index to be ignored during loss/metric computation (e.g. a background/void class).
-    *   Added [`tf.keras.models.experimental.SharpnessAwareMinimization`](https://www.tensorflow.org/api_docs/python/tf/keras/models/experimental/SharpnessAwareMinimization). This class implements the sharpness-aware minimization technique, which boosts model performance on various tasks, e.g., ResNet on image classification.
+    *   `EinsumDense` layer is moved from experimental to core. Its import path
+        is moved from `tf.keras.layers.experimental.EinsumDense` to
+        `tf.keras.layers.EinsumDense`.
+    *   Added `tf.keras.utils.audio_dataset_from_directory` utility to easily
+        generate audio classification datasets from directories of `.wav` files.
+    *   Added `subset="both"` support in
+        `tf.keras.utils.image_dataset_from_directory`,`tf.keras.utils.text_dataset_from_directory`,
+        and `audio_dataset_from_directory`, to be used with the
+        `validation_split` argument, for returning both dataset splits at once,
+        as a tuple.
+    *   Added `tf.keras.utils.split_dataset` utility to split a `Dataset` object
+        or a list/tuple of arrays into two `Dataset` objects (e.g. train/test).
+    *   Added step granularity to `BackupAndRestore` callback for handling
+        distributed training failures & restarts. The training state can now be
+        restored at the exact epoch and step at which it was previously saved
+        before failing.
+    *   Added
+        [`tf.keras.dtensor.experimental.optimizers.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/dtensor/experimental/optimizers/AdamW).
+        This optimizer is similar to the existing
+        [`keras.optimizers.experimental.AdamW`](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/experimental/AdamW),
+        and works in the DTensor training use case.
+    *   Improved masking support for
+        [`tf.keras.layers.MultiHeadAttention`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/MultiHeadAttention).
+        *   Implicit masks for `query`, `key` and `value` inputs will
+            automatically be used to compute a correct attention mask for the
+            layer. These padding masks will be combined with any
+            `attention_mask` passed in directly when calling the layer. This can
+            be used with
+            [`tf.keras.layers.Embedding`](https://www.tensorflow.org/api_docs/python/tf/keras/layers/Embedding)
+            with `mask_zero=True` to automatically infer a correct padding mask.
+        *   Added a `use_causal_mask` call time argument to the layer. Passing
+            `use_causal_mask=True` will compute a causal attention mask, and
+            optionally combine it with any `attention_mask` passed in directly
+            when calling the layer.
+    *   Added `ignore_class` argument in the loss
+        `SparseCategoricalCrossentropy` and metrics `IoU` and `MeanIoU`, to
+        specify a class index to be ignored during loss/metric computation (e.g.
+        a background/void class).
+    *   Added
+        [`tf.keras.models.experimental.SharpnessAwareMinimization`](https://www.tensorflow.org/api_docs/python/tf/keras/models/experimental/SharpnessAwareMinimization).
+        This class implements the sharpness-aware minimization technique, which
+        boosts model performance on various tasks, e.g., ResNet on image
+        classification.
 
 *   `tf.data`:
 
-    *   Added support for cross-trainer data caching in tf.data service. This saves computation resources when concurrent training jobs train from the same dataset. See (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers) for more details.
-    *   Added `dataset_id` to `tf.data.experimental.service.register_dataset`. If provided, `tf.data` service will use the provided ID for the dataset. If the dataset ID already exists, no new dataset will be registered. This is useful if multiple training jobs need to use the same dataset for training. In this case, users should call `register_dataset` with the same `dataset_id`.
-    *   Added a new field, `inject_prefetch`, to `tf.data.experimental.OptimizationOptions`. If it is set to `True`,`tf.data` will now automatically add a `prefetch` transformation to datasets that end in synchronous transformations. This enables data generation to be overlapped with  data consumption. This may cause a small increase in memory usage due to buffering. To enable this behavior, set `inject_prefetch=True` in `tf.data.experimental.OptimizationOptions`.
-    *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`: STAGE_BASED. If the autotune algorithm is set to STAGE_BASED, then it runs a new algorithm that can get the same performance with lower CPU/memory usage.
-    *   Added [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list), a new API for creating `Dataset`s from lists of elements.
+    *   Added support for cross-trainer data caching in tf.data service. This
+        saves computation resources when concurrent training jobs train from the
+        same dataset. See
+        (https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#sharing_tfdata_service_with_concurrent_trainers)
+        for more details.
+    *   Added `dataset_id` to `tf.data.experimental.service.register_dataset`.
+        If provided, `tf.data` service will use the provided ID for the dataset.
+        If the dataset ID already exists, no new dataset will be registered.
+        This is useful if multiple training jobs need to use the same dataset
+        for training. In this case, users should call `register_dataset` with
+        the same `dataset_id`.
+    *   Added a new field, `inject_prefetch`, to
+        `tf.data.experimental.OptimizationOptions`. If it is set to
+        `True`,`tf.data` will now automatically add a `prefetch` transformation
+        to datasets that end in synchronous transformations. This enables data
+        generation to be overlapped with data consumption. This may cause a
+        small increase in memory usage due to buffering. To enable this
+        behavior, set `inject_prefetch=True` in
+        `tf.data.experimental.OptimizationOptions`.
+    *   Added a new value to `tf.data.Options.autotune.autotune_algorithm`:
+        `STAGE_BASED`. If the autotune algorithm is set to `STAGE_BASED`, then
+        it runs a new algorithm that can get the same performance with lower
+        CPU/memory usage.
+    *   Added
+        [`tf.data.experimental.from_list`](https://www.tensorflow.org/api_docs/python/tf/data/experimental/from_list),
+        a new API for creating `Dataset`s from lists of elements.
     *   Graduated experimental APIs:
-        * [`tf.data.Dataset.counter`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#counter), which creates `Dataset`s of indefinite sequences of numbers.
-        * [`tf.data.Dataset.ignore_errors`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ignore_errors), which drops erroneous elements from `Dataset`s.
-    *   Added [`tf.data.Dataset.rebatch](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#rebatch), a new API for rebatching the elements of a dataset.
+        *   [`tf.data.Dataset.counter`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#counter),
+            which creates `Dataset`s of indefinite sequences of numbers.
+        *   [`tf.data.Dataset.ignore_errors`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset/#ignore_errors),
+            which drops erroneous elements from `Dataset`s.
+    *   Added
+        [`tf.data.Dataset.rebatch`](https://www.tensorflow.org/api_docs/python/tf/data/Dataset#rebatch),
+        a new API for rebatching the elements of a dataset.
 
 *   `tf.distribute`:
 
-    *   Added [`tf.distribute.experimental.PreemptionCheckpointHandler`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/PreemptionCheckpointHandler) to handle worker preemption/maintenance and cluster-wise consistent error reporting for `tf.distribute.MultiWorkerMirroredStrategy`. Specifically, for the type of interruption with advance notice, it automatically saves a checkpoint, exits the program without raising an unrecoverable error, and restores the progress when training restarts.
+    *   Added
+        [`tf.distribute.experimental.PreemptionCheckpointHandler`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/PreemptionCheckpointHandler)
+        to handle worker preemption/maintenance and cluster-wise consistent
+        error reporting for `tf.distribute.MultiWorkerMirroredStrategy`.
+        Specifically, for the type of interruption with advance notice, it
+        automatically saves a checkpoint, exits the program without raising an
+        unrecoverable error, and restores the progress when training restarts.
 
 *   `tf.math`:
 
-    *   Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the optimized alternatives to `tf.math.top_k` on TPU. The performance difference range from 8 to 100 times depending on the size of k. When running on CPU and GPU, a non-optimized XLA kernel is used.
+    *   Added `tf.math.approx_max_k` and `tf.math.approx_min_k` which are the
+        optimized alternatives to `tf.math.top_k` on TPU. The performance
+        difference ranges from 8 to 100 times depending on the size of k. When
+        running on CPU and GPU, a non-optimized XLA kernel is used.
 
 *   `tf.train`:
 
-    *  Added `tf.train.TrackableView` which allows users to inspect the TensorFlow Trackable object (e.g. `tf.Module`, Keras Layers and models).
+    *   Added `tf.train.TrackableView` which allows users to inspect the
+        TensorFlow Trackable object (e.g. `tf.Module`, Keras Layers and models).
 
 *   `tf.vectorized_map`:
 
-    *   Added an optional parameter: `warn`. This parameter controls whether or not warnings will be printed when operations in the provided `fn` fall back to a while loop.
+    *   Added an optional parameter: `warn`. This parameter controls whether or
+        not warnings will be printed when operations in the provided `fn` fall
+        back to a while loop.
 
 *   XLA:
-    *   MWMS is now compilable with XLA.
-    *   [Compute Library for the Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary) is supported for aarch64 CPU XLA runtime
+
+    *   `tf.distribute.MultiWorkerMirroredStrategy` is now compilable with XLA.
+    *   [Compute Library for the Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary)
+        is supported for aarch64 CPU XLA runtime
 
 *   CPU performance optimizations:
-    *   **x86 CPUs**: [oneDNN](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md) bfloat16 auto-mixed precision grappler graph optimization pass has been renamed from `auto_mixed_precision_mkl` to `auto_mixed_precision_onednn_bfloat16`. See example usage [here](https://www.intel.com/content/www/us/en/developer/articles/guide/getting-started-with-automixedprecisionmkl.html).  
-    *   **aarch64 CPUs:** Experimental performance optimizations from [Compute Library for the Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary) are available through oneDNN in the default Linux aarch64 package (`pip install tensorflow`).
+
+    *   **x86 CPUs**:
+        [oneDNN](https://github.com/tensorflow/community/blob/master/rfcs/20210930-enable-onednn-ops.md)
+        bfloat16 auto-mixed precision grappler graph optimization pass has been
+        renamed from `auto_mixed_precision_mkl` to
+        `auto_mixed_precision_onednn_bfloat16`. See example usage
+        [here](https://www.intel.com/content/www/us/en/developer/articles/guide/getting-started-with-automixedprecisionmkl.html).
+    *   **aarch64 CPUs:** Experimental performance optimizations from
+        [Compute Library for the Arm® Architecture (ACL)](https://github.com/ARM-software/ComputeLibrary)
+        are available through oneDNN in the default Linux aarch64 package (`pip
+        install tensorflow`).
         *   The optimizations are disabled by default.
-        *   Set the environment variable `TF_ENABLE_ONEDNN_OPTS=1` to enable the optimizations. Setting the variable to 0 or unsetting it will disable the optimizations.
-        *   These optimizations can yield slightly different numerical results from when they are off due to floating-point round-off errors from different computation approaches and orders.
-        *   To verify that the optimizations are on, look for a message with "*oneDNN custom operations are on*" in the log. If the exact phrase is not there, it means they are off.
+        *   Set the environment variable `TF_ENABLE_ONEDNN_OPTS=1` to enable the
+            optimizations. Setting the variable to 0 or unsetting it will
+            disable the optimizations.
+        *   These optimizations can yield slightly different numerical results
+            from when they are off due to floating-point round-off errors from
+            different computation approaches and orders.
+        *   To verify that the optimizations are on, look for a message with
+            "*oneDNN custom operations are on*" in the log. If the exact phrase
+            is not there, it means they are off.
 
 ## Bug Fixes and Other Changes
 
-*  New argument `experimental_device_ordinal` in `LogicalDeviceConfiguration` to control the order of logical devices. (GPU only)
+*   New argument `experimental_device_ordinal` in `LogicalDeviceConfiguration`
+    to control the order of logical devices (GPU only).
 
 *   `tf.keras`:
 
-    *   Changed the TensorBoard tag names produced by the `tf.keras.callbacks.TensorBoard` callback, so that summaries logged automatically for model weights now include either a `/histogram` or `/image` suffix in their tag names, in order to prevent tag name collisions across summary types.
+    *   Changed the TensorBoard tag names produced by the
+        `tf.keras.callbacks.TensorBoard` callback, so that summaries logged
+        automatically for model weights now include either a `/histogram` or
+        `/image` suffix in their tag names, in order to prevent tag name
+        collisions across summary types.
 
-*   When running on GPU (with cuDNN version 7.6.3 or later),`tf.nn.depthwise_conv2d` backprop to `filter` (and therefore also `tf.keras.layers.DepthwiseConv2D`) now operate deterministically (and `tf.errors.UnimplementedError` is no longer thrown) when op-determinism has been enabled via `tf.config.experimental.enable_op_determinism`. This closes issue [47174](https://github.com/tensorflow/tensorflow/issues/47174).
+*   When running on GPU (with cuDNN version 7.6.3 or
+    later),`tf.nn.depthwise_conv2d` backprop to `filter` (and therefore also
+    `tf.keras.layers.DepthwiseConv2D`) now operate deterministically (and
+    `tf.errors.UnimplementedError` is no longer thrown) when op-determinism has
+    been enabled via `tf.config.experimental.enable_op_determinism`. This closes
+    issue [47174](https://github.com/tensorflow/tensorflow/issues/47174).
 
-* `tf.random`
-    * Added `tf.random.experimental.stateless_shuffle`, a stateless version of `tf.random.shuffle`.
+*   `tf.random`
+
+    *   Added `tf.random.experimental.stateless_shuffle`, a stateless version of
+        `tf.random.shuffle`.
 
 ## Security
 

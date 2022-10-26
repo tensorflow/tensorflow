@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <numeric>
+#include <optional>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
@@ -631,8 +633,10 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64_t output[10][10];
   int init = 5;
-  auto set_func = [&](absl::Span<const int64_t> indexes, int /*thread_id*/) {
+  auto set_func = [&](absl::Span<const int64_t> indexes,
+                      int /*thread_id*/) -> StatusOr<bool> {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
+    return true;
   };
 
   ShapeUtil::ForEachIndexParallel(shape, /*base=*/{0, 0}, /*count=*/{10, 10},
@@ -804,6 +808,31 @@ TEST(ShapeUtilTest, DeleteDimensions) {
   EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {5, 2}, {1, 0}));
 }
 
+TEST(ShapeUtilTest, MakeShapeWithDescendingLayoutAndSamePhysicalLayout) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {128, 24, 4, 48, 48},
+                                               {2, 4, 3, 1, 0});
+  Shape new_shape =
+      ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(shape);
+  EXPECT_EQ(new_shape, ShapeUtil::MakeShapeWithLayout(F32, {128, 24, 48, 48, 4},
+                                                      {4, 3, 2, 1, 0}));
+}
+
+TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcast) {
+  Shape input_shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0});
+  Shape output_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {0, 1});
+  std::vector<int64_t> expected_permutation = {1, 0};
+  EXPECT_EQ(std::make_optional(expected_permutation),
+            ShapeUtil::DeduceTransposeDimensionsForBitcast(input_shape,
+                                                           output_shape));
+}
+
+TEST(ShapeUtilTest, DeduceTransposeDimensionsForBitcastNegative) {
+  Shape input_shape = ShapeUtil::MakeShapeWithLayout(F32, {5, 3}, {1, 0});
+  Shape output_shape = ShapeUtil::MakeShapeWithLayout(F32, {3, 5}, {1, 0});
+  EXPECT_EQ(std::nullopt, ShapeUtil::DeduceTransposeDimensionsForBitcast(
+                              input_shape, output_shape));
+}
+
 TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape shape =
       ShapeUtil::MakeShapeWithLayout(F32, {5, 3, 2, 7, 9}, {2, 0, 1, 4, 3});
@@ -811,6 +840,63 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   Shape b = ShapeUtil::DeleteDimensions({3, 2, 1}, shape);
   EXPECT_EQ(a, b);
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithLayout(F32, {5, 9}, {0, 1}));
+}
+
+TEST(ShapeUtilTest, B_250640044) {
+  // This case failed the fuzzer; see b/250640044.
+  ShapeProto proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(element_type: TUPLE
+           tuple_shapes {
+             element_type: S8
+             dimensions: 137438953472
+             layout {
+               minor_to_major: 0
+               dim_level_types: DIM_COMPRESSED
+               physical_shape {
+                 element_type: TUPLE
+                 tuple_shapes {}
+               }
+             }
+             is_dynamic_dimension: false
+           })pb",
+      &proto));
+  Shape shape(proto);
+  EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+}
+
+TEST(ShapeUtilTest, B_251055887) {
+  // This case failed the fuzzer; see b/251055887.
+  ShapeProto proto;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        element_type: S8
+        dimensions: 0
+        dimensions: 8
+        dimensions: 0
+        dimensions: 0
+        dimensions: 4
+        dimensions: 1
+        dimensions: 1
+        dimensions: 6
+        dimensions: 281474976710657
+        dimensions: 1
+        layout {
+          minor_to_major: 1
+          minor_to_major: 3
+          minor_to_major: 0
+          minor_to_major: 5
+          minor_to_major: 4
+          minor_to_major: 6
+          minor_to_major: 8
+          minor_to_major: 7
+          minor_to_major: 6
+          minor_to_major: 9
+          physical_shape { element_type: -562 }
+        })pb",
+      &proto));
+  Shape shape(proto);
+  EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
 }
 
 TEST(Transpose021Test, NoTranspose) {
@@ -844,12 +930,30 @@ TEST(Transpose021Test, LargeView) {
             ShapeUtil::FindTranspose021(input_shape, output_shape));
 }
 
+TEST(Transpose021Test, LargeSizeOverflowTest) {
+  Shape input_shape =
+      ShapeUtil::MakeShapeWithLayout(BF16, {4096, 4096, 128}, {2, 1, 0});
+  Shape output_shape =
+      ShapeUtil::MakeShapeWithLayout(BF16, {4096, 4096, 128}, {2, 1, 0});
+  EXPECT_EQ(std::nullopt,
+            ShapeUtil::FindTranspose021(input_shape, output_shape));
+}
+
 TEST(Transpose021Test, Batched) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {2, 1, 0});
   Shape transposed =
       ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {1, 0, 2});
   EXPECT_EQ(std::make_optional(Vector3{1, 64, 96}),
             ShapeUtil::FindTranspose021(shape, transposed));
+}
+
+TEST(Transpose021Test, BatchedLogical) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {32, 3, 64}, {2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithLayout(F32, {64, 32, 3}, {2, 1, 0});
+  std::vector<int64_t> dimensions = {2, 0, 1};
+  EXPECT_EQ(std::make_optional(Vector3{1, 64, 96}),
+            ShapeUtil::FindLogicalTranspose021(shape, transposed, dimensions));
 }
 
 TEST(Transpose021Test, Large) {

@@ -134,13 +134,14 @@ def copy_to_mesh(
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
     layout: Target layout (and mesh) for the result DTensor.
-    source_layout: Source layout of the tensor before copy, used for backward
-      passes.
+    source_layout: Source layout of the tensor before copy. This argument
+      is deprecated.
 
   Returns:
     A DTensor on the DTensor device with the given layout.
   """
-  return _dtensor_device().copy_to_mesh(tensor, layout, source_layout)
+  del source_layout
+  return _dtensor_device().copy_to_mesh(tensor, layout)
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -497,3 +498,33 @@ def _reset() -> None:
     _dtensor_singleton.clear_tpu_core_ids()
   with _dtensor_singleton_lock:
     _dtensor_singleton = None
+
+
+# ----------------------------------------------------------------------------
+# Gradients
+
+
+@ops.RegisterGradient("Relayout")
+def _relayout_gradient(op, grad):
+  del op
+  return grad
+
+
+@ops.RegisterGradient("CopyToMesh")
+def _copy_to_mesh_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
+      grad,
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("layout"),
+  )
+  return grad
+
+
+@ops.RegisterGradient("CopyToMeshGrad")
+def _copy_to_mesh_grad_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
+      grad,
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("reference_layout"),
+  )
+  return grad, None

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cudnn_version.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/error.h"
@@ -48,11 +47,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/core/util/determinism.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/use_cudnn.h"
+#include "tensorflow/tsl/cuda/cudnn_version.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/tensor_float_32_utils.h"
+#include "tensorflow/tsl/util/determinism.h"
+#include "tensorflow/tsl/util/env_var.h"
+
 // clang-format off
 #include "third_party/gpus/cudnn/cudnn.h"
 #if CUDNN_VERSION >= 8100 && TF_ENABLE_CUDNN_FRONTEND
@@ -803,9 +803,9 @@ const json* CudnnExecutionPlanEngineFilterRuntime() {
 bool BatchnormSpatialPersistentEnabled() {
   static bool is_enabled = [] {
     bool is_enabled = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
-        "TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT",
-        /*default_val=*/false, &is_enabled));
+    TF_CHECK_OK(
+        tsl::ReadBoolFromEnvVar("TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT",
+                                /*default_val=*/false, &is_enabled));
     return is_enabled;
   }();
   return is_enabled;
@@ -815,21 +815,20 @@ bool RequireCudnnDeterminism() {
   static bool require_cudnn_determinism = [] {
     // TODO(reedwm): Remove the TF_CUDNN_DETERMINISTIC env var.
     bool cudnn_deterministic = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
-                                               /*default_val=*/false,
-                                               &cudnn_deterministic));
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_CUDNN_DETERMINISTIC",
+                                        /*default_val=*/false,
+                                        &cudnn_deterministic));
     return cudnn_deterministic;
   }();
-  return tensorflow::OpDeterminismRequired() || require_cudnn_determinism;
+  return tsl::OpDeterminismRequired() || require_cudnn_determinism;
 }
 
 // A helper function to decide whether to force the default conv algorithm.
 bool ConvUseDefaultAlgorithm() {
   static bool use_default = [] {
     bool use_default = false;
-    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_USE_DEFAULT_CONV_ALGO",
-                                               /*default_val=*/false,
-                                               &use_default));
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_DEFAULT_CONV_ALGO",
+                                        /*default_val=*/false, &use_default));
     return use_default;
   }();
   return use_default;
@@ -2026,7 +2025,7 @@ port::Status CudnnSupport::DoRnnForwardImpl(
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 #endif
   TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace,
@@ -2259,7 +2258,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
     }
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 #endif
   TF_ASSIGN_OR_RETURN(DeviceMemory<uint8_t> workspace,
@@ -4664,7 +4663,7 @@ class CudnnExecutionPlanRunner<void(Args...)>
               << timer->GetElapsedMilliseconds() << "ms";
     }
 
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
   static port::StatusOr<CudnnExecutionPlanRunner> Create(
@@ -4858,7 +4857,7 @@ port::Status CreateOpRunners(
 
   VLOG(4) << "\nReturned execution plans size: " << out_runners->size();
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 }  // namespace

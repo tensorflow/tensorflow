@@ -28,14 +28,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/pjrt_client_registry.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/test.h"
 
@@ -90,7 +92,8 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       reference_runner_(reference_platform),
       verifier_layout_sensitive_(verifier_layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(
-          allow_mixed_precision_in_hlo_verifier) {
+          allow_mixed_precision_in_hlo_verifier),
+      test_platform_(test_platform) {
   hlo_verifier_ = std::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
@@ -240,9 +243,26 @@ Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
       .value();
 }
 
+StatusOr<std::unique_ptr<HloRunnerInterface>> HloTestBase::GetHloRunner() {
+  if (runner_ != nullptr) {
+    return std::move(runner_);
+  }
+  StatusOr<std::unique_ptr<HloRunnerInterface>> status_or_runner =
+      GetHloRunnerForTest(test_platform_);
+
+  // Test for successful creation of PjRt based Hlo Runner.
+  EXPECT_TRUE(status_or_runner.ok());
+
+  return std::move(status_or_runner.value());
+}
+
 Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
-  return test_runner_.Execute(std::move(module), arguments).value();
+  auto hlo_runner = GetHloRunner();
+
+  return hlo_runner.value()
+      ->Execute(std::move(module), arguments, true, nullptr)
+      .value();
 }
 
 StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
@@ -761,6 +781,36 @@ Backend& HloTestBase::backend() { return test_runner_.backend(); }
 /* static */
 std::string HloTestBase::TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+}
+
+void HloTestBase::MatchOptimizedHlo(absl::string_view hlo,
+                                    absl::string_view pattern,
+                                    bool print_operand_shape) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(hlo));
+  HloPrintOptions print_opts;
+  print_opts.set_print_operand_shape(print_operand_shape);
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(optimized_module->ToString(print_opts), pattern);
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(filecheck_result.value());
+}
+
+StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
+    absl::string_view hlo) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
+  return backend().compiler()->RunHloPasses(
+      std::move(module), backend().default_stream_executor(),
+      backend().default_stream_executor()->GetAllocator());
+}
+
+StatusOr<std::unique_ptr<HloModule>> HloTestBase::GetOptimizedModule(
+    std::unique_ptr<HloModule> hlo_module) {
+  return backend().compiler()->RunHloPasses(
+      std::move(hlo_module), backend().default_stream_executor(),
+      backend().default_stream_executor()->GetAllocator());
 }
 
 }  // namespace xla

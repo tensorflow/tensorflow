@@ -27,13 +27,13 @@ namespace tensorflow {
 namespace profiler {
 
 // Convert HLO proto to tool specific data.
-// <options> must provide a "hlo_module_name" field to identify which HLO proto
+// <options> must provide a "module_name" field to identify which HLO proto
 // is used for the conversion.
 // Return the serialized string of tool specific data when the conversion is
 // successful, else return an error status.
 StatusOr<std::string> ConvertHloProtoToToolData(
     const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
-    const ToolOptions& options);
+    const HloToolOptions& options);
 
 }  // namespace profiler
 }  // namespace tensorflow

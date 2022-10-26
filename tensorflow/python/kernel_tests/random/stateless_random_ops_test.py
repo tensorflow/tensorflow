@@ -105,7 +105,9 @@ def float_cases(shape_dtypes=(None,)):
     device_type = get_device().device_type
     # Some dtypes are not supported on some devices
     if (dtype == dtypes.float16 and device_type in ('XLA_GPU', 'XLA_CPU') or
-        dtype == dtypes.bfloat16 and device_type == 'GPU'):
+        dtype == dtypes.bfloat16 and device_type == 'GPU' and
+        not test_util.is_gpu_available(
+            cuda_only=True, min_cuda_compute_capability=(8, 0))):
       dtype = dtypes.float32
     shape_ = (constant_op.constant(shape, dtype=shape_dtype)
               if shape_dtype is not None else shape)

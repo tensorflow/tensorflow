@@ -225,7 +225,7 @@ class ShapeEqualityKnowledge {
         // Construct a symbol representing the allocated shape.
         SmallVector<ValueOrConst, 4> shape;
         ShapedType type = alloc.getResult().getType().cast<ShapedType>();
-        fillShapeFromAllocLike(alloc.dyn_sizes(), type, shape);
+        fillShapeFromAllocLike(alloc.getDynSizes(), type, shape);
         registerAssociation(ShapeValue{shape}, alloc.getResult());
         return;
       }
@@ -323,14 +323,14 @@ struct PropagateShapeKnowledgeToKernels
 
     getOperation().walk([&](gpu::LaunchFuncOp launch) {
       auto module = launch->getParentOfType<ModuleOp>();
-      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
+      auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.getKernel());
 
       if (!kernel || kernel.isExternal()) return;
 
       llvm::SmallVector<std::pair<Value, int>, 4> seen_memrefs;
       // Position of the kernel argument we are currently at.
       int kernel_p = 0;
-      for (auto operand : launch.operands()) {
+      for (auto operand : launch.getKernelOperands()) {
         auto memref = operand.getType().dyn_cast<MemRefType>();
         if (!memref) {
           // Scalar argument, advance kernel position by one.

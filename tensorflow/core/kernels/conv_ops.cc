@@ -57,10 +57,6 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
 
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-#include "tensorflow/core/kernels/xsmm_conv2d.h"
-#endif
-
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -416,74 +412,6 @@ class LaunchDeepConvOp<CPUDevice, float> {
   }
 };
 
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-template <typename Device, typename T>
-class LaunchXsmmConvOp {
- public:
-  static bool Run(OpKernelContext* ctx, const Tensor& input,
-                  const Tensor& filter, int batch, int input_rows,
-                  int input_cols, int in_depth, int filter_rows,
-                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
-                  int out_cols, int out_depth, int stride_rows, int stride_cols,
-                  int dilation_rows, int dilation_cols, Tensor* output,
-                  TensorFormat data_format) {
-    return false;
-  }
-};
-
-template <>
-class LaunchXsmmConvOp<CPUDevice, float> {
- public:
-  static bool Run(OpKernelContext* ctx, const Tensor& input,
-                  const Tensor& filter, int batch, int input_rows,
-                  int input_cols, int in_depth, int filter_rows,
-                  int filter_cols, int pad_rows, int pad_cols, int out_rows,
-                  int out_cols, int out_depth, int dilation_rows,
-                  int dilation_cols, int stride_rows, int stride_cols,
-                  Tensor* output, TensorFormat data_format) {
-    auto num_threads =
-        ctx->device()->tensorflow_cpu_worker_threads()->num_threads;
-    // See libxsmm_dnn.h for this struct definition.
-    libxsmm_dnn_conv_desc desc;
-    desc.N = batch;
-    desc.C = in_depth;
-    desc.H = input_rows;
-    desc.W = input_cols;
-    desc.K = out_depth;
-    desc.R = filter_rows;
-    desc.S = filter_cols;
-    desc.u = stride_rows;
-    desc.v = stride_cols;
-    desc.pad_h = pad_rows;
-    desc.pad_w = pad_cols;
-    desc.pad_h_in = 0;
-    desc.pad_w_in = 0;
-    desc.pad_h_out = 0;
-    desc.pad_w_out = 0;
-    desc.threads = num_threads;
-    desc.algo = LIBXSMM_DNN_CONV_ALGO_DIRECT;
-    desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
-    desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
-    desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_OVERWRITE;
-    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
-    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
-    if (dilation_rows != 1 || dilation_cols != 1 ||
-        !CanUseXsmmConv2D(desc, data_format)) {
-      return false;
-    }
-
-    auto input_ptr = input.template flat<float>().data();
-    auto filter_ptr = filter.template flat<float>().data();
-    auto output_ptr = output->template flat<float>().data();
-
-    bool success = functor::XsmmFwdConv2D<CPUDevice, float>()(
-        ctx, desc, input_ptr, filter_ptr, output_ptr);
-    return success;
-  }
-};
-#endif
-
 #define TF_REQUIRES(EXP, STATUS)                \
   do {                                          \
     if (!TF_PREDICT_TRUE(EXP)) return (STATUS); \
@@ -537,9 +465,9 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
       dilation_h > 0 && dilation_w > 0,
       errors::InvalidArgument("Dilated rates should be larger than 0."));
 
-  TF_RETURN_IF_ERROR(CheckValidPadding(params->padding,
-                                       params->explicit_paddings,
-                                       /*num_dims=*/4, data_format));
+  int num_dims = data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
+  TF_RETURN_IF_ERROR(CheckValidPadding(
+      params->padding, params->explicit_paddings, num_dims, data_format));
 
   return OkStatus();
 }
@@ -547,23 +475,32 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
 Status ComputeConv2DDimension(const Conv2DParameters& params,
                               const Tensor& input, const Tensor& filter,
                               Conv2DDimensions* dimensions) {
-  // Check that 2D convolution input and filter have exactly 4 dimensions.
-  TF_REQUIRES(input.dims() == 4,
-              errors::InvalidArgument("input must be 4-dimensional",
-                                      input.shape().DebugString()));
-  TF_REQUIRES(filter.dims() == 4,
-              errors::InvalidArgument("filter must be 4-dimensional: ",
-                                      filter.shape().DebugString()));
-  for (int i = 0; i < 3; i++) {
+  int required_dims =
+      params.data_format == TensorFormat::FORMAT_NCHW_VECT_C ? 5 : 4;
+  // Check that 2D convolution input and filter have exactly required_dims.
+  TF_REQUIRES(
+      input.dims() == required_dims,
+      errors::InvalidArgument("convolution input must be ", required_dims,
+                              "-dimensional: ", input.shape().DebugString()));
+  TF_REQUIRES(
+      filter.dims() == required_dims,
+      errors::InvalidArgument("convolution filter must be ", required_dims,
+                              "-dimensional: ", filter.shape().DebugString()));
+  for (int i = 0; i < required_dims - 1; i++) {
     TF_REQUIRES(
         FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
         errors::InvalidArgument("filter too large"));
   }
 
+  FilterTensorFormat filter_format =
+      params.data_format == TensorFormat::FORMAT_NCHW_VECT_C
+          ? FilterTensorFormat::FORMAT_OIHW_VECT_I
+          : FilterTensorFormat::FORMAT_HWIO;
+
   // The last dimension for input is in_depth. Check that it is the same as the
   // filter's in_depth or it is evenly divisible by filter's in_depth.
   const int64_t in_depth_raw = GetTensorDim(input, params.data_format, 'C');
-  const int64_t patch_depth_raw = filter.dim_size(2);
+  const int64_t patch_depth_raw = GetFilterDim(filter, filter_format, 'I');
   TF_REQUIRES(FastBoundsCheck(in_depth_raw, std::numeric_limits<int>::max()),
               errors::InvalidArgument("Input depth too large"));
   TF_REQUIRES(FastBoundsCheck(patch_depth_raw, std::numeric_limits<int>::max()),
@@ -579,7 +516,8 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
                   in_depth, " vs ", patch_depth));
 
   // The last dimension for filter is out_depth.
-  const int out_depth = static_cast<int>(filter.dim_size(3));
+  const int out_depth =
+      static_cast<int>(GetFilterDim(filter, filter_format, 'O'));
 
   // The second dimension for input is rows/height.
   // The first dimension for filter is rows/height.
@@ -587,7 +525,8 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   TF_REQUIRES(FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
               errors::InvalidArgument("Input rows too large"));
   const int input_rows = static_cast<int>(input_rows_raw);
-  const int filter_rows = static_cast<int>(filter.dim_size(0));
+  const int filter_rows =
+      static_cast<int>(GetFilterDim(filter, filter_format, 'H'));
 
   // The third dimension for input is columns/width.
   // The second dimension for filter is columns/width.
@@ -595,7 +534,8 @@ Status ComputeConv2DDimension(const Conv2DParameters& params,
   TF_REQUIRES(FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
               errors::InvalidArgument("Input cols too large"));
   const int input_cols = static_cast<int>(input_cols_raw);
-  const int filter_cols = static_cast<int>(filter.dim_size(1));
+  const int filter_cols =
+      static_cast<int>(GetFilterDim(filter, filter_format, 'W'));
 
   // The first dimension for input is batch.
   const int64_t batch_raw = GetTensorDim(input, params.data_format, 'N');
@@ -710,20 +650,6 @@ class Conv2DOp : public BinaryOp<T> {
 
       return;
     }
-
-#ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
-    if (params_.padding != EXPLICIT &&
-        LaunchXsmmConvOp<Device, T>::Run(
-            context, input, filter, dimensions.batch, dimensions.input_rows,
-            dimensions.input_cols, dimensions.in_depth, dimensions.filter_rows,
-            dimensions.filter_cols, dimensions.pad_rows_before,
-            dimensions.pad_cols_before, dimensions.out_rows,
-            dimensions.out_cols, dimensions.out_depth, dimensions.dilation_rows,
-            dimensions.dilation_cols, dimensions.stride_rows,
-            dimensions.stride_cols, output, params_.data_format)) {
-      return;
-    }
-#endif
 
     if (params_.padding != EXPLICIT &&
         LaunchDeepConvOp<Device, T>::Run(

@@ -1,14 +1,14 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
 
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow/compiler/xla/stream_executor:build_defs.bzl",
     "stream_executor_friends",
 )
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow/tsl:tsl.bzl", "tsl_copts")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured", "rocm_copts")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 
 package(
     default_visibility = [":friends"],
@@ -178,7 +178,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
@@ -256,7 +255,6 @@ cc_library(
         ":rocm_gpu_executor",
         ":rocm_platform_id",
         "//third_party/eigen3",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/compiler/xla/stream_executor:plugin_registry",
@@ -273,6 +271,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/util:env_var",
     ]),
     alwayslink = True,
 )
@@ -412,7 +411,7 @@ cc_library(
 
 cc_library(
     name = "all_runtime",
-    copts = tf_copts(),
+    copts = tsl_copts(),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
         ":miopen_plugin",
@@ -424,4 +423,25 @@ cc_library(
         ":rocm_helpers",
     ]),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "rocm_rpath",
+    data = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
+        ],
+    }),
+    deps = [],
+)
+
+cc_library(
+    name = "stream_executor_rocm",
+    deps = [
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_bundle",
+        ":rocm_rpath",
+    ] + if_static(
+        [":all_runtime"],
+    ),
 )

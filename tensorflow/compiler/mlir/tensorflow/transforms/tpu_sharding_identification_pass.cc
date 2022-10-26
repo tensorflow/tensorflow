@@ -39,7 +39,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -54,8 +53,11 @@ constexpr char kUseSpmdAttr[] = "use_spmd_for_xla_partitioning";
 constexpr char kAliasingAttr[] = "tf.aliasing_output";
 constexpr char kNumCoresPerReplicaAttr[] = "num_cores_per_replica";
 
+#define GEN_PASS_DEF_TPUSHARDINGIDENTIFICATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUShardingIdentificationPass
-    : public TF::TPUShardingIdentificationPassBase<
+    : public impl::TPUShardingIdentificationPassBase<
           TPUShardingIdentificationPass> {
   void runOnOperation() final;
 };
@@ -356,7 +358,8 @@ llvm::Optional<StringRef> GetXlaShardingFromRetval(
     }
 
     if (  // Cast, real/imag, etc.
-        def->hasTrait<mlir::OpTrait::SameOperandsAndResultShape>() ||
+        def->hasTrait<
+            mlir::OpTrait::TF::SameOperandsAndResultTypeResolveRef>() ||
         // Exp, ceil, etc.
         def->hasTrait<mlir::OpTrait::SameOperandsAndResultType>() ||
         // Identity
@@ -410,7 +413,7 @@ void IdentifyXlaShardingForComputationOutputs(
   // tf_device.ClusterFunc as an attribute and the function as a result
   // attribute.
   for (auto result_and_retval :
-       llvm::zip(cluster_func.results(), terminator->getOpOperands())) {
+       llvm::zip(cluster_func.getResults(), terminator->getOpOperands())) {
     Value result = std::get<0>(result_and_retval);
     OpOperand& retval = std::get<1>(result_and_retval);
 
@@ -454,7 +457,7 @@ LogicalResult IdentifyXlaShardingForTPUComputation(
   // Look up function definition from module.
   func::FuncOp func =
       cluster_func->getParentOfType<ModuleOp>().lookupSymbol<func::FuncOp>(
-          cluster_func.func());
+          cluster_func.getFunc());
 
   bool use_spmd = false;
   if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(kUseSpmdAttr))

@@ -41,9 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace xla {
 namespace {
@@ -521,6 +521,75 @@ ENTRY test {
                                m::GetTupleElement(m::CustomCall(
                                    "PadToStatic", m::CustomCall("UnknownOp"))),
                                m::Op())));
+}
+
+TEST_F(DynamicPadderTest, WhileLoopDynamicShapeChangeToStatic) {
+  const std::string hlo_text = R"(
+HloModule WhileLoopDynamicShapeChangeToStatic
+
+ %cond_wrapper.19447 {
+  param = (s32[], s32[], f32[], f32[<=32,216]{1,0}) parameter(0)
+  %get-tuple-element.184 = s32[] get-tuple-element(param), index=0
+  %get-tuple-element.185 = s32[] get-tuple-element(param), index=1
+  ROOT %compare.28 = pred[] compare(s32[] %get-tuple-element.184, s32[] %get-tuple-element.185), direction=LT
+ }
+
+%while_body_78894_grad_83711__.18882 {
+  param = (s32[], s32[], f32[], f32[<=32,216]{1,0}) parameter(0)
+  %get-tuple-element.184 = s32[] get-tuple-element(param), index=0
+  %get-tuple-element.185 = s32[] get-tuple-element(param), index=1
+  %add.1 = s32[] add(get-tuple-element.184, get-tuple-element.184)
+  %gte.2 = f32[] get-tuple-element(param), index=2
+  %broadcast.19389 = f32[32,216]{1,0} broadcast(f32[] %gte.2), dimensions={}
+  ROOT tuple = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(add.1, %get-tuple-element.185, %gte.2, %broadcast.19389)
+}
+
+ENTRY main {
+  param = f32[] parameter(0)
+  param.1 = f32[<=32,216]{1,0} parameter(1)
+  const = s32[] constant(3)
+  const2 = s32[] constant(4)
+  %tuple.18877 = (s32[], s32[], f32[], f32[<=32,216]{1,0}) tuple(const, const2, param, param.1)
+  %while.19451 = (s32[], s32[], f32[], f32[<=32,216]{1,0})
+    while((s32[], s32[], f32[], f32[<=32,216]{1,0})
+     %tuple.18877), condition=%cond_wrapper.19447, body=%while_body_78894_grad_83711__.18882
+  ROOT result = f32[<=32,216]{1,0} get-tuple-element(while.19451), index=3
+ }
+)";
+
+  module_ = GetHloModule(hlo_text);
+
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  XLA_LOG_LINES(0, module_->ToString());
+  auto* root = module_->entry_computation()->root_instruction();
+  EXPECT_EQ(root->operand(0)->shape(), ShapeUtil::MakeShape(F32, {32, 216}));
+}
+
+TEST_F(DynamicPadderTest, HandleReshapeCheckPastReshape) {
+  // Two different sizes.
+  auto hlo_text = R"(
+HloModule ReshapeDynamicDimension
+ENTRY main {
+  p0 = f32[4,511,432]{2,1,0} parameter(0)
+  p1 = s32[] parameter(1)
+  p2 = f32[432,337]{1,0:T(8,128)} parameter(2)
+  reshape.4179 = f32[2044,432]{1,0} reshape(p0)
+   dot.4180 = f32[2044,337]{1,0} dot(reshape.4179, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  transpose.4181 = f32[2044,337]{1,0} transpose(dot.4180), dimensions={0,1}
+  ROOT reshape.4183 = f32[4,511,337]{2,1,0} reshape(transpose.4181)
+})";
+  module_ = GetHloModule(hlo_text);
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+  TF_ASSERT_OK(RunPadder(/*slice_dynamic_output=*/true).status());
+  VLOG(3) << module_->ToString();
+  CHECK(module_->is_dynamic());
+  CHECK(module_->entry_computation()
+            ->root_instruction()
+            ->shape()
+            .is_dynamic_dimension(0));
 }
 
 // Test that dynamic padder has the same result as if not padded.
@@ -2128,7 +2197,7 @@ ENTRY gds {
       DynamicDimensionInference::ShapeCheckMode::kCompileTime;
   DynamicPadder pass(options);
   auto status = pass.Run(module.get()).status();
-  EXPECT_THAT(status.code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_THAT(status.code(), tsl::error::INVALID_ARGUMENT);
 }
 
 TEST_F(SizeCheckTest, CompileTimeCheckBinaryOpPass) {

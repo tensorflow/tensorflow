@@ -19,11 +19,16 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
+#include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
@@ -39,6 +44,88 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
+// BufferDesc for passing raw `buffer` (i.e. void ptr + size) arguments.
+class BufferDesc {
+ public:
+  BufferDesc(void* data, size_t size) : data_(data), size_(size) {}
+  void* data() const { return data_; }
+  size_t size() const { return size_; }
+
+ private:
+  void* data_;
+  size_t size_;
+};
+
+class XlaRuntimeCpuExecutable {
+ public:
+  explicit XlaRuntimeCpuExecutable(
+      std::unique_ptr<runtime::JitExecutable> jit_executable,
+      const XlaFrameworkMapping& xla_framework_mapping)
+      : executable_(std::move(jit_executable)),
+        xla_framework_mapping_(xla_framework_mapping) {}
+
+  explicit XlaRuntimeCpuExecutable(
+      std::unique_ptr<runtime::Executable> executable,
+      const XlaFrameworkMapping& xla_framework_mapping)
+      : executable_(std::move(executable)),
+        xla_framework_mapping_(xla_framework_mapping) {}
+
+  Status Execute(const std::vector<BufferDesc>& descriptor_table);
+
+  runtime::Executable& GetExecutable() {
+    if (std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      runtime::JitExecutable* jit_executable =
+          std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+      return *jit_executable->DefaultExecutable();
+    } else {
+      runtime::Executable* aot_executable =
+          std::get<std::unique_ptr<runtime::Executable>>(executable_).get();
+      return *aot_executable;
+    }
+  }
+
+  StatusOr<std::string> GetObjFile() const {
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
+    }
+
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+    std::unique_ptr<llvm::MemoryBuffer> obj_file =
+        jit_executable->DefaultExecutable()->obj_file();
+    if (!obj_file)
+      return InternalError("XlaRuntimeCpuExecutable didn't save the obj file");
+
+    std::string data(obj_file->getBuffer().data(),
+                     obj_file->getBuffer().size());
+    return data;
+  }
+
+  StatusOr<std::string> GetMlirModule() const {
+    if (!std::holds_alternative<std::unique_ptr<runtime::JitExecutable>>(
+            executable_)) {
+      return InternalError("No JitExecutable");
+    }
+
+    runtime::JitExecutable* jit_executable =
+        std::get<std::unique_ptr<runtime::JitExecutable>>(executable_).get();
+    return jit_executable->mlir_module();
+  }
+
+  XlaFrameworkMapping xla_framework_mapping() { return xla_framework_mapping_; }
+
+ private:
+  // In JIT compilation mode `JitExecutable` is used. In AOT compilation mode
+  // `Executable` is used.
+  std::variant<std::unique_ptr<runtime::JitExecutable>,
+               std::unique_ptr<runtime::Executable>>
+      executable_;
+
+  XlaFrameworkMapping xla_framework_mapping_;
+};
+
 // CPU-targeting implementation of the XLA Executable interface.
 //
 // Wraps a JIT-ed object that can be executed "on device". We JIT for the host
@@ -51,7 +138,21 @@ class CpuExecutable : public Executable {
                 const std::string& entry_function_name,
                 std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
+  // XLA Runtime constructor.
+  CpuExecutable(
+      std::unique_ptr<HloModule> hlo_module,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
+      std::unique_ptr<const BufferAssignment> assignment,
+      std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable);
+
   ~CpuExecutable() override;
+
+  bool IsXlaRuntime() const { return xla_runtime_executable_ != nullptr; }
+
+  Status ExecuteXlaRuntime(const std::vector<BufferDesc>& descriptor_table) {
+    return xla_runtime_executable_->Execute(descriptor_table);
+  }
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -64,6 +165,15 @@ class CpuExecutable : public Executable {
       const ExecutableRunOptions* run_options,
       absl::Span<MaybeOwningDeviceMemory const> buffers,
       HloExecutionProfile* hlo_execution_profile);
+
+  // Returns an Executable that is loaded from an object file (XLA program
+  // compiled to a native function using the XLA Runtime stack).
+  static StatusOr<std::unique_ptr<Executable>> LoadFromObjFile(
+      std::unique_ptr<HloModule> hlo_module, absl::string_view obj_file,
+      absl::string_view mlir_module,
+      std::unique_ptr<BufferAssignment> buffer_assignment,
+      XlaFrameworkMapping xla_framework_mapping,
+      runtime::JitExecutable::Options opts);
 
   // This should be called after set_ir_module_string.
   const std::string& ir_module_string() const { return ir_module_string_; }
@@ -87,6 +197,21 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
   int64_t SizeOfGeneratedCodeInBytes() const override;
+
+  StatusOr<std::string> GetObjFile() const {
+    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    return xla_runtime_executable_->GetObjFile();
+  }
+
+  StatusOr<std::string> GetMlirModule() const {
+    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    return xla_runtime_executable_->GetMlirModule();
+  }
+
+  StatusOr<XlaFrameworkMapping> GetXlaFrameworkMapping() const {
+    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    return xla_runtime_executable_->xla_framework_mapping();
+  }
 
  private:
   // Creates an array suitable for passing as the "buffer_table" argument to the
@@ -144,6 +269,9 @@ class CpuExecutable : public Executable {
 
   // Entry function name for the computation.
   const std::string entry_function_name_;
+
+  // If not null, XLA Runtime is enabled.
+  std::unique_ptr<XlaRuntimeCpuExecutable> xla_runtime_executable_;
 
   CpuExecutable(const CpuExecutable&) = delete;
   CpuExecutable& operator=(const CpuExecutable&) = delete;

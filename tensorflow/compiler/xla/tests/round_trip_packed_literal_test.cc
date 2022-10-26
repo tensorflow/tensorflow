@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -51,12 +51,10 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
   floats[1] = 24.0;
 
   std::string fname = tsl::testing::TmpDir() + "/RoundTripsR1F32Length2.data";
-  EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
-          .ok());
+  EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
-  std::unique_ptr<tensorflow::RandomAccessFile> f;
-  TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
+  std::unique_ptr<tsl::RandomAccessFile> f;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual = reader.Read(ShapeUtil::MakeShape(F32, {2})).value();
   EXPECT_TRUE(reader.IsExhausted());
@@ -76,14 +74,12 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
 
   std::string fname =
       tsl::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim0Minor.data";
-  EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
-          .ok());
+  EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
   const Layout layout = LayoutUtil::MakeLayout({1, 0});
 
-  std::unique_ptr<tensorflow::RandomAccessFile> f;
-  TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
+  std::unique_ptr<tsl::RandomAccessFile> f;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual =
       reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();
@@ -109,14 +105,12 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
 
   std::string fname =
       tsl::testing::TmpDir() + "/RoundTripsR2F32Size2x2Dim1Minor.data";
-  EXPECT_TRUE(
-      tensorflow::WriteStringToFile(tensorflow::Env::Default(), fname, data)
-          .ok());
+  EXPECT_TRUE(tsl::WriteStringToFile(tsl::Env::Default(), fname, data).ok());
 
   const Layout layout = LayoutUtil::MakeLayout({0, 1});
 
-  std::unique_ptr<tensorflow::RandomAccessFile> f;
-  TF_CHECK_OK(tensorflow::Env::Default()->NewRandomAccessFile(fname, &f));
+  std::unique_ptr<tsl::RandomAccessFile> f;
+  TF_CHECK_OK(tsl::Env::Default()->NewRandomAccessFile(fname, &f));
   PackedLiteralReader reader(f.release());
   Literal actual =
       reader.Read(ShapeUtil::MakeShape(F32, {2, 2}), &layout).value();

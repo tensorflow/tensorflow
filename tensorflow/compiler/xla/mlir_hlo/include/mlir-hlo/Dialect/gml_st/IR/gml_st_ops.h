@@ -15,11 +15,10 @@ limitations under the License.
 
 // This file defines the operations used in the GML ST dialect.
 
-#ifndef TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H_
-#define TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H_
+#ifndef MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
+#define MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H
 
-#include "mlir-hlo/Dialect/gml_st/transforms/compose_set_interface.h"
-#include "mlir-hlo/Dialect/gml_st/transforms/fusion_interface.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
@@ -36,8 +35,12 @@ limitations under the License.
 #define GET_TYPEDEF_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_types.h.inc"
 
+// Generated attribute classes.
+#define GET_ATTRDEF_CLASSES
+#include "mlir-hlo/Dialect/gml_st/IR/gml_st_attrs.h.inc"
+
 // Generated operation classes.
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h.inc"
 
-#endif  // TENSORFLOW_COMPILER_XLA_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H_
+#endif  // MLIR_HLO_DIALECT_GML_ST_IR_GML_ST_OPS_H

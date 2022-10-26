@@ -25,4 +25,4 @@ func.func @compute(%operand: memref<4x4xi32>, %a: memref<4x4xi32>,
 
 // CHECK: func private @[[CHOLESKY]](memref<4x4xi32>, memref<4x4xi32>,
 // CHECK-SAME:                       memref<4x4xi32>, memref<4x4xi32>)
-// CHECK-SAME: attributes {rt.direct_custom_call = "xla.gpu.cholesky"}
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.cholesky"}

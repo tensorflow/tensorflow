@@ -29,7 +29,7 @@ from tensorflow.python.distribute import distribution_strategy_context as ds_con
 from tensorflow.python.distribute import values_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.eager import function_saved_model_utils
+from tensorflow.python.eager.polymorphic_function import saved_model_utils as function_saved_model_utils
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -638,6 +638,16 @@ class Loader(object):
 
   def _recreate_user_object(self, proto, node_id):
     """Instantiates a SavedUserObject."""
+    if proto.identifier == "optimizer":
+      # Make sure that the Keras optimizers module is imported. This is needed
+      # to be able to load the "optimizer" object (OptimizerV2), which has
+      # special logic around adding slot variables with `add_slot` in this file.
+      try:
+        import keras.optimizers.optimizer_v2 as _  # pylint: disable=g-import-not-at-top
+      except ImportError as e:
+        raise ImportError(
+            "Error when importing Keras. Unable to load SavedModel that "
+            "contains an optimizer without the Keras module.") from e
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
       return self._recreate_base_user_object(proto, node_id)

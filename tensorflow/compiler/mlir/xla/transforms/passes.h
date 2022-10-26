@@ -71,7 +71,7 @@ std::unique_ptr<OperationPass<void>> CreateLegalizeTfTypesPass();
 /// Adds the TF to XLA via TF2XLA rewrite patterns to the pattern list.
 /// `prefer_tf2xla` means an op will be included iff it is not in
 /// `MlirLegalizedUnderPreferTf2XlaSet`. `!prefer_tf2xla` mean an op will be
-/// included iff it is in `IsOpAllowedTf2XlaFallback`.
+/// included if there is no native MLIR legalization for the op.
 void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
                                           RewritePatternSet& patterns,
                                           MLIRContext* ctx,
@@ -83,8 +83,15 @@ void PopulateLegalizeTfWithTf2XlaPatterns(llvm::StringRef device_type,
 void PopulateLegalizeTfPatterns(MLIRContext* context,
                                 RewritePatternSet* patterns);
 
+// Populates TF to MHLO legalization for some of the quantization ops.
+//
+// TODO(hinsu): Remove this once we combine quantized and non quantized op
+// legalization in the ODML conversion pipeline.
+void PopulateLegalizeTfQuantizationPatterns(MLIRContext* context,
+                                            RewritePatternSet* patterns);
+
 /// Checks whether the op is supported by the Tf2Xla fallback for legalization.
-bool IsOpAllowedTf2XlaFallback(Operation* op);
+bool HasTf2XlaFallback(Operation* op);
 
 /// Lowers from TF dialect's control flow to HLO dialect's control flow.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
@@ -112,10 +119,18 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCommunicationPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFCollectivePass();
 
 #define GEN_PASS_REGISTRATION
-#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
-#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_LEGALIZETF
+#define GEN_PASS_DECL_LEGALIZETFCOLLECTIVE
+#define GEN_PASS_DECL_LEGALIZETFCONTROLFLOW
+#define GEN_PASS_DECL_LEGALIZETFMODULEPASS
+#define GEN_PASS_DECL_LEGALIZETFNOFALLBACK
+#define GEN_PASS_DECL_LEGALIZETFTYPESPASS
 #include "tensorflow/compiler/mlir/xla/transforms/xla_legalize_tf_passes.h.inc"
 
+#define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_LEGALIZETFCOMMUNICATIONPASS
+#define GEN_PASS_DECL_LEGALIZETFWITHTF2XLA
+#include "tensorflow/compiler/mlir/xla/transforms/tf_xla_passes.h.inc"
 }  // namespace mhlo
 }  // namespace mlir
 

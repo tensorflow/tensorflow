@@ -28,7 +28,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_OPTIMIZEOPORDERPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // Dequantize ops will produce 3x larger tensors, so we want to move it after
@@ -66,35 +66,35 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
     // Only push down the dequantize op when the output is smaller, so that it
     // can have smaller memory usage.
     auto input_type =
-        dequantize_op.output().getType().dyn_cast<RankedTensorType>();
+        dequantize_op.getOutput().getType().dyn_cast<RankedTensorType>();
     auto output_type =
         passthrough_op->getResult(0).getType().dyn_cast<RankedTensorType>();
     if (!input_type || !output_type ||
         get_num_elements(input_type) <= get_num_elements(output_type)) {
       return failure();
     }
-    Type input_element_type = getElementTypeOrSelf(dequantize_op.input());
+    Type input_element_type = getElementTypeOrSelf(dequantize_op.getInput());
     // Most passthrough ops do not support F16.
     if (input_element_type.isF16()) {
       return failure();
     }
 
     // Set the output type of the dequantize op and push it down.
-    dequantize_op.output().setType(output_type);
+    dequantize_op.getOutput().setType(output_type);
     passthrough_op->replaceAllUsesWith(dequantize_op);
 
     // Set the input type of the passthrough op and pull it up.
     Type new_output_type;
     if (input_element_type.isa<quant::QuantizedType>()) {
       new_output_type = QuantizedType::getQuantizedElementType(
-                            dequantize_op.input().getType())
+                            dequantize_op.getInput().getType())
                             .castFromExpressedType(output_type);
     } else {
       llvm_unreachable("unhandled element type");
     }
 
     passthrough_op->getResult(0).setType(new_output_type);
-    passthrough_op->setOperand(operand_index, dequantize_op.input());
+    passthrough_op->setOperand(operand_index, dequantize_op.getInput());
 
     // Set the input of the dequantize to the result of the passthrough op.
     // And switch the order of the ops.
@@ -105,7 +105,7 @@ struct PushDownDequantize : public OpRewritePattern<DequantizeOp> {
 };
 
 struct OptimizeOpOrderPass
-    : public OptimizeOpOrderPassBase<OptimizeOpOrderPass> {
+    : public impl::OptimizeOpOrderPassBase<OptimizeOpOrderPass> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(OptimizeOpOrderPass)
 
   void runOnOperation() override;

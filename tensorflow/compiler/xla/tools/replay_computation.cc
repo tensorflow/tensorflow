@@ -70,13 +70,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/io/record_reader.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tsl/lib/io/record_reader.h"
 #include "tensorflow/tsl/platform/cpu_info.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/init_main.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/platform/tstring.h"
+#include "tensorflow/tsl/util/command_line_flags.h"
 
 namespace xla {
 namespace tools {
@@ -304,8 +305,8 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     int thread_pool_size = opts.intra_op_thread_pool_size < 0
                                ? tsl::port::MaxParallelism()
                                : opts.intra_op_thread_pool_size;
-    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "XLAEigen",
-                                        thread_pool_size);
+    tsl::thread::ThreadPool pool(tsl::Env::Default(), "XLAEigen",
+                                 thread_pool_size);
     Eigen::ThreadPoolDevice thread_pool(pool.AsEigenThreadPool(),
                                         pool.NumThreads());
 
@@ -318,12 +319,12 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     if (infeed_data) {
       TF_CHECK_OK(client->TransferToInfeed(*infeed_data));
     }
-    std::unique_ptr<tensorflow::Thread> outfeed_drain_thread;
+    std::unique_ptr<tsl::Thread> outfeed_drain_thread;
     if (outfeed_shape) {
       // TransferFromOutfeedLocal blocks till the outfeed is available, so do
       // it asynchronously separate thread.
-      outfeed_drain_thread.reset(tensorflow::Env::Default()->StartThread(
-          tensorflow::ThreadOptions(), "outfeed_drain_thread", [&] {
+      outfeed_drain_thread.reset(tsl::Env::Default()->StartThread(
+          tsl::ThreadOptions(), "outfeed_drain_thread", [&] {
             Literal outfeed(*outfeed_shape);
             TF_CHECK_OK(client->TransferFromOutfeedLocal(/*device_ordinal=*/0,
                                                          &outfeed));
@@ -355,18 +356,18 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
 StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
                                                      const Options& opts) {
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
-  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  std::unique_ptr<tsl::RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
       std::string(filename.begin(), filename.end()), &file));
-  tensorflow::io::RecordReader reader(
+  tsl::io::RecordReader reader(
       file.get(),
-      tensorflow::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
+      tsl::io::RecordReaderOptions::CreateRecordReaderOptions("ZLIB"));
 
   std::vector<HloSnapshot> snapshots;
   uint64_t offset = 0;
-  tensorflow::tstring record;
+  tsl::tstring record;
   while (reader.ReadRecord(&offset, &record).ok()) {
     HloSnapshot snapshot;
     if (snapshot.mutable_hlo()->ParseFromString(record)) {
@@ -386,14 +387,14 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
 
 StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
     const std::string& filename, const Options& opts) {
-  tensorflow::Env* env = tensorflow::Env::Default();
+  tsl::Env* env = tsl::Env::Default();
 
   HloSnapshot snapshot;
-  auto s = tensorflow::ReadBinaryProto(env, filename, &snapshot);
+  auto s = tsl::ReadBinaryProto(env, filename, &snapshot);
   if (s.ok()) {
     return std::vector<HloSnapshot>{std::move(snapshot)};
   }
-  if (s.code() == tensorflow::error::NOT_FOUND) {
+  if (s.code() == tsl::error::NOT_FOUND) {
     return s;
   }
   QCHECK(!opts.NeedsRealData())
@@ -402,12 +403,12 @@ StatusOr<std::vector<HloSnapshot>> ParseSingleHloFile(
   fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n",
           filename.c_str());
 
-  if (tensorflow::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
+  if (tsl::ReadBinaryProto(env, filename, snapshot.mutable_hlo()).ok()) {
     return std::vector<HloSnapshot>{std::move(snapshot)};
   }
   fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
   std::string contents;
-  TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
+  TF_RETURN_IF_ERROR(tsl::ReadFileToString(env, filename, &contents));
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   std::vector<std::string> hlo_module_texts =
@@ -473,9 +474,8 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
   {
     constexpr size_t kThreadLimits = 100;
     // ThreadPool CHECK-fails if we give it 0 threads.
-    tensorflow::thread::ThreadPool thread_pool(
-        tensorflow::Env::Default(), tensorflow::ThreadOptions(),
-        "compile_modules",
+    tsl::thread::ThreadPool thread_pool(
+        tsl::Env::Default(), tsl::ThreadOptions(), "compile_modules",
         std::min<size_t>(std::max(kThreadLimits, snapshots.size()), 1),
         /*low_latency_hint=*/false);
     executables.resize(snapshots.size());
@@ -538,34 +538,33 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
 
 int main(int argc, char** argv) {
   xla::tools::Options opts;
-  std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("use_fake_data", &opts.use_fake_data,
-                       "Replay computation using fake data"),
-      tensorflow::Flag("print_result", &opts.print_result,
-                       "Print the result of the computation to stdout"),
-      tensorflow::Flag("num_runs", &opts.num_runs,
-                       "Number of times to run each computation"),
-      tensorflow::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
-                       "Shape of fake data to construct for (infinite) infeed"),
-      tensorflow::Flag("fake_outfeed_shape", &opts.fake_outfeed_shape,
-                       "Shape of fake data to outfeed from computation"),
-      tensorflow::Flag("generate_fake_infeed", &opts.generate_fake_infeed,
-                       "Whether a fake infeed shape should be derived "
-                       "from the computation"),
-      tensorflow::Flag("generate_fake_outfeed", &opts.generate_fake_outfeed,
-                       "Whether a fake outfeed shape should be derived "
-                       "from the computation"),
-      tensorflow::Flag("intra_op_thread_pool_size",
-                       &opts.intra_op_thread_pool_size,
-                       "How many threads to use in the intra-op thread pool. "
-                       "Defaults to the number of CPUs."),
-      tensorflow::Flag("compile_only", &opts.compile_only,
-                       "Whether the input should only be compiled, as opposed "
-                       "to compiled and executed."),
+  std::vector<tsl::Flag> flag_list = {
+      tsl::Flag("use_fake_data", &opts.use_fake_data,
+                "Replay computation using fake data"),
+      tsl::Flag("print_result", &opts.print_result,
+                "Print the result of the computation to stdout"),
+      tsl::Flag("num_runs", &opts.num_runs,
+                "Number of times to run each computation"),
+      tsl::Flag("fake_infeed_shape", &opts.fake_infeed_shape,
+                "Shape of fake data to construct for (infinite) infeed"),
+      tsl::Flag("fake_outfeed_shape", &opts.fake_outfeed_shape,
+                "Shape of fake data to outfeed from computation"),
+      tsl::Flag("generate_fake_infeed", &opts.generate_fake_infeed,
+                "Whether a fake infeed shape should be derived "
+                "from the computation"),
+      tsl::Flag("generate_fake_outfeed", &opts.generate_fake_outfeed,
+                "Whether a fake outfeed shape should be derived "
+                "from the computation"),
+      tsl::Flag("intra_op_thread_pool_size", &opts.intra_op_thread_pool_size,
+                "How many threads to use in the intra-op thread pool. "
+                "Defaults to the number of CPUs."),
+      tsl::Flag("compile_only", &opts.compile_only,
+                "Whether the input should only be compiled, as opposed "
+                "to compiled and executed."),
   };
   xla::AppendDebugOptionsFlags(&flag_list);
-  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  std::string usage = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(argv[0], &argc, &argv);
   if (argc < 2 || !parse_ok) {
     LOG(QFATAL) << usage;

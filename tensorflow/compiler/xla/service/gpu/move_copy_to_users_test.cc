@@ -105,6 +105,47 @@ ENTRY main {
 )");
 }
 
+TEST_F(MoveCopyToUsersTest, Slice) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,1,0} parameter(0)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  ROOT converted = f32[1,4,6,6] slice(copy), slice={[0:1],[0:4],[0:6],[0:6]}
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[slice_0:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} slice([[input_1:%[^ ]+]]), slice={[0:1], [0:4], [0:6], [0:6]}
+// CHECK-NEXT: ROOT [[copy_1_2:%[^ ]+]] = f32[1,4,6,6]{3,2,1,0} copy([[slice_0]])
+)");
+}
+
+TEST_F(MoveCopyToUsersTest, ReduceWindow) {
+  const char* hlo = R"(
+HloModule R2Window
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+ENTRY R2Window {
+  operand = f32[256,384]{1,0} parameter(0)
+  c = f32[256,384]{0,1} copy(operand)
+  constant = f32[] constant(1)
+  ROOT reduce-window = f32[256,384]{0,1} reduce-window(c, constant), window={size=2x3 pad=0_1x1_1}, to_apply=mul
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[reduce_window_1_0:%[^ ]+]] = f32[256,384]{1,0} reduce-window([[operand_1:%[^ ]+]], [[constant_2:%[^ ]+]]), window={size=2x3 pad=0_1x1_1}, to_apply=[[mul_3:%[^ ]+]]
+// CHECK-NEXT: ROOT [[copy_4:%[^ ]+]] = f32[256,384]{0,1} copy([[reduce_window_1_0]])
+)");
+}
+
 TEST_F(MoveCopyToUsersTest, Binary) {
   const char* hlo = R"(
 HloModule module
@@ -136,6 +177,43 @@ ENTRY main {
   copy = f32[1,17,9,9]{1,3,2,0} copy(input)
   copy2 = f32[1,17,9,9]{1,3,2,0} copy(input2)
   ROOT add = f32[1,17,9,9]{1,3,2,0} add(copy, copy2)
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, std::nullopt);
+}
+
+TEST_F(MoveCopyToUsersTest, Concat) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,1,0} parameter(0)
+  input2 = f32[5,17,9,9]{3,2,1,0} parameter(1)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  copy2 = f32[5,17,9,9]{1,3,2,0} copy(input2)
+  ROOT add = f32[6,17,9,9]{1,3,2,0} concatenate(copy, copy2), dimensions={0}
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, R"(
+// CHECK: [[input_0:%[^ ]+]] = f32[1,17,9,9]{3,2,1,0} parameter(0)
+// CHECK: [[input2_1:%[^ ]+]] = f32[5,17,9,9]{3,2,1,0} parameter(1)
+// CHECK: [[concat:%[^ ]+]] = f32[6,17,9,9]{3,2,1,0} concatenate([[input_0]], [[input2_1]])
+// CHECK: ROOT [[copy_1_3:%[^ ]+]] = f32[6,17,9,9]{1,3,2,0} copy([[concat]])
+)");
+}
+
+TEST_F(MoveCopyToUsersTest, ConcatDifferentLayoutNoChange) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,17,9,9]{3,2,0,1} parameter(0)
+  input2 = f32[1,17,9,9]{3,2,1,0} parameter(1)
+  copy = f32[1,17,9,9]{1,3,2,0} copy(input)
+  copy2 = f32[1,17,9,9]{1,3,2,0} copy(input2)
+  ROOT add = f32[2,17,9,9]{1,3,2,0} concatenate(copy, copy2), dimensions={0}
 }
 )";
 

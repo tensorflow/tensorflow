@@ -214,7 +214,34 @@ class PyShardedBuffer {
       : client_(std::move(client)),
         buffers_(std::move(buffers)),
         traceback_(std::move(traceback)),
-        sticky_(sticky) {}
+        sticky_(sticky) {
+    Link();
+  }
+
+  PyShardedBuffer(const PyShardedBuffer&) = delete;
+  PyShardedBuffer& operator=(const PyShardedBuffer&) = delete;
+
+  PyShardedBuffer(PyShardedBuffer&& other) {
+    other.Unlink();
+    client_ = std::move(other.client_);
+    buffers_ = std::move(other.buffers_);
+    traceback_ = std::move(other.traceback_);
+    sticky_ = other.sticky_;
+    Link();
+  }
+
+  PyShardedBuffer& operator=(PyShardedBuffer&& other) {
+    Unlink();
+    other.Unlink();
+    client_ = std::move(other.client_);
+    buffers_ = std::move(other.buffers_);
+    traceback_ = std::move(other.traceback_);
+    sticky_ = other.sticky_;
+    Link();
+    return *this;
+  }
+
+  ~PyShardedBuffer() { Unlink(); }
 
   std::vector<PyBuffer::object> GetPyBuffers() const {
     std::vector<PyBuffer::object> results;
@@ -248,13 +275,53 @@ class PyShardedBuffer {
 
   int num_devices() const { return buffers_.size(); }
 
+  const std::shared_ptr<Traceback>& traceback() const { return traceback_; }
+
   Status BlockHostUntilReady();
 
+  void Delete() {
+    for (auto& pjrt_buffer : buffers_) {
+      pjrt_buffer->Delete();
+    }
+  }
+
  private:
+  void Link() {
+    if (!client_) return;
+
+    CHECK(PyGILState_Check());
+    next_ = client_->sharded_buffers_;
+    client_->sharded_buffers_ = this;
+    if (next_) {
+      next_->prev_ = this;
+    }
+    prev_ = nullptr;
+  }
+
+  void Unlink() {
+    if (!client_) return;
+
+    CHECK(PyGILState_Check());
+    if (client_->sharded_buffers_ == this) {
+      client_->sharded_buffers_ = next_;
+    }
+    if (prev_) {
+      prev_->next_ = next_;
+    }
+    if (next_) {
+      next_->prev_ = prev_;
+    }
+  }
+
+  friend class PyClient;
+
   std::shared_ptr<PyClient> client_;
   std::vector<std::shared_ptr<PjRtBuffer>> buffers_;
   std::shared_ptr<Traceback> traceback_;
   bool sticky_ = false;
+
+  PyShardedBuffer* next_ = nullptr;
+  PyShardedBuffer* prev_ = nullptr;
 };
 
 }  // namespace xla

@@ -357,7 +357,6 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, bool trans_x,
                      bool trans_y, const MatMulBCast& bcast, Tensor* out) {
-    static const bool use_autotune = MatmulAutotuneEnable();
     se::blas::Transpose trans[] = {se::blas::Transpose::kNoTranspose,
                                    se::blas::Transpose::kTranspose,
                                    se::blas::Transpose::kConjugateTranspose};
@@ -401,6 +400,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
         Coefficient;
 
 #if GOOGLE_CUDA
+    static const bool use_autotune = MatmulAutotuneEnable();
     if (EnableCublasLtGemm()) {
       static const int64_t max_scratch_size =
           GetWorkspaceLimit(1LL << 32);  // 4GB by default
@@ -843,7 +843,7 @@ class BatchMatMulOp : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
         }
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -869,7 +869,7 @@ class BatchMatMulV2Op : public BaseBatchMatMulOp<Device, Ta, Tb, Tout> {
     if (in1.dims() < 2) {
       return errors::InvalidArgument("In[1] ndims must be >= 2: ", in1.dims());
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

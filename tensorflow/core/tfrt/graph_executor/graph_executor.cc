@@ -30,7 +30,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -65,6 +67,7 @@ limitations under the License.
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/request_deadline_tracker.h"  // from @tf_runtime
 #include "tfrt/host_context/resource_context.h"  // from @tf_runtime
+#include "tfrt/host_context/value.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
 #include "tfrt/support/ref_count.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
@@ -556,15 +559,20 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
     absl::Span<const tensorflow::DataType> input_tensor_dtypes,
     absl::Span<const std::string> output_tensor_names,
     absl::Span<const std::string> target_tensor_names,
-    tensorflow::tfrt_stub::WorkQueueInterface* work_queue) {
+    tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
+    std::optional<const std::string> graph_name) {
   // The format of the joined name is illustrated as in the following example:
   // input1-input2^output1-output2^target1-target2
-  const auto joined_name = absl::StrCat(
-      absl::StrJoin(input_tensor_names, kTensorNameJoiningDelimiter),
-      kArgumentTypeJoiningDelimiter,
-      absl::StrJoin(output_tensor_names, kTensorNameJoiningDelimiter),
-      kArgumentTypeJoiningDelimiter,
-      absl::StrJoin(target_tensor_names, kTensorNameJoiningDelimiter));
+  const auto joined_name =
+      graph_name
+          ? *graph_name
+          : absl::StrCat(
+                absl::StrJoin(input_tensor_names, kTensorNameJoiningDelimiter),
+                kArgumentTypeJoiningDelimiter,
+                absl::StrJoin(output_tensor_names, kTensorNameJoiningDelimiter),
+                kArgumentTypeJoiningDelimiter,
+                absl::StrJoin(target_tensor_names,
+                              kTensorNameJoiningDelimiter));
 
   tensorflow::mutex_lock l(loaded_client_graphs_mu_);
 
@@ -596,6 +604,44 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
   const auto* loaded_client_graph_ptr = loaded_client_graph.get();
   loaded_client_graphs_[joined_name] = std::move(loaded_client_graph);
   return {*loaded_client_graph_ptr};
+}
+
+tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
+    const std::string& graph_name, absl::Span<tfrt::Value*> input_values,
+    absl::Span<const std::string> input_names,
+    absl::Span<const tensorflow::DataType> input_dtypes,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names,
+    absl::Span<tfrt::Value*> outputs) {
+  TF_ASSIGN_OR_RETURN(
+      const LoadedClientGraph& loaded_client_graph,
+      GetOrCreateLoadedClientGraph(input_names, input_dtypes,
+                                   output_tensor_names, target_tensor_names,
+                                   /*work_queue=*/nullptr, graph_name));
+
+  const auto* func = loaded_client_graph.bef_file->GetFunction(
+      tensorflow::kImportModelDefaultGraphFuncName);
+  DCHECK(func);
+
+  auto* host = options_.runtime->core_runtime()->GetHostContext();
+
+  TF_ASSIGN_OR_RETURN(
+      auto request_info,
+      SetUpRequestContext(/*run_options=*/{}, /*model_metadata=*/{}, host,
+                          options_.runtime->work_queue(),
+                          loaded_client_graph.resource_context.get(),
+                          fallback_state_));
+  tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
+
+  if (auto err = ExecuteSyncBEFFunction(
+          *func, exec_ctx,
+          llvm::ArrayRef<tfrt::Value*>(input_values.data(),
+                                       input_values.size()),
+          llvm::ArrayRef<tfrt::Value*>(outputs.data(), outputs.size()))) {
+    return tensorflow::errors::Internal(
+        tfrt::StrCat("Failed to run function", err));
+  }
+  return tensorflow::OkStatus();
 }
 
 }  // namespace tfrt_stub

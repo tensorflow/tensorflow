@@ -53,7 +53,7 @@ Status TRT_ShapedWeights::SetShape(DimsAdapter dims) {
     return errors::Internal("SetShape would change number of elements");
   }
   shape_ = std::move(dims);
-  return Status::OK();
+  return OkStatus();
 }
 
 size_t TRT_ShapedWeights::size_bytes() const {
@@ -66,6 +66,9 @@ size_t TRT_ShapedWeights::size_bytes() const {
     case nvinfer1::DataType::kHALF:
       data_type_size = 2;
       break;
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+#endif
     case nvinfer1::DataType::kINT8:
     case nvinfer1::DataType::kBOOL:
       data_type_size = 1;
@@ -166,10 +169,10 @@ Status TRT_TensorOrWeights::GetTfType(DataType* tf_type) const {
     }
     case TRT_ArgumentType::WEIGHTS:
       *tf_type = weights().GetTensor().dtype();
-      return Status::OK();
+      return OkStatus();
     case TRT_ArgumentType::RESOURCE:
       *tf_type = DataType::DT_RESOURCE;
-      return Status::OK();
+      return OkStatus();
   }
 }
 

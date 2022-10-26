@@ -754,9 +754,9 @@ class Context:
     config.heartbeat_timeout_in_ms = heartbeat_timeout_in_ms
     if coordinated_jobs is not None:
       if isinstance(coordinated_jobs, list):
-        config.coordinated_jobs.extend(coordinated_jobs)
+        config.coordinated_job_list.extend(coordinated_jobs)
       else:
-        raise ValueError("`coordinated_jobs` must be a list of job names or "
+        raise ValueError("`coordinated_jobs` must be list[CoordinatedJob] or "
                          "None, but got: %s" % (coordinated_jobs,))
     self._coordination_service_config = config
 
@@ -789,6 +789,22 @@ class Context:
     if self._context_handle:
       pywrap_tfe.TFE_ReportErrorToCluster(self._context_handle, error_code,
                                           error_message)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def get_task_states(self, job_configs):
+    """Get task states from the Coordination Service.
+
+    Args:
+      job_configs: A list of tuples of job name and task number.
+
+    Returns:
+      A list of TF_Status.
+    """
+    if self._context_handle:
+      job_names, task_nums = zip(*job_configs)
+      return pywrap_tfe.TFE_GetTaskStates(self._context_handle, job_names,
+                                          task_nums)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -1315,6 +1331,11 @@ class Context:
     function_def.ParseFromString(proto_data)
 
     return function_def
+
+  def is_custom_device(self, device_name):
+    """Calls TFE_IsCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_Py_IsCustomDevice(self._handle, device_name)
 
   def register_custom_device(self, device_capsule, device_name,
                              device_info_capsule):
@@ -2704,6 +2725,23 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def is_custom_device(device_name):
+  """Calls TFE_IsCustomDevice.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Args:
+    device_name: A string indicating the name to check whether it is a
+      registered custom device.
+
+  Returns:
+    A boolean.
+  """
+  return context().is_custom_device(device_name)
 
 
 def register_custom_device(device_capsule, device_name, device_info_capsule):

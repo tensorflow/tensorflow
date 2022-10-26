@@ -1,13 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "check_deps")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test", "tf_python_pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -439,98 +431,6 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "function_argument_naming_test",
-    size = "medium",
-    srcs = ["function_argument_naming_test.py"],
-    python_version = "PY3",
-    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
-    deps = [
-        ":backprop",
-        ":def_function",
-        ":function",
-        ":test",
-        "//tensorflow/python:math_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "function_defun_collection_test",
-    size = "medium",
-    srcs = ["function_defun_collection_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":backprop",
-        ":def_function",
-        ":function",
-        ":test",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "function_gradients_test",
-    size = "medium",
-    srcs = ["function_gradients_test.py"],
-    python_version = "PY3",
-    shard_count = 5,
-    deps = [
-        ":backprop",
-        ":context",
-        ":def_function",
-        ":function",
-        ":test",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "function_test",
-    size = "medium",
-    srcs = ["function_test.py"],
-    python_version = "PY3",
-    shard_count = 15,
-    tags = [
-        "nomac",  # b/157056289
-    ],
-    deps = [
-        ":backprop",
-        ":cancellation",
-        ":context",
-        ":test",
-        "//tensorflow/python:clip_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:data_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:indexed_slices",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:list_ops",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:sendrecv_ops_gen",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:test_ops",
-        "//tensorflow/python/eager/polymorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
-        "//tensorflow/python/eager/polymorphic_function:quarantine",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 py_library(
     name = "test",
     srcs = ["test.py"],
@@ -600,23 +500,6 @@ py_library(
 )
 
 py_library(
-    name = "function_spec",
-    srcs = ["function_spec.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/util",
-        "//tensorflow/python/util:tf_decorator",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
     name = "function",
     srcs = ["function.py"],
     srcs_version = "PY3",
@@ -625,37 +508,6 @@ py_library(
         "//tensorflow/python/eager/polymorphic_function:monomorphic_function",
         "//tensorflow/python/eager/polymorphic_function:quarantine",
         "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
-    ],
-)
-
-py_library(
-    name = "function_context",
-    srcs = ["function_context.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        ":context",
-        "//tensorflow/core/function/polymorphism:function_cache",
-        "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/saved_model:save_context",
-    ],
-)
-
-py_library(
-    name = "function_saved_model_utils",
-    srcs = ["function_saved_model_utils.py"],
-    srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/trackable:asset",
-        "//tensorflow/python/trackable:base",
-        "//tensorflow/python/trackable:resource",
     ],
 )
 
@@ -933,94 +785,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:test",
-    ],
-)
-
-cuda_py_test(
-    name = "def_function_test",
-    srcs = ["def_function_test.py"],
-    python_version = "PY3",
-    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
-    deps = [
-        ":def_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
-        "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model:save_options",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "def_function_test_cpu_only",
-    srcs = ["def_function_test_cpu_only.py"],
-    python_version = "PY3",
-    # --config=cuda implicitly links in XLA.
-    tags = [
-        "no_cuda_on_cpu_tap",
-        "no_gpu",
-        "no_oss",  # No way to force no XLA linkage in OSS build from here.
-        "no_pip",
-    ],
-    deps = [
-        ":def_function",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/core",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_xla_py_test(
-    name = "def_function_xla_jit_test",
-    srcs = ["def_function_xla_jit_test.py"],
-    disabled_backends = [
-        "cpu_ondemand",
-    ],
-    enable_mlir_bridge = True,
-    python_version = "PY3",
-    tags = [
-        "no_mac",
-        "no_pip",
-        "no_tfrt",  # TODO(b/185944215)
-        "no_windows",
-    ],
-    use_xla_device = False,
-    deps = [
-        ":backprop",
-        ":def_function",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:resource_variable_ops",
-    ],
-)
-
-tf_xla_py_test(
-    name = "def_function_xla_test",
-    srcs = ["def_function_xla_test.py"],
-    enable_mlir_bridge = False,
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-        "nomac",
-    ],
-    deps = [
-        ":def_function",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
-        # TODO(b/145618471): Remove this transitive dependency.
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python:framework_ops",
     ],
 )
 

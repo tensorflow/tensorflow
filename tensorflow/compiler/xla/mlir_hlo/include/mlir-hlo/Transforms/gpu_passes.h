@@ -27,6 +27,9 @@ namespace gpu {
 class GPUModuleOp;
 }  // namespace gpu
 
+#define GEN_PASS_DECL
+#include "mlir-hlo/Transforms/gpu_passes.h.inc"
+
 // Create a pass which lowers a subset of lmhlo.fusion ops to gpu.launch_func
 // plus a gpu.module containing the kernel.
 std::unique_ptr<OperationPass<mlir::ModuleOp>> createGpuFusionRewritePass();
@@ -46,10 +49,31 @@ createGpuKernelToRocdlPass();
 
 /// Creates a pipeline that converts operations in HLO dialect to GPU kernels
 /// written in a combination of LLVM and NVVM dialects, and appends the pipeline
-/// to `pm`. `tileSizes` and `unrollFactors` are used to control loop tiling
-/// in `createTileLoopsPass`.
-void createHloToGpuPipeline(OpPassManager& pm, ArrayRef<int64_t> tileSizes,
-                            ArrayRef<int64_t> unrollFactors);
+/// to `pm`. `blockTileDim`, `warpTileDim` and `threadTileDim` indicate the
+/// size of the subproblem that will be operated on by the block, warp, and
+/// thread level, respectively.
+struct HloToGpuPipelineOptions
+    : public PassPipelineOptions<HloToGpuPipelineOptions> {
+  ListOption<int64_t> blockTileDim{
+      *this, "block-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the block")};
+  ListOption<int64_t> warpTileDim{
+      *this, "warp-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the warp")};
+  ListOption<int64_t> threadTileDim{
+      *this, "thread-tile",
+      llvm::cl::desc("dimensions of the subproblem processed by the thread")};
+  Option<bool> experimentalSoftmax{
+      *this, "experimental-softmax",
+      llvm::cl::desc(
+          "enable the experimental variant of this pipeline for softmax"),
+      llvm::cl::init(false)};
+};
+void createHloToGpuPipeline(OpPassManager& pm,
+                            const HloToGpuPipelineOptions& options);
+
+#define GEN_PASS_REGISTRATION
+#include "mlir-hlo/Transforms/gpu_passes.h.inc"
 
 }  // namespace mlir
 

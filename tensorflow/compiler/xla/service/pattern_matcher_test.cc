@@ -615,12 +615,26 @@ TEST_F(PatternMatcherTest, CustomCallTargetMatcherDescribeAndExplain) {
 
   auto* root = hlo_module->entry_computation()->root_instruction();
   EXPECT_TRUE(Match(root, match::Op().WithCustomCallTarget("test_target")));
+  EXPECT_TRUE(Match(
+      root, match::Op().WithCustomCallTarget({"test_target", "other_target"})));
+  EXPECT_TRUE(Match(
+      root, match::Op().WithCustomCallTarget({"other_target", "test_target"})));
   EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget("other_target")));
+  EXPECT_FALSE(Match(root, match::Op().WithCustomCallTarget(
+                               {"other_target", "other_target2"})));
 
   EXPECT_DESC_AND_EXPLANATION(
       root, match::Op().WithCustomCallTarget("other_target"),
       "an HloInstruction custom call with target 'other_target'",
       "HloInstruction is not a custom call with a target 'other_target'\nin "
+      "out = f32[] custom-call(), custom_call_target=\"test_target\"");
+
+  EXPECT_DESC_AND_EXPLANATION(
+      root, match::Op().WithCustomCallTarget({"other_target", "other_target2"}),
+      "an HloInstruction custom call with target in {other_target, "
+      "other_target2}",
+      "HloInstruction is not a custom call with a target in {other_target, "
+      "other_target2}\nin "
       "out = f32[] custom-call(), custom_call_target=\"test_target\"");
 }
 
@@ -1085,6 +1099,13 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
   EXPECT_TRUE(Match(
       root, m::CustomCall("test_target", m::Parameter(0), m::Parameter(1))));
 
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"})));
+  EXPECT_TRUE(Match(root, m::CustomCall({"test_target", "other_target"},
+                                        m::Parameter(0), m::Parameter(1))));
+  EXPECT_TRUE(Match(root, m::CustomCall({"other_target", "test_target"},
+                                        m::Parameter(0), m::Parameter(1))));
+
   HloInstruction* instr;
   EXPECT_TRUE(Match(root, m::CustomCall(&instr)));
   EXPECT_TRUE(Match(root, m::CustomCall(&instr, "test_target")));
@@ -1098,9 +1119,96 @@ TEST_F(PatternMatcherTest, CustomCallMatchers) {
                                         m::Parameter(0), m::Parameter(1))));
 
   EXPECT_FALSE(Match(root, m::CustomCall("other_target")));
+  EXPECT_FALSE(Match(root, m::CustomCall({"other_target", "other_target2"})));
   EXPECT_FALSE(Match(
       root, m::CustomCall("test_target", m::Parameter(1), m::Parameter(0))));
 }
 
+TEST_F(PatternMatcherTest, OptionalUnaryOp) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+
+    ENTRY test {
+      p0 = f32[] parameter(0)
+      cos = cosine(p0)
+      ROOT out = f32[] abs(cos)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(Match(
+      root,
+      m::OptionalUnaryOp({HloOpcode::kBitcast, HloOpcode::kCos}, m::Abs())));
+  EXPECT_TRUE(
+      Match(root, m::OptionalUnaryOp({HloOpcode::kBitcast, HloOpcode::kCos},
+                                     m::Abs(m::Cos()))));
+  EXPECT_TRUE(Match(
+      root, m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Cos())));
+  EXPECT_FALSE(Match(
+      root,
+      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Bitcast())));
+  EXPECT_FALSE(Match(
+      root,
+      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kBitcast}, m::Cos())));
+
+  std::string description = absl::StrCat(
+      "an HloInstruction which optionally matches a unary operand with one of "
+      "the opcodes {",
+      HloOpcodeString(HloOpcode::kCos), ", ", HloOpcodeString(HloOpcode::kAbs),
+      "} before matching an HloInstruction with opcode ",
+      HloOpcodeString(HloOpcode::kBitcast), ".");
+  std::string explanation = absl::StrCat(
+      "HloInstruction doesn't have opcode ",
+      HloOpcodeString(HloOpcode::kBitcast),
+      "\nin cos = f32[] cosine(f32[] p0) ",
+      "and the HloInstruction doesn't have opcode ",
+      HloOpcodeString(HloOpcode::kBitcast), "\nin out = f32[] abs(f32[] cos)");
+  EXPECT_DESC_AND_EXPLANATION(
+      root,
+      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kAbs}, m::Bitcast()),
+      description.c_str(), explanation.c_str());
+
+  description = absl::StrCat(
+      "an HloInstruction which optionally matches a unary operand with one of "
+      "the opcodes {",
+      HloOpcodeString(HloOpcode::kCos), ", ",
+      HloOpcodeString(HloOpcode::kBitcast),
+      "} before matching an HloInstruction with opcode ",
+      HloOpcodeString(HloOpcode::kCos), ".");
+  explanation = absl::StrCat(
+      "The HloInstruction doesn't have one of the opcodes {",
+      HloOpcodeString(HloOpcode::kCos), ", ",
+      HloOpcodeString(HloOpcode::kBitcast),
+      "} and the HloInstruction doesn't have opcode ",
+      HloOpcodeString(HloOpcode::kCos), "\nin out = f32[] abs(f32[] cos)");
+  EXPECT_DESC_AND_EXPLANATION(
+      root,
+      m::OptionalUnaryOp({HloOpcode::kCos, HloOpcode::kBitcast}, m::Cos()),
+      description.c_str(), explanation.c_str());
+
+  HloInstruction* instr = nullptr;
+  EXPECT_TRUE(Match(
+      root, m::OptionalUnaryOp(&instr, {HloOpcode::kBitcast, HloOpcode::kCos},
+                               m::Abs())));
+  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
+  instr = nullptr;
+  EXPECT_TRUE(Match(
+      root, m::OptionalUnaryOp(&instr, {HloOpcode::kBitcast, HloOpcode::kCos},
+                               m::Abs(m::Cos()))));
+  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
+  instr = nullptr;
+  EXPECT_TRUE(
+      Match(root, m::OptionalUnaryOp(&instr, {HloOpcode::kCos, HloOpcode::kAbs},
+                                     m::Cos())));
+  EXPECT_EQ(instr->opcode(), HloOpcode::kAbs);
+  EXPECT_FALSE(
+      Match(root, m::OptionalUnaryOp(&instr, {HloOpcode::kCos, HloOpcode::kAbs},
+                                     m::Bitcast())));
+  EXPECT_FALSE(Match(
+      root, m::OptionalUnaryOp(&instr, {HloOpcode::kCos, HloOpcode::kBitcast},
+                               m::Bitcast())));
+}
 }  // namespace
 }  // namespace xla

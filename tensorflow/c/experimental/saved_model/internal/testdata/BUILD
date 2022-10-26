@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(
     licenses = ["notice"],

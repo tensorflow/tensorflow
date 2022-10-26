@@ -30,6 +30,32 @@ from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
+# TODO(b/249802365): Sanitize all TensorSpec names.
+def sanitize_spec_name(name: str) -> str:
+  """Sanitizes Spec names. Matches Graph Node and Python naming conventions.
+
+  Without sanitization, names that are not legal Python parameter names can be
+  set which makes it challenging to represent callables supporting the named
+  calling capability.
+
+  Args:
+    name: The name to sanitize.
+
+  Returns:
+    A string that meets Python parameter conventions.
+  """
+  if not name:
+    return "unknown"
+
+  # Lower case and replace non-alphanumeric chars with '_'
+  swapped = "".join([c if c.isalnum() else "_" for c in name.lower()])
+
+  if swapped[0].isalpha():
+    return swapped
+  else:
+    return "tensor_" + swapped
+
+
 class DenseSpec(type_spec.TypeSpec):
   """Describes a dense object with shape, dtype, and name."""
 
@@ -179,6 +205,7 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     if isinstance(tensor, ops.EagerTensor):
       return TensorSpec(tensor.shape, tensor.dtype, name)
     elif isinstance(tensor, ops.Tensor):
+      # TODO(b/249802365): Return a sanitized version of op name or no name.
       return TensorSpec(tensor.shape, tensor.dtype, name or tensor.op.name)
     else:
       raise ValueError(

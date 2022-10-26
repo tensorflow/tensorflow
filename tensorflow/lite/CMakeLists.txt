@@ -156,7 +156,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
 endif()
 # Additional compiler flags used when compiling TF Lite.
 set(TFLITE_TARGET_PUBLIC_OPTIONS "")
-set(TFLITE_TARGET_PRIVATE_OPTIONS "")
+set(TFLITE_TARGET_PRIVATE_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
 # Additional library dependencies based upon enabled features.
 set(TFLITE_TARGET_DEPENDENCIES "")
@@ -222,6 +222,9 @@ if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
 endif()
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
+populate_tflite_source_vars("core/experimental/acceleration/configuration" TFLITE_CORE_EXPERIMENTAL_SRCS)
+populate_tflite_source_vars("core/kernels" TFLITE_CORE_KERNELS_SRCS)
+populate_tflite_source_vars("core/tools" TFLITE_CORE_TOOLS_SRCS)
 populate_tflite_source_vars("c" TFLITE_C_SRCS)
 populate_tflite_source_vars("delegates" TFLITE_DELEGATES_SRCS)
 if(TFLITE_ENABLE_GPU)
@@ -415,6 +418,10 @@ if(TFLITE_ENABLE_EXTERNAL_DELEGATE)
     FILTER ".*(_test|_tester)\\.(cc|h)"
   )
 endif()
+populate_tflite_source_vars("experimental/remat"
+  TFLITE_EXPERIMENTAL_REMAT_SRCS
+  FILTER ".*_test\\.(cc|h)$"
+)
 if (TFLITE_ENABLE_RESOURCE)
   populate_tflite_source_vars("experimental/resource"
     TFLITE_EXPERIMENTAL_RESOURCE_SRCS
@@ -476,7 +483,10 @@ endif()
 # TFLite library
 set(_ALL_TFLITE_SRCS
   ${TFLITE_CORE_API_SRCS}
+  ${TFLITE_CORE_EXPERIMENTAL_SRCS}
+  ${TFLITE_CORE_KERNELS_SRCS}
   ${TFLITE_CORE_SRCS}
+  ${TFLITE_CORE_TOOLS_SRCS}
   ${TFLITE_C_SRCS}
   ${TFLITE_DELEGATES_FLEX_SRCS}
   ${TFLITE_DELEGATES_GPU_SRCS}
@@ -484,6 +494,7 @@ set(_ALL_TFLITE_SRCS
   ${TFLITE_DELEGATES_SRCS}
   ${TFLITE_DELEGATES_XNNPACK_SRCS}
   ${TFLITE_DELEGATES_EXTERNAL_SRCS}
+  ${TFLITE_EXPERIMENTAL_REMAT_SRCS}
   ${TFLITE_EXPERIMENTAL_RESOURCE_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_PROFILER_SRCS}
   ${TFLITE_EXPERIMENTAL_RUY_SRCS}

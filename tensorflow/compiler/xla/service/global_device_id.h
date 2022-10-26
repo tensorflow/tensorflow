@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/int_type.h"
+#include "tensorflow/tsl/lib/gtl/int_type.h"
 
 namespace xla {
 
@@ -28,7 +28,7 @@ namespace xla {
 // system. XLA doesn't have a strong opinion about what global numbering scheme
 // is applied to GPUs; the user must provide a local -> global mapping via
 // GpuExecutableRunOptions for the local GPUs.
-TF_LIB_GTL_DEFINE_INT_TYPE(GlobalDeviceId, int64_t);
+TSL_LIB_GTL_DEFINE_INT_TYPE(GlobalDeviceId, int64_t);
 
 // Returns a comma-separated string of global device IDs.
 std::string GlobalDeviceIdsToString(absl::Span<GlobalDeviceId const> ids);

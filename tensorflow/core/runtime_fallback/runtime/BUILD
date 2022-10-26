@@ -1,6 +1,5 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_oss",
     "tf_cuda_library",
 )
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -40,7 +39,6 @@ tf_cuda_library(
     name = "runtime_fallback_alwayslink",
     srcs = [
         "conversion_function.cc",
-        "runtime_fallback_batch_kernels.cc",
         "runtime_fallback_batch_tf_opkernels.cc",
         "runtime_fallback_gpu_allocator.cc",
         "runtime_fallback_gpu_allocator.h",
@@ -211,9 +209,10 @@ tf_cuda_library(
     compatible_with = [],
     # Only build this library with --config=cuda.
     tags = [
+        "manual",
         "no_oss",
         "requires_cuda",
-    ] + if_oss(["manual"]),
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":kernel_utils",

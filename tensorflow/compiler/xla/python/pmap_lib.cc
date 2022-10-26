@@ -44,8 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/sharding.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace jax {
 
@@ -117,36 +117,37 @@ xla::StatusOr<ShardArgResult> ShardArg(
     const InputSpec& input_spec, py::handle py_devices,
     const py::function& python_fallback) {
   if (arg.get_type() == xla::PyArray::type()) {
-    auto* py_array = py::cast<xla::PyArray*>(arg);
+    auto py_array = py::reinterpret_borrow<xla::PyArray>(arg);
+    if (py_array.fastpath_enabled()) {
+      if (py_array.sharding().get_type() ==
+          input_spec.array_sharding.get_type()) {
+        auto* pmap_sharding = py_array.sharding().cast<jax::PmapSharding*>();
+        auto* cached_pmap_sharding =
+            input_spec.array_sharding.cast<jax::PmapSharding*>();
 
-    if (py_array->sharding().get_type() ==
-        input_spec.array_sharding.get_type()) {
-      auto* pmap_sharding = py_array->sharding().cast<jax::PmapSharding*>();
-      auto* cached_pmap_sharding =
-          input_spec.array_sharding.cast<jax::PmapSharding*>();
+        if (pmap_sharding->sharding_spec() ==
+            cached_pmap_sharding->sharding_spec()) {
+          ShardArgResult result;
+          result.owning_sda = py::reinterpret_borrow<py::object>(arg);
+          auto& per_device_buffers = result.per_device_buffers;
+          per_device_buffers.reserve(devices.size());
 
-      if (pmap_sharding->sharding_spec() ==
-          cached_pmap_sharding->sharding_spec()) {
-        ShardArgResult result;
-        result.owning_sda = py::reinterpret_borrow<py::object>(arg);
-        auto& per_device_buffers = result.per_device_buffers;
-        per_device_buffers.reserve(devices.size());
+          DCHECK_EQ(py_array.num_shards(), devices.size());
 
-        DCHECK_EQ(py_array->num_shards(), devices.size());
-
-        for (int i = 0; i < devices.size(); ++i) {
-          auto* pjrt_buffer = py_array->GetBuffer(i);
-          if (devices[i] == pjrt_buffer->device()) {
-            per_device_buffers.push_back(pjrt_buffer);
-          } else {
-            TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
-                                pjrt_buffer->CopyToDevice(devices[i]));
-            per_device_buffers.push_back(out.get());
-            result.owned_buffers.push_back(std::move(out));
+          for (int i = 0; i < devices.size(); ++i) {
+            auto* pjrt_buffer = py_array.GetBuffer(i);
+            if (devices[i] == pjrt_buffer->device()) {
+              per_device_buffers.push_back(pjrt_buffer);
+            } else {
+              TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtBuffer> out,
+                                  pjrt_buffer->CopyToDevice(devices[i]));
+              per_device_buffers.push_back(out.get());
+              result.owned_buffers.push_back(std::move(out));
+            }
           }
-        }
 
-        return result;
+          return result;
+        }
       }
     }
   }
@@ -207,7 +208,7 @@ xla::StatusOr<ShardArgResult> ShardArg(
 }
 
 struct PmapCacheEntry {
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   // The value `backend.local_devices()`.
   py::object py_devices;  // To pass back to Python.
   std::vector<xla::PjRtDevice*> devices;
@@ -217,7 +218,7 @@ struct PmapCacheEntry {
   std::vector<ResultSpec> out_result_specs;
 
   std::vector<py::object> out_array_shardings;
-  std::vector<xla::PrimitiveType> out_dtypes;
+  std::vector<py::dtype> out_dtypes;
   std::vector<std::vector<int64_t>> out_shapes;
   std::vector<bool> out_committed;
 
@@ -235,7 +236,7 @@ struct PmapCacheEntry {
 
 // A `PmapFunction` is associated to a `jax.pmap(f)` and takes care of the
 // bookkeeping of the different signatures used and the dispatch of calls to
-// the correct underlying `PyExecutable`. This class is thread-safe.
+// the correct underlying `PyLoadedExecutable`. This class is thread-safe.
 class PmapFunction {
  public:
   PmapFunction(py::function fun, py::function cache_miss,
@@ -316,8 +317,8 @@ class PmapFunction {
     arguments.signature.function_name = function_name_;
 
     // Get dynamic argument signatures.
-    JitState& global_state = jax::GetGlobalState();
-    JitState& tls = jax::GetLocalState();
+    JitState& global_state = jax::GlobalJitState();
+    JitState& tls = jax::ThreadLocalJitState();
     const bool jax_enable_x64 = GetEnableX64();
     arguments.signature.jax_enable_x64 = jax_enable_x64;
     for (py::handle arg : arguments.flat_dynamic_args) {
@@ -376,7 +377,7 @@ class PmapFunction {
   py::function cache_miss_;
 
   // We need to know the static arguments to remove them from the arguments
-  // passed to the underlying PyExecutable. In sorted order.
+  // passed to the underlying PyLoadedExecutable. In sorted order.
   std::vector<int> static_argnums_;
   // We need a `unique_ptr` here to ensure value pointer stability.
   absl::flat_hash_map<CallSignature, std::unique_ptr<PmapCacheEntry>>
@@ -407,9 +408,9 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   }
   // See api.py::_PmapFastpathData in the JAX code base for the expected
   // namedtuple.
-  std::shared_ptr<xla::PyExecutable> executable;
+  std::shared_ptr<xla::PyLoadedExecutable> executable;
   try {
-    executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+    executable = py::cast<std::shared_ptr<xla::PyLoadedExecutable>>(
         pmap_data.attr("xla_executable"));
   } catch (const py::cast_error& e) {
     // Backends that don't implement the C++ PjRt APIs
@@ -467,8 +468,7 @@ void PmapFunction::PopulateCacheEntry(PmapCacheEntry& cache_entry,
   cache_entry.out_shapes.reserve(out_avals.size());
 
   for (int i = 0; i < out_avals.size(); ++i) {
-    cache_entry.out_dtypes.push_back(
-        xla::DtypeToPrimitiveType(out_avals[i].attr("dtype")).ValueOrDie());
+    cache_entry.out_dtypes.push_back(out_avals[i].attr("dtype"));
     cache_entry.out_shapes.push_back(
         py::cast<std::vector<int64_t>>(out_avals[i].attr("shape")));
     cache_entry.out_result_specs.emplace_back(
@@ -632,7 +632,7 @@ xla::StatusOr<py::object> PmapFunction::Call(py::args args, py::kwargs kwargs) {
           cache_entry.out_array_shardings[i], client, traceback,
           std::move(outputs), cache_entry.out_committed[i]);
 
-      flat_sharded_device_arrays.push_back(py::cast(std::move(py_array)));
+      flat_sharded_device_arrays.push_back(std::move(py_array));
     }
   } else {
     std::vector<std::vector<xla::PyBuffer::object>> outputs;
@@ -785,7 +785,7 @@ static PyGetSetDef JaxPmapFunction_tp_getset[] = {
 PyObject* JaxPmapFunction_tp_call(PyObject* self, PyObject* args,
                                   PyObject* kwargs) {
   JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
-  tensorflow::profiler::TraceMe traceme([&] {
+  tsl::profiler::TraceMe traceme([&] {
     return absl::StrCat("JaxPmapFunction(", o->fun.function_name(), ")");
   });
   py::kwargs py_kwargs;

@@ -468,22 +468,22 @@ namespace {
 // needed.
 std::vector<std::string> AttributeProtoToStringVector(
     const tsl::protobuf::Message& message) {
-  const tensorflow::protobuf::Reflection* reflection = message.GetReflection();
-  std::vector<const tensorflow::protobuf::FieldDescriptor*> fields;
+  const tsl::protobuf::Reflection* reflection = message.GetReflection();
+  std::vector<const tsl::protobuf::FieldDescriptor*> fields;
   reflection->ListFields(message, &fields);
 
   std::vector<std::string> output;
-  for (const tensorflow::protobuf::FieldDescriptor* field : fields) {
+  for (const tsl::protobuf::FieldDescriptor* field : fields) {
     std::string s = absl::StrCat(field->name(), "=");
     CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
     switch (field->type()) {
-      case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+      case tsl::protobuf::FieldDescriptor::TYPE_BOOL: {
         bool val = reflection->GetBool(message, field);
         absl::StrAppend(&s, val ? "true" : "false");
         break;
       }
-      case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
-        const tensorflow::protobuf::EnumValueDescriptor* evd =
+      case tsl::protobuf::FieldDescriptor::TYPE_ENUM: {
+        const tsl::protobuf::EnumValueDescriptor* evd =
             reflection->GetEnum(message, field);
         absl::StrAppend(&s, evd->name());
         break;
@@ -2081,14 +2081,14 @@ const std::vector<HloInstruction*>& HloFusionInstruction::fused_parameters()
   return fused_instructions_computation()->parameter_instructions();
 }
 
-const tensorflow::gtl::iterator_range<UnwrappingIterator<
+const tsl::gtl::iterator_range<UnwrappingIterator<
     std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
 HloFusionInstruction::fused_instructions() const {
   const HloComputation* subcomp = fused_instructions_computation();
   return subcomp->instructions();
 }
 
-const tensorflow::gtl::iterator_range<
+const tsl::gtl::iterator_range<
     UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
 HloFusionInstruction::fused_instructions() {
   return fused_instructions_computation()->instructions();

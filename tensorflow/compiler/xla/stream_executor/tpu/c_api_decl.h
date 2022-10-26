@@ -19,8 +19,7 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
-#include "tensorflow/c/tf_attrtype.h"
-#include "tensorflow/core/tpu/libtftpu.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 
 extern "C" {
 
@@ -237,7 +236,6 @@ typedef struct XLA_Layout {
   Int64List minor_to_major;
   IntList dim_level_types;
   TileList tiles;
-  int64_t element_size_in_bits;
   int64_t memory_space;
 } XLA_Layout;
 
@@ -314,6 +312,7 @@ typedef struct XLA_HloModuleConfig {
   TpuSerializedProto static_device_assignment;
   bool has_entry_computation_layout;
   XLA_ComputationLayout entry_computation_layout;
+  bool allow_spmd_sharding_propagation_to_output;
 } XLA_HloModuleConfig;
 
 typedef struct SE_HloExecutionProfile SE_HloExecutionProfile;

@@ -44,7 +44,7 @@ ENTRY main {
   ROOT %slice = f32[8] slice(%scatter), slice={[0:8]}
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -71,7 +71,7 @@ ENTRY main {
   ROOT %slice = f32[4,4,4] slice(%scatter), slice={[0:4], [0:4], [0:4]}
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
@@ -108,7 +108,7 @@ ENTRY main {
   ROOT %tuple = (f32[8], f16[8]) tuple(%slice.0, %slice.1)
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter =
@@ -172,8 +172,16 @@ slice_not_found {
   %scatter = f32[8] scatter(%operands, %indices, %updates), update_window_dims={}, inserted_window_dims={0}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
   ROOT %exp = f32[8] exponential(%scatter)
 }
+
+slice_update_dimensions {
+  %indices = s32[10] parameter(0)
+  %updates = f32[10,1,128] parameter(1)
+  %operands = f32[100,128] constant(0)
+  %scatter = f32[100,128] scatter(%operands, %indices, %updates), update_window_dims={1,2}, inserted_window_dims={}, scatter_dims_to_operand_dims={0}, index_vector_dim=1, to_apply=%add_F32
+  ROOT %slice = f32[100,64] slice(%scatter), slice={[0:100], [0:64]}
+}
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_FALSE(RunHloPass(&test_pass, module.get()).value());
 }
@@ -200,7 +208,7 @@ ENTRY main {
   ROOT %tuple = (f32[8], f32[8]) tuple(%slice.0, %slice.1)
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter = op::Scatter(op::Slice(op::Constant()),
@@ -233,7 +241,7 @@ ENTRY main {
   ROOT %result = f32[8] slice(%elementwise.2), slice={[0:8]}
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter = op::Scatter(op::Slice(op::Constant()),
@@ -271,7 +279,7 @@ ENTRY main {
   ROOT %slice = f32[8] slice(%consumer), slice={[0:8]}
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter =
@@ -303,7 +311,7 @@ ENTRY main {
   ROOT %slice = f32[8] slice(%select), slice={[0:8]}
 }
   )")
-                    .ValueOrDie();
+                    .value();
   ScatterSliceSimplifier test_pass;
   ASSERT_TRUE(RunHloPass(&test_pass, module.get()).value());
   auto expected_scatter = op::Scatter(op::Slice(op::Constant()),

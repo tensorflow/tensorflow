@@ -72,7 +72,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
       default:
         opcodes_.insert(HloOpcodeString(instr->opcode()));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -81,7 +81,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
 
 std::set<std::string> GetUniqueOpcodes(HloComputation* computation) {
   OpcodeCollector collector;
-  if (computation->Accept(&collector) != Status::OK()) {
+  if (computation->Accept(&collector) != OkStatus()) {
     return {};
   }
   return collector.GetUniqueOpcodes();
@@ -100,7 +100,7 @@ std::string HloOpcodeHistogram::ToString() {
 
 Status HloFusionStatsVisitor::RunOnModule(HloModule* module) {
   TF_RETURN_IF_ERROR(module->entry_computation()->Accept(this));
-  return Status::OK();
+  return OkStatus();
 }
 
 std::string HloFusionStatsVisitor::ToString() {
@@ -113,7 +113,7 @@ std::string HloFusionStatsVisitor::ToString() {
 }
 
 Status HloFusionStatsVisitor::DefaultAction(const xla::HloInstruction* instr) {
-  return Status::OK();
+  return OkStatus();
 }
 
 Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
@@ -127,7 +127,7 @@ Status HloFusionStatsVisitor::HandleFusion(const HloInstruction* fusion) {
     num_input_fusions_++;
     input_fusion_opcode_histogram_[opcodes]++;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace gpu

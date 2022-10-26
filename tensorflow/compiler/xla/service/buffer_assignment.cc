@@ -44,8 +44,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 namespace xla {
 namespace {
@@ -55,49 +55,7 @@ using absl::flat_hash_set;
 using absl::StrAppend;
 using absl::StrAppendFormat;
 using memory_space_assignment::PresetAssignments;
-using ::tensorflow::strings::HumanReadableNumBytes;
-
-// Given the interference map of a graph (the list of interfering node indices
-// for each node), perform graph coloring such that interfering nodes are
-// assigned to different colors. Returns the assigned color of the nodes, where
-// the colors are represented as integer values [0, color_count).
-std::vector<int64_t> ColorInterferenceGraph(
-    const std::vector<std::vector<int64_t>>& interference_map) {
-  const int64_t node_count = interference_map.size();
-
-  // Sort the nodes such that we assign nodes with more interference first. This
-  // relies on the common heuristic of assigning the most constrained node
-  // first, but it would be good to investigate other ordering heuristics too.
-  std::vector<int64_t> nodes(node_count);
-  std::iota(nodes.begin(), nodes.end(), 0);
-  absl::c_sort(nodes, [&interference_map](const int64_t i, const int64_t j) {
-    return interference_map[i].size() > interference_map[j].size();
-  });
-
-  const int64_t kColorUnassigned = -1;
-  std::vector<int64_t> assigned_colors(node_count, kColorUnassigned);
-  for (int64_t node : nodes) {
-    // Mark the colors that are already assigned to the neighbors.
-    std::vector<bool> available_colors(node_count, true);
-    for (int64_t neighbor : interference_map[node]) {
-      int64_t color = assigned_colors[neighbor];
-      if (color != kColorUnassigned) {
-        available_colors[color] = false;
-      }
-    }
-
-    // Find the color that is not yet assigned to the neighbors.
-    int64_t color = kColorUnassigned;
-    for (color = 0; color < available_colors.size(); ++color) {
-      if (available_colors[color]) {
-        break;
-      }
-    }
-    CHECK_NE(color, kColorUnassigned);
-    assigned_colors[node] = color;
-  }
-  return assigned_colors;
-}
+using ::tsl::strings::HumanReadableNumBytes;
 
 }  // namespace
 

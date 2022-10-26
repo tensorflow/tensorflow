@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -40,11 +40,11 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
   Status HandleCustomCall(HloInstruction *instr) override {
     HloInstruction *existing_gemm;
     HloInstruction *bcast;
-    if (Match(instr, m::Op(&existing_gemm)
-                         .WithCustomCallTarget(kGemmCallTarget)
+    if (Match(instr, m::CustomCall(&existing_gemm,
+                                   {kGemmCallTarget, kCublasLtMatmulCallTarget})
                          .WithOperand(0, m::Broadcast(&bcast, m::Op()))) ||
-        (Match(instr, m::Op(&existing_gemm)
-                          .WithCustomCallTarget(kGemmCallTarget)
+        (Match(instr, m::CustomCall(&existing_gemm, {kGemmCallTarget,
+                                                     kCublasLtMatmulCallTarget})
                           .WithOperand(1, m::Broadcast(&bcast, m::Op()))))) {
       TF_ASSIGN_OR_RETURN(auto config,
                           existing_gemm->backend_config<GemmBackendConfig>());
@@ -54,7 +54,7 @@ class GemmBroadcastFoldingVisitor : public DfsHloRewriteVisitor {
                             bcast->operand(0)->shape().dimensions_size());
       int num_batch_dims = dim_nums->lhs_batch_dimensions_size();
 
-      const tensorflow::protobuf::RepeatedField<int64_t> &batch_dimensions =
+      const tsl::protobuf::RepeatedField<int64_t> &batch_dimensions =
           (bcast_operand_index == 1) ? dim_nums->rhs_batch_dimensions()
                                      : dim_nums->lhs_batch_dimensions();
       // This optimization is only valid if the set of broadcasted dimensions

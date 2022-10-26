@@ -102,6 +102,7 @@ cc_library(
         ":buffer",
         ":cl_context",
         ":gpu_object",
+        ":qcom_thin_filter",
         ":tensor",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
@@ -458,6 +459,18 @@ cc_library(
 )
 
 cc_library(
+    name = "qcom_thin_filter",
+    srcs = ["qcom_thin_filter.cc"],
+    hdrs = ["qcom_thin_filter.h"],
+    deps = [
+        ":cl_context",
+        ":gpu_object",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/common/task:qcom_thin_filter_desc",
+    ],
+)
+
+cc_library(
     name = "recordable_queue",
     hdrs = ["recordable_queue.h"],
     deps = [
@@ -560,5 +573,6 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":util",
     ],
 )

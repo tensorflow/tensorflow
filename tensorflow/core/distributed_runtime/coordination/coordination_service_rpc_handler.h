@@ -54,6 +54,9 @@ class CoordinationServiceRpcHandler {
                                  ReportErrorToServiceResponse* response,
                                  StatusCallback done);
 
+  void GetTaskStateAsync(const GetTaskStateRequest* request,
+                         GetTaskStateResponse* response, StatusCallback done);
+
   void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                            InsertKeyValueResponse* response,
                            StatusCallback done);
@@ -81,7 +84,7 @@ class CoordinationServiceRpcHandler {
 
  private:
   mutex agent_mu_;
-  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_);
+  CoordinationServiceAgent* agent_ TF_GUARDED_BY(agent_mu_) = nullptr;
 };
 
 }  // namespace tensorflow

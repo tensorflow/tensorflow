@@ -35,8 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/math/math_util.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -497,6 +496,50 @@ StatusOr<PrimitiveType> MaybeUpcast(
     new_shape.DeleteDimension(last_dimension_idx);
   }
   return new_shape;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferStochasticConvertShape(
+    const Shape& operand_shape, const Shape& random_shape,
+    PrimitiveType new_element_type) {
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(random_shape));
+
+  TF_RETURN_IF_ERROR(
+      ExpectArray(operand_shape, "lhs of stochastic convert operation"));
+  TF_RETURN_IF_ERROR(
+      ExpectArray(random_shape, "rhs of stochastic convert operation"));
+
+  if (!primitive_util::IsUnsignedIntegralType(random_shape.element_type())) {
+    return InvalidArgument(
+        "Random numbers for stochastic convert must be unsigned integers, but "
+        "got: %s",
+        random_shape.ToString());
+  }
+
+  if (!ShapeUtil::ElementIsFloating(operand_shape)) {
+    return InvalidArgument(
+        "Stochastic convert supports only floating point operand conversion, "
+        "but got: %s",
+        random_shape.ToString());
+  }
+
+  int operand_bits = primitive_util::BitWidth(operand_shape.element_type());
+  int random_bits = primitive_util::BitWidth(random_shape.element_type());
+  if (operand_bits != random_bits) {
+    return InvalidArgument(
+        "The random number is required to have same bits as the operand. But "
+        "got random bits: %d, operand bits: %d",
+        operand_bits, random_bits);
+  }
+
+  if (!ShapeUtil::EqualIgnoringElementType(operand_shape, random_shape)) {
+    return InvalidArgument(
+        "Stochastic convert operand shape does not match random tensor shape: "
+        "%s vs %s.",
+        operand_shape.ToString(), random_shape.ToString());
+  }
+
+  return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReducePrecisionShape(

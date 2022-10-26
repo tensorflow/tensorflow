@@ -195,6 +195,50 @@ XlaOp XlaBuilderFriend::BuildAsyncDone(XlaBuilder* builder, const XlaOp operand,
   });
 }
 
+XlaOp XlaBuilderFriend::BuildAllGatherStart(
+    XlaBuilder* builder, const XlaOp operand, int64_t all_gather_dimension,
+    int64_t shard_count, absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id,
+    const std::optional<Layout>& layout,
+    const std::optional<bool> use_global_device_ids) {
+  return builder->AllGatherImpl(operand, all_gather_dimension, shard_count,
+                                replica_groups, channel_id, layout,
+                                use_global_device_ids, /*async=*/true);
+}
+
+XlaOp XlaBuilderFriend::BuildAllGatherDone(XlaBuilder* builder,
+                                           const XlaOp operand,
+                                           const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAllGatherDone,
+                                   {operand});
+  });
+}
+
+XlaOp XlaBuilderFriend::BuildAllReduceStart(
+    XlaBuilder* builder, XlaOp operand, const XlaComputation& computation,
+    absl::Span<const ReplicaGroup> replica_groups,
+    const std::optional<ChannelHandle>& channel_id,
+    const std::optional<Shape>& layout,
+    const std::optional<bool> use_global_device_ids) {
+  return builder->AllReduceImpl(operand, computation, replica_groups,
+                                channel_id, layout, use_global_device_ids,
+                                /*async=*/true);
+}
+
+XlaOp XlaBuilderFriend::BuildAllReduceDone(XlaBuilder* builder,
+                                           const XlaOp operand,
+                                           const Shape& shape) {
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return builder->AddInstruction(std::move(instr), HloOpcode::kAllReduceDone,
+                                   {operand});
+  });
+}
+
 XlaOp XlaBuilderFriend::BuildBitcast(XlaBuilder* builder, XlaOp operand,
                                      const Shape& shape) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -2299,6 +2343,19 @@ StatusOr<XlaOp> XlaBuilder::BitcastConvertTypeInternal(const Shape& shape,
                         {operand});
 }
 
+XlaOp XlaBuilder::StochasticConvertType(XlaOp operand, XlaOp random,
+                                        PrimitiveType new_element_type) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    TF_ASSIGN_OR_RETURN(const Shape* random_shape, GetShapePtr(random));
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferStochasticConvertShape(
+                            *operand_shape, *random_shape, new_element_type));
+    return AddOpWithShape(HloOpcode::kStochasticConvert, shape,
+                          {operand, random});
+  });
+}
+
 XlaOp XlaBuilder::Clamp(XlaOp min, XlaOp operand, XlaOp max) {
   return TernaryOp(HloOpcode::kClamp, min, operand, max);
 }
@@ -2595,6 +2652,133 @@ XlaOp XlaBuilder::Conditional(
           ShapeUtil::HumanString(*shape));
     }
     return ConditionalImpl(branch_index, branch_computations, branch_operands);
+  });
+}
+
+XlaOp XlaBuilder::AllReduceImpl(XlaOp operand,
+                                const XlaComputation& computation,
+                                absl::Span<const ReplicaGroup> replica_groups,
+                                const std::optional<ChannelHandle>& channel_id,
+                                const std::optional<Shape>& layout,
+                                const std::optional<bool> use_global_device_ids,
+                                bool async) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> operand_shapes;
+    std::vector<XlaOp> operands;
+    if (operand_shape->IsTuple()) {
+      if (operand_shape->tuple_shapes_size() == 0) {
+        return Unimplemented("0 element tuple AllReduce is not supported");
+      }
+      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
+        if (operand_shape->tuple_shapes(i).element_type() !=
+            operand_shape->tuple_shapes(0).element_type()) {
+          return Unimplemented(
+              "All the shapes of a tuple input of AllReduce must have the same "
+              "element type");
+        }
+        operand_shapes.push_back(&operand_shape->tuple_shapes(i));
+        operands.push_back(GetTupleElement(operand, i));
+      }
+    } else {
+      operand_shapes.push_back(operand_shape);
+      operands.push_back(operand);
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
+                        ShapeInference::InferAllReduceShape(operand_shapes));
+    if (layout) {
+      if (!LayoutUtil::HasLayout(*layout)) {
+        return InvalidArgument("shape_with_layout must have the layout set: %s",
+                               layout->ToString());
+      }
+      if (!ShapeUtil::Compatible(*layout, *operand_shape)) {
+        return InvalidArgument(
+            "Provided shape_with_layout must be compatible with the "
+            "operand shape: %s vs %s",
+            layout->ToString(), operand_shape->ToString());
+      }
+      instr.set_constrain_layout(true);
+      if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
+        // For a single-element tuple, take the tuple element shape.
+        TF_RET_CHECK(layout->tuple_shapes_size() == 1);
+        *instr.mutable_shape() = layout->tuple_shapes(0).ToProto();
+      } else {
+        *instr.mutable_shape() = layout->ToProto();
+      }
+    } else {
+      *instr.mutable_shape() = inferred_shape.ToProto();
+    }
+
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(*use_global_device_ids);
+    }
+
+    AddCalledComputation(computation, &instr);
+
+    TF_ASSIGN_OR_RETURN(auto all_reduce,
+                        AddInstruction(std::move(instr),
+                                       async ? HloOpcode::kAllReduceStart
+                                             : HloOpcode::kAllReduce,
+                                       operands));
+    if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
+      // For a single-element tuple, wrap the result into a tuple.
+      TF_RET_CHECK(operand_shapes.size() == 1);
+      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], inferred_shape));
+      return Tuple({all_reduce});
+    }
+    return all_reduce;
+  });
+}
+
+XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
+                                int64_t all_gather_dimension,
+                                int64_t shard_count,
+                                absl::Span<const ReplicaGroup> replica_groups,
+                                const std::optional<ChannelHandle>& channel_id,
+                                const std::optional<Layout>& layout,
+                                const std::optional<bool> use_global_device_ids,
+                                bool async) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_shape,
+        ShapeInference::InferAllGatherShape({operand_shape},
+                                            all_gather_dimension, shard_count));
+    if (layout) {
+      *inferred_shape.mutable_layout() = *layout;
+      instr.set_constrain_layout(true);
+    }
+    *instr.mutable_shape() = inferred_shape.ToProto();
+
+    instr.add_dimensions(all_gather_dimension);
+    for (const ReplicaGroup& group : replica_groups) {
+      *instr.add_replica_groups() = group;
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
+    }
+    if (use_global_device_ids.has_value()) {
+      instr.set_use_global_device_ids(use_global_device_ids.value());
+    }
+
+    TF_ASSIGN_OR_RETURN(auto all_gather,
+                        AddInstruction(std::move(instr),
+                                       async ? HloOpcode::kAllGatherStart
+                                             : HloOpcode::kAllGather,
+                                       {operand}));
+    return all_gather;
   });
 }
 
@@ -2940,36 +3124,9 @@ XlaOp XlaBuilder::AllGather(XlaOp operand, int64_t all_gather_dimension,
                             const std::optional<ChannelHandle>& channel_id,
                             const std::optional<Layout>& layout,
                             const std::optional<bool> use_global_device_ids) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-
-    TF_ASSIGN_OR_RETURN(
-        Shape inferred_shape,
-        ShapeInference::InferAllGatherShape({operand_shape},
-                                            all_gather_dimension, shard_count));
-    if (layout) {
-      *inferred_shape.mutable_layout() = *layout;
-      instr.set_constrain_layout(true);
-    }
-    *instr.mutable_shape() = inferred_shape.ToProto();
-
-    instr.add_dimensions(all_gather_dimension);
-    for (const ReplicaGroup& group : replica_groups) {
-      *instr.add_replica_groups() = group;
-    }
-    if (channel_id.has_value()) {
-      instr.set_channel_id(channel_id->handle());
-    }
-    if (use_global_device_ids.has_value()) {
-      instr.set_use_global_device_ids(use_global_device_ids.value());
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        auto all_gather,
-        AddInstruction(std::move(instr), HloOpcode::kAllGather, {operand}));
-    return all_gather;
-  });
+  return AllGatherImpl(operand, all_gather_dimension, shard_count,
+                       replica_groups, channel_id, layout,
+                       use_global_device_ids, /*async=*/false);
 }
 
 XlaOp XlaBuilder::CrossReplicaSum(
@@ -3007,80 +3164,9 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
                             const std::optional<ChannelHandle>& channel_id,
                             const std::optional<Shape>& shape_with_layout,
                             const std::optional<bool> use_global_device_ids) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    std::vector<const Shape*> operand_shapes;
-    std::vector<XlaOp> operands;
-    if (operand_shape->IsTuple()) {
-      if (operand_shape->tuple_shapes_size() == 0) {
-        return Unimplemented("0 element tuple AllReduce is not supported");
-      }
-      for (int i = 0; i < operand_shape->tuple_shapes_size(); ++i) {
-        if (operand_shape->tuple_shapes(i).element_type() !=
-            operand_shape->tuple_shapes(0).element_type()) {
-          return Unimplemented(
-              "All the shapes of a tuple input of AllReduce must have the same "
-              "element type");
-        }
-        operand_shapes.push_back(&operand_shape->tuple_shapes(i));
-        operands.push_back(GetTupleElement(operand, i));
-      }
-    } else {
-      operand_shapes.push_back(operand_shape);
-      operands.push_back(operand);
-    }
-
-    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
-                        ShapeInference::InferAllReduceShape(operand_shapes));
-    if (shape_with_layout) {
-      if (!LayoutUtil::HasLayout(*shape_with_layout)) {
-        return InvalidArgument("shape_with_layout must have the layout set: %s",
-                               shape_with_layout->ToString());
-      }
-      if (!ShapeUtil::Compatible(*shape_with_layout, *operand_shape)) {
-        return InvalidArgument(
-            "Provided shape_with_layout must be compatible with the "
-            "operand shape: %s vs %s",
-            shape_with_layout->ToString(), operand_shape->ToString());
-      }
-      instr.set_constrain_layout(true);
-      if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
-        // For a single-element tuple, take the tuple element shape.
-        TF_RET_CHECK(shape_with_layout->tuple_shapes_size() == 1);
-        *instr.mutable_shape() = shape_with_layout->tuple_shapes(0).ToProto();
-      } else {
-        *instr.mutable_shape() = shape_with_layout->ToProto();
-      }
-    } else {
-      *instr.mutable_shape() = inferred_shape.ToProto();
-    }
-
-    for (const ReplicaGroup& group : replica_groups) {
-      *instr.add_replica_groups() = group;
-    }
-
-    if (channel_id.has_value()) {
-      instr.set_channel_id(channel_id->handle());
-    }
-
-    if (use_global_device_ids.has_value()) {
-      instr.set_use_global_device_ids(*use_global_device_ids);
-    }
-
-    AddCalledComputation(computation, &instr);
-
-    TF_ASSIGN_OR_RETURN(
-        auto all_reduce,
-        AddInstruction(std::move(instr), HloOpcode::kAllReduce, operands));
-    if (operand_shape->IsTuple() && !inferred_shape.IsTuple()) {
-      // For a single-element tuple, wrap the result into a tuple.
-      TF_RET_CHECK(operand_shapes.size() == 1);
-      TF_RET_CHECK(ShapeUtil::Compatible(*operand_shapes[0], inferred_shape));
-      return Tuple({all_reduce});
-    }
-    return all_reduce;
-  });
+  return AllReduceImpl(operand, computation, replica_groups, channel_id,
+                       shape_with_layout, use_global_device_ids,
+                       /*async =*/false);
 }
 
 XlaOp XlaBuilder::ReduceScatter(
@@ -3294,7 +3380,8 @@ XlaOp XlaBuilder::AllToAllTuple(XlaOp operand, int64_t split_dimension,
 
 XlaOp XlaBuilder::CollectivePermute(
     XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs) {
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     HloInstructionProto instr;
@@ -3307,6 +3394,9 @@ XlaOp XlaBuilder::CollectivePermute(
       auto* proto_pair = instr.add_source_target_pairs();
       proto_pair->set_source(pair.first);
       proto_pair->set_target(pair.second);
+    }
+    if (channel_id.has_value()) {
+      instr.set_channel_id(channel_id->handle());
     }
 
     return AddInstruction(std::move(instr), HloOpcode::kCollectivePermute,
@@ -3673,6 +3763,8 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val,
 StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
                                                      XlaOp operand, XlaOp val,
                                                      int64_t dimension) {
+  std::optional<Shape> shape_override;
+
   TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
                       LookUpInstruction(val));
   if (StringToHloOpcode(val_proto->opcode()).value() == HloOpcode::kConstant &&
@@ -3680,12 +3772,16 @@ StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
     TF_ASSIGN_OR_RETURN(auto constant_size,
                         Literal::CreateFromProto(val_proto->literal(), true));
     if (constant_size.Get<int32_t>({}) == shape.dimensions(dimension)) {
-      return operand;
+      shape_override = shape;
+      shape_override->set_dynamic_dimension(dimension, false);
     }
   }
-
   HloInstructionProto instr;
-  *instr.mutable_shape() = shape.ToProto();
+  if (shape_override) {
+    *instr.mutable_shape() = shape_override->ToProto();
+  } else {
+    *instr.mutable_shape() = shape.ToProto();
+  }
   instr.add_dimensions(dimension);
   return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
                         {operand, val});
@@ -4781,8 +4877,10 @@ XlaOp AllToAllTuple(const XlaOp operand, int64_t split_dimension,
 
 XlaOp CollectivePermute(
     const XlaOp operand,
-    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs) {
-  return operand.builder()->CollectivePermute(operand, source_target_pairs);
+    const std::vector<std::pair<int64_t, int64_t>>& source_target_pairs,
+    const std::optional<ChannelHandle>& channel_id) {
+  return operand.builder()->CollectivePermute(operand, source_target_pairs,
+                                              channel_id);
 }
 
 XlaOp ReplicaId(XlaBuilder* builder) { return builder->ReplicaId(); }
@@ -4892,6 +4990,12 @@ XlaOp ConvertElementType(const XlaOp operand, PrimitiveType new_element_type) {
 
 XlaOp BitcastConvertType(const XlaOp operand, PrimitiveType new_element_type) {
   return operand.builder()->BitcastConvertType(operand, new_element_type);
+}
+
+XlaOp StochasticConvertType(const XlaOp operand, const XlaOp random,
+                            PrimitiveType new_element_type) {
+  return operand.builder()->StochasticConvertType(operand, random,
+                                                  new_element_type);
 }
 
 XlaOp Neg(const XlaOp operand) {

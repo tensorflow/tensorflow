@@ -151,7 +151,7 @@ class Backend {
   // For the host platform, returns the configured eigen threadpool device to be
   // used for scheduling work. For other platforms, returns NULL.
   const Eigen::ThreadPoolDevice* eigen_intra_op_thread_pool_device() const;
-  tensorflow::thread::ThreadPool* eigen_intra_op_thread_pool() const;
+  tsl::thread::ThreadPool* eigen_intra_op_thread_pool() const;
 
   // Resets the devices associated with this backend.
   Status ResetDevices();

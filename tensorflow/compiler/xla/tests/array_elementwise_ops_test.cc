@@ -13,12 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -42,10 +44,33 @@ limitations under the License.
 namespace xla {
 namespace {
 
+template <typename T>
+std::pair<std::vector<T>, std::vector<T>> AllSignedPairs(
+    absl::Span<const T> abs_vals) {
+  std::vector<T> ys;
+  std::vector<T> xs;
+  const size_t n = 4 * abs_vals.size() * abs_vals.size();
+  ys.reserve(n);
+  xs.reserve(n);
+  for (auto abs_y : abs_vals) {
+    for (auto y : {-abs_y, abs_y}) {
+      for (auto abs_x : abs_vals) {
+        for (auto x : {-abs_x, abs_x}) {
+          ys.push_back(y);
+          xs.push_back(x);
+        }
+      }
+    }
+  }
+  return {xs, ys};
+}
+
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
-  ErrorSpec error_spec_{0.0001, 0.0001};
-  ErrorSpec strict_error_spec_{3.6e-15, 3.6e-15};
+  static constexpr float kEpsF32 = std::numeric_limits<float>::epsilon();
+  static constexpr double kEpsF64 = std::numeric_limits<double>::epsilon();
+  ErrorSpec error_spec_{60 * kEpsF32, 60 * kEpsF32};
+  ErrorSpec strict_error_spec_{100 * kEpsF64, 100 * kEpsF64};
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -513,13 +538,26 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF64s) {
+  auto inf = std::numeric_limits<double>::infinity();
+  auto nan = std::numeric_limits<double>::quiet_NaN();
+  std::array<double, 7> vals{0.0, 0.1, 1.0, 2.0, 1e20, nan, inf};
+  std::vector<double> a_vals;
+  std::vector<double> b_vals;
+  a_vals.reserve(vals.size() * vals.size());
+  b_vals.reserve(vals.size() * vals.size());
+  for (auto abs_a_val : vals) {
+    for (auto a_val : {-abs_a_val, abs_a_val}) {
+      for (auto abs_b_val : vals) {
+        for (auto b_val : {-abs_b_val, abs_b_val}) {
+          a_vals.push_back(a_val);
+          b_vals.push_back(b_val);
+        }
+      }
+    }
+  }
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<double>(
-      &builder, {-2.5, 25.5, 2.25, -10.0, 6.0, 1.0, 2.0, 3.2, -4.0, 0.45, 5.7,
-                 0.1, 1.0, 2.0, 0.5, -1.0, -0.5, 1.0});
-  auto b = ConstantR1<double>(
-      &builder, {10.0, 5.1, 1.0, 10.0, -6.0, 0.1, 1.0, 2.0, 0.5, -1.0, -0.5,
-                 2.1, 3.1, 9.9, -4.5, -11.0, -21.5, M_PI});
+  auto a = ConstantR1<double>(&builder, a_vals);
+  auto b = ConstantR1<double>(&builder, b_vals);
   Div(a, b);
 
   ComputeAndCompare(&builder, {}, strict_error_spec_);
@@ -1536,15 +1574,24 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   XlaBuilder builder(TestName());
-  auto lhs = ConstantR1<float>(
-      &builder, {0.0f, 4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
-  auto rhs = ConstantR1<float>(
-      &builder, {0.0f, 2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
+  // TODO(rmlarsen): The final frontier: getting over- and underflow to match
+  // std::pow.
+  //  auto min = std::numeric_limits<float>::min();
+  //  auto max = std::numeric_limits<float>::max();
+  auto inf = std::numeric_limits<float>::infinity();
+  auto qnan = std::numeric_limits<float>::quiet_NaN();
+  auto eps = std::numeric_limits<float>::epsilon();
+
+  std::vector<float> ys;
+  std::vector<float> xs;
+  std::tie(xs, ys) = AllSignedPairs<float>(
+      {0.0f, 1e-23, eps, 0.1f, 1.0f / 3.0f, 2.0f / 3.0f, 0.5f, 1.0f, 1.0f + eps,
+       2.0f, 3.0f, M_PI, 1e6 + 0.1, 1e23, inf, qnan});
+  auto lhs = ConstantR1<float>(&builder, xs);
+  auto rhs = ConstantR1<float>(&builder, ys);
   Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder,
-                             {1.0f, 16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f},
-                             {}, error_spec_);
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
@@ -1593,7 +1640,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   XlaBuilder b(TestName());
 
   std::vector<float> values = {1.0f, 2.0f, 3.2f, -4.0f};
-  std::vector<float> exponents = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
+  std::vector<float> exponents = {0.0f, 1.0f,  2.0f,  0.5f,  0.25f,
+                                  1.5f, -1.0f, -0.5f, -0.25f};
 
   Literal param_literal = LiteralUtil::CreateR1<float>(values);
   std::unique_ptr<GlobalData> param_data =
@@ -1666,8 +1714,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogOfPowerF32) {
     expected[i] = std::log(std::pow(values0[i], values1[i]));
   }
 
+  // Log2 is very inaccurate onon some platforms.
+  ErrorSpec error_spec(1000 * kEpsF32, 1000 * kEpsF32);
   ComputeAndCompareR1<float>(&b, expected, {data0.get(), data1.get()},
-                             error_spec_);
+                             error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MulOfExpF32) {
@@ -2413,6 +2463,21 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2F32s) {
   ComputeAndCompare(&builder, {}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, Atan2F64s) {
+  XlaBuilder builder(TestName());
+  auto inf = std::numeric_limits<double>::infinity();
+  auto qnan = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> ys;
+  std::vector<double> xs;
+  std::tie(xs, ys) =
+      AllSignedPairs<double>({0.0, 0.1, 0.9, 1.0, 1.1, M_PI, 1e6, qnan, inf});
+  auto y = ConstantR1<double>(&builder, ys);
+  auto x = ConstantR1<double>(&builder, xs);
+  Atan2(y, x);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
   XlaBuilder builder(TestName());
   auto inf = std::numeric_limits<float>::infinity();
@@ -2438,11 +2503,31 @@ XLA_TEST_F(ArrayElementwiseOpTest, Atan2C64s) {
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   XlaBuilder builder(TestName());
-  auto a = ConstantR1<float>(&builder, {-2.5f, 3.14f, 2.25f});
+  auto inf = std::numeric_limits<float>::infinity();
+  auto nan = std::numeric_limits<float>::quiet_NaN();
+  auto a = ConstantR1<float>(
+      &builder, {-inf, -2.5f, 3.14f, -0.0f, 0.0f, 2.25f, inf, nan});
+
   Tanh(a);
 
-  ComputeAndCompareR1<float>(&builder, {-0.986614f, 0.996260f, 0.978026}, {},
-                             error_spec_);
+  // Tanh is relatively inaccurate because we use a rational approximation.
+  ErrorSpec error_spec{165 * kEpsF32, 165 * kEpsF32};
+  ComputeAndCompare(&builder, {}, error_spec);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, TanhF64s) {
+  XlaBuilder builder(TestName());
+  auto inf = std::numeric_limits<double>::infinity();
+  auto nan = std::numeric_limits<double>::quiet_NaN();
+  auto a = ConstantR1<double>(&builder,
+                              {-inf, -2.5, 3.14, -0.0, 0.0, 2.25, inf, nan});
+
+  Tanh(a);
+
+  // The error spec is unusually high here to account for the fact that we
+  // use a rational interpolant to approximate tanh.
+  ErrorSpec error_spec{165 * kEpsF64, 165 * kEpsF64};
+  ComputeAndCompare(&builder, {}, error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
@@ -2450,7 +2535,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
   // the input tensor is large enough to exercise the vectorized tanh
   // implementation on XLA CPU.
   XlaBuilder builder(TestName());
-  auto input_literal = LiteralUtil::CreateR1<float>(
+  auto input_literal = ConstantR1<float>(
+      &builder,
       {1.02,  -0.32, 0.85,  0.90,  1.23,  -0.91, -0.49, 0.80,  -0.67, 0.16,
        -0.07, 0.39,  -0.41, 0.04,  1.36,  1.25,  0.41,  0.65,  -1.08, 0.32,
        -1.45, -0.77, -1.09, 0.91,  -1.03, -0.30, -1.11, -1.17, 1.50,  -0.85,
@@ -2458,31 +2544,13 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
        0.08,  0.81,  -0.30, 1.17,  -0.65, -0.44, 0.92,  1.26,  -1.29, 1.35,
        0.08,  -1.24, -0.92, 0.49,  1.17,  -0.45, -1.31, -1.44, -0.13, -1.31,
        -0.79, 1.41,  1.21,  1.05});
-  TF_ASSERT_OK_AND_ASSIGN(auto input_data,
-                          client_->TransferToServer(input_literal));
 
-  auto input = Parameter(&builder, 0, input_literal.shape(), "input");
-  Tanh(input);
+  Tanh(input_literal);
 
-  ComputeAndCompareR1<float>(
-      &builder,
-      {0.77009583,  -0.30665702, 0.69070244,  0.71401149,  0.84400684,
-       -0.71985596, -0.45764771, 0.66664988,  -0.58278900, 0.16050975,
-       -0.06770509, 0.36843640,  -0.38476998, 0.04018109,  0.87562293,
-       0.84788644,  0.38603750,  0.57294142,  -0.79140943, 0.31032649,
-       -0.89590985, -0.64770776, -0.79625875, 0.72234446,  -0.77389336,
-       -0.28871772, -0.80428445, -0.82541436, 0.90456349,  -0.68856895,
-       0.03877772,  0.76877952,  0.32561871,  -0.54546672, 0.39072621,
-       0.07273290,  -0.01924866, 0.88924897,  -0.55283129, 0.67183107,
-       0.08006320,  0.66944766,  -0.29068485, 0.82573754,  -0.57170743,
-       -0.41581789, 0.72739530,  0.85025692,  -0.85931867, 0.87357593,
-       0.07782833,  -0.84597743, -0.72748238, 0.45396307,  0.82449573,
-       -0.42462519, -0.86363792, -0.89368379, -0.12621804, -0.86445558,
-       -0.65565848, 0.88789743,  0.83566397,  0.78287679},
-      {input_data.get()},
-      // The error spec is unusually high here to account for the fact that we
-      // use a rational interpolant to approximate tanh.
-      ErrorSpec(0.004, 0.004));
+  // The error spec is unusually high here to account for the fact that we
+  // use a rational interpolant to approximate tanh.
+  ErrorSpec error_spec{440 * kEpsF32, 440 * kEpsF32};
+  ComputeAndCompare(&builder, {}, error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
@@ -2555,8 +2623,10 @@ XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
     expected_result.push_back(std::log(input_literal.Get<float>({i})));
   }
 
+  // Log2 is very inaccurate onon some platforms.
+  ErrorSpec error_spec(1000 * kEpsF32, 1000 * kEpsF32);
   ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
-                             error_spec_);
+                             error_spec);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, ClzU32s) {

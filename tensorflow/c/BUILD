@@ -15,12 +15,7 @@ load(
     "tf_kernel_library",
 )
 load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_cuda_cc_test")
 
 package(
     licenses = ["notice"],
@@ -708,6 +703,7 @@ tf_cuda_library(
         ":tf_tensor_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal_impl",
+        "//tensorflow/core/lib/gtl:cleanup",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:refcount",

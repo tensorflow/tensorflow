@@ -1,8 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "tf_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -756,6 +755,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "ragged_batch_test",
+    size = "small",
+    srcs = ["ragged_batch_test.py"],
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "random_test",
     size = "small",
     srcs = ["random_test.py"],
@@ -1099,8 +1114,9 @@ tf_py_test(
 
 tf_py_test(
     name = "unique_test",
-    size = "small",
+    size = "medium",
     srcs = ["unique_test.py"],
+    shard_count = 3,
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -1133,18 +1149,12 @@ py_strict_test(
     name = "rebatch_test",
     srcs = ["rebatch_test.py"],
     deps = [
+        ":checkpoint_test_base",
         ":test_base",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/platform:client_testlib",
-        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

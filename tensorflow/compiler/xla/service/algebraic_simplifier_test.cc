@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -5280,8 +5280,8 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).value());
   EXPECT_THAT(computation->root_instruction(),
-              GmockMatch(m::DynamicSlice(m::Parameter(), m::Parameter(),
-                                         m::Parameter(), m::Parameter())));
+              GmockMatch(m::DynamicSlice(m::Parameter(), m::Constant(),
+                                         m::Parameter(), m::Constant())));
 }
 
 // Test that two consecutive broadcasts can be merged to one.
@@ -6377,6 +6377,31 @@ ENTRY AddBroadcastZeroWithDynamicSlice {
   EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
 }
 
+// Test of dynamic-update-slice with dims where update and result have the same
+// size so we can replace indices to 0.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceTrivialIndices) {
+  const char* hlo_string = R"(
+HloModule DynamicUpdateSliceTrivialIndices
+
+ENTRY DynamicUpdateSliceTrivialIndices {
+  param0 = f32[1800,12,512] parameter(0)
+  param1 = f32[1,12,512] parameter(1)
+  param2 = u32[] parameter(2)
+  ROOT dynamic-update-slice = f32[1800,12,512] dynamic-update-slice(
+    param0, param1, param2, param2, param2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite\n" << module->ToString();
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicUpdateSlice(m::Parameter(0), m::Parameter(1),
+                                               m::Parameter(2), m::Constant(),
+                                               m::Constant())));
+}
+
 TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSlice) {
   const char* hlo_string = R"(
 HloModule AddDynamicUpdateSliceToAddSlice
@@ -6412,6 +6437,36 @@ ENTRY AddDynamicUpdateSliceToAddSlice {
                  m::Reshape(m::Parameter(1))),
           m::Constant(), m::Parameter(2), m::Constant(), m::Constant(),
           m::Constant(), m::Constant())));
+}
+
+TEST_F(AlgebraicSimplifierTest, AddDynamicUpdateSliceToAddSliceOnLhs) {
+  const char* hlo_string = R"(
+HloModule AddDynamicUpdateSliceToAddSlice
+
+ENTRY AddDynamicUpdateSliceToAddSlice {
+  param0 = f32[4,12,512] parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[4,12,512] broadcast(constant), dimensions={}
+  param1 = f32[1,12,512] parameter(1)
+  param2 = s32[] parameter(2)
+  constant.1 = s32[] constant(0)
+  dynamic-update-slice = f32[4,12,512] dynamic-update-slice(
+    broadcast, param1, param2, constant.1, constant.1)
+  ROOT add = f32[4,12,512] add(dynamic-update-slice, param0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite to add slice\n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::DynamicUpdateSlice(
+                        m::Parameter(0),
+                        m::Add(m::DynamicSlice(m::Parameter(0), m::Parameter(2),
+                                               m::Constant(), m::Constant()),
+                               m::Parameter(1)),
+                        m::Parameter(2), m::Constant(), m::Constant())));
 }
 
 TEST_F(AlgebraicSimplifierTest, ScalarMultiplyReduction) {
@@ -7827,6 +7882,50 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ScalarCompareMaximumSimplification) {
+  std::string module_string = R"(
+    HloModule m
+    test {
+      a = s32[] parameter(0)
+      b = s32[] parameter(1)
+      max = s32[] maximum(a,b)
+      ROOT cmp = pred[] compare(max, a), direction=GT
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
+  SCOPED_TRACE("before: " + m->ToString());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  SCOPED_TRACE("after: " + m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Compare(m::Parameter(1), m::Parameter(0))));
+  // Numerically unstable transformation shouldn't be applied to floating types.
+  std::string module_string_f32 =
+      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
+TEST_F(AlgebraicSimplifierTest, CompareMaximumSimplification) {
+  std::string module_string = R"(
+    HloModule m
+    test {
+      a = s32[12,4,1,6] parameter(0)
+      b = s32[12,4,1,6] parameter(1)
+      max = s32[12,4,1,6] maximum(a,b)
+      ROOT cmp = pred[12,4,1,6] compare(max, b), direction=GT
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_string));
+  SCOPED_TRACE("before: " + m->ToString());
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+  SCOPED_TRACE("after: " + m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Compare(m::Parameter(0), m::Parameter(1))));
+  // Numerically unstable transformation shouldn't be applied to floating types.
+  std::string module_string_f32 =
+      absl::StrReplaceAll(module_string, {{"s32", "f32"}});
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
+}
+
 TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   const char* kModuleStr = R"(
     HloModule m
@@ -8418,6 +8517,30 @@ ENTRY f {
                   m::Clamp(m::Constant(), m::Parameter(0), m::Constant())))));
 }
 
+// Test of converting dynamic-slice indices to zeros on dims with the full size.
+TEST_F(AlgebraicSimplifierTest, DynamicSliceTrivialIndices) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY f {
+  %operand = s32[2,2] parameter(0)
+  %index = u32[] parameter(1)
+  ROOT %dynamic-slice = s32[2,1] dynamic-slice(%operand, %index, %index),
+    dynamic_slice_sizes={2,1}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).value());
+  VLOG(2) << "After rewrite \n" << module->ToString();
+
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::DynamicSlice(m::Parameter(0), m::Constant(),
+                                         m::Parameter(1))));
+}
+
 // Test folding of clamp(pid, 0, limit) -> pid
 TEST_F(AlgebraicSimplifierTest, ClampOfPartitionId) {
   const char* hlo_string = R"(
@@ -8716,6 +8839,170 @@ TEST_F(AlgebraicSimplifierTest, BitcastCopyChainSmall) {
   ASSERT_TRUE(result);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Bitcast(m::Bitcast(m::Copy(m::Parameter(0))))));
+}
+
+// Reverse(Reverse(A)) ==> A.
+TEST_F(AlgebraicSimplifierTest, RemoveIdenticalNestedReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      r0 = bf16[100,1,100,512] reverse(p0), dimensions={1,2}
+      ROOT r1 = bf16[100,1,100,512] reverse(r0), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Parameter(0)));
+}
+
+// Reverse(Reverse(A)) ==> Reverse(A).
+TEST_F(AlgebraicSimplifierTest, ShrinkNestedReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      r0 = bf16[100,1,100,512] reverse(p0), dimensions={1,2,3}
+      ROOT r1 = bf16[100,1,100,512] reverse(r0), dimensions={1,2}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Reverse(m::Parameter(0))));
+}
+
+// reverse(ElementWiseBinOp(x, constant)) ==> ElementWiseBinOp(reverse(x),
+// constant)
+TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      ewbo0 = bf16[100,1,100,512] add(p0, const)
+      ROOT r0 = bf16[100,1,100,512] reverse(ewbo0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Reverse(m::Parameter(0)),
+                                      m::Broadcast(m::Constant()))));
+}
+
+// reverse(ElementWiseBinOp(constant, x)) ==> ElementWiseBinOp(constant,
+// reverse(x))
+TEST_F(AlgebraicSimplifierTest, SwapConstantEwboWithReverse2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = bf16[100,1,100,512] parameter(0)
+      constant0 = bf16[] constant(1)
+      const = bf16[100,1,100,512] broadcast(constant0), dimensions={}
+      ewbo0 = bf16[100,1,100,512] add(const, p0)
+      ROOT r0 = bf16[100,1,100,512] reverse(ewbo0), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  ASSERT_TRUE(g);
+  auto* root = m->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Broadcast(m::Constant()),
+                                      m::Reverse(m::Parameter(0)))));
+}
+
+// non-contiguous degenerate dimensions adding
+// reverse(DegenerateDimensionAddingReshape(x)) ==>
+// DegenerateDimensionAddingReshape(reverse(x))
+TEST_F(AlgebraicSimplifierTest,
+       SwapNonContiguousDegenerateDimensionAddingReshapeAndReverse) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 5}), "param0"));
+
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {1, 3, 1, 4, 1, 5}), param0));
+  std::vector<int64_t> dims{0, 1, 3, 4};
+  absl::Span<const int64_t> rev_dims = absl::MakeSpan(dims);
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {1, 3, 1, 4, 1, 5}), reshape1, rev_dims));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  ASSERT_TRUE(g);
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  std::vector<int64_t> after_rewrite_dims{0, 1};
+  absl::Span<const int64_t> after_rewrite_rev_dims =
+      absl::MakeSpan(after_rewrite_dims);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Reverse())));
+  EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
+              after_rewrite_rev_dims);
+}
+
+// contiguous degenerate dimensions adding
+// reverse(DegenerateDimensionAddingReshape(x)) ==>
+// DegenerateDimensionAddingReshape(reverse(x))
+TEST_F(AlgebraicSimplifierTest,
+       SwapContiguousDegenerateDimensionAddingReshapeAndReverse) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {3, 4, 5}), "param0"));
+
+  HloInstruction* reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {3, 1, 1, 1, 4, 1, 5}), param0));
+  std::vector<int64_t> dims{0, 1, 3, 4};
+  absl::Span<const int64_t> rev_dims = absl::MakeSpan(dims);
+  builder.AddInstruction(HloInstruction::CreateReverse(
+      ShapeUtil::MakeShape(F32, {3, 1, 1, 1, 4, 1, 5}), reshape1, rev_dims));
+  SCOPED_TRACE("Before rewrite\n" + m->ToString());
+  auto computation = m->AddEntryComputation(builder.Build());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reverse(m::Reshape(m::Parameter(0)))));
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  auto g = simplifier.Run(m.get()).value();
+  ASSERT_TRUE(g);
+  SCOPED_TRACE("After rewrite\n" + m->ToString());
+  std::vector<int64_t> after_rewrite_dims{0, 1};
+  absl::Span<const int64_t> after_rewrite_rev_dims =
+      absl::MakeSpan(after_rewrite_dims);
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Reverse())));
+  EXPECT_THAT(computation->root_instruction()->operand(0)->dimensions(),
+              after_rewrite_rev_dims);
 }
 
 }  // namespace

@@ -114,14 +114,12 @@ void RecordTFDataServiceWorkerCreated();
 
 // Records that a tf.data service job has been created.
 void RecordTFDataServiceJobsCreated(
-    const tensorflow::data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read);
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
 // Records tf.data service iterators created by clients.
 void RecordTFDataServiceClientIterators(
-    int64_t worker_uid, tensorflow::data::DeploymentMode deployment_mode,
-    const tensorflow::data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read);
+    int64_t worker_uid, data::DeploymentMode deployment_mode,
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
 // Records tf.data service cross-trainer cache queries.
 void RecordTFDataServiceCrossTrainerCacheQuery(bool cache_hit);
@@ -254,17 +252,17 @@ class ScopedCounter final {
 
   // Returns duration of the current interval in case the timer has started.
   // Returns nullopt otherwise.
-  absl::optional<uint64> DurationMicroSec() const {
-    return started_ ? absl::optional<uint64>(
-                          accumulated_time_ +
-                          tensorflow::Env::Default()->NowMicros() - start_time_)
-                    : absl::nullopt;
+  std::optional<uint64> DurationMicroSec() const {
+    return started_ ? std::optional<uint64>(accumulated_time_ +
+                                            Env::Default()->NowMicros() -
+                                            start_time_)
+                    : std::nullopt;
   }
 
   // Temporarily stop the timer, but keep accumulated time.
   void AccumulateAndStop() {
     if (started_) {
-      accumulated_time_ = tensorflow::Env::Default()->NowMicros() - start_time_;
+      accumulated_time_ = Env::Default()->NowMicros() - start_time_;
       started_ = false;
     }
   }
@@ -274,7 +272,7 @@ class ScopedCounter final {
     if (started_) return;
 
     // Keep previously accumulated time if any.
-    start_time_ = tensorflow::Env::Default()->NowMicros();
+    start_time_ = Env::Default()->NowMicros();
     started_ = true;
   }
 
@@ -283,8 +281,7 @@ class ScopedCounter final {
  private:
   template <std::size_t... S>
   void ReportInternal(std::index_sequence<S...>) {
-    uint64 time_interval =
-        tensorflow::Env::Default()->NowMicros() - start_time_;
+    uint64 time_interval = Env::Default()->NowMicros() - start_time_;
     time_interval += accumulated_time_;
     if (time_interval > 0) {
       counter_->GetCell(labels_[S]...)->IncrementBy(time_interval);
@@ -292,7 +289,7 @@ class ScopedCounter final {
   }
 
   void Init() {
-    start_time_ = tensorflow::Env::Default()->NowMicros();
+    start_time_ = Env::Default()->NowMicros();
     started_ = true;
     accumulated_time_ = 0;
   }
@@ -313,9 +310,6 @@ void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
-
-// Updates the metrics stored about time BFC allocator spents during delay.
-void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
 
 // Increments (by 1) a simple integer counter that is exposed for testing.
 void IncrementTestCounter(const string& name, const string& label);

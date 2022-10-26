@@ -54,13 +54,16 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(GatherOp gather,
                                 PatternRewriter& rewriter) const override {
-    auto dimensionNumbers = gather.dimension_numbers();
+    auto dimensionNumbers = gather.getDimensionNumbers();
 
     // Inputs need to be ranked to lower.
-    if (!gather.operand().getType().cast<ShapedType>().hasRank() ||
-        !gather.operand().getType().cast<ShapedType>().hasStaticShape() ||
-        !gather.start_indices().getType().cast<ShapedType>().hasRank() ||
-        !gather.start_indices().getType().cast<ShapedType>().hasStaticShape()) {
+    if (!gather.getOperand().getType().cast<ShapedType>().hasRank() ||
+        !gather.getOperand().getType().cast<ShapedType>().hasStaticShape() ||
+        !gather.getStartIndices().getType().cast<ShapedType>().hasRank() ||
+        !gather.getStartIndices()
+             .getType()
+             .cast<ShapedType>()
+             .hasStaticShape()) {
       return rewriter.notifyMatchFailure(gather,
                                          "non-static operand or start_indices");
     }
@@ -94,19 +97,19 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
       }
     }
 
-    if (gather.slice_sizes().size() <= resultTy.getRank()) {
+    if (gather.getSliceSizes().size() <= resultTy.getRank()) {
       return rewriter.notifyMatchFailure(gather,
                                          "slices_size.size > result.rank");
     }
 
     for (const auto& it : llvm::enumerate(resultTy.getShape())) {
-      if (gather.slice_sizes().getValues<int64_t>()[it.index() + 1] !=
+      if (gather.getSliceSizes().getValues<int64_t>()[it.index() + 1] !=
           it.value()) {
         return failure();
       }
     }
 
-    auto gatherStartIndices = gather.start_indices();
+    auto gatherStartIndices = gather.getStartIndices();
     auto gatherStartIndicesTy = gatherStartIndices.getType().cast<ShapedType>();
 
     llvm::SmallVector<Value, 4> sliceStartIndices;
@@ -131,7 +134,7 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
       return rewriter.notifyMatchFailure(gather, "start_indices.rank > 1");
     }
 
-    auto sliceSizesTy = gather.slice_sizes().getType();
+    auto sliceSizesTy = gather.getSliceSizes().getType();
 
     // Start indices have implicit zeros when not specified. This is because
     // Gather occurs similar to slicing where full slices are inferred. Add any
@@ -145,14 +148,14 @@ class GatherIsSlice : public OpRewritePattern<GatherOp> {
     }
 
     SmallVector<int64_t, 5> sliceShape;
-    for (auto shapeValue : gather.slice_sizes().getValues<APInt>()) {
+    for (auto shapeValue : gather.getSliceSizes().getValues<APInt>()) {
       sliceShape.push_back(shapeValue.getSExtValue());
     }
 
     auto sliceTy = RankedTensorType::get(sliceShape, resultTy.getElementType());
     auto slice = rewriter.create<DynamicSliceOp>(
-        gather.getLoc(), sliceTy, gather.operand(), sliceStartIndices,
-        gather.slice_sizes());
+        gather.getLoc(), sliceTy, gather.getOperand(), sliceStartIndices,
+        gather.getSliceSizes());
 
     rewriter.replaceOpWithNewOp<ReshapeOp>(gather, gather.getType(), slice);
 

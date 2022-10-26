@@ -112,6 +112,11 @@ StatusOr<ExecutableBuildOptionsProto> ExecutableBuildOptions::ToProto() const {
   if (has_debug_options()) {
     *output.mutable_debug_options() = debug_options();
   }
+  if (layout_canonicalization_callback_) {
+    return InvalidArgument(
+        "Cannot serialize "
+        "ExecutableBuildOptions::layout_canonicalization_callback");
+  }
   output.set_num_replicas(num_replicas());
   output.set_num_partitions(num_partitions());
   output.set_use_spmd_partitioning(use_spmd_partitioning());

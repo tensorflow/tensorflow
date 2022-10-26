@@ -24,6 +24,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+// TODO(b/245168068): Add support for `TfLiteOpaqueDelegateBuilder`.
+
 // External delegate library construct
 struct ExternalLib {
   using CreateDelegatePtr = std::add_pointer<TfLiteDelegate*(

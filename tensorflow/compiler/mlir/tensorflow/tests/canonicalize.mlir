@@ -1492,6 +1492,57 @@ func.func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
   func.return %0#0 : tensor<*xf32>
 }
 
+// Check that a Cast is inserted when there is an implicit cast from
+// WhileRegion operands to iteration variables.
+// CHECK-LABEL: testWhileRegionExplicitCast
+func.func @testWhileRegionExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32>) -> tensor<i32> {
+  // CHECK: [[CAST1:%.*]] = "tf.Cast"(%arg1)
+  // CHECK: "tf.WhileRegion"(%arg0, [[CAST1]])
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<i32>):
+      %ne = "tf.NotEqual"(%carg0, %carg1) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub0 = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %sub1 = "tf.Sub"(%barg1, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%sub0, %sub1) : (tensor<i32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  return %0#0 : tensor<i32>
+}
+
+// Check that an iteration variable that requires an explicit Cast to be pass
+// through is actually made pass through.
+// CHECK-LABEL: testWhileRegionPassThroughExplicitCast
+func.func @testWhileRegionPassThroughExplicitCast(%arg0 : tensor<i32>, %arg1 : tensor<*xi32>) -> tensor<i32> {
+  // CHECK: [[CAST1:%.*]] = "tf.Cast"(%arg1)
+  // CHECK: "tf.WhileRegion"(%arg0)
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      // condition, check if count has reached 0
+      ^bb0(%carg0: tensor<i32>, %carg1: tensor<i32>):
+      %zero = arith.constant dense<0> : tensor<i32>
+      %ne = "tf.NotEqual"(%carg0, %zero) : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      "tf.Yield"(%ne) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<i32>, %barg1: tensor<i32>):
+      %one = arith.constant dense<1> : tensor<i32>
+      %sub = "tf.Sub"(%barg0, %one) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      "tf.Yield"(%sub, %barg1) : (tensor<i32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<i32>, tensor<*xi32>) -> (tensor<i32>, tensor<i32>)
+  // CHECK: return [[CAST1]]
+  func.return %0#1 : tensor<i32>
+}
+
 // Check that output_shapes attribute is removed for tf.If
 func.func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
 func.func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
@@ -2120,4 +2171,21 @@ func.func @testTensorListGetItemMultipleUsers(%arg0: tensor<1600x1x32xf32>, %arg
   // CHECK: %[[CST:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[RES0:.*]] = "tf.GatherV2"(%arg0, %arg2, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
   // CHECK: %[[RES1:.*]] = "tf.GatherV2"(%arg0, %arg3, %cst) {batch_dims = 0 : i64} : (tensor<1600x1x32xf32>, tensor<i32>, tensor<i32>) -> tensor<1x32xf32>
+}
+
+// CHECK-LABEL: testUnaryIdempotent
+func.func @testUnaryIdempotent(%arg0: tensor<4xf32>) -> (tensor<4xf32>) {
+  // CHECK: tf.Abs
+  // CHECK-NOT: tf.Abs
+  %0 = "tf.Abs"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  %1 = "tf.Abs"(%0) : (tensor<4xf32>) -> tensor<4xf32>
+  func.return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: testInvolution
+func.func @testInvolution(%arg0: tensor<4xi32>) -> (tensor<4xi32>) {
+  // CHECK-NOT: tf.Invert
+  %0 = "tf.Invert"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  %1 = "tf.Invert"(%0) : (tensor<4xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
 }

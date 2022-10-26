@@ -44,14 +44,16 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORMERGECLUSTERS
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshErrorMsg[] =
     "Failed to extract mesh for DTensorMergeCluster pass. "
@@ -242,7 +244,7 @@ mlir::LogicalResult InlineNestedDeviceClusters(mlir::ModuleOp module) {
     // enclosing cluster. Remove the child cluster and move all ops to parent
     // cluster instead.
     for (auto it : llvm::zip(cluster.GetBody().getTerminator()->getOperands(),
-                             cluster.results())) {
+                             cluster.getResults())) {
       mlir::Value new_value = std::get<0>(it);
       mlir::Value value_to_replace = std::get<1>(it);
       value_to_replace.replaceAllUsesWith(new_value);
@@ -284,7 +286,7 @@ void CloneEmptyIfWithPredicate(mlir::TF::IfRegionOp if_region, const Mesh& mesh,
   // Create new cluster op that contains cloned if operation.
   auto new_cluster = builder.create<mlir::tf_device::ClusterOp>(
       if_region.getLoc(), llvm::SmallVector<mlir::Type, 4>{});
-  new_cluster.body().push_back(new mlir::Block);
+  new_cluster.getBody().push_back(new mlir::Block);
   builder.setInsertionPointToEnd(&new_cluster.GetBody());
   auto return_op = builder.create<mlir::tf_device::ReturnOp>(
       if_region.getLoc(), llvm::SmallVector<mlir::Value, 4>{});
@@ -333,7 +335,7 @@ mlir::LogicalResult VerifyClusterInputOutput(
 
   mlir::LogicalResult result = mlir::success();
   mlir::visitUsedValuesDefinedAbove(
-      cluster.body(), cluster.body(), [&](mlir::OpOperand* input) {
+      cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* input) {
         if (!input->get().isa<mlir::BlockArgument>()) {
           result = cluster.emitOpError(
               "found nested tf_device.Cluster op with inputs. Nested cluster "
@@ -515,8 +517,8 @@ mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
 
     for (mlir::tf_device::ClusterOp cluster : mesh_cluster_list) {
       merged_cluster_outputs.insert(merged_cluster_outputs.end(),
-                                    cluster.results().begin(),
-                                    cluster.results().end());
+                                    cluster.getResults().begin(),
+                                    cluster.getResults().end());
 
       auto return_values = cluster.GetBody().getTerminator()->getOperands();
       merged_return_values.insert(merged_return_values.end(),
@@ -531,7 +533,7 @@ mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
     builder.setInsertionPoint(&func_block.front());
     auto new_cluster = builder.create<mlir::tf_device::ClusterOp>(
         module.getLoc(), merged_return_types);
-    new_cluster.body().push_back(new mlir::Block);
+    new_cluster.getBody().push_back(new mlir::Block);
     new_cluster->setAttr(kMeshAttr, builder.getStringAttr(mesh.ToString()));
 
     // Move all ops inside clusters in cluster mesh to `new_cluster`.
@@ -584,7 +586,7 @@ mlir::LogicalResult MergeClusters(mlir::ModuleOp module) {
 // into a single cluster. After this pass, exactly one tf_device.Cluster op
 // exists for each device mesh.
 struct DTensorMergeClusters
-    : public DTensorMergeClustersBase<DTensorMergeClusters> {
+    : public impl::DTensorMergeClustersBase<DTensorMergeClusters> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }

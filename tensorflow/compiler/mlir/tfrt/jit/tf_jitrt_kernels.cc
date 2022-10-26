@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
+#include "tensorflow/compiler/xla/mlir/transforms/runtime/compiler.h"
 #include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -114,7 +116,6 @@ using ::tfrt::jitrt::StaticRemainingResultsConverter;
 using ::xla::runtime::ArgumentConstraint;
 using ::xla::runtime::ArgumentsRef;
 using ::xla::runtime::AsyncValuesCache;
-using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
@@ -164,6 +165,21 @@ class CompilationThreadPool : public SharedContext {
 
  private:
   std::unique_ptr<ThreadPool> thread_pool_;
+};
+
+// -------------------------------------------------------------------------- //
+// Runs async tasks by scheduling them into the Eigen thread pool.
+// -------------------------------------------------------------------------- //
+
+class EigenThreadPoolAsyncTaskRunner : public xla::runtime::AsyncTaskRunner {
+ public:
+  explicit EigenThreadPoolAsyncTaskRunner(
+      Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_(thread_pool) {}
+  void Schedule(Task task) override { thread_pool_->Schedule(std::move(task)); }
+
+ private:
+  Eigen::ThreadPoolInterface* thread_pool_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -446,37 +462,40 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                               : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      mlir::RegisterAllTensorFlowDialects(registry);
-      RegisterDefaultJitRtDialects(registry);
-    };
+    opts.compiler.register_dialects =
+        [](xla::runtime::DialectRegistry& dialects) {
+          mlir::RegisterAllTensorFlowDialects(*dialects);
+          RegisterDefaultJitRtDialects(dialects);
+        };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
+    opts.compiler.create_compilation_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
 
-      TfJitRtPipelineOptions opts;
-      if (tf_jitrt_opts) {
-        opts.vectorize = tf_jitrt_opts->vectorize;
-        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-      } else {
-        opts.vectorize = GetJitRtFlags().vectorize;
-      }
+          TfJitRtPipelineOptions opts;
+          if (tf_jitrt_opts) {
+            opts.vectorize = tf_jitrt_opts->vectorize;
+            opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+          } else {
+            opts.vectorize = GetJitRtFlags().vectorize;
+          }
 
-      // Lower from Tensorflow to Linalg on buffers.
-      CreateTfJitRtPipeline(pm, opts);
+          // Lower from Tensorflow to Linalg on buffers.
+          CreateTfJitRtPipeline(*passes, opts);
 
-      // Use default JitRt compilation pipeline to lower to LLVM.
-      CreateDefaultJitRtCompilationPipeline(pm, copts);
-    };
+          // Use default JitRt compilation pipeline to lower to LLVM.
+          CreateDefaultJitRtCompilationPipeline(passes, copts);
+        };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
-      CreateJitRtSpecializationPipeline(pm);
-    };
+    opts.compiler.create_specialization_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
+          CreateJitRtSpecializationPipeline(passes);
+        };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.

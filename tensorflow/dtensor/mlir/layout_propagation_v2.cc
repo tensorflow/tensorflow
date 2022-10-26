@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dtensor_attributes.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
@@ -60,6 +59,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
+namespace {
+#define GEN_PASS_DEF_DTENSORLAYOUTPROPAGATIONV2
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // This value dictates how many times during layout propagation we allow
 // fixing of oscillatory behaviors.
@@ -836,6 +839,8 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
     os_ << "\n";
   }
 
+  void printCustomOrGenericOp(mlir::Operation* op) override { print(*op); }
+
   // Print an operand, this could be both the OpResult or a BlockArgument.
   // We also print the layout if it exists and the type.
   void printOperand(mlir::Value value, llvm::raw_ostream& os) override {
@@ -931,25 +936,27 @@ class LayoutPrinter : public mlir::OpAsmPrinter {
 
   // The following functions are part of the printing interface but aren't
   // needed for the compact printing form for Layout printing.
-  void printAttributeWithoutType(mlir::Attribute attr) override{};
-  void printSuccessor(mlir::Block* successor) override{};
+  void printAttributeWithoutType(mlir::Attribute attr) override {}
+  void printSuccessor(mlir::Block* successor) override {}
   void printSuccessorAndUseList(mlir::Block* successor,
-                                mlir::ValueRange succOperands) override{};
+                                mlir::ValueRange succOperands) override {}
   void printOptionalAttrDict(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override{};
+      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override {}
   void printOptionalAttrDictWithKeyword(
       llvm::ArrayRef<mlir::NamedAttribute> attrs,
-      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override{};
+      llvm::ArrayRef<llvm::StringRef> elidedAttrs) override {}
 
   void shadowRegionArgs(mlir::Region& region,
-                        mlir::ValueRange namesToUse) override{};
+                        mlir::ValueRange namesToUse) override {}
   void printAffineMapOfSSAIds(mlir::AffineMapAttr mapAttr,
-                              mlir::ValueRange operands) override{};
+                              mlir::ValueRange operands) override {}
 
   void printAffineExprOfSSAIds(mlir::AffineExpr expr,
                                mlir::ValueRange dimOperands,
-                               mlir::ValueRange symOperands) override{};
+                               mlir::ValueRange symOperands) override {}
+
+  void printOptionalLocationSpecifier(mlir::Location loc) override {}
 
  private:
   int indent_level_;
@@ -1390,7 +1397,7 @@ Status CompareMergedLayouts(const llvm::DenseMap<mlir::Value, Layout>& merged_a,
 
 // MLIR pass that propagates layout for all ops the module.
 struct DLayoutPropagationPassV2
-    : public DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
+    : public impl::DTensorLayoutPropagationV2Base<DLayoutPropagationPassV2> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
   }
@@ -1579,6 +1586,8 @@ struct DLayoutPropagationPassV2
       return signalPassFailure();
   };
 };
+
+}  // namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorLayoutPropagationPassV2() {

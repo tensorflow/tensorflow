@@ -17,17 +17,15 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
-#include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
-#include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
-#include "tensorflow/core/distributed_runtime/test_utils.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/distributed_runtime/coordination/test_device.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/random.h"
@@ -35,16 +33,16 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 namespace tensorflow {
 namespace {
 using ::testing::EqualsProto;
 using ::testing::IsEmpty;
 using ::testing::UnorderedElementsAre;
-using ::testing::proto::IgnoringRepeatedFieldOrdering;
 
 constexpr absl::Duration kHeartbeatTimeout = absl::Seconds(2);
 constexpr absl::Duration kShutdownBarrierTimeout = absl::Milliseconds(500);
@@ -57,12 +55,21 @@ KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
   return kv;
 }
 
+CoordinationServiceConfig GetCoordinationServiceConfig(int num_tasks) {
+  CoordinationServiceConfig config;
+  config.set_service_type(kCoordinationServiceType);
+  CoordinatedJob* job = config.mutable_coordinated_job_list()->Add();
+  job->set_name("worker");
+  job->set_num_tasks(num_tasks);
+  return config;
+}
+
 class TestCoordinationClient : public CoordinationClient {
  public:
   TestCoordinationClient() = default;
 
   Status GetStatus() {
-    mutex_lock l(mu_);
+    tsl::mutex_lock l(mu_);
     return status_;
   }
 
@@ -76,7 +83,7 @@ class TestCoordinationClient : public CoordinationClient {
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
                               StatusCallback done) override {
-    mutex_lock l(mu_);
+    tsl::mutex_lock l(mu_);
     status_ = Status(static_cast<errors::Code>(request->error_code()),
                      request->error_message());
     done(OkStatus());
@@ -92,6 +99,7 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(WaitForAllTasks);
   UNIMPLEMENTED(ResetTask);
   UNIMPLEMENTED(ReportErrorToService);
+  UNIMPLEMENTED(GetTaskState);
   UNIMPLEMENTED(InsertKeyValue);
   UNIMPLEMENTED(TryGetKeyValue);
   UNIMPLEMENTED(GetKeyValueDir);
@@ -113,7 +121,7 @@ class TestCoordinationClient : public CoordinationClient {
 #undef UNIMPLEMENTED_WITH_CALL_OPTS
 
  private:
-  mutex mu_;
+  tsl::mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
 };
 
@@ -144,7 +152,6 @@ class CoordinationBarrierTest : public ::testing::Test {
   CoordinationBarrierTest() {
     // Set up fake cluster with 3 tasks.
     const int num_tasks = 3;
-    const ServerDef& server_def = GetMultiClientServerDef("worker", num_tasks);
     auto client_cache = std::make_unique<TestCoordinationClientCache>();
     for (int i = 0; i < num_tasks; ++i) {
       CoordinatedTask task;
@@ -158,10 +165,10 @@ class CoordinationBarrierTest : public ::testing::Test {
       tasks_.push_back(task);
       clients_.push_back(std::move(client));
     }
+    CoordinationServiceConfig config = GetCoordinationServiceConfig(num_tasks);
 
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
-        kCoordinationServiceType, Env::Default(), server_def,
-        std::move(client_cache));
+        Env::Default(), config, std::move(client_cache));
     // Register the tasks.
     for (int i = 0; i < num_tasks; ++i) {
       Status s = coord_service_->RegisterTask(tasks_[i], /*incarnation=*/0);
@@ -197,7 +204,8 @@ class CoordinateTwoTasksTest : public ::testing::Test {
   void EnableCoordinationService(bool has_service_to_client_connection = true,
                                  bool enable_shutdown_barrier = false,
                                  bool set_worker_job_recoverable = false) {
-    ServerDef server_def = GetMultiClientServerDef("worker", /*num_tasks=*/2);
+    CoordinationServiceConfig config =
+        GetCoordinationServiceConfig(/*num_tasks=*/2);
     auto client_cache = std::make_unique<TestCoordinationClientCache>();
     if (has_service_to_client_connection) {
       client_cache->AddTask("/job:worker/replica:0/task:0", &client_0_);
@@ -205,53 +213,42 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     } else {
       client_cache = nullptr;
     }
-    auto coord_config = server_def.mutable_default_session_config()
-                            ->mutable_experimental()
-                            ->mutable_coordination_config();
-    coord_config->set_service_type(kCoordinationServiceType);
-    coord_config->set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
-                                              absl::Milliseconds(1));
+    config.set_heartbeat_timeout_in_ms(kHeartbeatTimeout /
+                                       absl::Milliseconds(1));
     if (set_worker_job_recoverable) {
-      coord_config->mutable_recoverable_jobs()->Add("worker");
+      config.mutable_recoverable_jobs()->Add("worker");
     }
     if (enable_shutdown_barrier) {
-      coord_config->set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
-                                                       absl::Milliseconds(1));
+      config.set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
+                                                absl::Milliseconds(1));
     }
     // Init service.
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
-        kCoordinationServiceType, Env::Default(), server_def,
-        std::move(client_cache));
+        Env::Default(), config, std::move(client_cache));
   }
 
   CoordinatedTask task_0_;
   const uint64_t incarnation_0_ = random::New64();
+  const uint64_t incarnation_0_new_ = random::New64();
   TestCoordinationClient client_0_;
   CoordinatedTask task_1_;
   const uint64_t incarnation_1_ = random::New64();
+  const uint64_t incarnation_1_new_ = random::New64();
   TestCoordinationClient client_1_;
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
 };
 
 // Construct fake device protos.
-DeviceAttributes CreateTestTfDevice(absl::string_view name) {
-  DeviceAttributes device;
+TestDevice CreateTestDevice(absl::string_view name, int local_id = 0) {
+  TestDevice device;
   device.set_name(name);
-  device.set_device_type("CPU");
-  return device;
-}
-
-xla::DeviceProto CreateTestXlaDevice(absl::string_view name,
-                                     const int local_id) {
-  xla::DeviceProto device;
-  device.set_name(name);
-  device.set_local_device_ordinal(local_id);
+  device.set_local_id(local_id);
   return device;
 }
 
 TEST_F(CoordinateTwoTasksTest, TestStandaloneService) {
   EnableCoordinationService();
-  // Not specified in server def.
+  // Not specified in coordination service config.
   CoordinatedTask task_2;
   task_2.set_job_name("worker");
   task_2.set_task_id(2);
@@ -283,7 +280,6 @@ TEST_F(CoordinateTwoTasksTest, TestStandaloneService) {
 }
 
 TEST(CoordinationServiceTest, TestCoordinatedJobs) {
-  ServerDef server_def = GetMultiClientServerDef("chief", 1);
   CoordinatedTask chief;
   chief.set_job_name("chief");
   chief.set_task_id(0);
@@ -297,24 +293,14 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   evaluator.set_job_name("evaluator");
   evaluator.set_task_id(0);
 
-  // Add a worker job with 2 tasks
-  ClusterDef* cluster_def = server_def.mutable_cluster();
-  JobDef* job_def = cluster_def->add_job();
-  job_def->set_name("worker");
-  job_def->mutable_tasks()->insert({0, "dummy address"});
-  job_def->mutable_tasks()->insert({1, "dummy address"});
-
-  // Add an evaluator job with 1 task
-  job_def = cluster_def->add_job();
-  job_def->set_name("evaluator");
-  job_def->mutable_tasks()->insert({0, "dummy address"});
-
-  CoordinationServiceConfig* configs =
-      server_def.mutable_default_session_config()
-          ->mutable_experimental()
-          ->mutable_coordination_config();
-  configs->mutable_coordinated_jobs()->Add("chief");
-  configs->mutable_coordinated_jobs()->Add("worker");
+  CoordinationServiceConfig config;
+  config.set_service_type(kCoordinationServiceType);
+  CoordinatedJob* chief_job = config.mutable_coordinated_job_list()->Add();
+  chief_job->set_name("chief");
+  chief_job->set_num_tasks(1);
+  CoordinatedJob* worker_job = config.mutable_coordinated_job_list()->Add();
+  worker_job->set_name("worker");
+  worker_job->set_num_tasks(2);
 
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   TestCoordinationClient ci;
@@ -327,8 +313,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   client_cache->AddTask("/job:evaluator/replica:0/task:0", &ei);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
-          std::move(client_cache));
+          Env::Default(), config, std::move(client_cache));
 
   // Each coordinated task registers and waits for other tasks.
   absl::Notification register_chief;
@@ -360,16 +345,14 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
 }
 
 TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Fails) {
-  ServerDef server_def = GetMultiClientServerDef("worker", 1);
-  JobDef* job_def = server_def.mutable_cluster()->add_job();
-  job_def->set_name("worker");
-  job_def->mutable_tasks()->insert({0, "dummy address"});
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
+          Env::Default(), config,
           /*cache=*/nullptr);
   // Task connects to coordination service.
   TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
@@ -381,16 +364,14 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyConnected_Fails) {
 }
 
 TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
-  ServerDef server_def = GetMultiClientServerDef("worker", 1);
-  JobDef* job_def = server_def.mutable_cluster()->add_job();
-  job_def->set_name("worker");
-  job_def->mutable_tasks()->insert({0, "dummy address"});
+  CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/1);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
+          Env::Default(), config,
           /*cache=*/nullptr);
   // Task connects to coordination service.
   TF_ASSERT_OK(coord_service->RegisterTask(task_0, /*incarnation=*/0));
@@ -515,12 +496,12 @@ TEST_F(CoordinateTwoTasksTest, TestSetGetValues) {
 }
 
 TEST(CoordinationServiceTest, TryGetKeyValue) {
-  const ServerDef& server_def = GetMultiClientServerDef("worker", 1);
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/1);
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
-          std::move(client_cache));
+          Env::Default(), config, std::move(client_cache));
 
   // Try to get nonexistent key.
   StatusOr<std::string> result = coord_service->TryGetKeyValue("test_key");
@@ -618,7 +599,8 @@ TEST_F(CoordinateTwoTasksTest,
 // Verify that coordination service can gather each task's device info and
 // propagate the aggregated cluster device info correctly.
 TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
-  const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/3);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
@@ -632,24 +614,23 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
-          std::move(client_cache));
+          Env::Default(), config, std::move(client_cache));
   absl::Notification n;
   // Map fake devices to each task.
-  CoordinationServiceDeviceInfo local_devices_0;
-  CoordinationServiceDeviceInfo local_devices_1;
-  CoordinationServiceDeviceInfo local_devices_2;
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device0");
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device1");
-  *local_devices_1.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task1_device0");
-  *local_devices_2.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task2_device0");
+  DeviceInfo local_devices_0;
+  DeviceInfo local_devices_1;
+  DeviceInfo local_devices_2;
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device0"));
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device1"));
+  local_devices_1.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task1_device0"));
+  local_devices_2.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task2_device0"));
 
   // Each task sends its device info.
-  CoordinationServiceDeviceInfo cluster_devices;
+  DeviceInfo cluster_devices;
   coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
   coord_service->WaitForAllTasks(task_1, local_devices_1,
@@ -662,21 +643,20 @@ TEST(CoordinationServiceTest, ListClusterDevices_TfDevice) {
   });
   n.WaitForNotification();
 
-  CoordinationServiceDeviceInfo expected_cluster_devices;
-  auto expected_devices =
-      expected_cluster_devices.mutable_tf()->mutable_devices();
-  expected_devices->Add(local_devices_0.mutable_tf()->devices().begin(),
-                        local_devices_0.mutable_tf()->devices().end());
-  expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
-                        local_devices_1.mutable_tf()->devices().end());
-  expected_devices->Add(local_devices_2.mutable_tf()->devices().begin(),
-                        local_devices_2.mutable_tf()->devices().end());
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  DeviceInfo expected_cluster_devices;
+  auto expected_devices = expected_cluster_devices.mutable_device();
+  expected_devices->Add(local_devices_0.device().begin(),
+                        local_devices_0.device().end());
+  expected_devices->Add(local_devices_1.device().begin(),
+                        local_devices_1.device().end());
+  expected_devices->Add(local_devices_2.device().begin(),
+                        local_devices_2.device().end());
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
-  const ServerDef& server_def = GetMultiClientServerDef("worker", 3);
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/3);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
@@ -690,32 +670,45 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
-          std::move(client_cache));
+          Env::Default(), config, std::move(client_cache));
+  coord_service->SetDeviceAggregationFunction(
+      [](const DeviceInfo& raw_global_devices) {
+        TestDeviceList global_device_list;
+        int global_id = 0;
+        // Unwrap result to local device proto.
+        for (const auto& device : raw_global_devices.device()) {
+          TestDevice local_device;
+          device.UnpackTo(&local_device);
+          // Set deterministic global ids.
+          local_device.set_global_id(global_id++);
+          *global_device_list.mutable_device()->Add() = local_device;
+        }
+        // Wrap result back in DeviceInfo proto.
+        DeviceInfo global_devices;
+        global_devices.mutable_device()->Add()->PackFrom(global_device_list);
+        return global_devices;
+      });
   absl::Notification n;
   // Map fake devices to each task.
-  CoordinationServiceDeviceInfo local_devices_0;
-  CoordinationServiceDeviceInfo local_devices_1;
-  CoordinationServiceDeviceInfo local_devices_2;
-  xla::LocalTopologyProto local_0;
-  xla::LocalTopologyProto local_1;
-  xla::LocalTopologyProto local_2;
-  local_0.set_node_id(0);
-  local_1.set_node_id(1);
-  local_2.set_node_id(2);
-  *local_0.add_devices() = CreateTestXlaDevice("task0_device0", 0);
-  *local_0.add_devices() = CreateTestXlaDevice("task0_device1", 1);
-  *local_1.add_devices() = CreateTestXlaDevice("task1_device0", 0);
-  *local_2.add_devices() = CreateTestXlaDevice("task2_device0", 0);
-  *local_devices_0.mutable_xla()->mutable_devices()->add_nodes() = local_0;
-  *local_devices_1.mutable_xla()->mutable_devices()->add_nodes() = local_1;
-  *local_devices_2.mutable_xla()->mutable_devices()->add_nodes() = local_2;
+  DeviceInfo local_devices_0;
+  DeviceInfo local_devices_1;
+  DeviceInfo local_devices_2;
+  TestDevice local_0 = CreateTestDevice("task0_device0", /*local_id=*/0);
+  TestDevice local_0_1 = CreateTestDevice("task0_device1", /*local_id=*/1);
+  TestDevice local_1 = CreateTestDevice("task1_device0", /*local_id=*/0);
+  TestDevice local_2 = CreateTestDevice("task2_device0", /*local_id=*/0);
+  local_devices_0.mutable_device()->Add()->PackFrom(local_0);
+  local_devices_0.mutable_device()->Add()->PackFrom(local_0_1);
+  local_devices_1.mutable_device()->Add()->PackFrom(local_1);
+  local_devices_2.mutable_device()->Add()->PackFrom(local_2);
 
   // Each task sends its device info.
-  CoordinationServiceDeviceInfo cluster_devices;
-  coord_service->WaitForAllTasks(task_0, local_devices_0,
-                                 [&](Status s) { TF_ASSERT_OK(s); });
+  DeviceInfo cluster_devices;
+  // Make sure that cluster device order is deterministic even if devices are
+  // sent out of order.
   coord_service->WaitForAllTasks(task_1, local_devices_1,
+                                 [&](Status s) { TF_ASSERT_OK(s); });
+  coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [&](Status s) { TF_ASSERT_OK(s); });
   coord_service->WaitForAllTasks(task_2, local_devices_2, [&](Status s) {
     TF_ASSERT_OK(s);
@@ -725,25 +718,26 @@ TEST(CoordinationServiceTest, ListClusterDevices_XlaDevice) {
   });
   n.WaitForNotification();
 
-  CoordinationServiceDeviceInfo expected_cluster_devices;
-  local_0.mutable_devices(0)->set_global_device_id(0);
-  local_0.mutable_devices(1)->set_global_device_id(1);
-  local_1.mutable_devices(0)->set_global_device_id(2);
-  local_2.mutable_devices(0)->set_global_device_id(3);
-  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
-      local_0;
-  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
-      local_1;
-  *expected_cluster_devices.mutable_xla()->mutable_devices()->add_nodes() =
-      local_2;
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  DeviceInfo expected_cluster_devices;
+  TestDeviceList global_device_list;
+  local_0.set_global_id(0);
+  local_0_1.set_global_id(1);
+  local_1.set_global_id(2);
+  local_2.set_global_id(3);
+  *global_device_list.add_device() = local_0;
+  *global_device_list.add_device() = local_0_1;
+  *global_device_list.add_device() = local_1;
+  *global_device_list.add_device() = local_2;
+  expected_cluster_devices.mutable_device()->Add()->PackFrom(
+      global_device_list);
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 // Task devices should not be added twice if same task calls WaitForAllDevices()
 // twice.
 TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
-  const ServerDef& server_def = GetMultiClientServerDef("worker", 2);
+  const CoordinationServiceConfig config =
+      GetCoordinationServiceConfig(/*num_tasks=*/2);
   CoordinatedTask task_0;
   task_0.set_job_name("worker");
   task_0.set_task_id(0);
@@ -754,20 +748,19 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   auto client_cache = std::make_unique<TestCoordinationClientCache>();
   std::unique_ptr<CoordinationServiceInterface> coord_service =
       CoordinationServiceInterface::EnableCoordinationService(
-          kCoordinationServiceType, Env::Default(), server_def,
-          std::move(client_cache));
+          Env::Default(), config, std::move(client_cache));
   absl::Notification n;
   // Map fake devices to each task.
-  CoordinationServiceDeviceInfo local_devices_0;
-  CoordinationServiceDeviceInfo local_devices_1;
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device0");
-  *local_devices_0.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task0_device1");
-  *local_devices_1.mutable_tf()->mutable_devices()->Add() =
-      CreateTestTfDevice("task1_device0");
+  DeviceInfo local_devices_0;
+  DeviceInfo local_devices_1;
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device0"));
+  local_devices_0.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task0_device1"));
+  local_devices_1.mutable_device()->Add()->PackFrom(
+      CreateTestDevice("task1_device0"));
   // Task0 sends device info.
-  CoordinationServiceDeviceInfo cluster_devices;
+  DeviceInfo cluster_devices;
   coord_service->WaitForAllTasks(task_0, local_devices_0,
                                  [](Status s) { TF_ASSERT_OK(s); });
 
@@ -785,15 +778,13 @@ TEST(CoordinationServiceTest, ListClusterDevices_DevicesAreNotAddedTwice) {
   n.WaitForNotification();
 
   // No duplicates found.
-  CoordinationServiceDeviceInfo expected_cluster_devices;
-  auto expected_devices =
-      expected_cluster_devices.mutable_tf()->mutable_devices();
-  expected_devices->Add(local_devices_0.mutable_tf()->devices().begin(),
-                        local_devices_0.mutable_tf()->devices().end());
-  expected_devices->Add(local_devices_1.mutable_tf()->devices().begin(),
-                        local_devices_1.mutable_tf()->devices().end());
-  EXPECT_THAT(cluster_devices, IgnoringRepeatedFieldOrdering(
-                                   EqualsProto(expected_cluster_devices)));
+  DeviceInfo expected_cluster_devices;
+  auto expected_devices = expected_cluster_devices.mutable_device();
+  expected_devices->Add(local_devices_0.device().begin(),
+                        local_devices_0.device().end());
+  expected_devices->Add(local_devices_1.device().begin(),
+                        local_devices_1.device().end());
+  EXPECT_THAT(cluster_devices, EqualsProto(expected_cluster_devices));
 }
 
 TEST_F(CoordinationBarrierTest, Barrier) {
@@ -1396,8 +1387,9 @@ TEST_F(CoordinateTwoTasksTest,
 
   // Reset and register the error task again, both tasks should be healthy.
   TF_EXPECT_OK(coord_service_->ResetTask(task_0_));
-  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
-  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_));
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+  TF_EXPECT_OK(coord_service_->RecordHeartbeat(task_0_, incarnation_0_new_));
   TF_EXPECT_OK(client_1_.GetStatus());
 }
+
 }  // namespace tensorflow

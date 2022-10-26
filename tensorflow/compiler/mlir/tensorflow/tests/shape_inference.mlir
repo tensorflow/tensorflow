@@ -384,6 +384,24 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %2 : tensor<*xf32>
   }
 
+  // CHECK-LABEL: func @cast_variant_same_shape
+  func.func @cast_variant_same_shape(%arg0: tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant> {
+    // CHECK: Cast
+    // CHECK-SAME: (tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant<tensor<2xf32>>>
+    %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<2xf32>>>) -> tensor<!tf_type.variant>
+    %1 = "tf.Identity"(%0) : (tensor<!tf_type.variant>) -> tensor<!tf_type.variant>
+    func.return %1 : tensor<!tf_type.variant>
+  }
+
+  // CHECK-LABEL: func @cast_variant_to_unranked
+  func.func @cast_variant_to_unranked(%arg0: tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<*x!tf_type.variant> {
+    // CHECK: Cast
+    // CHECK-SAME: (tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<!tf_type.variant<tensor<*xf32>>>
+    %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf_type.variant<tensor<*xf32>>>) -> tensor<*x!tf_type.variant>
+    %1 = "tf.Identity"(%0) : (tensor<*x!tf_type.variant>) -> tensor<*x!tf_type.variant>
+    func.return %1 : tensor<*x!tf_type.variant>
+  }
+
   // CHECK-LABEL: func @while_variant
   // CHECK-SAME: -> tensor<!tf_type.variant<tensor<16x1xf32>>>
   func.func @while_variant(%arg0: tensor<!tf_type.variant<tensor<16x1xf32>>>) -> tensor<!tf_type.variant> {
@@ -1864,5 +1882,12 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK: %0 = "tf.XlaConvV2"(%arg0, %arg1, %cst_3, %cst_2, %cst_1, %cst_0, %cst) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi64>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<8x4x14x14x16xf32>
     %0 = "tf.XlaConvV2"(%lhs, %rhs, %strides, %padding, %lhs_dilation, %rhs_dilation, %feature_group_count) {dimension_numbers = "\18\03 \042\03\00\01\02@\04P\04Z\03\01\02\03b\03\01\02\03", precision_config = ""} : (tensor<8x4x16x16x16xf32>, tensor<4x3x3x16x16xf32>, tensor<3xi64>, tensor<3x2xi32>, tensor<3xi32>, tensor<3xi32>, tensor<i32>) -> tensor<?x?x?x?x?xf32>
     func.return %0 : tensor<?x?x?x?x?xf32>
+  }
+
+  // CHECK-LABEL: testSameOperandsAndResultTypeResolveRefBinary
+  func.func @testSameOperandsAndResultTypeResolveRefBinary(%lhs: tensor<2x3x?x?xf32>, %rhs: tensor<2x?x5x?xf32>) -> (tensor<?x?x?x?xf32>) {
+    // CHECK: (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<2x3x5x?xf32>
+    %0 = "tf.ReluGrad"(%lhs, %rhs) : (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<?x?x?x?xf32>
+    func.return %0 : tensor<?x?x?x?xf32>
   }
 }

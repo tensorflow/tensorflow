@@ -384,7 +384,7 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
                   DetermineHloInstructionIsReplicated(
                       inst, index, cross_partition_spmd_, hlo_replication_,
                       support_partial_replication_);
-              return Status::OK();
+              return OkStatus();
             });
         changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
       }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 
+#include <algorithm>
 #include <limits>
 #include <optional>
 #include <string>
@@ -39,10 +40,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/util/env_var.h"
-#include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/tsl/platform/logger.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/util/env_var.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -213,8 +214,8 @@ GetMIOpenAlgorithms(const HloCustomCallInstruction* instr,
 }
 
 std::string NumBytesToString(int64_t bytes) {
-  return absl::StrCat(tensorflow::strings::HumanReadableNumBytes(bytes), " (",
-                      bytes, "B)");
+  return absl::StrCat(tsl::strings::HumanReadableNumBytes(bytes), " (", bytes,
+                      "B)");
 }
 
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
@@ -513,11 +514,33 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
 
   // Use assignment instead of brace-list to make GCC 4.9 happy.
   RunConvOptions options;
-  options.profile_result = &profile_result;
   options.runner_cache = runner;
-  Status launch_status = RunGpuConv(config, operand_buffers, result_buffer,
-                                    scratch_memory, stream, options);
-
+  options.profile_result = &profile_result;
+  // The following plan timing code is based on
+  // https://github.com/NVIDIA/cudnn-frontend/blob/60496f42fdc7a4ccc059f5934e306e728a756755/include/cudnn_frontend_find_plan.h
+  float max_time = 0;
+  float min_time = std::numeric_limits<float>::max();
+  Status launch_status;
+  // Dry-run to warmup the plan.
+  launch_status = RunGpuConv(config, operand_buffers, result_buffer,
+                             scratch_memory, stream, options);
+  constexpr float kThreshold = 0.95f;
+  constexpr int kMaxIter = 10;
+  // Iterate until new measurement is less than
+  // kThreshold * min(prev measurements).
+  int num_iters = 0;
+  for (;
+       num_iters < kMaxIter && launch_status.ok() && profile_result.is_valid();
+       num_iters++) {
+    launch_status = RunGpuConv(config, operand_buffers, result_buffer,
+                               scratch_memory, stream, options);
+    float old_min_time = min_time;
+    min_time = std::min(min_time, profile_result.elapsed_time_in_ms());
+    max_time = std::max(max_time, profile_result.elapsed_time_in_ms());
+    if (profile_result.elapsed_time_in_ms() / old_min_time >= kThreshold) {
+      break;
+    }
+  }
   if (!launch_status.ok()) {
     VLOG(4) << "Launch failed: " << launch_status;
     return make_failure(
@@ -525,7 +548,6 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
         absl::StrCat("Profiling failure on cuDNN engine ", alg.ToString(), ": ",
                      launch_status.ToString()));
   }
-
   if (!profile_result.is_valid()) {
     VLOG(4) << "Launch succeeded but profile result is invalid.";
     // Not DISQUALIFIED: this means something went wrong internally.
@@ -535,15 +557,16 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                      "with cuDNN engine ",
                      alg.ToString(), ": ", launch_status.ToString()));
   }
-
+  VLOG(3) << "Best time: " << min_time << " ms. Worst time: " << max_time
+          << " ms. Total iterations: " << num_iters;
   int64_t scratch_bytes_used =
       scratch_allocator.TotalAllocatedBytesExcludingRedzones();
 
   tensorflow::AutotuneResult result;
   *result.mutable_algorithm() = alg.ToProto();
   result.set_scratch_bytes(scratch_bytes_used);
-  *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
-      absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+  *result.mutable_run_time() =
+      tsl::proto_utils::ToDurationProto(absl::Milliseconds(min_time));
 
   if (!ShouldCheckConv(instr)) {
     if (!reference_result->has_value()) {
@@ -602,8 +625,7 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
                  << (*reference_result)->algorithm.ToString() << " against "
                  << alg.ToString() << " for " << instr->ToString() << ": "
                  << compare_result.status();
-      if (compare_result.status().code() ==
-          tensorflow::error::RESOURCE_EXHAUSTED) {
+      if (compare_result.status().code() == tsl::error::RESOURCE_EXHAUSTED) {
         // Possibly OOM. Propagate the error.
         return compare_result.status();
       }
@@ -848,7 +870,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     // needed, plumb it via OpRunner; we'll need to do this to let TF ops avoid
     // re-profiling ROCm algorithms anyway.
     *result.mutable_run_time() =
-        tensorflow::proto_utils::ToDurationProto(absl::Milliseconds(-1));
+        tsl::proto_utils::ToDurationProto(absl::Milliseconds(-1));
   } else {
     TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
     for (auto& runner : runners) {
@@ -894,7 +916,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
 
       int64_t scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();
       result.set_scratch_bytes(scratch_bytes_used);
-      *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
+      *result.mutable_run_time() = tsl::proto_utils::ToDurationProto(
           absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }

@@ -137,7 +137,7 @@ StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
     // The filename in the asset is a relative path. So we prefix it with the
     // directory path.
     return CreateScalarStringTensor(
-        tensorflow::io::JoinPath(saved_model_dir, asset.filename().str()));
+        tensorflow::io::JoinPath(saved_model_dir, asset.getFilename().str()));
   }
 
   return tensorflow::errors::Internal(
@@ -376,8 +376,6 @@ tensorflow::Status InitSavedModel(
 
 }  // namespace
 
-SavedModel::~SavedModel() {}
-
 tfrt::HostContext* SavedModel::GetHostContext() const {
   return runtime_->core_runtime()->GetHostContext();
 }
@@ -510,6 +508,10 @@ std::unique_ptr<SavedModel> SavedModelImpl::LoadSavedModel(
     // memory.
     session_options.config.mutable_experimental()
         ->set_optimize_for_static_graph(true);
+    LOG_FIRST_N(INFO, 10) << "SessionOptions: "
+                          << session_options.config.DebugString();
+    LOG_FIRST_N(INFO, 10) << "GraphExecutionOptions: "
+                          << options.graph_execution_options;
 
     // Creating the fallback_state using the original function def library
     // without applying placer or grappler, it is OK for now because it's only
@@ -620,8 +622,6 @@ SavedModelImpl::SavedModelImpl(
       graph_executor_(std::move(graph_executor)),
       lazy_loading_enabled_(meta_graph_def_.signature_def_size() >
                             options.lazy_loading_threshold) {}
-
-SavedModelImpl::~SavedModelImpl() = default;
 
 std::vector<std::string> SavedModelImpl::GetFunctionNames() const {
   std::vector<std::string> result;

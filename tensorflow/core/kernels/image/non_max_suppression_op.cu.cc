@@ -328,7 +328,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
     Tensor* output_indices = nullptr;
     TF_RETURN_IF_ERROR(
         context->allocate_output(0, TensorShape({0}), &output_indices));
-    return Status::OK();
+    return OkStatus();
   }
 
   cudaError_t cuda_ret = gpuprim::DeviceRadixSort::SortPairsDescending(
@@ -406,7 +406,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
       *num_saved_outputs = 0;
       TF_RETURN_IF_ERROR(context->allocate_output(0, TensorShape({len_output}),
                                                   &output_indices));
-      return Status::OK();
+      return OkStatus();
     } else {
       VLOG(2) << "Number of boxes above threshold=" << score_threshold << " is "
               << limited_num_boxes;
@@ -441,7 +441,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
   }
   if (num_outputs == 0) {
     *num_saved_outputs = num_outputs;
-    return Status::OK();
+    return OkStatus();
   }
   config = GetGpuLaunchConfig(num_outputs, device);
   TF_CHECK_OK(GpuLaunchKernel(
@@ -451,7 +451,7 @@ Status DoNMS(OpKernelContext* context, const Tensor& boxes,
       (*output_indices).flat<int>().data()));
   TF_RETURN_IF_CUDA_ERROR(cudaGetLastError());
   *num_saved_outputs = num_outputs;
-  return Status::OK();
+  return OkStatus();
 }
 
 // Extracts a scalar of type T from a tensor, with correct type checking.
@@ -519,7 +519,7 @@ Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
         "(Dimensions must be equal, but are ",  // otherwise tests fail!
         num_boxes, " and ", scores.dim_size(0), ")");
   }
-  return Status::OK();
+  return OkStatus();
 }
 class NonMaxSuppressionV2GPUOp : public OpKernel {
  public:
@@ -775,7 +775,7 @@ Status NmsGpu(const float* d_sorted_boxes_float_ptr, const int num_boxes,
   gpuEventDestroy(copy_done);
 
   *h_nkeep = *h_selected_count;
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")

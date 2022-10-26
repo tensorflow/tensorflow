@@ -17,14 +17,16 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"  // from @llvm-project
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -33,8 +35,9 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_ops.h"
+#include "tensorflow/compiler/xla/mlir/ir/runtime/rt_dialect.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
 
 namespace Eigen {
@@ -74,11 +77,21 @@ using EncodedRet = CustomCallRetEncodingSet::Encoded;
 
 FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g,
                                                        ImplicitLocOpBuilder &b,
-                                                       Type value,
+                                                       Type type,
                                                        Type converted) const {
   for (auto &encoding : encodings_)
-    if (succeeded(encoding->Match(value, converted)))
-      return encoding->Encode(g, b, value, converted);
+    if (succeeded(encoding->Match(type, converted)))
+      return encoding->Encode(g, b, type, converted);
+  return failure();
+}
+
+FailureOr<Value> CustomCallRetEncodingSet::Decode(ImplicitLocOpBuilder &b,
+                                                  Type type, Type converted,
+                                                  LLVM::AllocaOp alloca) const {
+  for (auto &encoding : encodings_) {
+    if (succeeded(encoding->Match(type, converted)))
+      return encoding->Decode(b, type, converted, alloca);
+  }
   return failure();
 }
 
@@ -89,11 +102,11 @@ FailureOr<EncodedRet> CustomCallRetEncodingSet::Encode(Globals &g,
 using EncodedAttr = CustomCallAttrEncodingSet::Encoded;
 
 FailureOr<EncodedAttr> CustomCallAttrEncodingSet::Encode(
-    Globals &g, ImplicitLocOpBuilder &b, std::string_view name,
-    Attribute attr) const {
+    mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
   for (auto &encoding : encodings_)
-    if (succeeded(encoding->Match(name, attr)))
-      return encoding->Encode(g, b, name, attr);
+    if (succeeded(encoding->Match(sym_table, name, attr)))
+      return encoding->Encode(sym_table, g, b, name, attr);
   return failure();
 }
 
@@ -112,8 +125,7 @@ Value PackString(Globals &g, ImplicitLocOpBuilder &b, std::string_view strref,
   int64_t size = strref.size();
 
   // Encoded string type: !llvm.struct<(i64, !llvm.ptr<array<i8 x len>>)>.
-  Type arr = LLVM::LLVMArrayType::get(b.getI8Type(), 1 + size);
-  Type ptr = LLVM::LLVMPointerType::get(arr);
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
   Type type = LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), ptr});
 
   // Global constant initializer for the encoded string structure
@@ -161,35 +173,43 @@ static Value PackDenseElementsAttribute(Globals &g, ImplicitLocOpBuilder &b,
   MLIRContext *ctx = b.getContext();
   DenseIntOrFPElementsAttr dense = value.cast<DenseIntOrFPElementsAttr>();
 
-  // Payload type:
-  // !llvm.struct<(i64, !llvm.ptr<array<element_type x size>)>>.
-  Type element_type = dense.getElementType();
-  Type data_arr_type =
-      LLVM::LLVMArrayType::get(element_type, dense.getNumElements());
-  Type data_arr_ptr_type = LLVM::LLVMPointerType::get(data_arr_type);
-  Type payload_type = LLVM::LLVMStructType::getLiteral(
-      ctx, {b.getI64Type(), data_arr_ptr_type});
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
+
+  // Store dense elements data as !llvm.array<element_type x num_elements>
+  Type array_type =
+      LLVM::LLVMArrayType::get(dense.getElementType(), dense.getNumElements());
+
+  // Encoded array type: !llvm.struct<(i64, !llvm.ptr)>.
+  //
+  // We use the same type for encoding dense elements attributes as the type for
+  // encoding arrays attributes, so that at run time we can safely reinterpret
+  // cast pointers to dense elements attributes (shaped tensors) as pointers to
+  // flat array attributes.
+  //
+  // See `PackArrayAttribute` defined below.
+  Type encoded_arr_type =
+      LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), ptr});
 
   int64_t rank = dense.getType().getRank();
   ArrayRef<int64_t> shape = dense.getType().getShape();
   Type shape_arr_type = LLVM::LLVMArrayType::get(b.getI64Type(), rank);
 
   // Encoded dense elements type:
-  // !llvm.struct<encoded_array_type, i64, array<i64, rank>
+  //   !llvm.struct<encoded_arr_type, i64, array<i64, rank>
   Type type = LLVM::LLVMStructType::getLiteral(
-      ctx, {payload_type, b.getI64Type(), shape_arr_type});
+      ctx, {encoded_arr_type, b.getI64Type(), shape_arr_type});
 
   // Global constant initializer for the encoded array structure.
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     Value num_elements =
         ib.create<ConstantOp>(b.getI64IntegerAttr(dense.getNumElements()));
     Value data_ptr = Globals::AddrOf(
-        ib, g.GetOrCreate(b, Flatten(dense), data_arr_type, symbol_base));
+        ib, g.GetOrCreate(b, Flatten(dense), array_type, symbol_base));
 
-    // Create the payload struct.
-    Value payload = ib.create<LLVM::UndefOp>(payload_type);
-    payload = ib.create<LLVM::InsertValueOp>(payload, num_elements, 0);
-    payload = ib.create<LLVM::InsertValueOp>(payload, data_ptr, 1);
+    // Create the encoded array struct.
+    Value encoded_arr = ib.create<LLVM::UndefOp>(encoded_arr_type);
+    encoded_arr = ib.create<LLVM::InsertValueOp>(encoded_arr, num_elements, 0);
+    encoded_arr = ib.create<LLVM::InsertValueOp>(encoded_arr, data_ptr, 1);
 
     // Get rank and shape.
     Value rank_value = ib.create<ConstantOp>(b.getI64IntegerAttr(rank));
@@ -201,9 +221,9 @@ static Value PackDenseElementsAttribute(Globals &g, ImplicitLocOpBuilder &b,
       shape_value = ib.create<LLVM::InsertValueOp>(shape_value, dim, i);
     }
 
-    // Store the payload, rank, and shape into the struct.
+    // Store the encoded_arr, rank, and shape into the struct.
     Value encoded = ib.create<LLVM::UndefOp>(type);
-    encoded = ib.create<LLVM::InsertValueOp>(encoded, payload, 0);
+    encoded = ib.create<LLVM::InsertValueOp>(encoded, encoded_arr, 0);
     encoded = ib.create<LLVM::InsertValueOp>(encoded, rank_value, 1);
     encoded = ib.create<LLVM::InsertValueOp>(encoded, shape_value, 2);
     ib.create<LLVM::ReturnOp>(encoded);
@@ -240,13 +260,10 @@ static Value PackArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
   MLIRContext *ctx = b.getContext();
 
   int64_t size = array.size();
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
 
-  // Encoded array type:
-  // !llvm.struct<(i64, !llvm.ptr<array<element_type x size>)>>.
-  Type arr_type = LLVM::LLVMArrayType::get(element_type, size);
-  Type arr_ptr_type = LLVM::LLVMPointerType::get(arr_type);
-  Type type =
-      LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), arr_ptr_type});
+  // Encoded array type: !llvm.struct<(i64, !llvm.ptr)>.
+  Type type = LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), ptr});
 
   // Global constant initializer for the encoded array structure
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
@@ -327,13 +344,14 @@ static Value PackDenseArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
   DenseArrayAttr base_array = value.cast<DenseArrayAttr>();
   int64_t size = base_array.size();
 
-  // Encoded array type:
-  // !llvm.struct<(i64, !llvm.ptr<array<element_type x size>>)>.
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
+
+  // Stored array type: !llvm.array<element_type x size>
   Type element_type = base_array.getType().getElementType();
   Type arr_type = LLVM::LLVMArrayType::get(element_type, size);
-  Type arr_ptr_type = LLVM::LLVMPointerType::get(arr_type);
-  Type type =
-      LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), arr_ptr_type});
+
+  // Encoded array type: !llvm.struct<(i64, !llvm.ptr)>.
+  Type type = LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), ptr});
 
   // Global constant initializer for the encoded array structure
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
@@ -359,17 +377,16 @@ static Value PackEmptyArrayAttribute(Globals &g, ImplicitLocOpBuilder &b,
                                      std::string_view symbol_base) {
   MLIRContext *ctx = b.getContext();
 
-  // Encoded array type: !llvm.struct<(i64, !llvm.ptr<i8>)>.
-  // The pointer is always null. We use i8 as a placeholder type.
-  Type data_type = LLVM::LLVMPointerType::get(b.getI8Type());
-  Type type =
-      LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), data_type});
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
+
+  // Encoded array type: !llvm.struct<(i64, !llvm.ptr)>.
+  Type type = LLVM::LLVMStructType::getLiteral(ctx, {b.getI64Type(), ptr});
 
   // Global constant initializer for the encoded array structure
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     // Array size and the pointer to data.
     Value num_elements = ib.create<ConstantOp>(b.getI64IntegerAttr(0));
-    Value data = ib.create<LLVM::NullOp>(data_type);
+    Value data = ib.create<LLVM::NullOp>(ptr);
 
     // Store size and values into the struct.
     Value encoded = ib.create<LLVM::UndefOp>(type);
@@ -396,18 +413,18 @@ static FuncOp GetParentFunc(Value value) {
                                 : parent_op->getParentOfType<FuncOp>();
 }
 
-// Packs value on the stack. Returns `!llvm.ptr<ValueType>`.
-static Value PackValue(ImplicitLocOpBuilder &b, Value value) {
-  Type ptr = LLVM::LLVMPointerType::get(value.getType());
+// Packs value on the stack. Returns allocation holding the value.
+static LLVM::AllocaOp PackValue(ImplicitLocOpBuilder &b, Value value) {
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
 
   // Always create an `alloca` in the parent function entry block.
   // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-  Value mem = [&]() -> Value {
+  LLVM::AllocaOp mem = [&]() -> LLVM::AllocaOp {
     Block &block = GetParentFunc(value).getBody().front();
     OpBuilder::InsertionGuard guard(b);
     b.setInsertionPointToStart(&block);
     Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-    return b.create<LLVM::AllocaOp>(ptr, one, 0);
+    return b.create<LLVM::AllocaOp>(ptr, value.getType(), one, 0);
   }();
 
   b.create<LLVM::StoreOp>(value, mem);
@@ -506,31 +523,27 @@ mlir::FailureOr<mlir::LLVM::GlobalOp> Globals::TryGetOrCreate(
 
 /*static*/ Value Globals::AddrOf(ImplicitLocOpBuilder &b,
                                  LLVM::GlobalOp global) {
-  return b.create<LLVM::AddressOfOp>(
-      LLVM::LLVMPointerType::get(global.getType()), global.getSymName());
-}
-
-/*static*/ Value Globals::OpaqueAddrOf(ImplicitLocOpBuilder &b,
-                                       LLVM::GlobalOp global) {
-  return b.create<LLVM::BitcastOp>(LLVM::LLVMPointerType::get(b.getI8Type()),
-                                   AddrOf(b, global));
+  return b.create<LLVM::AddressOfOp>(LLVM::LLVMPointerType::get(b.getContext()),
+                                     global.getSymName());
 }
 
 //===----------------------------------------------------------------------===//
 // Helper functions for encoding attributes and values for custom calls.
 //===----------------------------------------------------------------------===//
 
+static bool IsAnyOf(unsigned width, ArrayRef<unsigned> supported) {
+  return llvm::any_of(supported, [&](unsigned w) { return w == width; });
+}
+
 static bool IsSupportedScalarType(Type type) {
-  auto is_supported_width = [](unsigned width, ArrayRef<unsigned> supported) {
-    return llvm::any_of(supported, [&](unsigned w) { return w == width; });
-  };
+  if (auto idx = type.dyn_cast<mlir::IndexType>()) return true;
 
   if (auto i = type.dyn_cast<mlir::IntegerType>())
-    return i.isUnsigned() ? is_supported_width(i.getWidth(), {8, 32, 64})
-                          : is_supported_width(i.getWidth(), {1, 32, 64});
+    return i.isUnsigned() ? IsAnyOf(i.getWidth(), {8, 16, 32, 64})
+                          : IsAnyOf(i.getWidth(), {1, 8, 16, 32, 64});
 
   if (auto fp = type.dyn_cast<mlir::FloatType>())
-    return is_supported_width(fp.getWidth(), {16, 32, 64});
+    return IsAnyOf(fp.getWidth(), {16, 32, 64});
 
   return false;
 }
@@ -542,14 +555,20 @@ static bool IsSupportedScalarAttribute(Attribute attr) {
 }
 
 static TypeID ScalarRuntimeTypeId(Type type) {
+  if (type.isIndex()) return TypeID::get<Tagged<int64_t>>();
+
   if (type.isUnsignedInteger(8)) return TypeID::get<Tagged<uint8_t>>();
+  if (type.isUnsignedInteger(16)) return TypeID::get<Tagged<uint16_t>>();
   if (type.isUnsignedInteger(32)) return TypeID::get<Tagged<uint32_t>>();
   if (type.isUnsignedInteger(64)) return TypeID::get<Tagged<uint64_t>>();
 
   if (type.isInteger(1)) return TypeID::get<Tagged<bool>>();
+  if (type.isInteger(8)) return TypeID::get<Tagged<int8_t>>();
+  if (type.isInteger(16)) return TypeID::get<Tagged<int16_t>>();
   if (type.isInteger(32)) return TypeID::get<Tagged<int32_t>>();
   if (type.isInteger(64)) return TypeID::get<Tagged<int64_t>>();
 
+  if (type.isBF16()) return TypeID::get<Tagged<Eigen::bfloat16>>();
   if (type.isF16()) return TypeID::get<Tagged<Eigen::half>>();
   if (type.isF32()) return TypeID::get<Tagged<float>>();
   if (type.isF64()) return TypeID::get<Tagged<double>>();
@@ -618,12 +637,14 @@ static TypeID DenseElementsRuntimeTypeId(Type elem_type) {
 // Custom call attributes encoding.
 //===----------------------------------------------------------------------===//
 
-LogicalResult StringAttrEncoding::Match(std::string_view name,
+LogicalResult StringAttrEncoding::Match(mlir::SymbolTable &,
+                                        std::string_view name,
                                         Attribute attr) const {
   return success(attr.isa<StringAttr>());
 }
 
-FailureOr<EncodedAttr> StringAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> StringAttrEncoding::Encode(mlir::SymbolTable &,
+                                                  Globals &g,
                                                   ImplicitLocOpBuilder &b,
                                                   std::string_view name,
                                                   Attribute attr) const {
@@ -638,12 +659,14 @@ FailureOr<EncodedAttr> StringAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult ScalarAttrEncoding::Match(std::string_view name,
+LogicalResult ScalarAttrEncoding::Match(mlir::SymbolTable &,
+                                        std::string_view name,
                                         Attribute attr) const {
   return success(IsSupportedScalarAttribute(attr));
 }
 
-FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(mlir::SymbolTable &,
+                                                  Globals &g,
                                                   ImplicitLocOpBuilder &b,
                                                   std::string_view name,
                                                   Attribute attr) const {
@@ -659,7 +682,8 @@ FailureOr<EncodedAttr> ScalarAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult DenseElementsAttrEncoding::Match(std::string_view name,
+LogicalResult DenseElementsAttrEncoding::Match(mlir::SymbolTable &,
+                                               std::string_view name,
                                                Attribute attr) const {
   if (auto dense = attr.dyn_cast<DenseIntOrFPElementsAttr>())
     return success(IsSupportedScalarType(dense.getElementType()));
@@ -667,8 +691,8 @@ LogicalResult DenseElementsAttrEncoding::Match(std::string_view name,
 }
 
 FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
-    Globals &g, ImplicitLocOpBuilder &b, std::string_view name,
-    Attribute attr) const {
+    mlir::SymbolTable &, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
   auto dense = attr.cast<DenseIntOrFPElementsAttr>();
   Type elem_type = dense.getType().getElementType();
 
@@ -682,7 +706,8 @@ FailureOr<EncodedAttr> DenseElementsAttrEncoding::Encode(
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult ArrayAttrEncoding::Match(std::string_view name,
+LogicalResult ArrayAttrEncoding::Match(mlir::SymbolTable &,
+                                       std::string_view name,
                                        Attribute attr) const {
   if (auto array = attr.dyn_cast<ArrayAttr>();
       array && !array.empty() && array[0].isa<TypedAttr>()) {
@@ -691,7 +716,8 @@ LogicalResult ArrayAttrEncoding::Match(std::string_view name,
   return failure();
 }
 
-FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(mlir::SymbolTable &,
+                                                 Globals &g,
                                                  ImplicitLocOpBuilder &b,
                                                  std::string_view name,
                                                  Attribute attr) const {
@@ -715,7 +741,8 @@ FailureOr<EncodedAttr> ArrayAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult DenseArrayAttrEncoding::Match(std::string_view name,
+LogicalResult DenseArrayAttrEncoding::Match(mlir::SymbolTable &,
+                                            std::string_view name,
                                             Attribute attr) const {
   if (auto array = attr.dyn_cast<DenseArrayAttr>()) {
     return success();
@@ -723,7 +750,8 @@ LogicalResult DenseArrayAttrEncoding::Match(std::string_view name,
   return failure();
 }
 
-FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(mlir::SymbolTable &,
+                                                      Globals &g,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
@@ -739,7 +767,8 @@ FailureOr<EncodedAttr> DenseArrayAttrEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
-LogicalResult EmptyArrayAttrEncoding::Match(std::string_view name,
+LogicalResult EmptyArrayAttrEncoding::Match(mlir::SymbolTable &,
+                                            std::string_view name,
                                             Attribute attr) const {
   if (auto array = attr.dyn_cast<ArrayAttr>(); array && array.empty()) {
     return success();
@@ -747,7 +776,8 @@ LogicalResult EmptyArrayAttrEncoding::Match(std::string_view name,
   return failure();
 }
 
-FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(Globals &g,
+FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(mlir::SymbolTable &,
+                                                      Globals &g,
                                                       ImplicitLocOpBuilder &b,
                                                       std::string_view name,
                                                       Attribute attr) const {
@@ -760,10 +790,66 @@ FailureOr<EncodedAttr> EmptyArrayAttrEncoding::Encode(Globals &g,
 }
 
 //===----------------------------------------------------------------------===//
+
+LogicalResult SymbolRefAttrEncoding::Match(mlir::SymbolTable &sym_table,
+                                           std::string_view name,
+                                           Attribute attr) const {
+  if (auto ref = attr.dyn_cast<FlatSymbolRefAttr>()) {
+    auto exported = sym_table.lookup<func::FuncOp>(ref.getValue());
+    return success(exported && exported->hasAttr(kExportedAttrName));
+  }
+  return failure();
+}
+
+FailureOr<EncodedAttr> SymbolRefAttrEncoding::Encode(
+    mlir::SymbolTable &sym_table, Globals &g, ImplicitLocOpBuilder &b,
+    std::string_view name, Attribute attr) const {
+  // Get the exported function ordinal.
+  auto ref = attr.cast<FlatSymbolRefAttr>();
+  auto func = sym_table.lookup<func::FuncOp>(ref.getValue());
+  auto ordinal = func->getAttrOfType<IntegerAttr>(kExportedAttrName);
+  assert(ordinal.getType().isSignlessInteger(32));
+
+  // Encode exported function ordinal as a scalar constant with function ordinal
+  // type id.
+  auto type_id = TypeID::get<Tagged<CustomCall::FunctionOrdinal>>();
+
+  Encoded encoded;
+  encoded.name = PackString(g, b, name, kAttrName);
+  encoded.type_id = PackTypeId(g, b, type_id);
+  encoded.value = PackScalarAttribute(g, b, ordinal, kAttrValue);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
+
+LogicalResult UnitAttrEncoding::Match(mlir::SymbolTable &, std::string_view,
+                                      Attribute attr) const {
+  return success(attr.isa<UnitAttr>());
+}
+
+FailureOr<EncodedAttr> UnitAttrEncoding::Encode(mlir::SymbolTable &, Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                std::string_view name,
+                                                Attribute attr) const {
+  // Unit attribute encodes empty optional as a null pointer.
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+
+  Encoded encoded;
+  encoded.name = PackString(g, b, name, kAttrName);
+  encoded.type_id = PackTypeId(g, b, TypeID::get<Tagged<std::nullopt_t>>());
+  encoded.value = b.create<LLVM::NullOp>(ptr);
+
+  return encoded;
+}
+
+//===----------------------------------------------------------------------===//
 // Encoding for collection of attributes.
 //===----------------------------------------------------------------------===//
 
-FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
+FailureOr<Value> EncodeAttributes(mlir::SymbolTable &sym_table, Globals &g,
+                                  ImplicitLocOpBuilder &b,
                                   const CustomCallAttrEncodingSet &encoding,
                                   std::string_view symbol_base,
                                   ArrayRef<NamedAttribute> attrs) {
@@ -774,7 +860,7 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
   int64_t n_attrs = attrs.size();
 
   // We store encoded attribute as `!llvm.array<ptr<i8> x len>`.
-  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Type type = LLVM::LLVMArrayType::get(ptr, 1 + n_attrs * 3);
 
   // Global initializer that encodes attributes as pointers.
@@ -782,8 +868,8 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
     // Try to encode each individual attribute.
     llvm::SmallVector<EncodedAttr> encoded_attrs;
     for (auto &attr : attrs) {
-      auto encoded =
-          encoding.Encode(g, b, attr.getName().getValue(), attr.getValue());
+      auto encoded = encoding.Encode(sym_table, g, b, attr.getName().getValue(),
+                                     attr.getValue());
       if (failed(encoded)) return failure();
       encoded_attrs.emplace_back(attr.getName().getValue(), *encoded);
     }
@@ -791,8 +877,7 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
     // Prepare an array for encoding attributes.
     Value arr = b.create<LLVM::UndefOp>(type);
     auto insert_value = [&](Value value, int64_t offset) {
-      Value bcasted = b.createOrFold<LLVM::BitcastOp>(ptr, value);
-      arr = b.create<LLVM::InsertValueOp>(arr, bcasted, offset);
+      arr = b.create<LLVM::InsertValueOp>(arr, value, offset);
     };
 
     // Insert the number of encoded attributes.
@@ -822,14 +907,8 @@ FailureOr<Value> EncodeAttributes(Globals &g, ImplicitLocOpBuilder &b,
   auto global = g.TryGetOrCreate(b, attrs_map, type, symbol_base, init);
   if (failed(global)) return failure();
 
-  // Get a pointer to the first element of the array: !llvm.ptr<ptr<i8>>.
-  Type ptr_ptr = mlir::LLVM::LLVMPointerType::get(ptr);
-  Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
-  Value addr = Globals::AddrOf(b, *global);
-  Value gep = b.create<LLVM::GEPOp>(ptr_ptr, addr, ValueRange({c0, c0}));
-
-  // Return a pointer to the encoded attributes: `!llvm.ptr<ptr<i8>>` (void**).
-  return gep;
+  // Return an address of global encoding attributes.
+  return Globals::AddrOf(b, *global);
 }
 
 //===----------------------------------------------------------------------===//
@@ -884,6 +963,96 @@ FailureOr<EncodedArg> OpaqueArgEncoding::Encode(Globals &g,
 
 //===----------------------------------------------------------------------===//
 
+static LLVM::LLVMStructType GetEncodeMemRefType(ImplicitLocOpBuilder &b,
+                                                MemRefType memref_ty) {
+  MLIRContext *ctx = b.getContext();
+
+  // Encode sizes together with strides as a single array.
+  int64_t sizes_and_strides_size = 2 * memref_ty.getRank();
+
+  // Encoded memref type: !llvm.struct<(i8, i8, ptr<i8>, array<... x i64>)>.
+  Type i8 = b.getI8Type();
+  Type ptr = LLVM::LLVMPointerType::get(ctx);
+  Type arr = LLVM::LLVMArrayType::get(b.getI64Type(), sizes_and_strides_size);
+  return LLVM::LLVMStructType::getLiteral(ctx, {i8, i8, ptr, arr});
+}
+
+// Encodes memref as LLVM struct value:
+//
+//   { i8: dtype, i8: rank, ptr<i8>: data,
+//     array<2*rank x i64>: sizes_and_strides }
+//
+// This is a type erased version of the MLIR memref descriptor without base
+// pointer. We pack sizes and strides as a single array member, so that on
+// the runtime side we can read it back using C flexible array member.
+// If the descriptor value is null, we only encode statically known info: dtype,
+// rank, and dims, otherwise we also encode dynamic info
+static Value EncodeMemRef(ImplicitLocOpBuilder &b, MemRefType memref_ty,
+                          Value descriptor) {
+  Location loc = b.getLoc();
+
+  auto type = GetEncodeMemRefType(b, memref_ty);
+
+  // Helper to unpack MLIR strided memref descriptor value.
+  std::optional<MemRefDescriptor> desc = std::nullopt;
+  if (descriptor) {
+    desc = MemRefDescriptor(descriptor);
+  }
+
+  PrimitiveType element_dtype = ScalarPrimitiveType(memref_ty.getElementType());
+
+  // Create values for filling encoded memref struct.
+  Value dtype = b.create<ConstantOp>(
+      b.getI8IntegerAttr(static_cast<uint8_t>(element_dtype)));
+  Value rank = b.create<ConstantOp>(b.getI8IntegerAttr(memref_ty.getRank()));
+
+  auto i64 = [&](int64_t i) { return b.getI64IntegerAttr(i); };
+
+  // Get the statically known strides and offset from the memref type.
+  llvm::SmallVector<int64_t> strides;
+  int64_t memref_offset;
+  if (failed(getStridesAndOffset(memref_ty, strides, memref_offset)))
+    strides.resize(memref_ty.getRank(), ShapedType::kDynamicStrideOrOffset);
+
+  // Build encoded memref sizes + strides: !llvm.array<... x i64>
+  Value payload = b.create<LLVM::UndefOp>(type.getBody()[3]);
+  for (unsigned i = 0; i < memref_ty.getRank(); ++i) {
+    int64_t dim_size = memref_ty.getDimSize(i);
+    int64_t stride_size = strides[i];
+
+    Value dim = ShapedType::isDynamic(dim_size) && desc.has_value()
+                    ? desc->size(b, loc, i)
+                    : b.create<ConstantOp>(i64(dim_size));
+
+    Value stride =
+        ShapedType::isDynamicStrideOrOffset(stride_size) && desc.has_value()
+            ? desc->stride(b, loc, i)
+            : b.create<ConstantOp>(i64(stride_size));
+
+    auto stride_pos = memref_ty.getRank() + i;
+
+    payload = b.create<LLVM::InsertValueOp>(payload, dim, i);
+    payload = b.create<LLVM::InsertValueOp>(payload, stride, stride_pos);
+  }
+
+  // Construct encoded memref value.
+  Value memref = b.create<LLVM::UndefOp>(type);
+  memref = b.create<LLVM::InsertValueOp>(memref, dtype, 0);
+  memref = b.create<LLVM::InsertValueOp>(memref, rank, 1);
+  memref = b.create<LLVM::InsertValueOp>(memref, payload, 3);
+
+  // Previous values almost always are known at compile time, and inserting
+  // dynamic values into the struct after all statically know values leads to a
+  // better canonicalization and cleaner final LLVM IR.
+  if (desc.has_value()) {
+    auto ptr = LLVM::LLVMPointerType::get(b.getContext());
+    Value data = b.create<LLVM::BitcastOp>(ptr, desc->alignedPtr(b, loc));
+    memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
+  }
+
+  return memref;
+}
+
 LogicalResult MemrefArgEncoding::Match(Value value, Value converted) const {
   return success(value.getType().isa<MemRefType>());
 }
@@ -907,74 +1076,6 @@ FailureOr<EncodedArg> MemrefArgEncoding::Encode(Globals &g,
   return encoded;
 }
 
-Value MemrefArgEncoding::EncodeMemRef(ImplicitLocOpBuilder &b,
-                                      MemRefType memref_ty,
-                                      Value descriptor) const {
-  MLIRContext *ctx = b.getContext();
-  Location loc = b.getLoc();
-
-  // Encode sizes together with strides as a single array.
-  int64_t sizes_and_strides_size = 2 * memref_ty.getRank();
-
-  // Encoded memref type: !llvm.struct<(i8, i8, ptr<i8>, array<... x i64>)>.
-  Type i8 = b.getI8Type();
-  Type ptr = LLVM::LLVMPointerType::get(b.getI8Type());
-  Type arr = LLVM::LLVMArrayType::get(b.getI64Type(), sizes_and_strides_size);
-  Type type = LLVM::LLVMStructType::getLiteral(ctx, {i8, i8, ptr, arr});
-
-  // Helper to unpack MLIR strided memref descriptor value.
-  MemRefDescriptor desc(descriptor);
-
-  PrimitiveType element_dtype = ScalarPrimitiveType(memref_ty.getElementType());
-
-  // Create values for filling encoded memref struct.
-  Value dtype = b.create<ConstantOp>(
-      b.getI8IntegerAttr(static_cast<uint8_t>(element_dtype)));
-  Value rank = b.create<ConstantOp>(b.getI8IntegerAttr(memref_ty.getRank()));
-  Value data = b.create<LLVM::BitcastOp>(ptr, desc.alignedPtr(b, loc));
-
-  auto i64 = [&](int64_t i) { return b.getI64IntegerAttr(i); };
-
-  // Get the statically known strides and offset from the memref type.
-  llvm::SmallVector<int64_t> strides;
-  int64_t memref_offset;
-  if (failed(getStridesAndOffset(memref_ty, strides, memref_offset)))
-    strides.resize(memref_ty.getRank(), ShapedType::kDynamicStrideOrOffset);
-
-  // Build encoded memref sizes + strides: !llvm.array<... x i64>
-  Value payload = b.create<LLVM::UndefOp>(arr);
-  for (unsigned i = 0; i < memref_ty.getRank(); ++i) {
-    int64_t dim_size = memref_ty.getDimSize(i);
-    int64_t stride_size = strides[i];
-
-    Value dim = ShapedType::isDynamic(dim_size)
-                    ? desc.size(b, loc, i)
-                    : b.create<ConstantOp>(i64(dim_size));
-
-    Value stride = ShapedType::isDynamic(stride_size)
-                       ? desc.stride(b, loc, i)
-                       : b.create<ConstantOp>(i64(stride_size));
-
-    auto stride_pos = memref_ty.getRank() + i;
-
-    payload = b.create<LLVM::InsertValueOp>(payload, dim, i);
-    payload = b.create<LLVM::InsertValueOp>(payload, stride, stride_pos);
-  }
-
-  // Construct encoded memref value.
-  Value memref = b.create<LLVM::UndefOp>(type);
-  memref = b.create<LLVM::InsertValueOp>(memref, dtype, 0);
-  memref = b.create<LLVM::InsertValueOp>(memref, rank, 1);
-  memref = b.create<LLVM::InsertValueOp>(memref, payload, 3);
-
-  // Previous values almost always are known at compile time, and inserting
-  // dynamic values into the struct after all statically know values leads to a
-  // better canonicalization and cleaner final LLVM IR.
-  memref = b.create<LLVM::InsertValueOp>(memref, data, 2);
-
-  return memref;
-}
-
 //===----------------------------------------------------------------------===//
 // Custom call results encodings.
 //===----------------------------------------------------------------------===//
@@ -985,16 +1086,22 @@ LogicalResult ScalarRetEncoding::Match(Type type, Type converted) const {
 
 FailureOr<EncodedRet> ScalarRetEncoding::Encode(Globals &g,
                                                 ImplicitLocOpBuilder &b,
-                                                Type value,
+                                                Type type,
                                                 Type converted) const {
   Encoded encoded;
   encoded.type_id = PackTypeId(g, b, ScalarRuntimeTypeId(converted));
 
-  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
 
   return encoded;
+}
+
+FailureOr<Value> ScalarRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
+                                           Type converted,
+                                           LLVM::AllocaOp alloca) const {
+  return Value{b.create<LLVM::LoadOp>(converted, alloca)};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1021,22 +1128,109 @@ FailureOr<EncodedRet> OpaqueRetEncoding::Encode(Globals &g,
   Encoded encoded;
   encoded.type_id = PackTypeId(g, b, type_id_);
 
-  Type ptr = LLVM::LLVMPointerType::get(converted);
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
   Value one = b.create<ConstantOp>(b.getI32IntegerAttr(1));
-  encoded.value = b.create<LLVM::AllocaOp>(ptr, one, 0);
+  encoded.value = b.create<LLVM::AllocaOp>(ptr, converted, one, 0);
 
   return encoded;
 }
 
+FailureOr<Value> OpaqueRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
+                                           Type converted,
+                                           LLVM::AllocaOp alloca) const {
+  return Value{b.create<LLVM::LoadOp>(converted, alloca)};
+}
+
 //===----------------------------------------------------------------------===//
-// Default encodings for arguments and attributes.
+
+LogicalResult MemrefRetEncoding::Match(Type type, Type converted) const {
+  return success(type.isa<MemRefType>() &&
+                 converted.isa<LLVM::LLVMStructType>());
+}
+
+FailureOr<EncodedRet> MemrefRetEncoding::Encode(Globals &g,
+                                                ImplicitLocOpBuilder &b,
+                                                Type type,
+                                                Type converted) const {
+  auto memref_ty = type.cast<MemRefType>();
+
+  // We assume custom calls can only return row-major memrefs, may need to add
+  // PermutedMemref support in the future.
+  auto type_id = TypeID::get<Tagged<MemrefView>>();
+
+  Encoded encoded;
+  encoded.type_id = PackTypeId(g, b, type_id);
+  // No memref descriptor for result, we only encode compile time known info:
+  // dtype, rank, dims
+  encoded.value =
+      PackValue(b, EncodeMemRef(b, memref_ty, /*descriptor=*/nullptr));
+
+  return encoded;
+}
+
+// Convert EncodedMemRef back to llvm MemRef descriptor, e.g.,
+//   !llvm.struct<(i8, i8, ptr, array<2 x i64>)>
+//     --->>> (note that memref descriptor still uses typed LLVM pointers)
+//   !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<1 x i64>, array<1 x i64>)>
+FailureOr<Value> MemrefRetEncoding::Decode(ImplicitLocOpBuilder &b, Type type,
+                                           Type converted,
+                                           LLVM::AllocaOp alloca) const {
+  Location loc = b.getLoc();
+  auto memref_type = cast<MemRefType>(type);
+  auto memref_desc = MemRefDescriptor::undef(b, loc, converted);
+
+  // TODO(ezhulenev): Add support for returning dynamically shaped memrefs.
+  if (!memref_type.hasStaticShape()) return failure();
+
+  Type ptr = LLVM::LLVMPointerType::get(b.getContext());
+  LLVM::LLVMStructType encoded = GetEncodeMemRefType(b, memref_type);
+
+  Value c0 = b.create<ConstantOp>(b.getI64IntegerAttr(0));
+  Value c2 = b.create<ConstantOp>(b.getI64IntegerAttr(2));
+
+  // Fill memref descriptor pointers and offset.
+  Value gep = b.create<LLVM::GEPOp>(ptr, encoded, alloca, ValueRange({c0, c2}));
+  Value data_ptr = b.create<LLVM::BitcastOp>(memref_desc.getElementPtrType(),
+                                             b.create<LLVM::LoadOp>(ptr, gep));
+  memref_desc.setAllocatedPtr(b, loc, data_ptr);
+  memref_desc.setAlignedPtr(b, loc, data_ptr);
+  memref_desc.setConstantOffset(b, loc, 0);
+
+  // Get the statically known strides and offset from the memref type.
+  SmallVector<int64_t> strides;
+  int64_t memref_offset;
+  if (failed(getStridesAndOffset(memref_type, strides, memref_offset))) {
+    return failure();
+  }
+
+  // Fill memref descriptor dimensions and strides.
+  for (unsigned i = 0; i < memref_type.getRank(); ++i) {
+    memref_desc.setConstantSize(b, loc, i, memref_type.getDimSize(i));
+    memref_desc.setConstantStride(b, loc, i, strides[i]);
+  }
+
+  auto casted =
+      b.create<UnrealizedConversionCastOp>(memref_type, Value(memref_desc));
+  return casted.getResult(0);
+}
+
+//===----------------------------------------------------------------------===//
+// Default encodings for arguments, attributes, and results
 //===----------------------------------------------------------------------===//
 
 CustomCallAttrEncodingSet DefaultAttrEncodings() {
   CustomCallAttrEncodingSet encodings;
   encodings
       .Add<StringAttrEncoding, ScalarAttrEncoding, DenseElementsAttrEncoding,
-           ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding>();
+           ArrayAttrEncoding, DenseArrayAttrEncoding, EmptyArrayAttrEncoding,
+           SymbolRefAttrEncoding, UnitAttrEncoding>();
+
+  encodings.Add<AggregateAttrEncoding<HloTraceAttr, HloTrace>>(
+      encodings, AggregateAttrDef<HloTraceAttr>()
+                     .Add("hlo_op", &HloTraceAttr::getHloOp)
+                     .Add("module", &HloTraceAttr::getModule)
+                     .Add("program_id", &HloTraceAttr::getProgramId));
+
   return encodings;
 }
 
@@ -1048,7 +1242,7 @@ CustomCallArgEncodingSet DefaultArgEncodings() {
 
 CustomCallRetEncodingSet DefaultRetEncodings() {
   CustomCallRetEncodingSet encodings;
-  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding>();
+  encodings.Add<ScalarRetEncoding, OpaqueRetEncoding, MemrefRetEncoding>();
   return encodings;
 }
 

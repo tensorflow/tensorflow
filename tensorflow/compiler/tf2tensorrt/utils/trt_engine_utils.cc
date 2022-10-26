@@ -77,7 +77,7 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
   TF_RETURN_IF_ERROR(DimsAdapter(dims).TensorShape(
       &shape,
       use_implicit_batch ? std::optional<int>(batch_size) : std::nullopt));
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
@@ -104,11 +104,16 @@ Status SetupBindings(nvinfer1::ICudaEngine* cuda_engine, const Tensor& tensor,
       buffers[binding_index] = const_cast<bool*>(tensor.flat<bool>().data());
       break;
 #endif
+#if IS_TRT_VERSION_GE(8, 5, 0, 0)
+    case nvinfer1::DataType::kUINT8:
+      buffers[binding_index] = const_cast<uint8*>(tensor.flat<uint8>().data());
+      break;
+#endif
     default:
       return errors::Internal("Unknown TRT data type: ",
                               static_cast<int>(dtype));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 // Sets up bindings.
@@ -198,7 +203,7 @@ Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
     return errors::Internal(
         "Failed to set dimensions for all shape input tensors.");
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
@@ -248,7 +253,7 @@ Status SetTrtEngineOutputs(nvinfer1::ICudaEngine* cuda_engine,
     TF_RETURN_IF_ERROR(
         SetupBindings(cuda_engine, *output_tensor, buffers, binding_index));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
@@ -268,7 +273,7 @@ Status TrtEnqueue(nvinfer1::IExecutionContext* execution_context,
     return errors::Internal("Failed to enqueue batch for TRT engine");
   }
   // Synchronization will be done by TF.
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace tensorrt

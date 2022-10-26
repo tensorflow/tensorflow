@@ -510,6 +510,14 @@ typedef struct TFE_CustomDevice {
   TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
                             int num_handles, TF_Status* s,
                             void* device_info) = nullptr;
+
+  // Pins the op to `device` based on inputs to `op`. Returns true
+  // signifying to pin to the current custom device. Returns false
+  // to pin to the physical device.
+  //
+  // This function is guaranteed to be called only when all of the custom-device
+  // inputs are on this device.
+  bool (*shall_pin_to_this_device)(const TFE_Op* op, TF_Status* s) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.
@@ -548,6 +556,10 @@ TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
                                                     const char* device_name,
                                                     void* device_info,
                                                     TF_Status* status);
+
+// Returns whether `device_name` maps to a registered custom device.
+TF_CAPI_EXPORT extern bool TFE_IsCustomDevice(TFE_Context* ctx,
+                                              const char* device_name);
 
 // Struct to be filled in to define a custom device tensor handle. Fields are
 // required except where indicated.
@@ -706,6 +718,11 @@ TF_CAPI_EXPORT extern void TFE_ReportErrorToCluster(TFE_Context* ctx,
                                                     int error_code,
                                                     const char* error_message,
                                                     TF_Status* status);
+
+// Get task states from the Coordination Service.
+TF_CAPI_EXPORT extern void TFE_GetTaskStates(TFE_Context* ctx,
+                                             const TF_Buffer& tasks,
+                                             void* states, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -22,10 +22,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
 #include "tensorflow/core/profiler/convert/op_stats_combiner.h"
+#include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
@@ -255,6 +255,8 @@ Status ConvertMultiXSpacesToCombinedOpStats(
   for (int i = 0; i < session_snapshot.XSpaceSize(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<XSpace> xspace,
                         session_snapshot.GetXSpace(i));
+    PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
+                               /*derived_timeline=*/false);
     all_op_stats.push_back(ConvertXSpaceToOpStats(*xspace, options));
   }
 

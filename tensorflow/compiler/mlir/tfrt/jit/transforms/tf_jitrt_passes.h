@@ -70,10 +70,6 @@ CreateFuseFillIntoTiledReductionPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateJitRtLegalizeI1TypesPass();
 
-// Pass to vectorize linalg ops.
-std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
-CreateVectorizeTiledOpsPass();
-
 // Rewrite `vector.multi_reduction` into a sequence of `vector.reduction` ops.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createRewriteVectorMultiReductionPass();

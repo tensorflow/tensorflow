@@ -1,13 +1,16 @@
-load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_libtpu",
     "tf_cc_binary",
     "tf_cc_test",
 )
 load(
-    "//tensorflow/core/platform:build_config.bzl",
+    "//tensorflow/tsl:tsl.bzl",
+    "if_libtpu",
+)
+load(
+    "//tensorflow/tsl/platform:build_config.bzl",
     "tf_proto_library",
 )
 load(
@@ -15,7 +18,10 @@ load(
     "xla_py_grpc_library",
 )
 
-package(licenses = ["notice"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],
+)
 
 tf_proto_library(
     name = "xla_service_proto",
@@ -36,11 +42,11 @@ cc_library(
     srcs = ["grpc_stub.cc"],
     hdrs = ["grpc_stub.h"],
     deps = [
+        ":xla_service_cc_grpc_proto",
         ":xla_service_proto_cc",
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:xla_data_cc_grpc_proto",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/rpc:xla_service_cc_grpc_proto",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ],
 )
@@ -52,9 +58,9 @@ cc_library(
         ":grpc_service",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:platform_port",
+        "//tensorflow/tsl/util:command_line_flags",
     ] + tf_grpc_cc_dependencies() + if_libtpu(
         if_false = ["//tensorflow/compiler/xla/service:cpu_plugin"],
         if_true = [],
@@ -73,7 +79,7 @@ tf_cc_test(
     name = "grpc_client_test",
     srcs = ["grpc_client_test.cc"],
     data = [
-        "//tensorflow/compiler/xla/rpc:grpc_service_main_cpu",
+        ":grpc_service_main_cpu",
     ],
     deps = [
         ":grpc_stub",
@@ -81,11 +87,12 @@ tf_cc_test(
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
+        "//tensorflow/tsl/platform:net",
+        "//tensorflow/tsl/platform:subprocess",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/platform:path",
     ] + tf_grpc_cc_dependencies(),
 )
 

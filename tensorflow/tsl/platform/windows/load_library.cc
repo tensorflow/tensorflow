@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/load_library.h"
+#include "tensorflow/tsl/platform/load_library.h"
 
 #include <Shlwapi.h>
+
 #undef StrCat  // Don't let StrCat be renamed to lstrcatA
 #include <errno.h>
 #include <fcntl.h>
@@ -24,12 +25,15 @@ limitations under the License.
 #include <windows.h>
 #undef ERROR
 
-#include "tensorflow/core/platform/errors.h"
+#include <algorithm>
+#include <string>
+
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 
@@ -42,10 +46,10 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   HMODULE hModule =
       LoadLibraryExW(ws_file_name.c_str(), NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
   if (!hModule) {
-    return errors::NotFound(file_name + " not found");
+    return tsl::errors::NotFound(file_name + " not found");
   }
   *handle = hModule;
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -54,10 +58,10 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
 
   found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
   if (found_symbol == NULL) {
-    return errors::NotFound(std::string(symbol_name) + " not found");
+    return tsl::errors::NotFound(std::string(symbol_name) + " not found");
   }
   *symbol = (void**)found_symbol;
-  return Status::OK();
+  return OkStatus();
 }
 
 string FormatLibraryFileName(const string& name, const string& version) {
@@ -72,4 +76,4 @@ string FormatLibraryFileName(const string& name, const string& version) {
 
 }  // namespace internal
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -1,12 +1,7 @@
 # Description:
 #   TensorFlow builder (TensorFlow on Demand project).
 
-package(
-    default_visibility = [
-        "//tensorflow/tools/tensorflow_builder/config_detector:__subpackages__",
-    ],
-    licenses = ["notice"],
-)
+package(licenses = ["notice"])
 
 py_binary(
     name = "config_detector",

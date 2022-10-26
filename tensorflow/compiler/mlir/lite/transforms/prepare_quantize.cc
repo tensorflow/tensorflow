@@ -57,7 +57,7 @@ namespace mlir {
 namespace TFL {
 
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PREPAREQUANTIZEPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
@@ -70,7 +70,7 @@ auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
 // making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
 class PrepareQuantizePass
-    : public PrepareQuantizePassBase<PrepareQuantizePass> {
+    : public impl::PrepareQuantizePassBase<PrepareQuantizePass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PrepareQuantizePass)
 
@@ -256,8 +256,8 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(func::FuncOp func) {
   // We prefer to placing quantization emulation ops on the results of the
   // concat ops.
   func.walk([&](ConcatenationOp concat) {
-    if (concat.output().hasOneUse() &&
-        Quantized(*concat.output().user_begin())) {
+    if (concat.getOutput().hasOneUse() &&
+        Quantized(*concat.getOutput().user_begin())) {
       return;
     }
     concat.emitWarning(

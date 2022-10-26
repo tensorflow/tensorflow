@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/net.h"
+#include "tensorflow/tsl/platform/net.h"
 
 #include <sys/types.h>
 #include <winsock2.h>
@@ -27,9 +27,8 @@ limitations under the License.
 
 #undef ERROR
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
-using namespace tsl::internal;  // NOLINT
 
 namespace {
 
@@ -146,4 +145,4 @@ int PickUnusedPortOrDie() {
 }
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl

@@ -74,24 +74,26 @@ struct GpuSolverHandles {
     parent_ = parent;
     ScopedActivateExecutorContext sac{parent_};
 #if TF_ROCM_VERSION >= 40500
-    CHECK(wrap::hipsolverCreate(&hipsolver_handle) == rocblas_status_success)
+    CHECK(se::wrap::hipsolverCreate(&hipsolver_handle) ==
+          rocblas_status_success)
         << "Failed to create hipsolver instance";
 #endif
-    CHECK(wrap::rocblas_create_handle(&rocm_blas_handle) ==
+    CHECK(se::wrap::rocblas_create_handle(&rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to create rocBlas instance.";
-    CHECK(wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
+    CHECK(se::wrap::rocblas_set_stream(rocm_blas_handle, stream) ==
           rocblas_status_success)
         << "Failed to set rocBlas stream.";
   }
 
   ~GpuSolverHandles() {
     ScopedActivateExecutorContext sac{parent_};
-    CHECK(wrap::rocblas_destroy_handle(rocm_blas_handle) ==
+    CHECK(se::wrap::rocblas_destroy_handle(rocm_blas_handle) ==
           rocblas_status_success)
         << "Failed to destroy rocBlas instance.";
 #if TF_ROCM_VERSION >= 40500
-    CHECK(wrap::hipsolverDestroy(hipsolver_handle) == rocblas_status_success)
+    CHECK(se::wrap::hipsolverDestroy(hipsolver_handle) ==
+          rocblas_status_success)
         << "Failed to destroy hipsolver instance.";
 #endif
   }
@@ -159,7 +161,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   CHECK(info_checker_callback != nullptr);
   std::vector<HostLapackInfo> host_lapack_infos;
   if (dev_lapack_infos.empty()) {
-    info_checker_callback(Status::OK(), host_lapack_infos);
+    info_checker_callback(OkStatus(), host_lapack_infos);
     return;
   }
 
@@ -257,27 +259,28 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_COMPLEX(m) m(float, s) m(double, d)
 #define BLAS_SOLVER_FN(method, type_prefix) \
-  wrap::rocblas##_##type_prefix##method
+  se::wrap::rocblas##_##type_prefix##method
 
 #if TF_ROCM_VERSION >= 40500
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, S) m(double, D) m(std::complex<float>, C) m(std::complex<double>, Z)
 #define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
   m(std::complex<float>, C) m(std::complex<double>, Z)
-#define SOLVER_FN(method, hip_prefix) wrap::hipsolver##hip_prefix##method
+#define SOLVER_FN(method, hip_prefix) se::wrap::hipsolver##hip_prefix##method
 #else
 #define TF_CALL_LAPACK_TYPES(m) \
   m(float, s) m(double, d) m(std::complex<float>, c) m(std::complex<double>, z)
 #define TF_CALL_LAPACK_TYPES_NO_REAL(m) \
   m(std::complex<float>, c) m(std::complex<double>, z)
-#define SOLVER_FN(method, type_prefix) wrap::rocsolver##_##type_prefix##method
+#define SOLVER_FN(method, type_prefix) \
+  se::wrap::rocsolver##_##type_prefix##method
 #endif
 
 // Macros to construct rocsolver/hipsolver method names.
 #define ROCSOLVER_FN(method, type_prefix) \
-  wrap::rocsolver##_##type_prefix##method
+  se::wrap::rocsolver##_##type_prefix##method
 #define BUFSIZE_FN(method, hip_prefix) \
-  wrap::hipsolver##hip_prefix##method##_bufferSize
+  se::wrap::hipsolver##hip_prefix##method##_bufferSize
 
 #if TF_ROCM_VERSION >= 40500
 
@@ -295,7 +298,7 @@ void GpuSolver::CheckLapackInfoAndDeleteSolverAsync(
         hipsolver_handle_, m, n, AsHipComplex(A), lda,                     \
         AsHipComplex(dev_work.mutable_data()), lwork, dev_pivots,          \
         dev_lapack_info));                                                 \
-    return Status::OK();                                                   \
+    return OkStatus();                                                     \
   }
 
 TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
@@ -314,7 +317,7 @@ TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
         hipsolver_handle_, m, n, AsHipComplex(dev_A), lda,                   \
         AsHipComplex(dev_tau), AsHipComplex(dev_work.mutable_data()), lwork, \
         dev_lapack_info));                                                   \
-    return Status::OK();                                                     \
+    return OkStatus();                                                       \
   }
 
 TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
@@ -353,7 +356,7 @@ TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
         reinterpret_cast<HipScalar*>(dev_tau_copy.mutable_data()),             \
         AsHipComplex(dev_c), ldc, AsHipComplex(dev_work.mutable_data()),       \
         lwork, dev_lapack_info));                                              \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_LAPACK_TYPES_NO_REAL(UNMQR_INSTANCE);
@@ -380,7 +383,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UNMQR_INSTANCE);
         hipsolver_handle_, m, n, k, AsHipComplex(dev_a), lda,                \
         reinterpret_cast<HipScalar*>(dev_tau_copy.mutable_data()),           \
         AsHipComplex(dev_work.mutable_data()), lwork, dev_lapack_info));     \
-    return Status::OK();                                                     \
+    return OkStatus();                                                       \
   }
 
 TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
@@ -400,7 +403,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(            \
         hipsolver_handle_, uplo, n, AsHipComplex(dev_A), lda,            \
         AsHipComplex(dev_work.mutable_data()), lwork, dev_lapack_info)); \
-    return Status::OK();                                                 \
+    return OkStatus();                                                   \
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
@@ -421,7 +424,7 @@ TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
         hipsolver_handle_, trans, n, nrhs, AsHipComplex(A), lda, dev_pivots,   \
         AsHipComplex(B), ldb, AsHipComplex(dev_work.mutable_data()), lwork,    \
         dev_lapack_info));                                                     \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
@@ -452,7 +455,7 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
         reinterpret_cast<HipScalar**>(dev_a.mutable_data()), lda,             \
         AsHipComplex(dev_work.mutable_data()), lwork,                         \
         dev_lapack_info->mutable_data(), batch_size));                        \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
@@ -474,7 +477,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(heevd, type_prefix)(                  \
         hipsolver_handle_, jobz, uplo, n, AsHipComplex(dev_A), lda, dev_W,     \
         AsHipComplex(dev_workspace.mutable_data()), lwork, dev_lapack_info));  \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_LAPACK_TYPES_NO_REAL(HEEVD_INSTANCE);
@@ -493,7 +496,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(HEEVD_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrf, type_prefix)(              \
         rocm_blas_handle_, m, n, reinterpret_cast<ROCmScalar*>(A), lda,    \
         dev_pivots, dev_lapack_info));                                     \
-    return Status::OK();                                                   \
+    return OkStatus();                                                     \
   }
 
 TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
@@ -507,7 +510,7 @@ TF_CALL_LAPACK_TYPES(GETRF_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(geqrf, type_prefix)(               \
         rocm_blas_handle_, m, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
         reinterpret_cast<ROCmScalar*>(dev_tau)));                           \
-    return Status::OK();                                                    \
+    return OkStatus();                                                      \
   }
 
 TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
@@ -537,7 +540,7 @@ TF_CALL_LAPACK_TYPES(GEQRF_INSTANCE);
         reinterpret_cast<ROCmScalar*>(dev_a_copy.mutable_data()), lda,       \
         reinterpret_cast<ROCmScalar*>(dev_tau_copy.mutable_data()),          \
         reinterpret_cast<ROCmScalar*>(dev_c), ldc));                         \
-    return Status::OK();                                                     \
+    return OkStatus();                                                       \
   }
 
 TF_CALL_LAPACK_TYPES_NO_REAL(UMMQR_INSTANCE);
@@ -557,7 +560,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UMMQR_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(ungqr, type_prefix)(                  \
         rocm_blas_handle_, m, n, k, reinterpret_cast<ROCmScalar*>(dev_a), lda, \
         reinterpret_cast<ROCmScalar*>(dev_tau_copy.mutable_data())));          \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
@@ -571,7 +574,7 @@ TF_CALL_LAPACK_TYPES_NO_REAL(UNGQR_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(potrf, type_prefix)(                  \
         rocm_blas_handle_, uplo, n, reinterpret_cast<ROCmScalar*>(dev_A), lda, \
         dev_lapack_info));                                                     \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
@@ -586,7 +589,7 @@ TF_CALL_LAPACK_TYPES(POTRF_INSTANCE);
     TF_RETURN_IF_ROCBLAS_ERROR(SOLVER_FN(getrs, type_prefix)(                 \
         rocm_blas_handle_, trans, n, nrhs, reinterpret_cast<ROCmScalar*>(A),  \
         lda, dev_pivots, reinterpret_cast<ROCmScalar*>(B), ldb));             \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
@@ -596,7 +599,6 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
   Status GpuSolver::PotrfBatched<Scalar>(                                     \
       rocblas_fill uplo, int n, const Scalar* const host_a_dev_ptrs[],        \
       int lda, DeviceLapackInfo* dev_lapack_info, int batch_size) {           \
-    rocblas_stride stride = n;                                                \
     mutex_lock lock(handle_map_mutex);                                        \
     using ROCmScalar = typename ROCmComplexT<Scalar>::type;                   \
     ScratchSpace<uint8> dev_a = this->GetScratchSpace<uint8>(                 \
@@ -609,7 +611,7 @@ TF_CALL_LAPACK_TYPES(GETRS_INSTANCE);
         rocm_blas_handle_, uplo, n,                                           \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
         dev_lapack_info->mutable_data(), batch_size));                        \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
@@ -648,7 +650,7 @@ TF_CALL_LAPACK_TYPES(POTRF_BATCHED_INSTANCE);
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda,            \
         reinterpret_cast<int*>(pivots.mutable_data()), stride,                \
         dev_lapack_info->mutable_data(), batch_size));                        \
-    return Status::OK();                                                      \
+    return OkStatus();                                                        \
   }
 
 TF_CALL_ROCSOLV_TYPES(GETRI_BATCHED_INSTANCE);
@@ -670,7 +672,7 @@ TF_CALL_ROCSOLV_TYPES(GETRI_BATCHED_INSTANCE);
         rocm_blas_handle_, n, n,                                               \
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
         stride, dev_info->mutable_data(), batch_size));                        \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_ROCSOLV_TYPES(GETRF_BATCHED_INSTANCE);
@@ -699,7 +701,7 @@ TF_CALL_ROCSOLV_TYPES(GETRF_BATCHED_INSTANCE);
         reinterpret_cast<ROCmScalar**>(dev_a.mutable_data()), lda, dev_pivots, \
         stride, reinterpret_cast<ROCmScalar**>(dev_b.mutable_data()), ldb,     \
         batch_size));                                                          \
-    return Status::OK();                                                       \
+    return OkStatus();                                                         \
   }
 
 TF_CALL_ROCSOLV_TYPES(GETRS_BATCHED_INSTANCE);
@@ -746,7 +748,7 @@ static inline Status TrsmImpl(GpuExecutor* gpu_executor, SolverFnT solver,
                                     reinterpret_cast<const ROCmScalar*>(A), lda,
                                     reinterpret_cast<ROCmScalar*>(B), ldb));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define TRSM_INSTANCE(Scalar, type_prefix)                                    \
@@ -783,7 +785,7 @@ Status MatInvBatchedImpl(GpuExecutor* gpu_executor, SolverFnT solver,
   GetriBatched(n, host_a_dev_ptrs, lda, dev_pivots, host_a_inverse_dev_ptrs,
                ldainv, dev_lapack_info, batch_size);
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define MATINVBATCHED_INSTANCE(Scalar, type_prefix)                           \
@@ -823,7 +825,7 @@ Status GeamImpl(GpuExecutor* gpu_executor, SolverFnT solver,
                                     reinterpret_cast<const ROCmScalar*>(beta),
                                     reinterpret_cast<const ROCmScalar*>(B), ldb,
                                     reinterpret_cast<ROCmScalar*>(C), ldc));
-  return Status::OK();
+  return OkStatus();
 }
 
 #define GEAM_INSTANCE(Scalar, type_prefix)                                    \

@@ -42,6 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+using tsl::profiler::kThreadIdOverhead;
 
 namespace {
 // Set the all XLines of specified XPlane to starting walltime.
@@ -223,7 +224,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     /*HIP-API activities <<==== HIP-OPS activities*/
     auto activity_api_events_map_iter = activity_api_events_map_.begin();
     while (activity_api_events_map_iter != activity_api_events_map_.end()) {
-      uint32_t activity_corr_id = activity_api_events_map_iter->first;
       RocmTracerEvent& activity_api_event =
           activity_api_events_map_iter->second;
 
@@ -849,7 +849,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         *line_id = event.thread_id;
         return true;
       } else {
-        *line_id = kThreadIdOverhead;
+        *line_id = tsl::profiler::kThreadIdOverhead;
         return false;
       }
     }
@@ -894,7 +894,6 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       host_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
-      size_t num_events = events.size();
       events.clear();
     }
 
@@ -1052,14 +1051,14 @@ Status GpuTracer::DoStart() {
   RocmTracerOptions tracer_options = GetRocmTracerOptions();
   rocm_tracer_->Enable(tracer_options, rocm_trace_collector_.get());
 
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::Start() {
   Status status = DoStart();
   if (status.ok()) {
     profiling_state_ = State::kStartedOk;
-    return Status::OK();
+    return OkStatus();
   } else {
     profiling_state_ = State::kStartedError;
     return status;
@@ -1069,7 +1068,7 @@ Status GpuTracer::Start() {
 Status GpuTracer::DoStop() {
   rocm_tracer_->Disable();
   AnnotationStack::Enable(false);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::Stop() {
@@ -1077,30 +1076,30 @@ Status GpuTracer::Stop() {
     Status status = DoStop();
     profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::DoCollectData(XSpace* space) {
   if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
-  return Status::OK();
+  return OkStatus();
 }
 
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
       VLOG(3) << "No trace data collected, session wasn't started";
-      return Status::OK();
+      return OkStatus();
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
     case State::kStartedError:
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
-      return Status::OK();
+      return OkStatus();
     case State::kStoppedError:
       VLOG(3) << "No trace data collected";
-      return Status::OK();
+      return OkStatus();
     case State::kStoppedOk: {
       DoCollectData(space);
-      return Status::OK();
+      return OkStatus();
     }
   }
   return errors::Internal("Invalid profiling state: ", profiling_state_);

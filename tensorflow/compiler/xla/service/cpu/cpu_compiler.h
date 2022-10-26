@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/service/cpu/executable.pb.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -32,6 +33,7 @@ namespace xla {
 namespace cpu {
 
 class CpuExecutable;
+class XlaFrameworkMapping;
 
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
@@ -81,6 +83,38 @@ class CpuAotCompilationOptions : public AotCompilationOptions {
   const std::string entry_point_name_;
   const RelocationModel relocation_model_;
   bool use_mlir_hlo_lowering_ = false;
+};
+
+class CpuXlaRuntimeAotCompilationResult : public AotCompilationResult {
+ public:
+  CpuXlaRuntimeAotCompilationResult(HloModuleProto hlo,
+                                    const std::string& obj_file,
+                                    const std::string& mlir_module,
+                                    XlaFrameworkMapping xla_framework_mapping);
+
+  explicit CpuXlaRuntimeAotCompilationResult(
+      XlaRuntimeCpuExecutableProto executable)
+      : xla_runtime_cpu_executable_(executable) {}
+
+  StatusOr<std::string> SerializeAsString() const override {
+    return xla_runtime_cpu_executable_.SerializeAsString();
+  }
+
+  static StatusOr<std::unique_ptr<CpuXlaRuntimeAotCompilationResult>>
+  FromString(const std::string& serialized) {
+    XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable;
+    if (!xla_runtime_cpu_executable.ParseFromString(serialized)) {
+      return InternalError("Failed to parse serialized JitRtExecutableProto.");
+    }
+    return std::make_unique<CpuXlaRuntimeAotCompilationResult>(
+        xla_runtime_cpu_executable);
+  }
+
+  StatusOr<std::unique_ptr<Executable>> LoadExecutable(
+      Compiler* compiler, se::StreamExecutor* executor) const override;
+
+ private:
+  XlaRuntimeCpuExecutableProto xla_runtime_cpu_executable_;
 };
 
 class CpuAotCompilationResult : public AotCompilationResult {
@@ -154,6 +188,16 @@ class CpuCompiler : public LLVMCompiler {
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
+  StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const override;
+
+  // Returns a (deserialized) AotCompilationResult from a serialized
+  // AotCompilationResult.
+  StatusOr<std::unique_ptr<AotCompilationResult>> LoadAotCompilationResult(
+      const std::string& serialized_aot_result) override {
+    return CpuXlaRuntimeAotCompilationResult::FromString(serialized_aot_result);
+  }
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();
@@ -176,6 +220,8 @@ class CpuCompiler : public LLVMCompiler {
       LLVMTargetMachineFeatures* target_machine_features, bool is_mlir_compile);
 
   StatusOr<std::unique_ptr<CpuExecutable>> CompileLegacyCpuExecutable(
+      std::unique_ptr<HloModule> module);
+  StatusOr<std::unique_ptr<CpuExecutable>> CompileXlaRuntimeCpuExecutable(
       std::unique_ptr<HloModule> module);
 
   CpuCompiler(const CpuCompiler&) = delete;

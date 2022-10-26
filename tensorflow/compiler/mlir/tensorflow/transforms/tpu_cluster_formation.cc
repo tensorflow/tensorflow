@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -79,8 +78,11 @@ using OpSetVector = llvm::SmallSetVector<Operation*, 8>;
 // Mapping for `_replication_info` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
+#define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TPUClusterFormationPass
-    : public TF::TPUClusterFormationPassBase<TPUClusterFormationPass> {
+    : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
@@ -152,6 +154,13 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     auto device_type_attr =
         op.getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr);
     if (device_type_attr) {
+      // Some graphs in TPU bridge may have both tf.StatefulPartitionedCall
+      // ops with and without _tpu_replicate attributes. As a result, the ops
+      // without such attribute would have _xla_compile_device_type="" after
+      // CanonicalizeCompileAndReplicateAttributesPass, if they also had
+      // _XlaMustCompile = true before the pass. We should filter out such
+      // unspecified device type here.
+      if (device_type_attr.getValue().empty()) continue;
       device_types.insert(device_type_attr);
       // Stop here for ops with non-TPU devices, they are handled elsewhere.
       if (device_type_attr.getValue() != TF::kTpuDevice) continue;
@@ -381,7 +390,7 @@ tf_device::ClusterOp CreateClusterOp(
                                                       result_types);
 
   Block* body = new Block;
-  cluster.body().push_back(body);
+  cluster.getBody().push_back(body);
 
   // Move cluster ops to the cluster body. Also remove `_replication_info` and
   // `device` attribute from ops in the cluster when that information is
@@ -444,7 +453,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> replicated_input_ops;
   llvm::SmallSet<TF::TPUReplicatedInputOp, 8> seen_ops;
   mlir::visitUsedValuesDefinedAbove(
-      cluster.body(), cluster.body(), [&](mlir::OpOperand* operand) {
+      cluster.getBody(), cluster.getBody(), [&](mlir::OpOperand* operand) {
         Operation* def = operand->get().getDefiningOp();
         if (auto ri = llvm::dyn_cast_or_null<TF::TPUReplicatedInputOp>(def)) {
           if (!seen_ops.contains(ri)) {
@@ -563,7 +572,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     TF::TPUReplicatedInputOp input = std::get<0>(input_and_block_arg);
     Value block_arg = std::get<1>(input_and_block_arg);
     mlir::replaceAllUsesInRegionWith(input->getResult(0), block_arg,
-                                     cluster.body());
+                                     cluster.getBody());
     // Update replicated input use in tf.TPUPartitionedInput op.
     for (auto& use : input->getUses()) {
       auto pi = llvm::dyn_cast<TF::TPUPartitionedInputOp>(use.getOwner());

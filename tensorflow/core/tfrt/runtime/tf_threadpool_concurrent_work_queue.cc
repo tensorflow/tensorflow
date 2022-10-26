@@ -101,8 +101,9 @@ std::unique_ptr<TfThreadPoolWorkQueue> CreateDefaultTfThreadPoolWorkQueue(
   class Wrapper : public TfThreadPoolWorkQueue {
    public:
     explicit Wrapper(std::unique_ptr<ThreadPools> thread_pools)
-        : TfThreadPoolWorkQueue(&thread_pools->inter_op_threadpool,
-                                &thread_pools->intra_op_threadpool),
+        : TfThreadPoolWorkQueue(
+              /*intra_op_threadpool=*/&thread_pools->intra_op_threadpool,
+              /*inter_op_threadpool=*/&thread_pools->inter_op_threadpool),
           thread_pools_(std::move(thread_pools)) {}
 
     ~Wrapper() override = default;

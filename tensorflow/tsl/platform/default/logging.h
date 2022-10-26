@@ -22,8 +22,8 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_DEFAULT_LOGGING_H_
 #define TENSORFLOW_TSL_PLATFORM_DEFAULT_LOGGING_H_
 
-// IWYU pragma: private, include "third_party/tensorflow/core/platform/logging.h"
-// IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
+// IWYU pragma: private, include "third_party/tensorflow/tsl/platform/logging.h"
+// IWYU pragma: friend third_party/tensorflow/tsl/platform/logging.h
 
 #include <atomic>
 #include <limits>
@@ -34,13 +34,13 @@ limitations under the License.
 
 #include "absl/base/log_severity.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/types.h"
 
 // TODO(mrry): Prevent this Windows.h #define from leaking out of our headers.
 #undef ERROR
 
-namespace tensorflow {
+namespace tsl {
 const int INFO = 0;            // base_logging::INFO;
 const int WARNING = 1;         // base_logging::WARNING;
 const int ERROR = 2;           // base_logging::ERROR;
@@ -110,13 +110,12 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 };
 
 #define _TF_LOG_INFO \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::INFO)
+  ::tsl::internal::LogMessage(__FILE__, __LINE__, ::tsl::INFO)
 #define _TF_LOG_WARNING \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::WARNING)
+  ::tsl::internal::LogMessage(__FILE__, __LINE__, ::tsl::WARNING)
 #define _TF_LOG_ERROR \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, ::tensorflow::ERROR)
-#define _TF_LOG_FATAL \
-  ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__)
+  ::tsl::internal::LogMessage(__FILE__, __LINE__, ::tsl::ERROR)
+#define _TF_LOG_FATAL ::tsl::internal::LogMessageFatal(__FILE__, __LINE__)
 
 #define _TF_LOG_QFATAL _TF_LOG_FATAL
 
@@ -132,21 +131,20 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 // Otherwise, set TF_CPP_MAX_VLOG_LEVEL environment to update minimum log level
 // of VLOG, or TF_CPP_VMODULE to set the minimum log level for individual
 // translation units.
-#define VLOG_IS_ON(lvl)                                                     \
-  (([](int level, const char* fname) {                                      \
-    static const bool vmodule_activated =                                   \
-        ::tensorflow::internal::LogMessage::VmoduleActivated(fname, level); \
-    return vmodule_activated;                                               \
+#define VLOG_IS_ON(lvl)                                              \
+  (([](int level, const char* fname) {                               \
+    static const bool vmodule_activated =                            \
+        ::tsl::internal::LogMessage::VmoduleActivated(fname, level); \
+    return vmodule_activated;                                        \
   })(lvl, __FILE__))
 
 #endif
 
-#define VLOG(level)                                              \
-  TF_PREDICT_TRUE(!VLOG_IS_ON(level))                            \
-  ? (void)0                                                      \
-  : ::tensorflow::internal::Voidifier() &                        \
-          ::tensorflow::internal::LogMessage(__FILE__, __LINE__, \
-                                             tensorflow::INFO)
+#define VLOG(level)                   \
+  TF_PREDICT_TRUE(!VLOG_IS_ON(level)) \
+  ? (void)0                           \
+  : ::tsl::internal::Voidifier() &    \
+          ::tsl::internal::LogMessage(__FILE__, __LINE__, tsl::INFO)
 
 // `DVLOG` behaves like `VLOG` in debug mode (i.e. `#ifndef NDEBUG`).
 // Otherwise, it compiles away and does nothing.
@@ -154,7 +152,7 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 #define DVLOG VLOG
 #else
 #define DVLOG(verbose_level) \
-  while (false && (verbose_level) > 0) ::tensorflow::internal::LogMessageNull()
+  while (false && (verbose_level) > 0) ::tsl::internal::LogMessageNull()
 #endif
 
 class LogEveryNState {
@@ -213,7 +211,7 @@ class LogEveryNSecState {
   for (bool logging_internal_stateful_condition_do_log(condition);  \
        logging_internal_stateful_condition_do_log;                  \
        logging_internal_stateful_condition_do_log = false)          \
-    for (static ::tensorflow::internal::Log##kind##State            \
+    for (static ::tsl::internal::Log##kind##State                   \
              logging_internal_stateful_condition_state;             \
          logging_internal_stateful_condition_do_log &&              \
          logging_internal_stateful_condition_state.ShouldLog(arg);  \
@@ -361,17 +359,17 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 // The (int, int) overload works around the issue that the compiler
 // will not instantiate the template version of the function on values of
 // unnamed enum type - see comment below.
-#define TF_DEFINE_CHECK_OP_IMPL(name, op)                                 \
-  template <typename T1, typename T2>                                     \
-  inline string* name##Impl(const T1& v1, const T2& v2,                   \
-                            const char* exprtext) {                       \
-    if (TF_PREDICT_TRUE(v1 op v2))                                        \
-      return NULL;                                                        \
-    else                                                                  \
-      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
-  }                                                                       \
-  inline string* name##Impl(int v1, int v2, const char* exprtext) {       \
-    return name##Impl<int, int>(v1, v2, exprtext);                        \
+#define TF_DEFINE_CHECK_OP_IMPL(name, op)                           \
+  template <typename T1, typename T2>                               \
+  inline string* name##Impl(const T1& v1, const T2& v2,             \
+                            const char* exprtext) {                 \
+    if (TF_PREDICT_TRUE(v1 op v2))                                  \
+      return NULL;                                                  \
+    else                                                            \
+      return ::tsl::internal::MakeCheckOpString(v1, v2, exprtext);  \
+  }                                                                 \
+  inline string* name##Impl(int v1, int v2, const char* exprtext) { \
+    return name##Impl<int, int>(v1, v2, exprtext);                  \
   }
 
 // The (size_t, int) and (int, size_t) specialization are to handle unsigned
@@ -383,7 +381,7 @@ TF_DEFINE_CHECK_OP_IMPL(Check_EQ, ==)
 
 inline string* Check_EQImpl(int v1, size_t v2, const char* exprtext) {
   if (TF_PREDICT_FALSE(v1 < 0))
-    ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
+    ::tsl::internal::MakeCheckOpString(v1, v2, exprtext);
 
   return Check_EQImpl(size_t(v1), v2, exprtext);
 }
@@ -414,7 +412,7 @@ inline string* Check_LEImpl(int v1, size_t v2, const char* exprtext) {
 
 inline string* Check_LEImpl(size_t v1, int v2, const char* exprtext) {
   if (TF_PREDICT_FALSE(v2 < 0))
-    return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
+    return ::tsl::internal::MakeCheckOpString(v1, v2, exprtext);
   return Check_LEImpl(v1, size_t(v2), exprtext);
 }
 
@@ -427,8 +425,7 @@ inline string* Check_LTImpl(int v1, size_t v2, const char* exprtext) {
 }
 
 inline string* Check_LTImpl(size_t v1, int v2, const char* exprtext) {
-  if (v2 < 0)
-    return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext);
+  if (v2 < 0) return ::tsl::internal::MakeCheckOpString(v1, v2, exprtext);
   return Check_LTImpl(v1, size_t(v2), exprtext);
 }
 
@@ -447,13 +444,11 @@ inline string* Check_GTImpl(const T1& v1, const T2& v2, const char* exprtext) {
 
 // In optimized mode, use CheckOpString to hint to compiler that
 // the while condition is unlikely.
-#define CHECK_OP_LOG(name, op, val1, val2)                     \
-  while (::tensorflow::internal::CheckOpString _result{        \
-      ::tensorflow::internal::name##Impl(                      \
-          ::tensorflow::internal::GetReferenceableValue(val1), \
-          ::tensorflow::internal::GetReferenceableValue(val2), \
-          #val1 " " #op " " #val2)})                           \
-  ::tensorflow::internal::LogMessageFatal(__FILE__, __LINE__) << *(_result.str_)
+#define CHECK_OP_LOG(name, op, val1, val2)                                     \
+  while (::tsl::internal::CheckOpString _result{::tsl::internal::name##Impl(   \
+      ::tsl::internal::GetReferenceableValue(val1),                            \
+      ::tsl::internal::GetReferenceableValue(val2), #val1 " " #op " " #val2)}) \
+  ::tsl::internal::LogMessageFatal(__FILE__, __LINE__) << *(_result.str_)
 
 #define CHECK_OP(name, op, val1, val2) CHECK_OP_LOG(name, op, val1, val2)
 
@@ -464,9 +459,9 @@ inline string* Check_GTImpl(const T1& v1, const T2& v2, const char* exprtext) {
 #define CHECK_LT(val1, val2) CHECK_OP(Check_LT, <, val1, val2)
 #define CHECK_GE(val1, val2) CHECK_OP(Check_GE, >=, val1, val2)
 #define CHECK_GT(val1, val2) CHECK_OP(Check_GT, >, val1, val2)
-#define CHECK_NOTNULL(val)                                 \
-  ::tensorflow::internal::CheckNotNull(__FILE__, __LINE__, \
-                                       "'" #val "' Must be non NULL", (val))
+#define CHECK_NOTNULL(val)                          \
+  ::tsl::internal::CheckNotNull(__FILE__, __LINE__, \
+                                "'" #val "' Must be non NULL", (val))
 
 #ifndef NDEBUG
 // DCHECK_EQ/NE/...
@@ -604,6 +599,6 @@ std::vector<TFLogSink*> TFGetLogSinks();
 // variable `env_var` is defined. This is currently a no op.
 void UpdateLogVerbosityIfDefined(const char* env_var);
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_LOGGING_H_

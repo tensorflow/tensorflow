@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/metric_table_report.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 namespace xla {
 
@@ -27,8 +27,8 @@ using absl::StrAppend;
 using absl::StrAppendFormat;
 using absl::StrCat;
 using absl::StrFormat;
-using tensorflow::strings::HumanReadableElapsedTime;
-using tensorflow::strings::HumanReadableNumBytes;
+using tsl::strings::HumanReadableElapsedTime;
+using tsl::strings::HumanReadableNumBytes;
 
 std::string HumanReadableProfileBuilder::ToString() const {
   std::string s;

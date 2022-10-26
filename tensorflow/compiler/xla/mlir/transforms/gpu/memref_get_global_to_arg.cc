@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -26,13 +26,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTMEMREFGETGLOBALTOARGPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
 
 class ConvertMemrefGetGlobalToArgPass
-    : public ConvertMemrefGetGlobalToArgPassBase<
+    : public impl::ConvertMemrefGetGlobalToArgPassBase<
           ConvertMemrefGetGlobalToArgPass> {
  public:
   ConvertMemrefGetGlobalToArgPass() = default;

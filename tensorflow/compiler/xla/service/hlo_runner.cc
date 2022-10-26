@@ -262,7 +262,7 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
         &argument_buffer_ptrs[index - argument_count], argument_count);
   }
 
-  std::unique_ptr<tensorflow::thread::ThreadPool> pool;
+  std::unique_ptr<tsl::thread::ThreadPool> pool;
   TF_RET_CHECK(options.infeed_values.empty() ||
                options.infeed_values.size() == options.num_replicas);
   int64_t num_threads = options.infeed_values.size();
@@ -270,8 +270,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicatedImpl(
     num_threads += options.num_replicas;
   }
   if (num_threads > 0) {
-    pool = std::make_unique<tensorflow::thread::ThreadPool>(
-        tensorflow::Env::Default(), "infeed_outfeed",
+    pool = std::make_unique<tsl::thread::ThreadPool>(
+        tsl::Env::Default(), "infeed_outfeed",
         /*num_threads=*/num_threads);
   }
   if (!options.infeed_values.empty()) {
@@ -358,8 +358,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
           {
             LOG(INFO) << "Creating thread pool for " << options.num_replicas
                       << " replicas";
-            tensorflow::thread::ThreadPool pool(
-                tensorflow::Env::Default(), "replicas", options.num_replicas);
+            tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
+                                         options.num_replicas);
             for (int64_t i = 0; i < options.num_replicas; ++i) {
               pool.Schedule([&, i] {
                 auto result = executable->ExecuteOnStream(
@@ -414,8 +414,8 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
         {
           LOG(INFO) << "Creating thread pool for " << options.num_replicas
                     << " replicas";
-          tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(),
-                                              "replicas", options.num_replicas);
+          tsl::thread::ThreadPool pool(tsl::Env::Default(), "replicas",
+                                       options.num_replicas);
           for (int64_t i = 0; i < options.num_replicas; ++i) {
             for (const auto& arg : argument_buffer_slices[i]) {
               TF_RET_CHECK(arg != nullptr);

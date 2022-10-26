@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/ir/types/dialect.h"
 #include "tensorflow/core/ir/utility.h"
+#include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 namespace mlir {
 namespace tfg {
@@ -57,7 +58,7 @@ static Type GetReifiedType(Type orig, ShapeAttr shape) {
     SmallVector<int64_t> dims = llvm::to_vector(shape.getShape());
     for (int64_t &dim : dims)
       if (dim < -1) dim = -1;
-    inferred = RankedTensorType::get(dims, element_type);
+    inferred = GetTypeFromTFTensorShape(dims, element_type);
   } else {
     inferred = UnrankedTensorType::get(element_type);
   }
@@ -178,8 +179,9 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionArgumentAttributes(
   SmallVector<Attribute> arg_attrs;
   auto empty_dict = DictionaryAttr::get(&getContext());
   for (auto i : llvm::seq<unsigned>(0, num_args)) {
-    BlockArgument arg = GraphFuncOp::getDataValue(func.body(), i);
-    NamedAttrList attrs(func.getArgAttrs(arg.getArgNumber()));
+    BlockArgument arg = GraphFuncOp::getDataValue(func.getBody(), i);
+    NamedAttrList attrs(
+        func.FunctionOpInterfaceTrait::getArgAttrs(arg.getArgNumber()));
     Type arg_type = arg.getType();
     arg_type = refineTypeWithOutputShapes(arg_type, attrs);
     arg_type = refineTypeWithHandleData(arg_type, attrs.erase(handle_data_id_));
@@ -200,7 +202,7 @@ ArrayAttr ConsolidateAttributesPassImpl::reifyAndDropFunctionResultAttributes(
 
   SmallVector<Attribute> ret_attrs;
   // The result types are propagated to the data operands to `return`.
-  auto ret_op = cast<ReturnOp>(func.body().front().getTerminator());
+  auto ret_op = cast<ReturnOp>(func.getBody().front().getTerminator());
   for (auto &it : llvm::enumerate(res_attrs.getAsRange<DictionaryAttr>())) {
     NamedAttrList attrs(it.value());
     Value ret = ret_op.getOperand(it.index());
@@ -345,7 +347,7 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   // Skip this pass on generic functions. Generic functions contain only opaque
   // tensor types, into which shape and data type info cannot be reified.
   auto func = dyn_cast<GraphFuncOp>(getOperation());
-  if (func && func.generic()) return;
+  if (func && func.getGeneric()) return;
 
   // Reify operation attributes.
   RewritePatternSet patterns(&getContext());
@@ -370,14 +372,14 @@ void ConsolidateAttributesPassImpl::runOnOperation() {
   if (!func) return;
   ArrayAttr arg_attrs = reifyAndDropFunctionArgumentAttributes(func);
   ArrayAttr res_attrs = reifyAndDropFunctionResultAttributes(func);
-  Block &body = func.body().front();
+  Block &body = func.getBody().front();
   auto type = FunctionType::get(
       &getContext(), body.getArgumentTypes(),
       TFOp(body.getTerminator()).getNonControlOperands().getTypes());
   NamedAttrList attrs(func->getAttrDictionary());
-  attrs.set(func.function_typeAttrName(), TypeAttr::get(type));
-  attrs.set(func.arg_attrsAttrName(), arg_attrs);
-  attrs.set(func.res_attrsAttrName(), res_attrs);
+  attrs.set(func.getFunctionTypeAttrName(), TypeAttr::get(type));
+  attrs.set(func.getArgAttrsAttrName(), arg_attrs);
+  attrs.set(func.getResAttrsAttrName(), res_attrs);
   func->setAttrs(attrs.getDictionary(&getContext()));
 }
 
@@ -433,8 +435,10 @@ void PrepareAttributesForExportPassImpl::prepareFunctionAttributes(
   // Add input shapes only if its regeneration is required.
   if (attrs.erase(regenerate_input_shapes_id_))
     attrs.set(input_shapes_id_, ArrayAttr::get(&getContext(), input_shapes));
-  attrs.set(func.arg_attrsAttrName(), ArrayAttr::get(&getContext(), arg_attrs));
-  attrs.set(func.res_attrsAttrName(), ArrayAttr::get(&getContext(), res_attrs));
+  attrs.set(func.getArgAttrsAttrName(),
+            ArrayAttr::get(&getContext(), arg_attrs));
+  attrs.set(func.getResAttrsAttrName(),
+            ArrayAttr::get(&getContext(), res_attrs));
   func->setAttrs(attrs.getDictionary(&getContext()));
 }
 
@@ -491,7 +495,7 @@ class MaterializeAttrsPattern : public OpRewritePattern<OpT> {
   ArrayAttr getArgumentElementTypesAttr(PatternRewriter &rewriter,
                                         OpT op) const {
     return GetElementTypesAttr(
-        rewriter, SplitDataAndControlValues(op.args(), control_type_).first);
+        rewriter, SplitDataAndControlValues(op.getArgs(), control_type_).first);
   }
 
  private:
@@ -506,15 +510,17 @@ struct MaterializeIfAttrs : public MaterializeAttrsPattern<IfLikeOp> {
   // Materialize `Tcond`, `Tin`, and `Tout`.
   LogicalResult matchAndRewrite(IfLikeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (op.Tcond() && op.Tin() && op.Tout()) return failure();
+    if (op.getTcond() && op.getTin() && op.getTout()) return failure();
     NamedAttrList attrs(op->getAttrDictionary());
-    attrs.set(
-        op.TcondAttrName(),
-        TypeAttr::get(
-            op.cond().getType().template cast<TensorType>().getElementType()));
-    attrs.set(op.TinAttrName(),
+    attrs.set(op.getTcondAttrName(),
+              TypeAttr::get(op.getCond()
+                                .getType()
+                                .template cast<TensorType>()
+                                .getElementType()));
+    attrs.set(op.getTinAttrName(),
               this->getArgumentElementTypesAttr(rewriter, op));
-    attrs.set(op.ToutAttrName(), GetElementTypesAttr(rewriter, op.outs()));
+    attrs.set(op.getToutAttrName(),
+              GetElementTypesAttr(rewriter, op.getOuts()));
     rewriter.updateRootInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
@@ -528,11 +534,12 @@ struct MaterializeCaseAttrs : public MaterializeAttrsPattern<CaseLikeOp> {
   // Materialize `Tin` and `Tout`.
   LogicalResult matchAndRewrite(CaseLikeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (op.Tin() && op.Tout()) return failure();
+    if (op.getTin() && op.getTout()) return failure();
     NamedAttrList attrs(op->getAttrDictionary());
-    attrs.set(op.TinAttrName(),
+    attrs.set(op.getTinAttrName(),
               this->getArgumentElementTypesAttr(rewriter, op));
-    attrs.set(op.ToutAttrName(), GetElementTypesAttr(rewriter, op.outs()));
+    attrs.set(op.getToutAttrName(),
+              GetElementTypesAttr(rewriter, op.getOuts()));
     rewriter.updateRootInPlace(
         op, [&] { op->setAttrs(attrs.getDictionary(op->getContext())); });
     return success();
@@ -546,9 +553,10 @@ struct MaterializeTAttr : public MaterializeAttrsPattern<WhileOrForLikeOp> {
   // Materialize `T`.
   LogicalResult matchAndRewrite(WhileOrForLikeOp op,
                                 PatternRewriter &rewriter) const override {
-    if (op.T()) return failure();
-    rewriter.updateRootInPlace(
-        op, [&] { op.TAttr(this->getArgumentElementTypesAttr(rewriter, op)); });
+    if (op.getT()) return failure();
+    rewriter.updateRootInPlace(op, [&] {
+      op.setTAttr(this->getArgumentElementTypesAttr(rewriter, op));
+    });
     return success();
   }
 };
@@ -639,7 +647,7 @@ void PrepareAttributesForExportPassImpl::runOnOperation() {
   // Skip this pass on generic functions. Generic functions contain only opaque
   // tensor types, into which shape and data type info cannot be reified.
   auto func = dyn_cast<GraphFuncOp>(getOperation());
-  if (func && func.generic()) return;
+  if (func && func.getGeneric()) return;
 
   RewritePatternSet patterns(&getContext());
   ControlType control_type = ControlType::get(&getContext());

@@ -146,8 +146,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertTrue(imported.v1.name.startswith("foo/"))
       self.assertTrue(imported.v2.name.startswith("foo/"))
 
+  @test_util.disable_xla("This test never passed for XLA")
   def test_partially_defined_variable_shape(self, cycles):
-
     class MakeVariable(module.Module):
 
       def __init__(self):
@@ -1522,20 +1522,6 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(3).numpy())
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
-
-  def test_partial(self, cycles):
-    def f(x, y):
-      return x + y
-
-    func = def_function.function(
-        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.ones([1])))
-
-    root = autotrackable.AutoTrackable()
-    root.f = func
-    self.assertAllEqual(root.f(), [1.0])
-
-    root = cycle(root, cycles)
-    self.assertAllEqual(root.f(), [1.0])
 
   def test_partial_with_non_tensor_defaults(self, cycles):
 

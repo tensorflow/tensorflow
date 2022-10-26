@@ -1,13 +1,12 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_libtpu", "if_not_windows")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load(
-    "//third_party/mkl:build_defs.bzl",
-    "if_mkl_ml",
+    "//tensorflow/tsl:tsl.bzl",
+    "clean_dep",
+    "if_not_windows",
+    "if_tsl_link_protobuf",
 )
 load("@com_github_grpc_grpc//bazel:generate_cc.bzl", "generate_cc")
 
@@ -241,7 +240,7 @@ def cc_proto_library(
 
     if use_grpc_plugin:
         cc_libs += select({
-            clean_dep("//tensorflow:linux_s390x"): ["//external:grpc_lib_unsecure"],
+            clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
             "//conditions:default": ["//external:grpc_lib"],
         })
 
@@ -275,7 +274,7 @@ def cc_proto_library(
         name = header_only_name,
         deps = [
             "@com_google_protobuf//:protobuf_headers",
-        ] + header_only_deps + if_static([impl_name]),
+        ] + header_only_deps + if_tsl_link_protobuf([impl_name]),
         hdrs = gen_hdrs,
         **kwargs
     )
@@ -324,7 +323,7 @@ def cc_grpc_library(
     proto_targets += srcs
 
     extra_deps += select({
-        clean_dep("//tensorflow:linux_s390x"): ["//external:grpc_lib_unsecure"],
+        clean_dep("//tensorflow/tsl:linux_s390x"): ["//external:grpc_lib_unsecure"],
         "//conditions:default": ["//external:grpc_lib"],
     })
 
@@ -482,7 +481,7 @@ def tf_proto_library_cc(
 
         native.cc_library(
             name = cc_name,
-            deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_static([name + "_cc_impl"]),
+            deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_tsl_link_protobuf([name + "_cc_impl"]),
             testonly = testonly,
             visibility = visibility,
         )
@@ -498,7 +497,7 @@ def tf_proto_library_cc(
         protolib_name = name,
         testonly = testonly,
         srcs = srcs,
-        cc_libs = cc_libs + if_static(
+        cc_libs = cc_libs + if_tsl_link_protobuf(
             ["@com_google_protobuf//:protobuf"],
             ["@com_google_protobuf//:protobuf_headers"],
         ),
@@ -655,7 +654,7 @@ def tf_additional_lib_hdrs():
         "//tensorflow/tsl/platform/default:tracing_impl.h",
         "//tensorflow/tsl/platform/default:unbounded_work_queue.h",
     ] + select({
-        "//tensorflow:windows": [
+        "//tensorflow/tsl:windows": [
             "//tensorflow/tsl/platform/windows:intrinsics_port.h",
             "//tensorflow/tsl/platform/windows:stacktrace.h",
             "//tensorflow/tsl/platform/windows:subprocess.h",
@@ -671,24 +670,16 @@ def tf_additional_lib_hdrs():
 def tf_additional_all_protos():
     return [clean_dep("//tensorflow/core:protos_all")]
 
-def tf_protos_all_impl():
-    return [
-        clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
-        clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
-        clean_dep("//tensorflow/core:protos_all_cc_impl"),
-    ]
-
 def tf_protos_all():
     return if_static(
-        extra_deps = tf_protos_all_impl(),
+        extra_deps = [
+            clean_dep("//tensorflow/core/protobuf:autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/core/protobuf:conv_autotuning_proto_cc_impl"),
+            clean_dep("//tensorflow/core:protos_all_cc_impl"),
+            clean_dep("//tensorflow/tsl/protobuf:protos_all_cc_impl"),
+        ],
         otherwise = [clean_dep("//tensorflow/core:protos_all_cc")],
     )
-
-def tf_protos_profiler_impl():
-    return [
-        clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
-        clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
-    ]
 
 def tf_protos_profiler_service():
     return [
@@ -715,11 +706,6 @@ def tf_additional_device_tracer_srcs():
 def tf_additional_test_deps():
     return []
 
-def tf_additional_test_srcs():
-    return [
-        "//tensorflow/tsl/platform/default:test.cc",
-    ]
-
 def tf_kernel_tests_linkstatic():
     return 0
 
@@ -737,11 +723,11 @@ def tf_additional_lib_deps():
 
 def tf_additional_core_deps():
     return select({
-        clean_dep("//tensorflow:android"): [],
-        clean_dep("//tensorflow:ios"): [],
-        clean_dep("//tensorflow:linux_s390x"): [],
+        clean_dep("//tensorflow/tsl:android"): [],
+        clean_dep("//tensorflow/tsl:ios"): [],
+        clean_dep("//tensorflow/tsl:linux_s390x"): [],
         "//conditions:default": [
-            "//tensorflow/core/platform/cloud:gcs_file_system",
+            "//tensorflow/tsl/platform/cloud:gcs_file_system",
         ],
     })
 
@@ -764,29 +750,6 @@ def tf_pyclif_proto_library(
     native.filegroup(name = name)
     native.filegroup(name = name + "_pb2")
 
-def tf_additional_binary_deps():
-    return [
-        clean_dep("@nsync//:nsync_cpp"),
-        # TODO(allenl): Split these out into their own shared objects. They are
-        # here because they are shared between contrib/ op shared objects and
-        # core.
-        clean_dep("//tensorflow/core/kernels:lookup_util"),
-        clean_dep("//tensorflow/core/util/tensor_bundle"),
-    ] + if_cuda(
-        [
-            clean_dep("//tensorflow/compiler/xla/stream_executor:cuda_platform"),
-        ],
-    ) + if_rocm(
-        [
-            clean_dep("//tensorflow/compiler/xla/stream_executor:rocm_platform"),
-            clean_dep("//tensorflow/tsl/platform/default/build_config:rocm"),
-        ],
-    ) + if_mkl_ml(
-        [
-            clean_dep("//third_party/mkl:intel_binary_blob"),
-        ],
-    )
-
 def tf_additional_rpc_deps():
     return []
 
@@ -806,6 +769,29 @@ def tf_protobuf_deps():
         otherwise = [clean_dep("@com_google_protobuf//:protobuf_headers")],
     )
 
+# Link protobuf, unless the tsl_link_protobuf build flag is explicitly set to false.
+def tsl_protobuf_deps():
+    return if_tsl_link_protobuf([clean_dep("@com_google_protobuf//:protobuf")], [clean_dep("@com_google_protobuf//:protobuf_headers")])
+
+# When tsl_protobuf_header_only is true, we need to add the protobuf library
+# back into our binaries explicitly.
+def tsl_cc_test(
+        name,
+        deps = [],
+        **kwargs):
+    native.cc_test(
+        name = name,
+        deps = deps + if_tsl_link_protobuf(
+            [],
+            [
+                clean_dep("@com_google_protobuf//:protobuf"),
+                "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc_impl",
+                "//tensorflow/tsl/protobuf:histogram_proto_cc_impl",
+            ],
+        ),
+        **kwargs
+    )
+
 def tf_portable_proto_lib():
     return ["//tensorflow/core:protos_all_cc_impl"]
 
@@ -819,7 +805,7 @@ def tf_protobuf_compiler_deps():
 
 def tf_windows_aware_platform_deps(name):
     return select({
-        "//tensorflow:windows": [
+        "//tensorflow/tsl:windows": [
             "//tensorflow/tsl/platform/windows:" + name,
         ],
         "//conditions:default": [
@@ -865,15 +851,9 @@ def if_llvm_aarch64_available(then, otherwise = []):
 
 def if_llvm_system_z_available(then, otherwise = []):
     return select({
-        "//tensorflow:linux_s390x": then,
+        "//tensorflow/tsl:linux_s390x": then,
         "//conditions:default": otherwise,
     })
-
-def tf_tpu_dependencies():
-    return if_libtpu(["//tensorflow/core/tpu/kernels"])
-
-def tf_dtensor_tpu_dependencies():
-    return if_libtpu(["//tensorflow/dtensor/cc:dtensor_tpu_kernels"])
 
 def tf_cuda_libdevice_path_deps():
     return tf_platform_deps("cuda_libdevice_path")

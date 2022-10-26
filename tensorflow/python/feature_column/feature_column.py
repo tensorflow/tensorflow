@@ -162,6 +162,14 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
+
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
+    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    """
 
 
 def _internal_input_layer(features,
@@ -226,6 +234,8 @@ def _internal_input_layer(features,
       return _get_logits()
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(v1=['feature_column.input_layer'])
 def input_layer(features,
                 feature_columns,
@@ -361,6 +371,7 @@ class InputLayer(object):
     return self._input_layer_template.weights
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(v1=['feature_column.linear_model'])
 def linear_model(features,
                  feature_columns,
@@ -753,6 +764,8 @@ def _transform_features(features, feature_columns):
   return outputs
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(v1=['feature_column.make_parse_example_spec'])
 def make_parse_example_spec(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
@@ -1567,7 +1580,7 @@ def _weighted_categorical_column(categorical_column,
 def _crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
 
-  Crossed features will be hashed according to `hash_bucket_size`. Conceptually,
+  Crossed features are hashed according to `hash_bucket_size`. Conceptually,
   the transformation can be thought of as:
     Hash(cartesian product of features) % `hash_bucket_size`
 
@@ -1652,8 +1665,8 @@ def _crossed_column(keys, hash_bucket_size, hash_key=None):
   Args:
     keys: An iterable identifying the features to be crossed. Each element can
       be either:
-      * string: Will use the corresponding feature which must be of string type.
-      * `_CategoricalColumn`: Will use the transformed tensor produced by this
+      * string: Uses the corresponding feature which must be of string type.
+      * `_CategoricalColumn`: Uses the transformed tensor produced by this
         column. Does not support hashed categorical column.
     hash_bucket_size: An int > 1. The number of buckets.
     hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
@@ -3090,6 +3103,7 @@ def _collect_leaf_level_keys(cross):
     else:
       leaf_level_keys.append(k)
   return leaf_level_keys
+
 
 
 class _IndicatorColumn(_DenseColumn, _SequenceDenseColumn,

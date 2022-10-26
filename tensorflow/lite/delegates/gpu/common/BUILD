@@ -92,9 +92,12 @@ cc_library(
         ":operations",
         ":status",
         "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:cast",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
+        "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
     ],
 )
 
@@ -339,6 +342,7 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
     ],
 )

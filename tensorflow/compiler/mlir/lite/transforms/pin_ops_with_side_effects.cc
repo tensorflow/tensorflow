@@ -33,7 +33,7 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_PINOPSWITHSIDEEFFECTSPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 bool IsResourceTensor(Value value) {
@@ -85,7 +85,7 @@ bool OpHasSideEffects(Operation *op) {
 //     be assumed to be read and modified within control operations)
 // (2) Extend the variable dependency analysis across function boundaries.
 class PinOpsWithSideEffectsPass
-    : public PinOpsWithSideEffectsPassBase<PinOpsWithSideEffectsPass> {
+    : public impl::PinOpsWithSideEffectsPassBase<PinOpsWithSideEffectsPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(PinOpsWithSideEffectsPass)
 
@@ -149,10 +149,10 @@ void PinOpsWithSideEffectsPass::runOnOperation() {
     builder.setInsertionPointToEnd(&region.front());
     Operation *inner_op = builder.clone(*op);
     builder.create<YieldOp>(loc, inner_op->getResults());
-    outer_op.body().takeBody(region);
+    outer_op.getBody().takeBody(region);
     // Careful: We can't use outer_op.getResults(), because that also includes
     // the control token.
-    op->replaceAllUsesWith(outer_op.outputs());
+    op->replaceAllUsesWith(outer_op.getOutputs());
     op->erase();
     // Control token is last result of outer_op.
     control_tokens.assign(1, outer_op.getResults().back());

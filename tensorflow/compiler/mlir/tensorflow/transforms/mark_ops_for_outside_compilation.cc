@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
@@ -48,8 +47,11 @@ auto* auto_outside_compilation_gauge =
         "/tensorflow/core/use_auto_outside_compilation",
         "Tracks if auto outside compilation is enabled");
 
+#define GEN_PASS_DEF_MARKOPSFOROUTSIDECOMPILATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct MarkOpsForOutsideCompilation
-    : public TF::MarkOpsForOutsideCompilationPassBase<
+    : public impl::MarkOpsForOutsideCompilationPassBase<
           MarkOpsForOutsideCompilation> {
   void runOnOperation() override;
 };
@@ -236,8 +238,7 @@ bool IsSupportedOp(Operation& op,
   // compile it ever for performance reasons.
   if (llvm::isa<TF::AssertOp>(op)) return true;
   return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+         (MatchesPattern(op, supported_ops) || mhlo::HasTf2XlaFallback(&op));
 }
 
 // Checks all regions of `op` for captured string operands.

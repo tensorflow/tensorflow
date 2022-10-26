@@ -71,9 +71,9 @@ from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.distribute.parallel_device import parallel_device
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function_spec as function_spec_lib
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager import monitoring
+from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
 from tensorflow.python.eager.polymorphic_function import monomorphic_function
 from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
@@ -533,8 +533,7 @@ class Function(core.GenericFunction, trackable.Trackable):
                jit_compile=None,
                reduce_retracing=False,
                experimental_implements=None,
-               experimental_autograph_options=None,
-               experimental_follow_type_hints=None):
+               experimental_autograph_options=None):
     """Initializes a `Function`.
 
     Args:
@@ -546,7 +545,6 @@ class Function(core.GenericFunction, trackable.Trackable):
       reduce_retracing: See the documentation for `tf.function`.
       experimental_implements: See the documentation for `tf.function`.
       experimental_autograph_options: See the documentation for `tf.function`.
-      experimental_follow_type_hints: See the documentation for `tf.function`.
 
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
@@ -558,7 +556,6 @@ class Function(core.GenericFunction, trackable.Trackable):
         python_function,
         input_signature,
         jit_compile=jit_compile,
-        experimental_follow_type_hints=experimental_follow_type_hints,
     )
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
@@ -569,12 +566,9 @@ class Function(core.GenericFunction, trackable.Trackable):
     self._experimental_autograph_options = experimental_autograph_options
     self._reduce_retracing = reduce_retracing
     self._jit_compile = jit_compile
-    if experimental_follow_type_hints is None:
-      experimental_follow_type_hints = False
-    self._experimental_follow_type_hints = experimental_follow_type_hints
     self._created_variables = None  # GUARDED_BY(self._lock)
-    self._stateful_fn = None  # GUARDED_BY(self._lock)
-    self._stateless_fn = None  # GUARDED_BY(self._lock)
+    self._variable_creation_fn = None  # GUARDED_BY(self._lock)
+    self._no_variable_creation_fn = None  # GUARDED_BY(self._lock)
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
     self._key_for_call_stats = self._get_key_for_call_stats()
@@ -710,8 +704,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         autograph=self._autograph,
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
-        autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints)
+        autograph_options=self._experimental_autograph_options)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -732,8 +725,13 @@ class Function(core.GenericFunction, trackable.Trackable):
     created_variables = []
     lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
-    def variable_capturing_scope(unused_next_creator, **kwds):
+    def variable_capturing_scope(next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
+      enable_variable_lifting = kwds.get("experimental_enable_variable_lifting")
+      if enable_variable_lifting is None:
+        enable_variable_lifting = True
+      if not enable_variable_lifting:
+        return next_creator(**kwds)
       v = UnliftedInitializerVariable(
           add_initializers_to=add_initializers_to,
           lifted_initializer_graph=lifted_initializer_graph, **kwds)
@@ -741,13 +739,15 @@ class Function(core.GenericFunction, trackable.Trackable):
       return v
 
     self._created_variables = created_variables
-    self._stateful_fn = self._compiler_with_scope(variable_capturing_scope)
-    self._stateful_fn._name = self._name  # pylint: disable=protected-access
+    self._variable_creation_fn = self._compiler_with_scope(
+        variable_capturing_scope)
+    self._variable_creation_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
     self._lifted_initializer_graph = lifted_initializer_graph
     self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
-    self._concrete_stateful_fn = (
-        self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
+    self._concrete_variable_creation_fn = (
+        self._variable_creation_fn    # pylint: disable=protected-access
+        ._get_concrete_function_internal_garbage_collected(
             *args, **kwds))
 
     def invalid_creator_scope(*unused_args, **unused_kwds):
@@ -759,8 +759,9 @@ class Function(core.GenericFunction, trackable.Trackable):
           "https://www.tensorflow.org/guide/function#creating_tfvariables "
           "for more information.")
 
-    self._stateless_fn = self._compiler_with_scope(invalid_creator_scope)
-    self._stateless_fn._name = self._name  # pylint: disable=protected-access
+    self._no_variable_creation_fn = self._compiler_with_scope(
+        invalid_creator_scope)
+    self._no_variable_creation_fn._name = self._name  # pylint: disable=protected-access
 
   def _clone(self, python_function):
     """Clone the function with different python function."""
@@ -773,8 +774,7 @@ class Function(core.GenericFunction, trackable.Trackable):
         jit_compile=self._jit_compile,
         reduce_retracing=self._reduce_retracing,
         experimental_implements=self._implements,
-        experimental_autograph_options=self._experimental_autograph_options,
-        experimental_follow_type_hints=self._experimental_follow_type_hints)
+        experimental_autograph_options=self._experimental_autograph_options)
 
     if self._shared_rendezvous:
       f._shared_rendezvous = self._shared_rendezvous  # pylint: disable=protected-access
@@ -799,7 +799,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     Raises:
       ValueError: If the function has been called a ValueError is raised.
     """
-    if self._stateful_fn is not None or self._stateless_fn is not None:
+    if self._variable_creation_fn is not None or self._no_variable_creation_fn is not None:
       raise ValueError(
           "Functions cannot be decorated after they have been traced.")
 
@@ -841,8 +841,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     different argument type, and so it was traced again.
 
     """
-    result = self._stateless_fn.tracing_count if self._stateless_fn else 0
-    result += self._stateful_fn.tracing_count if self._stateful_fn else 0
+    result = self._no_variable_creation_fn.tracing_count if self._no_variable_creation_fn else 0
+    result += self._variable_creation_fn.tracing_count if self._variable_creation_fn else 0
     return result
 
   @property
@@ -900,7 +900,7 @@ class Function(core.GenericFunction, trackable.Trackable):
     """Calls the graph function."""
     self._lock.acquire()
     if ALLOW_DYNAMIC_VARIABLE_CREATION:
-      condition = self._created_variables and self._stateful_fn is None
+      condition = self._created_variables and self._variable_creation_fn is None
     else:
       condition = self._created_variables
     if condition:
@@ -909,14 +909,14 @@ class Function(core.GenericFunction, trackable.Trackable):
       self._lock.release()
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
-      return self._stateless_fn(*args, **kwds)  # pylint: disable=not-callable
-    elif self._stateful_fn is not None:
+      return self._no_variable_creation_fn(*args, **kwds)  # pylint: disable=not-callable
+    elif self._variable_creation_fn is not None:
       # Release the lock early so that multiple threads can perform the call
       # in parallel.
       self._lock.release()
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      results = self._stateful_fn(*args, **kwds)
+      results = self._variable_creation_fn(*args, **kwds)
       if self._created_variables and not ALLOW_DYNAMIC_VARIABLE_CREATION:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
@@ -941,15 +941,17 @@ class Function(core.GenericFunction, trackable.Trackable):
         pass  # Fall through to cond-based initialization.
       else:
         # Lifting succeeded, so variables are initialized and we can run the
-        # stateless function.
-        return self._stateless_fn(*args, **kwds)
+        # no_variable_creation function.
+        return self._no_variable_creation_fn(*args, **kwds)
     else:
       _, _, filtered_flat_args = (
-          self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+          self._variable_creation_fn._function_spec  # pylint: disable=protected-access
+          .canonicalize_function_inputs(
               args, kwds))
       # If we did not create any variables the trace we have is good enough.
-      return self._concrete_stateful_fn._call_flat(
-          filtered_flat_args, self._concrete_stateful_fn.captured_inputs)  # pylint: disable=protected-access
+      return self._concrete_variable_creation_fn._call_flat(   # pylint: disable=protected-access
+          filtered_flat_args,
+          self._concrete_variable_creation_fn.captured_inputs)
 
     def fn_with_cond(inner_args, inner_kwds, inner_filtered_flat_args):
       """Conditionally runs initialization if it's needed."""
@@ -958,20 +960,28 @@ class Function(core.GenericFunction, trackable.Trackable):
         condition = math_ops.logical_and(
             condition, resource_variable_ops.var_is_initialized_op(
                 v.handle))
-      # We want to call stateless_fn if possible because it avoids recomputing
-      # potentially expensive initializers.
+      # We want to call no_variable_creation if possible because it avoids
+      # recomputing potentially expensive initializers.
       return control_flow_ops.cond(
           condition,
-          lambda: self._stateless_fn(*inner_args, **inner_kwds),
+          lambda: self._no_variable_creation_fn(*inner_args, **inner_kwds),
           functools.partial(
-              self._concrete_stateful_fn._call_flat,  # pylint: disable=protected-access
+              self._concrete_variable_creation_fn._call_flat,  # pylint: disable=protected-access
               inner_filtered_flat_args,
-              captured_inputs=self._concrete_stateful_fn.captured_inputs))
+              captured_inputs=self._concrete_variable_creation_fn
+              .captured_inputs))
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
+    # TODO(b/216870587) Note that this path is not currently supported for XLA.
+    if self._jit_compile:
+      raise errors.UnimplementedError(
+          None, None,
+          "We failed to lift variable creations out of this tf.function, "
+          "so this tf.function cannot be run on XLA. A possible workaround is "
+          "to move variable creation outside of the XLA compiled function.")
     canon_args, canon_kwds, filtered_flat_args = (
-        self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+        self._variable_creation_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             args, kwds))
     return tracing_compiler.TracingCompiler(
         fn_with_cond, "fn_with_cond")(canon_args, canon_kwds,
@@ -1088,7 +1098,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       RuntimeError: if called after the variables have been initialized.
     """
     with self._lock:
-      if self._stateful_fn is not None:
+      if self._variable_creation_fn is not None:
         raise RuntimeError(
             "get_initialization_function cannot be called after the function "
             "has been used")
@@ -1113,12 +1123,12 @@ class Function(core.GenericFunction, trackable.Trackable):
       self.get_concrete_function()
     concrete_functions = []
     # pylint: disable=protected-access
-    if self._stateful_fn:
+    if self._variable_creation_fn:
       concrete_functions.extend(
-          self._stateful_fn._list_all_concrete_functions())
-    if self._stateless_fn:
+          self._variable_creation_fn._list_all_concrete_functions())
+    if self._no_variable_creation_fn:
       concrete_functions.extend(
-          self._stateless_fn._list_all_concrete_functions())
+          self._no_variable_creation_fn._list_all_concrete_functions())
     # pylint: enable=protected-access
     return concrete_functions
 
@@ -1180,20 +1190,20 @@ class Function(core.GenericFunction, trackable.Trackable):
       ValueError: if this object has not yet been called on concrete values.
     """
     with self._lock:
-      if self._stateful_fn is None:
+      if self._variable_creation_fn is None:
         initializers = []
         self._initialize(args, kwargs, add_initializers_to=initializers)
         self._initialize_uninitialized_variables(initializers)
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
-      # defunned version which is guaranteed to never create variables.
-      return self._stateless_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+      # version which is guaranteed to never create variables.
+      return self._no_variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
           *args, **kwargs)
-    elif self._stateful_fn is not None:
+    elif self._variable_creation_fn is not None:
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
-      concrete = self._stateful_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
+      concrete = self._variable_creation_fn._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
           *args, **kwargs)
       if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
@@ -1256,16 +1266,21 @@ class Function(core.GenericFunction, trackable.Trackable):
                              "experimental_relax_shapes is deprecated, use "
                              "reduce_retracing instead",
                              "experimental_relax_shapes")
-def function(func=None,
-             input_signature=None,
-             autograph=True,
-             jit_compile=None,
-             reduce_retracing=False,
-             experimental_implements=None,
-             experimental_autograph_options=None,
-             experimental_relax_shapes=None,
-             experimental_compile=None,
-             experimental_follow_type_hints=None) -> core.GenericFunction:
+@deprecation.deprecated_args(None,
+                             "experimental_follow_type_hints is deprecated",
+                             "experimental_follow_type_hints")
+def function(
+    func=None,
+    input_signature=None,
+    autograph=True,
+    jit_compile=None,
+    reduce_retracing=False,
+    experimental_implements=None,
+    experimental_autograph_options=None,
+    experimental_relax_shapes=None,
+    experimental_compile=None,
+    experimental_follow_type_hints=None  # pylint: disable=unused-argument
+) -> core.GenericFunction:
   """Compiles a function into a callable TensorFlow graph.
 
   `tf.function` constructs a `tf.types.experimental.GenericFunction` that
@@ -1507,32 +1522,6 @@ def function(func=None,
   >>> f(2, tf.constant(2))
   <tf.Tensor: shape=(), dtype=int32, numpy=2>
 
-  ## Using type annotations to improve performance
-
-  `experimental_follow_type_hints` can be used along with type annotations to
-  reduce retracing by automatically casting any Python values to `tf.Tensor`
-  (something that is not done by default, unless you use input signatures).
-
-  >>> @tf.function(experimental_follow_type_hints=True)
-  ... def f_with_hints(x: tf.Tensor):
-  ...   print('Tracing')
-  ...   return x
-  >>> @tf.function(experimental_follow_type_hints=False)
-  ... def f_no_hints(x: tf.Tensor):
-  ...   print('Tracing')
-  ...   return x
-  >>> f_no_hints(1)
-  Tracing
-  <tf.Tensor: shape=(), dtype=int32, numpy=1>
-  >>> f_no_hints(2)
-  Tracing
-  <tf.Tensor: shape=(), dtype=int32, numpy=2>
-  >>> f_with_hints(1)
-  Tracing
-  <tf.Tensor: shape=(), dtype=int32, numpy=1>
-  >>> f_with_hints(2)
-  <tf.Tensor: shape=(), dtype=int32, numpy=2>
-
   Args:
     func: The function to be compiled. If `func` is None, `tf.function` returns
       a decorator that can be invoked with a single argument - `func`. In other
@@ -1592,10 +1581,8 @@ def function(func=None,
     experimental_relax_shapes: Deprecated. Use `reduce_retracing`
       instead.
     experimental_compile: Deprecated alias to 'jit_compile'.
-    experimental_follow_type_hints: When True, the function may use type
-      annotations from `func` to optimize the tracing performance. For example,
-      arguments annotated with `tf.Tensor` will automatically be converted
-      to a Tensor.
+    experimental_follow_type_hints: Deprecated. Please use input_signature or
+      reduce_retracing instead.
 
   Returns:
      If `func` is not None, returns a `tf.types.experimental.GenericFunction`.
@@ -1606,9 +1593,6 @@ def function(func=None,
      `ValueError` when attempting to use `jit_compile=True`, but XLA support is
      not available.
   """
-  if experimental_follow_type_hints is None:
-    experimental_follow_type_hints = False
-
   if jit_compile is None and JIT_COMPILE_FUNCTIONS:
     jit_compile = True
 
@@ -1639,8 +1623,7 @@ def function(func=None,
                 jit_compile,
                 "experimental_compile",
                 experimental_compile),
-            experimental_implements=experimental_implements,
-            experimental_follow_type_hints=experimental_follow_type_hints))
+            experimental_implements=experimental_implements))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

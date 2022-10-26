@@ -194,14 +194,14 @@ void CreateTPUBridgePipelineImpl(OpPassManager &pm) {
 
 void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
-      CreateCanonicalizeCompileAndReplicateAttributesPass());
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   CreateTPUBridgePipelineImpl(pm);
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   // Convert to unified compilation and replication attributes.
   pm.addNestedPass<func::FuncOp>(
-      CreateCanonicalizeCompileAndReplicateAttributesPass());
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   // Guarantee all functions have one use, which enables more exact shape
   // inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
@@ -229,8 +229,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging,
   Status status =
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipeline);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v2", fallback_enabled,
-      status == ::tensorflow::OkStatus() ? "success" : "failure");
+      "tpu", "v2", fallback_enabled, status.ok() ? "success" : "failure");
   OkOrSetErrorCounterPayload(
       tensorflow::core::platform::ErrorSourceProto::MLIR_BRIDGE_PHASE_1,
       status);
@@ -241,8 +240,7 @@ tensorflow::Status TPUBridgeV1Compat(ModuleOp module, bool enable_logging,
   Status status =
       RunTFXLABridge(module, enable_logging, CreateTPUBridgePipelineV1);
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
-      "tpu", "v1", fallback_enabled,
-      status == ::tensorflow::OkStatus() ? "success" : "failure");
+      "tpu", "v1", fallback_enabled, status.ok() ? "success" : "failure");
   return status;
 }
 
@@ -300,6 +298,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // The following ops must be preserved regardless of reachability. Ideally,
   // all graphs should have control dependencies to enforce this.
   VLOG(2) << "Create TF XLA Bridge pipeline";
+  pm.addNestedPass<func::FuncOp>(
+      TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));
@@ -329,6 +329,7 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   // Inline the StatefulPartitionedCallOp op based in the parent region.
   pm.addPass(TFDevice::CreateXlaInlineDeviceOpsPass());
+  pm.addPass(TFDevice::CreateXlaRewritePass());
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster
@@ -346,7 +347,7 @@ tensorflow::Status RunTFXLABridge(ModuleOp module, bool enable_logging) {
   tensorflow::metrics::UpdateTfMlirBridgeFirstPhaseCounter(
       /*device type*/ "cpu/gpu", /*bridge version*/ "tfxla",
       /*fallback_enabled*/ false,
-      /*result*/ status == ::tensorflow::OkStatus() ? "success" : "failure");
+      /*result*/ status.ok() ? "success" : "failure");
   return status;
 }
 

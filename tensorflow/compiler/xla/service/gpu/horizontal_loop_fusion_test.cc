@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -71,6 +72,7 @@ TEST_F(HorizontalLoopFusionTest, BasicTest) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   const HloInstruction* entry_root =
@@ -189,6 +191,7 @@ TEST_F(HorizontalLoopFusionTest, HorizontalLoopFusionAfterVerticalFusion) {
   fusion.AddPass<xla::gpu::GpuInstructionFusion>(/*may_duplicate=*/true);
   EXPECT_TRUE(fusion.Run(module.get()).value());
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -296,7 +299,8 @@ TEST_F(HorizontalLoopFusionTest, FusingDifferentOutputs) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
-  EXPECT_TRUE(HloDCE().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
+  EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   VLOG(2) << "Dump after horizontal fusion:";
   VLOG(2) << module->ToString();
@@ -425,6 +429,7 @@ TEST_F(HorizontalLoopFusionTest, DynamicUpdateSlice) {
                     .value();
 
   EXPECT_TRUE(GpuHorizontalLoopFusion().Run(module.get()).value());
+  TF_ASSERT_OK(verifier().Run(module.get()).status());
   EXPECT_FALSE(HloDCE().Run(module.get()).value());
 
   VLOG(2) << "Dump after horizontal fusion:";
@@ -596,6 +601,53 @@ TEST_F(HorizontalLoopFusionTest, TraversalOrder) {
     }
   }
   EXPECT_EQ(total_fusion_instrs, 2);
+}
+
+// Simplified reproducer for Google bug b/242287055.
+// Things that happened:
+//  - horizontal loop fusion joined addition a0 and multiplication m0
+//  - the resulting fusion had 4 inputs: (gte1, gte0, gte1, gte0)
+//  - buffer assignment aliased outputs of this fusion with its inputs
+//  - some threads simultaneously did the addition, some - multiplication
+//  - as a result some inputs were overwritten before being read
+// Conditional operation is meaningless (branches are equivalent) and
+// is there only to properly confuse the buffer assignment.
+TEST_F(HorizontalLoopFusionTest, NoBufferAliasingOfDuplicateParameter) {
+  const char* hlo_text = R"(
+HloModule m
+
+branch_a {
+  p0 = s32[] parameter(0)
+  c0 = s32[] constant(1)
+  c1 = s32[] constant(2)
+  b0 = s32[4096] broadcast(c0), dimensions={}
+  b1 = s32[4096] broadcast(c1), dimensions={}
+  ROOT r = (s32[4096], s32[4096]) tuple(b0, b1)
+}
+
+branch_b {
+  p0 = s32[] parameter(0)
+  c0 = s32[] constant(1)
+  c1 = s32[] constant(2)
+  b0 = s32[4096] broadcast(c0), dimensions={}
+  b1 = s32[4096] broadcast(c1), dimensions={}
+  ROOT r = (s32[4096], s32[4096]) tuple(b0, b1)
+}
+
+ENTRY e {
+  p0 = s32[] parameter(0)
+  c0 = s32[] constant(0)
+  cond = (s32[4096], s32[4096]) conditional(p0, c0, c0), branch_computations={branch_a, branch_b}
+  p1 = s32[4096] parameter(1)
+  gte0 = s32[4096] get-tuple-element(cond), index=0
+  gte1 = s32[4096] get-tuple-element(cond), index=1
+  a0 = s32[4096] add(gte1, gte0)
+  m0 = s32[4096] multiply(gte1, gte0)
+  ROOT r = (s32[4096], s32[4096]) tuple(m0, a0)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, std::nullopt));
 }
 
 }  // namespace

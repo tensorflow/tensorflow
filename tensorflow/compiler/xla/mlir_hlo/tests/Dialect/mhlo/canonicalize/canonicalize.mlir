@@ -180,12 +180,12 @@ func.func @remainder_fold_int() -> tensor<4xi32> {
 }
 
 // CHECK-LABEL: remainder_fold_float
-func.func @remainder_fold_float() -> tensor<4xf32> {
-  %0 = mhlo.constant dense<[7.0, 66.5, 5.0, 3.1]> : tensor<4xf32>
-  %1 = mhlo.constant dense<[3.0, 5.0, 1.0, 2.6]> : tensor<4xf32>
-  // CHECK: mhlo.constant dense<[1.000000e+00, 1.500000e+00, 0.000000e+00, 5.000000e-01]>
-  %2 = "mhlo.remainder"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xf32>)
-  func.return %2 : tensor<4xf32>
+func.func @remainder_fold_float() -> tensor<8xf32> {
+  %0 = mhlo.constant dense<[-2.5, 2.25, -10.0, 6.0, 3.0, 3.0, -1.0, -8.0]> : tensor<8xf32>
+  %1 = mhlo.constant dense<[10.0, 1.0, 10.0, -6.0, 2.0, -2.0, 7.0, -4.0]> : tensor<8xf32>
+  // CHECK{LITERAL}: mhlo.constant dense<[-2.500000e+00, 2.500000e-01, -0.000000e+00, 0.000000e+00, 1.000000e+00, 1.000000e+00, -1.000000e+00, -0.000000e+00]>
+  %2 = "mhlo.remainder"(%0, %1) : (tensor<8xf32>, tensor<8xf32>) -> (tensor<8xf32>)
+  func.return %2 : tensor<8xf32>
 }
 
 // CHECK-LABEL: round_fold
@@ -226,12 +226,12 @@ func.func @max_scalar_fold_unsigned() -> tensor<4xui32> {
 }
 
 // CHECK-LABEL: max_fold_float
-func.func @max_fold_float() -> tensor<4xf64> {
-  %0 = mhlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
-  %1 = mhlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
-  // CHECK: mhlo.constant dense<[5.000000e+00, 6.600000e+01, 5.000000e+00, 4.000000e+00]>
-  %2 = "mhlo.maximum"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
-  func.return %2 : tensor<4xf64>
+func.func @max_fold_float() -> tensor<6xf32> {
+  %0 = mhlo.constant dense<[5.0, 66.0, 0xFFFFFFFF, -2.0,       0xFFFFFFFF, 1.0]> : tensor<6xf32>
+  %1 = mhlo.constant dense<[5.0, 3.0,  2.0,        0xFFFFFFFF, 0xFFFFFFFF, 4.0]> : tensor<6xf32>
+  // CHECK{LITERAL}: mhlo.constant dense<[5.000000e+00, 6.600000e+01, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 4.000000e+00]
+  %2 = "mhlo.maximum"(%0, %1) : (tensor<6xf32>, tensor<6xf32>) -> (tensor<6xf32>)
+  func.return %2 : tensor<6xf32>
 }
 
 // CHECK-LABEL: min_scalar_fold
@@ -244,12 +244,12 @@ func.func @min_scalar_fold() -> tensor<4xi64> {
 }
 
 // CHECK-LABEL: min_fold_float
-func.func @min_fold_float() -> tensor<4xf64> {
-  %0 = mhlo.constant dense<[5.0, 66.0, 5.0, 1.0]> : tensor<4xf64>
-  %1 = mhlo.constant dense<[5.0, 3.0, 2.0, 4.0]> : tensor<4xf64>
-  // CHECK: mhlo.constant dense<[5.000000e+00, 3.000000e+00, 2.000000e+00, 1.000000e+00]>
-  %2 = "mhlo.minimum"(%0, %1) : (tensor<4xf64>, tensor<4xf64>) -> (tensor<4xf64>)
-  func.return %2 : tensor<4xf64>
+func.func @min_fold_float() -> tensor<6xf32> {
+  %0 = mhlo.constant dense<[5.0, 66.0, 0xFFFFFFFF, -2.0,       0xFFFFFFFF, 1.0]> : tensor<6xf32>
+  %1 = mhlo.constant dense<[5.0, 3.0,  2.0,        0xFFFFFFFF, 0xFFFFFFFF, 4.0]> : tensor<6xf32>
+  // CHECK{LITERAL}: mhlo.constant dense<[5.000000e+00, 3.000000e+00, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 1.000000e+00]
+  %2 = "mhlo.minimum"(%0, %1) : (tensor<6xf32>, tensor<6xf32>) -> (tensor<6xf32>)
+  func.return %2 : tensor<6xf32>
 }
 
 // CHECK-LABEL: concatenate_noop
@@ -812,7 +812,7 @@ func.func @broadcast_in_dim_constant_fold_complex() -> tensor<1x64x224x224xcompl
 // CHECK-LABEL: @complex_expand_fold
 func.func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xcomplex<f32>>)
-  %1 = mhlo.real(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
+  %1 = mhlo.real %0 : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %2 = "mhlo.imag"(%0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   // CHECK: return %arg0, %arg1
   func.return %1, %2 : tensor<4xf32>, tensor<4xf32>
@@ -820,7 +820,7 @@ func.func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (t
 
 // CHECK-LABEL: @complex_collapse_fold
 func.func @complex_collapse_fold(%arg0: tensor<4xcomplex<f32>>) -> tensor<4xcomplex<f32>> {
-  %0 = mhlo.real(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
+  %0 = mhlo.real %arg0 : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %1 = "mhlo.imag"(%arg0) : (tensor<4xcomplex<f32>>) -> (tensor<4xf32>)
   %2 = "mhlo.complex"(%0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
   // CHECK: return %arg0
@@ -960,9 +960,9 @@ func.func @shape_of_dynamic_reshape(%arg0: tensor<*xf32>, %shape: tensor<2xindex
 // CHECK-SAME: [[ARG0:%[a-zA-Z0-9]+]]
 func.func @dynamic_reshape_rank_1_to_rank_1(%arg0: tensor<?xcomplex<f32>>,
     %shape: tensor<?xindex>) -> tensor<?xf32> {
-  // CHECK: [[RES:%[a-zA-Z0-9]+]] = mhlo.real([[ARG0]]) : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  // CHECK: [[RES:%[a-zA-Z0-9]+]] = mhlo.real [[ARG0]] : (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   // CHECK: return [[RES]]
-  %0 = mhlo.real(%arg0): (tensor<?xcomplex<f32>>) -> tensor<?xf32>
+  %0 = mhlo.real %arg0: (tensor<?xcomplex<f32>>) -> tensor<?xf32>
   %1 = shape.shape_of %arg0 : tensor<?xcomplex<f32>> -> tensor<1xindex>
   %2 = shape.num_elements %1 : tensor<1xindex> -> index
   %3 = tensor.from_elements %2 : tensor<1xindex>
@@ -1715,7 +1715,7 @@ func.func @fold_not() -> tensor<2x2xi1> {
 // CHECK-LABEL func @fold_not_i32()
 func.func @fold_not_i32() -> tensor<2x2xi32> {
   %0 = mhlo.constant dense<[[42, -12], [1, 0]]> : tensor<2x2xi32>
-  // CHECK-LITERAL: mhlo.constant dense<[[0, 0], [0, 1]]> : tensor<2x2xi32>
+  // CHECK{LITERAL}: mhlo.constant dense<[[-43, 11], [-2, -1]]> : tensor<2x2xi32>
   %1 = "mhlo.not"(%0) : (tensor<2x2xi32>) -> tensor<2x2xi32>
   func.return %1 : tensor<2x2xi32>
 }
@@ -2584,4 +2584,13 @@ func.func public @reshape_splat_of_bools() -> tensor<2x1xi1> {
   %0 = mhlo.constant dense<true> : tensor<2xi1>
   %1 = "mhlo.reshape"(%0) : (tensor<2xi1>) -> tensor<2x1xi1>
   return %1 : tensor<2x1xi1>
+}
+
+// CHECK-LABEL: @simplify_dynamic_gather
+func.func @simplify_dynamic_gather(%arg0: tensor<375682x256xf16>, %arg1: tensor<16x64xi64>) -> tensor<16x64x256xf16> {
+  %0 = "arith.constant"() {value = dense<[1, 256]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %1 = "mhlo.dynamic_gather"(%arg0, %arg1, %0) {dimension_numbers = #mhlo.gather<offset_dims = [2], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 2>, indices_are_sorted = false} : (tensor<375682x256xf16>, tensor<16x64xi64>, tensor<2xi64>) -> tensor<16x64x256xf16>
+  // CHECK: %[[RET:.+]] = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = #mhlo.gather<offset_dims = [2], collapsed_slice_dims = [0], start_index_map = [0], index_vector_dim = 2>, indices_are_sorted = false, slice_sizes = dense<[1, 256]> : tensor<2xi64>} : (tensor<375682x256xf16>, tensor<16x64xi64>) -> tensor<16x64x256xf16>
+  // CHECK: return %[[RET]]
+  return %1 : tensor<16x64x256xf16>
 }

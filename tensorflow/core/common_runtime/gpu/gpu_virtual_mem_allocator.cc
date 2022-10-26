@@ -17,7 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/stream_executor/lib/status.h"
-#include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/platform/numbers.h"
 
 #if CUDA_VERSION >= 10020
 
@@ -44,7 +45,7 @@ StatusOr<bool> SupportsVirtualAddressManagement(GpuDeviceHandle device) {
 }
 
 Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
-                                            PlatformDeviceId gpu_id) {
+                                            tsl::PlatformDeviceId gpu_id) {
   TF_ASSIGN_OR_RETURN(bool supports_virtual_address_management,
                       SupportsVirtualAddressManagement(device));
   if (!supports_virtual_address_management) {
@@ -62,8 +63,8 @@ Status CheckVirtualAddressManagementSupport(GpuDeviceHandle device,
 GpuVirtualMemAllocator::Create(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,
-    PlatformDeviceId gpu_id, size_t virtual_address_space_size,
-    const std::vector<PlatformDeviceId>& peer_gpu_ids) {
+    tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
+    const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids) {
   std::vector<GpuDeviceHandle> access_gpu_handles;
   access_gpu_handles.reserve(peer_gpu_ids.size() + 1);
 
@@ -101,7 +102,7 @@ GpuVirtualMemAllocator::Create(
       GpuDriver::ReserveVirtualMemory(
           &gpu_context, AlignUp(virtual_address_space_size, max_granularity)));
   VLOG(1) << "Reserved GPU virtual memory at " << vmem.base << " of size "
-          << strings::HumanReadableNumBytes(vmem.size_bytes) << " bytes";
+          << tsl::strings::HumanReadableNumBytes(vmem.size_bytes) << " bytes";
 
   return std::unique_ptr<GpuVirtualMemAllocator>(new GpuVirtualMemAllocator(
       alloc_visitors, free_visitors, gpu_context, gpu_id,
@@ -111,7 +112,7 @@ GpuVirtualMemAllocator::Create(
 GpuVirtualMemAllocator::GpuVirtualMemAllocator(
     const std::vector<Visitor>& alloc_visitors,
     const std::vector<Visitor>& free_visitors, GpuContext& gpu_context,
-    PlatformDeviceId gpu_id,
+    tsl::PlatformDeviceId gpu_id,
     const std::vector<GpuDeviceHandle> access_gpu_handles,
     GpuDriver::VmemSpan vmem, size_t granularity)
     : SubAllocator(alloc_visitors, free_visitors),
@@ -142,7 +143,7 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
   if (next_va + padded_bytes > vmem_.base + vmem_.size_bytes) {
     LOG(ERROR) << "OOM in GPU virtual memory allocator when attempting to "
                   "allocate {request: "
-               << strings::HumanReadableNumBytes(num_bytes)
+               << tsl::strings::HumanReadableNumBytes(num_bytes)
                << ", aligned: " << padded_bytes << "} bytes.";
     return nullptr;
   }
@@ -154,7 +155,7 @@ void* GpuVirtualMemAllocator::Alloc(size_t alignment, size_t num_bytes,
     LOG(ERROR) << maybe_handle.status();
     return nullptr;
   }
-  GpuDriver::GenericMemoryHandle handle = std::move(maybe_handle).ValueOrDie();
+  GpuDriver::GenericMemoryHandle handle = std::move(maybe_handle).value();
 
   // Map VAs for this physical memory.
   auto status =
@@ -195,8 +196,10 @@ void GpuVirtualMemAllocator::Free(void* ptr, size_t num_bytes) {
   }
   if (total_bytes != num_bytes) {
     LOG(ERROR) << "Invalid size requested for freeing GPU vmem mapping. Got "
-               << strings::HumanReadableNumBytes(num_bytes) << " but expected "
-               << strings::HumanReadableNumBytes(mapping_it->physical.bytes);
+               << tsl::strings::HumanReadableNumBytes(num_bytes)
+               << " but expected "
+               << tsl::strings::HumanReadableNumBytes(
+                      mapping_it->physical.bytes);
     return;
   }
 

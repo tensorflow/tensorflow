@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/xla_framework.h"
 #include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/xla_passes_detail.h"
 
 namespace mlir {
 namespace mhlo {
@@ -132,8 +131,11 @@ struct OutlineXLAFunc : public RewritePattern {
   }
 };
 
+#define GEN_PASS_DEF_OUTLINEWITHXLAFRAMEWORK
+#include "tensorflow/compiler/mlir/xla/transforms/xla_passes.h.inc"
+
 class OutlineWithXLAFrameworkPass
-    : public OutlineWithXLAFrameworkBase<OutlineWithXLAFrameworkPass> {
+    : public impl::OutlineWithXLAFrameworkBase<OutlineWithXLAFrameworkPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<xla_framework::XLAFrameworkDialect, mlir::BuiltinDialect>();
   }

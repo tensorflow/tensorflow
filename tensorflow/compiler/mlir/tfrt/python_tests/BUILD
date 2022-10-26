@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 
 licenses(["notice"])
@@ -267,10 +267,11 @@ py_strict_test(
     name = "tf_transpose_test",
     srcs = ["tf_transpose_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     tags = [
         "no_oss",
-        "no_pip",
-    ],  # TODO(b/201803253): TFRT pybindings not in OSS.
+        "no_pip",  # TODO(b/201803253): TFRT pybindings not in OSS.
+    ],
     deps = [
         "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
         "//tensorflow/python:client_testlib",

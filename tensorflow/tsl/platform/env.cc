@@ -21,10 +21,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/tsl/platform/env_time.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/host_info.h"
+#include "tensorflow/tsl/platform/path.h"
 #include "tensorflow/tsl/platform/platform.h"
 #include "tensorflow/tsl/platform/protobuf.h"
 #include "tensorflow/tsl/platform/stringprintf.h"
@@ -49,10 +49,6 @@ limitations under the License.
 #endif
 
 namespace tsl {
-// TODO(aminim): remove after tensorflow/core/platform/path.h migration.
-namespace io {
-using namespace tensorflow::io;  // NOLINT
-}  // namespace io
 
 // 128KB copy buffer
 constexpr size_t kCopyFileBufferSize = 128 * 1024;

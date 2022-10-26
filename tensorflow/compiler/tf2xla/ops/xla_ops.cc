@@ -997,7 +997,7 @@ Takes the packed uint32 input and unpacks the input to uint8 to do
 Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
-output: Output tensors whose types is bloat16. If transpose_output is true,
+output: Output tensors whose types is bfloat16. If transpose_output is true,
      output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
      is false, output shape is [d0,..., dn * 4].
 min_range: The minimum scalar value possibly produced for the input.
@@ -1272,6 +1272,49 @@ dtype: Output tensor data type.
 shape: Output tensor shape.
 )doc");
 
+REGISTER_OP("XlaCustomCallV2")
+    .Input("operands: operand_dtypes")
+    .Output("results: result_dtypes")
+    .Attr("call_target_name: string")
+    .Attr("backend_config: string")
+    .Attr("has_side_effect: bool")
+    .Attr("operand_dtypes: list(type) >= 0")
+    .Attr("result_dtypes: list(type) >= 0")
+    .Attr("result_shapes: list(shape) >= 0")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<TensorShape> shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("result_shapes", &shapes));
+      if (shapes.size() != c->num_outputs()) {
+        return errors::InvalidArgument("Unexpected number of result shapes: ",
+                                       shapes.size(), " != ", c->num_outputs());
+      }
+      for (int i = 0; i < c->num_outputs(); ++i) {
+        shape_inference::ShapeHandle shape;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromTensorShape(shapes[i], &shape));
+        c->set_output(i, shape);
+      }
+      return OkStatus();
+    })
+    .Doc(R"doc(
+Emits an HLO `CustomCall` operation with multiple outputs.
+
+As opposed to `XlaCustomCall`, this operation supports multiple outputs.
+
+See `CustomCall` specification at
+  https://tensorflow.org/xla/operation_semantics#customcall,
+and `mhlo.custom_call` specification at
+  https://tensorflow.org/mlir/hlo_ops#mhlocustom_call_mlirmhlocustomcallop.
+
+operands: A sequence of tensors with possibly different types.
+call_target_name: Name of the user function. The function signature must conform
+  to version 3 of the API, see `API_VERSION_STATUS_RETURNING_UNIFIED`. All
+  operands and results assumed to be in the default layout.
+backend_config: A string that encodes a metadata for the backend.
+has_side_effect: Indicates whether the custom call has side effects.
+result_dtypes: Types of all results.
+result_shapes: Shapes of all results.
+)doc");
+
 REGISTER_OP("XlaCallModule")
     .Input("args: Tin")
     .Output("output: Tout")
@@ -1281,8 +1324,6 @@ REGISTER_OP("XlaCallModule")
     .Attr("Tin: list(type) >= 0")
     .Attr("dim_args_spec: list(string) >= 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      // For debugging
-      VLOG(3) << "XlaCallModule.shape_inference";
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));
       for (int i = 0; i < args_shapes.size(); ++i) {
@@ -1332,7 +1373,8 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
 
 args: A list of `Tensor` with possibly different types to be passed as arguments
   to the HLO module.
-module: A serialized computation, a text representation of mlir.Module.
+module: A serialized computation, a text or bytecode representation of
+  an mlir.Module.
 Tout: List of output tensor data types.
 Sout: List of output tensor shapes.
 dim_args_spec: the specification for the dimension arguments, one for each

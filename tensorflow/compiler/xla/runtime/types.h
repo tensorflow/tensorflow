@@ -127,6 +127,47 @@ class AsyncValueType : public llvm::RTTIExtends<AsyncValueType, Type> {
 };
 
 //===----------------------------------------------------------------------===//
+// Scalar type corresponding to mlir::IntegerType or mlir::FloatType.
+//===----------------------------------------------------------------------===//
+
+class ScalarType : public llvm::RTTIExtends<ScalarType, Type> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit ScalarType(PrimitiveType type) : type_(type) {}
+
+  PrimitiveType type() const { return type_; }
+
+  absl::StatusOr<ArgumentAbi> AsArgument() const final;
+  absl::StatusOr<ResultAbi> AsResult() const final;
+
+  std::string ToString() const final;
+
+ private:
+  PrimitiveType type_;
+};
+
+//===----------------------------------------------------------------------===//
+// Tuple type corresponding to mlir::TupleType.
+//===----------------------------------------------------------------------===//
+
+class TupleType : public llvm::RTTIExtends<TupleType, Type> {
+ public:
+  static constexpr char ID = 0;  // NOLINT
+
+  explicit TupleType(llvm::SmallVector<std::unique_ptr<Type>> elems)
+      : elems_(std::move(elems)) {}
+
+  std::string ToString() const final;
+
+  // Note: the AsArgument() and AsResult() methods are unimplemented, because
+  // this type is not meant to be used without expansion at run time.
+
+ private:
+  llvm::SmallVector<std::unique_ptr<Type>> elems_;
+};
+
+//===----------------------------------------------------------------------===//
 // Ranked Tensor type corresponding to the mlir::RankedTensorType.
 //===----------------------------------------------------------------------===//
 

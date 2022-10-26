@@ -51,7 +51,7 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane);
 
 // Converts and combines multiple XSpace protos into a single OpStats
 // <combined_op_stats>.
-// Return the first error status during conversion, or return Status::OK() if
+// Return the first error status during conversion, or return OkStatus() if
 // there is no error.
 Status ConvertMultiXSpacesToCombinedOpStats(
     const SessionSnapshot& session_snapshot, const OpStatsOptions& options,

@@ -35,8 +35,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateInsertMainFunctionPass();
 std::unique_ptr<OperationPass<func::FuncOp>> CreateConvertFakeQuantToQdqPass();
 
 // Lifts the quantizable spots as composite functions.
+// TODO(b/249914162): Pass OpSet by value instead of reference.
 std::unique_ptr<OperationPass<ModuleOp>>
-CreateLiftQuantizableSpotsAsFunctionsPass();
+CreateLiftQuantizableSpotsAsFunctionsPass(const OpSet& op_set);
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
@@ -109,10 +110,18 @@ CreateReplaceCastHacksWithTFXLAOpsPass();
 
 // Creates a pass that moves & merges initializer function's ops into the @main
 // function. This pass should be run on a valid tf_executor dialect. The control
-// outputs from the initializer functions will be merged into the main
-// function's FetchOp. The initializer functions will be removed.
+// output of the initializer function for non-variable resource initialization
+// will be passed on as a dependency to a new `tf.NoOp`, whose control output
+// will be merged into the main function's FetchOp. The initializer functions
+// will be removed.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMergeInitializerFunctionOpsToMainPass();
+
+// Creates a pass that "unfreezes" ConstOps into variables. Each ConstOp's use
+// will be replaced by a VarHandleOp -> ReadVariableOp pattern. The newly
+// created variables will be initialized in the session initializer function via
+// AssignVariableOps.
+std::unique_ptr<OperationPass<ModuleOp>> CreateUnfreezeConstantsPass();
 
 }  // namespace quant
 }  // namespace mlir

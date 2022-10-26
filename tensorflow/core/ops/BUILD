@@ -5,12 +5,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow:tensorflow.default.bzl", "filegroup", "tf_gen_op_libs")
 
 # For platform specific build config
 load(
@@ -97,7 +92,6 @@ tf_gen_op_libs(
         "stateless_random_ops_v2",
         "summary_ops",
         "training_ops",
-        "uniform_quant_ops",
     ],
     sub_directory = "",
     deps = [
@@ -246,6 +240,19 @@ tf_gen_op_libs(
     ],
     sub_directory = "",
     deps = ["//tensorflow/core/util:ragged_to_dense_util"],
+)
+
+tf_gen_op_libs(
+    is_external = False,
+    op_lib_names = [
+        "uniform_quant_ops",
+    ],
+    sub_directory = "",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/quantization:uniform_quant_ops_params",
+    ],
 )
 
 cc_library(

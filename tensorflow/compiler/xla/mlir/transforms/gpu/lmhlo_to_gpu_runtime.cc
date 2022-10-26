@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -47,7 +47,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_CONVERTLMHLOTOGPURUNTIMEPASS
 #include "tensorflow/compiler/xla/mlir/transforms/gpu/passes.h.inc"
 
 using namespace mlir;  // NOLINT
@@ -66,13 +66,14 @@ using xla::runtime::AppendCustomCallAttrs;
 using xla::runtime::CustomCallDeclarations;
 
 class ConvertLmhloToGpuRuntimePass
-    : public ConvertLmhloToGpuRuntimePassBase<ConvertLmhloToGpuRuntimePass> {
+    : public impl::ConvertLmhloToGpuRuntimePassBase<
+          ConvertLmhloToGpuRuntimePass> {
   void runOnOperation() override;
 
   void getDependentDialects(DialectRegistry& registry) const override {
     registry
-        .insert<arith::ArithmeticDialect, cf::ControlFlowDialect,
-                func::FuncDialect, memref::MemRefDialect, scf::SCFDialect>();
+        .insert<arith::ArithDialect, cf::ControlFlowDialect, func::FuncDialect,
+                memref::MemRefDialect, scf::SCFDialect>();
   }
 };
 
@@ -155,9 +156,16 @@ class CustomCallOpLowering : public OpRewritePattern<CustomCallOp> {
       int64_t num_args = mapping.getNumArgs();
       int64_t num_results = mapping.getNumResults();
 
+      // Always create an `alloca` in the parent function entry block.
+      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+      Value hole = [&]() -> Value {
+        OpBuilder::InsertionGuard guard(b);
+        b.setInsertionPointToStart(
+            &op->getParentOfType<func::FuncOp>().front());
+        return b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
+      }();
+
       // We represent holes as empty i8 memrefs.
-      Value hole =
-          b.create<memref::AllocaOp>(MemRefType::get({0}, b.getI8Type()));
       operands = llvm::SmallVector<Value>(num_args + num_results, hole);
 
       // Update operands to mapped custom call arguments.
@@ -236,10 +244,14 @@ class CaseOpLowering : public OpRewritePattern<CaseOp> {
     // Copy index buffer to the host ...
     auto index_type = op.getIndex().getType().dyn_cast<MemRefType>();
 
-    // TODO(ezhulenev): We need to make sure that `alloca` is placed in the
-    // parent function entry block.
-    // https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
-    Value index_on_host = b.create<memref::AllocaOp>(index_type);
+    // Always create an `alloca` in the parent function entry block.
+    // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+    Value index_on_host = [&]() -> Value {
+      OpBuilder::InsertionGuard guard(b);
+      b.setInsertionPointToStart(&op->getParentOfType<func::FuncOp>().front());
+      return b.create<memref::AllocaOp>(index_type);
+    }();
+
     b.create<MemcpyOp>(TypeRange(), ValueRange({index_on_host, op.getIndex()}));
 
     // Get the index value from the buffer.
@@ -326,29 +338,62 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(WhileOp op,
-                                PatternRewriter& rewriter) const override {
+  // Rewrite while loop with known trip count to `scf.for` operation.
+  LogicalResult rewriteForLoop(WhileOp op, PatternRewriter& rewriter) const {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    Value lb = b.create<arith::ConstantIndexOp>(0);
+    Value ub = b.create<arith::ConstantIndexOp>(*op.getTripCount());
+    Value c1 = b.create<arith::ConstantIndexOp>(1);
+
+    // Create an `scf.for` loop in place of `lmhlo.while` loop.
+    auto loop = b.create<scf::ForOp>(lb, ub, c1, ValueRange());
+
+    // Move body region into the new loop operation.
+    BlockAndValueMapping mapping;
+    rewriter.eraseOp(op.getBody().front().getTerminator());
+    rewriter.mergeBlockBefore(&op.getBody().front(),
+                              loop.getLoopBody().front().getTerminator());
+
+    // Erase the original while loop.
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+  // Rewrite while loop with unknown trip count to `scf.while` operation.
+  LogicalResult rewriteWhileLoop(WhileOp op, PatternRewriter& rewriter) const {
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     // Create an `scf.while` loop in place of `lmhlo.while` loop.
     auto loop = b.create<scf::WhileOp>(TypeRange(), ValueRange());
 
     // Predicate buffer placed on the device.
-    assert(op.getNumOperands() == 1 && "expected single cond operand");
     Value pred = op.getOperand(0);
 
-    // Clone condition and body blocks into the new loop operation.
+    // Inline condition and body regions into the new loop operation.
     BlockAndValueMapping mapping;
-    op.getCond().cloneInto(&loop.getBefore(), mapping);
-    op.getBody().cloneInto(&loop.getAfter(), mapping);
+    rewriter.inlineRegionBefore(op.getCond(), loop.getBefore(),
+                                loop.getBefore().begin());
+    rewriter.inlineRegionBefore(op.getBody(), loop.getAfter(),
+                                loop.getAfter().begin());
 
     {  // Replace loop condition terminator.
       auto* terminator = loop.getBefore().back().getTerminator();
       b.setInsertionPointAfter(terminator);
 
-      // Copy predicate buffer to the host ...
       auto i1 = b.getI1Type();
-      Value pred_on_host = b.create<memref::AllocaOp>(MemRefType::get({}, i1));
+
+      // Always create an `alloca` in the parent function entry block.
+      // See: https://llvm.org/docs/Frontend/PerformanceTips.html#use-of-allocas
+      Value pred_on_host = [&]() -> Value {
+        OpBuilder::InsertionGuard guard(b);
+        b.setInsertionPointToStart(
+            &op->getParentOfType<func::FuncOp>().front());
+        return b.create<memref::AllocaOp>(MemRefType::get({}, i1));
+      }();
+
+      // Copy predicate buffer to the host ...
       b.create<gpu::MemcpyOp>(TypeRange(), ValueRange({pred_on_host, pred}));
 
       // .. and check if we need to continue loop iteration.
@@ -368,6 +413,13 @@ class WhileOpLowering : public OpRewritePattern<WhileOp> {
     rewriter.eraseOp(op);
 
     return success();
+  }
+
+  LogicalResult matchAndRewrite(WhileOp op,
+                                PatternRewriter& rewriter) const override {
+    assert(op.getNumOperands() == 1 && "expected single lmhlo.while operand");
+    return op.getTripCount().has_value() ? rewriteForLoop(op, rewriter)
+                                         : rewriteWhileLoop(op, rewriter);
   }
 };
 
@@ -588,10 +640,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
 
   LogicalResult matchAndRewrite(CollectiveOp op,
                                 PatternRewriter& rewriter) const override {
-    // Channel ID is not supported.
-    if (op.getChannelId().has_value())
-      return op.emitOpError() << "Collective channel id is not supported";
-
     // Construct an NCCL collective config from the parent func attributes.
     func::FuncOp fn = op->template getParentOfType<func::FuncOp>();
     auto replica_count_attr = fn->getAttrOfType<IntegerAttr>("replica_count");

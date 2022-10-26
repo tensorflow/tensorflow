@@ -160,9 +160,13 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
 
         std::string tool_name = std::string(py_tool_name);
         ToolOptions tool_options = ToolOptionsFromPythonDict(options);
-        auto status_or_tool_data =
-            tensorflow::profiler::ConvertMultiXSpacesToToolData(
-                status_or_session_snapshot.value(), tool_name, tool_options);
+        ::tensorflow::StatusOr<std::string> status_or_tool_data;
+        {
+          py::gil_scoped_release release;
+          status_or_tool_data =
+              tensorflow::profiler::ConvertMultiXSpacesToToolData(
+                  status_or_session_snapshot.value(), tool_name, tool_options);
+        }
         if (!status_or_tool_data.ok()) {
           LOG(ERROR) << status_or_tool_data.status().error_message();
           return py::make_tuple(py::bytes(""), py::bool_(false));

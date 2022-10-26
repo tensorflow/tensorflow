@@ -23,7 +23,11 @@ load(
     "if_mkl_ml",
 )
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_library")
+load(
+    "//tensorflow:tensorflow.default.bzl",
+    "ADDITIONAL_API_INDEXABLE_SETTINGS",
+    "tf_cc_shared_library",
+)
 
 # copybara:uncomment_begin
 # load("//tools/build_defs/license:license.bzl", "license")
@@ -58,6 +62,8 @@ PACKAGE_STATIC_DEPS = [
     "@nsync//:__subpackages__",
     "@png//:__subpackages__",
     "@sobol_data//:__subpackages__",
+    "@stablehlo//:__subpackages__",
+    "@tf_runtime//:__subpackages__",
     "@bazel_tools//:__subpackages__",
     "@boringssl//:__subpackages__",
     "@com_github_cares_cares//:__subpackages__",
@@ -76,7 +82,6 @@ PACKAGE_STATIC_DEPS = [
     "@fft2d//:__subpackages__",
     "@gemmlowp//:__subpackages__",
     "@jsoncpp_git//:__subpackages__",
-    "@libxsmm_archive//:__subpackages__",
     "@llvm_openmp//:__subpackages__",
     "@llvm_terminfo//:__subpackages__",
     "@llvm_zlib//:__subpackages__",
@@ -308,6 +313,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "windows",
     # Internal builds query the target OS.
@@ -379,6 +385,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 selects.config_setting_group(
     name = "macos",
     match_any = [
@@ -401,6 +408,7 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(jakeharmon): Remove in favor of TSL version
 config_setting(
     name = "fuchsia",
     flag_values = if_google(
@@ -604,12 +612,6 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
-config_setting(
-    name = "with_numa_support",
-    define_values = {"with_numa_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
@@ -800,11 +802,12 @@ selects.config_setting_group(
     match_any = [
         ":android",
         ":chromiumos",
+        # TODO(jakeharmon): Move all platform configs to TSL with fuchsia (non-blocking)
         ":fuchsia",
         ":emscripten",
         ":ios",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # This flag disables all google production dependencies, intended for
@@ -847,7 +850,7 @@ selects.config_setting_group(
 config_setting(
     name = "lite_protos_legacy",
     define_values = {"TENSORFLOW_PROTOS": "lite"},
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 config_setting(
@@ -868,7 +871,7 @@ selects.config_setting_group(
         ":lite_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 selects.config_setting_group(
@@ -877,7 +880,7 @@ selects.config_setting_group(
         ":full_protos",
         ":mobile",
     ],
-    visibility = if_google(["//visibility:public"]),
+    visibility = ["//visibility:public"],
 )
 
 # copybara:uncomment_begin(google-only)
@@ -922,8 +925,13 @@ config_setting(
 # )
 #
 # config_setting(
-#     name = "api_indexable",
+#     name = "api_indexable_flag",
 #     flag_values = {":enable_api_indexable": "True"},
+# )
+#
+# selects.config_setting_group(
+#     name = "api_indexable",
+#     match_any = [":api_indexable_flag"] + ADDITIONAL_API_INDEXABLE_SETTINGS,
 #     visibility = ["//visibility:public"],
 # )
 # copybara:uncomment_end
@@ -983,6 +991,7 @@ bzl_library(
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
+        "//tensorflow/tsl:tsl_bzl",
         "//tensorflow/tsl/platform/default:cuda_build_defs_bzl",
         "//third_party/compute_library:build_defs_bzl",
         "//third_party/llvm_openmp:openmp_bzl",
@@ -994,6 +1003,13 @@ bzl_library(
         "@local_config_rocm//rocm:build_defs_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
     ],
+)
+
+bzl_library(
+    name = "tensorflow_default_bzl",
+    srcs = ["tensorflow.default.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [":tensorflow_bzl"],
 )
 
 # copybara:comment_begin(oss-only)
@@ -1159,7 +1175,10 @@ tf_cc_shared_object(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:distributed_tensorflow_dependencies",
         "//tensorflow/core:tensorflow",
-    ],
+    ] + select({
+        "//tensorflow:windows": ["//tensorflow/c:kernels_experimental"],
+        "//conditions:default": [],
+    }),
 )
 
 tf_cc_shared_library(

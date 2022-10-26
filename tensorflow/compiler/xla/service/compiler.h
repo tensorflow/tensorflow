@@ -24,6 +24,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -40,8 +41,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -230,7 +231,11 @@ class Compiler {
     se::DeviceMemoryAllocator* device_allocator = nullptr;
 
     // An optional thread pool for parallel compilation.
-    tensorflow::thread::ThreadPool* thread_pool = nullptr;
+    tsl::thread::ThreadPool* thread_pool = nullptr;
+
+    std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+        const HloModule& module)>
+        layout_canonicalization_callback = {};
   };
 
   virtual ~Compiler() {}
@@ -366,6 +371,12 @@ class Compiler {
 
   virtual Shape DefaultDeviceShapeRepresentation(const Shape& shape) const {
     return shape;
+  }
+
+  // Returns an AotCompilationResult of the executable for serialization.
+  virtual StatusOr<std::unique_ptr<AotCompilationResult>> Export(
+      Executable* executable) const {
+    return Unimplemented("Export unimplemented");
   }
 
  private:

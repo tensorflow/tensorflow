@@ -2,8 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/compiler/xla/pjrt/distributed/protocol.proto";
-import "tensorflow/core/framework/device_attributes.proto";
+import "google/protobuf/any.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
@@ -40,18 +39,17 @@ message CoordinationServiceError {
   CoordinatedTask source_task = 4;
 }
 
-// Represent device information from different runtimes.
-message TfDeviceList {
-  repeated DeviceAttributes devices = 1;
+message CoordinatedTaskStateInfo {
+  CoordinatedTask task = 1;
+  CoordinatedTaskState state = 2;
+  int32 error_code = 3;
+  string error_message = 4;
+  CoordinationServiceError error_payload = 5;
 }
-message XlaDeviceList {
-  xla.GlobalTopologyProto devices = 1;
-}
-message CoordinationServiceDeviceInfo {
-  oneof type {
-    TfDeviceList tf = 1;
-    XlaDeviceList xla = 2;
-  }
+
+// Placeholder message to be extended by other runtimes' device representations.
+message DeviceInfo {
+  repeated google.protobuf.Any device = 1;
 }
 
 // Request and response messages for registering a task to the cluster leader.
@@ -91,18 +89,18 @@ message WaitForAllTasksRequest {
   // Removed fields which used to specify the remote task.
   reserved 1, 2;
   // Removed field that specifically used TF device info.
-  reserved 3;
-  // All local device attributes on the request sender.
-  CoordinationServiceDeviceInfo local_device_info = 4;
+  reserved 3, 4;
   CoordinatedTask source_task = 5;
+  // All local device attributes on the request sender;
+  DeviceInfo device_info = 6;
 }
 
 message WaitForAllTasksResponse {
   fixed64 leader_incarnation = 1;
   // Removed field that specifically used TF device info.
-  reserved 2;
+  reserved 2, 3;
   // All devices in the cluster.
-  CoordinationServiceDeviceInfo cluster_device_info = 3;
+  DeviceInfo device_info = 4;
 }
 
 // Request and response messages for disconnecting a task from the service.
@@ -140,6 +138,15 @@ message ReportErrorToServiceRequest {
 }
 
 message ReportErrorToServiceResponse {}
+
+// Request and response messages for getting state of a remote task.
+message GetTaskStateRequest {
+  repeated CoordinatedTask source_task = 1;
+}
+
+message GetTaskStateResponse {
+  repeated CoordinatedTaskStateInfo task_state = 1;
+}
 
 // Message for configuration key value.
 // Key is structured like Unix file system, with multiple levels of directory
@@ -257,6 +264,11 @@ service CoordinationService {
   // state to error, and propagate the error to other tasks in the cluster.
   rpc ReportErrorToService(ReportErrorToServiceRequest)
       returns (ReportErrorToServiceResponse);
+
+  // Get the state of a remote task. Specifically, RPC returns a
+  // CoordinatedTaskState, and if the task is in an error status, returns a
+  // non-OK error code, non-empty error message and error payload.
+  rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
 
   // Insert configuration key-value that will be accessible to all cluster
   // tasks. The key can be formatted as Unix file path with hierarchy. The

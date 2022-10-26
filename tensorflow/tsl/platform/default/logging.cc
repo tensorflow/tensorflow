@@ -18,12 +18,13 @@ limitations under the License.
 // TODO(b/142492876): Avoid depending on absl internal.
 #include "absl/base/internal/cycleclock.h"
 #include "absl/base/internal/sysinfo.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/platform/env_time.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
 #if defined(PLATFORM_POSIX_ANDROID)
 #include <android/log.h>
+
 #include <iostream>
 #include <sstream>
 #endif
@@ -36,7 +37,7 @@ limitations under the License.
 #include <queue>
 #include <unordered_map>
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 namespace {
@@ -83,7 +84,7 @@ class TFLogSinks {
   std::queue<TFLogEntry> log_entry_queue_;
   static const size_t kMaxLogEntryQueueSize = 128;
 
-  mutable tensorflow::mutex mutex_;
+  mutable tsl::mutex mutex_;
   std::vector<TFLogSink*> sinks_;
 };
 
@@ -102,7 +103,7 @@ TFLogSinks& TFLogSinks::Instance() {
 void TFLogSinks::Add(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
-  tensorflow::mutex_lock lock(mutex_);
+  tsl::mutex_lock lock(mutex_);
   sinks_.emplace_back(sink);
 
   // If this is the only sink log all the queued up messages to this sink
@@ -119,18 +120,18 @@ void TFLogSinks::Add(TFLogSink* sink) {
 void TFLogSinks::Remove(TFLogSink* sink) {
   assert(sink != nullptr && "The sink must not be a nullptr");
 
-  tensorflow::mutex_lock lock(mutex_);
+  tsl::mutex_lock lock(mutex_);
   auto it = std::find(sinks_.begin(), sinks_.end(), sink);
   if (it != sinks_.end()) sinks_.erase(it);
 }
 
 std::vector<TFLogSink*> TFLogSinks::GetSinks() const {
-  tensorflow::mutex_lock lock(mutex_);
+  tsl::mutex_lock lock(mutex_);
   return sinks_;
 }
 
 void TFLogSinks::Send(const TFLogEntry& entry) {
-  tensorflow::mutex_lock lock(mutex_);
+  tsl::mutex_lock lock(mutex_);
 
   // If we don't have any sinks registered, queue them up
   if (sinks_.empty()) {
@@ -300,7 +301,7 @@ int64_t MinLogLevelFromEnv() {
   // the value we're interested on to disable printing is the maximum severity.
   // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-  return tensorflow::NUM_SEVERITIES;
+  return tsl::NUM_SEVERITIES;
 #else
   const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
@@ -578,4 +579,4 @@ void TFDefaultLogSink::Send(const TFLogEntry& entry) {
 
 void UpdateLogVerbosityIfDefined(const char* env_var) {}
 
-}  // namespace tensorflow
+}  // namespace tsl

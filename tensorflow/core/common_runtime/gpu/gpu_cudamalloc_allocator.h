@@ -17,27 +17,27 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_CUDAMALLOC_ALLOCATOR_H_
 
 #include <memory>
+#include <string>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/framework/device_id.h"
+#include "tensorflow/tsl/platform/macros.h"
 
 namespace tensorflow {
 
 // An allocator which directly uses cuMemAlloc and cuMemFree to allocate and
 // free memory.
-class GPUcudaMallocAllocator : public Allocator {
+class GPUcudaMallocAllocator : public tsl::Allocator {
  public:
-  explicit GPUcudaMallocAllocator(PlatformDeviceId platform_device_id);
-  string Name() override { return "gpu_debug"; }
+  explicit GPUcudaMallocAllocator(tsl::PlatformDeviceId platform_device_id);
+  std::string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
   bool TracksAllocationSizes() const override;
 
-  AllocatorMemoryType GetMemoryType() const override {
-    return AllocatorMemoryType::kDevice;
+  tsl::AllocatorMemoryType GetMemoryType() const override {
+    return tsl::AllocatorMemoryType::kDevice;
   }
 
  private:

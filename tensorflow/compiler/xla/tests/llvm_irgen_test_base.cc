@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -85,36 +85,6 @@ void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.value()) << "Full IR: " << ir_;
-}
-
-void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
-                                          absl::string_view pattern,
-                                          bool print_operand_shape) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(hlo));
-  HloPrintOptions print_opts;
-  print_opts.set_print_operand_shape(print_operand_shape);
-  StatusOr<bool> filecheck_result =
-      RunFileCheck(optimized_module->ToString(print_opts), pattern);
-  TF_ASSERT_OK(filecheck_result.status());
-  EXPECT_TRUE(filecheck_result.value());
-}
-
-StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
-    absl::string_view hlo) {
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloModule> module,
-      ParseAndReturnVerifiedModule(hlo, GetModuleConfigForTest()));
-  return backend().compiler()->RunHloPasses(
-      std::move(module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
-}
-
-StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
-    std::unique_ptr<HloModule> hlo_module) {
-  return backend().compiler()->RunHloPasses(
-      std::move(hlo_module), backend().default_stream_executor(),
-      backend().default_stream_executor()->GetAllocator());
 }
 
 LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {

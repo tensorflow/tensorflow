@@ -20,8 +20,8 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"
-#include "mlir/Dialect/Arithmetic/Utils/Utils.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -400,7 +400,7 @@ struct Slicer {
       : sizes(ivs.size() + 1, b.getI64IntegerAttr(1)),
         strides(ivs.size() + 1, b.getI64IntegerAttr(1)) {
     sizes[sortDim] = sortDimSize;
-    for (int i = 0; i < ivs.size() + 1; ++i) {
+    for (size_t i = 0; i < ivs.size() + 1; ++i) {
       if (i == sortDim) {
         offsets.push_back(b.getI64IntegerAttr(0));
       } else {
@@ -450,7 +450,7 @@ SmallVector<Value> sliceMemrefsOrTensors(ImplicitLocOpBuilder& b,
   if (ivs.empty()) return memrefsOrTensors;
 
   SmallVector<Value> outputs;
-  Slicer slicer(b, op.dimension(), sortDimSize, ivs);
+  Slicer slicer(b, op.getDimension(), sortDimSize, ivs);
   // Create subviews/slices.
   for (Value out : memrefsOrTensors) {
     outputs.push_back(slicer.apply(b, out));
@@ -471,10 +471,20 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     SmallVector<Value> scratchMemrefs;
 
     Value firstOperand = op.getOperands().front();
+    auto firstOperandType = firstOperand.getType().cast<ShapedType>();
+    int64_t inputRank = firstOperandType.getRank();
+
     Value sortDimSize = b.createOrFold<tensor::DimOp>(
-        firstOperand, b.create<arith::ConstantIndexOp>(op.dimension()));
-    int64_t staticSortDimSize =
-        firstOperand.getType().cast<ShapedType>().getShape()[op.dimension()];
+        firstOperand, b.create<arith::ConstantIndexOp>(op.getDimension()));
+    int64_t staticSortDimSize = firstOperandType.getDimSize(op.getDimension());
+
+    SmallVector<Value> dynamicDims;
+    for (int i = 0; i < inputRank; ++i) {
+      if (!firstOperandType.isDynamicDim(i)) continue;
+      Value index = b.create<arith::ConstantIndexOp>(i);
+      Value dimOp = b.create<tensor::DimOp>(firstOperand, index);
+      dynamicDims.push_back(dimOp);
+    }
 
     // Allocate output and scratch memrefs. If the size of the sort dimension is
     // statically known to be <= kInsertionSortSize, `scratchMemrefs` are unused
@@ -484,11 +494,11 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
       auto memRefType =
           MemRefType::get(inputType.getShape(), inputType.getElementType());
 
-      outputMemrefs.push_back(b.create<memref::AllocOp>(memRefType));
-      scratchMemrefs.push_back(b.create<memref::AllocOp>(memRefType));
+      outputMemrefs.push_back(
+          b.create<memref::AllocOp>(memRefType, dynamicDims));
+      scratchMemrefs.push_back(
+          b.create<memref::AllocOp>(memRefType, dynamicDims));
     }
-
-    int64_t inputRank = firstOperand.getType().cast<ShapedType>().getRank();
 
     b.setInsertionPoint(op);
     Value zero = b.create<arith::ConstantIndexOp>(0);
@@ -500,7 +510,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     forOps.reserve(inputRank - 1);
     ivs.reserve(inputRank - 1);
     for (int64_t i = 0; i < inputRank; ++i) {
-      if (i != op.dimension()) {
+      if (i != op.getDimension()) {
         Value dim = b.create<arith::ConstantIndexOp>(i);
         Value ub = b.create<tensor::DimOp>(firstOperand, dim);
         scf::ForOp& forOp = forOps.emplace_back(
@@ -541,19 +551,13 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
 
 struct LegalizeSortPass
     : public impl::HloLegalizeSortPassBase<LegalizeSortPass> {
-  void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<scf::SCFDialect>();
-    registry.insert<memref::MemRefDialect>();
-    registry.insert<tensor::TensorDialect>();
-    registry.insert<bufferization::BufferizationDialect>();
-  }
   // Perform the lowering to MLIR control flow.
   void runOnOperation() override {
     func::FuncOp f = getOperation();
     MLIRContext* ctx = f.getContext();
 
-    RewritePatternSet patterns(&getContext());
-    patterns.add<SortOpPattern>(&getContext());
+    RewritePatternSet patterns(ctx);
+    patterns.add<SortOpPattern>(ctx);
 
     mlir::ConversionTarget target(*ctx);
     target.markUnknownOpDynamicallyLegal([](Operation*) { return true; });

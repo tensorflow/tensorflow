@@ -162,13 +162,6 @@ message LayoutProto {
   // error.
   repeated TileProto tiles = 6;
 
-  // Bit size of each element. If the size is bigger than what the element
-  // type requires, the value is stored in the least significant
-  // bits and the additional most significant bits are filled with 0's.
-  //
-  // TODO(b/119839262): implement in each backend or add Unimplemented error.
-  int64 element_size_in_bits = 7;
-
   // Memory space where this array resides. The integer field is interpreted in
   // a backend-specific manner.
   int64 memory_space = 8;
@@ -190,6 +183,8 @@ message LayoutProto {
   reserved "format";
   reserved 5;
   reserved "max_sparse_elements";
+  reserved 7;
+  reserved "element_size_in_bits";
 }
 // LINT.ThenChange( \
 //     https://www.tensorflow.org/code/tensorflow/compiler/xla/shape_util.cc,      \
@@ -339,11 +334,7 @@ message OpMetadata {
   // Profile information for the Op.
   ProfileInfo profile_info = 10;
 
-  // Information about the replaced operation. We store the HLO canonical text,
-  // which contains canonicalized instruction name, operand shape, and full
-  // bodies of the subcomputations besides the HLO itself. This is set
-  // independently of other fields.
-  string replaced_op = 11;
+  reserved 11;
 }
 
 // Profile data from the execution of a computation.
@@ -755,8 +746,10 @@ message PrecisionConfig {
     DEFAULT = 0;
     HIGH = 1;
     HIGHEST = 2;
+    // Each U8/S8 value in a tensor actually represents 2 nibble values.
+    PACKED_NIBBLE = 3;
 
-    // Next: 3
+    // Next: 4
   }
   repeated Precision operand_precision = 1;
 

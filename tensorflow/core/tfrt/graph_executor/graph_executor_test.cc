@@ -31,6 +31,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/core/tfrt/tpu/tpu_resources.h"  // NOLINT(unused-includes): For tfrt::tpu::TpuModelResource
+#include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
+#include "tfrt/host_context/value.h"  // from @tf_runtime
+#include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -38,16 +41,18 @@ namespace {
 
 class GraphExecutorTest : public grappler::GrapplerTest {};
 
+tensorflow::Status GetSimpleGraphDef(GraphDef& graph_def) {
+  auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
+
+  auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);
+  auto rank = ops::Rank(scope.WithOpName("rank"), input);
+
+  return scope.ToGraphDef(&graph_def);
+}
+
 TEST_F(GraphExecutorTest, Vanilla) {
   GraphDef graph_def;
-  {
-    auto scope = tensorflow::Scope::NewRootScope().WithDevice("/device:CPU:0");
-
-    auto input = ops::Placeholder(scope.WithOpName("input"), DT_INT32);
-    auto rank = ops::Rank(scope.WithOpName("rank"), input);
-
-    TF_ASSERT_OK(scope.ToGraphDef(&graph_def));
-  }
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
 
   auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
   GraphExecutor::Options options(runtime.get());
@@ -131,6 +136,45 @@ TEST_F(GraphExecutorTest, Extend) {
 
   EXPECT_THAT(GetTfTensorData<int32_t>(outputs[0]),
               ::testing::ElementsAreArray({2}));
+}
+
+TEST_F(GraphExecutorTest, SyncExecute) {
+  GraphDef graph_def;
+  TF_ASSERT_OK(GetSimpleGraphDef(graph_def));
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  GraphExecutor::Options options(runtime.get());
+  options.compile_options.compile_to_sync_tfrt_dialect = true;
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto fallback_state,
+      tensorflow::tfrt_stub::FallbackState::Create(
+          CreateDefaultSessionOptions(options), graph_def.library()));
+  auto tpu_model_resource = std::make_unique<tfrt::tpu::TpuModelResource>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto graph_executor,
+      GraphExecutor::Create(std::move(options), *fallback_state,
+                            tpu_model_resource.get(), graph_def));
+
+  std::vector<tfrt::Value> input;
+  std::vector<tfrt::Value*> input_ptrs;
+  tfrt::DenseHostTensor dht =
+      tfrt::CreateTensorFromValues<int32_t>({1, 3}, {1, 1, 1});
+  input.emplace_back(std::move(dht));
+  input_ptrs.push_back(&input[0]);
+  std::vector<tfrt::Value> results;
+  results.resize(1);
+  std::vector<tfrt::Value*> result_ptrs;
+  result_ptrs.resize(1);
+  result_ptrs[0] = &results[0];
+
+  TF_ASSERT_OK(graph_executor->RunWithSyncInterpreter(
+      "test_graph", absl::Span<tfrt::Value*>(input_ptrs),
+      /*input_names=*/{"input"}, /*input_dtypes=*/{DT_INT32},
+      /*output_tensor_names=*/{"rank"},
+      /*target_tensor_names=*/{}, absl::Span<tfrt::Value*>(result_ptrs)));
+  tfrt::DenseHostTensor expected =
+      tfrt::CreateTensorFromValues<int32_t>({}, {2});
+
+  EXPECT_EQ(expected, results[0].get<tfrt::DenseHostTensor>());
 }
 
 }  // namespace

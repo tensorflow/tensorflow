@@ -1,7 +1,8 @@
 path: "tensorflow.experimental.dtensor.Mesh"
 tf_class {
   is_instance: "<class \'tensorflow.dtensor.python.layout.Mesh\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'tensorflow.python._pywrap_dtensor_device.Mesh\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member {
     name: "dim_names"
     mtype: "<type \'property\'>"

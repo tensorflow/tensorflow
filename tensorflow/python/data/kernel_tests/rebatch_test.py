@@ -16,6 +16,7 @@
 
 from absl.testing import parameterized
 
+from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
@@ -90,7 +91,7 @@ class RebatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
 
   ##############################################################################
-  # The following tests check _RebatchDataset's output.
+  # The following tests check `tf.data.Dataset.rebatch`'s output.
   ##############################################################################
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
@@ -283,3 +284,20 @@ class RebatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: (x, None))
     dataset = dataset.batch(4, drop_remainder=True)
     _ = dataset_ops.rebatch(dataset, batch_sizes=[2, 2])
+
+
+class RebatchDatasetCheckpointTest(checkpoint_test_base.CheckpointTestBase,
+                                   parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         checkpoint_test_base.default_test_combinations()))
+  def test(self, verify_fn):
+
+    def build_dataset(num_elements, batch_size):
+      return dataset_ops.rebatch(
+          dataset_ops.Dataset.range(num_elements).batch(
+              2 * batch_size, drop_remainder=True),
+          batch_sizes=[batch_size, batch_size])
+
+    verify_fn(self, lambda: build_dataset(64, 8), num_outputs=8)

@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt -split-input-file -tf-jitrt-pipeline="one-shot-bufferize" %s | FileCheck %s
+// RUN: tf-tfrt-opt -split-input-file -tf-jitrt-pipeline %s | FileCheck %s
 
 // CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 
@@ -38,8 +38,8 @@ func.func @sigmoid_dynamic_dim(%arg0: tensor<?x1xf32>) -> tensor<?x1xf32> {
 
 // -----
 
-// CHECK: #map0 = affine_map<(d0) -> ()>
-// CHECK: #map1 = affine_map<(d0) -> (d0)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0) -> ()>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0) -> (d0)>
 
 // CHECK-LABEL: @add_scalar_with_vec
 func.func @add_scalar_with_vec(%arg0: tensor<f32>,
@@ -271,13 +271,13 @@ func.func @cast_sub(%arg0: tensor<?x32xi16>, %arg1: tensor<?x?x32xf16>)
 
 // -----
 
-// CHECK: #map0 = affine_map<(d0, d1) -> (d1, d0)>
-// CHECK: #map1 = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d1, d0)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1) -> (d0, d1)>
 
 // CHECK-LABEL: @tf_transpose_const_perm
 func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc() {{.*}} : memref<3x2xf32>
-  // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
+  // CHECK: linalg.generic {indexing_maps = [#map{{[0-9]*}}, #map{{[0-9]*}}]
   // CHECK-SAME: ins(%arg0 : memref<2x3xf32>)
   // CHECK-SAME: outs(%[[OUT]] : memref<3x2xf32>)
   %0 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> }
@@ -289,14 +289,14 @@ func.func @tf_transpose_const_perm(%arg0: tensor<2x3xf32>) -> tensor<3x2xf32> {
 
 // -----
 
-// CHECK: #map0 = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
-// CHECK: #map1 = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d2, d0, d1)>
+// CHECK: #map{{[0-9]*}} = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 
 // CHECK-LABEL: @tf_transpose_after_transpose
 func.func @tf_transpose_after_transpose(%arg0: tensor<?x?x?xf32>)
                                   -> tensor<?x?x?xf32> {
   // CHECK: %[[OUT:.*]] = memref.alloc
-  // CHECK: linalg.generic {indexing_maps = [#map0, #map1]
+  // CHECK: linalg.generic {indexing_maps = [#map{{[0-9]*}}, #map{{[0-9]*}}]
   // CHECK-SAME: ins(%arg0 :  memref<?x?x?xf32>)
   // CHECK-SAME: outs(%[[OUT]] :  memref<?x?x?xf32>)
   // CHECK-NOT: linalg.generic
@@ -353,7 +353,7 @@ func.func @strided_slice_1d_to_0d(%arg0: tensor<3xi32>) -> tensor<i32> {
   %cst_0 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %cst_1 = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK:      %[[SUBVIEW:.*]] = memref.subview %arg0[0] [1] [1]
-  // CHECK-SAME:                 : memref<3xi32> to memref<1xi32>
+  // CHECK-SAME:                 : memref<3xi32> to memref<1xi32, strided<[1]>>
   // CHECK:      %[[RET:.*]] = memref.collapse_shape %[[SUBVIEW]]
   // CHECK:      return %[[RET]]
   %0 = "tf.StridedSlice"(%arg0, %cst_1, %cst_0, %cst_0)

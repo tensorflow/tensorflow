@@ -54,7 +54,7 @@ class DeviceProfilerSession {
     return errors::Unimplemented("Profiling not supported on mobile platform.");
 #else
     profiler::XSpace space;
-    TF_RETURN_IF_ERROR(profiler_session_.CollectDataInternal(&space));
+    TF_RETURN_IF_ERROR(profiler_session_.CollectData(&space));
     profiler::ConvertGpuXSpaceToStepStats(space, step_stats);
     return OkStatus();
 #endif

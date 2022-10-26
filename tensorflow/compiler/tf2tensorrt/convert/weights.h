@@ -85,7 +85,7 @@ class TRT_ShapedWeights {
         return errors::InvalidArgument(
             "Unsupported data type ", tensorflow::tensorrt::DebugString(type_));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status SetShape(DimsAdapter dims);

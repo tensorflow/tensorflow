@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/coordination_service.pb.h"
-#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -48,7 +47,7 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
 
   // All the following member functions are not needed for testing.
   MOCK_METHOD4(Initialize,
-               Status(Env* env, const ServerDef& server_def,
+               Status(Env* env, const CoordinationServiceConfig& config,
                       std::unique_ptr<CoordinationClientCache> client_cache,
                       StatusCallback error_fn));
   MOCK_METHOD6(Initialize,
@@ -62,13 +61,14 @@ class MockCoordinationServiceAgent : public CoordinationServiceAgent {
                       std::unique_ptr<CoordinationClient> leader_client,
                       StatusCallback error_fn));
   MOCK_METHOD0(IsInitialized, bool());
+  MOCK_METHOD0(IsConnected, bool());
+  MOCK_METHOD0(IsError, bool());
   MOCK_METHOD0(Connect, Status());
-  MOCK_METHOD1(WaitForAllTasks,
-               Status(const CoordinationServiceDeviceInfo& local_devices));
-  MOCK_METHOD0(GetClusterDeviceInfo, const CoordinationServiceDeviceInfo&());
+  MOCK_METHOD1(WaitForAllTasks, Status(const DeviceInfo& local_devices));
+  MOCK_METHOD0(GetClusterDeviceInfo, const DeviceInfo&());
   MOCK_METHOD0(GetOwnTask, StatusOr<CoordinatedTask>());
-  MOCK_METHOD1(GetTaskStatus,
-               StatusOr<CoordinatedTaskState>(const CoordinatedTask& task));
+  MOCK_METHOD1(GetTaskState, StatusOr<std::vector<CoordinatedTaskStateInfo>>(
+                                 const std::vector<CoordinatedTask>& task));
   MOCK_METHOD1(ReportError, Status(const Status& error));
   MOCK_METHOD0(Shutdown, Status());
   MOCK_METHOD0(Reset, Status());

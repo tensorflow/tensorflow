@@ -53,8 +53,8 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
 /* static */ Layout LayoutUtil::MakeLayout(
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t element_size_in_bits,
-    int64_t memory_space, std::optional<Shape> physical_shape) {
+    absl::Span<const Tile> tiles, int64_t memory_space,
+    std::optional<Shape> physical_shape) {
   Layout layout;
   for (int64_t dimension_number : minor_to_major) {
     layout.add_minor_to_major(dimension_number);
@@ -73,7 +73,6 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
     }
     *layout.add_tiles() = tile;
   }
-  layout.set_element_size_in_bits(element_size_in_bits);
   layout.set_memory_space(memory_space);
   if (physical_shape != std::nullopt) {
     *layout.mutable_physical_shape() = *std::move(physical_shape);
@@ -232,13 +231,16 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
     int64_t dim = layout.minor_to_major(i);
     if (dim < 0 || dim >= shape.rank()) {
       return InvalidArgument(
-          "layout minor_to_major field has out-of-bounds value: %s",
-          HumanString(layout));
+          "layout minor_to_major field has out-of-bounds value: {%s}; shape: "
+          "%s",
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
     if (dimensions_in_layout[dim]) {
       return InvalidArgument(
-          "layout minor_to_major field has duplicate values: {%s}",
-          HumanString(layout));
+          "layout minor_to_major field has duplicate values: {%s}; shape: %s",
+          absl::StrJoin(layout.minor_to_major(), ", "),
+          shape.ShortDebugString());
     }
     dimensions_in_layout[dim] = true;
   }
@@ -265,6 +267,7 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
           shape.ShortDebugString());
     }
     if (layout.has_physical_shape()) {
+      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
       TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
           layout.physical_shape(),
           [&](const Shape& subshape, const ShapeIndex& index) {
@@ -277,7 +280,6 @@ Layout CreateDefaultLayoutForRank(int64_t rank) {
             }
             return OkStatus();
           }));
-      TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(layout.physical_shape()));
     }
   } else if (layout.has_physical_shape()) {
     return InvalidArgument(

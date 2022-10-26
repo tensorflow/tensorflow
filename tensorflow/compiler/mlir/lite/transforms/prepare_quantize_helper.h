@@ -97,18 +97,18 @@ LogicalResult GetLstmProperty(
     return failure();
   }
   lstm_variant->use_projection =
-      !op.projection_weights().getType().template isa<NoneType>();
+      !op.getProjectionWeights().getType().template isa<NoneType>();
   lstm_variant->use_peephole =
-      !op.cell_to_output_weights().getType().template isa<NoneType>();
+      !op.getCellToOutputWeights().getType().template isa<NoneType>();
   lstm_variant->use_layer_norm =
-      !op.forget_layer_norm_coefficients().getType().template isa<NoneType>();
+      !op.getForgetLayerNormCoefficients().getType().template isa<NoneType>();
 
   *op_property = operator_property::GetOperatorProperty(*lstm_variant);
 
   // TODO(b/176258587) move this to operator_property.cc if this is needed in
   // other components, too.
   bool use_cifg =
-      op.input_to_input_weights().getType().template isa<NoneType>();
+      op.getInputToInputWeights().getType().template isa<NoneType>();
   if (use_cifg) {
     const absl::flat_hash_set<int> cifg_non_inputs = {1, 5, 9, 12, 20};
     const int cifg_non_intermediate = 0;

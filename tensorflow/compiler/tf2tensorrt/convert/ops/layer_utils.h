@@ -351,7 +351,7 @@ class TRTNetworkBuilder {
     } else {
       *pTensor = input.tensor();
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Creates a nvinfer1::Weights object containing a single scalar.

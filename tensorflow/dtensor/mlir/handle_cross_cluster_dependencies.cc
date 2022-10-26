@@ -32,14 +32,16 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_dialect/ir/dialect.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/spmd_expander_common.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORHANDLECROSSCLUSTERDEPENDENCIES
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr char kMissingMeshErrorMsg[] =
     "Failed to extract mesh for DTensorHandleCrossClusterDependencies pass. "
@@ -137,7 +139,7 @@ mlir::LogicalResult GetInputProducingValue(mlir::OpOperand& operand,
 //    to computation to be constants.
 mlir::LogicalResult CloneConstantsAcrossMesh(
     mlir::tf_device::ClusterOp cluster) {
-  auto& body_region = cluster.body();
+  auto& body_region = cluster.getBody();
   Mesh mesh;
   if (mlir::failed(ExtractMeshFromCluster(cluster, &mesh)))
     return mlir::failure();
@@ -172,6 +174,44 @@ mlir::LogicalResult CloneConstantsAcrossMesh(
       });
 
   return result;
+}
+
+// Erases CopyToMesh within the same cluster.
+// CopyToMesh within the same cluster does should not send or recv.
+mlir::LogicalResult EraseCopyToMeshWithinCluster(
+    mlir::tf_device::ClusterOp cluster) {
+  Mesh current_mesh;
+  if (mlir::failed(ExtractMeshFromCluster(cluster, &current_mesh))) {
+    return mlir::failure();
+  }
+  mlir::Region& body_region = cluster.getBody();
+
+  mlir::WalkResult result = body_region.walk([&](mlir::TF::CopyToMeshOp op) {
+    mlir::Value input = op->getOperand(0);
+    const auto src_cluster =
+        input.getDefiningOp()->getParentOfType<mlir::tf_device::ClusterOp>();
+    if (src_cluster) {
+      Mesh src_mesh;
+      if (mlir::failed(ExtractMeshFromCluster(src_cluster, &src_mesh))) {
+        return mlir::WalkResult::interrupt();
+      }
+      // This pass shall run after ReplaceCopyToMeshWithVirtualSendRecv,
+      if (src_mesh != current_mesh) {
+        op->emitOpError(
+            "At this point CopyToMesh acrosses Clusters should have "
+            "been lowered to DTensorSend/DTensorRecv.");
+        return mlir::WalkResult::interrupt();
+      }
+    }
+    op->getResult(0).replaceAllUsesWith(input);
+    op->erase();
+    return mlir::WalkResult::advance();
+  });
+
+  if (result.wasInterrupted()) {
+    return mlir::failure();
+  }
+  return mlir::success();
 }
 
 // Transforms CopyToMesh op to a pair of DTensorSend/DTensorRecv operations.
@@ -270,7 +310,7 @@ mlir::LogicalResult ReplaceCopyToMeshWithVirtualSendRecv(
   if (mlir::failed(ExtractMeshFromCluster(cluster, &current_mesh)))
     return mlir::failure();
 
-  mlir::Region& cluster_region = cluster.body();
+  mlir::Region& cluster_region = cluster.getBody();
   mlir::LogicalResult result = mlir::success();
 
   mlir::visitUsedValuesDefinedAbove(
@@ -315,7 +355,7 @@ mlir::LogicalResult ReplaceCopyToMeshWithVirtualSendRecv(
 }
 
 struct DTensorHandleCrossClusterDependencies
-    : public DTensorHandleCrossClusterDependenciesBase<
+    : public impl::DTensorHandleCrossClusterDependenciesBase<
           DTensorHandleCrossClusterDependencies> {
   void getDependentDialects(mlir::DialectRegistry& registry) const override {
     registry.insert<mlir::dtensor::DTensorDialect>();
@@ -336,6 +376,9 @@ struct DTensorHandleCrossClusterDependencies
 
       if (mlir::failed(ReplaceCopyToMeshWithVirtualSendRecv(
               cluster, &context, &send_recv_counter)))
+        return signalPassFailure();
+
+      if (mlir::failed(EraseCopyToMeshWithinCluster(cluster)))
         return signalPassFailure();
     }
 

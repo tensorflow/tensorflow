@@ -425,7 +425,7 @@ bool RegisterKnownJITSymbols() {
   registry->Register("calloc", reinterpret_cast<void*>(calloc), "Host");
   registry->Register("free", reinterpret_cast<void*>(free), "Host");
 #ifndef _WIN32
-  // TODO(kramerb): This fails to link on windows because it's marked dllimport.
+  // TODO(b/246980307): fails to link on windows because it's marked dllimport.
   registry->Register("memrefCopy", reinterpret_cast<void*>(memrefCopy), "Host");
 #endif
 

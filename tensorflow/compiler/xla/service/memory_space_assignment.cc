@@ -21,6 +21,7 @@ limitations under the License.
 #include <limits>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment_tuning_utils.h"
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/math/math_util.h"
 namespace xla {
 
 namespace memory_space_assignment {
@@ -101,8 +101,44 @@ bool LooksLikeAnActivation(const HloInstruction* inst) {
   return false;
 }
 
+// Filters out buffer uses that cannot use the cross-program prefetch due to
+// aliasing with program output.
+std::vector<HloUse> FindCrossProgramPrefetchUses(
+    absl::Span<const HloUse> buffer_uses) {
+  std::vector<HloUse> uses;
+  if (buffer_uses.empty()) {
+    return uses;
+  }
+  const HloInstruction* root_instruction = buffer_uses.at(0)
+                                               .instruction->GetModule()
+                                               ->entry_computation()
+                                               ->root_instruction();
+  absl::c_for_each(buffer_uses, [&](auto& use) {
+    if (use.instruction == root_instruction) {
+      if (use.instruction->opcode() == HloOpcode::kTuple ||
+          use.instruction->opcode() == HloOpcode::kBitcast) {
+        return;
+      }
+      auto in_place_pairs =
+          HloDataflowAnalysis::GetInPlaceInputOutputPairs(use.instruction);
+      if (absl::c_any_of(
+              in_place_pairs,
+              [&](const std::pair<HloOperandIndex, ShapeIndex>& in_place_pair) {
+                return in_place_pair.first.operand_number ==
+                           use.operand_number &&
+                       in_place_pair.first.operand_index == use.operand_index;
+              })) {
+        return;
+      }
+    }
+    uses.push_back(use);
+  });
+  return uses;
+}
+
 bool IsCrossProgramPrefetchCandidate(const HloValue& value,
                                      const Options& options) {
+  std::vector<HloUse> uses = FindCrossProgramPrefetchUses(value.GetUses());
   return value.defining_instruction()->parent() ==
              value.defining_instruction()->GetModule()->entry_computation() &&
          value.defining_instruction()->opcode() == HloOpcode::kParameter &&
@@ -110,9 +146,8 @@ bool IsCrossProgramPrefetchCandidate(const HloValue& value,
           value.shape().layout().memory_space() !=
               options.alternate_memory_space) &&
          value.index().size() <= 1 && value.shape().IsArray() &&
-         !value.GetUses().empty() &&
-         options.size_fn(value) <= options.max_size_in_bytes &&
-         absl::c_all_of(value.GetUses(), [&](const HloUse& use) {
+         !uses.empty() && options.size_fn(value) <= options.max_size_in_bytes &&
+         absl::c_all_of(uses, [&](const HloUse& use) {
            const HloInstruction* inst =
                use.instruction->operand(use.operand_number);
 
@@ -1065,7 +1100,8 @@ void AlternateMemoryBestFitHeap::CreateAllocationValues(
       if (HloDataflowAnalysis::IsAsynchronousOperationDone(
               use.instruction->opcode())) {
         if (allocation_value->defining_instruction() ==
-            use.instruction->operand(0)) {
+                use.instruction->operand(0) &&
+            use.operand_index == allocation_value->defining_position().index) {
           last_allocation_value = allocation_value;
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
@@ -2131,7 +2167,8 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-  auto uses = buffer->GetUses();
+  auto uses = FindCrossProgramPrefetchUses(buffer->GetUses());
+  CHECK_GE(uses.size(), 1);
   auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
     return instruction_schedule.at(lhs.instruction) <
            instruction_schedule.at(rhs.instruction);
@@ -2197,13 +2234,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
                /*resource=*/0.0,
                /*is_cross_program_prefetch=*/true);
 
-  HloInstruction* root_instruction =
-      module->entry_computation()->root_instruction();
-  absl::c_for_each(uses, [&](auto& use) {
-    if (use.instruction != root_instruction) {
-      allocations.back()->AddUse(use);
-    }
-  });
+  absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
   AliasedOffset* cross_program_prefetch_offset =
       GetAliasedOffset(*allocations.back());
 
@@ -2321,7 +2352,8 @@ AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
          required_assignment_it->second) {
       if (required_assignment.time == time) {
         // Sanity check that there is only one required at time.
-        CHECK(!required_assignment_at_time);
+        CHECK(!required_assignment_at_time)
+            << buffer->ToShortString() << " at time " << time;
         required_assignment_at_time = required_assignment;
       }
     }
@@ -2366,7 +2398,7 @@ void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignment(
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     const HloValue* value, const HloInstruction* instruction,
     MemorySpaceAssignment::MemorySpace memory_space, int64_t time,
-    AliasedOffset* offset) {
+    AliasedOffset* offset, bool add_to_pending) {
   // Check for existing required assignment at this time and make sure it is the
   // same as this if there is one.
   auto existing_required_assignment = RequiredMemoryAssignmentAt(value, time);
@@ -2384,7 +2416,9 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
             << (memory_space == MemorySpace::kDefault ? "def" : "alt");
     RequiredMemoryAssignment required_assignment{memory_space, time, offset};
     required_assignments_[value].push_back(required_assignment);
-    pending_required_assignments_.push_back({value, required_assignment});
+    if (add_to_pending) {
+      pending_required_assignments_.push_back({value, required_assignment});
+    }
   }
 }
 
@@ -2425,8 +2459,10 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
                       << " time = " << parameter_instruction_time << " space = "
                       << (memory_space == MemorySpace::kDefault ? "def"
                                                                 : "alt");
-              required_assignments_[value].push_back(
-                  {memory_space, /*time=*/parameter_instruction_time});
+              AddRequiredAssignment(value, parameter_instruction, memory_space,
+                                    parameter_instruction_time,
+                                    /*offset=*/nullptr,
+                                    /*add_to_pending=*/false);
             }
           }
         });
@@ -2448,8 +2484,9 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
                     << value->ToShortString()
                     << " time = " << root_instruction_time << " space = "
                     << (memory_space == MemorySpace::kDefault ? "def" : "alt");
-            required_assignments_[value].push_back(
-                {memory_space, /*time=*/root_instruction_time});
+            AddRequiredAssignment(value, root_instruction, memory_space,
+                                  root_instruction_time,
+                                  /*offset=*/nullptr, /*add_to_pending=*/false);
           }
         }
       });
@@ -2472,8 +2509,10 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
                       << value->ToShortString()
                       << " time = " << constant_instruction_time
                       << " space = def";
-              required_assignments_[value].push_back(
-                  {MemorySpace::kDefault, /*time=*/constant_instruction_time});
+              AddRequiredAssignment(value, instruction, MemorySpace::kDefault,
+                                    constant_instruction_time,
+                                    /*offset=*/nullptr,
+                                    /*add_to_pending=*/false);
             }
           }
         }
@@ -2850,6 +2889,18 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());
   CHECK((*prev_allocation_in_default_mem_it)->memory_space() ==
         MemorySpace::kDefault);
+
+  // If the allocation value requires a contiguous allocation but has a memory
+  // space mismatch between the start and end required assignments, then we need
+  // to uncommit.
+  if (request.allocation_value->requires_contiguous_allocation() &&
+      required_memory_space_at_start.has_value() &&
+      required_memory_space_at_end.has_value() &&
+      required_memory_space_at_start != required_memory_space_at_end) {
+    VLOG(3) << "Allocation requires contiguous allocation but has memory space "
+               "mismatch.";
+    return result_mark(Result::kFailRequiresUncommit, allocation_result);
+  }
 
   // If the buffer must be in default memory at the end_time, don't prefetch.
   if (required_memory_space_at_end == MemorySpace::kDefault) {
@@ -3365,7 +3416,7 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
     // Find a chunk that's as long living as possible.
     std::optional<Chunk> last_chunk_candidate;
     int64_t latest_matching_use = std::numeric_limits<int64_t>::min();
-    std::lower_bound(
+    (void)std::lower_bound(
         earliest_use_it, std::next(use_time_it), -1, [&](int64_t use, int64_t) {
           alternate_mem_interval->end = use;
           Chunk chunk_candidate = FindChunkCandidate(*alternate_mem_interval);

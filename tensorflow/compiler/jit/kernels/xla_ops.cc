@@ -17,14 +17,17 @@ limitations under the License.
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <utility>
+#include <variant>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -47,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/stream_executor_util.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 // OP_REQUIRES_OK_RETURN is the same as OP_REQUIRES_OK except that
 // in error case, it returns RET instead of void.
@@ -221,6 +225,102 @@ GetXlaCompilerArgsAndSnapshotVariables(
   return result;
 }
 
+struct CompilationResults {
+  const XlaCompiler::CompilationResult* compilation_result = nullptr;
+  xla::LocalExecutable* executable = nullptr;
+  xla::LocalClient* client = nullptr;
+  // This needs to be a shared pointer because it needs to be captured in an
+  // std::function, and std::function requires all captured arguments to be
+  // copyable.
+  std::shared_ptr<std::vector<VariableInfo>> variable_infos;
+};
+
+struct CompilerArgsAndVariableSnapshots {
+  std::vector<XlaCompiler::Argument> xla_compiler_args;
+  ResourceVarsSnapshot variable_snapshots;
+};
+
+// CompilationResults is filled when the XLA cluster is already compiled.
+// CompilerArgsAndVariableSnapshots is filled when the XLA cluster is not
+// compiled yet.
+using CompilationResultOrXlaCompilerArgsAndVariableSnapshots =
+    std::variant<CompilationResults, CompilerArgsAndVariableSnapshots>;
+
+// If the XLA Cluster is already compiled, we don't snapshot the variables and
+// return the compilation result and executable.
+// If the XLA Cluster is not compiled yet, we snapshot the variables and return
+// the variable snapshots and the XLA compiler arguments.
+StatusOr<CompilationResultOrXlaCompilerArgsAndVariableSnapshots>
+GetCompilationResultOrGetXlaCompilerArgsAndSnapshotVariables(
+    const XlaPlatformInfo& platform_info, const NameAttrList& function,
+    absl::Span<const int> variable_indices,
+    absl::Span<const int> must_be_constant_idxs,
+    absl::Span<const Tensor* const> inputs, OpKernelContext* ctx) {
+  CompilationResults compilation_results;
+  CompilerArgsAndVariableSnapshots compiler_args_and_variable_snapshots;
+
+  compilation_results.variable_infos =
+      std::make_shared<std::vector<VariableInfo>>();
+  std::vector<VariableInfo>& variable_infos =
+      *compilation_results.variable_infos;
+  TF_RETURN_IF_ERROR(
+      GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(), inputs,
+                                 variable_indices, &variable_infos));
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
+
+  TF_ASSIGN_OR_RETURN(compiler_args_and_variable_snapshots.xla_compiler_args,
+                      XlaComputationLaunchContext::BuildXlaCompilerArguments(
+                          must_be_constant_idxs, inputs, variable_infos,
+                          static_cast<Device*>(ctx->device())));
+
+  // We store information about the JIT-compiled XLA computation
+  // in the ResourceMgr.
+  ResourceMgr* rm = ctx->resource_manager();
+  if (!rm) {
+    return errors::Internal("No resource manager.");
+  }
+
+  XlaCompilationCache* cache;
+  TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
+      rm->default_container(), "xla_cache", &cache,
+      [&](XlaCompilationCache** cache) {
+        return BuildXlaCompilationCache(ctx->device(), ctx->function_library(),
+                                        platform_info, cache);
+      }));
+  // Hold the reference to the JIT during evaluation. (We could probably
+  // free it sooner because the ResourceMgr will retain a reference, but
+  // this is more obviously correct.)
+  core::ScopedUnref cache_ref(cache);
+
+  TF_ASSIGN_OR_RETURN(
+      auto compilation_result_and_executable,
+      cache->GetCompilationResultIfAlreadyCompiled(
+          function, compiler_args_and_variable_snapshots.xla_compiler_args));
+
+  if (compilation_result_and_executable.executable != nullptr) {
+    // The XLA signature is already compiled. We return the compilation result
+    // and the locks on the variables(contained in variable_infos).
+    compilation_results.compilation_result =
+        compilation_result_and_executable.compilation_result;
+    compilation_results.executable =
+        compilation_result_and_executable.executable;
+    compilation_results.client =
+        static_cast<xla::LocalClient*>(cache->client());
+    return CompilationResultOrXlaCompilerArgsAndVariableSnapshots(
+        std::move(compilation_results));
+  }
+
+  // The XLA signature is not compiled yet. We snapshot the variables and
+  // release the locks on the variables(by destructing variable_infos). We
+  // return the compiler arguments and variable snapshots.
+  TF_RETURN_IF_ERROR(SnapshotResourceVariables(
+      ctx, variable_indices, variable_infos,
+      &compiler_args_and_variable_snapshots.variable_snapshots));
+
+  return CompilationResultOrXlaCompilerArgsAndVariableSnapshots(
+      std::move(compiler_args_and_variable_snapshots));
+}
+
 }  // namespace
 
 XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
@@ -311,31 +411,65 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
 
-  auto args_and_variables_snapshot = GetXlaCompilerArgsAndSnapshotVariables(
-      resources_, constants_, inputs, ctx);
-  OP_REQUIRES_OK_ASYNC(ctx, args_and_variables_snapshot.status(), done);
-  const std::vector<XlaCompiler::Argument>& args =
-      args_and_variables_snapshot->first;
-  ResourceVarsSnapshot& variables_snapshot =
-      args_and_variables_snapshot->second;
+  auto compilation_result_or_args_and_variables_snapshot =
+      GetCompilationResultOrGetXlaCompilerArgsAndSnapshotVariables(
+          platform_info_, function_, resources_, constants_, inputs, ctx);
+  OP_REQUIRES_OK_ASYNC(
+      ctx, compilation_result_or_args_and_variables_snapshot.status(), done);
 
-  const Status s = CompileToLocalExecutable(
-      ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_, args,
-      XlaCompilationCache::CompileMode::kStrict,
-      /*may_alias_resource_update=*/true, &client, &compilation_result,
-      &executable);
-  OP_REQUIRES_OK_ASYNC(ctx, s, done);
+  std::shared_ptr<std::vector<VariableInfo>> variable_infos;
+  ResourceVarsSnapshot variables_snapshot;
+  if (std::holds_alternative<CompilationResults>(
+          *compilation_result_or_args_and_variables_snapshot)) {
+    auto& compilation_results = std::get<CompilationResults>(
+        *compilation_result_or_args_and_variables_snapshot);
+    // This is when the signature is already compiled.
+    client = compilation_results.client;
+    compilation_result = compilation_results.compilation_result;
+    executable = compilation_results.executable;
+    variable_infos = compilation_results.variable_infos;
+  } else {
+    auto& compiler_args_and_variable_snapshots =
+        std::get<CompilerArgsAndVariableSnapshots>(
+            *compilation_result_or_args_and_variables_snapshot);
+    // This is when the signature is not compiled yet.
+    const std::vector<XlaCompiler::Argument>& args =
+        compiler_args_and_variable_snapshots.xla_compiler_args;
+    variables_snapshot =
+        std::move(compiler_args_and_variable_snapshots.variable_snapshots);
+
+    const Status s = CompileToLocalExecutable(
+        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_, args,
+        XlaCompilationCache::CompileMode::kStrict,
+        /*may_alias_resource_update=*/true, &client, &compilation_result,
+        &executable);
+    OP_REQUIRES_OK_ASYNC(ctx, s, done);
+  }
 
   // Continuation of the execution, may be run in a different thread.
-  auto run_xla_cluster = [ctx, variables_snapshot, client, executable,
-                          compilation_result, done, inputs,
-                          resources = resources_] {
+  //
+  // Note that only one of variables_snapshot and variable_infos contains
+  // value. variables_snapshot contains value when the signature is not
+  // compiled yet before XlaLocalLaunchBase::ComputeAsync is called. Otherwise
+  // variable_infos contains value. variable_infos also contains locks on the
+  // variables.
+  auto run_xla_cluster = [ctx,
+                          variables_snapshot = std::move(variables_snapshot),
+                          variable_infos = std::move(variable_infos), client,
+                          executable, compilation_result, done, inputs,
+                          resources = resources_]() {
     auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
-    std::map<int, const Tensor*> snapshot_ptrs;
-    for (const auto& [variable_index, variable_tensor] : variables_snapshot) {
-      snapshot_ptrs.emplace(variable_index, variable_tensor.has_value()
-                                                ? &variable_tensor.value()
-                                                : nullptr);
+    std::map<int, const Tensor*> resource_var_ptrs;
+    if (variable_infos.get() == nullptr) {
+      for (const auto& [variable_index, variable_tensor] : variables_snapshot) {
+        resource_var_ptrs.emplace(variable_index, variable_tensor.has_value()
+                                                      ? &variable_tensor.value()
+                                                      : nullptr);
+      }
+    } else {
+      for (int i = 0; i < resources.size(); i++) {
+        resource_var_ptrs[resources[i]] = (*variable_infos)[i].var()->tensor();
+      }
     }
 
     std::shared_ptr<se::DeviceMemoryAllocator> allocator =
@@ -346,9 +480,9 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     const xla::HloInputOutputAliasConfig& input_output_alias =
         executable->executable()->module().input_output_alias_config();
     StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
-        launch_context.PopulateInputs(ctx, compilation_result, snapshot_ptrs,
-                                      /*missing_ctx_input_prefix=*/0,
-                                      input_output_alias);
+        launch_context.PopulateInputs(
+            ctx, compilation_result, resource_var_ptrs,
+            /*missing_ctx_input_prefix=*/0, input_output_alias);
     OP_REQUIRES_OK_ASYNC(ctx, execution_inputs.status(), done);
 
     xla::gpu::GpuExecutableRunOptions gpu_options;
@@ -362,9 +496,9 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           done);
     }
 
-    // Hardcode run id to always be zero: TF distributed strategy differentiates
-    // between subsequent runs using dependency edges.
-    // This is safe, as only TF dist-strat can produce distributed ops, and we
+    // Hardcode run id to always be zero: TF distributed strategy
+    // differentiates between subsequent runs using dependency edges. This
+    // is safe, as only TF dist-strat can produce distributed ops, and we
     // can rely on TF dist-strat invariants.
     xla::RunId run_id(0);
     run_options.set_run_id(run_id);
@@ -375,21 +509,31 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     OP_REQUIRES_ASYNC(ctx, execution_output.ok(), execution_output.status(),
                       done);
 
-    std::vector<VariableInfo> variable_infos;
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
-                                   inputs, resources, &variable_infos),
-        done);
-    OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                         done);
+    std::vector<VariableInfo> local_variable_infos;
+    std::vector<VariableInfo>& variable_infos_ref =
+        variable_infos.get() == nullptr ? local_variable_infos
+                                        : *variable_infos;
+
+    // We need to hold the locks on the variables since we are going
+    // to write to them. If variable_infos is null, then we need to acquire the
+    // locks using local_variable_infos. If variable_infos is not null, then we
+    // are already holding the locks on the variables through variable_infos.
+    if (variable_infos.get() == nullptr) {
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                     inputs, resources, &local_variable_infos),
+          done);
+      OP_REQUIRES_OK_ASYNC(
+          ctx, LockVariables(absl::MakeSpan(local_variable_infos)), done);
+    }
 
     OP_REQUIRES_OK_ASYNC(
         ctx,
         launch_context.PopulateOutputs(
             ctx, compilation_result, execution_output->ConsumeResult(),
-            /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
-            input_output_alias, snapshot_ptrs),
+            /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos_ref),
+            input_output_alias, resource_var_ptrs),
         done);
     VLOG(1) << "Done";
     done();

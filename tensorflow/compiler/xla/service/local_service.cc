@@ -173,7 +173,8 @@ LocalService::CompileExecutables(
         BuildExecutable(computation.proto(), std::move(module_config),
                         execute_backend_.get(), executor,
                         {build_options.device_allocator(),
-                         build_options.compile_thread_pool()},
+                         build_options.compile_thread_pool(),
+                         build_options.layout_canonicalization_callback()},
                         build_options.run_backend_only()));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
@@ -189,8 +190,10 @@ LocalService::CompileExecutables(
     return BuildExecutables(
         /*module_protos=*/{&computation.proto()}, std::move(module_configs),
         execute_backend_.get(), {executors},
-        Compiler::CompileOptions{build_options.device_allocator(),
-                                 build_options.compile_thread_pool()},
+        Compiler::CompileOptions{
+            build_options.device_allocator(),
+            build_options.compile_thread_pool(),
+            build_options.layout_canonicalization_callback()},
         build_options.run_backend_only());
   }
 }
@@ -203,13 +206,6 @@ LocalService::CompileAotResults(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       GetHloModuleConfig(computation, argument_layouts, build_options));
-
-  // TODO(b/244260928): Remove this check if we can avoid compiling twice for
-  // both AOT and JIT pipelines.
-  if (!module_config->debug_options().xla_gpu_enable_xla_runtime_executable()) {
-    return InternalError(
-        "AOT compilation is supported only if JitRt is enabled");
-  }
 
   TF_ASSIGN_OR_RETURN(
       se::StreamExecutor * executor,

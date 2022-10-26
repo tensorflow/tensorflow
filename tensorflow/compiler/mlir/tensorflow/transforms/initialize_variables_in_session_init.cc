@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSet.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/savedmodel_passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 #include "tensorflow/core/framework/resource_var.h"
@@ -68,6 +67,8 @@ func::FuncOp CreateSessionInitFunc(ModuleOp module) {
                                            kSessionInitFuncName, func_type);
   func->setAttr(kTfSavedModelExportedNameAttr,
                 builder.getStrArrayAttr({kSessionInitFuncName}));
+  func->setAttr(kTfSavedModelInitializerTypeAttr,
+                builder.getStringAttr(kTfSavedModelInitializerRestoreType));
   func.setVisibility(mlir::func::FuncOp::Visibility::Public);
   auto func_builder = OpBuilder::atBlockBegin(func.addEntryBlock());
   func_builder.create<mlir::func::ReturnOp>(func.getLoc());
@@ -91,11 +92,33 @@ func::FuncOp GetOrCreateSessionInitFunc(ModuleOp module) {
   if (!session_init_op) return CreateSessionInitFunc(module);
 
   SymbolTable symbol_table(module);
-  if (!session_init_op.initializers().empty()) {
-    func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
-        session_init_op.initializers()[0].cast<FlatSymbolRefAttr>().getValue());
+
+  // Find the init function that has tf_saved_model.initializer_type ==
+  // "restore_op".
+  for (auto init_sym :
+       session_init_op.getInitializers().getAsValueRange<FlatSymbolRefAttr>()) {
+    auto init_func_op = symbol_table.lookup<func::FuncOp>(init_sym);
+
+    const auto init_type_attr = init_func_op->getAttrOfType<StringAttr>(
+        kTfSavedModelInitializerTypeAttr);
+    if (init_type_attr &&
+        init_type_attr == kTfSavedModelInitializerRestoreType) {
+      return init_func_op;
+    }
+  }
+
+  // When the init function with type "restore_op" is not found, fall back to
+  // taking the init function corresponding to the first symbol in the
+  // initializers list to be backwards-compatible, before
+  // tf_saved_model.initializer_type attribute was introduced.
+  if (!session_init_op.getInitializers().empty()) {
+    auto init_func_op =
+        symbol_table.lookup<func::FuncOp>(session_init_op.getInitializers()[0]
+                                              .cast<FlatSymbolRefAttr>()
+                                              .getValue());
     return init_func_op;
   }
+
   return CreateSessionInitFunc(module);
 }
 

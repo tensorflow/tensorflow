@@ -25,7 +25,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 // This pass is used in preparation for Graph export.
 // The GraphDef exporter expects each op to be in its own island.
@@ -39,8 +38,11 @@ namespace TF {
 
 namespace {
 
+#define GEN_PASS_DEF_SPLITINTOISLANDPEROPPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 class SplitIntoIslandPerOpPass
-    : public SplitIntoIslandPerOpPassBase<SplitIntoIslandPerOpPass> {
+    : public impl::SplitIntoIslandPerOpPassBase<SplitIntoIslandPerOpPass> {
  public:
   void runOnOperation() override;
 
@@ -84,7 +86,7 @@ void SplitIntoIslandPerOpPass::runOnOperation() {
   // We don't need to honor *any* control deps that are already placed on
   // islands. Drop them now in this pass - a following pass will use side
   // effect analysis to completely explain and apply correct control deps.
-  island_op.control().dropAllUses();
+  island_op.getControl().dropAllUses();
 
   // Break up all islands by simply creating a new island wrapping each
   // individual sub op. Do not create any control dependencies between the
@@ -96,8 +98,8 @@ void SplitIntoIslandPerOpPass::runOnOperation() {
   int num_control_fetches =
       fetch_op.getNumOperands() - graph_op.getNumResults();
   if (num_control_fetches > 0) {
-    fetch_op.fetchesMutable().erase(graph_op.getNumResults(),
-                                    num_control_fetches);
+    fetch_op.getFetchesMutable().erase(graph_op.getNumResults(),
+                                       num_control_fetches);
   }
 }
 
@@ -129,11 +131,11 @@ tf_executor::IslandOp CreateIsland(TypeRange result_types,
   OpBuilder builder(original_island);
   auto island = builder.create<tf_executor::IslandOp>(
       loc, result_types, control_type, mlir::ValueRange{});
-  island.body().push_back(new Block);
-  Block* block = &island.body().back();
+  island.getBody().push_back(new Block);
+  Block* block = &island.getBody().back();
   OpBuilder island_builder(original_island);
   island_builder.setInsertionPointToEnd(block);
-  sub_op.replaceAllUsesWith(island.outputs());
+  sub_op.replaceAllUsesWith(island.getOutputs());
   sub_op.moveBefore(block, block->begin());
   island_builder.create<tf_executor::YieldOp>(loc, sub_op.getResults());
   return island;
@@ -167,7 +169,7 @@ void SplitIntoIslandPerOpPass::SplitIsland(tf_executor::IslandOp island_op,
   // depending on the original island's output since we're about to erase the
   // original island op.
   for (auto item :
-       llvm::zip(island_op.outputs(), island_op.GetYield().fetches()))
+       llvm::zip(island_op.getOutputs(), island_op.GetYield().getFetches()))
     std::get<0>(item).replaceAllUsesWith(std::get<1>(item));
   island_op.erase();
 }

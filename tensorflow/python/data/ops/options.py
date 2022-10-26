@@ -340,7 +340,7 @@ class OptimizationOptions(options_lib.OptionsBase):
       docstring=
       "Whether to inject prefetch transformation as the last transformation "
       "when the last transformation is a synchronous transformation. If None, "
-      "defaults to False.")
+      "defaults to True.")
 
   map_and_batch_fusion = options_lib.create_option(
       name="map_and_batch_fusion",

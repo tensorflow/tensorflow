@@ -31,26 +31,15 @@ add_mlir_library(GmlStTilingInterface
   MLIRGmlStTilingInterfaceIncGen
 )
 
-add_mlir_library(GmlStFusionInterface
-  fusion_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRArithmeticDialect
-  MLIRIR
-  MLIRSupport
-
-  DEPENDS
-  MLIRGmlStFusionInterfaceIncGen
-)
-
 add_mlir_library(GmlStTilingInterfaceImpl
   tiling_interface_impl.cc
 
   LINK_LIBS PUBLIC
   GmlStDialect
   GmlStTilingInterface
-  MLIRArithmeticDialect
+  MLIRArithDialect
   MLIRAffineDialect
+  MLIRDestinationStyleOpInterface
   MLIRLinalgDialect
   MLIRLinalgTransforms
   MLIRLinalgUtils
@@ -58,27 +47,7 @@ add_mlir_library(GmlStTilingInterfaceImpl
   MLIRTensorUtils
   MLIRIR
   MLIRSupport
-)
-
-add_mlir_library(GmlStFusionInterfaceImpl
-  fusion_interface_impl.cc
-
-  LINK_LIBS PUBLIC
-  GmlStDialect
-  GmlStFusionInterface
-  MLIRArithmeticDialect
-  MLIRIR
-  MLIRSupport
-)
-
-add_mlir_library(GmlStComposeSetInterface
-  compose_set_interface.cc
-
-  LINK_LIBS PUBLIC
-  MLIRIR
-
-  DEPENDS
-  MLIRGmlStComposeSetInterfaceIncGen
+  THLODialect
 )
 
 add_mlir_library(GmlStBufferizableOpInterface
@@ -88,17 +57,24 @@ add_mlir_library(GmlStBufferizableOpInterface
   GmlStDialect
   MLIRBufferizationDialect
   MLIRBufferizationTransforms
+  MLIRDestinationStyleOpInterface
   MLIRIR
   MLIRSupport
 )
 
 add_mlir_library(GmlStPasses
-  bufferize_tiled_loop.cc
-  compose_set_ops.cc
+  collapse_materialize_ops.cc
   fusion.cc
   gml_st_to_scf.cc
+  gml_st_to_gpu.cc
+  linalg_utils.cc
   tiling.cc
-  collapse_materialize_ops.cc
+  tiling_cwise.cc
+  tiling_gpu_warp.cc
+  tiling_softmax.cc
+  transform_map_for_cpu.cc
+  transform_matmul_for_cpu.cc
+  transform_scatter_for_cpu.cc
   vectorization.cc
 
   DEPENDS
@@ -108,14 +84,15 @@ add_mlir_library(GmlStPasses
   Core
 
   LINK_LIBS PUBLIC
-  GmlStComposeSetInterface
-  GmlStFusionInterface
-  GmlStFusionInterfaceImpl
   GmlStTilingInterface
   GmlStTilingInterfaceImpl
+  MLIRDestinationStyleOpInterface
   MhloDialect
   MLIRDialectUtils
+  MLIRAffineDialect
+  MLIRArithDialect
   MLIRFuncDialect
+  MLIRGPUOps
   MLIRIR
   MLIRLinalgDialect
   MLIRLinalgTransforms

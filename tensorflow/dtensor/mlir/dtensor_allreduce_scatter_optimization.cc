@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/collectives_common.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/group_assignment.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
@@ -35,7 +34,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORALLREDUCESCATTEROPTIMIZATION
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Returns true if both group assignments are constant and equal.
 bool same_group_assignments(mlir::DenseIntElementsAttr attr_a,
@@ -159,7 +161,7 @@ mlir::LogicalResult ApplyOptimization(mlir::func::FuncOp function) {
 
 // MLIR pass that combines AllReduce and AllScatter to ReduceScatter.
 struct DTensorAllReduceScatterOptimization
-    : public DTensorAllReduceScatterOptimizationBase<
+    : public impl::DTensorAllReduceScatterOptimizationBase<
           DTensorAllReduceScatterOptimization> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();

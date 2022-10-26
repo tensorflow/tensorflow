@@ -23,13 +23,13 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_INSERTCALLONCEOPFROMSESSIONINITIALIZERPASS
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h.inc"
 
 // This pass inserts a TFL::CallOnce op when tf_saved_model's session
 // initializer is given.
 class InsertCallOnceOpFromSessionInitializerPass
-    : public InsertCallOnceOpFromSessionInitializerPassBase<
+    : public impl::InsertCallOnceOpFromSessionInitializerPassBase<
           InsertCallOnceOpFromSessionInitializerPass> {
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(
@@ -48,7 +48,7 @@ void InsertCallOnceOpFromSessionInitializerPass::runOnOperation() {
 
   SymbolTable symbol_table(module);
 
-  for (auto sym_ref : session_init_op.initializers()) {
+  for (auto sym_ref : session_init_op.getInitializers()) {
     func::FuncOp init_func_op = symbol_table.lookup<mlir::func::FuncOp>(
         sym_ref.cast<FlatSymbolRefAttr>().getValue());
 

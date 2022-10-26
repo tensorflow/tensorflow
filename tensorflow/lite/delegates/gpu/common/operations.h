@@ -40,6 +40,7 @@ enum class OperationType {
   BATCH_NORMALIZATION,
   BATCHED_MATMUL,
   CAST,
+  CEIL,
   CONCAT,
   CONSTANT,
   CONVOLUTION_2D,

@@ -127,6 +127,22 @@ class XlaCompilationCache : public ResourceBase {
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 
+  struct CompilationResultAndExecutable {
+    const XlaCompiler::CompilationResult* compilation_result;
+    xla::LocalExecutable* executable;
+  };
+
+  // Returns CompilationResultAndExecutable with non-null compilation_result and
+  // executable if the signature is already compiled.
+  // If the signature has not been compiled yet, this function returns a
+  // CompilationResultAndExecutable instance with only nullptrs in it.
+  // Non-ok status means something other than the 2 circumstances above
+  // happened.
+  StatusOr<CompilationResultAndExecutable>
+  GetCompilationResultIfAlreadyCompiled(
+      const NameAttrList& function,
+      absl::Span<const XlaCompiler::Argument> args);
+
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
 

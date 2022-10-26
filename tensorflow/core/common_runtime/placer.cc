@@ -166,12 +166,21 @@ Placer::Placer(Graph* graph, const string& function_name,
 Placer::~Placer() {}
 
 Status Placer::Run() {
+  GraphOptimizationPassOptions options;
+  // options.debug_filename_prefix, which is used to create graph dump files,
+  // will be an empty string.
+  return Run(options);
+}
+
+Status Placer::Run(const GraphOptimizationPassOptions& options) {
   if (devices_->devices().empty()) {
     return errors::FailedPrecondition("No devices are registered");
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_input", *graph_, nullptr);
+    DumpGraphToFile(
+        strings::StrCat(options.debug_filename_prefix, "placer_input"), *graph_,
+        nullptr);
   }
   if (VLOG_IS_ON(5)) {
     for (const Node* node : graph_->op_nodes()) {
@@ -300,8 +309,12 @@ Status Placer::Run() {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_output", *graph_, nullptr);
-    DumpColocationGraph("colocation_graph", colocation_graph);
+    DumpGraphToFile(
+        strings::StrCat(options.debug_filename_prefix, "placer_output"),
+        *graph_, nullptr);
+    DumpColocationGraph(
+        strings::StrCat(options.debug_filename_prefix, "colocation_graph"),
+        colocation_graph);
   }
   return OkStatus();
 }

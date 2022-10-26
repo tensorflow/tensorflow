@@ -22,9 +22,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace ApiConverter {
 
@@ -291,7 +291,6 @@ void Destroy(XLA_Shape* c_shape) {
 void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
   CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
-  c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();
   CreateVector(layout.tiles(), &c_layout->tiles);
 }
@@ -314,7 +313,7 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
     tiles.push_back(FromC(&c_tiles[i]));
   }
   return xla::Layout(minor_to_major, dim_level_types, tiles,
-                     c_layout->element_size_in_bits, c_layout->memory_space);
+                     c_layout->memory_space);
 }
 
 void Destroy(XLA_Layout* c_layout) {
@@ -459,6 +458,8 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
   hlo_config.num_partitions = config.num_partitions();
   hlo_config.use_spmd_partitioning = config.use_spmd_partitioning();
   hlo_config.use_auto_spmd_partitioning = config.use_auto_spmd_partitioning();
+  hlo_config.allow_spmd_sharding_propagation_to_output =
+      config.allow_spmd_sharding_propagation_to_output();
   CreateVector(config.auto_spmd_partitioning_mesh_shape(),
                &hlo_config.auto_spmd_partitioning_mesh_shape);
   CreateVector(config.auto_spmd_partitioning_mesh_ids(),
@@ -505,6 +506,8 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
   config.set_num_partitions(c_config.num_partitions);
   config.set_use_spmd_partitioning(c_config.use_spmd_partitioning);
   config.set_use_auto_spmd_partitioning(c_config.use_auto_spmd_partitioning);
+  config.set_allow_spmd_sharding_propagation_to_output(
+      c_config.allow_spmd_sharding_propagation_to_output);
   absl::Span<const int64_t> mesh_shape_span =
       MakeSpan(c_config.auto_spmd_partitioning_mesh_shape);
   std::vector<int64_t> mesh_shape(mesh_shape_span.begin(),

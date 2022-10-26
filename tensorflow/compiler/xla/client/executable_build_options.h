@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_
 
+#include <functional>
 #include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -25,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/threadpool.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace stream_executor {
 
@@ -35,6 +37,7 @@ class DeviceMemoryAllocator;
 }  // namespace stream_executor
 
 namespace xla {
+class HloModule;
 
 // Class containing options for building an LocalExecutable with
 // LocalClient::Compile.
@@ -161,16 +164,27 @@ class ExecutableBuildOptions {
   }
 
   // Thread pool for parallel compilation.
-  tensorflow::thread::ThreadPool* compile_thread_pool() const {
+  tsl::thread::ThreadPool* compile_thread_pool() const {
     return compile_thread_pool_;
   }
   ExecutableBuildOptions& set_compile_thread_pool(
-      tensorflow::thread::ThreadPool* compile_thread_pool) {
+      tsl::thread::ThreadPool* compile_thread_pool) {
     compile_thread_pool_ = compile_thread_pool;
     return *this;
   }
 
   StatusOr<ExecutableBuildOptionsProto> ToProto() const;
+
+  using LayoutCanonicalizationCallback =
+      std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
+          const HloModule& module)>;
+  void set_layout_canonicalization_callback(
+      LayoutCanonicalizationCallback callback) {
+    layout_canonicalization_callback_ = std::move(callback);
+  }
+  LayoutCanonicalizationCallback layout_canonicalization_callback() const {
+    return layout_canonicalization_callback_;
+  }
 
  private:
   int device_ordinal_ = -1;
@@ -190,7 +204,8 @@ class ExecutableBuildOptions {
   bool alias_passthrough_params_ = false;
   bool run_backend_only_ = false;
   bool allow_spmd_sharding_propagation_to_output_ = false;
-  tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
+  tsl::thread::ThreadPool* compile_thread_pool_ = nullptr;
+  LayoutCanonicalizationCallback layout_canonicalization_callback_;
 };
 
 StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(

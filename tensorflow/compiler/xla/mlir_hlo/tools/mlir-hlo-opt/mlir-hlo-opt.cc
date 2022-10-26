@@ -14,27 +14,42 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/test_passes.h"
 #include "mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
-#include "mlir-hlo/Dialect/lhlo/transforms/register_passes.h"
+#include "mlir-hlo/Dialect/lhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
-#include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/thlo/IR/thlo_ops.h"
-#include "mlir-hlo/Transforms/register_gml_st_passes.h"
-#include "mlir-hlo/Transforms/register_gpu_passes.h"
-#include "mlir-hlo/Transforms/register_passes.h"
+#include "mlir-hlo/Dialect/thlo/transforms/passes.h"
+#include "mlir-hlo/Transforms/gpu_passes.h"
+#include "mlir-hlo/Transforms/passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "stablehlo/dialect/Register.h"
 
+using namespace mlir;
+
+namespace {
+
+}  // namespace
+
 int main(int argc, char **argv) {
   mlir::registerAllPasses();
+  mlir::hlo::registerLMHLOTransformsPasses();
+  mlir::registerLMHLOGPUTransformsPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
-  mlir::hlo::registerAllHloPasses();
-  mlir::hlo::registerAllHloGpuPasses();
-  mlir::gml_st::registerAllGmlStPasses();
+  mlir::thlo::registerAllThloPasses();
+  mlir::gml_st::registerGmlStPasses();
+  mlir::gml_st::registerGmlStTestPasses();
+
+  PassPipelineRegistration<HloToGpuPipelineOptions>(
+      "hlo-to-gpu-pipeline",
+      "Pipeline to transform HLO to LLVM + NVVM dialects.",
+      createHloToGpuPipeline);
 
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);

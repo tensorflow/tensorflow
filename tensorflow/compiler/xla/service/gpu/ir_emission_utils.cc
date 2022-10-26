@@ -19,17 +19,18 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_type_conversion_util.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 
 namespace xla {
 namespace gpu {
@@ -220,7 +221,7 @@ bool IsInputFusibleSlices(mlir::Operation* unnested_hlo,
     if (!slice) {
       return false;
     }
-    if (verify_no_strides && !is_non_strided(slice.strides())) {
+    if (verify_no_strides && !is_non_strided(slice.getStrides())) {
       return false;
     }
   }
@@ -419,12 +420,12 @@ bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
   if (IsReductionFromOrToContiguousDimensions(*inst)) {
     // Shapes, layouts and dimensions must be the same for all reduces
     // inside of this fusion.
-    // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
-    return ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
-           ShapeUtil::Equal(first_reduce->operand(0)->shape(),
-                            inst->operand(0)->shape()) &&
-           ShapeUtil::Equal(first_reduce->operand(1)->shape(),
-                            inst->operand(1)->shape()) &&
+    return ShapeUtil::EqualIgnoringElementType(first_reduce->shape(),
+                                               inst->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(0)->shape(), inst->operand(0)->shape()) &&
+           ShapeUtil::EqualIgnoringElementType(
+               first_reduce->operand(1)->shape(), inst->operand(1)->shape()) &&
            first_reduce->dimensions() == inst->dimensions();
   }
   return ShapeUtil::CompatibleIgnoringElementType(
@@ -456,41 +457,38 @@ int PartitionLmhloOperandsAndOutputs(mlir::Operation* op) {
   return i + 1;
 }
 
-std::vector<mlir::Value> GetHloOperands(mlir::Operation* op) {
+llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return ToStdVector(fusion.getInputBuffers());
+    return fusion.getInputBuffers();
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
     int output_start = PartitionLmhloOperandsAndOutputs(op);
-    std::vector<mlir::Value> operands;
-    operands.reserve(output_start);
+    llvm::SmallVector<mlir::Value> operands;
     for (int i = 0; i < output_start; i++) {
       operands.push_back(op->getOperand(i));
     }
     return operands;
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return std::vector<mlir::Value>(op->getOperands().begin(),
-                                    op->getOperands().end());
+    return op->getOperands();
   }
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
 
-std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
+llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
-    return ToStdVector(fusion.getOutputBuffers());
+    return fusion.getOutputBuffers();
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
     int output_start = PartitionLmhloOperandsAndOutputs(op);
-    std::vector<mlir::Value> outputs;
+    llvm::SmallVector<mlir::Value> outputs;
     for (int i = output_start; i < op->getNumOperands(); i++) {
       outputs.push_back(op->getOperand(i));
     }
     return outputs;
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("mhlo")) {
-    return std::vector<mlir::Value>(op->getResults().begin(),
-                                    op->getResults().end());
+    return op->getResults();
   }
   LOG(FATAL) << "Unexpected op: " << MlirToString(op);
 }
@@ -597,7 +595,7 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
   auto output_buffers = fusion.getOutputBuffers();
   CHECK_EQ(1, output_buffers.size());
   auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-      dus.operand().getDefiningOp());
+      dus.getOperand().getDefiningOp());
 
   if (!parameter) {
     return false;
@@ -658,26 +656,55 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
   return out;
 }
 
-bool IsTiledTranspose(const HloInstruction& instr) {
+static std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
-    return false;
+    return std::nullopt;
   }
 
   if (std::optional<Vector3> tr = ShapeUtil::FindTranspose021(
           instr.operand(0)->shape(), instr.shape())) {
-    return (tr->at(1) >= kMinDimensionToTransposeTiled &&
-            tr->at(2) >= kMinDimensionToTransposeTiled);
+    if (tr->at(1) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      return tr;
+    }
   }
-  return false;
+  return std::nullopt;
+}
+
+// Find 021 transpose in logical + physical transposition.
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kTranspose) {
+    return std::nullopt;
+  }
+
+  // TODO(cheshire): avoid code duplication.
+  if (std::optional<Vector3> tr = ShapeUtil::FindLogicalTranspose021(
+          instr.operand(0)->shape(), instr.shape(), instr.dimensions())) {
+    if (tr->at(1) >= kMinDimensionToTransposeTiled &&
+        tr->at(2) >= kMinDimensionToTransposeTiled) {
+      return tr;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr) {
+  if (std::optional<Vector3> d1 = FindTiledTranspose(instr)) {
+    return d1;
+  }
+  if (std::optional<Vector3> d2 = FindTiledLogicalTranspose(instr)) {
+    return d2;
+  }
+  return std::nullopt;
 }
 
 bool HasAnyTiledTransposeRoot(HloComputation* computation) {
-  return absl::c_any_of(
-      GetFusionRoots(computation),
-      [&](const HloInstruction* instr) { return IsTiledTranspose(*instr); });
+  return absl::c_any_of(GetFusionRoots(computation),
+                        [&](const HloInstruction* instr) {
+                          return FindAnyTiledTranspose(*instr);
+                        });
 }
 
-// Returns whether any of the rooots of the fusion are unnested reductions.
 bool HasAnyUnnestedReductionRoot(HloComputation* computation) {
   return absl::c_any_of(
       GetFusionRoots(computation), [&](const HloInstruction* instr) {

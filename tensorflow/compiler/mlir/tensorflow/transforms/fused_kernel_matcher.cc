@@ -23,12 +23,12 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 
@@ -48,11 +48,14 @@ namespace {
 // TODO(b/158265178): Support GPU-specific fusions.
 // TODO(b/158266710): Support CPU MKL configurations.
 
+#define GEN_PASS_DEF_FUSEDKERNELMATCHERPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Optimizes TF computations by fusing subgraphs/nodes onto more efficient
 // implementations to decrease the number of operations needed to perform a
 // computation.
 struct FusedKernelMatcherPass
-    : public FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
+    : public impl::FusedKernelMatcherPassBase<FusedKernelMatcherPass> {
   void runOnOperation() override;
 };
 
@@ -193,6 +196,31 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     attrs.push_back(
         NamedAttribute(StringAttr::get(context, "epsilon"), epsilon));
 
+    if (std::is_same<FusedOpT, _FusedConv2DOp>::value) {
+      // Here TArgs types do not include types of the first two parameters,
+      // i.e. the convolution input and the filter. TArgs are parameters for
+      // the extras like the bias etc.
+      auto attr = TypeAttr::get(getElementTypeOrSelf(contraction.getType()));
+      SmallVector<Attribute, 4> targs_values(operands.size() - 2, attr);
+
+      ArrayAttr targs_attr = ArrayAttr::get(context, targs_values);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "TArgs"), targs_attr));
+
+      auto num_args_attr = IntegerAttr::get(IntegerType::get(context, 64), 1);
+      attrs.push_back(
+          NamedAttribute(StringAttr::get(context, "num_args"), num_args_attr));
+
+      // Fused conv operands are input, filter, args and host args. Here, bias
+      // input of the BiasAdd op. Host args corresponds to conv_input_scale and
+      // side_input_scale and not relevant in this case.
+      auto sizes = mlir::DenseI32ArrayAttr::get(context, {1, 1, 1, 0});
+      auto attr_name =
+          StringAttr::get(context, mlir::OpTrait::AttrSizedOperandSegments<
+                                       void>::getOperandSegmentSizeAttr());
+      attrs.push_back(NamedAttribute(attr_name, sizes));
+    }
+
     // Insert fused operation right before the BiasAdd operation to guarantee
     // that bias value dominates the fused operation. We already verified that
     // original operation has a single use, so this is safe to do.
@@ -252,11 +280,13 @@ class FuseConv2DBiasAdd
       });
       return false;
     }
+
     // Verify the data type is supported.
-    if (!conv.T().isF32() && !conv.T().isF64()) {
+    Type element_ty = getElementTypeOrSelf(conv.getType());
+    if (!element_ty.isF32() && !element_ty.isF64()) {
       (void)rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedConv2D are float and double, "
-             << " but got " << conv.T();
+             << " but got " << element_ty;
       });
       return false;
     }
@@ -290,10 +320,11 @@ class FuseMatMulBiasAdd
   bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
     // FusedMatMul kernel supports limited set of data types.
-    if (!matmul.T().isF32() && !matmul.T().isBF16()) {
+    Type element_ty = getElementTypeOrSelf(matmul.getType());
+    if (!element_ty.isF32() && !element_ty.isBF16()) {
       (void)rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
         diag << "supported data types for _FusedMatMul are float and bfloat16, "
-             << " but got " << matmul.T();
+             << " but got " << element_ty;
       });
       return false;
     }

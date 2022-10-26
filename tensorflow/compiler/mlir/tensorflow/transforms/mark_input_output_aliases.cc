@@ -15,18 +15,22 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-device-mark-input-output-aliases"
 
 namespace mlir {
 namespace TFDevice {
 
+#define GEN_PASS_DEF_MARKINPUTOUTPUTALIASESPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 namespace {
 struct MarkInputOutputAliasesPass
-    : public TF::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
+    : public impl::MarkInputOutputAliasesPassBase<MarkInputOutputAliasesPass> {
   void runOnOperation() override;
 };
 
@@ -132,7 +136,7 @@ void MarkInputOutputAliasesPass::runOnOperation() {
       return;
     }
 
-    FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
+    FlatSymbolRefAttr func_attr = cluster_func.getFuncAttr();
     func::FuncOp device_func =
         module.lookupSymbol<func::FuncOp>(func_attr.getValue());
     AddAliasingAttributeToDeviceFunc(device_func, resource_alias_info_map);

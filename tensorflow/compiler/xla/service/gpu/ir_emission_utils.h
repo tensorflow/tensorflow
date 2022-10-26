@@ -157,8 +157,8 @@ inline std::string MlirToString(const mlir::Location& loc) {
 }
 
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
-std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
-std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
+llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
@@ -236,8 +236,9 @@ bool HasAnyUnnestedReductionRoot(HloComputation* computation);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-// Returns whether the given instruction is a tiled transposition.
-bool IsTiledTranspose(const HloInstruction& instr);
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr);
+
+std::optional<Vector3> FindAnyTiledTranspose(const HloInstruction& instr);
 
 }  // namespace gpu
 }  // namespace xla

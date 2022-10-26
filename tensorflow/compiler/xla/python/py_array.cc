@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_array.h"
 
 #include <memory>
+#include <new>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/compiler/xla/python/python_utils.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 
 namespace xla {
@@ -42,80 +45,182 @@ std::vector<std::shared_ptr<PjRtBuffer>> CreatePjRtBuffersFromPyBuffers(
 
 std::vector<std::shared_ptr<PjRtBuffer>>
 CreatePjRtBuffersFromSingleShardedPyArrays(
-    absl::Span<const PyArray* const> py_arrays) {
+    absl::Span<const PyArray> py_arrays) {
   std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers;
   pjrt_buffers.reserve(py_arrays.size());
 
-  for (const auto* py_array : py_arrays) {
-    DCHECK_EQ(py_array->num_shards(), 1);
-    pjrt_buffers.push_back(py_array->GetSharedPtrBuffer(0));
+  for (const auto& py_array : py_arrays) {
+    DCHECK_EQ(py_array.num_shards(), 1);
+    pjrt_buffers.push_back(py_array.GetSharedPtrBuffer(0));
   }
 
   return pjrt_buffers;
 }
 
+struct PyArrayObject {
+  PyObject_HEAD;
+  PyObject* weakrefs;
+  alignas(PyArray::Storage) char array_storage[sizeof(PyArray::Storage)];
+};
+static_assert(std::is_standard_layout<PyArrayObject>::value);
+
+PyArray::Storage* GetPyArrayStorageFromObject(PyArrayObject* py_array_object) {
+  return std::launder(
+      reinterpret_cast<PyArray::Storage*>(py_array_object->array_storage));
+}
+
+extern "C" PyObject* PyArray_tp_new(PyTypeObject* type, PyObject*, PyObject*) {
+  PyObject* self = type->tp_alloc(type, 0);
+  return self;
+}
+
+extern "C" void PyArray_tp_dealloc(PyObject* self) {
+  PyTypeObject* tp = Py_TYPE(self);
+  auto* obj = reinterpret_cast<PyArrayObject*>(self);
+
+  if (obj->weakrefs) {
+    PyObject_ClearWeakRefs(self);
+  }
+
+  GetPyArrayStorageFromObject(obj)->~PyArray_Storage();
+
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
+
+  tp->tp_free(self);
+  Py_DECREF(tp);
+}
+
+// dynamic_attr: Allow the garbage collector to traverse the internal instance
+// `__dict__`.
+extern "C" int PyArray_tp_traverse(PyObject* self, visitproc visit, void* arg) {
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_VISIT(dict);
+// https://docs.python.org/3/c-api/typeobj.html#c.PyTypeObject.tp_traverse
+#if PY_VERSION_HEX >= 0x03090000
+  Py_VISIT(Py_TYPE(self));
+#endif
+  return 0;
+}
+
+// dynamic_attr: Allow the GC to clear the dictionary.
+extern "C" int PyArray_tp_clear(PyObject* self) {
+  PyObject*& dict = *_PyObject_GetDictPtr(self);
+  Py_CLEAR(dict);
+  return 0;
+}
+
+// Give instances of this type a `__dict__` and opt into garbage collection.
+void EnableDynamicAttribute(PyHeapTypeObject* heap_type) {
+  auto* type = &heap_type->ht_type;
+  type->tp_flags |= Py_TPFLAGS_HAVE_GC;
+#if PY_VERSION_HEX < 0x030B0000
+  type->tp_dictoffset = type->tp_basicsize;  // place dict at the end
+  type->tp_basicsize +=
+      (ssize_t)sizeof(PyObject*);  // and allocate enough space for it
+#else
+  type->tp_flags |= Py_TPFLAGS_MANAGED_DICT;
+#endif
+  type->tp_traverse = PyArray_tp_traverse;
+  type->tp_clear = PyArray_tp_clear;
+
+  static PyGetSetDef getset[] = {{"__dict__", PyObject_GenericGetDict,
+                                  PyObject_GenericSetDict, nullptr, nullptr},
+                                 {nullptr, nullptr, nullptr, nullptr, nullptr}};
+  type->tp_getset = getset;
+}
+
+template <typename... Args>
+PyArray::Storage* Construct(PyArrayObject* self, Args&&... args) {
+  return new (self->array_storage)
+      PyArray::Storage(std::forward<Args>(args)...);
+}
+
 }  // namespace
 
-PyArray::PyArray(py::object aval, py::object sharding,
-                 const std::vector<const PyArray*>& py_arrays, bool committed,
-                 bool skip_checks, py::object fast_path_args)
-    : PyArray(aval, pybind11::cast<bool>(aval.attr("weak_type")),
-              DtypeToPrimitiveType(aval.attr("dtype")).ValueOrDie(),
-              pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
-              std::move(sharding), py_arrays.at(0)->py_client(),
-              Traceback::Get(),
-              CreatePjRtBuffersFromSingleShardedPyArrays(py_arrays), committed,
-              skip_checks, std::move(fast_path_args)) {}
+void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
+                     absl::Span<const PyArray> py_arrays, bool committed,
+                     bool skip_checks) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()), aval,
+            pybind11::cast<bool>(aval.attr("weak_type")), aval.attr("dtype"),
+            pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
+            std::move(sharding), committed, py_arrays.at(0).py_client(),
+            Traceback::Get(),
+            CreatePjRtBuffersFromSingleShardedPyArrays(py_arrays));
 
-PyArray::PyArray(py::object aval, py::object sharding,
-                 absl::Span<const PyBuffer::object> py_buffers, bool committed,
-                 bool skip_checks, py::object fast_path_args)
-    : PyArray(aval, pybind11::cast<bool>(aval.attr("weak_type")),
-              DtypeToPrimitiveType(aval.attr("dtype")).ValueOrDie(),
-              pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
-              std::move(sharding), py_buffers.at(0).buf()->client(),
-              Traceback::Get(), CreatePjRtBuffersFromPyBuffers(py_buffers),
-              committed, skip_checks, std::move(fast_path_args)) {}
+  PyArray py_array = self;
 
-PyArray::PyArray(py::object aval, bool weak_type, PrimitiveType dtype,
+  if (!skip_checks) {
+    py_array.CheckAndRearrange();
+  }
+}
+
+void PyArray::PyInit(py::object self, py::object aval, py::object sharding,
+                     absl::Span<const PyBuffer::object> py_buffers,
+                     bool committed, bool skip_checks) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()), aval,
+            pybind11::cast<bool>(aval.attr("weak_type")), aval.attr("dtype"),
+            pybind11::cast<std::vector<int64_t>>(aval.attr("shape")),
+            std::move(sharding), committed, py_buffers.at(0).buf()->client(),
+            Traceback::Get(), CreatePjRtBuffersFromPyBuffers(py_buffers));
+
+  PyArray py_array = self;
+
+  if (!skip_checks) {
+    py_array.CheckAndRearrange();
+  }
+}
+
+void PyArray::PyInit(py::object self, DisableFastpath) {
+  Construct(reinterpret_cast<PyArrayObject*>(self.ptr()),
+            PyArray_Storage::DisableFastpath());
+}
+
+PyArray::PyArray(py::object aval, bool weak_type, py::dtype dtype,
                  std::vector<int64_t> shape, py::object sharding,
                  std::shared_ptr<PyClient> py_client,
                  std::shared_ptr<Traceback> traceback,
                  std::vector<std::shared_ptr<PjRtBuffer>> pjrt_buffers,
-                 bool committed, bool skip_checks, py::object fast_path_args)
-    : aval_(std::move(aval)),
-      weak_type_(weak_type),
-      dtype_(dtype),
-      shape_(std::move(shape)),
-      sharding_(std::move(sharding)),
-      fast_path_args_(std::move(fast_path_args)),
-      committed_(std::move(committed)),
-      py_client_(std::move(py_client)),
-      traceback_(std::move(traceback)),
-      pjrt_buffers_(std::move(pjrt_buffers)) {
+                 bool committed, bool skip_checks) {
+  auto* self =
+      PyArray_tp_new(reinterpret_cast<PyTypeObject*>(type_), nullptr, nullptr);
+  ptr() = self;
+  Construct(reinterpret_cast<PyArrayObject*>(self), std::move(aval), weak_type,
+            std::move(dtype), std::move(shape), std::move(sharding), committed,
+            std::move(py_client), std::move(traceback),
+            std::move(pjrt_buffers));
+
   if (!skip_checks) {
-    Check();
-    Rearrange();
+    CheckAndRearrange();
   }
 }
 
-void PyArray::Check() {
-  try {
-    py::cast(this).attr("_check")();
-  } catch (py::error_already_set& err) {
-    throw py::value_error(err.what());
-  }
+PyArray::Storage& PyArray::GetStorage() {
+  return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
 }
 
-void PyArray::Rearrange() { py::cast(this).attr("_rearrange")(); }
+const PyArray::Storage& PyArray::GetStorage() const {
+  return *GetPyArrayStorageFromObject(reinterpret_cast<PyArrayObject*>(ptr()));
+}
 
-py::object PyArray::arrays() const {
-  if (pjrt_buffers_.empty()) return py::none();
+void PyArray::CheckAndRearrange() { this->attr("_check_and_rearrange")(); }
 
-  std::vector<PyBuffer::object> py_buffers;
-  py_buffers.reserve(pjrt_buffers_.size());
-  for (const auto& pjrt_buffer : pjrt_buffers_) {
-    py_buffers.push_back(PyBuffer::Make(py_client_, pjrt_buffer, traceback_));
+py::object PyArray::arrays() {
+  // For performance, we only keep pjrt buffers by default. But on python side
+  // "_arrays" returns PyBuffers instead, and subsequent calls to "_arrays"
+  // should return the same PyBuffers (to avoid duplicate device to host
+  // transfers). So we create PyBuffers the first time it is called and reuse
+  // them later.
+  if (pjrt_buffers().empty()) return py::none();
+
+  auto& py_buffers = this->py_buffers();
+
+  if (py_buffers.empty()) {
+    py_buffers.reserve(pjrt_buffers().size());
+    for (const auto& pjrt_buffer : pjrt_buffers()) {
+      py_buffers.push_back(
+          PyBuffer::Make(py_client(), pjrt_buffer, traceback()));
+    }
   }
 
   return py::cast(py_buffers);
@@ -123,8 +228,9 @@ py::object PyArray::arrays() const {
 
 Status PyArray::set_arrays(py::object obj) {
   if (obj.is_none()) {
-    pjrt_buffers_.clear();
-    return Status::OK();
+    pjrt_buffers().clear();
+    py_buffers().clear();
+    return OkStatus();
   }
 
   if (!py::isinstance<py::list>(obj)) {
@@ -134,10 +240,11 @@ Status PyArray::set_arrays(py::object obj) {
 
   py::list list = obj;
 
-  if (list.empty()) return Status::OK();
+  if (list.empty()) return OkStatus();
 
-  pjrt_buffers_.clear();
-  pjrt_buffers_.reserve(list.size());
+  pjrt_buffers().clear();
+  py_buffers().clear();
+  pjrt_buffers().reserve(list.size());
   for (py::handle obj : list) {
     // TODO(chky): Currently only List[Buffer] is handled here. We need to
     // handle List[Array] as well.
@@ -147,34 +254,159 @@ Status PyArray::set_arrays(py::object obj) {
     }
 
     auto* py_buffer = PyBuffer::AsPyBufferUnchecked(obj);
-    DCHECK_EQ(py_buffer->client(), py_client_);
-    pjrt_buffers_.push_back(py_buffer->shared_ptr_buffer());
+    DCHECK_EQ(py_buffer->client(), py_client());
+    pjrt_buffers().push_back(py_buffer->shared_ptr_buffer());
   }
-  return Status::OK();
+  return OkStatus();
 }
 
-void PyArray::RegisterTypes(py::module& m) {
-  py::class_<PyArray>(m, "Array", py::dynamic_attr())
-      .def(py::init<py::object, py::object, absl::Span<const PyBuffer::object>,
-                    bool, bool, py::object>(),
-           py::arg("aval"), py::arg("sharding"), py::arg("arrays"),
-           py::arg("committed"), py::arg("_skip_checks") = false,
-           py::arg("_fast_path_args") = py::none())
-      .def(py::init<py::object, py::object, const std::vector<const PyArray*>&,
-                    bool, bool, py::object>(),
-           py::arg("aval"), py::arg("sharding"), py::arg("arrays"),
-           py::arg("committed"), py::arg("_skip_checks") = false,
-           py::arg("_fast_path_args") = py::none())
-      .def_property_readonly("_sharding", &PyArray::sharding)
-      .def_property("aval", &PyArray::aval, &PyArray::set_aval)
-      .def_property("_arrays", &PyArray::arrays, &PyArray::set_arrays)
-      .def_property_readonly("_fast_path_args", &PyArray::fast_path_args)
-      .def_property("_npy_value", &PyArray::npy_value, &PyArray::set_npy_value)
-      .def_property_readonly("_committed", &PyArray::committed)
-      .def("block_until_ready", [](py::object self) -> StatusOr<py::object> {
-        TF_RETURN_IF_ERROR(py::cast<PyArray*>(self)->BlockUntilReady());
+Status PyArray::BlockUntilReady() const {
+  pybind11::gil_scoped_release gil_release;
+  Status status;
+  for (const auto& pjrt_buffer : pjrt_buffers()) {
+    // PjRtBuffer::BlockHostUntilReady() fix up the error message because some
+    // clients rely on it.
+    auto s = pjrt_buffer->BlockHostUntilReady();
+    if (!s.ok()) status = std::move(s);
+  }
+  return status;
+}
+
+bool PyArray::IsDeleted() const {
+  if (pjrt_buffers().empty()) {
+    return true;
+  }
+
+  for (const auto& pjrt_buffer : pjrt_buffers()) {
+    if (pjrt_buffer->IsDeleted()) return true;
+  }
+  return false;
+}
+
+py::handle PyArray::Storage::AsHandle() {
+  return reinterpret_cast<PyObject*>(reinterpret_cast<char*>(this) -
+                                     offsetof(PyArrayObject, array_storage));
+}
+
+PyArray::Storage::~PyArray_Storage() {
+  CHECK(PyGILState_Check());
+  if (!fastpath_enabled) {
+    return;
+  }
+  if (py_client->arrays_ == this) {
+    py_client->arrays_ = next;
+  }
+  if (prev) {
+    prev->next = next;
+  }
+  if (next) {
+    next->prev = prev;
+  }
+}
+
+std::vector<py::object> PyClient::LiveArrays() {
+  std::vector<py::object> result;
+  for (PyArray::Storage* array = arrays_; array; array = array->next) {
+    bool all_deleted = true;
+    for (auto& buffer : array->pjrt_buffers) {
+      all_deleted &= buffer->IsDeleted();
+    }
+    if (!all_deleted) {
+      result.push_back(py::reinterpret_borrow<py::object>(array->AsHandle()));
+    }
+  }
+  return result;
+}
+
+Status PyArray::SetUpType() {
+  static constexpr char kName[] = "Array";
+
+  py::str name = py::str(kName);
+  py::str qualname = py::str(kName);
+
+  auto* heap_type = reinterpret_cast<PyHeapTypeObject*>(
+      PyType_Type.tp_alloc(&PyType_Type, 0));
+  // Caution: we must not call any functions that might invoke the GC until
+  // PyType_Ready() is called below. Otherwise the GC might see a
+  // half-constructed type object.
+  if (!heap_type) {
+    return Internal("Unable to create heap type object");
+  }
+  heap_type->ht_name = name.release().ptr();
+  heap_type->ht_qualname = qualname.release().ptr();
+  PyTypeObject* type = &heap_type->ht_type;
+  type->tp_name = kName;
+  type->tp_basicsize = sizeof(PyArrayObject);
+  type->tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_HEAPTYPE;
+  type->tp_new = PyArray_tp_new;
+  type->tp_dealloc = PyArray_tp_dealloc;
+
+  // Supported protocols
+  type->tp_as_number = &heap_type->as_number;
+  type->tp_as_sequence = &heap_type->as_sequence;
+  type->tp_as_mapping = &heap_type->as_mapping;
+
+  // Allow dynamic attributes.
+  EnableDynamicAttribute(heap_type);
+
+  // Allow weak references to DeviceArray objects.
+  type->tp_weaklistoffset = offsetof(PyArrayObject, weakrefs);
+
+  TF_RET_CHECK(PyType_Ready(type) == 0);
+
+  PyArray::type_ = reinterpret_cast<PyObject*>(type);
+
+  return OkStatus();
+}
+
+Status PyArray::RegisterTypes(py::module& m) {
+  TF_RETURN_IF_ERROR(PyArray::SetUpType());
+  auto type = py::reinterpret_borrow<py::object>(type_);
+  m.attr("ArrayImpl") = type;
+
+  type.attr("__init__") = py::cpp_function(
+      [](py::object self, py::object aval, py::object sharding, py::list arrays,
+         bool committed, bool skip_checks) {
+        if (arrays[0].get_type().is(PyArray::type())) {
+          auto py_arrays = py::cast<std::vector<PyArray>>(arrays);
+          PyArray::PyInit(self, std::move(aval), std::move(sharding), py_arrays,
+                          committed, skip_checks);
+        } else if (arrays[0].get_type().ptr() == PyBuffer::type()) {
+          auto py_buffers = py::cast<std::vector<PyBuffer::object>>(arrays);
+          PyArray::PyInit(self, std::move(aval), std::move(sharding),
+                          py_buffers, committed, skip_checks);
+        } else {
+          throw py::type_error(
+              absl::StrCat("Unsupported type for elements in `arrays`: ",
+                           std::string(py::str(arrays[0].get_type()))));
+        }
+      },
+      py::is_method(type), py::arg("aval"), py::arg("sharding"),
+      py::arg("arrays"), py::arg("committed"), py::arg("_skip_checks") = false);
+  // TODO(yashkatariya): remove this once the transition completes.
+  type.attr("_init_with_fastpath_disabled") = py::cpp_function(
+      [](py::object self) {
+        PyArray::PyInit(self, PyArray::DisableFastpath());
+      },
+      py::is_method(type));
+  type.attr("_sharding") = jax::property_readonly(&PyArray::sharding);
+  type.attr("aval") = jax::property(&PyArray::aval, &PyArray::set_aval);
+  type.attr("_arrays") = jax::property(&PyArray::arrays, &PyArray::set_arrays);
+  type.attr("_npy_value") =
+      jax::property(&PyArray::npy_value, &PyArray::set_npy_value);
+  type.attr("_committed") = jax::property_readonly(&PyArray::committed);
+  type.attr("block_until_ready") = py::cpp_function(
+      [](PyArray self) -> StatusOr<py::object> {
+        TF_RETURN_IF_ERROR(self.BlockUntilReady());
         return self;
-      });
+      },
+      py::is_method(type));
+  type.attr("is_deleted") =
+      py::cpp_function(&PyArray::IsDeleted, py::is_method(type));
+  type.attr("traceback") = jax::property_readonly(&PyArray::traceback);
+  type.attr("__module__") = m.attr("__name__");
+
+  return OkStatus();
 }
 
 }  // namespace xla

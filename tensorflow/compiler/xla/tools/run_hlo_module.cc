@@ -52,7 +52,7 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
   // Bazel likes for tests to write "debugging outputs" like these to
   // TEST_UNDECLARED_OUTPUTS_DIR.  This plays well with tools that inspect test
   // results, especially when they're run on remote machines.
-  auto* env = tensorflow::Env::Default();
+  auto* env = tsl::Env::Default();
   std::string binary_filename;
   std::string text_filename;
   std::string outdir;
@@ -66,10 +66,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal,
     text_filename = tsl::io::GetTempFilename(absl::StrCat(name, ".txt"));
   }
 
-  TF_CHECK_OK(
-      tensorflow::WriteBinaryProto(env, binary_filename, literal.ToProto()));
-  TF_CHECK_OK(
-      tensorflow::WriteStringToFile(env, text_filename, literal.ToString()));
+  TF_CHECK_OK(tsl::WriteBinaryProto(env, binary_filename, literal.ToProto()));
+  TF_CHECK_OK(tsl::WriteStringToFile(env, text_filename, literal.ToString()));
   LOG(ERROR) << "wrote Literal to " << name << " binary: " << binary_filename
              << " text: " << text_filename;
 }
@@ -134,9 +132,11 @@ Status RunAndCompare(
 
   const HloModuleProto test_module_proto = test_module->ToProto();
 
-  std::vector<Literal> args = MakeFakeArguments(test_module.get(), engine,
-                                                options.use_large_float_range)
-                                  .value();
+  std::vector<Literal> args =
+      MakeFakeArguments(test_module.get(), engine,
+                        options.use_large_float_range,
+                        options.treat_gte_as_data_formatting)
+          .value();
   // Use provided input literals as arguments, if any.
   if (iteration_literals_proto != nullptr &&
       iteration_literals_proto->arguments_size() != 0) {

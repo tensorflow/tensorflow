@@ -43,8 +43,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/tsl/platform/hash.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace {
 
@@ -228,7 +228,7 @@ namespace wrap {
     using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
     static void* GetDsoHandle() {                                         \
       auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();           \
-      return s.ValueOrDie();                                              \
+      return s.value();                                              \
     }                                                                     \
     static FuncPtrT LoadOrDie() {                                         \
       void* f;                                                            \
@@ -593,18 +593,18 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   return_best_algo_only_ = false;
   // but if the env var TF_ROCM_RETURN_BEST_ALGO_ONLY is set, only the best
   // (i.e. most efficient) algorithm will be returned
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
-                                 &return_best_algo_only_);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_RETURN_BEST_ALGO_ONLY", false,
+                          &return_best_algo_only_);
 
   // by default, use Find Mode APIs for convolution
   use_immediate_mode_ = false;
   // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
-                                 &use_immediate_mode_);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
+                          &use_immediate_mode_);
 
   bool enable_pooling_cache = false;
-  tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
-                                 &enable_pooling_cache);
+  tsl::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false,
+                          &enable_pooling_cache);
   if (enable_pooling_cache) m_pooling_cache_allowed = true;
 }
 
@@ -615,7 +615,7 @@ port::Status MIOpenSupport::Init() {
       reinterpret_cast<miopenHandle_t*>(&miopen_handle), (hipStream_t)(0));
   if (status == miopenStatusSuccess) {
     miopen_.reset(new MIOpenAccess(miopen_handle));
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
   CHECK_EQ(miopen_handle, nullptr);
@@ -626,7 +626,7 @@ port::Status MIOpenSupport::Init() {
       LOG(ERROR) << "error retrieving driver version: "
                  << rocm::DriverVersionStatusToString(result);
     } else {
-      const auto& version = result.ValueOrDie();
+      const auto& version = result.value();
       LOG(INFO) << "possibly insufficient driver version: "
                 << rocm::DriverVersionToString(version);
     }
@@ -2107,7 +2107,7 @@ bool CreateRnnWorkspace(Stream* stream, miopenHandle_t miopen_handle,
   if (workspace_size_in_bytes > 0) {
     auto allocated =
         workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-    if (!allocated.ok() || (*workspace = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (*workspace = allocated.value()) == nullptr) {
       LOG(ERROR) << "Failed to allocate RNN workspace";
 
       return false;
@@ -2186,7 +2186,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
       auto allocated =
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
       if (!allocated.ok() ||
-          (reserve_space = allocated.ValueOrDie()) == nullptr) {
+          (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return false;
       }
@@ -2476,7 +2476,7 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
     }
     auto scratch_or = scratch_allocator->AllocateBytes(workspace_size_in_bytes);
     if (scratch_or.ok()) {
-      *scratch_memory = scratch_or.ValueOrDie();
+      *scratch_memory = scratch_or.value();
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
@@ -2491,7 +2491,7 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
     }
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status MIOpenSupport::DoCtcLossImpl(
@@ -2521,7 +2521,7 @@ port::Status MIOpenSupport::DoCtcLossImpl(
     return port::InternalError("Failure during MIOpen CTC Loss");
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::Status MIOpenSupport::DoCtcLoss(
@@ -2877,7 +2877,7 @@ void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
 
   DeviceMemory<uint8> scratch;
   if (allocated.ok()) {
-    scratch = allocated.ValueOrDie();
+    scratch = allocated.value();
     return scratch.opaque();
   } else {
     return nullptr;
@@ -2920,7 +2920,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     }
     auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
     if (allocated.ok()) {
-      *scratch_memory = allocated.ValueOrDie();
+      *scratch_memory = allocated.value();
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
@@ -2934,7 +2934,7 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     }
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 class RocmConvRunner : public dnn::ConvRunner {
@@ -3080,7 +3080,7 @@ class RocmConvRunner : public dnn::ConvRunner {
                        ::stream_executor::gpu::ToString(status)));
     }
 
-    return port::Status::OK();
+    return tsl::OkStatus();
   }
 
  private:
@@ -3168,7 +3168,7 @@ port::Status MIOpenSupport::GetConvolveRunners(
     out_runners->push_back(std::move(runner));
   }
 
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 port::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
@@ -3506,7 +3506,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     }
     auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
     if (allocated.ok()) {
-      scratch_memory = allocated.ValueOrDie();
+      scratch_memory = allocated.value();
     } else {
       LOG(FATAL)
           << "Failed to allocate scratch memory - "
@@ -4072,7 +4072,7 @@ port::Status MIOpenSupport::DoPoolForward(
     return port::InternalError(absl::StrCat(
         "Failed to enqueue forward pooling on stream: ", ToString(status)));
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 bool PoolingWorkspaceDescriptor::IsSame(
@@ -4214,7 +4214,7 @@ port::Status MIOpenSupport::DoPoolBackward(
       assert(workspace_allocator);
       auto allocated =
           workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-      if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
+      if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
         return port::InternalError(
             "Failed to allocate backward pooling workspace");
       }
@@ -4235,7 +4235,7 @@ port::Status MIOpenSupport::DoPoolBackward(
       if (dest2_size > 0) {
         assert(workspace_allocator);
         auto allocated = workspace_allocator->AllocateBytes(dest2_size);
-        if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
+        if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
           return port::InternalError(
               "Failed to allocate backward pooling workspace");
         }
@@ -4268,7 +4268,7 @@ port::Status MIOpenSupport::DoPoolBackward(
     return port::InternalError(absl::StrCat(
         "Failed to enqueue backward pooling on stream: ", ToString(status)));
   }
-  return port::Status::OK();
+  return tsl::OkStatus();
 }
 
 bool MIOpenSupport::DoNormalizeWithDimensions(
@@ -4347,7 +4347,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
     assert(workspace_allocator);
     auto allocated =
         workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-    if (!allocated.ok() || (workspace = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (workspace = allocated.value()) == nullptr) {
       LOG(ERROR) << "Failed to allocate backward pooling workspace";
       return false;
     }
@@ -4372,7 +4372,7 @@ bool MIOpenSupport::DoNormalizeBackwardWithDimensions(
   if (dest2_size > 0) {
     assert(workspace_allocator);
     auto allocated = workspace_allocator->AllocateBytes(dest2_size);
-    if (!allocated.ok() || (dest2 = allocated.ValueOrDie()) == nullptr) {
+    if (!allocated.ok() || (dest2 = allocated.value()) == nullptr) {
       LOG(ERROR)
           << "Failed to allocate tensor to chain forward and backward LRN";
       return false;

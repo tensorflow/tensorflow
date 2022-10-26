@@ -22,6 +22,14 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.tools.docs import doc_controls
+
+_FEATURE_COLUMN_DEPRECATION_WARNING = """\
+    Warning: tf.feature_column is not recommended for new code. Instead,
+    feature preprocessing can be done directly using [Keras preprocessing
+    layers](https://www.tensorflow.org/guide/migrate/migrating_feature_columns).
+    See the [migration guide](https://tensorflow.org/guide/migrate) for details.
+    """
 
 
 _FEATURE_COLUMNS = [
@@ -35,6 +43,7 @@ _FEATURE_COLUMNS = [
 ]
 
 
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('__internal__.feature_column.serialize_feature_column', v1=[])
 def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
@@ -84,6 +93,8 @@ def serialize_feature_column(fc):
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
 
 
+
+@doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export('__internal__.feature_column.deserialize_feature_column', v1=[])
 def deserialize_feature_column(config,
                                custom_objects=None,
@@ -140,6 +151,7 @@ def deserialize_feature_column(config,
   # (new_instance remains unused).
   return columns_by_name.setdefault(
       _column_name_with_class_name(new_instance), new_instance)
+
 
 
 def serialize_feature_columns(feature_columns):

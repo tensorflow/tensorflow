@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 package(
     licenses = ["notice"],
@@ -13,7 +13,7 @@ pytype_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/types",
+        ":function_type",
     ],
 )
 
@@ -22,6 +22,7 @@ py_strict_test(
     srcs = ["type_dispatch_test.py"],
     python_version = "PY3",
     deps = [
+        ":function_type",
         ":type_dispatch",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
@@ -36,6 +37,7 @@ pytype_strict_library(
         "//tensorflow/python/eager:__subpackages__",
     ],
     deps = [
+        ":function_type",
         "//tensorflow/core/function/polymorphism:type_dispatch",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python/types",
@@ -51,10 +53,36 @@ py_strict_test(
     visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
         ":function_cache",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python/eager:function_context",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types",
+    ],
+)
+
+pytype_strict_library(
+    name = "function_type",
+    srcs = [
+        "function_type.py",
+    ],
+    srcs_version = "PY3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/types",
+    ],
+)
+
+py_strict_test(
+    name = "function_type_test",
+    srcs = ["function_type_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":function_type",
+        "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/types",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

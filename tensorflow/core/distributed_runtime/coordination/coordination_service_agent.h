@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_COORDINATION_COORDINATION_SERVICE_AGENT_H_
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_client.h"
@@ -71,10 +73,6 @@ class CoordinationServiceAgent {
   virtual ~CoordinationServiceAgent() {}
 
   // Initialize coordination service agent.
-  virtual Status Initialize(
-      tsl::Env* env, const ServerDef& server_def,
-      std::unique_ptr<CoordinationClientCache> client_cache,
-      StatusCallback error_fn) = 0;
   virtual Status Initialize(tsl::Env* env, const std::string& job_name,
                             int task_id,
                             const CoordinationServiceConfig& configs,
@@ -88,6 +86,13 @@ class CoordinationServiceAgent {
   // Return true if the coordination service agent has been initialized.
   virtual bool IsInitialized() = 0;
 
+  // Return true if the coordination service agent has successfully connected
+  // with the Coordination Service
+  virtual bool IsConnected() = 0;
+
+  // Return true if the coordination service agent has an error state.
+  virtual bool IsError() = 0;
+
   // Connect to coordination service with the following steps:
   //   - connect to service address specified in the config of `server_def`
   //   - register itself as a task to the service
@@ -95,7 +100,8 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in DISCONNECTED state.
   //   - InvalidArgument: Unexpected task registration
-  //   - Aborted: Duplicate task registration
+  //   - Aborted: Duplicate task registration (agent will retry connecting until
+  //              the configured timeout)
   virtual Status Connect() = 0;
 
   // Wait for all tasks to be up and registered. The call blocks until all tasks
@@ -103,11 +109,10 @@ class CoordinationServiceAgent {
   // Possible service errors:
   //   - FailedPrecondition: Agent is not in CONNECTED state.
   //   - InvalidArgument: Unexpected task request
-  virtual Status WaitForAllTasks(
-      const CoordinationServiceDeviceInfo& local_devices) = 0;
+  virtual Status WaitForAllTasks(const DeviceInfo& local_devices) = 0;
 
   // Get the device attributes of tasks from remote tasks in the cluster.
-  virtual const CoordinationServiceDeviceInfo& GetClusterDeviceInfo() = 0;
+  virtual const DeviceInfo& GetClusterDeviceInfo() = 0;
 
   // State transition in coordination service agent:
   //
@@ -121,8 +126,8 @@ class CoordinationServiceAgent {
   virtual StatusOr<CoordinatedTask> GetOwnTask() = 0;
 
   // Get status of a remote task.
-  virtual StatusOr<CoordinatedTaskState> GetTaskStatus(
-      const CoordinatedTask& task) = 0;
+  virtual StatusOr<std::vector<CoordinatedTaskStateInfo>> GetTaskState(
+      const std::vector<CoordinatedTask>& task) = 0;
 
   // Report error to coordination service. This will invoke the error callback.
   // Note that the error payload will set `is_reported_error` to true, to

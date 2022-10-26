@@ -30,8 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/status.h"
 
@@ -68,7 +67,7 @@ bool IsNonIdentityTranspose(const HloInstruction* instruction) {
   return false;
 }
 
-void TransposeDims(tensorflow::protobuf::RepeatedField<int64_t>& dims,
+void TransposeDims(tsl::protobuf::RepeatedField<int64_t>& dims,
                    absl::Span<const int64_t> transpose_dims) {
   for (auto& dim : dims) {
     dim = transpose_dims[dim];

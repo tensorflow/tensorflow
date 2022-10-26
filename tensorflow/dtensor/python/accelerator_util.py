@@ -16,7 +16,6 @@
 
 from typing import List, Optional
 
-from absl import flags
 from absl import logging
 
 from tensorflow.core.protobuf import cluster_pb2
@@ -26,7 +25,6 @@ from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import tpu_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.platform import remote_utils
 from tensorflow.python.util.tf_export import tf_export
 
@@ -43,6 +41,7 @@ def initialize_multi_client_cluster(job_name: str,
                                     client_id: int,
                                     collective_leader: str,
                                     port: Optional[int] = None,
+                                    gpu_use_nccl_communication: bool = False,
                                     enable_coordination_service: bool = False):
   """Initialize GRPC servers and collectives for multi-client DTensor setup.
 
@@ -60,6 +59,8 @@ def initialize_multi_client_cluster(job_name: str,
     collective_leader: The job/task that will be used to run collectives.
     port: The port this client's GRPC server will run on. If omitted, use the
       port from dtensor_jobs for this client.
+    gpu_use_nccl_communication: if True, configure TensorFlow to use NCCL by
+      default.
     enable_coordination_service: If true, enable distributed coordination
       service to make sure that workers know the devices on each other, a
       prerequisite for data transfer through cross-worker rendezvous.
@@ -72,8 +73,15 @@ def initialize_multi_client_cluster(job_name: str,
   if not collective_leader.startswith("/job:"):
     collective_leader = "/job:" + collective_leader
 
+  context.context().configure_collective_ops(
+      use_nccl_communication=gpu_use_nccl_communication,
+      collective_leader=collective_leader)
+  if enable_coordination_service:
+    context.context().configure_coordination_service(
+        service_type="standalone", service_leader=collective_leader)
+
   config_proto = context.get_config()
-  config_proto.experimental.collective_group_leader = collective_leader
+
   # Construct server def from the host directly instead of relying on
   # TF_CONFIG.
   cluster_def = cluster_pb2.ClusterDef()
@@ -91,23 +99,11 @@ def initialize_multi_client_cluster(job_name: str,
   server_def.default_session_config.rpc_options.num_channels_per_target = 4
   server_def.default_session_config.experimental.recv_buf_max_chunk = -1
 
-  context.context().configure_collective_ops(
-      collective_leader=collective_leader)
-  if enable_coordination_service:
-    context.context().configure_coordination_service(
-        service_type="standalone", service_leader=collective_leader)
-
   logging.info("Enabling collectives with server_def: %s", server_def)
+
   context.context().enable_collective_ops(server_def)
+
   context.ensure_initialized()
-
-
-def _configure_tpu_runtime():
-  was_enabled = context.is_tfrt_enabled()
-  if ("tpu_use_tfrt" in flags.FLAGS and flags.FLAGS["tpu_use_tfrt"].value):
-    tfrt_utils.set_tfrt_enabled(True)
-  if not was_enabled:
-    context._reset_context()  # pylint:disable=protected-access
 
 
 @tf_export(
@@ -167,6 +163,12 @@ def initialize_accelerator_system(
         "Accelerator system has already been initialized. "
         "Call tf.experimental.dtensor.shutdown_accelerator_system() first.")
 
+  if context.context()._initialized:  # pylint: disable=protected-access
+    raise ValueError(
+        "TensorFlow has already been initialized. "
+        "tf.experimental.dtensor.initialize_accelerator_system() must be "
+        "called before TensorFlow is initialized.")
+
   context.context()._clear_caches()  # pylint: disable=protected-access
 
   if device_type is None:
@@ -177,9 +179,15 @@ def initialize_accelerator_system(
     raise ValueError(f"Unknown device_type {device_type}. "
                      "Allowed values are CPU, GPU, or TPU")
 
-  # Reconfigure TensorFlow to use TFRT TPU runtime if requested.
-  if device_type == "TPU":
-    _configure_tpu_runtime()
+  if config.gpu_use_nccl_communication():
+    logical_gpu_count = api.num_local_devices("GPU")
+    physical_gpu_count = len(tf_config.list_physical_devices("GPU"))
+    if logical_gpu_count != physical_gpu_count:
+      raise ValueError(
+          f"DTENSOR_GPU_USE_NCCL_COMMUNICATION is set for using NCCL. "
+          f"NCCL Collectives require same number of logical and physical GPUs. "
+          f"The number of logical GPU ({logical_gpu_count}) "
+          f"differs from the number of physical GPU ({physical_gpu_count}).")
 
   # Configure logical host CPU devices for accelerators.
   if device_type in ("GPU", "TPU"):
@@ -195,7 +203,14 @@ def initialize_accelerator_system(
         dtensor_jobs=config.jobs(),
         client_id=config.client_id(),
         collective_leader=config.full_job_name(task_id=0),
+        gpu_use_nccl_communication=config.gpu_use_nccl_communication(),
         enable_coordination_service=enable_coordination_service)
+  else:
+    if device_type == "GPU":
+      # Enables Nccl on local mode.
+      context.context(  # pylint: disable=protected-access
+      )._collective_use_nccl_communication = config.gpu_use_nccl_communication(
+      )
 
   if device_type == "TPU":
     tpu_util.initialize_tpu_system()

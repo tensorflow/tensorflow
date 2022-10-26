@@ -74,7 +74,8 @@ void populateHloShapeOpsToStandardConversionPattern(
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
 void populateHloToLinalgConversionPattern(MLIRContext *context,
                                           TypeConverter &typeConverter,
-                                          RewritePatternSet *patterns);
+                                          RewritePatternSet *patterns,
+                                          bool enablePrimitiveOps = false);
 
 // Collection of rewrite patterns for lowering of HLO dim operations.
 void populateShapeComputationPatterns(MLIRContext *context,
@@ -171,6 +172,26 @@ void populateDecomposeChloPatterns(MLIRContext *context,
                                    RewritePatternSet *patterns);
 
 }  // namespace chlo
+
+namespace stablehlo {
+
+// Populates MHLO ops to StableHLO ops rewriting patterns.
+// Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
+// which make sure `func.func`, `func.call` and `func.return` which involve
+// illegal types also get converted.
+void populateHloToStablehloPatterns(RewritePatternSet *patterns,
+                                    TypeConverter *converter,
+                                    MLIRContext *context);
+
+// Populates StableHLO ops to MHLO ops rewriting patterns.
+// Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
+// which make sure `func.func`, `func.call` and `func.return` which involve
+// illegal types also get converted.
+void populateStablehloToHloPatterns(RewritePatternSet *patterns,
+                                    TypeConverter *converter,
+                                    MLIRContext *context);
+
+}  // namespace stablehlo
 
 }  // namespace mlir
 

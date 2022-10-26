@@ -2607,3 +2607,39 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     func.return %0 : tensor<128xf32>
   }
 }
+
+// -----
+// CHECK-LABEL: func @return_from_host_and_tpu
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1199 : i32}} {
+  func.func @return_from_host_and_tpu() -> (tensor<?xi32>, tensor<?x!tf_type.string>) attributes {tf._construction_context = "kEagerRuntime", tf.signature.is_stateful} {
+      // CHECK:     %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
+      // CHECK:       %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK:         %[[B_OUTPUT:[0-9]*]] = "tf.B"
+      // CHECK:         tf_device.return %[[B_OUTPUT:[0-9]*]]
+      // CHECK:       device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:       %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:    %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK:         tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:       device = "/job:localhost/replica:0/task:0/device:TPU:0"
+      // CHECK:    return %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]#1, %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]#0
+    %0:2 = "tf_device.parallel_execute"() ({
+      %1 = "tf_device.launch"() ({
+        %2 = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<3x!tf_type.string>
+        %3 = "tf._XlaRecvAtHost"(%2) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_0_args"} : (tensor<3x!tf_type.string>) -> tensor<?xi32>
+        %4 = "tf.B"(%3) : (tensor<?xi32>) -> tensor<?x!tf_type.string>
+        tf_device.return %4 : tensor<?x!tf_type.string>
+      }) {device = "/job:localhost/replica:0/task:0/device:CPU:0"} : () -> tensor<?x!tf_type.string>
+      tf_device.return %1 : tensor<?x!tf_type.string>
+    }, {
+      %1 = "tf_device.cluster_func"() {step_marker_location = "STEP_MARK_AT_ENTRY", _replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = true, computation_shape = [], device = "", device_assignment = [], func = @_func, input_sharding_configuration = [], num_cores_per_replica = 1 : i64, output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> tensor<?xi32>
+      tf_device.return %1 : tensor<?xi32>
+    }) : () -> (tensor<?x!tf_type.string>, tensor<?xi32>)
+    return %0#1, %0#0 : tensor<?xi32>, tensor<?x!tf_type.string>
+  }
+  func.func private @_func() -> (tensor<?xi32> {mhlo.sharding = "\08\01\1A\01\01\22\01\00"}) {
+    %0 = "tf.A"() : () -> tensor<?xi32>
+    "tf._XlaHostComputeMlir"(%0) {host_mlir_module = "", recv_key = "host_compute_channel_0_retvals", send_key = "host_compute_channel_0_args"} : (tensor<?xi32>) -> ()
+    %1 = "tf.C"() : () -> tensor<?xi32>
+    return %1 : tensor<?xi32>
+  }
+}
