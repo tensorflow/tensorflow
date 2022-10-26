@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/vector_utils.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -442,26 +443,6 @@ LogicalResult MultiDimReductionOpToWarpReductionPattern::matchAndRewrite(
   return success();
 }
 
-template <typename TransferOp>
-static LogicalResult matchCannonicalTransferOp(TransferOp op,
-                                               PatternRewriter& rewriter) {
-  auto isZeroIndex = [](Value value) {
-    auto constIndex = value.getDefiningOp<arith::ConstantIndexOp>();
-    return constIndex && constIndex.value() == 0;
-  };
-  if (!llvm::all_of(op.getIndices(), isZeroIndex)) {
-    return rewriter.notifyMatchFailure(op, "should have all indices set to 0");
-  }
-  if (!op.getPermutationMap().isMinorIdentity()) {
-    return rewriter.notifyMatchFailure(op,
-                                       "expected cannonical permutation map");
-  }
-  if (op.getMask()) {
-    return rewriter.notifyMatchFailure(op, "should have no mask");
-  }
-  return success();
-}
-
 SubViewOp createSubView(Location loc, Value source, TileOp tile,
                         PatternRewriter& rewriter) {
   auto asIntArray = [](ArrayAttr array) {
@@ -494,8 +475,7 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
     return rewriter.notifyMatchFailure(transferRead,
                                        "expected memref as source");
   }
-  if (failed(matchCannonicalTransferOp(transferRead, rewriter)))
-    return failure();
+  if (failed(matchSimpleTransferOp(transferRead, rewriter))) return failure();
 
   auto tile = materialize.getSet().getDefiningOp<TileOp>();
   if (!tile) {
@@ -532,8 +512,7 @@ LogicalResult EliminateDistributeIntoTransferWritePattern::matchAndRewrite(
     return rewriter.notifyMatchFailure(transferWrite,
                                        "expected memref as destination");
   }
-  if (failed(matchCannonicalTransferOp(transferWrite, rewriter)))
-    return failure();
+  if (failed(matchSimpleTransferOp(transferWrite, rewriter))) return failure();
 
   auto distribute = transferWrite.getVector().getDefiningOp<DistributeOp>();
   if (!distribute) {

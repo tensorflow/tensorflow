@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <memory>
 #include <utility>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
+#include "mlir-hlo/Dialect/gml_st/transforms/vector_utils.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
@@ -190,6 +192,48 @@ struct TensorToElementVectorizationPattern
 
  private:
   llvm::function_ref<bool(tensor::ExtractOp)> filterFn;
+};
+
+// Rewrite vector.transfer_read(tensor.empty) into a constant vector of the
+// right size. This is our temporary way of expressing the nonexistent
+// vector.undef, which creates a vector to be used in destination-passing-style
+// ops.
+// TODO(b/255779480): Figure out how to properly solve this issue.
+struct TensorEmptyToVectorBroadcastPattern
+    : public OpRewritePattern<TransferReadOp> {
+  TensorEmptyToVectorBroadcastPattern(
+      MLIRContext *context, llvm::function_ref<bool(TransferReadOp)> filterFn,
+      PatternBenefit benefit = 1)
+      : OpRewritePattern(context, benefit), filterFn(filterFn) {}
+
+  LogicalResult matchAndRewrite(TransferReadOp op,
+                                PatternRewriter &rewriter) const override {
+    if (failed(matchSimpleTransferOp(op, rewriter))) return failure();
+    auto tensorEmpty = op.getSource().getDefiningOp<tensor::EmptyOp>();
+    if (!tensorEmpty)
+      return rewriter.notifyMatchFailure(op, "source should be tensor.empty");
+    VectorType vectorType = op.getResult().getType().dyn_cast<VectorType>();
+    if (!vectorType)
+      return rewriter.notifyMatchFailure(op, "result should be a vector");
+    Type elementType = vectorType.getElementType();
+    TypedAttr nanAttr;
+    if (elementType.isa<IntegerType>()) {
+      nanAttr = rewriter.getIntegerAttr(elementType, 0l);
+    } else if (elementType.isa<FloatType>()) {
+      nanAttr = rewriter.getFloatAttr(elementType,
+                                      std::numeric_limits<double>::quiet_NaN());
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "should operate on integer or floating point vectors");
+    }
+
+    rewriter.replaceOpWithNewOp<arith::ConstantOp>(
+        op, DenseElementsAttr::get(vectorType, nanAttr));
+    return success();
+  }
+
+ private:
+  llvm::function_ref<bool(TransferReadOp)> filterFn;
 };
 
 struct MaterializeOpVectorizationPattern
@@ -461,7 +505,8 @@ struct VectorizeGmlStLoopsPass
     patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
     patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
     patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
-    patterns.add<TensorToElementVectorizationPattern>(ctx, isValidDistribution);
+    patterns.add<TensorToElementVectorizationPattern,
+                 TensorEmptyToVectorBroadcastPattern>(ctx, isValidDistribution);
     if (vectorizeGmlStOps) {
       patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
       patterns.add<LoopLikeOpVectorizationPattern<ParallelOp>,

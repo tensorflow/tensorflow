@@ -147,3 +147,29 @@ func.func @zero_dim_element_tensor_to_element(%in : vector<f32>) -> f32 {
 }
 // CHECK: %[[RESULT:.*]] = vector.extractelement %[[IN]][]
 // CHECK: return %[[RESULT]]
+
+// -----
+
+// CHECK-LABEL: @read_of_empty_float_to_constant(
+func.func @read_of_empty_float_to_constant(%pad : f32) -> vector<32xf32> {
+  %empty = tensor.empty() : tensor<32xf32>
+  %c0 = arith.constant 0 : index
+  %r = vector.transfer_read %empty[%c0], %pad {in_bounds = [true]}
+    : tensor<32xf32>, vector<32xf32>
+  return %r : vector<32xf32>
+}
+// CHECK: %[[RESULT:.*]] = arith.constant dense<0x7FC00000> : vector<32xf32>
+// CHECK: return %[[RESULT]]
+
+// -----
+
+// CHECK-LABEL: @read_of_empty_int_to_constant(
+func.func @read_of_empty_int_to_constant(%pad : i8) -> vector<32xi8> {
+  %empty = tensor.empty() : tensor<32xi8>
+  %c0 = arith.constant 0 : index
+  %r = vector.transfer_read %empty[%c0], %pad {in_bounds = [true]}
+    : tensor<32xi8>, vector<32xi8>
+  return %r : vector<32xi8>
+}
+// CHECK: %[[RESULT:.*]] = arith.constant dense<0> : vector<32xi8>
+// CHECK: return %[[RESULT]]
