@@ -51,9 +51,11 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
     auto os_input = input->output_shapes();
     auto os_concatenate = to_concatenate->output_shapes();
+    std::unique_ptr<PartialTensorShape> output_tensorshape(nullptr);
     for (int i = 0; i < os_input.size(); i++) {
-      output_shapes_.push_back(
-          MostSpecificCompatibleShape(os_input[i], os_concatenate[i]));
+      OP_REQUIRES_OK(ctx, MostSpecificCompatibleShape(os_input[i], os_concatenate[i], 
+                                        &output_tensorshape));
+      output_shapes_.push_back(*output_tensorshape.get());
     }
   }
   ~Dataset() override {
@@ -237,20 +239,23 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     std::vector<IteratorContext> input_contexts_;
   };
 
-  static PartialTensorShape MostSpecificCompatibleShape(
-      const PartialTensorShape& ts1, const PartialTensorShape& ts2) {
+  Status MostSpecificCompatibleShape(
+      const PartialTensorShape& ts1, const PartialTensorShape& ts2, 
+      std::unique_ptr<PartialTensorShape>* output_tensorshape) {
     if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
-      return PartialTensorShape();
-    PartialTensorShape output_tensorshape({});
+      *output_tensorshape = std::make_unique<PartialTensorShape>();
+      return OkStatus();
+    *output_tensorshape = std::make_unique<PartialTensorShape>({});
     auto dims1 = ts1.dim_sizes();
     auto dims2 = ts2.dim_sizes();
     for (int d = 0; d < ts1.dims(); d++) {
       if (dims1[d] == dims2[d])
-        output_tensorshape.AddDim(dims1[d]);
+          TF_RETURN_IF_ERROR(
+              (*output_tensorshape)->AddDimWithStatus(dims1[d]));
       else
-        output_tensorshape.AddDim(-1);
+        (*output_tensorshape)->AddDim(-1);
     }
-    return output_tensorshape;
+    return OkStatus();
   }
 
   const DatasetBase* input_;
