@@ -130,6 +130,25 @@ struct DimOpReificationPattern : public OpRewritePattern<tensor::DimOp> {
   }
 };
 
+// Finds the `dst` operand of `setYieldOp` that matches `currentDst` and then
+// replaces it with the corresponding `init` operand of the defining op of
+// `currentDst`. At the moment this update is restricted to `linalg.fill` only,
+// later it can be relaxed to support fusion of transposes into
+// `gml_st.parallel`.
+LogicalResult replaceSetYieldDstByProducerInit(SetYieldOp setYieldOp,
+                                               Value currentDst) {
+  auto fillOp = currentDst.getDefiningOp<linalg::FillOp>();
+  if (!fillOp) return failure();
+
+  Value init = fillOp.getOutputOperand(0)->get();
+  for (OpOperand& operand : setYieldOp->getOpOperands()) {
+    if (operand.get() != currentDst) continue;
+    operand.set(init);
+    return success();
+  }
+  return failure();
+}
+
 class FusionPattern : public OpRewritePattern<MaterializeOp> {
  public:
   FusionPattern(MLIRContext* context,
@@ -159,9 +178,20 @@ class FusionPattern : public OpRewritePattern<MaterializeOp> {
         fused = rewriter.create<tensor::ExtractOp>(
             loc, fused, SmallVector<Value>(tensorType.getRank(), zero));
       } else {
-        // the result should be a tensor, cast it to the correct shape
+        // The result should be a tensor, cast it to the correct shape
         fused = rewriter.create<tensor::CastOp>(loc, materializeOp.getType(),
                                                 fused);
+      }
+    }
+
+    // Update destination argument of SetYieldOp if we are fusing into the
+    // output tile.
+    if (auto parallelOp = dyn_cast<ParallelOp>(materializeOp->getParentOp())) {
+      SetYieldOp setYieldOp = parallelOp.getTerminator();
+      Value src = materializeOp.getSource();
+      if (llvm::is_contained(src.getUsers(), setYieldOp)) {
+        if (failed(replaceSetYieldDstByProducerInit(setYieldOp, src)))
+          return failure();
       }
     }
 
