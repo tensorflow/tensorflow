@@ -543,6 +543,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/tsl/platform:denormal",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:setround",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//third_party/eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
