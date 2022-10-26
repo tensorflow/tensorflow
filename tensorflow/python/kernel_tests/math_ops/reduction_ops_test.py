@@ -968,7 +968,8 @@ class MaxReductionTest(test.TestCase):
       self.skipTest("Bfloat16 requires compute capability 8.0")
     # Create a 3D array of floats and reduce across all possible
     # dimensions
-    np_arr = np.arange(-31, -1).reshape([2, 3, 5]).astype(dtypes.bfloat16.as_numpy_dtype)
+    np_arr = np.arange(-31, -1).reshape([2, 3, 5]).astype(
+        dtypes.bfloat16.as_numpy_dtype)
     self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])
