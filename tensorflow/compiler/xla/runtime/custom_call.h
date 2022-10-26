@@ -1560,19 +1560,14 @@ struct DecodeAggregateAttr {
         if (attrs[i].name != names[i]) return failure();
     }
 
-    // Check if all members were decoded.
-    bool all_decoded = true;
-    auto check_all_decoded = [&](auto result) {
-      all_decoded &= succeeded(result);
-      return std::move(result);
-    };
-
     // Decode all arguments into FailureOr containers. It is guaranteed
     // that initializer list will be evaluated left-to-right, and we can rely
     // on correct offsets computation.
     std::tuple<FailureOr<Ts>...> members = {
-        check_all_decoded(CustomCallAttrDecoding<Ts, checks>::Decode(
-            attrs[Is].name, attrs[Is].type_id, attrs[Is].value))...};
+        CustomCallAttrDecoding<Ts, checks>::Decode(
+            attrs[Is].name, attrs[Is].type_id, attrs[Is].value)...};
+
+    bool all_decoded = (succeeded(std::get<Is>(members)) && ...);
     if (LLVM_UNLIKELY(!all_decoded)) return failure();
 
     // Forward unpacked members to the type constructor.
