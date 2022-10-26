@@ -157,6 +157,41 @@ void convertVectorResultsToTensor(ValueRange results, ValueRange destinations,
   }
 }
 
+// Rewrite tensor.extract on single-element tensors into a vector.extract.
+struct TensorToElementVectorizationPattern
+    : public mlir::OpRewritePattern<tensor::ExtractOp> {
+  TensorToElementVectorizationPattern(
+      MLIRContext *context, llvm::function_ref<bool(tensor::ExtractOp)> matchFn,
+      mlir::PatternBenefit benefit = 1)
+      : mlir::OpRewritePattern<tensor::ExtractOp>(context, benefit),
+        filterFn(matchFn) {}
+
+  LogicalResult matchAndRewrite(tensor::ExtractOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!filterFn(op))
+      return rewriter.notifyMatchFailure(op, "did not match filter");
+    TensorType tensorType = op.getTensor().getType();
+    if (tensorType.getNumDynamicDims() > 0 || tensorType.getNumElements() > 1)
+      return rewriter.notifyMatchFailure(op, "should have a single element");
+
+    BlockAndValueMapping bvm;
+    convertTensorOperandsToVector(op, bvm, rewriter);
+    if (tensorType.getRank() == 0) {
+      // ExtractOp only supports ranks > 0, for rank = 0 use ExtractElementOp
+      rewriter.replaceOpWithNewOp<vector::ExtractElementOp>(
+          op, bvm.lookupOrDefault(op.getTensor()));
+    } else {
+      rewriter.replaceOpWithNewOp<vector::ExtractOp>(
+          op, bvm.lookupOrDefault(op.getTensor()),
+          SmallVector<int64_t, 1>(tensorType.getRank(), 0));
+    }
+    return success();
+  }
+
+ private:
+  llvm::function_ref<bool(tensor::ExtractOp)> filterFn;
+};
+
 struct MaterializeOpVectorizationPattern
     : public OpRewritePattern<MaterializeOp> {
   MaterializeOpVectorizationPattern(
@@ -426,6 +461,7 @@ struct VectorizeGmlStLoopsPass
     patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
     patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
     patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);
+    patterns.add<TensorToElementVectorizationPattern>(ctx, isValidDistribution);
     if (vectorizeGmlStOps) {
       patterns.add<MaterializeOpVectorizationPattern>(ctx, materializeOpFilter);
       patterns.add<LoopLikeOpVectorizationPattern<ParallelOp>,
