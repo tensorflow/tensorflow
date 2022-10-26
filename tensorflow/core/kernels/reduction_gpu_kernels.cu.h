@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <sstream>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -141,9 +141,10 @@ struct HalfToFloat {
   }
 };
 
+template <typename T>
 struct FloatToHalf {
-  __host__ __device__ Eigen::half operator()(const float& x) const {
-    return static_cast<Eigen::half>(x);
+  __host__ __device__ T operator()(const float& x) const {
+    return static_cast<T>(x);
   }
 };
 
@@ -1136,6 +1137,41 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
   }
 };
 
+// Specialization for bfloat16 with fp32 accumulation.
+template <>
+struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<Eigen::bfloat16>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(
+      OpKernelContext* ctx, OUT_T out, IN_T in,
+      const ReductionAxes& reduction_axes,
+      const Eigen::internal::SumReducer<Eigen::bfloat16>& reducer) {
+    typedef gpuprim::TransformInputIterator<float, HalfToFloat<Eigen::bfloat16>,
+                                            Eigen::bfloat16*>
+        inputIterType;
+    inputIterType input_itr((Eigen::bfloat16*)in.data(),
+                            HalfToFloat<Eigen::bfloat16>());
+
+    typedef TransformOutputIterator<Eigen::bfloat16, float,
+                                    FloatToHalf<Eigen::bfloat16>>
+        outputIterType;
+    outputIterType itr((Eigen::bfloat16*)out.data(),
+                       FloatToHalf<Eigen::bfloat16>());
+
+    ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType,
+               ReductionAxes>(ctx, itr, input_itr, in.rank(), in.dimension(0),
+                              in.rank() >= 2 ? in.dimension(1) : 1,
+                              in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
+                              reduction_axes, gpuprim::Sum());
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(
+      const GPUDevice& d, OUT_T out,
+      const Eigen::internal::SumReducer<Eigen::bfloat16>& reducer) {
+    FillIdentityEigenImpl(d, out, reducer);
+  }
+};
+
 // TODO(rmlarsen): Specialize for float16.
 template <typename T>
 struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
@@ -1198,9 +1234,10 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<T>> {
 };
 
 template <typename T, typename OUT_T, typename IN_T, typename ReductionAxes>
-void ReduceMeanWithFloatAccumulationImpl(OpKernelContext* ctx, OUT_T out, IN_T in,
-                     const ReductionAxes& reduction_axes,
-                     const functor::MeanReducer<T>& reducer) {
+void ReduceMeanWithFloatAccumulationImpl(
+    OpKernelContext* ctx, OUT_T out, IN_T in,
+    const ReductionAxes& reduction_axes,
+    const functor::MeanReducer<T>& reducer) {
   float divisor = 1.f;
   if (out.rank() == 0)
     divisor = in.size();
@@ -1209,7 +1246,7 @@ void ReduceMeanWithFloatAccumulationImpl(OpKernelContext* ctx, OUT_T out, IN_T i
   else if (out.rank() == 1 && in.rank() == 2 && reduction_axes[0] == 1)
     divisor = in.dimension(1);
   else if (out.rank() == 1 && in.rank() == 3 && reduction_axes[0] == 0 &&
-            reduction_axes[1] == 2)
+           reduction_axes[1] == 2)
     divisor = in.dimension(0) * in.dimension(2);
   else if (out.rank() == 2 && in.rank() == 3 && reduction_axes[0] == 1)
     divisor = in.dimension(1);
@@ -1219,16 +1256,14 @@ void ReduceMeanWithFloatAccumulationImpl(OpKernelContext* ctx, OUT_T out, IN_T i
       inputIterType;
   inputIterType input_itr((T*)in.data(), HalfToFloat<T>());
 
-  typedef TransformOutputIterator<T, float,
-                                  DividesBy<float, T>>
-      outputIterType;
+  typedef TransformOutputIterator<T, float, DividesBy<float, T>> outputIterType;
   outputIterType itr((T*)out.data(), div_op);
 
-  ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType,
-              ReductionAxes>(ctx, itr, input_itr, in.rank(), in.dimension(0),
-                            in.rank() >= 2 ? in.dimension(1) : 1,
-                            in.rank() >= 3 ? in.dimension(2) : 1, out.rank(),
-                            reduction_axes, gpuprim::Sum());
+  ReduceImpl<float, gpuprim::Sum, outputIterType, inputIterType, ReductionAxes>(
+      ctx, itr, input_itr, in.rank(), in.dimension(0),
+      in.rank() >= 2 ? in.dimension(1) : 1,
+      in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+      gpuprim::Sum());
 }
 
 template <>
@@ -1257,8 +1292,9 @@ struct ReduceFunctor<GPUDevice, functor::MeanReducer<Eigen::bfloat16>> {
   }
 
   template <typename OUT_T>
-  static void FillIdentity(const GPUDevice& d, OUT_T out,
-                           const functor::MeanReducer<Eigen::bfloat16>& reducer) {
+  static void FillIdentity(
+      const GPUDevice& d, OUT_T out,
+      const functor::MeanReducer<Eigen::bfloat16>& reducer) {
     FillIdentityEigenImpl(d, out, reducer);
   }
 };

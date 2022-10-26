@@ -255,7 +255,7 @@ class SumReductionTest(BaseReductionTest):
 
   @test_util.run_deprecated_v1
   def testBfloat16(self):
-    if not test_util.is_gpu_available(
+    if test_util.is_gpu_available() and not test_util.is_gpu_available(
           cuda_only=True, min_cuda_compute_capability=(8, 0)):
       self.skipTest("Bfloat16 requires compute capability 8.0")
     for rank in range(1, _MAX_RANK + 1):
@@ -514,7 +514,7 @@ class MeanReductionTest(BaseReductionTest):
   
   @test_util.run_deprecated_v1
   def testBfloat16(self):
-    if not test_util.is_gpu_available(
+    if test_util.is_gpu_available() and not test_util.is_gpu_available(
           cuda_only=True, min_cuda_compute_capability=(8, 0)):
       self.skipTest("Bfloat16 requires compute capability 8.0")
     for rank in range(1, _MAX_RANK + 1):
@@ -700,7 +700,7 @@ class ProdReductionTest(BaseReductionTest):
 
   @test_util.run_deprecated_v1
   def testBfloat16(self):
-    if not test_util.is_gpu_available(
+    if test_util.is_gpu_available() and not test_util.is_gpu_available(
           cuda_only=True, min_cuda_compute_capability=(8, 0)):
       self.skipTest("Bfloat16 requires compute capability 8.0")
     for rank in range(1, _MAX_RANK + 1):
@@ -963,7 +963,7 @@ class MaxReductionTest(test.TestCase):
     self._compareAll(np_arr, [0, 1, 2])
 
   def testBfloat16Reduce3D(self):
-    if not test_util.is_gpu_available(
+    if test_util.is_gpu_available() and not test_util.is_gpu_available(
           cuda_only=True, min_cuda_compute_capability=(8, 0)):
       self.skipTest("Bfloat16 requires compute capability 8.0")
     # Create a 3D array of floats and reduce across all possible

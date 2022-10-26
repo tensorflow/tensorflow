@@ -48,6 +48,9 @@ class ReduceTest(test_util.TensorFlowTestCase):
       self.assertEqual(y_tf, 21)
 
   def testReduceExtendType(self):
+    if test_util.is_gpu_available() and not test_util.is_gpu_available(
+          cuda_only=True, min_cuda_compute_capability=(8, 0)):
+      self.skipTest("Bfloat16 requires compute capability 8.0")
     in_f32 = np.random.randn(1000, 1000).astype(np.float32)
     in_bf16 = math_ops.cast(in_f32, dtypes.bfloat16)
 
