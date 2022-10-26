@@ -16,7 +16,6 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 
 package(
@@ -114,16 +113,19 @@ cc_test(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//third_party/pthreadpool",
         "@com_google_googletest//:gtest_main",
-        "@pthreadpool",
     ],
 )
 
-cc_library_with_tflite(
+cc_library(
     name = "vendor_delegate",
     hdrs = ["vendor_delegate.h"],
-    tflite_deps = [
-        "//tensorflow/lite/core/shims:delegate_plugin",
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "@org_tensorflow_lite_support//tensorflow_lite_support:__subpackages__",
     ],
-    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/core/experimental/acceleration/configuration/c:vendor_delegate",
+    ],
 )
