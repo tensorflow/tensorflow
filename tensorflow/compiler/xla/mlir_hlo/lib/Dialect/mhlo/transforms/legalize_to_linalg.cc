@@ -1686,7 +1686,7 @@ class MapOpToGenericConverter : public OpConversionPattern<mhlo::MapOp> {
   }
 };
 
-class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
+class MapOpToMapConverter : public OpConversionPattern<mhlo::MapOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
   LogicalResult matchAndRewrite(
@@ -1705,6 +1705,10 @@ class MapOpConverter : public OpConversionPattern<mhlo::MapOp> {
 
     auto linalgOp = rewriter.create<linalg::MapOp>(
         loc, resultType, adaptor.getOperands(), output);
+    // TODO(shyshkov): Add a builder for linalg::MapOp that accepts (inputs,
+    // init, attrs). Default builder can do either (inputs, init) or (all
+    // operands, attrs).
+    linalgOp->setAttrs(linalg::getPrunedAttributeList(op));
 
     // Convert the signature of the body. We scalarize the operands and add a
     // scalar operand representing the output tensor.
@@ -3416,6 +3420,104 @@ class DotGeneralOpConversion : public OpConversionPattern<mhlo::DotGeneralOp> {
   }
 };
 
+class SelectOpToMapConverter : public OpConversionPattern<mhlo::SelectOp> {
+ public:
+  using OpConversionPattern<mhlo::SelectOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::SelectOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    Location loc = op.getLoc();
+
+    // Find result type, if on tensors.
+    Optional<ShapedType> resultTy;
+    resultTy = typeConverter->convertType(op.getType()).dyn_cast<ShapedType>();
+
+    // Check result type compatibility.
+    if (!resultTy || !resultTy->hasRank() ||
+        !(resultTy->getElementType().isSignlessIntOrFloat() ||
+          resultTy->getElementType().isa<ComplexType>())) {
+      return rewriter.notifyMatchFailure(
+          op, "mismatched operand/result types or iterator count");
+    }
+
+    auto isScalar = [&](Value v) {
+      return v.getType().cast<ShapedType>().getRank() == 0;
+    };
+
+    // Predicate in mhlo.select can be a shaped type with the same size as other
+    // operands, or a scalar.
+    const bool isScalarPred = isScalar(op.getPred());
+    const bool allOperandsAreScalar =
+        isScalarPred && isScalar(op.getOnTrue()) && isScalar(op.getOnFalse());
+
+    // Within a linalg op, we can immediately de-tensorsize if the computation
+    // is scalar. We do not do this on the top-level, as that would break the
+    // nice invariant that all programs are exclusively on tensors, which is
+    // currently relied on for fusion in some pipelines.
+    if (allOperandsAreScalar && isInBodyOfLinalgOps(op)) {
+      SmallVector<Value> inputs;
+      for (auto input : adaptor.getOperands()) {
+        inputs.push_back(rewriter.create<tensor::ExtractOp>(loc, input));
+      }
+
+      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, resultTy->getElementType(), inputs, &rewriter);
+
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
+                                                          scalarResult);
+      return success();
+    }
+
+    Value predValue;
+    ValueRange mappedInputs = adaptor.getOperands();
+    // If predicate is a scalar, do not pass it as an argument to linalg.map,
+    // because linalg.map does not support broadcasting scalar values. Instead,
+    // extract the value and use it in the map block directly.
+    if (isScalarPred) {
+      predValue = rewriter.create<tensor::ExtractOp>(loc, adaptor.getPred());
+      mappedInputs = mappedInputs.drop_front();
+    }
+
+    auto emptyTensor =
+        getEmptyTensorFor(rewriter, loc, *resultTy, op, op.getOperands());
+
+    auto linalgOp = rewriter.create<linalg::MapOp>(loc, *resultTy, mappedInputs,
+                                                   emptyTensor);
+    linalgOp->setAttrs(linalg::getPrunedAttributeList(op));
+
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      Region& region = linalgOp.getRegion();
+
+      SmallVector<Type, 4> blockArgTypes;
+      SmallVector<Location, 4> blockArgLocs;
+      for (Value v : mappedInputs) {
+        blockArgTypes.push_back(getElementTypeOrSelf(v));
+        blockArgLocs.push_back(v.getLoc());
+      }
+
+      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
+                                          blockArgLocs);
+
+      // If predicate is scalar, the block has two arguments (on_true, on_false)
+      // and the predicate value is extracted outside of the block.
+      // If predicate is shaped, the block has three arguments (pred, on_true,
+      // on_false).
+      Value innerResult = rewriter.create<arith::SelectOp>(
+          loc, getElementTypeOrSelf(emptyTensor),
+          isScalarPred ? ValueRange{predValue, block->getArgument(0),
+                                    block->getArgument(1)}
+                       : block->getArguments());
+
+      rewriter.create<linalg::YieldOp>(loc, innerResult);
+    }
+
+    rewriter.replaceOp(op, linalgOp.getResult());
+    return success();
+  }
+};
+
 struct HloLegalizeToLinalgPass
     : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -3496,7 +3598,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::RoundNearestEvenOp>,
       PointwiseToLinalgConverter<mhlo::RoundOp>,
       PointwiseToLinalgConverter<mhlo::RsqrtOp>,
-      PointwiseToLinalgConverter<mhlo::SelectOp>,
       PointwiseToLinalgConverter<mhlo::ShiftLeftOp>,
       PointwiseToLinalgConverter<mhlo::ShiftRightArithmeticOp>,
       PointwiseToLinalgConverter<mhlo::ShiftRightLogicalOp>,
@@ -3526,11 +3627,13 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
 
   if (enablePrimitiveOps) {
     patterns->add<
-      MapOpConverter
+      MapOpToMapConverter,
+      SelectOpToMapConverter
     >(typeConverter, context);
   } else {
     patterns->add<
-      MapOpToGenericConverter
+      MapOpToGenericConverter,
+      PointwiseToLinalgConverter<mhlo::SelectOp>
     >(typeConverter, context);
   }
 
