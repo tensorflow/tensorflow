@@ -79,7 +79,7 @@ from tensorflow.lite.testing.op_tests.exp import make_exp_tests
 from tensorflow.lite.testing.op_tests.expand_dims import make_expand_dims_tests
 from tensorflow.lite.testing.op_tests.expm1 import make_expm1_tests
 from tensorflow.lite.testing.op_tests.eye import make_eye_tests
-from tensorflow.lite.testing.op_tests.fill import make_fill_tests
+from tensorflow.lite.testing.op_tests.fill import make_fill_tests, make_fill_16_tests
 from tensorflow.lite.testing.op_tests.floor import make_floor_tests
 from tensorflow.lite.testing.op_tests.fully_connected import make_fully_connected_tests
 from tensorflow.lite.testing.op_tests.fused_batch_norm import make_fused_batch_norm_tests

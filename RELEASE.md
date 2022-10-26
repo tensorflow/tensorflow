@@ -18,8 +18,9 @@
 
 # Major Features and Improvements
 
-*   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
-*   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.lite`:
+
+  * Add 16-bit float type support for built-in op `fill`.
 
 # Bug Fixes and Other Changes
 

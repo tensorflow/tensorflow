@@ -2574,6 +2574,7 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:string",
         "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
 )

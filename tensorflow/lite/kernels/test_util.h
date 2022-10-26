@@ -87,6 +87,11 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
   return f;
 }
 
+template <>
+constexpr TfLiteType typeToTfLiteType<Eigen::half>() {
+  return kTfLiteFloat16;
+}
+
 // A test model that contains a single operator. All operator inputs and
 // output are external to the model, so the tests can directly access them.
 // Typical usage:
@@ -977,6 +982,7 @@ template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
+  if (std::is_same<T, Eigen::half>::value) return TensorType_FLOAT16;
   if (std::is_same<T, double>::value) return TensorType_FLOAT64;
   if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, int16_t>::value) return TensorType_INT16;
