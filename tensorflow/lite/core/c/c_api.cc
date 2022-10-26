@@ -214,6 +214,11 @@ int32_t TfLiteInterpreterGetInputTensorCount(
   return static_cast<int32_t>(interpreter->impl->inputs().size());
 }
 
+const int* TfLiteInterpreterInputTensorIndices(
+    const TfLiteInterpreter* interpreter) {
+  return interpreter->impl->inputs().data();
+}
+
 TfLiteTensor* TfLiteInterpreterGetInputTensor(
     const TfLiteInterpreter* interpreter, int32_t input_index) {
   return interpreter->impl->tensor(interpreter->impl->inputs()[input_index]);
@@ -244,6 +249,16 @@ TfLiteStatus TfLiteInterpreterInvoke(TfLiteInterpreter* interpreter) {
 int32_t TfLiteInterpreterGetOutputTensorCount(
     const TfLiteInterpreter* interpreter) {
   return static_cast<int32_t>(interpreter->impl->outputs().size());
+}
+
+TfLiteTensor* TfLiteInterpreterGetTensor(const TfLiteInterpreter* interpreter,
+                                         int index) {
+  return interpreter->impl->tensor(index);
+}
+
+const int* TfLiteInterpreterOutputTensorIndices(
+    const TfLiteInterpreter* interpreter) {
+  return interpreter->impl->outputs().data();
 }
 
 const TfLiteTensor* TfLiteInterpreterGetOutputTensor(

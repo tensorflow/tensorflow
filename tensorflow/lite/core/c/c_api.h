@@ -298,6 +298,20 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterDelete(
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetInputTensorCount(
     const TfLiteInterpreter* interpreter);
 
+// Returns a pointer to an array of input tensor indices.  The length of the
+// array can be obtained via a call to `TfLiteInterpreterGetInputTensorCount`.
+//
+// Typically the input tensors associated with an `interpreter` would be set
+// during the initialization of the `interpreter`, through a mechanism like the
+// `InterpreterBuilder`, and remain unchanged throughout the lifetime of the
+// interpreter.  However, there are some circumstances in which the pointer may
+// not remain valid throughout the lifetime of the interpreter, because calls
+// to `SetInputs` on the interpreter invalidate the returned pointer.
+//
+// The ownership of the array remains with the TFLite runtime.
+TFL_CAPI_EXPORT const int* TfLiteInterpreterInputTensorIndices(
+    const TfLiteInterpreter* interpreter);
+
 // Returns the tensor associated with the input index.
 // REQUIRES: 0 <= input_index < TfLiteInterpreterGetInputTensorCount(tensor)
 TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteInterpreterGetInputTensor(
@@ -361,6 +375,20 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterInvoke(
 TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorCount(
     const TfLiteInterpreter* interpreter);
 
+// Returns a pointer to an array of output tensor indices.  The length of the
+// array can be obtained via a call to `TfLiteInterpreterGetOutputTensorCount`.
+//
+// Typically the output tensors associated with an `interpreter` would be set
+// during the initialization of the `interpreter`, through a mechanism like the
+// `InterpreterBuilder`, and remain unchanged throughout the lifetime of the
+// interpreter.  However, there are some circumstances in which the pointer may
+// not remain valid throughout the lifetime of the interpreter, because calls to
+// `SetOutputs` on the interpreter invalidate the returned pointer.
+//
+// The ownership of the array remains with the TFLite runtime.
+TFL_CAPI_EXPORT const int* TfLiteInterpreterOutputTensorIndices(
+    const TfLiteInterpreter* interpreter);
+
 // Returns the tensor associated with the output index.
 // REQUIRES: 0 <= output_index < TfLiteInterpreterGetOutputTensorCount(tensor)
 //
@@ -370,6 +398,32 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorCount(
 // calling TfLiteInterpreterInvoke().
 TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteInterpreterGetOutputTensor(
     const TfLiteInterpreter* interpreter, int32_t output_index);
+
+// Returns modifiable access to the tensor that corresponds to the
+// specified `index` and is associated with the provided `interpreter`.
+//
+// This requires the `index` to be between 0 and N - 1, where N is the
+// number of tensors in the model.
+//
+// Typically the tensors associated with the `interpreter` would be set during
+// the `interpreter` initialization, through a mechanism like the
+// `InterpreterBuilder`, and remain unchanged throughout the lifetime of the
+// interpreter.  However, there are some circumstances in which the pointer may
+// not remain valid throughout the lifetime of the interpreter, because calls to
+// `AddTensors` on the interpreter invalidate the returned pointer.
+//
+// Note the difference between this function and
+// `TfLiteInterpreterGetInputTensor` (or `TfLiteInterpreterGetOutputTensor` for
+// that matter): `TfLiteInterpreterGetTensor` takes an index into the array of
+// all tensors associated with the `interpreter`'s model, whereas
+// `TfLiteInterpreterGetInputTensor` takes an index into the array of input
+// tensors.
+//
+// The ownership of the tensor remains with the TFLite runtime, meaning the
+// caller should not deallocate the pointer.
+TFL_CAPI_EXPORT
+TfLiteTensor* TfLiteInterpreterGetTensor(const TfLiteInterpreter* interpreter,
+                                         int index);
 
 // Tries to cancel any in-flight invocation.
 //
