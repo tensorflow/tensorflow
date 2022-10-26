@@ -6,11 +6,11 @@
 
 # TODO(rdzhabarov): XLA should have its own tensorflow independent rule.
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow/tsl:tsl.bzl", "tsl_gpu_library")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "stream_executor_friends")
-load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 
 package(
     default_visibility = [
@@ -368,7 +368,7 @@ cc_library(
 )
 
 # It implements :stream_executor_pimpl_header
-tf_cuda_library(
+tsl_gpu_library(
     name = "stream_executor_pimpl",
     srcs = [
         "stream.cc",
@@ -742,24 +742,28 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
     deps = [
         ":stream_executor",
+        ":stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
 
-tf_cc_test(
+tsl_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
     deps = [
         ":dnn",
+        ":stream_executor_impl",
+        "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
