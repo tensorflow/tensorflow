@@ -3,7 +3,6 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/tensorflow:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 
 # TODO(b/249181641): Restructure source codes for TF quantization.
 package_group(
@@ -67,8 +66,8 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
-        "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:eval_util",
         "@llvm-project//llvm:Support",
@@ -366,7 +365,9 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
+    # Alwayslink is required for registering the MLIR passes.
+    # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
+    alwayslink = True,
 )
 
 cc_library(
@@ -379,14 +380,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Transforms",
+        ":quantization_options_proto_cc",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -401,15 +395,15 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_headers_only",
-        ],
-    ),
-    alwayslink = True,
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
 cc_library(
@@ -422,14 +416,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:SCFDialect",
-        "@llvm-project//mlir:ShapeDialect",
-        "@llvm-project//mlir:Transforms",
+        ":quantization_options_proto_cc",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/compiler/mlir/quantization/tensorflow:passes",
         "//tensorflow/compiler/mlir/tensorflow",
@@ -445,21 +432,31 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:statusor",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc_headers_only",
-        ],
-    ),
-    alwayslink = True,
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@llvm-project//mlir:Transforms",
+    ],
 )
 
+# OSS only: This target is header-only. Link `quantization_options_proto_impl` only to
+# `libtensorflow_framework.so` via `lib_internal_impl`. Do NOT link
+# `quantization_options_proto_impl` directly unless the target does not link
+# `libtensorflow_framework.so`.
 tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = [
+        ":internal_visibility_allowlist_package",
+        # To be visible from `lib_internal_impl`.
+        "//tensorflow/core:__pkg__",
+    ],
 )
 
 # copybara:uncomment_begin(google-only)
