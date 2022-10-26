@@ -22,6 +22,13 @@
 
   * Add 16-bit float type support for built-in op `fill`.
 
+* `tf.keras`:
+
+  * Added `tf.SparseTensor` input support to `tf.keras.layers.Embedding`
+    layer. The layer now accepts a new boolean argument `sparse`. If
+    `sparse` is set to True, the layer returns a SparseTensor instead of a
+    dense Tensor. Defaults to False.
+
 # Bug Fixes and Other Changes
 
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
