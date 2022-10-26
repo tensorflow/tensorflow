@@ -32,10 +32,8 @@ def tsl_gpu_cc_test(
         tags = [],
         data = [],
         size = "medium",
-        extra_copts = [],
         linkstatic = 0,
         args = [],
-        kernels = [],
         linkopts = [],
         **kwargs):
     """Create tests for cpu, gpu and optionally 2gpu
@@ -50,35 +48,30 @@ def tsl_gpu_cc_test(
       linkstatic: link the binary in static mode.
       args: command line arguments that Bazel passes to the target.
       linkopts: add these flags to the C++ linker command.
-      kernels: dynamically loaded kernels.
-      extra_copts: extra compilation flags.
       **kwargs: Extra arguments to the rule.
     """
     targets = []
     tsl_cc_test(
-        name = name,
+        name = name + "_cpu",
         size = size,
         srcs = srcs,
         args = args,
         data = data,
-        extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
-        kernels = kernels,
+        copts = if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
         linkopts = linkopts,
         linkstatic = linkstatic,
-        suffix = "_cpu",
         tags = tags,
         deps = deps,
         **kwargs
     )
     targets.append(name + "_cpu")
     tsl_cc_test(
-        name = name,
+        name = name + "_gpu",
         size = size,
         srcs = srcs,
         args = args,
         data = data,
-        extra_copts = extra_copts + if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
-        kernels = kernels,
+        copts = if_cuda(["-DNV_CUDNN_DISABLE_EXCEPTION"]),
         linkopts = linkopts,
         linkstatic = select({
             # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
@@ -87,7 +80,6 @@ def tsl_gpu_cc_test(
             "@local_config_cuda//cuda:using_clang": 1,
             "//conditions:default": 0,
         }),
-        suffix = "_gpu",
         tags = tags + tf_gpu_tests_tags(),
         deps = deps,
         **kwargs
@@ -98,13 +90,11 @@ def tsl_gpu_cc_test(
         if "requires-gpu-nvidia" in cleaned_tags:
             cleaned_tags.remove("requires-gpu-nvidia")
         tsl_cc_test(
-            name = name,
+            name = name + "_2gpu",
             size = size,
             srcs = srcs,
             args = args,
             data = data,
-            extra_copts = extra_copts,
-            kernels = kernels,
             linkopts = linkopts,
             linkstatic = select({
                 # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
@@ -113,7 +103,6 @@ def tsl_gpu_cc_test(
                 "@local_config_cuda//cuda:using_clang": 1,
                 "//conditions:default": 0,
             }),
-            suffix = "_2gpu",
             tags = cleaned_tags,
             deps = deps,
             **kwargs
