@@ -26,6 +26,7 @@ automake
 build-essential
 ca-certificates
 clang-format-12
+cmake
 colordiff
 curl
 ffmpeg

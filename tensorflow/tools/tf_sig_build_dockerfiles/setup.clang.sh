@@ -17,7 +17,8 @@
 #
 # setup.clang.sh: Clone and install Clang at HEAD.
 
-apt-get cmake
+# apt-get update
+# apt-get install -y cmake
 git clone --depth=1 https://github.com/llvm/llvm-project.git
 cd llvm-project
 mkdir build
