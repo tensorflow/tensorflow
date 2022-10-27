@@ -46,6 +46,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:env",
+        "//tensorflow/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/time",
     ],
 )

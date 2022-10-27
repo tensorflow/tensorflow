@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace tensorflow {
@@ -716,6 +717,8 @@ TEST_F(SingleClientCoordinationServiceTest, TestReportingErrorInOp) {
   TF_DeleteStatus(status);
   TFE_DeleteContext(ctx);
 
+  TF_EXPECT_OK(w0->StopCoordinationService());
+  TF_EXPECT_OK(w1->StopCoordinationService());
   w0.release();
   w1.release();
 }
