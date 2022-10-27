@@ -49,6 +49,7 @@ tf_proto_library(
     cc_api_version = 2,
     cc_stubby_versions = ["2"],
     create_grpc_library = True,
+    create_java_proto = False,
     create_service = True,
 )
 
