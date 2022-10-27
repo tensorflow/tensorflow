@@ -5560,7 +5560,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:core_cpu_internal",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -5587,7 +5586,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:logging",
         "//third_party/eigen3",
