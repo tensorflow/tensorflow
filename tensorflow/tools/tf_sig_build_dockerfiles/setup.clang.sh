@@ -16,16 +16,15 @@
 # ==============================================================================
 #
 # setup.clang.sh: Clone and install Clang at HEAD.
-
-# apt-get update
-# apt-get install -y cmake
 git clone --depth=1 https://github.com/llvm/llvm-project.git
 cd llvm-project
 mkdir build
 cd build
+
 # TODO(juanantoniomc): Change "Debug" to "Release" after successful compilation
-cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_BUILD_TYPE=Debug -G "Unix Makefiles" ../llvm
+# cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ../llvm
 # make -j$(nproc)
+
 # Move to clang to right location
 # mkdir -p /usr/lib/llvm-14/
 # mv ./bin /usr/lib/llvm-14/
