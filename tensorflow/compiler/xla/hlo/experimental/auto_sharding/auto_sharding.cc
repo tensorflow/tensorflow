@@ -1951,12 +1951,22 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
   }
 
   // Objective
+  // Node costs
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = 0; j < s[i].size(); ++j) {
       double accumulated_coefficient =
           solver->MutableObjective()->GetCoefficient(s[i][j]);
       solver->MutableObjective()->SetCoefficient(
           s[i][j], accumulated_coefficient + c[i][j] + d[i][j]);
+    }
+  }
+  // Edge costs
+  for (size_t i = 0; i < num_edges; ++i) {
+    for (size_t j = 0; j < e[i].size(); ++j) {
+      double accumulated_coefficient =
+          solver->MutableObjective()->GetCoefficient(e[i][j]);
+      solver->MutableObjective()->SetCoefficient(
+          e[i][j], accumulated_coefficient + r[i][j]);
     }
   }
 
