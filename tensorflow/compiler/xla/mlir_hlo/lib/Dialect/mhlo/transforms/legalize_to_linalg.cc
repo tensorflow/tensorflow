@@ -3518,6 +3518,92 @@ class SelectOpToMapConverter : public OpConversionPattern<mhlo::SelectOp> {
   }
 };
 
+/// Converts a HLO operation to a linalg.map op that contains the corresponding
+/// scalar operations.
+template <typename OpTy>
+class PointwiseToLinalgMapConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy op, typename OpTy::Adaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    auto getRank = [](Value v) {
+      return v.getType().cast<ShapedType>().getRank();
+    };
+    int64_t maxRank = getRank(adaptor.getOperands().front());
+
+    // Apply only if all operands have the same rank.
+    if (!llvm::all_of(adaptor.getOperands(),
+                      [&](Value v) { return getRank(v) == maxRank; })) {
+      return rewriter.notifyMatchFailure(op,
+                                         "Operands must have the same rank.");
+    }
+
+    // Find result type, if on tensors.
+    Optional<ShapedType> resultTy;
+    resultTy = this->typeConverter->convertType(op->getResultTypes().front())
+                   .template dyn_cast<ShapedType>();
+
+    // Check result type compatibility.
+    if (!resultTy || !resultTy->hasRank() || resultTy->getRank() != maxRank ||
+        !(resultTy->getElementType().isSignlessIntOrFloat() ||
+          resultTy->getElementType().isa<ComplexType>())) {
+      return rewriter.notifyMatchFailure(
+          op, "mismatched operand/result types or iterator count");
+    }
+
+    auto loc = op.getLoc();
+    // Within a thlo.map region, we can immediately de-tensorsize if the
+    // computation is scalar. We do not do this on the top-level, as that would
+    // break the nice invariant that all programs are exclusively on tensors,
+    // which is currently relied on for fusion in some pipelines.
+    if (maxRank == 0 && isInBodyOfLinalgOps(op)) {
+      SmallVector<Value> inputs;
+      for (auto input : adaptor.getOperands()) {
+        inputs.push_back(
+            rewriter.create<tensor::ExtractOp>(loc, input, ValueRange()));
+      }
+      Value scalarResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, resultTy->getElementType(), inputs, &rewriter);
+      if (!scalarResult) return failure();
+      rewriter.replaceOpWithNewOp<tensor::FromElementsOp>(op, *resultTy,
+                                                          scalarResult);
+      return success();
+    }
+
+    // Find input/output values and types.
+    ValueRange inputs = adaptor.getOperands();
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, *resultTy, op, adaptor.getOperands());
+    auto mapOp =
+        rewriter.create<linalg::MapOp>(loc, *resultTy, inputs, emptyTensor);
+    mapOp->setAttrs(linalg::getPrunedAttributeList(op));
+
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      auto& region = mapOp.getRegion();
+
+      SmallVector<Type, 4> blockArgTypes;
+      SmallVector<Location, 4> blockArgLocs;
+      for (Value v : inputs) {
+        blockArgTypes.push_back(getElementTypeOrSelf(v));
+        blockArgLocs.push_back(v.getLoc());
+      }
+      Block* block = rewriter.createBlock(&region, region.end(), blockArgTypes,
+                                          blockArgLocs);
+
+      Value innerResult = mhlo::MhloOpToStdScalarOp::mapOp(
+          op, getElementTypeOrSelf(emptyTensor), block->getArguments(),
+          &rewriter);
+      rewriter.create<linalg::YieldOp>(loc, innerResult);
+    }
+
+    rewriter.replaceOp(op, mapOp->getResults());
+    return success();
+  }
+};
+
 struct HloLegalizeToLinalgPass
     : public impl::HloLegalizeToLinalgPassBase<HloLegalizeToLinalgPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
@@ -3562,52 +3648,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp>,
       EinsumToLinalgConverter,
       IotaConverter<mhlo::DynamicIotaOp>,
-      PointwiseToLinalgConverter<mhlo::AbsOp>,
-      PointwiseToLinalgConverter<mhlo::AddOp>,
-      PointwiseToLinalgConverter<mhlo::AndOp>,
-      PointwiseToLinalgConverter<mhlo::Atan2Op>,
-      PointwiseToLinalgConverter<mhlo::BitcastConvertOp>,
-      PointwiseToLinalgConverter<mhlo::CbrtOp>,
-      PointwiseToLinalgConverter<mhlo::CeilOp>,
-      PointwiseToLinalgConverter<mhlo::ClampOp>,
-      PointwiseToLinalgConverter<mhlo::ClzOp>,
-      PointwiseToLinalgConverter<mhlo::CompareOp>,
-      PointwiseToLinalgConverter<mhlo::ComplexOp>,
-      PointwiseToLinalgConverter<mhlo::ConvertOp>,
-      PointwiseToLinalgConverter<mhlo::CopyOp>,
-      PointwiseToLinalgConverter<mhlo::CosineOp>,
-      PointwiseToLinalgConverter<mhlo::DivOp>,
-      PointwiseToLinalgConverter<mhlo::ExpOp>,
-      PointwiseToLinalgConverter<mhlo::Expm1Op>,
-      PointwiseToLinalgConverter<mhlo::FloorOp>,
-      PointwiseToLinalgConverter<mhlo::ImagOp>,
-      PointwiseToLinalgConverter<mhlo::IsFiniteOp>,
-      PointwiseToLinalgConverter<mhlo::LogOp>,
-      PointwiseToLinalgConverter<mhlo::LogisticOp>,
-      PointwiseToLinalgConverter<mhlo::Log1pOp>,
-      PointwiseToLinalgConverter<mhlo::MaxOp>,
-      PointwiseToLinalgConverter<mhlo::MinOp>,
-      PointwiseToLinalgConverter<mhlo::MulOp>,
-      PointwiseToLinalgConverter<mhlo::NegOp>,
-      PointwiseToLinalgConverter<mhlo::NotOp>,
-      PointwiseToLinalgConverter<mhlo::OrOp>,
-      PointwiseToLinalgConverter<mhlo::PopulationCountOp>,
-      PointwiseToLinalgConverter<mhlo::PowOp>,
-      PointwiseToLinalgConverter<mhlo::RealOp>,
-      PointwiseToLinalgConverter<mhlo::RemOp>,
-      PointwiseToLinalgConverter<mhlo::RoundNearestEvenOp>,
-      PointwiseToLinalgConverter<mhlo::RoundOp>,
-      PointwiseToLinalgConverter<mhlo::RsqrtOp>,
-      PointwiseToLinalgConverter<mhlo::ShiftLeftOp>,
-      PointwiseToLinalgConverter<mhlo::ShiftRightArithmeticOp>,
-      PointwiseToLinalgConverter<mhlo::ShiftRightLogicalOp>,
-      PointwiseToLinalgConverter<mhlo::SignOp>,
-      PointwiseToLinalgConverter<mhlo::SineOp>,
-      PointwiseToLinalgConverter<mhlo::SqrtOp>,
-      PointwiseToLinalgConverter<mhlo::SubtractOp>,
-      PointwiseToLinalgConverter<mhlo::TanhOp>,
-      PointwiseToLinalgConverter<mhlo::XorOp>,
-      PointwiseToLinalgConverter<mhlo::ReducePrecisionOp>,
       RealDynamicSliceConverter,
       ReshapeOpConverter,
       ReverseConverter,
@@ -3628,12 +3668,104 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
   if (enablePrimitiveOps) {
     patterns->add<
       MapOpToMapConverter,
+      PointwiseToLinalgMapConverter<mhlo::AbsOp>,
+      PointwiseToLinalgMapConverter<mhlo::AddOp>,
+      PointwiseToLinalgMapConverter<mhlo::AndOp>,
+      PointwiseToLinalgMapConverter<mhlo::Atan2Op>,
+      PointwiseToLinalgMapConverter<mhlo::BitcastConvertOp>,
+      PointwiseToLinalgMapConverter<mhlo::CbrtOp>,
+      PointwiseToLinalgMapConverter<mhlo::CeilOp>,
+      PointwiseToLinalgMapConverter<mhlo::ClampOp>,
+      PointwiseToLinalgMapConverter<mhlo::ClzOp>,
+      PointwiseToLinalgMapConverter<mhlo::CompareOp>,
+      PointwiseToLinalgMapConverter<mhlo::ComplexOp>,
+      PointwiseToLinalgMapConverter<mhlo::ConvertOp>,
+      PointwiseToLinalgMapConverter<mhlo::CopyOp>,
+      PointwiseToLinalgMapConverter<mhlo::CosineOp>,
+      PointwiseToLinalgMapConverter<mhlo::DivOp>,
+      PointwiseToLinalgMapConverter<mhlo::ExpOp>,
+      PointwiseToLinalgMapConverter<mhlo::Expm1Op>,
+      PointwiseToLinalgMapConverter<mhlo::FloorOp>,
+      PointwiseToLinalgMapConverter<mhlo::ImagOp>,
+      PointwiseToLinalgMapConverter<mhlo::IsFiniteOp>,
+      PointwiseToLinalgMapConverter<mhlo::Log1pOp>,
+      PointwiseToLinalgMapConverter<mhlo::LogOp>,
+      PointwiseToLinalgMapConverter<mhlo::LogisticOp>,
+      PointwiseToLinalgMapConverter<mhlo::MaxOp>,
+      PointwiseToLinalgMapConverter<mhlo::MinOp>,
+      PointwiseToLinalgMapConverter<mhlo::MulOp>,
+      PointwiseToLinalgMapConverter<mhlo::NegOp>,
+      PointwiseToLinalgMapConverter<mhlo::NotOp>,
+      PointwiseToLinalgMapConverter<mhlo::OrOp>,
+      PointwiseToLinalgMapConverter<mhlo::PopulationCountOp>,
+      PointwiseToLinalgMapConverter<mhlo::PowOp>,
+      PointwiseToLinalgMapConverter<mhlo::RealOp>,
+      PointwiseToLinalgMapConverter<mhlo::ReducePrecisionOp>,
+      PointwiseToLinalgMapConverter<mhlo::RemOp>,
+      PointwiseToLinalgMapConverter<mhlo::RoundNearestEvenOp>,
+      PointwiseToLinalgMapConverter<mhlo::RoundOp>,
+      PointwiseToLinalgMapConverter<mhlo::RsqrtOp>,
+      PointwiseToLinalgMapConverter<mhlo::ShiftLeftOp>,
+      PointwiseToLinalgMapConverter<mhlo::ShiftRightArithmeticOp>,
+      PointwiseToLinalgMapConverter<mhlo::ShiftRightLogicalOp>,
+      PointwiseToLinalgMapConverter<mhlo::SignOp>,
+      PointwiseToLinalgMapConverter<mhlo::SineOp>,
+      PointwiseToLinalgMapConverter<mhlo::SqrtOp>,
+      PointwiseToLinalgMapConverter<mhlo::SubtractOp>,
+      PointwiseToLinalgMapConverter<mhlo::TanhOp>,
+      PointwiseToLinalgMapConverter<mhlo::XorOp>,
       SelectOpToMapConverter
     >(typeConverter, context);
   } else {
     patterns->add<
       MapOpToGenericConverter,
-      PointwiseToLinalgConverter<mhlo::SelectOp>
+      PointwiseToLinalgConverter<mhlo::AbsOp>,
+      PointwiseToLinalgConverter<mhlo::AddOp>,
+      PointwiseToLinalgConverter<mhlo::AndOp>,
+      PointwiseToLinalgConverter<mhlo::Atan2Op>,
+      PointwiseToLinalgConverter<mhlo::BitcastConvertOp>,
+      PointwiseToLinalgConverter<mhlo::CbrtOp>,
+      PointwiseToLinalgConverter<mhlo::CeilOp>,
+      PointwiseToLinalgConverter<mhlo::ClampOp>,
+      PointwiseToLinalgConverter<mhlo::ClzOp>,
+      PointwiseToLinalgConverter<mhlo::CompareOp>,
+      PointwiseToLinalgConverter<mhlo::ComplexOp>,
+      PointwiseToLinalgConverter<mhlo::ConvertOp>,
+      PointwiseToLinalgConverter<mhlo::CopyOp>,
+      PointwiseToLinalgConverter<mhlo::CosineOp>,
+      PointwiseToLinalgConverter<mhlo::DivOp>,
+      PointwiseToLinalgConverter<mhlo::ExpOp>,
+      PointwiseToLinalgConverter<mhlo::Expm1Op>,
+      PointwiseToLinalgConverter<mhlo::FloorOp>,
+      PointwiseToLinalgConverter<mhlo::ImagOp>,
+      PointwiseToLinalgConverter<mhlo::IsFiniteOp>,
+      PointwiseToLinalgConverter<mhlo::Log1pOp>,
+      PointwiseToLinalgConverter<mhlo::LogOp>,
+      PointwiseToLinalgConverter<mhlo::LogisticOp>,
+      PointwiseToLinalgConverter<mhlo::MaxOp>,
+      PointwiseToLinalgConverter<mhlo::MinOp>,
+      PointwiseToLinalgConverter<mhlo::MulOp>,
+      PointwiseToLinalgConverter<mhlo::NegOp>,
+      PointwiseToLinalgConverter<mhlo::NotOp>,
+      PointwiseToLinalgConverter<mhlo::OrOp>,
+      PointwiseToLinalgConverter<mhlo::PopulationCountOp>,
+      PointwiseToLinalgConverter<mhlo::PowOp>,
+      PointwiseToLinalgConverter<mhlo::RealOp>,
+      PointwiseToLinalgConverter<mhlo::ReducePrecisionOp>,
+      PointwiseToLinalgConverter<mhlo::RemOp>,
+      PointwiseToLinalgConverter<mhlo::RoundNearestEvenOp>,
+      PointwiseToLinalgConverter<mhlo::RoundOp>,
+      PointwiseToLinalgConverter<mhlo::RsqrtOp>,
+      PointwiseToLinalgConverter<mhlo::SelectOp>,
+      PointwiseToLinalgConverter<mhlo::ShiftLeftOp>,
+      PointwiseToLinalgConverter<mhlo::ShiftRightArithmeticOp>,
+      PointwiseToLinalgConverter<mhlo::ShiftRightLogicalOp>,
+      PointwiseToLinalgConverter<mhlo::SignOp>,
+      PointwiseToLinalgConverter<mhlo::SineOp>,
+      PointwiseToLinalgConverter<mhlo::SqrtOp>,
+      PointwiseToLinalgConverter<mhlo::SubtractOp>,
+      PointwiseToLinalgConverter<mhlo::TanhOp>,
+      PointwiseToLinalgConverter<mhlo::XorOp>
     >(typeConverter, context);
   }
 
