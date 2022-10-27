@@ -1012,6 +1012,7 @@ bzl_library(
     deps = [":tensorflow_bzl"],
 )
 
+# TODO(jakeharmon): Remove these in favor of tsl:grpc
 # copybara:comment_begin(oss-only)
 cc_library(
     name = "grpc",

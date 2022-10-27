@@ -3,7 +3,7 @@
 
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
-load("//tensorflow:tensorflow.default.bzl", "tf_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 
 package(
     default_visibility = [
@@ -26,7 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:refcount",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 cc_library(
@@ -39,7 +39,7 @@ cc_library(
         "//tensorflow/tsl/platform:stringpiece",
         "//tensorflow/tsl/platform:stringprintf",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto_cc",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )
 
 tsl_cc_test(
@@ -55,5 +55,5 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
         "//tensorflow/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
-    ] + tf_grpc_cc_dependencies(),
+    ] + tsl_grpc_cc_dependencies(),
 )

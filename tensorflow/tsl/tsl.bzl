@@ -377,3 +377,6 @@ def if_not_mobile_or_arm_or_lgpl_restricted(a):
     return select({
         "//conditions:default": [],
     })
+
+def tsl_grpc_cc_dependencies():
+    return ["//tensorflow:grpc++"]

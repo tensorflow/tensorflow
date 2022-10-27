@@ -7,6 +7,7 @@ load(
     _filegroup = "filegroup",
     _get_compatible_with_portable = "get_compatible_with_portable",
     _if_not_mobile_or_arm_or_lgpl_restricted = "if_not_mobile_or_arm_or_lgpl_restricted",
+    _tsl_grpc_cc_dependencies = "tsl_grpc_cc_dependencies",
 )
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
@@ -24,6 +25,7 @@ load(
 get_compatible_with_portable = _get_compatible_with_portable
 filegroup = _filegroup
 if_not_mobile_or_arm_or_lgpl_restricted = _if_not_mobile_or_arm_or_lgpl_restricted
+tsl_grpc_cc_dependencies = _tsl_grpc_cc_dependencies
 
 def tsl_gpu_cc_test(
         name,
