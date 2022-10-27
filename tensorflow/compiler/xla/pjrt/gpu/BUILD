@@ -37,6 +37,7 @@ cc_library(
     visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
     deps = [
         ":gpu_helpers",
+        ":nccl_id_store",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -54,7 +55,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
     ] + if_cuda([
-        ":nccl_id_store",
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core/common_runtime/gpu:gpu_cudamallocasync_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_activation_header",
