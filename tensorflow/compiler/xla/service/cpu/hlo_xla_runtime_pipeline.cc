@@ -162,6 +162,8 @@ static void CreateDefaultHloXlaPipeline(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
+
   // Deallocate all temporary buffers.
   pm.addNestedPass<FuncOp>(mlir::bufferization::createBufferDeallocationPass());
 

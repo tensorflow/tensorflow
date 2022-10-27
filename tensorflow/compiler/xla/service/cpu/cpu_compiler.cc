@@ -352,10 +352,6 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions() {
   opts.compiler.create_compilation_pipeline =
       [copts](xla::runtime::PassManager& passes) {
         CreateDefaultHloXlaRuntimePipeline(passes);
-        passes->addPass(
-            mlir::bufferization::createBufferResultsToOutParamsPass());
-        passes->addNestedPass<mlir::func::FuncOp>(
-            mlir::bufferization::createBufferDeallocationPass());
         runtime::CreateDefaultXlaCpuRuntimeCompilationPipeline(passes, copts);
       };
   opts.compiler.calling_convention = runtime::ResultsToOutsCallingConvention(
