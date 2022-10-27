@@ -789,6 +789,20 @@ config_setting(
     },
 )
 
+# If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
+# finding NVIDIA's CUDA libraries when they are installed as pip packages.
+bool_flag(
+    name = "jax_cuda_pip_rpaths",
+    build_setting_default = False,
+)
+
+config_setting(
+    name = "use_jax_cuda_pip_rpaths",
+    flag_values = {
+        ":jax_cuda_pip_rpaths": "True",
+    },
+)
+
 # We cannot nest select and if_cuda_is_configured so we introduce
 # a standalone cc_library target.
 cc_library(
@@ -813,6 +827,16 @@ pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        ":use_jax_cuda_pip_rpaths": [
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cuda_runtime/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cublas/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cufft/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cudnn/lib",
+            "-Wl,-rpath,$$ORIGIN/../nvidia/cusolver/lib",
+        ],
         "//conditions:default": [],
     }),
     pytype_deps = [
