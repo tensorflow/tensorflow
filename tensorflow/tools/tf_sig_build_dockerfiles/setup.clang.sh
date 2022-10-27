@@ -25,5 +25,5 @@ mkdir build
 cd build
 # TODO(juanantoniomc): Change "Debug" to "Release" after successful compilation
 cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_BUILD_TYPE=Release -G "Unix Makefiles" ../llvm
-# make -j$(nproc)
+make -j$(nproc)
 
