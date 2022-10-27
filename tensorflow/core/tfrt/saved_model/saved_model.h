@@ -134,7 +134,7 @@ class SavedModel {
   explicit SavedModel(const Runtime* runtime) : runtime_(runtime) {
     DCHECK(runtime_);
   }
-  virtual ~SavedModel() = default;
+  virtual ~SavedModel();
 
   const Runtime& runtime() const {
     DCHECK(runtime_);

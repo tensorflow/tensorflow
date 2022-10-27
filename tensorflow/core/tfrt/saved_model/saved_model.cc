@@ -376,6 +376,8 @@ tensorflow::Status InitSavedModel(
 
 }  // namespace
 
+SavedModel::~SavedModel() = default;  // Out-of-line C++ key function.
+
 tfrt::HostContext* SavedModel::GetHostContext() const {
   return runtime_->core_runtime()->GetHostContext();
 }
