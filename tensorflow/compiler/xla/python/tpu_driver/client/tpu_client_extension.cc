@@ -20,18 +20,18 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/python/util.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
-  CHECK(tensorflow::RegisterNumpyBfloat16());
+  CHECK(RegisterNumpyBfloat16());
 
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))

@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
 #endif  // XLA_PYTHON_ENABLE_TPU
+#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
@@ -76,7 +77,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
 
 // TODO(phawkins): remove host_id properties after JAX is update to avoid them.
 
@@ -97,7 +97,7 @@ bool IsOptimizedBuild() {
 
 PYBIND11_MODULE(xla_extension, m) {
   ImportNumpy();
-  CHECK(tensorflow::RegisterNumpyBfloat16());
+  CHECK(RegisterNumpyBfloat16());
 
   // Exceptions
   py::register_exception<XlaRuntimeError>(m, "XlaRuntimeError",
@@ -125,8 +125,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
-  m.def("bfloat16_dtype",
-        []() { return py::handle(tensorflow::Bfloat16Dtype()); });
+  m.def("bfloat16_dtype", []() { return py::handle(Bfloat16Dtype()); });
 
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);
