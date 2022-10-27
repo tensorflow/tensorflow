@@ -251,7 +251,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             output_tensorshape->AddDimWithStatus(dims1[d]));
       else
-        (*output_tensorshape)->AddDim(-1);
+        output_tensorshape->AddDim(-1);
     }
     return OkStatus();
   }
