@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_H_
+#ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_H_
+#define TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_H_
 
 #include <cstdint>
 
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/telemetry/telemetry_settings.h"
-#include "tensorflow/lite/experimental/telemetry/telemetry_status.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_settings.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 namespace tflite {
 
@@ -71,4 +71,4 @@ void TelemetryReportDelegateSettings(TfLiteContext* context,
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_H_
+#endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_H_

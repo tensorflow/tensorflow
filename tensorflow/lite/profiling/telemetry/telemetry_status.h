@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_STATUS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_STATUS_H_
+#ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_STATUS_H_
+#define TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_STATUS_H_
 
 #include <cstdint>
 
@@ -65,4 +65,4 @@ struct TelemetryStatusCode {
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_STATUS_H_
+#endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_STATUS_H_

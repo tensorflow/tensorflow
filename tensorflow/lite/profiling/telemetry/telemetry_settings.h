@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_SETTINGS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_SETTINGS_H_
+#ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_SETTINGS_H_
+#define TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_SETTINGS_H_
 
 #include <map>
 #include <string>
 
-#include "tensorflow/lite/experimental/telemetry/telemetry_status.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 namespace tflite {
 
@@ -31,6 +31,7 @@ struct TelemetrySettings {
   // If `source` is TFLITE_INTERPRETER, the type of `data` will
   // be `TelemetryInterpreterSettings`.
   // Otherwise, the data is provided by the individual delegate.
+  // Owned by the caller that exports TelemetrySettings (e.g. Interpreter).
   const void* data = nullptr;
 };
 
@@ -39,9 +40,10 @@ struct TelemetryInterpreterSettings {
   TelemetryInterpreterSettings() = default;
 
   // Metadata from the TfLite model.
-  std::map<std::string, std::string> model_metadata;
+  // Owned by the interpreter.
+  std::map<std::string, std::string>* model_metadata = nullptr;
 };
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_TELEMETRY_SETTINGS_H_
+#endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_TELEMETRY_SETTINGS_H_

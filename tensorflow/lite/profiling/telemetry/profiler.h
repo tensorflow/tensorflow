@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_PROFILER_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_PROFILER_H_
+#ifndef TENSORFLOW_LITE_PROFILING_TELEMETRY_PROFILER_H_
+#define TENSORFLOW_LITE_PROFILING_TELEMETRY_PROFILER_H_
 
 #include <cstdint>
 
 #include "tensorflow/lite/core/api/profiler.h"
-#include "tensorflow/lite/experimental/telemetry/telemetry_settings.h"
-#include "tensorflow/lite/experimental/telemetry/telemetry_status.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_settings.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 namespace tflite {
 
@@ -94,4 +94,4 @@ class TelemetryProfiler : public Profiler {
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_TELEMETRY_PROFILER_H_
+#endif  // TENSORFLOW_LITE_PROFILING_TELEMETRY_PROFILER_H_

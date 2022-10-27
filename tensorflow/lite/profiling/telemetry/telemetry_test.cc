@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/experimental/telemetry/telemetry.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 
 #include <string>
 
@@ -20,8 +20,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/c_api_types.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/telemetry/profiler.h"
-#include "tensorflow/lite/experimental/telemetry/telemetry_status.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 namespace tflite {
 namespace {

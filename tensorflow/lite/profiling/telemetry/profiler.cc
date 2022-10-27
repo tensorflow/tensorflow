@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/telemetry/profiler.h"
+#include "tensorflow/lite/profiling/telemetry/profiler.h"
 
 #include <cstdint>
 

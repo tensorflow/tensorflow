@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/telemetry/telemetry.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry.h"
 
 #include <cstdint>
 
 #include "tensorflow/lite/core/api/profiler.h"
-#include "tensorflow/lite/experimental/telemetry/telemetry_status.h"
+#include "tensorflow/lite/profiling/telemetry/telemetry_status.h"
 
 namespace tflite {
 
