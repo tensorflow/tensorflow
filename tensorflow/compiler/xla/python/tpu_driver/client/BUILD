@@ -59,12 +59,12 @@ pybind_extension(
     deps = [
         ":tpu_client",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
-        "//tensorflow/compiler/xla/python:bfloat16_lib",
         "//tensorflow/compiler/xla/python:python_ref_manager",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
+        "//tensorflow/python:bfloat16_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@llvm-project//mlir:IR",
