@@ -55,6 +55,7 @@ def pyx_library(
         srcs = [],
         testonly = None,
         srcs_version = "PY3",
+        copts = [],
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -71,6 +72,7 @@ def pyx_library(
       srcs: .py, .pyx, or .pxd files to either compile or pass through.
       testonly: If True, the target can only be used with tests.
       srcs_version: Version of python source files.
+      copts: List of copts to pass to cc rules.
       **kwargs: Extra keyword arguments passed to the py_library.
     """
 
@@ -112,6 +114,7 @@ def pyx_library(
             deps = cc_deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
             testonly = testonly,
+            copts = copts,
         )
         shared_objects.append(shared_object_name)
 
