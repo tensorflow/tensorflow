@@ -110,6 +110,7 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
 
   // Linalg + GmlSt -> GPU
   pm.addNestedPass<FuncOp>(createGmlStToGpuPass());
+  pm.addNestedPass<FuncOp>(gml_st::createGmlStToScfPass());
   pm.addNestedPass<FuncOp>(arith::createArithExpandOpsPass());
   pm.addNestedPass<FuncOp>(createConvertLinalgToLoopsPass());
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
