@@ -29,13 +29,14 @@ cc_library(
     name = "passes",
     srcs = [
         "lmhlo_to_cpu_runtime.cc",
+        "xla_abi_legalization.cc",
     ],
     hdrs = ["passes.h"],
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/mlir/utils/runtime:custom_calls",
+        "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
-        "//tensorflow/compiler/xla/mlir_hlo:thlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",

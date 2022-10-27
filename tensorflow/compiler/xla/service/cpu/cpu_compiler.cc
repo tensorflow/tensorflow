@@ -134,7 +134,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/hlo_xla_runtime_pipeline.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
-#include "tensorflow/compiler/xla/service/cpu/mlir_layout_resolution.h"
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
@@ -717,13 +716,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   // flattened.
   pipeline.AddPass<FlattenCallGraph>();
   ChannelLayoutConstraints layout_constraints;
-  // The MLIR pipeline always uses default layouts, so if the caller specifies
-  // non-default layouts in the entry_computation layout, we have to convert
-  // to these layouts using transposes and reshapes. The MlirLayoutResolution
-  // pass does this.
-  if (is_mlir_compile) {
-    pipeline.AddPass<MlirLayoutResolution>();
-  } else {
+  // The MLIR pipeline always uses default layouts, so we don't need to run
+  // layout assignment. The exception to this is at the ABI boundary, where
+  // custom layouts may be used. The XlaAbiLegalization pass takes care of
+  // these.
+  if (!is_mlir_compile) {
     pipeline.AddPass<CpuLayoutAssignment>(
         module->mutable_entry_computation_layout(), target_machine_features,
         &layout_constraints);
@@ -1025,6 +1022,7 @@ Status LowerMLIRModule(mlir::ModuleOp mlir_module,
   pm.addPass(mlir::mhlo::createExpandHloTuplesPass("main"));
   // TODO(b/233771980): Remove once custom_call doesn't use tuples.
   pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createFlattenTuplePass());
+  pm.addPass(createXlaAbiLegalizationPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeGeneralDotPass());
   pm.addNestedPass<mlir::func::FuncOp>(

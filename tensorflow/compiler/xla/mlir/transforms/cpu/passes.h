@@ -32,6 +32,9 @@ namespace cpu {
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createConvertLmhloToCpuRuntimePass();
 
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createXlaAbiLegalizationPass();
+
 //===-----------------------------------------------------------------------===/
 
 #define GEN_PASS_REGISTRATION
