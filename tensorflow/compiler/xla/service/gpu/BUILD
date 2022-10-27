@@ -2700,6 +2700,7 @@ test_suite(
     name = "jitrt_executable_tests",
     tests = [
         # copybara:uncomment "//platforms/xla/tests/internal:xfeed_test_gpu",
+        # copybara:uncomment "//third_party/py/jax/experimental/jax2tf/tests:primitives_test_gpu",
         "//tensorflow/compiler/tests:fft_test_gpu",
         "//tensorflow/compiler/xla/python:xla_client_test_gpu",
         "//tensorflow/compiler/xla/service/gpu:cudnn_fused_conv_rewriter_test",
