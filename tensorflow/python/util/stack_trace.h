@@ -61,10 +61,19 @@ class StackTrace final {
     if (limit == -1) limit = std::numeric_limits<int>::max();
 
     StackTrace result;
+#if PY_VERSION_HEX >= 0x030B0000
+    PyFrameObject* frame = PyThreadState_GetFrame(PyThreadState_GET());
+#else
     const PyFrameObject* frame = PyThreadState_GET()->frame;
+#endif
     int i = 0;
+#if PY_VERSION_HEX >= 0x030B0000
+    for (; i < limit && frame != nullptr; PyFrame_GetBack(frame), ++i) {
+      PyCodeObject* code_obj = PyFrame_GetCode(frame);
+#else
     for (; i < limit && frame != nullptr; frame = frame->f_back, ++i) {
       PyCodeObject* code_obj = frame->f_code;
+#endif
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);
