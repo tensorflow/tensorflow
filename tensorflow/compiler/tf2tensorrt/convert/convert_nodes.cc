@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
@@ -5854,6 +5855,19 @@ Status ConvertGraphDefToEngine(
     if (apply_layout_optim) {
       tensorflow::grappler::GrapplerItem grappler_item;
       grappler_item.graph = gdef;
+
+      static const string tftrt_graph_dump_path = [] {
+        string _tftrt_graph_dump_path;
+        TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_GRAPH_DUMP_PATH", /*default_value=*/"",
+                                        &_tftrt_graph_dump_path));
+        return _tftrt_graph_dump_path;
+      }();
+
+      if (!tftrt_graph_dump_path.empty()) {
+        DumpGraphDefToFile("before_trt_layout_optimizer_tf_graph", gdef, tftrt_graph_dump_path);
+      }
+
+
       // TensorRT API requires the input for convolution to be in NCHW.
       tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
       TF_RETURN_IF_ERROR(
@@ -5867,6 +5881,10 @@ Status ConvertGraphDefToEngine(
           /*fold_quantization_emulation=*/false);
       TF_RETURN_IF_ERROR(
           const_optimizer.Optimize(cluster, grappler_item, &graph));
+
+      if (!tftrt_graph_dump_path.empty()) {
+        DumpGraphDefToFile("after_trt_layout_optimizer_tf_graph", graph, tftrt_graph_dump_path);
+      }
 
       // The optimizers may break the topological order
       // so we need these steps to restore it
