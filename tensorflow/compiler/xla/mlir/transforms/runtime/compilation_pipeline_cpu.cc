@@ -142,6 +142,7 @@ static void CreateDefaultXlaCpuRuntimeCompilationPipeline(
   pm.addPass(mlir::createConvertVectorToLLVMPass(vector_to_llvm_opts));
   pm.addPass(mlir::createMemRefToLLVMConversionPass());
   pm.addPass(mlir::createConvertFuncToLLVMPass());
+  pm.addPass(mlir::createConvertComplexToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Prepare module for translation to LLVM.

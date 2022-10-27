@@ -17,7 +17,9 @@ limitations under the License.
 
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToSCF/VectorToSCF.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/Transforms/Passes.h"  // from @llvm-project
@@ -138,13 +140,16 @@ static void CreateDefaultHloXlaPipeline(mlir::OpPassManager& pm) {
   // Fuse Linalg on tensors operations.
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::memref::createResolveShapedTypeResultDimsPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::createLinalgElementwiseOpFusionPass());
+  pm.addPass(mlir::createReconcileUnrealizedCastsPass());
+  pm.addPass(mlir::createConvertTensorToLinalgPass());
+
   // Lower index cast on tensors to tensor.generate.
   pm.addNestedPass<FuncOp>(mlir::createLowerIndexCastPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
-
-  // Convert complex types.
-  pm.addPass(mlir::createConvertComplexToStandardPass());
 
   // Add linalg passes to perform fusion, tiling, peeling and vectorization.
   //  AddLinalgTransformations(pm, options);
@@ -164,12 +169,23 @@ static void CreateDefaultHloXlaPipeline(mlir::OpPassManager& pm) {
 
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass());
 
+  pm.addPass(mlir::createInlinerPass());
   // Deallocate all temporary buffers.
   pm.addNestedPass<FuncOp>(mlir::bufferization::createBufferDeallocationPass());
 
   pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
 
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
   pm.addPass(mlir::createBufferizationToMemRefPass());
+  pm.addPass(mlir::createCSEPass());
+  pm.addPass(mlir::createCanonicalizerPass());
+
+  // Convert complex types.
+  pm.addPass(mlir::createConvertComplexToStandardPass());
+
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
