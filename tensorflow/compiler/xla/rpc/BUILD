@@ -47,7 +47,7 @@ cc_library(
         "//tensorflow/compiler/xla:service_interface",
         "//tensorflow/compiler/xla:xla_data_cc_grpc_proto",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
     ],
 )
 
@@ -105,7 +105,7 @@ cc_library(
         ":xla_service_cc_grpc_proto",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_util",
     ] + tf_grpc_cc_dependencies(),
 )
 
