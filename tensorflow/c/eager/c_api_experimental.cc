@@ -880,9 +880,6 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
     TF_SetStatus(&s, static_cast<TF_Code>(result.error_code()),
                  result.error_message().data());
     if (TF_GetCode(&s) != TF_Code::TF_OK) {
-      // The type url is replaced by job name so we can translate the error
-      // payload in the Coordination Service to the payload in tensorflow
-      // status.
       tensorflow::CoordinationServiceError error;
       *error.mutable_source_task() = result.error_payload().source_task();
       TF_SetPayload(&s, tensorflow::CoordinationErrorPayloadKey().data(),
