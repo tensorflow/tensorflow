@@ -19,7 +19,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
+#include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 
 namespace xla {
@@ -68,6 +70,19 @@ inline Shape ToShape(const runtime::StridedMemrefView& memref) {
 
   return ShapeUtil::MakeShapeWithDenseLayout(memref.dtype, memref.sizes,
                                              minor_to_major);
+}
+
+inline StatusOr<GemmConfig> GetGemmConfig(
+    const runtime::StridedMemrefView& lhs,
+    const runtime::StridedMemrefView& rhs,
+    const runtime::StridedMemrefView& out, int64_t algorithm, double alpha_real,
+    double alpha_imag, double beta, llvm::ArrayRef<int64_t> lhs_batch,
+    llvm::ArrayRef<int64_t> lhs_contract, llvm::ArrayRef<int64_t> rhs_batch,
+    llvm::ArrayRef<int64_t> rhs_contract) {
+  return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
+                         rhs_batch, rhs_contract, ToShape(out), alpha_real,
+                         alpha_imag, beta, algorithm,
+                         se::blas::kDefaultComputePrecision);
 }
 
 }  // namespace gpu

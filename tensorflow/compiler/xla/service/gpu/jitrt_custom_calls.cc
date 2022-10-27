@@ -49,6 +49,7 @@
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_manager.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/fft.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
@@ -261,23 +262,6 @@ LogicalResult JitRtAsyncCollectiveSupport::PushEvent(int32_t uid,
 
 // -------------------------------------------------------------------------- //
 
-static StatusOr<GemmConfig> GetGemmConfig(const runtime::StridedMemrefView& lhs,
-                                          const runtime::StridedMemrefView& rhs,
-                                          const runtime::StridedMemrefView& out,
-                                          int64_t algorithm, double alpha_real,
-                                          double alpha_imag, double beta,
-                                          ArrayRef<int64_t> lhs_batch,
-                                          ArrayRef<int64_t> lhs_contract,
-                                          ArrayRef<int64_t> rhs_batch,
-                                          ArrayRef<int64_t> rhs_contract) {
-  return GemmConfig::For(ToShape(lhs), lhs_batch, lhs_contract, ToShape(rhs),
-                         rhs_batch, rhs_contract, ToShape(out), alpha_real,
-                         alpha_imag, beta, algorithm,
-                         se::blas::kDefaultComputePrecision);
-}
-
-// -------------------------------------------------------------------------- //
-
 #if XLA_ENABLE_XCCL
 FailureOr<NcclComm::Lock> GetNcclComm(const NcclExecuteParams& params,
                                       int64_t group_mode, int64_t op_id,
@@ -401,120 +385,6 @@ static bool Gemm(runtime::ExecutionContext* ctx, void** args, void** attrs,
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
 }
 
-// -------------------------------------------------------------------------- //
-#if GOOGLE_CUDA
-
-// TODO(ezhulenev): Cache matmul plans similar to GemmConfig for Gemm.
-namespace {
-struct CublasLtMatmul {
-  LLVM_ATTRIBUTE_ALWAYS_INLINE
-  absl::Status operator()(
-      const ServiceExecutableRunOptions* run_options,
-      const DebugOptions* debug_options, runtime::StridedMemrefView a,
-      runtime::StridedMemrefView b, runtime::StridedMemrefView c,
-      runtime::StridedMemrefView d,
-      std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
-      double alpha_real, double alpha_imag, double beta,
-      DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
-      ArrayRef<int32_t> precision, int64_t uid) const;
-
-  static CublasLtMatmul Handler() { return CublasLtMatmul(); }
-};
-}  // namespace
-
-absl::Status CublasLtMatmul::operator()(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, runtime::StridedMemrefView a,
-    runtime::StridedMemrefView b, runtime::StridedMemrefView c,
-    runtime::StridedMemrefView d,
-    std::optional<runtime::StridedMemrefView> bias, int64_t algorithm,
-    double alpha_real, double alpha_imag, double beta,
-    DotDimensionNumbers dot_dims, se::cuda::BlasLt::Epilogue epilogue,
-    ArrayRef<int32_t> precision, int64_t uid) const {
-  VLOG(3) << "Running CublasLtMatmul";
-  se::Stream* stream = run_options->stream();
-
-  // Construct a plan from a gemm config and an epilogue.
-  auto cfg = GetGemmConfig(a, b, c, algorithm, alpha_real, alpha_imag, beta,
-                           dot_dims.lhs_batch, dot_dims.lhs_contract,
-                           dot_dims.rhs_batch, dot_dims.rhs_contract);
-  if (!cfg.ok()) return ToAbslStatus(cfg.status());
-
-  auto plan = cublas_lt::MatmulPlan::From(*cfg, epilogue);
-  if (!plan.ok()) return ToAbslStatus(plan.status());
-
-  auto algos = plan->GetAlgorithms(stream);
-  if (!algos.ok()) return ToAbslStatus(algos.status());
-
-  se::DeviceMemoryBase a_data = GetDeviceAddress(a);
-  se::DeviceMemoryBase b_data = GetDeviceAddress(b);
-  se::DeviceMemoryBase c_data = GetDeviceAddress(c);
-  se::DeviceMemoryBase d_data = GetDeviceAddress(d);
-  se::DeviceMemoryBase bias_data;
-  if (bias.has_value()) bias_data = GetDeviceAddress(*bias);
-
-  se::OwningScratchAllocator<> scratch_allocator(
-      stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
-
-  auto st =
-      plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data, bias_data,
-                            (*algos)[algorithm], scratch_allocator);
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
-}
-
-// Adds custom call bindings for matmul operations.
-template <typename... Ts>
-static auto BindMatmulAttributes(runtime::CustomCallBinding<Ts...> binding) {
-  return std::move(binding)
-      .template Attr<int64_t>("algorithm")
-      .template Attr<double>("alpha_real")
-      .template Attr<double>("alpha_imag")
-      .template Attr<double>("beta")
-      .template Attr<DotDimensionNumbers>("dot_dims")
-      .template Attr<se::cuda::BlasLt::Epilogue>("epilogue")
-      .template Attr<ArrayRef<int32_t>>("precision")
-      .template Attr<int64_t>("uid");
-}
-
-static bool CublasLtMatmul(runtime::ExecutionContext* ctx, void** args,
-                           void** attrs, void** rets) {
-  static auto* handler =
-      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul")
-                               .UserData<const ServiceExecutableRunOptions*>()
-                               .UserData<const DebugOptions*>()
-                               .Arg<runtime::StridedMemrefView>()  // a
-                               .Arg<runtime::StridedMemrefView>()  // b
-                               .Arg<runtime::StridedMemrefView>()  // c
-                               .Arg<runtime::StridedMemrefView>()  // d
-                               .Value(std::nullopt)                // bias
-                           )
-          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-static bool CublasLtMatmulBias(runtime::ExecutionContext* ctx, void** args,
-                               void** attrs, void** rets) {
-  static auto* handler =
-      BindMatmulAttributes(CustomCall::Bind("xla.gpu.cublas.lt.matmul.bias")
-                               .UserData<const ServiceExecutableRunOptions*>()
-                               .UserData<const DebugOptions*>()
-                               .Arg<runtime::StridedMemrefView>()  // a
-                               .Arg<runtime::StridedMemrefView>()  // b
-                               .Arg<runtime::StridedMemrefView>()  // c
-                               .Arg<runtime::StridedMemrefView>()  // d
-                               .Arg<runtime::StridedMemrefView>()  // bias
-                           )
-          .To<RuntimeChecks()>(CublasLtMatmul::Handler())
-          .release();
-
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-#endif  // GOOGLE_CUDA
 // -------------------------------------------------------------------------- //
 
 namespace {
@@ -1756,9 +1626,7 @@ void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry) {
   registry.Register("xla.gpu.gemm", &xla::gpu::Gemm);
 
 #if GOOGLE_CUDA
-  registry.Register("xla.gpu.cublas.lt.matmul", &xla::gpu::CublasLtMatmul);
-  registry.Register("xla.gpu.cublas.lt.matmul.bias",
-                    &xla::gpu::CublasLtMatmulBias);
+  RegisterMatmulCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM

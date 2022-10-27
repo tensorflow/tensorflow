@@ -38,39 +38,6 @@ class JitRtGemmConfigCache;
 class JitRtCollectiveSupport;
 class JitRtAsyncCollectiveSupport;
 
-struct DotDimensionNumbers {
-  llvm::ArrayRef<int64_t> lhs_batch;
-  llvm::ArrayRef<int64_t> lhs_contract;
-  llvm::ArrayRef<int64_t> rhs_batch;
-  llvm::ArrayRef<int64_t> rhs_contract;
-};
-
-}  // namespace gpu
-}  // namespace xla
-
-namespace xla {
-namespace runtime {
-
-using llvm::ArrayRef;
-
-#if GOOGLE_CUDA
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(
-    stream_executor::cuda::BlasLt::Epilogue);
-#endif  // GOOGLE_CUDA
-
-XLA_RUNTIME_REGISTER_AGGREGATE_ATTR_DECODING(
-    xla::gpu::DotDimensionNumbers,
-    AggregateMember<ArrayRef<int64_t>>("lhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("lhs_contract"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_batch"),
-    AggregateMember<ArrayRef<int64_t>>("rhs_contract"));
-
-}  // namespace runtime
-}  // namespace xla
-
-namespace xla {
-namespace gpu {
-
 // Populate custom calls implementing XLA GPU runtime API.
 void PopulateXlaGpuCustomCalls(runtime::DirectCustomCallRegistry& registry);
 
