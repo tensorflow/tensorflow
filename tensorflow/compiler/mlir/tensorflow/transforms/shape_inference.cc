@@ -37,12 +37,14 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/FunctionInterfaces.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -67,6 +69,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/shape_inference_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -794,6 +800,9 @@ class ShapeInference {
 
   // Infers the output shape of XlaSelectAndScatterOp based on the input shapes.
   bool InferShapeForXlaSelectAndScatterOp(XlaSelectAndScatterOp op);
+
+  // Infers the output shape of XlaGatherOp based on the input shapes.
+  bool InferShapeForXlaGatherOp(XlaGatherOp op);
 
   bool RefineWithInferTypeOpInterface(InferTypeOpInterface infer_ti);
 
@@ -1547,6 +1556,43 @@ bool ShapeInference::InferShapeForXlaSelectAndScatterOp(
                           op.operand().getType());
 }
 
+bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
+  xla::Shape input_shape = xla::TypeToShape(op.operand().getType());
+  if (input_shape == xla::Shape()) return false;
+
+  xla::Shape start_indices_shape =
+      xla::TypeToShape(op.start_indices().getType());
+  if (start_indices_shape == xla::Shape()) return false;
+
+  xla::GatherDimensionNumbers gather_dim_numbers;
+  if (!gather_dim_numbers.ParseFromString(op.dimension_numbers().str()))
+    return false;
+
+  DenseIntElementsAttr slice_sizes_attr;
+  if (!matchPattern(op.slice_sizes(), m_Constant(&slice_sizes_attr)))
+    return false;
+  llvm::SmallVector<int64_t> slice_sizes;
+  for (const auto& attr : slice_sizes_attr.getValues<APInt>()) {
+    slice_sizes.push_back(attr.getSExtValue());
+  }
+
+  auto output_shape = xla::ShapeInference::InferGatherShape(
+      input_shape, start_indices_shape, gather_dim_numbers, slice_sizes);
+  if (!output_shape.ok()) {
+    op->emitError(output_shape.status().error_message());
+    return false;
+  }
+
+  auto refined_type = xla::ConvertShapeToType<RankedTensorType>(
+      *output_shape, mlir::Builder(op));
+  if (!refined_type.ok()) {
+    op->emitError(refined_type.status().error_message());
+    return false;
+  }
+
+  return RefineResultType(op, op.output(), *refined_type);
+}
+
 llvm::Optional<RankedTensorType> InferXlaConvOutputShape(
     llvm::SmallVector<int64_t> input_tensor_dims,
     llvm::SmallVector<int64_t> kernel_tensor_dims,
@@ -2141,6 +2187,10 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op,
 
   if (auto xla_conv_v2_op = dyn_cast<XlaConvV2Op>(op)) {
     return InferShapeForXlaConvV2Op(xla_conv_v2_op);
+  }
+
+  if (auto xla_gather_op = dyn_cast<XlaGatherOp>(op)) {
+    return InferShapeForXlaGatherOp(xla_gather_op);
   }
 
   // Return operand as a constant attribute.
