@@ -244,8 +244,6 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       PartialTensorShape* output_tensorshape) {
     if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
       return OkStatus();
-    *output_tensorshape = 
-        std::make_unique<PartialTensorShape>( std::initializer_list<int64_t>({}));
     auto dims1 = ts1.dim_sizes();
     auto dims2 = ts2.dim_sizes();
     for (int d = 0; d < ts1.dims(); d++) {
