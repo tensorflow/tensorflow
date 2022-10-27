@@ -245,13 +245,14 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
       *output_tensorshape = std::make_unique<PartialTensorShape>();
       return OkStatus();
-    *output_tensorshape = std::make_unique<PartialTensorShape>({});
+    *output_tensorshape = 
+        std::make_unique<PartialTensorShape>( std::initializer_list<int64_t>({}));
     auto dims1 = ts1.dim_sizes();
     auto dims2 = ts2.dim_sizes();
     for (int d = 0; d < ts1.dims(); d++) {
       if (dims1[d] == dims2[d])
-          TF_RETURN_IF_ERROR(
-              (*output_tensorshape)->AddDimWithStatus(dims1[d]));
+        TF_RETURN_IF_ERROR(
+            (*output_tensorshape)->AddDimWithStatus(dims1[d]));
       else
         (*output_tensorshape)->AddDim(-1);
     }
