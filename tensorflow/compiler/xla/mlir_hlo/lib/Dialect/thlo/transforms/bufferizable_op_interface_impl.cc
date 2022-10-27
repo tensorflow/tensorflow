@@ -26,8 +26,9 @@ namespace {
 using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
+using mlir::bufferization::BufferRelation;
 
-// We can reuse the upstream implementaiton when DestinationStyleOpInterface
+// We can reuse the upstream implementation when DestinationStyleOpInterface
 // is moved out of linalg.
 static LogicalResult bufferizeDestinationStyleOpInterface(
     RewriterBase &rewriter, DestinationStyleOpInterface op,
@@ -129,6 +130,11 @@ struct ThloSortOpBufferizationModel
                           const BufferizationOptions &options) const {
     return bufferizeDestinationStyleOpInterface(
         rewriter, cast<DestinationStyleOpInterface>(op), options);
+  }
+
+  BufferRelation bufferRelation(Operation * /*op*/, OpResult /*opResult*/,
+                                const AnalysisState & /*state*/) const {
+    return BufferRelation::Equivalent;
   }
 };
 

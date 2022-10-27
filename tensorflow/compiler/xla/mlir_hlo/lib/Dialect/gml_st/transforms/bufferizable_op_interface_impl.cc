@@ -229,7 +229,19 @@ LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
 
   // Create subviews or store ops for the set computation.
   auto tile = dyn_cast<TileOp>(setDefiningOp);
-  if (!tile) return failure();
+  if (!tile) {
+    // TODO(bchetioui): this check for an unrealized conversion cast does not
+    // belong here. This workaround will have to be deleted once SetYieldOp can
+    // be canonicalized correctly.
+
+    // If constants were folded into the tile type during canonicalization,
+    // tile creation is followed by an UnrealizedConversionCastOp on the tile.
+    auto castOp = dyn_cast<UnrealizedConversionCastOp>(setDefiningOp);
+    if (!castOp) return failure();
+
+    tile = dyn_cast<TileOp>(castOp->getOperand(0).getDefiningOp());
+    if (!tile) return failure();
+  }
 
   if (!update.getType().isa<ShapedType>()) {
     auto indices =

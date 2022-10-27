@@ -43,7 +43,7 @@ class THLO_Op<string mnemonic, list<Trait> traits> :
 }
 
 class THLO_DstStyleOp<string mnemonic, list<Trait> traits> : THLO_Op<mnemonic, [
-    DestinationStyleOpInterface, Pure] # traits> {
+    DestinationStyleOpInterface] # traits> {
   let hasCustomAssemblyFormat = 1;
 }
 
@@ -329,7 +329,7 @@ def THLO_MapOp : THLO_DstStyleOp<"map", [
   }];
 }
 
-def THLO_SortOp : THLO_DstStyleOp<"sort", [RecursiveMemoryEffects,
+def THLO_SortOp : THLO_DstStyleOp<"sort", [
         DeclareOpInterfaceMethods<TilingInterface>, SameVariadicOperandSize,
         SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "Destination-style twin for the `mhlo.sort`";
