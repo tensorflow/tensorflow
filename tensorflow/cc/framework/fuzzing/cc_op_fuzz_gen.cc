@@ -35,14 +35,12 @@ limitations under the License.
 #include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/public/version.h"
-#include "tensorflow/tsl/platform/file_system.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace cc_op {
 namespace {
 
-std::string DefaultValue(OpDef_AttrDef attr) {
+string DefaultValue(OpDef_AttrDef attr) {
   static const auto* attr_default_value_map =
       new absl::flat_hash_map<StringPiece, StringPiece, StringPieceHasher>{
           {"int", "0"},
@@ -79,7 +77,7 @@ std::string DefaultValue(OpDef_AttrDef attr) {
   return std::string(entry->second);
 }
 
-tsl::Status WriteClassFuzzDef(const OpInfo& op_info, WritableFile* fuzz) {
+string WriteClassFuzzDef(const OpInfo& op_info) {
   string class_signature_str = absl::Substitute(
       "class Fuzz$0 : public FuzzSession<$1> {\n", op_info.op_name,
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
@@ -190,11 +188,11 @@ tsl::Status WriteClassFuzzDef(const OpInfo& op_info, WritableFile* fuzz) {
       build_graph_body, constructor_call_str, "  }\n", fuzz_impl_signature_str,
       run_inputs_str, "  }\n", "};\n");
 
-  return fuzz->Append(fuzz_class_def);
+  return fuzz_class_def;
 }
 
-tsl::Status WriteFuzzTest(const OpInfo& op_info, WritableFile* fuzz) {
-  string fuzz_test_str = absl::Substitute(
+string WriteFuzzTest(const OpInfo& op_info) {
+  return absl::Substitute(
       "FUZZ_TEST_F(Fuzz$0, Fuzz).WithDomains($1);\n", op_info.op_name,
       absl::StrJoin(op_info.graph_op_def.input_arg(), ", ",
                     [](string* out, const auto arg) {
@@ -202,7 +200,6 @@ tsl::Status WriteFuzzTest(const OpInfo& op_info, WritableFile* fuzz) {
                       if (ArgIsList(arg))
                         strings::StrAppend(out, ", AnyTensor()");
                     }));
-  return fuzz->Append(fuzz_test_str);
 }
 
 bool OpFuzzingIsOk(const OpInfo& op_info) {
@@ -275,19 +272,7 @@ bool OpFuzzingIsOk(const OpInfo& op_info) {
   return true;
 }
 
-tsl::Status WriteFuzzer(const OpDef& graph_op_def, const ApiDef& api_def,
-                        WritableFile* fuzz) {
-  OpInfo op_info(graph_op_def, api_def, std::vector<string>());
-  tsl::Status status;
-  if (OpFuzzingIsOk(op_info)) {
-    status.Update(WriteClassFuzzDef(op_info, fuzz));
-    status.Update(WriteFuzzTest(op_info, fuzz));
-    status.Update(fuzz->Append("\n"));
-  }
-  return status;
-}
-
-tsl::Status StartFile(const string& fname, WritableFile* fuzz) {
+string FuzzerFileStart() {
   const string fuzz_namespace_begin = R"namespace(
 namespace tensorflow {
 namespace fuzzing {
@@ -304,44 +289,39 @@ namespace fuzzing {
 )include",
       fuzz_namespace_begin);
 
-  return fuzz->Append(fuzz_header);
+  return fuzz_header;
 }
 
-tsl::Status FinishFile(WritableFile* fuzz) {
+string FuzzerFileEnd() {
   const string fuzz_footer = R"footer(
 }  // namespace fuzzing
 }  // namespace tensorflow
 )footer";
 
-  auto status = fuzz->Append(fuzz_footer);
-  status.Update(fuzz->Close());
-  return status;
+  return fuzz_footer;
 }
 
 }  // namespace
 
-void WriteFuzzers(const OpList& ops, const ApiDefMap& api_def_map,
-                  const string& fname) {
-  Env* env = Env::Default();
-
-  // Write the initial boilerplate for the fuzzers.
-  std::unique_ptr<WritableFile> fuzz = nullptr;
-  auto status = env->NewWritableFile(fname, &fuzz);
-  status.Update(StartFile(fname, fuzz.get()));
-
-  for (const auto& graph_op_def : ops.op()) {
-    // Skip deprecated ops.
-    if (graph_op_def.has_deprecation() &&
-        graph_op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION) {
-      continue;
-    }
-
-    const auto* api_def = api_def_map.GetApiDef(graph_op_def.name());
-    status.Update(WriteFuzzer(graph_op_def, *api_def, fuzz.get()));
-  }
-
-  status.Update(FinishFile(fuzz.get()));
-  TF_CHECK_OK(status);
+string WriteFuzzers(const OpList& ops, const ApiDefMap& api_def_map) {
+  return absl::StrCat(
+      FuzzerFileStart(),
+      absl::StrJoin(
+          ops.op(), "",
+          [&api_def_map](string* out, const OpDef& op_def) {
+            // Skip deprecated ops.
+            bool skip = op_def.has_deprecation() &&
+                        op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION;
+            const auto* api_Def = api_def_map.GetApiDef(op_def.name());
+            OpInfo op_info(op_def, *api_Def, std::vector<string>());
+            skip |= !OpFuzzingIsOk(op_info);
+            if (!skip) {
+              out->append(WriteClassFuzzDef(op_info));
+              out->append(WriteFuzzTest(op_info));
+              out->append("\n");
+            }
+          }),
+      FuzzerFileEnd());
 }
 
 }  // namespace cc_op
