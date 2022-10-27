@@ -48,7 +48,7 @@ rocm_minor_version=`cat /opt/rocm/.info/version | cut -d "." -f 2`
 TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=""
 if [[ $rocm_major_version == *"5"* ]]; then
 	if [[ $rocm_minor_version -lt 3 ]]; then
-		TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",no_rocm_pre_53"	
+		TF_TEST_FILTER_TAGS_ROCM_VERSION_SPECIFIC=",-no_rocm_pre_53"	
 	fi
 fi
 
