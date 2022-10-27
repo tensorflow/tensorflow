@@ -224,6 +224,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "pjrt_executable_test",
+    srcs = ["pjrt_executable_test.cc"],
+    deps = [
+        ":compile_options_proto_cc",
+        ":pjrt_executable",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "pjrt_compiler",
     srcs = ["pjrt_compiler.cc"],
