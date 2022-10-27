@@ -55,7 +55,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     for (int i = 0; i < os_input.size(); i++) {
       OP_REQUIRES_OK(ctx, MostSpecificCompatibleShape(os_input[i], os_concatenate[i], 
                                         &output_tensorshape));
-      output_shapes_.push_back(*output_tensorshape.get());
+      output_shapes_.push_back(output_tensorshape);
     }
   }
   ~Dataset() override {
