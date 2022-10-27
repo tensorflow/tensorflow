@@ -549,15 +549,6 @@ inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N,
   return TensorShapeUtils::MakeShape(dim_sizes, shape);
 }
 
-inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N,
-                                   gtl::ArraySlice<int64_t> spatial,
-                                   int64_t C) {
-  TensorShape shape;
-  Status status = ShapeFromFormatWithStatus(format, N, spatial, C, &shape);
-  CHECK(status.ok());
-  return shape;
-}
-
 // Return a tensor shape of the specified 'format', and dimensions.
 // Works for both 2D and 3D operations. If 'format' is OIHW_VECT_I,
 // the output TensorShape has spatial.size() + 3 dimensions, otherwise
@@ -586,14 +577,6 @@ inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
 inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N, int64_t H,
                                          int64_t W, int64_t C, TensorShape *shape) {
   return ShapeFromFormatWithStatus(format, N, {H, W}, C, shape);
-}
-
-inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N, int64_t H,
-                                   int64_t W, int64_t C) {
-  TensorShape shape;
-  Status status = ShapeFromFormatWithStatus(format, N, H, W, C, &shape);
-  CHECK(status.ok());
-  return shape;
 }
 
 // Return a filter tensor shape of the specified 'format', and dimensions.
@@ -629,15 +612,6 @@ inline Status ShapeFromFormatWithStatus(TensorFormat dst_format,
     spatial_dims[num_src_spatial_dims - 1] *= 4;
   }
   return ShapeFromFormatWithStatus(dst_format, batch, {spatial_dims}, channels, shape);
-}
-
-inline TensorShape ShapeFromFormat(TensorFormat dst_format,
-                                   const TensorShape& src_shape,
-                                   TensorFormat src_format) {
-  TensorShape shape;
-  Status status = ShapeFromFormatWithStatus(dst_format, src_shape, src_format, &shape);
-  CHECK(status.ok());
-  return shape;
 }
 
 // Returns a copy of the specified filter tensor 'src_shape' converted from
