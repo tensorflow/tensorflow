@@ -24,8 +24,7 @@ namespace tsl {
 namespace {
 
 // The URL to retrieve metadata when running in Google Compute Engine.
-constexpr char kGceMetadataBaseUrl[] =
-    "http://metadata.google.internal/computeMetadata/v1/";
+constexpr char kGceMetadataBaseUrl[] = "http://metadata/computeMetadata/v1/";
 
 }  // namespace
 
