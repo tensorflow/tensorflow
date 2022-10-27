@@ -116,6 +116,10 @@ Status UpdateVariableAndFill(
     OpKernelContext* ctx, Distribution dist, int state_input_idx,
     bool read_alg_from_state, ConcreteRngAlgorithm alg, int64_t output_size,
     typename Distribution::ResultElementType* output_data) {
+  if (output_size == 0)
+    // Some CUDA kernels might crash otherwise (#51803):
+    //   Check failed: work_element_count > 0
+    return OkStatus();
   Var* var = nullptr;
   TF_RETURN_IF_ERROR(
       LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));
