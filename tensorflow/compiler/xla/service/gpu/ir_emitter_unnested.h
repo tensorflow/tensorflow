@@ -784,6 +784,8 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns the buffer allocation Slice for the given operands.
   StatusOr<std::vector<BufferAllocation::Slice>> GetSlices(
       mlir::Operation::operand_range operands);
+
+  GpuElementalIrEmitter elemental_emitter_;
 };
 
 }  // namespace gpu
