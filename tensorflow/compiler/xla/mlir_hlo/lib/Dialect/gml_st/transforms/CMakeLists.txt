@@ -74,6 +74,7 @@ add_mlir_library(GmlStPasses
   tiling_softmax.cc
   transform_map_for_cpu.cc
   transform_matmul_for_cpu.cc
+  transform_transpose_for_cpu.cc
   transform_scatter_for_cpu.cc
   vectorization.cc
 
