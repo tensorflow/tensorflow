@@ -1104,18 +1104,24 @@ TEST(SaveModelTest, Model) {
   }
 
   // Make Save->Load roundtrip.
+  Env* env = Env::Default();
+  string tmpFile;
+  EXPECT_TRUE(env->LocalTempFilename(&tmpFile));
+  tmpFile += "_autotune_model_test";
+
   ModelProto::OptimizationParams optimization_params;
   optimization_params.set_algorithm(AutotuneAlgorithm::GRADIENT_DESCENT);
   optimization_params.set_cpu_budget(64);
   optimization_params.set_ram_budget(1024);
   optimization_params.set_model_input_time(43653.34534);
-  TF_ASSERT_OK(model.Save("/tmp/autotune_model_test",
+  TF_ASSERT_OK(model.Save(tmpFile,
                           model.output()->Snapshot(), optimization_params));
 
   std::unique_ptr<model::Model> restored_model;
   ModelProto::OptimizationParams restored_optimization_params;
-  TF_ASSERT_OK(model.Load("/tmp/autotune_model_test", &restored_model,
+  TF_ASSERT_OK(model.Load(tmpFile, &restored_model,
                           &restored_optimization_params));
+  TF_ASSERT_OK(env->DeleteFile(tmpFile));
 
   // Check optimization parameters.
   EXPECT_EQ(optimization_params.algorithm(),
