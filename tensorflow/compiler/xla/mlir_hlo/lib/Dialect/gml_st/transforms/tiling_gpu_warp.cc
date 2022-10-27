@@ -40,6 +40,7 @@ namespace {
 
 constexpr const char* kWarpDistributionLabel = "warp";
 constexpr const char* kThreadDistributionLabel = "thread";
+constexpr int64_t kWarpSize = 32;
 
 bool isWarpLevelOp(Operation* op) {
   if (!op) return false;
@@ -77,12 +78,14 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
     Location loc = genericOp.getLoc();
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
     Value c1 = rewriter.create<arith::ConstantIndexOp>(loc, 1);
-    Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, 32);
-    Value cWarpSizeMinusOne = rewriter.create<arith::ConstantIndexOp>(loc, 31);
+    Value cWarpSize = rewriter.create<arith::ConstantIndexOp>(loc, kWarpSize);
+    Value cWarpSizeMinusOne =
+        rewriter.create<arith::ConstantIndexOp>(loc, kWarpSize - 1);
     Attribute zeroAttr = rewriter.getIndexAttr(0);
     Attribute oneAttr = rewriter.getIndexAttr(1);
-    Attribute warpSizeAttr = rewriter.getIndexAttr(32);
-    StringAttr threadDist = rewriter.getStringAttr(kThreadDistributionLabel);
+    Attribute warpSizeAttr = rewriter.getIndexAttr(kWarpSize);
+    StringAttr threadDistrLabel =
+        rewriter.getStringAttr(kThreadDistributionLabel);
 
     // Create `gml_st.parallel` loop to distribute among lanes.
     Value init = genericOp.getOutputs().front();
@@ -92,7 +95,7 @@ struct TilingCwisePattern : OpRewritePattern<linalg::GenericOp> {
     Value dimSizePlusWarpSizeMinusOne =
         rewriter.createOrFold<arith::AddIOp>(loc, dimSize, cWarpSizeMinusOne);
     auto ploop = rewriter.create<gml_st::ParallelOp>(
-        loc, genericOpTy, c0, cWarpSize, c1, threadDist,
+        loc, genericOpTy, c0, cWarpSize, c1, threadDistrLabel,
         [&](OpBuilder& b, Location loc, ValueRange ivs) {
           // Compute the lane tile with a stride of `warpSize`. This tile
           // defines the subset of the result that is produced by the lane.
@@ -180,7 +183,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
                                 PatternRewriter& rewriter) const override {
     if (gml_st::hasTransformationAttr(genericOp)) return failure();
 
-    // Match only reduction on the warp level.
+    // Match only reductions on the warp level.
     if (!isWarpLevelOp(genericOp)) return failure();
 
     // Match only if it's a linalg.generic tensor<1x?xf32> -> tensor<1xf32> with
@@ -196,10 +199,10 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
       return rewriter.notifyMatchFailure(genericOp,
                                          "Expected single input and output");
     }
+
     auto input = genericOp.getInputs().front();
     auto output = genericOp.getOutputs().front();
     auto outType = output.getType().dyn_cast<TensorType>();
-    constexpr int kWarpSize = 32;
 
     Location loc = genericOp->getLoc();
     Value c0 = rewriter.create<arith::ConstantIndexOp>(loc, 0);
@@ -208,7 +211,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
     Value reductionDim = rewriter.create<tensor::DimOp>(loc, input, c1);
     OpFoldResult zeroAttr = rewriter.getIndexAttr(0);
     OpFoldResult oneAttr = rewriter.getIndexAttr(1);
-    auto threadDist = rewriter.getStringAttr(kThreadDistributionLabel);
+    auto threadDistrLabel = rewriter.getStringAttr(kThreadDistributionLabel);
 
     auto getResult = [](Operation* op) { return op->getResult(0); };
 
@@ -224,7 +227,7 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Create gml_st.parallel finalizing the partial result.
     partial = getResult(rewriter.create<gml_st::ParallelOp>(
-        loc, partial.getType(), c0, cWarpSize, c1, threadDist,
+        loc, partial.getType(), c0, cWarpSize, c1, threadDistrLabel,
         [&](OpBuilder& builder, Location loc, ValueRange ivs) {
           Value laneIdx = ivs.front();
           Value partPoint = builder.create<gml_st::TileOp>(
@@ -257,7 +260,8 @@ struct TilingReductionPattern : OpRewritePattern<linalg::GenericOp> {
 
     // Change existing linalg.generic to warp-reduce the partial result.
     partial = rewriter.create<tensor::ExpandShapeOp>(
-        loc, outType.clone({1, 32}), partial, ReassociationIndices{0, 1});
+        loc, outType.clone({1, kWarpSize}), partial,
+        ReassociationIndices{0, 1});
     rewriter.updateRootInPlace(genericOp, [&] {
       genericOp->setOperand(0, partial);
       gml_st::setTransformationAttr(rewriter, genericOp);
