@@ -1639,10 +1639,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   XlaBuilder b(TestName());
 
-  std::vector<float> values = {1.0f, 2.0f, M_PI, -4.0f};
-  std::vector<float> exponents = {
-      0.0f,         1.0f,        2.0f, 0.5f,  0.25f, -1.0f / 3.0f, 1.0f / 3.0f,
-      -2.0f / 3.0f, 2.0f / 3.0f, 1.5f, -1.0f, -0.5f, -0.25f};
+  std::vector<float> values = {1.0f, 2.0f, 3.2f, -4.0f};
+  std::vector<float> exponents = {0.0f, 1.0f,  2.0f,  0.5f,  0.25f,
+                                  1.5f, -1.0f, -0.5f, -0.25f};
 
   Literal param_literal = LiteralUtil::CreateR1<float>(values);
   std::unique_ptr<GlobalData> param_data =
