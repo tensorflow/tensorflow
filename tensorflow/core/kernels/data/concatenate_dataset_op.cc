@@ -51,7 +51,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
     auto os_input = input->output_shapes();
     auto os_concatenate = to_concatenate->output_shapes();
-    std::unique_ptr<PartialTensorShape> output_tensorshape(nullptr);
+    std::unique_ptr<PartialTensorShape> output_tensorshape;
     for (int i = 0; i < os_input.size(); i++) {
       OP_REQUIRES_OK(ctx, MostSpecificCompatibleShape(os_input[i], os_concatenate[i], 
                                         &output_tensorshape));
