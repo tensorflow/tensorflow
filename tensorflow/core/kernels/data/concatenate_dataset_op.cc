@@ -249,7 +249,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     for (int d = 0; d < ts1.dims(); d++) {
       if (dims1[d] == dims2[d])
         TF_RETURN_IF_ERROR(
-            (*output_tensorshape)->AddDimWithStatus(dims1[d]));
+            output_tensorshape->AddDimWithStatus(dims1[d]));
       else
         (*output_tensorshape)->AddDim(-1);
     }
