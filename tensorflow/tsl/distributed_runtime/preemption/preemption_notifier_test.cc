@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 
 #include <csignal>
 #include <functional>
@@ -22,18 +22,17 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
 #if defined(PLATFORM_GOOGLE)
 #include "thread/executor.h"
 #include "thread/signal.h"
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace {
 
 class PreemptNotifierTest : public ::testing::Test {
@@ -171,4 +170,4 @@ TEST_F(PreemptNotifierTest, DestructorCancelsPendingCalls) {
   EXPECT_TRUE(errors::IsCancelled(result.status()));
 }
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

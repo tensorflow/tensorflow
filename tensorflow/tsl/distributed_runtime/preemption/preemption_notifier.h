@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_NOTIFIER_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_NOTIFIER_H_
+#ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_NOTIFIER_H_
+#define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_NOTIFIER_H_
 
 #include <functional>
 #include <memory>
@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // Static registration for preemption notifiers.
 #define REGISTER_PREEMPTION_NOTIFIER(notifier_type_name, factory_fn)        \
@@ -38,7 +38,7 @@ namespace tensorflow {
                                                  factory_fn)                  \
   static bool static_preemption_notifier_##counter TF_ATTRIBUTE_UNUSED =      \
       []() {                                                                  \
-        ::tensorflow::PreemptionNotifier::RegisterPreemptionNotifier(         \
+        ::tsl::PreemptionNotifier::RegisterPreemptionNotifier(                \
             notifier_type_name, factory_fn);                                  \
         return true;                                                          \
       }()
@@ -142,6 +142,6 @@ class PreemptionNotifier {
   std::vector<PreemptTimeCallback> callbacks_ TF_GUARDED_BY(mu_);
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_NOTIFIER_H_
+#endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_PREEMPTION_PREEMPTION_NOTIFIER_H_

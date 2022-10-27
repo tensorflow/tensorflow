@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 
 #include <atomic>
 #include <csignal>
@@ -23,17 +23,16 @@ limitations under the License.
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #if defined(PLATFORM_GOOGLE)
 #include "thread/executor.h"
 #include "thread/signal.h"
 #endif
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 constexpr absl::Duration kListenInterval = absl::Seconds(1);
@@ -133,4 +132,4 @@ REGISTER_PREEMPTION_NOTIFIER(
     "sigterm", [](Env* env) -> std::unique_ptr<PreemptionNotifier> {
       return std::make_unique<SigtermNotifier>(env);
     });
-}  // namespace tensorflow
+}  // namespace tsl

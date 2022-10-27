@@ -13,7 +13,6 @@ cc_library(
     srcs = ["preemption_sync_manager.cc"],
     hdrs = ["preemption_sync_manager.h"],
     deps = [
-        ":preemption_notifier",
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/coordination:coordination_service_agent",
         "//tensorflow/core/platform",
@@ -21,24 +20,8 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-cc_library(
-    name = "preemption_notifier",
-    srcs = ["preemption_notifier.cc"],
-    hdrs = ["preemption_notifier.h"],
-    # copybara:uncomment compatible_with = ["//buildenv/target:gce"],
-    deps = [
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -50,7 +33,6 @@ tf_cc_test(
     size = "small",
     srcs = ["preemption_sync_manager_test.cc"],
     deps = [
-        ":preemption_notifier",
         ":preemption_sync_manager",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/time",
@@ -66,28 +48,10 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
     ] + tf_grpc_cc_dependencies(),
-)
-
-tf_cc_test(
-    name = "preemption_notifier_test",
-    size = "small",
-    srcs = ["preemption_notifier_test.cc"],
-    deps = [
-        ":preemption_notifier",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform",
-        "//tensorflow/core/platform:env",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/platform:statusor",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
-    ],
 )
 
 cc_library(

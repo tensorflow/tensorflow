@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/message_wrappers.h"
-#include "tensorflow/core/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
@@ -47,8 +46,8 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/distributed_runtime/preemption/preemption_notifier.h"
 #include "tensorflow/tsl/protobuf/coordination_config.pb.h"
-
 namespace tensorflow {
 namespace eager {
 
@@ -343,7 +342,8 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
       }
     }
     auto preemption_notifier =
-        PreemptionNotifier::CreatePreemptionNotifier("sigterm", Env::Default());
+        tsl::PreemptionNotifier::CreatePreemptionNotifier("sigterm",
+                                                          Env::Default());
     preemption_notifier->WillBePreemptedAtAsync(
         [coord_agent](StatusOr<absl::Time> time_or_status) {
           if (time_or_status.ok()) {
