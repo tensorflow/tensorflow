@@ -20,8 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -666,6 +668,21 @@ TEST(DatasetUtilsTest, DatasetExperimentRegistry) {
   auto experiments = DatasetExperimentRegistry::Experiments();
   EXPECT_TRUE(experiments.find("test_only_experiment") != experiments.end());
   EXPECT_TRUE(experiments.find("non_existing_experiment") == experiments.end());
+}
+
+TEST(DatasetUtilsTest, CountBytes) {
+  std::vector<Tensor> uncompressed = {
+      CreateTensor<int64_t>(TensorShape{128, 2}),
+      CreateTensor<int64_t>(TensorShape{64, 4})};
+  EXPECT_EQ(GetAllocatedBytes(uncompressed), 4096);
+  EXPECT_EQ(GetTotalBytes(uncompressed), 4096);
+
+  CompressedElement compressed_element;
+  TF_ASSERT_OK(CompressElement(uncompressed, &compressed_element));
+  std::vector<Tensor> compressed{{DT_VARIANT, TensorShape({})}};
+  compressed.front().scalar<Variant>()() = compressed_element;
+  EXPECT_EQ(GetAllocatedBytes(compressed), compressed_element.ByteSizeLong());
+  EXPECT_EQ(GetTotalBytes(compressed), compressed_element.ByteSizeLong());
 }
 
 }  // namespace

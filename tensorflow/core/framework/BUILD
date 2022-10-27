@@ -1785,6 +1785,18 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "dataset_proto",
+    srcs = ["dataset.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
+        ":tensor_proto",
+        ":tensor_shape_proto",
+        ":types_proto",
+    ],
+)
+
+tf_proto_library(
     name = "dataset_metadata_proto",
     srcs = ["dataset_metadata.proto"],
     cc_api_version = 2,
@@ -1810,6 +1822,7 @@ tf_proto_library(
         ":api_def_proto",
         ":attr_value_proto",
         ":cost_graph_proto",
+        ":dataset_proto",
         ":dataset_metadata_proto",
         ":dataset_options_proto",
         ":device_attributes_proto",
