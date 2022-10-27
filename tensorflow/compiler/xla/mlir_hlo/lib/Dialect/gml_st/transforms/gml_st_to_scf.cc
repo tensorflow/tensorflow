@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "mlir-hlo/Dialect/gml_st/IR/gml_st_ops.h"
 #include "mlir-hlo/Dialect/gml_st/transforms/passes.h"
@@ -129,27 +127,23 @@ struct ForOpToSCFPattern : public OpRewritePattern<ForOp> {
 
   LogicalResult matchAndRewrite(ForOp loop,
                                 PatternRewriter &rewriter) const override {
-    auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs,
-                         ValueRange iterArgs) {
+    // Fail conversion if the loop has not been bufferized.
+    if (!loop.hasBufferSemantics()) return failure();
+
+    auto cloneBody = [&](OpBuilder &builder, Location /*loc*/, ValueRange ivs) {
       BlockAndValueMapping bvm;
       bvm.map(loop.getInductionVars(), ivs);
-      bvm.map(loop.getRegionOutputArgs(), iterArgs);
+      bvm.map(
+          loop.getBody()->getArguments().take_back(loop.getOutputs().size()),
+          loop.getOutputs());
 
       for (auto &op : loop.getBody()->without_terminator())
         builder.clone(op, bvm);
-
-      std::vector<Value> result;
-      llvm::transform(loop.getTerminator().getSrcs(),
-                      std::back_inserter(result),
-                      [&](Value src) { return bvm.lookupOrDefault(src); });
-      return result;
     };
 
-    scf::LoopNest nest = scf::buildLoopNest(
-        rewriter, loop.getLoc(), loop.getLowerBound(), loop.getUpperBound(),
-        loop.getStep(), loop.getOutputs(), cloneBody);
-
-    rewriter.replaceOp(loop, nest.getResults());
+    scf::buildLoopNest(rewriter, loop.getLoc(), loop.getLowerBound(),
+                       loop.getUpperBound(), loop.getStep(), cloneBody);
+    rewriter.eraseOp(loop);
     return success();
   }
 };
