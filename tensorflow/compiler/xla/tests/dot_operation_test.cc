@@ -682,6 +682,58 @@ XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMul) {
       {x_data.get(), y_data.get()}, this->error_spec_);
 }
 
+template <typename T>
+class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
+ public:
+  DotOperationTestWithCublasLt_F16F32F64CF64() {
+    execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
+        true);
+  }
+};
+TYPED_TEST_CASE(DotOperationTestWithCublasLt_F16F32F64CF64, TypesF16F32F64CF64);
+
+XLA_TYPED_TEST(DotOperationTestWithCublasLt_F16F32F64CF64,
+               GeneralMatMulActivation) {
+  using T = TypeParam;
+
+  XlaBuilder builder(this->TestName());
+  auto x =
+      Parameter(&builder, 0, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "x");
+  auto y =
+      Parameter(&builder, 1, ShapeUtil::MakeShapeWithType<T>({2, 2, 2}), "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+
+  auto dot = DotGeneral(x, y, dnums);
+  auto prim_type = primitive_util::NativeToPrimitiveType<T>();
+  auto x_data =
+      this->client_
+          ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
+              {{{-1.0f, 2.0f}, {3.0f, -4.0f}}, {{5.0f, 6.0f}, {-7.0f, 8.0f}}}))
+          .value();
+
+  auto y_data =
+      this->client_
+          ->TransferToServer(LiteralUtil::CreateR3FromArray3D<T>(
+              {{{1.0f, 0.0f}, {0.0f, -1.0f}}, {{1.0f, 0.0f}, {0.0f, 1.0f}}}))
+          .value();
+  Array3D<T> expected(
+      {{{-1.0f, -2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {-7.0f, 8.0f}}});
+  if (prim_type != C64) {
+    Max(dot,
+        ConstantR3FromArray3D<T>(&builder, {{{0.0f, 0.0f}, {0.0f, 0.0f}},
+                                            {{0.0f, 0.0f}, {0.0f, 0.0f}}}));
+    expected = Array3D<T>(
+        {{{0.0f, 0.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {0.0f, 8.0f}}});
+  }
+  this->template ComputeAndCompareR3<T>(
+      &builder, expected, {x_data.get(), y_data.get()}, this->error_spec_);
+}
+
 XLA_TYPED_TEST(DotOperationTest_F16F32F64CF64, GeneralMatMulR3LhsR2Rhs) {
   using T = TypeParam;
 
