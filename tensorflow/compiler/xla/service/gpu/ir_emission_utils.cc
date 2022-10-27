@@ -139,6 +139,15 @@ Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions,
   return {1, 128, 1};
 }
 
+const char* const kSoftmaxCallTarget = "__softmax_fusion";
+
+bool IsSoftmaxCustomCall(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  return hlo.custom_call_target() == kSoftmaxCallTarget;
+}
+
 const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
 
 bool IsCustomCallToCusolver(const HloInstruction& hlo) {

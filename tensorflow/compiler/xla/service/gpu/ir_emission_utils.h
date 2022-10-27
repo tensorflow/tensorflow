@@ -56,6 +56,11 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
+// Returns true if `hlo` is a matched softmax fusion.
+bool IsSoftmaxCustomCall(const HloInstruction& hlo);
+
+extern const char* const kSoftmaxCallTarget;
+
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
 // This returns true if `hlo` is a CustomCall HLO with a call target equal to

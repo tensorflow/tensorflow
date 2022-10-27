@@ -1227,6 +1227,7 @@ cc_library(
     srcs = ["softmax_fusion.cc"],
     hdrs = ["softmax_fusion.h"],
     deps = [
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

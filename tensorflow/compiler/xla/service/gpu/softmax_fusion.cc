@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -155,7 +156,7 @@ Status ReplaceSoftmaxWithCustomCall(HloInstruction* root,
                                                            /*is_entry=*/false);
   auto softmax_custom_call =
       root->parent()->AddInstruction(HloInstruction::CreateCustomCall(
-          root->shape(), {producer}, softmax_computation, "softmax_fusion"));
+          root->shape(), {producer}, softmax_computation, kSoftmaxCallTarget));
   if (root->IsRoot()) {
     root->parent()->set_root_instruction(softmax_custom_call);
     TF_RETURN_IF_ERROR(
