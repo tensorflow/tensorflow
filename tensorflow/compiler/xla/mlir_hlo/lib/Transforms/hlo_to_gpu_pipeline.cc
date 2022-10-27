@@ -62,9 +62,6 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
     pm.addNestedPass<FuncOp>(gml_st::createTilingSoftmaxPass(
         /*distribute=*/true, options.warpTileDim, "warp"));
 
-    // Collapse all materialize ops.
-    pm.addPass(gml_st::createCollapseMaterializeOpsPass());
-
     // GPU-specific tiling for ops on the warp level.
     pm.addNestedPass<FuncOp>(gml_st::createTilingGPUWarpPass());
     pm.addNestedPass<FuncOp>(createScalarizationPass());
@@ -106,6 +103,8 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
   pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
+  // Canonicalize away memory copies into itself
+  pm.addPass(createCanonicalizerPass());
 
   // Linalg + GmlSt -> GPU
   pm.addNestedPass<FuncOp>(createGmlStToGpuPass());
