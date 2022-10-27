@@ -132,7 +132,6 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
   llvm::initializeAnalysis(*pass_registry);
   llvm::initializeTransformUtils(*pass_registry);
   llvm::initializeInstCombine(*pass_registry);
-  llvm::initializeInstrumentation(*pass_registry);
   llvm::initializeTarget(*pass_registry);
   llvm::initializeCodeGenPreparePass(*pass_registry);
 }
