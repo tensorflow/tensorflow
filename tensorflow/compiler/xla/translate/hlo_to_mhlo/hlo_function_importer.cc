@@ -273,7 +273,7 @@ static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
     }
     return b.getArrayAttr(element_attrs);
   }
-  return b.getI64ArrayAttr(
+  return b.getIndexTensorAttr(
       llvm::SmallVector<int64_t>{shape.layout().minor_to_major().begin(),
                                  shape.layout().minor_to_major().end()});
 }

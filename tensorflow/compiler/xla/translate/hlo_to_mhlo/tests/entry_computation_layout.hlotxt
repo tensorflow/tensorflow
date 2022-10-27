@@ -11,5 +11,8 @@ ENTRY entry {
 
 // CHECK: func.func @main(
 // CHECK-SAME: xla_entry_computation_parameter_layouts
-// CHECK-SAME:  {{\[}}[0, 1, 2], [1, 2, 0], {{\[}}[1, 0], [0, 1]]]
-// CHECK-SAME: xla_entry_computation_result_layout = [2, 0, 1]
+// CHECK-SAME:  dense<[0, 1, 2]>
+// CHECK-SAME:  dense<[1, 2, 0]>
+// CHECK-SAME:  [dense<[1, 0]>
+// CHECK-SAME:   , dense<[0, 1]>
+// CHECK-SAME: xla_entry_computation_result_layout = dense<[2, 0, 1]>
