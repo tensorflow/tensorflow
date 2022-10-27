@@ -295,6 +295,36 @@ class RaggedTensorSupportedValuesTest(test_util.TensorFlowTestCase,
     self.assertAllTensorsEqual(wrapped_res.nested_row_splits,
                                res.nested_row_splits)
 
+  @parameterized.parameters(
+      (lambda x: x[1:], True),
+      (lambda x: x[0], False),
+      (lambda x: x[:], True),
+      (lambda x: x[0, :], False),
+      (lambda x: x[...], True),
+      (lambda x: x[1:2, ...], True),
+      (lambda x: x[..., 1:2], True),
+      (lambda x: x[0:2, ::2], True),
+  )
+  def testSlicing(self, slice_fn, is_ragged_output):
+    tensor_values = constant_op.constant([[1.0, 2], [3, 4], [5, 6], [7, 8]])
+    row_splits = constant_op.constant([0, 2, 3, 4], dtypes.int32)
+    raw_rt = RaggedTensor.from_row_splits(tensor_values, row_splits)
+
+    values = WrappedTensor(tensor_values)
+    rt = RaggedTensor.from_row_splits(values, row_splits)
+
+    res = slice_fn(rt)
+    raw_res = slice_fn(raw_rt)
+    if is_ragged_output:
+      self.assertIsInstance(res, RaggedTensor)
+      self.assertIsInstance(res.flat_values, WrappedTensor)
+      self.assertAllEqual(res.flat_values.value, raw_res.flat_values)
+      self.assertAllTensorsEqual(res.nested_row_splits,
+                                 raw_res.nested_row_splits)
+    else:
+      self.assertIsInstance(res, WrappedTensor)
+      self.assertAllEqual(res.value, raw_res)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedTensorSpecSupportedValuesTest(test_util.TensorFlowTestCase,
