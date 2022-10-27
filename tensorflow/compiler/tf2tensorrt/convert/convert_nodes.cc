@@ -6112,6 +6112,15 @@ bool OutputEdgeValidator::operator()(const Edge* out_edge) const {
   return true;
 }
 
+ITensorProxyPtr TRT_TensorOrWeights::as_tensor(
+    const OpConverterParams* params) {
+  if (is_tensor()) {
+    return tensor();
+  } else {
+    return params->converter->CreateConstantLayer(weights(), GetTrtDims());
+  }
+}
+
 std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
                                       nvinfer1::DataType type_expected,
                                       const NodeDef& node_def, int idx) {
