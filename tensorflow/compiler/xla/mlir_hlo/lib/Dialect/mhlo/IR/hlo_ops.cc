@@ -2876,7 +2876,8 @@ LogicalResult BatchNormGradOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormGradOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormGradOp(
-      adaptor.getOperand(), adaptor.getFeatureIndex(), inferredReturnShapes);
+      location, adaptor.getOperand(), adaptor.getScale(),
+      adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2898,7 +2899,8 @@ LogicalResult BatchNormTrainingOp::inferReturnTypeComponents(
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormTrainingOp::Adaptor adaptor(operands, attributes, regions);
   return hlo::inferBatchNormTrainingOp(
-      adaptor.getOperand(), adaptor.getFeatureIndex(), inferredReturnShapes);
+      location, adaptor.getOperand(), adaptor.getScale(),
+      adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2919,8 +2921,9 @@ LogicalResult BatchNormInferenceOp::inferReturnTypeComponents(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
   BatchNormInferenceOp::Adaptor adaptor(operands, attributes, regions);
-  return hlo::inferBatchNormInferenceOp(adaptor.getOperand(),
-                                        inferredReturnShapes);
+  return hlo::inferBatchNormInferenceOp(
+      location, adaptor.getOperand(), adaptor.getScale(),
+      adaptor.getFeatureIndex(), inferredReturnShapes);
 }
 
 //===----------------------------------------------------------------------===//
