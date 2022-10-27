@@ -53,9 +53,11 @@ _PREEMPTION_WORKER_KEY = 'TERMINATED_WORKER'
 _ACKNOWLEDGE_KEY = 'RECEIVED_SIGNAL'
 _ITERATION_VARIABLE = 'checkpointed_runs'
 _STOP_WATCHING_CLUSTER_VALUE = 'STOP_WATCHER'
-preemption_key = 'TF_DEFAULT_PREEMPTION_NOTICE_KEY'
+PREEMPTION_KEY = 'TF_DEFAULT_PREEMPTION_NOTICE_KEY'
+ENABLE_TESTING_FOR_TPU = False
 
 
+# TODO(wxinyi): add type annotations.
 def _non_chief_checkpoint_dir(checkpoint_dir, task_id):
   """Returns a directory for non-chief worker to save checkpoint."""
   dirpath = os.path.dirname(checkpoint_dir)
@@ -420,9 +422,51 @@ class PreemptionCheckpointHandler(object):
         `tf.distribute.experimental.TerminationConfig` object to configure for a
         platform other than Google Borg or GCP.
     """
-    self._cluster_resolver = cluster_resolver
+    if isinstance(checkpoint_or_checkpoint_manager,
+                  checkpoint_lib.Checkpoint) and not checkpoint_dir:
+      raise errors.InvalidArgumentError('When a checkpoint is passed, a '
+                                        'checkpoint_dir must be passed as well'
+                                        '.')
 
-    if not cluster_resolver.cluster_spec().jobs:
+    self._cluster_resolver = cluster_resolver
+    self._termination_config = termination_config
+    self._checkpoint_or_checkpoint_manager = checkpoint_or_checkpoint_manager
+    self._checkpoint_dir = checkpoint_dir
+
+    self._platform_device = gce_util.detect_platform()
+    if self._platform_device in (gce_util.PlatformDevice.GCE_TPU,
+                                 gce_util.PlatformDevice.GCE_CPU):
+      # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
+      # are the same on Borg, GCE CPU VM and GPU VM are different in terms
+      # of live migration, grace period, etc. We can make it work upon request.
+      raise NotImplementedError('PreemptionCheckpointHandler does not support '
+                                'usage with TPU or CPU device on GCP.')
+
+    # TODO(wxinyi): update name of gce_util.
+    elif self._platform_device == gce_util.PlatformDevice.INTERNAL_TPU:
+      if ENABLE_TESTING_FOR_TPU:
+        self._initialize_for_tpu_strategy()
+
+      else:
+        raise NotImplementedError('PreemptionCheckpointHandler does not support'
+                                  ' usage with TPU yet.')
+
+    else:
+      self._initialize_for_multi_worker_mirrored()
+
+    logging.info('PreemptionCheckpointHandler initialized or restored.')
+
+  def _initialize_for_tpu_strategy(self):
+    """Makes configurations for using the handler with TPUStrategy."""
+    self._is_chief = True
+    self._poll_termination_signal_thread = None
+    self._cluster_wise_termination_watcher_thread = None
+    self._maybe_create_checkpoint_manager()
+    self._read_checkpoint_manager.restore_or_initialize()
+
+  def _initialize_for_multi_worker_mirrored(self):
+    """Makes configurations and start watchers for using with MWMS."""
+    if not self._cluster_resolver.cluster_spec().jobs:
       # For local-mode MultiWorkerMirroredStrategy, an empty cluster spec is
       # passed, and coordination service is not enabled nor is it needed (since
       # it's used for cross-worker communication). Thus we will directly name
@@ -439,15 +483,9 @@ class PreemptionCheckpointHandler(object):
               self._cluster_resolver.task_type,
               self._cluster_resolver.task_id))
       self._is_chief = multi_worker_util.is_chief(
-          cluster_spec=cluster_resolver.cluster_spec(),
-          task_type=cluster_resolver.task_type,
-          task_id=cluster_resolver.task_id)
-    if isinstance(checkpoint_or_checkpoint_manager,
-                  checkpoint_lib.Checkpoint) and not checkpoint_dir:
-      raise errors.InvalidArgumentError('When a checkpoint is passed, a '
-                                        'checkpoint_dir must be passed as well'
-                                        '.')
-
+          cluster_spec=self._cluster_resolver.cluster_spec(),
+          task_type=self._cluster_resolver.task_type,
+          task_id=self._cluster_resolver.task_id)
     # The number of calls to `PreemptionCheckpointHandler.run` when the latest
     # checkpoint was saved.
     self._checkpointed_runs = variables.Variable(
@@ -455,17 +493,16 @@ class PreemptionCheckpointHandler(object):
         trainable=False,
         name=_ITERATION_VARIABLE)
 
-    self._maybe_create_checkpoint_manager(checkpoint_or_checkpoint_manager,
-                                          checkpoint_dir, cluster_resolver)
+    self._maybe_create_checkpoint_manager()
 
-    if not hasattr(self._write_checkpoint_manager._checkpoint,
+    if not hasattr(self._write_checkpoint_manager._checkpoint,  # pylint: disable=protected-access
                    _ITERATION_VARIABLE):
-      setattr(self._write_checkpoint_manager._checkpoint, _ITERATION_VARIABLE,
+      setattr(self._write_checkpoint_manager._checkpoint, _ITERATION_VARIABLE,  # pylint: disable=protected-access
               self._checkpointed_runs)
 
-    if not hasattr(self._read_checkpoint_manager._checkpoint,
+    if not hasattr(self._read_checkpoint_manager._checkpoint,  # pylint: disable=protected-access
                    _ITERATION_VARIABLE):
-      setattr(self._read_checkpoint_manager._checkpoint, _ITERATION_VARIABLE,
+      setattr(self._read_checkpoint_manager._checkpoint, _ITERATION_VARIABLE,  # pylint: disable=protected-access
               self._checkpointed_runs)
 
     self._read_checkpoint_manager.restore_or_initialize()
@@ -492,22 +529,8 @@ class PreemptionCheckpointHandler(object):
     # step number to save a checkpoint has been aligned.
     self._received_checkpoint_step = threading.Event()
 
-    self._platform_device = gce_util.detect_platform()
-
-    if self._platform_device in (gce_util.PlatformDevice.GCE_TPU,
-                                 gce_util.PlatformDevice.GCE_CPU):
-      # While running MultiWorkerMirroredStrategy training with GPUs and CPUs
-      # are the same on Borg, GCE CPU VM and GPU VM are different in terms
-      # of live migration, grace period, etc. We can make it work upon request.
-      raise NotImplementedError('PreemptionCheckpointHandler does not support '
-                                'usage with TPU or CPU device on GCP.')
-
-    if self._platform_device == gce_util.PlatformDevice.INTERNAL_TPU:
-      raise NotImplementedError('PreemptionCheckpointHandler does not support '
-                                'usage with TPU yet.')
-
     completed_termination_config = _complete_config_for_environment(
-        self._platform_device, termination_config)
+        self._platform_device, self._termination_config)
     self._termination_watcher_fn = completed_termination_config.termination_watcher_fn
     self._exit_fn = completed_termination_config.exit_fn
     self._grace_period = completed_termination_config.grace_period
@@ -541,21 +564,20 @@ class PreemptionCheckpointHandler(object):
     else:
       self._start_watching_for_signal()
 
-  def _maybe_create_checkpoint_manager(self, checkpoint_or_checkpoint_manager,
-                                       checkpoint_dir, cluster_resolver):
+  def _maybe_create_checkpoint_manager(self):
     """Create CheckpointManager(s) if a checkpoint is passed else take it."""
-    if isinstance(checkpoint_or_checkpoint_manager,
+    if isinstance(self._checkpoint_or_checkpoint_manager,
                   checkpoint_management.CheckpointManager):
-      self._read_checkpoint_manager = checkpoint_or_checkpoint_manager
-      self._write_checkpoint_manager = checkpoint_or_checkpoint_manager
+      self._read_checkpoint_manager = self._checkpoint_or_checkpoint_manager
+      self._write_checkpoint_manager = self._checkpoint_or_checkpoint_manager
       self._api_made_checkpoint_manager = False
     else:
       self._api_made_checkpoint_manager = True
       # Make CheckpointManagers. MultiWorkerMirroredStrategy requires different
       # setup on chief and on other workers.
       self._read_checkpoint_manager = checkpoint_management.CheckpointManager(
-          checkpoint_or_checkpoint_manager,
-          directory=checkpoint_dir,
+          self._checkpoint_or_checkpoint_manager,
+          directory=self._checkpoint_dir,
           max_to_keep=1)
 
       if self._is_chief:
@@ -563,9 +585,9 @@ class PreemptionCheckpointHandler(object):
       else:
         self._write_checkpoint_manager = (
             checkpoint_management.CheckpointManager(
-                checkpoint_or_checkpoint_manager,
-                _non_chief_checkpoint_dir(checkpoint_dir,
-                                          cluster_resolver.task_id),
+                self._checkpoint_or_checkpoint_manager,
+                _non_chief_checkpoint_dir(self._checkpoint_dir,
+                                          self._cluster_resolver.task_id),
                 max_to_keep=1))
 
   def _start_watching_for_signal(self):
@@ -762,6 +784,20 @@ class PreemptionCheckpointHandler(object):
     # the dominant use case for TPU user. Besides, passing in a multi-step
     # `distributed_train_function` will require the user to track their own
     # training steps.
+    if self._platform_device == gce_util.PlatformDevice.INTERNAL_TPU:
+      return self._run_for_tpu(distributed_train_function, *args, **kwargs)
+    else:
+      return self._run_for_multi_worker_mirrored(distributed_train_function,
+                                                 *args, **kwargs)
+
+  def _run_for_tpu(self, distributed_train_function, *args, **kwargs):
+    """PreemptionCheckpointManager.run implementation for TPUStrategy."""
+    gen_check_preemption_op.check_preemption(preemption_key=PREEMPTION_KEY)
+    return distributed_train_function(*args, **kwargs)
+
+  def _run_for_multi_worker_mirrored(self, distributed_train_function, *args,
+                                     **kwargs):
+    """PreemptionCheckpointManager.run implementation for MWMS."""
     try:
       self._checkpoint_if_preempted()
       run_begin_time = time.time()
@@ -783,13 +819,34 @@ class PreemptionCheckpointHandler(object):
 
     return result
 
+  @tf_contextlib.contextmanager
+  def _watch_error_scope(self):
+    """Sync error and maybe save checkpoint."""
+    # TODO(wxinyi): export as public API
+    try:
+      with context.async_scope():
+        yield
+    except errors.AbortedError as abort_error:
+      if abort_error.experimental_payloads.get(
+          b'type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption'
+      ):
+        logging.info('Clearing preemption error to save checkpoint...')
+
+        context.async_clear_error()
+        self._save_checkpoint()
+
+      else:
+        raise
+
   def _save_checkpoint(self):
     """Saves the checkpoint and exit program."""
     distribution_strategy_api_counter.get_cell(
         self._platform_device.name,
         'PreemptionCheckpointHandler Saving Checkpoint').increase_by(1)
     logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
-    self._checkpointed_runs.assign(self.total_run_calls)
+
+    if self._platform_device != gce_util.PlatformDevice.INTERNAL_TPU:
+      self._checkpointed_runs.assign(self.total_run_calls)
 
     start_time = time.monotonic()
 
@@ -948,8 +1005,8 @@ class PreemptionCheckpointHandler(object):
     if step_value != _STOP_WATCHING_CLUSTER_VALUE:
       # This must be set before we set the ack key below, otherwise its value
       # in _checkpoint_if_preempted may be outdated.
-      self._received_checkpoint_step.set()
       self._step_to_checkpoint = step_value
+      self._received_checkpoint_step.set()
 
       ack_key = f'{_ACKNOWLEDGE_KEY}_{_INITIAL_RUN_COUNT_KEY}_{self._id_in_cluster}'
       context.context().set_config_key_value(ack_key, '1')
@@ -979,75 +1036,6 @@ class PreemptionCheckpointHandler(object):
 # TODO(wxinyi): remove this line after we move the Keras callback prototype and
 # change gce test usage.
 WorkerPreemptionHandler = PreemptionCheckpointHandler
-
-
-# TODO(wxinyi): integrate this class with the PreemptionCheckpointHandler after
-# testing it thoroughly on Borg.
-class TPUPreemptionHandler(PreemptionCheckpointHandler):
-  """PreemptionCheckpointHandler for TPUStrategy."""
-
-  def __init__(  # pylint: disable=super-init-not-called
-      self,
-      cluster_resolver,
-      checkpoint_or_checkpoint_manager,
-      checkpoint_dir=None,
-      termination_config=None):
-    self._cluster_resolver = cluster_resolver
-    # The number of calls to `PreemptionCheckpointHandler.run` when the latest
-    # checkpoint was saved.
-    self._checkpointed_runs = variables.Variable(
-        initial_value=constant_op.constant(0, dtype=dtypes.int64),
-        trainable=False,
-        name=_ITERATION_VARIABLE)
-
-    # For compatibility with the current PreemptionCheckpointHandler
-    del termination_config
-    self._is_chief = True
-    self._poll_termination_signal_thread = None
-    self._cluster_wise_termination_watcher_thread = None
-
-    self._maybe_create_checkpoint_manager(checkpoint_or_checkpoint_manager,
-                                          checkpoint_dir, cluster_resolver)
-    self._read_checkpoint_manager.restore_or_initialize()
-
-    logging.info('PreemptionCheckpointHandler initialized or restored.')
-
-  def run(self, distributed_train_function, *args, **kwargs):
-    gen_check_preemption_op.check_preemption(preemption_key=preemption_key)
-    result = distributed_train_function(*args, **kwargs)
-    self._checkpointed_runs.assign_add(1)
-    return result
-
-  @property
-  def total_run_calls(self):
-    return self._checkpointed_runs.numpy()
-
-  def _save_checkpoint(self):
-    logging.info('PreemptionCheckpointHandler: Starting saving a checkpoint.')
-    self._write_checkpoint_manager.save()
-    logging.info('Checkpoint finished at path %s',
-                 self._write_checkpoint_manager.directory)
-
-  @tf_contextlib.contextmanager
-  def watch_error_scope(self):
-    """Sync error and maybe save checkpoint."""
-    try:
-      with context.async_scope():
-        yield
-    except errors.AbortedError as abort_error:
-      if abort_error.experimental_payloads.get(
-          b'type.googleapis.com/tensorflow.distributed_runtime.WorkerPreemption'
-      ):
-        logging.info('Clearing preemption error to save checkpoint...')
-
-        context.async_clear_error()
-        self._save_checkpoint()
-
-        # TODO(wxinyi): Find an alternative -- not exit.
-        sys.exit(42)
-
-      else:
-        raise
 
 
 # ------------------------------------------------------------------------------
