@@ -16,21 +16,20 @@
 /*
 Mapping of GpuSolver Methods to respective ROCm Library APIs.
 /-----------------------------------------------------------=-----------------------------/
-/ GpuSolverMethod  //    rocblasAPI    //   rocsolverAPI    //   hipsolverAPI
-(ROCM>4.5)  / / Geam             //  rocblas_Xgeam   //    ----           //
-----                   / / Getrf            //      ----        //
-rocsolver_Xgetrf  //   hipsolverXgetrf          / / GetrfBatched     // ---- //
-""_Xgetrf_batched //     ----                   / / GetriBatched     // ---- //
-""_Xgetri_batched //     ----                   / / Getrs            // ---- //
-rocsolver_Xgetrs  //   hipsolverXgetrs          / / GetrsBatched     // ---- //
-""_Xgetrs_batched //     ----                   / / Geqrf            // ---- //
-rocsolver_Xgeqrf  //   hipsolverXgeqrf          / / Heevd            // ---- //
-----           //   hipsolverXheevd          / / Potrf            //      ----
-// rocsolver_Xpotrf  //   hipsolverXpotrf          / / PotrfBatched     // ----
-// ""_Xpotrf_batched //   ""XpotrfBatched          / / Trsm             //
-rocblas_Xtrsm   //    ----           //     ----                   / / Ungqr //
-----        // rocsolver_Xungqr  //   hipsolverXungqr          / / Unmqr // ----
-// rocsolver_Xunmqr  //   hipsolverXunmqr          /
+/ GpuSolverMethod  //    rocblasAPI    //   rocsolverAPI    //   hipsolverAPI (ROCM>4.5)/ / 
+Geam               //  rocblas_Xgeam   //    ----           //   ----                   / / 
+Getrf              //      ----        // rocsolver_Xgetrf  //   hipsolverXgetrf        / / 
+GetrfBatched       //      ----        // ""_Xgetrf_batched //     ----                 / / 
+GetriBatched       //      ----        // ""_Xgetri_batched //     ----                 / / 
+Getrs              //      ----        // rocsolver_Xgetrs  //   hipsolverXgetrs        / / 
+GetrsBatched       //      ----        // ""_Xgetrs_batched //     ----                 / / 
+Geqrf              //      ----        // rocsolver_Xgeqrf  //   hipsolverXgeqrf        / / 
+Heevd              //      ----        //    ----           //   hipsolverXheevd        / / 
+Potrf              //      ----        // rocsolver_Xpotrf  //   hipsolverXpotrf        / / 
+PotrfBatched       //      ----        // ""_Xpotrf_batched //   ""XpotrfBatched        / / 
+Trsm               //  rocblas_Xtrsm   //    ----           //     ----                 / / 
+Ungqr              //      ----        // rocsolver_Xungqr  //   hipsolverXungqr        / / 
+Unmqr              //      ----        // rocsolver_Xunmqr  //   hipsolverXunmqr          /
 /-----------------------------------------------------------------------------------------/
 */
 #if TENSORFLOW_USE_ROCM
