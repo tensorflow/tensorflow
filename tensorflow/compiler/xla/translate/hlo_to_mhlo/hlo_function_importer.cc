@@ -1103,7 +1103,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(send_op->channel_id().value()));
       return ImportOldStyleAsyncStart<mlir::mhlo::SendOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "send_",
-          [](auto) { return Status::OK(); });
+          [](auto) { return OkStatus(); });
     }
     case HloOpcode::kSendDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
@@ -1132,7 +1132,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(recv_op->channel_id().value()));
       return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
           attributes, operands, loc, async_bundled_tuple, func_builder, "recv_",
-          [](auto) { return Status::OK(); });
+          [](auto) { return OkStatus(); });
     }
     case HloOpcode::kRecvDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
