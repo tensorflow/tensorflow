@@ -31,6 +31,10 @@ _FEATURE_COLUMN_DEPRECATION_WARNING = """\
     See the [migration guide](https://tensorflow.org/guide/migrate) for details.
     """
 
+_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING = (
+    'Use Keras preprocessing layers instead. Each of `tf.feature_column.*` has'
+    ' a functional equivalent in `tf.keras.layers` for feature preprocessing '
+    'when training a Keras model.')
 
 _FEATURE_COLUMNS = [
     fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
@@ -44,7 +48,10 @@ _FEATURE_COLUMNS = [
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export('__internal__.feature_column.serialize_feature_column', v1=[])
+@tf_export(
+    '__internal__.feature_column.serialize_feature_column',
+    v1=[],
+    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
 
@@ -126,16 +133,16 @@ def deserialize_feature_column(config,
   # A dict from class_name to class for all FeatureColumns in this module.
   # FeatureColumns not part of the module can be passed as custom_objects.
   module_feature_column_classes = {
-      cls.__name__: cls for cls in _FEATURE_COLUMNS}
+      cls.__name__: cls for cls in _FEATURE_COLUMNS
+  }
   if columns_by_name is None:
     columns_by_name = {}
 
-  (cls,
-   cls_config) = _class_and_config_for_serialized_keras_object(
-       config,
-       module_objects=module_feature_column_classes,
-       custom_objects=custom_objects,
-       printable_module_name='feature_column_v2')
+  (cls, cls_config) = _class_and_config_for_serialized_keras_object(
+      config,
+      module_objects=module_feature_column_classes,
+      custom_objects=custom_objects,
+      printable_module_name='feature_column_v2')
 
   if not issubclass(cls, fc_lib.FeatureColumn):
     raise ValueError(
@@ -266,9 +273,7 @@ def _deserialize_keras_object(identifier,
 
       if 'custom_objects' in arg_spec.args:
         return cls.from_config(
-            cls_config,
-            custom_objects=dict(
-                list(custom_objects.items())))
+            cls_config, custom_objects=dict(list(custom_objects.items())))
       return cls.from_config(cls_config)
     else:
       # Then `cls` may be a function returning a class.
@@ -283,8 +288,8 @@ def _deserialize_keras_object(identifier,
     else:
       obj = module_objects.get(object_name)
       if obj is None:
-        raise ValueError(
-            'Unknown ' + printable_module_name + ': ' + object_name)
+        raise ValueError('Unknown ' + printable_module_name + ': ' +
+                         object_name)
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):
@@ -309,8 +314,8 @@ def _class_and_config_for_serialized_keras_object(
     raise ValueError('Improper config format: ' + str(config))
 
   class_name = config['class_name']
-  cls = _get_registered_object(class_name, custom_objects=custom_objects,
-                               module_objects=module_objects)
+  cls = _get_registered_object(
+      class_name, custom_objects=custom_objects, module_objects=module_objects)
   if cls is None:
     raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
 
@@ -347,4 +352,3 @@ def _get_registered_object(name, custom_objects=None, module_objects=None):
   elif module_objects and name in module_objects:
     return module_objects[name]
   return None
-
