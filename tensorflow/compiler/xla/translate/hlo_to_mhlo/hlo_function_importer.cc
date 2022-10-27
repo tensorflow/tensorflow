@@ -200,9 +200,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncDone(
   attributes.push_back(builder_->getNamedAttr("execution_thread",
                                               builder_->getStringAttr("main")));
 
-  return func_builder
-      ->create<mlir::mhlo::AsyncDoneOp>(loc, result_type, operands, attributes)
-      .getOperation();
+  auto op = func_builder->create<mlir::mhlo::AsyncDoneOp>(
+      loc, Untuple(result_type), operands, attributes);
+  return CreateTupleFromOpResults(func_builder, loc, op.getOperation(),
+                                  result_type);
 }
 
 void HloFunctionImporter::ReplaceBlockArgumentsWithImplicitOperands(
@@ -1105,6 +1106,35 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           [](auto) { return Status::OK(); });
     }
     case HloOpcode::kSendDone: {
+      return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
+                                     func_builder);
+    }
+    case HloOpcode::kRecv: {
+      // Old-style `recv` returns a bundle of (result, sync flag, token) to be
+      // passed along to recv-done.
+      // However, the new-style async ops have a shared
+      // bundle format of (args, results, scratchpad), so to rewrite the `recv`
+      // and `recv-done` ops to use the new-style async API, we need to reorder
+      // the arguments to be in (token, (result, token), sync flag) order.
+      auto result_types = result_type.cast<mlir::TupleType>().getTypes();
+      if (result_types.size() != 3)
+        return InvalidArgument("recv should return a 3-tuple");
+      auto async_result_type =
+          mlir::TupleType::get(context_, {result_types[0], result_types[2]});
+      auto async_bundled_tuple = mlir::TupleType::get(
+          context_, {result_types[2], async_result_type, result_types[1]});
+      auto recv_op = Cast<HloRecvInstruction>(instruction);
+      attributes.push_back(builder_->getNamedAttr(
+          "is_host_transfer",
+          builder_->getBoolAttr(recv_op->is_host_transfer())));
+      if (recv_op->channel_id().has_value())
+        attributes.push_back(
+            ConvertChannelHandle(recv_op->channel_id().value()));
+      return ImportOldStyleAsyncStart<mlir::mhlo::RecvOp>(
+          attributes, operands, loc, async_bundled_tuple, func_builder, "recv_",
+          [](auto) { return Status::OK(); });
+    }
+    case HloOpcode::kRecvDone: {
       return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                      func_builder);
     }
