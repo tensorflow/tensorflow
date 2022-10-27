@@ -66,8 +66,8 @@ inline Shape ToShape(const runtime::StridedMemrefView& memref) {
   minor_to_major.reserve(indexed_strides.size());
   for (auto& pair : indexed_strides) minor_to_major.push_back(pair.second);
 
-  return ShapeUtil::MakeShapeWithLayout(memref.dtype, memref.sizes,
-                                        minor_to_major);
+  return ShapeUtil::MakeShapeWithDenseLayout(memref.dtype, memref.sizes,
+                                             minor_to_major);
 }
 
 }  // namespace gpu

@@ -734,8 +734,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
       HloInstruction::CreateParameter(1, f32vec100_, "p1"));
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
-  Shape f32vec100_color1 =
-      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, {}, 1);
+  Shape f32vec100_color1 = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {100}, {0}, /*tiles=*/{}, /*memory_space=*/1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -793,8 +793,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // Tests preset assignments when there is no 1-to-1 correspondence between
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
-  Shape f32vec10_color1 =
-      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, {}, 1);
+  Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {10}, {0}, /*tiles=*/{}, /*memory_space=*/1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
 

@@ -109,7 +109,7 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     });
   };
 
-  return ShapeUtil::MakeShapeWithLayout(
+  return ShapeUtil::MakeShapeWithDenseLayout(
       shape.element_type(),
       {dim_size(batch_dims), dim_size(row_dims), dim_size(col_dims)},
       minor_to_major);

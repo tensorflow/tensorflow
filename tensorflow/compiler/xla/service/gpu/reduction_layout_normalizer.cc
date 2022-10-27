@@ -119,7 +119,7 @@ class EnforceMinorToMajorReduceOpVisitor : public DfsHloRewriteVisitor {
 
       Shape new_operand_shape = ShapeUtil::MakeShape(
           operand_shape.element_type(), new_operand_shape_data);
-      Shape new_reduce_shape = ShapeUtil::MakeShapeWithLayout(
+      Shape new_reduce_shape = ShapeUtil::MakeShapeWithDenseLayout(
           reduce_shape.element_type(), new_reduce_shape_data,
           new_reduce_shape_layout);
 

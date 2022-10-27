@@ -294,14 +294,24 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
   return shape;
 }
 
-/* static */ Shape ShapeUtil::MakeShapeWithLayout(
+/* static */ Shape ShapeUtil::MakeShapeWithDenseLayout(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> minor_to_major, absl::Span<const Tile> tiles,
+    int64_t memory_space) {
+  auto ret = MakeShapeWithLayoutInternal(
+      element_type, dimensions, minor_to_major, /*dim_level_types=*/{}, tiles,
+      memory_space, /*physical_shape=*/std::nullopt);
+  if (!ret.ok()) LOG(ERROR) << ret.status();
+  return ret.value();
+}
+
+/* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
-    absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t memory_space,
+    absl::Span<const DimLevelType> dim_level_types, int64_t memory_space,
     std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
-      element_type, dimensions, minor_to_major, dim_level_types, tiles,
+      element_type, dimensions, minor_to_major, dim_level_types, /*tiles=*/{},
       memory_space, std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
@@ -337,7 +347,7 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     PrimitiveType element_type, absl::Span<const int64_t> dimensions) {
   std::vector<int64_t> layout(dimensions.size());
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64_t>(0));
-  return MakeShapeWithLayout(element_type, dimensions, layout);
+  return MakeShapeWithDenseLayout(element_type, dimensions, layout);
 }
 
 /* static */ Shape
@@ -1581,7 +1591,7 @@ ShapeUtil::DeduceTransposeDimensionsForBitcast(const Shape& input_shape,
     input_minor += end_factor.first - start_factor.first;
   }
 
-  Shape output_shape_with_layout = MakeShapeWithLayout(
+  Shape output_shape_with_layout = MakeShapeWithDenseLayout(
       output_shape.element_type(), output_shape.dimensions(), output_layout);
   CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout))
       << "reshape is not a bitcast for input_shape: "

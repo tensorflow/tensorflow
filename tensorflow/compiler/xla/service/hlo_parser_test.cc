@@ -3713,7 +3713,7 @@ TEST_F(HloParserTest, ParseShapeStringNestedTuple) {
 TEST_F(HloParserTest, ParseShapeStringWithLayout) {
   std::string shape_string = "f32[123,456]{0,1}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1});
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {0, 1});
   ASSERT_TRUE(ShapeUtil::Equal(expected, actual))
       << "expected: " << ShapeUtil::HumanString(expected)
       << "actual:   " << ShapeUtil::HumanString(actual);
@@ -3723,8 +3723,8 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // One tile.
   std::string shape_string = "f32[123,456]{0,1:T(2,128)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1}, {},
-                                                  {Tile({2, 128})});
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(F32, {123, 456}, {0, 1},
+                                                       {Tile({2, 128})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3732,9 +3732,9 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // Tile with negative dimension size for combining dimensions.
   shape_string = "f32[123,456,789]{0,1,2:T(2, * , 128)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected =
-      ShapeUtil::MakeShapeWithLayout(F32, {123, 456, 789}, {0, 1, 2}, {},
-                                     {Tile({2, Tile::kCombineDimension, 128})});
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      F32, {123, 456, 789}, {0, 1, 2},
+      {Tile({2, Tile::kCombineDimension, 128})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3742,8 +3742,8 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
   // Two tiles.
   shape_string = "bf16[123,456,789]{2,1,0:T(2,*,128)(2,1)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
-  expected = ShapeUtil::MakeShapeWithLayout(
-      BF16, {123, 456, 789}, {2, 1, 0}, {},
+  expected = ShapeUtil::MakeShapeWithDenseLayout(
+      BF16, {123, 456, 789}, {2, 1, 0},
       {Tile({2, Tile::kCombineDimension, 128}), Tile({2, 1})});
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
@@ -3760,8 +3760,8 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
-  Shape expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {},
-                                                  {Tile({2, 128})}, 3);
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0},
+                                                       {Tile({2, 128})}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3770,7 +3770,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3779,7 +3779,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, {}, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3953,7 +3953,7 @@ ENTRY InferBinaryShape {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 10}, {1, 0})));
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 10}, {1, 0})));
 }
 
 TEST_F(HloParserTest, InferTernaryShape) {
@@ -3997,7 +3997,7 @@ ENTRY InferTupleShape () -> s32[2,3] {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(text));
   EXPECT_TRUE(ShapeUtil::Equal(
       module->entry_computation()->ComputeProgramShape().result(),
-      ShapeUtil::MakeShapeWithLayout(S32, {2, 3}, {1, 0})));
+      ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 3}, {1, 0})));
 }
 
 TEST_F(HloParserTest, InferShapeMixedExplicitShape) {

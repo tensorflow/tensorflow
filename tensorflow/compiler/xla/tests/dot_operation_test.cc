@@ -351,12 +351,12 @@ void ParametricDotTest::TestImpl() {
   auto prim_type = primitive_util::NativeToPrimitiveType<NativeT>();
   auto result =
       Dot(Parameter(&builder, 0,
-                    ShapeUtil::MakeShapeWithLayout(
+                    ShapeUtil::MakeShapeWithDenseLayout(
                         prim_type, {param.m, param.k},
                         MinorToMajorForIsRowMajor(param.dot_lhs_row_major)),
                     "dot_lhs"),
           Parameter(&builder, 1,
-                    ShapeUtil::MakeShapeWithLayout(
+                    ShapeUtil::MakeShapeWithDenseLayout(
                         prim_type, {param.k, param.n},
                         MinorToMajorForIsRowMajor(param.dot_rhs_row_major)),
                     "dot_rhs"));
@@ -365,7 +365,7 @@ void ParametricDotTest::TestImpl() {
     result =
         Add(result,
             Parameter(&builder, 2,
-                      ShapeUtil::MakeShapeWithLayout(
+                      ShapeUtil::MakeShapeWithDenseLayout(
                           prim_type, {param.m, param.n},
                           MinorToMajorForIsRowMajor(param.addend_row_major)),
                       "addend"));

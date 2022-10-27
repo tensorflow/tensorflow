@@ -323,7 +323,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForUnwrittenResource) {
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
                                      args, &result));
   xla::Shape transposed =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed}));
@@ -422,7 +422,7 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
                                      std::move(graph), args, &result));
   xla::Shape transposed =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
@@ -465,7 +465,7 @@ TEST_F(XlaCompilerTest, TransposeVariables) {
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "transpose",
                                      std::move(graph), args, &result));
   xla::Shape transposed =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {1, 0});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {1, 0});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
@@ -1187,7 +1187,7 @@ TEST_F(XlaCompilerTest, ResultLayoutSingle) {
                                      args, &result));
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1})));
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1})));
   EXPECT_EQ(result.computation->GetProgramShape().value().result(),
             result.xla_output_shape);
 }
@@ -1228,7 +1228,7 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "id",
                                      std::move(graph), args, &result));
   xla::Shape result_shape =
-      xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
+      xla::ShapeUtil::MakeShapeWithDenseLayout(xla::S32, {2, 3}, {0, 1});
 
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,

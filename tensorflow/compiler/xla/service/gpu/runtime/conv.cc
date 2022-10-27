@@ -100,8 +100,8 @@ static GpuConvDescriptor GetConvDescriptor(
   auto apply_layout = [](runtime::StridedMemrefView& memref,
                          ArrayRef<int64_t> minor_to_major) {
     Shape shape = ToShape(memref);
-    return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
-                                          shape.dimensions(), minor_to_major);
+    return ShapeUtil::MakeShapeWithDenseLayout(
+        shape.element_type(), shape.dimensions(), minor_to_major);
   };
 
   descriptor.operand0_shape = apply_layout(operand0, b.operand_0_layout);

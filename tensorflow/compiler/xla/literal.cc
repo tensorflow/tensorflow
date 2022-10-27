@@ -1094,9 +1094,9 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
     CHECK_GE(dimension, 0) << "dnum = " << dnum;
     result_dimensions.push_back(dimension);
   }
-  auto result_shape =
-      ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
-                                     LayoutUtil::MinorToMajor(shape()));
+  auto result_shape = ShapeUtil::MakeShapeWithDenseLayout(
+      shape().element_type(), result_dimensions,
+      LayoutUtil::MinorToMajor(shape()));
   ShapeUtil::CopyDynamicDimensions(&result_shape, shape());
   switch (result_shape.element_type()) {
     case PRED:

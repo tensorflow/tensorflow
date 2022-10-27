@@ -382,8 +382,8 @@ StatusOr<PyBuffer::object> DLPackManagedTensorToBuffer(
     minor_to_major.resize(dlmt->dl_tensor.ndim);
     std::iota(minor_to_major.rbegin(), minor_to_major.rend(), 0);
   }
-  Shape shape =
-      ShapeUtil::MakeShapeWithLayout(element_type, dimensions, minor_to_major);
+  Shape shape = ShapeUtil::MakeShapeWithDenseLayout(element_type, dimensions,
+                                                    minor_to_major);
 
   std::function<void()> on_delete_callback;
   if (dlmt->deleter) {

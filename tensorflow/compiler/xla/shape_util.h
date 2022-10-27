@@ -345,13 +345,20 @@ class ShapeUtil {
                                 dimensions);
   }
 
-  // Constructs a new shape with the given minor_to_major order in its Layout.
-  // Returns a value shape such that shape.has_layout().
-  static Shape MakeShapeWithLayout(
+  // Constructs a new dense array shape with the given minor_to_major order in
+  // its Layout. Returns a value shape such that shape.has_layout().
+  static Shape MakeShapeWithDenseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types = {},
-      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0,
+      absl::Span<const Tile> tiles = {}, int64_t memory_space = 0);
+
+  // Constructs a new sparse array shape with the given minor_to_major order and
+  // dim_level_types in its Layout. Returns a value shape such that
+  // shape.has_layout().
+  static Shape MakeShapeWithSparseLayout(
+      PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+      absl::Span<const int64_t> minor_to_major,
+      absl::Span<const DimLevelType> dim_level_types, int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major

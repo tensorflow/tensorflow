@@ -479,10 +479,10 @@ TEST_P(MemorySpaceAssignmentTest, Simple) {
 
   // Inputs and outputs are currently placed in the default memory. Everything
   // else should be in the alternate memory.
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
-      F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
-      /*tiles=*/{}, kAlternateMemorySpace);
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   EXPECT_THAT(mul, op::ShapeWithLayout(shape));
@@ -540,10 +540,10 @@ TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   // Negate instructions are in the alternate memory space (1).
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
-      F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{},
-      /*tiles=*/{}, kAlternateMemorySpace);
+  Shape shape_in_alternate_mem =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {2, 3},
+                                          /*minor_to_major=*/{1, 0},
+                                          /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -856,10 +856,9 @@ TEST_P(MemorySpaceAssignmentTest, While) {
     EXPECT_THAT(body_iter, op::ShapeWithLayout(scalar_shape));
     EXPECT_THAT(cond_iter, op::ShapeWithLayout(scalar_shape));
   }
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
@@ -1195,10 +1194,9 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUse) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(add->operand(0), op::ShapeWithLayout(shape_in_alternate_mem));
 }
@@ -1250,10 +1248,9 @@ TEST_P(MemorySpaceAssignmentTest, BitcastMultiUseTuple) {
   TF_CHECK_OK(module->set_schedule(schedule));
 
   AssignMemorySpace(module.get());
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(negate0->operand(0), op::ShapeWithLayout(shape));
   EXPECT_THAT(fusion->operand(0)->operand(0),
               op::ShapeWithLayout(shape_in_alternate_mem));
@@ -3543,10 +3540,9 @@ TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
   // Negate instructions are in the alternate memory space (1).
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
   EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
@@ -3613,10 +3609,9 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   // Parameters are in the default memory space.
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
   EXPECT_THAT(p1, op::ShapeWithLayout(shape));
-  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {4, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kDefaultMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kDefaultMemorySpace);
   // Expect only negates to be in alternate memory space. Not all might fit but
   // make sure at least one does.
   std::vector<HloInstruction*> negate_instructions = {negate0, negate1, negate2,
@@ -3721,18 +3716,15 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
                     /*max_prefetch_interval=*/50);
 
   // Ensure all parameters and while are placed in default memory.
-  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {4, 6},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kDefaultMemorySpace);
-  Shape s32_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kDefaultMemorySpace);
+  Shape s32_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       xla::S32, {},
-      /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kDefaultMemorySpace);
-  Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      /*minor_to_major=*/{}, /*tiles=*/{}, kDefaultMemorySpace);
+  Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {1},
-      /*minor_to_major=*/{0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kDefaultMemorySpace);
+      /*minor_to_major=*/{0}, /*tiles=*/{}, kDefaultMemorySpace);
   Shape t_s32_f32v1_in_default_mem =
       ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
   EXPECT_THAT(param, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
@@ -3840,10 +3832,9 @@ TEST_P(MemorySpaceAssignmentTest,
   // pass, which is run after this, will allocate those buffers.
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
-  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {2, 3},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   // p0 is in the default memory space.
   HloInstruction* p0 =
       builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
@@ -6688,10 +6679,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   constexpr int kOutput = 2;
 
   auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
-  auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
+  auto rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {kFeature, kOutput},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   HloInstruction* lhs = builder.AddInstruction(
       HloInstruction::CreateParameter(0, lhs_shape, "lhs"));
@@ -6735,10 +6725,9 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTupleTest) {
   constexpr int kOutput = 2;
 
   auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
-  auto rhs_shape = ShapeUtil::MakeShapeWithLayout(
+  auto rhs_shape = ShapeUtil::MakeShapeWithDenseLayout(
       F32, {kFeature, kOutput},
-      /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
-      kAlternateMemorySpace);
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, kAlternateMemorySpace);
   auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
   auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
   HloInstruction* param = builder.AddInstruction(

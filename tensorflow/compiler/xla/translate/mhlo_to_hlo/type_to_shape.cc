@@ -154,8 +154,8 @@ Shape TypeToShape(mlir::Type type) {
 
     llvm::SmallVector<int64_t, 4> dimensions(m.getShape().begin(),
                                              m.getShape().end());
-    return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
-                                                 minor_to_major);
+    return ::xla::ShapeUtil::MakeShapeWithDenseLayout(
+        primitive_type, dimensions, minor_to_major);
   } else if (auto t = type.dyn_cast<mlir::RankedTensorType>()) {
     // TODO(jpienaar): This is only handling the base case with primitive
     // element type.
@@ -213,7 +213,7 @@ Shape TypeToShape(mlir::Type type) {
                                 rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
           dimOrder, llvm::ArrayRef<int64_t>(ordering));
-      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithLayout(
+      auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
           primitive_type, shape, final_ordering, dim_level_types);
       return sparse_shape;
     }

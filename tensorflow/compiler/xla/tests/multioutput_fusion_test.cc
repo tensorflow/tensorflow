@@ -62,9 +62,9 @@ class MultiOutputFusionTest : public HloTestBase {
     auto builder = HloComputation::Builder(TestName());
     auto hlo_module = CreateNewVerifiedModule();
 
-    const Shape elem_shape0 = ShapeUtil::MakeShapeWithLayout(F32, {}, {});
+    const Shape elem_shape0 = ShapeUtil::MakeShapeWithDenseLayout(F32, {}, {});
     const Shape elem_shape2 =
-        ShapeUtil::MakeShapeWithLayout(F32, {size, size}, {1, 0});
+        ShapeUtil::MakeShapeWithDenseLayout(F32, {size, size}, {1, 0});
 
     auto const0 = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(8.0f)));

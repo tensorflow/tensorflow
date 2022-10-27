@@ -927,8 +927,8 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
 
   auto apply_layout = [](const Shape& shape,
                          mlir::ArrayRef<int64_t> minor_to_major) {
-    return ShapeUtil::MakeShapeWithLayout(shape.element_type(),
-                                          shape.dimensions(), minor_to_major);
+    return ShapeUtil::MakeShapeWithDenseLayout(
+        shape.element_type(), shape.dimensions(), minor_to_major);
   };
 
   GpuConvDescriptor descriptor;

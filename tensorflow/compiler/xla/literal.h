@@ -1455,7 +1455,6 @@ TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::Populate(
       },
       /*parallel=*/false);
 }
-
 template <typename NativeT>
 TF_ATTRIBUTE_NOINLINE Status MutableLiteralBase::PopulateParallel(
     const std::function<NativeT(absl::Span<const int64_t>, int)>& generator) {
