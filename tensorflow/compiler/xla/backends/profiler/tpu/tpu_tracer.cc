@@ -35,6 +35,13 @@ namespace xla {
 namespace profiler {
 namespace {
 
+using tensorflow::ProfileOptions;
+using tensorflow::profiler::XPlane;
+using tensorflow::profiler::XSpace;
+using tsl::OkStatus;  // TENSORFLOW_STATUS_OK
+using tsl::Status;    // TENSORFLOW_STATUS_OK
+using tsl::profiler::ProfilerInterface;
+
 // Tpu implementation of ProfilerInterface.
 //
 // Thread-safety: This class is go/thread-compatible.
@@ -55,19 +62,21 @@ class TpuTracer : public ProfilerInterface {
 
 TpuTracer::TpuTracer() {
   StatusHelper status;
-  tpu::OpsApiFn()->TpuProfiler_CreateFn(&tpu_profiler_, status.c_status);
+  tensorflow::tpu::OpsApiFn()->TpuProfiler_CreateFn(&tpu_profiler_,
+                                                    status.c_status);
   if (!status.ok()) {
     LOG(ERROR) << status.status().error_message();
   }
 }
 
 TpuTracer::~TpuTracer() {
-  tpu::OpsApiFn()->TpuProfiler_DestroyFn(tpu_profiler_);
+  tensorflow::tpu::OpsApiFn()->TpuProfiler_DestroyFn(tpu_profiler_);
 }
 
 Status TpuTracer::Start() {
   StatusHelper status;
-  tpu::OpsApiFn()->TpuProfiler_StartFn(tpu_profiler_, status.c_status);
+  tensorflow::tpu::OpsApiFn()->TpuProfiler_StartFn(tpu_profiler_,
+                                                   status.c_status);
   if (!status.ok()) {
     LOG(ERROR) << "TPU tracer failed to start.";
     return status.status();
@@ -77,7 +86,8 @@ Status TpuTracer::Start() {
 
 Status TpuTracer::Stop() {
   StatusHelper status;
-  tpu::OpsApiFn()->TpuProfiler_StopFn(tpu_profiler_, status.c_status);
+  tensorflow::tpu::OpsApiFn()->TpuProfiler_StopFn(tpu_profiler_,
+                                                  status.c_status);
   if (!status.ok()) {
     LOG(ERROR) << "TPU tracer failed to stop.";
     return status.status();
@@ -89,14 +99,14 @@ Status TpuTracer::CollectData(XSpace* space) {
   StatusHelper status;
   // Get size of buffer required for TPU driver to serialize XSpace into.
   size_t size_in_bytes;
-  tpu::OpsApiFn()->TpuProfiler_CollectDataFn(tpu_profiler_, status.c_status,
-                                             /*buffer=*/nullptr,
-                                             &size_in_bytes);
+  tensorflow::tpu::OpsApiFn()->TpuProfiler_CollectDataFn(
+      tpu_profiler_, status.c_status,
+      /*buffer=*/nullptr, &size_in_bytes);
   // Prepare an appropriately sized buffer.
   if (size_in_bytes > 0) {
     std::vector<uint8_t> buffer(size_in_bytes);
-    tpu::OpsApiFn()->TpuProfiler_CollectDataFn(tpu_profiler_, status.c_status,
-                                               buffer.data(), &size_in_bytes);
+    tensorflow::tpu::OpsApiFn()->TpuProfiler_CollectDataFn(
+        tpu_profiler_, status.c_status, buffer.data(), &size_in_bytes);
     // Deserialize XSpace from the buffer and return it.
     XSpace tpu_space;
     tpu_space.ParseFromArray(buffer.data(), buffer.size());
@@ -122,7 +132,7 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
     return nullptr;
   }
   // Don't attempt to create a TpuTracer if the TPU C API isn't initialized.
-  if (tpu::OpsApiFn()->TpuProfiler_CreateFn == nullptr) {
+  if (tensorflow::tpu::OpsApiFn()->TpuProfiler_CreateFn == nullptr) {
     return nullptr;
   }
   return std::make_unique<TpuTracer>();
