@@ -1898,4 +1898,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     %0 = "tf.ReluGrad"(%lhs, %rhs) : (tensor<2x3x?x?xf32>, tensor<2x?x5x?xf32>) -> tensor<?x?x?x?xf32>
     func.return %0 : tensor<?x?x?x?xf32>
   }
+
+  // CHECK-LABEL: func @test_xla_sharding
+  // CHECK-SAME: (%arg0: tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+  func.func @test_xla_sharding(%arg0: tensor<1x2x3xf32>) -> tensor<*xf32> {
+    %0 = "tf.XlaSharding"(%arg0) : (tensor<1x2x3xf32>) -> tensor<*xf32>
+    return %0 : tensor<*xf32>
+  }
 }
