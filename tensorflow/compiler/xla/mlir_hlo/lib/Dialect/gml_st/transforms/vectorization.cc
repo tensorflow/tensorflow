@@ -88,6 +88,37 @@ struct TransferReadOfOneDimExpandShape
   }
 };
 
+// Rewrite materialize of scalar from 1-element vector into a vector.extract /
+// vector.extractelement.
+struct MaterializeFromSingleElementToExtractPattern
+    : public OpRewritePattern<MaterializeOp> {
+  using OpRewritePattern<MaterializeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(MaterializeOp op,
+                                PatternRewriter &rewriter) const override {
+    Value source = op.getSource();
+    auto sourceType = source.getType().dyn_cast<VectorType>();
+    if (!sourceType || sourceType.getNumDynamicDims() > 0 ||
+        sourceType.getNumElements() > 1) {
+      return rewriter.notifyMatchFailure(
+          op, "source should be a single element vector");
+    }
+    if (op.getResult().getType().isa<ShapedType>())
+      return rewriter.notifyMatchFailure(op, "result should be a scalar");
+
+    int64_t rank = sourceType.getRank();
+    if (rank == 0) {
+      // vector.extract doesn't support 0D tensors at the moment,
+      // use vector.extractelement.
+      rewriter.replaceOpWithNewOp<vector::ExtractElementOp>(op, source);
+      return success();
+    }
+    rewriter.replaceOpWithNewOp<vector::ExtractOp>(
+        op, source, SmallVector<int64_t>(rank, 0));
+    return success();
+  }
+};
+
 template <typename OpTy>
 struct VectorizationPattern : public mlir::OpRewritePattern<OpTy> {
   VectorizationPattern(MLIRContext *context,
@@ -501,7 +532,8 @@ struct VectorizeGmlStLoopsPass
     };
 
     RewritePatternSet patterns = getDefaultVectorizationPatterns(ctx);
-    patterns.add<TransferReadOfOneDimExpandShape>(func.getContext());
+    patterns.add<TransferReadOfOneDimExpandShape,
+                 MaterializeFromSingleElementToExtractPattern>(ctx);
     patterns.add<VectorizationPattern<FillOp>>(ctx, fillOpFilter);
     patterns.add<VectorizationPattern<GenericOp>>(ctx, genericOpFilter);
     patterns.add<VectorizationPattern<MatmulOp>>(ctx, matmulOpFilter);

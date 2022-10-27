@@ -173,3 +173,28 @@ func.func @read_of_empty_int_to_constant(%pad : i8) -> vector<32xi8> {
 }
 // CHECK: %[[RESULT:.*]] = arith.constant dense<0> : vector<32xi8>
 // CHECK: return %[[RESULT]]
+
+// -----
+
+// CHECK-LABEL: @materialize_scalar_from_0D_vector(
+// CHECK-SAME: %[[V:.*]]: vector<f32>
+func.func @materialize_scalar_from_0D_vector(%v : vector<f32>) -> f32 {
+  %tile = gml_st.tile [] [] [] : !gml_st.tile<>
+  %r = gml_st.materialize %v[%tile] : vector<f32>[!gml_st.tile<>] to f32
+  return %r : f32
+}
+// CHECK: %[[R:.*]] = vector.extractelement %[[V]][]
+// CHECK: return %[[R]]
+
+// -----
+
+// CHECK-LABEL: @materialize_scalar_from_single_element_vector(
+// CHECK-SAME: %[[V:.*]]: vector<1x1xf32>
+func.func @materialize_scalar_from_single_element_vector(
+    %v : vector<1x1xf32>) -> f32 {
+  %tile = gml_st.tile [0, 0] [1, 1] [1, 1] : !gml_st.tile<1x1>
+  %r = gml_st.materialize %v[%tile] : vector<1x1xf32>[!gml_st.tile<1x1>] to f32
+  return %r : f32
+}
+// CHECK: %[[R:.*]] = vector.extract %[[V]][0, 0]
+// CHECK: return %[[R]]

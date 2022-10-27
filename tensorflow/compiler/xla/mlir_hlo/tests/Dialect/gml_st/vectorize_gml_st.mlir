@@ -200,23 +200,24 @@ func.func @skip_vectorization_with_wrong_label(
 // -----
 
 // CHECK-LABEL: @materialize_to_scalar(
-func.func @materialize_to_scalar(%arg1 : tensor<1xf32>) -> tensor<1xf32> {
+func.func @materialize_to_scalar(%arg1 : tensor<4xf32>) -> tensor<4xf32> {
   %c0 = arith.constant 0 : index
   %c1 = arith.constant 1 : index
-  %empty = tensor.empty() : tensor<1xf32>
+  %empty = tensor.empty() : tensor<4xf32>
   %1 = gml_st.parallel (%arg2) = (%c0) to (%c1) step (%c1)
             distribution ("test") {
-    %tile = gml_st.tile [1][1][1] : !gml_st.tile<1>
+    %tile = gml_st.tile [1][4][1] : !gml_st.tile<4>
+    %point = gml_st.tile [1][1][1] : !gml_st.tile<1>
     %5 = gml_st.materialize %arg1[%tile]
-      : tensor<1xf32>[!gml_st.tile<1>] to tensor<1xf32>
-    %3 = gml_st.materialize %5[%tile]
-      : tensor<1xf32>[!gml_st.tile<1>] to f32
-    // CHECK: gml_st.materialize {{.*}} : vector<1xf32>[!gml_st.tile<1>] to f32
+      : tensor<4xf32>[!gml_st.tile<4>] to tensor<4xf32>
+    %3 = gml_st.materialize %5[%point]
+      : tensor<4xf32>[!gml_st.tile<1>] to f32
+    // CHECK: gml_st.materialize {{.*}} : vector<4xf32>[!gml_st.tile<1>] to f32
     %2 = arith.negf %3 : f32
-    gml_st.set_yield %2 into %empty[%tile]
-      : f32 into tensor<1xf32>[!gml_st.tile<1>]
-  } : tensor<1xf32>
-  return %1 : tensor<1xf32>
+    gml_st.set_yield %2 into %empty[%point]
+      : f32 into tensor<4xf32>[!gml_st.tile<1>]
+  } : tensor<4xf32>
+  return %1 : tensor<4xf32>
 }
 
 // -----
