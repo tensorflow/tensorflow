@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/stateless_random_ops.h"
+
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -64,46 +65,40 @@ Status GenerateKey(Tensor seed, random::PhiloxRandom::Key* out_key,
   return OkStatus();
 }
 
+StatelessRandomOpBase::StatelessRandomOpBase(OpKernelConstruction* context)
+    : OpKernel(context) {}
+
+void StatelessRandomOpBase::Compute(OpKernelContext* context) {
+  // Sanitize input
+  const Tensor& shape_t = context->input(0);
+  const Tensor& seed_t = context->input(1);
+  TensorShape shape;
+  OP_REQUIRES_OK(context, tensor::MakeShape(shape_t, &shape));
+  OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+              errors::InvalidArgument("seed must have shape [2], not ",
+                                      seed_t.shape().DebugString()));
+
+  // Allocate output
+  Tensor* output;
+  OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
+  if (shape.num_elements() == 0) return;
+
+  random::PhiloxRandom::Key key;
+  random::PhiloxRandom::ResultType counter;
+  OP_REQUIRES_OK(context, GenerateKey(seed_t, &key, &counter));
+
+  // Fill in the random numbers
+  Fill(context, random::PhiloxRandom(counter, key), output);
+}
+
 namespace {
-
-class StatelessRandomOpBase : public OpKernel {
- public:
-  explicit StatelessRandomOpBase(OpKernelConstruction* context)
-      : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    // Sanitize input
-    const Tensor& shape_t = context->input(0);
-    const Tensor& seed_t = context->input(1);
-    TensorShape shape;
-    OP_REQUIRES_OK(context, tensor::MakeShape(shape_t, &shape));
-    OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_t.shape().DebugString()));
-
-    // Allocate output
-    Tensor* output;
-    OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output));
-    if (shape.num_elements() == 0) return;
-
-    random::PhiloxRandom::Key key;
-    random::PhiloxRandom::ResultType counter;
-    OP_REQUIRES_OK(context, GenerateKey(seed_t, &key, &counter));
-
-    // Fill in the random numbers
-    Fill(context, random::PhiloxRandom(counter, key), output);
-  }
-
-  // The part of Compute that depends on device, type, and distribution
-  virtual void Fill(OpKernelContext* context, random::PhiloxRandom random,
-                    Tensor* output) = 0;
-};
 
 template <typename Device, class Distribution>
 class StatelessRandomOp : public StatelessRandomOpBase {
  public:
   using StatelessRandomOpBase::StatelessRandomOpBase;
 
+ protected:
   void Fill(OpKernelContext* context, random::PhiloxRandom random,
             Tensor* output) override {
     typedef typename Distribution::ResultElementType T;
@@ -120,6 +115,7 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
  public:
   using StatelessRandomOpBase::StatelessRandomOpBase;
 
+ protected:
   void Fill(OpKernelContext* context, random::PhiloxRandom random,
             Tensor* output) override {
     const Tensor& minval = context->input(2);
@@ -157,6 +153,7 @@ class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
  public:
   using StatelessRandomOpBase::StatelessRandomOpBase;
 
+ protected:
   void Fill(OpKernelContext* context, random::PhiloxRandom random,
             Tensor* output) override {
     // Build distribution
@@ -178,6 +175,7 @@ class StatelessRandomPoissonOp : public StatelessRandomOpBase {
  public:
   using StatelessRandomOpBase::StatelessRandomOpBase;
 
+ protected:
   void Fill(OpKernelContext* ctx, random::PhiloxRandom random,
             Tensor* output) override {
     const Tensor& rate_t = ctx->input(2);

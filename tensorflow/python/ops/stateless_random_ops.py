@@ -110,12 +110,6 @@ def convert_alg_to_int(alg):
         f"to int.")
 
 
-def _resolve_alg(alg):
-  if alg == Algorithm.AUTO_SELECT.value:
-    return gen_stateless_random_ops_v2.stateless_random_get_alg()
-  return alg
-
-
 def _get_key_counter(seed, alg):
   """Calculates the key and counter to pass to raw RNG ops.
 
@@ -154,10 +148,7 @@ def _get_key_counter_alg(seed, alg):
     alg = Algorithm.AUTO_SELECT.value
   alg = convert_alg_to_int(alg)
   key, counter = _get_key_counter(seed, alg)
-  if compat.forward_compatible(2021, 8, 11):
-    return key, counter, alg
-  else:
-    return key, counter, _resolve_alg(alg)
+  return key, counter, alg
 
 
 def _philox_scramble_seed(seed):
@@ -667,10 +658,16 @@ def stateless_random_gamma(shape,
     broadcast_shape = array_ops.broadcast_dynamic_shape(
         array_ops.shape(alpha), array_ops.shape(beta))
     alpha_broadcast = array_ops.broadcast_to(alpha, broadcast_shape)
+    if compat.forward_compatible(2022, 11, 29):
+      alg = "auto_select"
+      key, counter, alg = _get_key_counter_alg(seed, alg)
+      rnd = gen_stateless_random_ops_v2.stateless_random_gamma_v3(
+          shape, key=key, counter=counter, alg=alg, alpha=alpha_broadcast)
+    else:
+      rnd = gen_stateless_random_ops.stateless_random_gamma_v2(
+          shape, seed=seed, alpha=alpha_broadcast)
     result = math_ops.maximum(
-        np.finfo(alpha.dtype.as_numpy_dtype).tiny,
-        gen_stateless_random_ops.stateless_random_gamma_v2(
-            shape, seed=seed, alpha=alpha_broadcast) / beta)
+        np.finfo(alpha.dtype.as_numpy_dtype).tiny, rnd / beta)
     tensor_util.maybe_set_static_shape(result, shape)
     return result
 
