@@ -686,8 +686,11 @@ template <typename T>
 class DotOperationTestWithCublasLt_F16F32F64CF64 : public DotOperationTest {
  public:
   DotOperationTestWithCublasLt_F16F32F64CF64() {
-    execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(
-        true);
+    bool enable_cublas_lt = false;
+#if GOOGLE_CUDA
+    enable_cublas_lt = true;    
+#endif
+    execution_options_.mutable_debug_options()->set_xla_gpu_enable_cublaslt(enable_cublas_lt);
   }
 };
 TYPED_TEST_CASE(DotOperationTestWithCublasLt_F16F32F64CF64, TypesF16F32F64CF64);
