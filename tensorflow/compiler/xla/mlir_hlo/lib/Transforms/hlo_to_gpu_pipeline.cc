@@ -100,9 +100,11 @@ void mlir::createHloToGpuPipeline(OpPassManager& pm,
   // Bufferization-related passes.
   pm.addNestedPass<FuncOp>(bufferization::createEmptyTensorToAllocTensorPass());
   pm.addPass(hlo::createOneShotBufferizePass());
+  // We do not deallocate buffers, since grid-level buffers get converted into
+  // functions arguments, while block- (and lower-)level buffers become shared
+  // memory. None of which have to be deallocated.
   pm.addPass(createCanonicalizerPass());
   pm.addPass(createCSEPass());
-  pm.addNestedPass<FuncOp>(bufferization::createBufferDeallocationPass());
   // Canonicalize away memory copies into itself
   pm.addPass(createCanonicalizerPass());
 
