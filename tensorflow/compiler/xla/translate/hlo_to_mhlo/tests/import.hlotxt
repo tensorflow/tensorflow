@@ -30,7 +30,7 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
 %test_after_all (token0: token[], token1: token[] ) -> token[] {
   token0 = token[] parameter(0)
   token1 = token[] parameter(1)
-  // CHECK-NEXT:  mhlo.after_all [[VAL_0]], [[VAL_1]] {xla_shape = {{.*}}} : (!mhlo.token, !mhlo.token) -> !mhlo.token
+  // CHECK-NEXT:  mhlo.after_all [[VAL_0]], [[VAL_1]] {xla_shape = {{.*}}} : !mhlo.token
   ROOT after-all = token[] after-all(token0, token1)
 }
 
@@ -249,7 +249,7 @@ add {
   %Arg_0.1 = f32[4] parameter(0)
   %Arg_1.2 = f32[4] parameter(1)
 
-  // CHECK-NEXT:  mhlo.complex(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xcomplex<f32>>
+  // CHECK-NEXT:  mhlo.complex %arg0, %arg1 : tensor<4xcomplex<f32>>
   ROOT %complex.3 = c64[4] complex(f32[4] %Arg_0.1, f32[4] %Arg_1.2)
 }
 
@@ -297,7 +297,7 @@ add {
 %test_conv {
   %arg0.1 = f32[256,32,32,1]{3,2,1,0} parameter(0), metadata={op_name="HLO_Args"}
 
-  // CHECK-NEXT: %[[VAL_1:.*]] = mhlo.copy %[[VAL_0]] {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} : (tensor<256x32x32x1xf32>) -> tensor<256x32x32x1xf32>
+  // CHECK-NEXT: %[[VAL_1:.*]] = mhlo.copy %[[VAL_0]] {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} :  tensor<256x32x32x1xf32>
   %copy.1 = f32[256,32,32,1]{2,1,3,0} copy(%arg0.1), metadata={op_name="HLO_Args"}
 
   // CHECK-NEXT: %[[VAL_2:.*]] = mhlo.reshape %[[VAL_1]] {xla_shape = "f32[256,32,32,1]{2,1,3,0}"} : (tensor<256x32x32x1xf32>) -> tensor<256x32x32x1xf32>
@@ -1096,8 +1096,8 @@ add {
   // CHECK: [[REDUCE_WINDOW:%.*]]:2 = "mhlo.reduce_window"([[ARG1]], [[ARG0]], [[CONST_INF]], [[CONST_ZERO]]) ({
   // CHECK: ^bb0([[BARG0:%.*]]: tensor<f32>, [[BARG1:%.*]]: tensor<f32>, [[BARG2:%.*]]: tensor<f32>, [[BARG3:%.*]]: tensor<f32>)
   // CHECK:   [[COMPARE:%.*]] = mhlo.compare GE, [[BARG0]], [[BARG2]]
-  // CHECK:   [[SELECT_0:%.*]] = "mhlo.select"([[COMPARE]], [[BARG0]], [[BARG2]])
-  // CHECK:   [[SELECT_1:%.*]] = "mhlo.select"([[COMPARE]], [[BARG1]], [[BARG3]])
+  // CHECK:   [[SELECT_0:%.*]] = mhlo.select [[COMPARE]], [[BARG0]], [[BARG2]]
+  // CHECK:   [[SELECT_1:%.*]] = mhlo.select [[COMPARE]], [[BARG1]], [[BARG3]]
   // CHECK: }) {
   // CHECK-SAME:   base_dilations = dense<1> : tensor<2xi64>
   // CHECK-SAME:   padding = dense<0> : tensor<2x2xi64>
@@ -1237,7 +1237,7 @@ add {
   %Arg_1.2 = s32[2,3] parameter(1)
   %Arg_2.3 = s32[2,3] parameter(2)
 
-  // CHECK:  "mhlo.select"(%arg0, %arg1, %arg2) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  // CHECK:  mhlo.select %arg0, %arg1, %arg2 : tensor<2x3xi1>, tensor<2x3xi32>
   ROOT %select.4 = s32[2,3] select(pred[2,3] %Arg_0.1, s32[2,3] %Arg_1.2, s32[2,3] %Arg_2.3)
 }
 

@@ -709,14 +709,23 @@ def HLO_ComplexOp: HLO_BinaryElementwiseOpNoAssembly<"complex", [Pure,
   let description = [{
     Performs element-wise conversion of a pair of real and imaginary values to
     a complex value.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.complex %arg0, %arg0 : tensor<4xcomplex<f32>>
+    ```
   }];
+
   let arguments = (ins HLO_Fp32Or64Tensor:$lhs, HLO_Fp32Or64Tensor:$rhs);
   let results = (outs HLO_ComplexTensor:$result);
 
   let hasFolder = 1;
 
-  // TODO(b/241767457): Remove parens when cleaning up BinaryOps.
-  let assemblyFormat = "`(`operands`)` attr-dict `:` `(`type(operands)`)` `->` type($result)";
+  let assemblyFormat = [{
+    operands attr-dict
+      `:` custom<ComplexOpType>(type($lhs), type($rhs), type($result))
+  }];
 }
 
 def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
@@ -1154,14 +1163,17 @@ def HLO_AfterAllOp : HLO_Op<"after_all", [Pure]> {
     Example:
 
     ```mlir
-    %0 = mhlo.after_all %arg0, %arg1 : (!mhlo.token, !mhlo.token) -> !mhlo.token
+    %0 = mhlo.after_all %arg0, %arg1 : !mhlo.token
     ```
   }];
 
   let arguments = (ins Variadic<HLO_Token>:$inputs);
-  let results = (outs HLO_Token);
+  let results = (outs HLO_Token:$result);
 
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = [{
+    $inputs attr-dict
+      `:` custom<VariadicSameOperandsAndResultType>(ref($inputs), type($inputs), type($result))
+  }];
 }
 
 def HLO_AsyncStartOp : HLO_Op<"async_start", []> {
@@ -1963,6 +1975,7 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [Pure,
 
     ```mlir
     %0 = mhlo.clamp %arg0, %arg1, %arg2 : (tensor<f32>, tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+    %1 = mhlo.clamp %arg1, %arg1, %arg1 : tensor<4xf32>
     ```
   }];
 
@@ -1971,11 +1984,14 @@ def HLO_ClampOp : HLO_ShapedInterfaceOp<"clamp", [Pure,
     HLO_Tensor:$operand,
     HLO_Tensor:$max
   );
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_Tensor:$result);
 
   let hasVerifier = 1;
 
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = [{
+    $min `,` $operand `,` $max attr-dict
+      `:` custom<SameOperandsAndResultType>(type($min), type($operand), type($max), type($result))
+  }];
 }
 
 def HLO_ConcatenateOp : HLO_ShapedInterfaceOp<"concatenate",
@@ -2075,15 +2091,17 @@ def HLO_CopyOp: HLO_Op<"copy", [Pure, HLO_CompatibleOperandsAndResultType]> {
     Example:
 
     ```mlir
-    %0 = mhlo.copy %arg0 : (tensor<f32>) -> tensor<f32>
+    %0 = mhlo.copy %arg0 : tensor<f32>
     ```
   }];
-  let arguments = (ins HLO_Tensor);
-  let results = (outs HLO_Tensor);
+  let arguments = (ins HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor:$result);
   let hasFolder = 1;
 
-  // TODO (b/241767462): Condense type printing if input/output type match.
-  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
+  let assemblyFormat = [{
+    operands attr-dict
+      `:` custom<SameOperandsAndResultType>(type($operand), type($result))
+  }];
 }
 
 def HLO_CrossReplicaSumOp : HLO_Op<"cross-replica-sum",
@@ -2454,6 +2472,13 @@ def HLO_SelectOp: HLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
     broadcasted.
 
     See https://www.tensorflow.org/xla/operation_semantics#select.
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.select %arg0, %arg1, %arg1 : tensor<2x3xi1>, tensor<2x3xi32>
+    %1 = mhlo.select %arg0, %arg2, %arg3 : (tensor<2x3xi1>, tensor<2x?xi32>, tensor<?x2xi32>) -> tensor<2x?xi32>
+    ```
   }];
   let arguments = (ins
     HLO_PredTensor:$pred,
@@ -2461,11 +2486,16 @@ def HLO_SelectOp: HLO_Op<"select", [Pure, HLO_BroadcastingElementwise,
     HLO_Tensor:$on_false
   );
 
-  let results = (outs HLO_Tensor);
+  let results = (outs HLO_Tensor:$result);
 
   let hasFolder = 1;
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
+
+  let assemblyFormat = [{
+    operands attr-dict `:`
+      custom<SelectOpType>(type($pred), type($on_true), type($on_false), type($result))
+  }];
 }
 
 def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
@@ -3177,14 +3207,20 @@ def HLO_ComputeReshapeShapeOp :
     ```
     %0 = hlo.compute_reshape_shape 12, [2, -1] -> [2, 6]
     ```
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.compute_reshape_shape %arg0, %arg1 : (index, tensor<2xi32>) -> tensor<2xi32>
+    ```
   }];
 
   let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
   let results = (outs 1DTensorOf<[AnyInteger, Index]>:$result);
 
-  // TODO (b/241767462): Use functional-type for type printing for consistency.
-  let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape) `->` type($result)";
   let hasCustomHLOConverter = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 def HLO_CstrReshapableOp :
@@ -3199,15 +3235,20 @@ def HLO_CstrReshapableOp :
     %0 = mhlo.cstr_reshapable 12, [2, -1] -> success
     %1 = mhlo.cstr_reshapable 13, [2, -1] -> failure
     ```
+
+    Example:
+
+    ```mlir
+    %0 = mhlo.cstr_reshapable %arg0, %arg1 : (index, tensor<3xi32>) -> !shape.witness
+    ```
   }];
 
   let arguments = (ins Index:$num_elements, 1DTensorOf<[AnyInteger, Index]>:$dynamic_shape);
   let results = (outs Shape_WitnessType:$result);
 
-  // TODO (b/241767462): Use functional-type for type printing for consistency.
-  let assemblyFormat = "$num_elements `,` $dynamic_shape attr-dict `:` type($num_elements) `,` type($dynamic_shape)";
-
   let hasCustomHLOConverter = 1;
+
+  let assemblyFormat = "operands attr-dict `:` functional-type(operands, results)";
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS

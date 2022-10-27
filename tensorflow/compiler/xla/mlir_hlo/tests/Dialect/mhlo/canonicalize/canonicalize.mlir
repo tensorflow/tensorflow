@@ -1453,7 +1453,7 @@ func.func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> t
 func.func @simplify_not_as_select_pred(%arg0 : tensor<4xi1>, %arg1 : tensor<4xf32>, %arg2 : tensor<4xf32>) -> tensor<4xf32> {
   %0 = "mhlo.not"(%arg0) : (tensor<4xi1>) -> tensor<4xi1>
   %1 = "mhlo.select"(%0, %arg1, %arg2) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
-  // CHECK: "mhlo.select"([[ARGV0]], [[ARGV2]], [[ARGV1]])
+  // CHECK: mhlo.select [[ARGV0]], [[ARGV2]], [[ARGV1]]
   func.return %1 : tensor<4xf32>
 }
 

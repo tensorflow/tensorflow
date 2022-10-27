@@ -89,7 +89,7 @@ func.func @binary_op_broadcast(%arg0: tensor<4x1xf32>, %arg1: tensor<4x1x4xf32>)
 
 // CHECK-LABEL: func @ternary_op
 func.func @ternary_op(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
-  // CHECK: "mhlo.select"(%arg0, %arg1, %arg2)
+  // CHECK: mhlo.select %arg0, %arg1, %arg2
   %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
   func.return %0: tensor<2xi32>
 }

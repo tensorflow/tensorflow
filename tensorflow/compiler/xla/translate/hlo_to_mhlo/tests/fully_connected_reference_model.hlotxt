@@ -56,7 +56,7 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %[[VAL_16:.*]] = "mhlo.broadcast_in_dim"(%[[VAL_15]]) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f32>) -> tensor<300x5xf32>
   %broadcast.41 = f32[300,5] broadcast(%constant.40), dimensions={}
 
-  // CHECK-NEXT: %[[VAL_17:.*]] = mhlo.copy %[[VAL_1]] : (tensor<1x300x3x1xf32>) -> tensor<1x300x3x1xf32>
+  // CHECK-NEXT: %[[VAL_17:.*]] = mhlo.copy %[[VAL_1]] : tensor<1x300x3x1xf32>
   %copy.1 = f32[1,300,3,1] copy(%arg1.2)
 
   // CHECK-NEXT: %[[VAL_18:.*]] = mhlo.reshape %[[VAL_17]] : (tensor<1x300x3x1xf32>) -> tensor<1x300x3x1xf32>
@@ -93,7 +93,7 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %[[VAL_28:.*]] = mhlo.reshape %[[VAL_27]] : (tensor<300x5xf32>) -> tensor<300x1x5xf32>
   %reshape.44 = f32[300,1,5] reshape(%maximum.42)
 
-  // CHECK-NEXT: %[[VAL_29:.*]] = "mhlo.select"(%[[VAL_12]], %[[VAL_14]], %[[VAL_28]]) : (tensor<300x1x5xi1>, tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xf32>
+  // CHECK-NEXT: %[[VAL_29:.*]] = mhlo.select %[[VAL_12]], %[[VAL_14]], %[[VAL_28]] : tensor<300x1x5xi1>, tensor<300x1x5xf32>
   %select.45 = f32[300,1,5] select(%compare.34, %broadcast.11, %reshape.44)
 
   // CHECK-NEXT: %[[VAL_30:.*]] = mhlo.reshape %[[VAL_29]] : (tensor<300x1x5xf32>) -> tensor<300x1x5xf32>

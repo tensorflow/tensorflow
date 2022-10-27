@@ -764,7 +764,7 @@ ENTRY %main (parameter.1: f32[5]) -> (f32[5]) {
 
 // CHECK: func @main
 // CHECK: mhlo.copy
-// CHECK-SAME: (tensor<2xi32>) -> tensor<2xi32>
+// CHECK-SAME: tensor<2xi32>
 HloModule CopyTest
 
 ENTRY main {

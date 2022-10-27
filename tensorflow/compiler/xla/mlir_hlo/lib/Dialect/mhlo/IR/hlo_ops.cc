@@ -7979,8 +7979,14 @@ using mlir::hlo::printWindowAttributes;
 // clang-format off
 using mlir::hlo::printSameOperandsAndResultType;
 using mlir::hlo::parseSameOperandsAndResultType;
+using mlir::hlo::printVariadicSameOperandsAndResultType;
+using mlir::hlo::parseVariadicSameOperandsAndResultType;
+using mlir::hlo::printComplexOpType;
+using mlir::hlo::parseComplexOpType;
 using mlir::hlo::printPairwiseOpType;
 using mlir::hlo::parsePairwiseOpType;
+using mlir::hlo::printSelectOpType;
+using mlir::hlo::parseSelectOpType;
 using mlir::hlo::printTupleOpType;
 using mlir::hlo::parseTupleOpType;
 // clang-format on
