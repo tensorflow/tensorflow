@@ -5970,8 +5970,9 @@ struct PositiveValue {
 
 static const APFloat& addSign(const APFloat& v, Type) { return v; }
 static APSInt addSign(const APInt& v, Type t) {
-  // Add signedness information to the value, treating signless as signed.
-  return APSInt(v, t.isUnsignedInteger());
+  // Add signedness information to the value, treating signless as signed,
+  // unless it's i1.
+  return APSInt(v, t.isUnsignedInteger() || t.isSignlessInteger(1));
 }
 
 template <typename Op, typename ElementType, typename ValType, typename Convert,

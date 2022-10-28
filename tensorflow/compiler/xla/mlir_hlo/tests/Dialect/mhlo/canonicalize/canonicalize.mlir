@@ -1141,6 +1141,16 @@ func.func @fold_compare_bools_true_eq(%arg : tensor<i1>) -> tensor<i1> {
   func.return %2 : tensor<i1>
 }
 
+// CHECK-LABEL: compare_i1_as_unsigned
+func.func @compare_i1_as_unsigned(%arg : tensor<i1>) -> tensor<i1> {
+  %true = mhlo.constant dense<true> : tensor<i1>
+  %false = mhlo.constant dense<false> : tensor<i1>
+  // CHECK: %[[FALSE:.*]] = mhlo.constant dense<false>
+  // CHECK: return %[[FALSE]]
+  %2 = "mhlo.compare"(%true, %false) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<i1>, tensor<i1>) -> tensor<i1>
+  func.return %2 : tensor<i1>
+}
+
 // CHECK-LABEL: fold_compare_false_eq_float
 func.func @fold_compare_false_eq_float() -> tensor<i1> {
   %0 = mhlo.constant dense<0.> : tensor<f32>
