@@ -609,16 +609,9 @@ REGISTER_OP("SparseFillEmptyRows")
     .Output("empty_row_indicator: bool")
     .Output("reverse_index_map: int64")
     .Attr("T: type")
-    .Attr("compressed: bool = False")
     .SetShapeFn([](InferenceContext* c) {
-      bool compressed;
-      TF_RETURN_IF_ERROR(c->GetAttr("compressed", &compressed));
       ShapeHandle input_indices = c->input(0);
-      if (compressed) {
-        TF_RETURN_IF_ERROR(c->WithRank(input_indices, 1, &input_indices));
-      } else {
-        TF_RETURN_IF_ERROR(c->WithRank(input_indices, 2, &input_indices));
-      }
+      TF_RETURN_IF_ERROR(c->WithRank(input_indices, 2, &input_indices));
       ShapeHandle input_values = c->input(1);
       TF_RETURN_IF_ERROR(c->WithRank(input_values, 1, &input_values));
       ShapeHandle input_shape = c->input(2);
@@ -628,10 +621,8 @@ REGISTER_OP("SparseFillEmptyRows")
       DimensionHandle N = c->Dim(input_indices, 0);
       TF_RETURN_IF_ERROR(c->Merge(N, c->Dim(input_values, 0), &N));
       DimensionHandle unused_dim;
-      if (!compressed) {
-        TF_RETURN_IF_ERROR(c->Merge(c->Dim(input_indices, 1),
-                                    c->Dim(input_shape, 0), &unused_dim));
-      }
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(input_indices, 1),
+                                  c->Dim(input_shape, 0), &unused_dim));
       if (c->Value(c->NumElements(input_shape)) == 0)
         return errors::InvalidArgument("dense_shape must not be empty");
       ShapeHandle output_indices =

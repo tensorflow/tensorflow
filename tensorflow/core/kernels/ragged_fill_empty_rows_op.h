@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_FILL_EMPTY_ROWS_OP_H_
-#define TENSORFLOW_CORE_KERNELS_SPARSE_FILL_EMPTY_ROWS_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RAGGED_FILL_EMPTY_ROWS_OP_H_
+#define TENSORFLOW_CORE_KERNELS_RAGGED_FILL_EMPTY_ROWS_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -25,16 +25,16 @@ namespace tensorflow {
 namespace functor {
 
 template <typename Device, typename T, typename Tindex>
-struct SparseFillEmptyRows {
+struct RaggedFillEmptyRows {
   // Note that the done callback is only used by the GPU implementation.
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
-                    const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t,
+                    const Tensor& value_rowids_t, const Tensor& values_t,
+                    const Tensor& nrows_t,
                     typename AsyncOpKernel::DoneCallback done = nullptr);
 };
 
 template <typename Device, typename T, typename Tindex>
-struct SparseFillEmptyRowsGrad {
+struct RaggedFillEmptyRowsGrad {
   Status operator()(OpKernelContext* context,
                     typename TTypes<Tindex>::ConstVec reverse_index_map,
                     typename TTypes<T>::ConstVec grad_values,
@@ -46,4 +46,4 @@ struct SparseFillEmptyRowsGrad {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_FILL_EMPTY_ROWS_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RAGGED_FILL_EMPTY_ROWS_OP_H_

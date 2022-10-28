@@ -1262,6 +1262,7 @@ cc_library(
     name = "ragged_ops",
     deps = [
         ":ragged_cross_op",
+        ":ragged_fill_empty_rows_op",
         ":ragged_gather_op",
         ":ragged_range_op",
         ":ragged_tensor_from_variant_op",
@@ -1466,6 +1467,35 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_fill_empty_rows_op",
+    prefix = "ragged_fill_empty_rows_op",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+        ":gpu_prim_helpers",
+    ]) + if_cuda([
+        "//tensorflow/core/util:cuda_solvers",
+    ]) + if_rocm([
+        "//tensorflow/core/util:rocm_solvers",
+    ]),
+)
+
+tf_cc_test(
+    name = "ragged_fill_empty_rows_op_test",
+    size = "small",
+    srcs = ["ragged_fill_empty_rows_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ragged_fill_empty_rows_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

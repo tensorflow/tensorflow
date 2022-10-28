@@ -36,6 +36,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import compat
@@ -647,7 +648,7 @@ class EmbeddingLookupTest(test.TestCase):
 
 class EmbeddingLookupSparseTest(test.TestCase):
 
-  def _RandomIdsAndWeights(self, batch_size, vocab_size, compressed):
+  def _RandomIdsAndWeights(self, batch_size, vocab_size, ragged):
     max_val_per_entry = 6
     vals_per_batch_entry = np.random.randint(
         1, max_val_per_entry, size=batch_size)
@@ -659,23 +660,22 @@ class EmbeddingLookupSparseTest(test.TestCase):
     indices = []
     for batch_entry, num_val in enumerate(vals_per_batch_entry):
       for val_index in range(num_val):
-        if compressed:
-          indices.append(batch_entry)
-        else:
-          indices.append([batch_entry, val_index])
+        indices.append([batch_entry, val_index])
 
     shape = [batch_size, max_val_per_entry]
 
     sp_ids = sparse_tensor.SparseTensor(
         constant_op.constant(indices, dtypes.int64),
         constant_op.constant(ids, dtypes.int32),
-        constant_op.constant(shape, dtypes.int64),
-        compressed=compressed)
+        constant_op.constant(shape, dtypes.int64))
     sp_weights = sparse_tensor.SparseTensor(
         constant_op.constant(indices, dtypes.int64),
         constant_op.constant(weights, dtypes.float32),
-        constant_op.constant(shape, dtypes.int64),
-        compressed=compressed)
+        constant_op.constant(shape, dtypes.int64))
+
+    if ragged:
+      sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
+      sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
 
     return sp_ids, sp_weights, ids, weights, vals_per_batch_entry
 
@@ -694,14 +694,14 @@ class EmbeddingLookupSparseTest(test.TestCase):
     param_shape = [2, 5]
     expected_lookup_result_shape = [None] + param_shape
 
-    for (num_shards, combiner, dtype, ignore_weights, compressed,
+    for (num_shards, combiner, dtype, ignore_weights, ragged,
                      allow_dense_grads) in itertools.product(
         [1, 5], ["sum", "mean", "sqrtn"],
         [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64],
         [True, False], [True, False], [True, False]):
 
       sp_ids, sp_weights, ids, weights, vals_per_batch_entry = (
-      self._RandomIdsAndWeights(batch_size, vocab_size, compressed))
+      self._RandomIdsAndWeights(batch_size, vocab_size, ragged))
 
       grouped_ids = self._GroupByBatchEntry(ids, vals_per_batch_entry)
       grouped_weights = self._GroupByBatchEntry(weights, vals_per_batch_entry)
@@ -716,7 +716,6 @@ class EmbeddingLookupSparseTest(test.TestCase):
             sp_ids,
             None if ignore_weights else sp_weights,
             combiner=combiner,
-            compressed=compressed,
             allow_dense_grads=allow_dense_grads)
 
         self.assertEqual(embedding_sum.get_shape().as_list(),
@@ -750,24 +749,24 @@ class EmbeddingLookupSparseTest(test.TestCase):
     # Github issue, 36359
     with self.test_session():
       x = array_ops.ones((4, 5))
-      for combiner, compressed, allow_dense_grads in itertools.product(
+      for combiner, ragged, allow_dense_grads in itertools.product(
         ["sum", "mean", "sqrtn"], [True, False], [True, False]):
-        if compressed:
-          indices = [1, 3]
-        else:
-          indices = [[1, 0], [3, 0]]
+        indices = [[1, 0], [3, 0]]
         sp_ids = sparse_tensor.SparseTensor(
           constant_op.constant(indices, dtypes.int64),
           constant_op.constant([0, 2], dtypes.int32),
-          constant_op.constant([4, 1], dtypes.int64),
-          compressed=compressed)
+          constant_op.constant([4, 1], dtypes.int64))
         sp_weights = sparse_tensor.SparseTensor(
           constant_op.constant(indices, dtypes.int64),
           constant_op.constant([1, 1], dtypes.float32),
-          constant_op.constant([4, 1], dtypes.int64),
-          compressed=compressed)
+          constant_op.constant([4, 1], dtypes.int64))
+
+        if ragged:
+          sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
+          sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
+
         embedding_sum = embedding_ops.embedding_lookup_sparse(
-            x, sp_ids, sp_weights, combiner=combiner, compressed=compressed,
+            x, sp_ids, sp_weights, combiner=combiner,
             allow_dense_grads=allow_dense_grads)
 
         tf_embedding_sum = ops.convert_to_tensor(embedding_sum)
@@ -782,13 +781,13 @@ class EmbeddingLookupSparseTest(test.TestCase):
     batch_size = 4
     param_shape = [2, 3]
 
-    for (num_shards, combiner, dtype, ignore_weights, compressed,
+    for (num_shards, combiner, dtype, ignore_weights, ragged,
                      allow_dense_grads) in itertools.product(
         [1, 3], ["sum", "mean", "sqrtn"],[dtypes.float32,
                                            dtypes.float64], [True, False],
                                            [True, False], [True, False]):
       sp_ids, sp_weights, _, _, _ = (self._RandomIdsAndWeights(
-        batch_size, vocab_size, compressed))
+        batch_size, vocab_size, ragged))
       with self.cached_session():
         x, params, _ = _EmbeddingParams(
             num_shards, vocab_size, shape=param_shape, dtype=dtype)
@@ -798,7 +797,6 @@ class EmbeddingLookupSparseTest(test.TestCase):
             sp_ids,
             None if ignore_weights else sp_weights,
             combiner=combiner,
-            compressed=compressed,
             allow_dense_grads=allow_dense_grads)
         x_name = [_PName(i) for i in range(num_shards)]
         x_init_value = [params[x_n + ":0"] for x_n in x_name]
@@ -810,32 +808,46 @@ class EmbeddingLookupSparseTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testIncompatibleShapes(self):
-    for compressed, allow_dense_grads in itertools.product(
+    for ragged, allow_dense_grads in itertools.product(
           [True, False], [True, False]):
       with self.cached_session():
         x, _, _ = _EmbeddingParams(1, 10, dtype=dtypes.float32)
-        if compressed:
-          indices = [0, 0, 1]
-          indices_weights = [0, 0]
-        else:
-          indices = [[0, 0], [0, 1], [1, 0]]
-          indices_weights = [[0, 0], [0, 1]]
+        indices = [[0, 0], [0, 1], [1, 0]]
+        indices_weights = [[0, 0], [0, 1]]
         sp_ids = sparse_tensor.SparseTensor(
             constant_op.constant(indices, dtypes.int64),
             constant_op.constant([0, 1, 2], dtypes.int32),
-            constant_op.constant([2, 2], dtypes.int64),
-            compressed=compressed)
+            constant_op.constant([2, 2], dtypes.int64))
         sp_weights = sparse_tensor.SparseTensor(
             constant_op.constant(indices_weights, dtypes.int64),
             constant_op.constant([12.0, 5.0], dtypes.float32),
-            constant_op.constant([1, 2], dtypes.int64),
-            compressed=compressed)
+            constant_op.constant([1, 2], dtypes.int64))
+        if ragged:
+          sp_ids = ragged_tensor.RaggedTensor.from_sparse(sp_ids)
+          sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
 
         with self.assertRaises(ValueError):
           embedding_ops.embedding_lookup_sparse(
-              x, sp_ids, sp_weights, combiner="mean", compressed=compressed,
+              x, sp_ids, sp_weights, combiner="mean",
               allow_dense_grads=allow_dense_grads)
 
+  @test_util.run_deprecated_v1
+  def test_incompatible_types(self):
+    with self.cached_session():
+      x = array_ops.ones((4, 5))
+      indices = [[1, 0], [3, 0]]
+      sp_ids = sparse_tensor.SparseTensor(
+          constant_op.constant(indices, dtypes.int64),
+          constant_op.constant([0, 2], dtypes.int32),
+          constant_op.constant([4, 1], dtypes.int64))
+      sp_weights = sparse_tensor.SparseTensor(
+          constant_op.constant(indices, dtypes.int64),
+          constant_op.constant([1, 1], dtypes.float32),
+          constant_op.constant([4, 1], dtypes.int64))
+      sp_weights = ragged_tensor.RaggedTensor.from_sparse(sp_weights)
+
+      self.assertRaises(TypeError, embedding_ops.embedding_lookup_sparse,
+                        x, sp_ids, sp_weights)
 
 class SafeEmbeddingLookupSparseTest(test.TestCase):
 
@@ -857,17 +869,14 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     embedding_weights = [self.evaluate(w) for w in embedding_weights]
     return embedding_weights
 
-  def _ids_and_weights_2d(self, compressed):
+  def _ids_and_weights_2d(self, ragged):
     # Each row demonstrates a test case:
     #   Row 0: multiple valid ids, 1 invalid id, weighted mean
     #   Row 1: all ids are invalid (leaving no valid ids after pruning)
     #   Row 2: no ids to begin with
     #   Row 3: single id
     #   Row 4: all ids have <=0 weight
-    if compressed:
-      indices = [0, 0, 0, 1, 3, 4, 4]
-    else:
-      indices = [[0, 0], [0, 1], [0, 2], [1, 0], [3, 0], [4, 0], [4, 1]]
+    indices = [[0, 0], [0, 1], [0, 2], [1, 0], [3, 0], [4, 0], [4, 1]]
     ids = [0, 1, -1, -1, 2, 0, 1]
     weights = [1.0, 2.0, 1.0, 1.0, 3.0, 0.0, -0.5]
     shape = [5, 4]
@@ -875,14 +884,16 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     sparse_ids = sparse_tensor.SparseTensor(
         constant_op.constant(indices, dtypes.int64),
         constant_op.constant(ids, dtypes.int64),
-        constant_op.constant(shape, dtypes.int64),
-        compressed=compressed)
+        constant_op.constant(shape, dtypes.int64))
 
     sparse_weights = sparse_tensor.SparseTensor(
         constant_op.constant(indices, dtypes.int64),
         constant_op.constant(weights, dtypes.float32),
-        constant_op.constant(shape, dtypes.int64),
-        compressed=compressed)
+        constant_op.constant(shape, dtypes.int64))
+
+    if(ragged):
+      sparse_ids = ragged_tensor.RaggedTensor.from_sparse(sparse_ids)
+      sparse_weights = ragged_tensor.RaggedTensor.from_sparse(sparse_weights)
 
     return sparse_ids, sparse_weights
 
@@ -895,7 +906,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
     #   Index 1, 1: all ids have <=0 weight
     #   Index 1, 2: no ids to begin with
     indices = [[0, 0, 0], [0, 0, 1], [0, 0, 2], [0, 1, 0], [1, 0, 0], [1, 1, 0],
-               [1, 1, 1]]
+              [1, 1, 1]]
     ids = [0, 1, -1, -1, 2, 0, 1]
     weights = [1.0, 2.0, 1.0, 1.0, 3.0, 0.0, -0.5]
     shape = [2, 3, 4]
@@ -916,16 +927,15 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
   def test_safe_embedding_lookup_sparse_return_zero_vector(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
-      for compressed, allow_dense_grads in itertools.product([True, False],
-                                                             [True, False]):
-        sparse_ids, sparse_weights = self._ids_and_weights_2d(compressed)
+      for ragged, allow_dense_grads in itertools.product([True, False],
+                                                              [True, False]):
+        sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
 
         embedding_lookup_result = (
             embedding_ops.safe_embedding_lookup_sparse_v2(
                                           embedding_weights,
                                           sparse_ids,
                                           sparse_weights,
-                                          compressed=compressed,
                                           allow_dense_grads=allow_dense_grads))
 
         self.assertAllClose(
@@ -937,14 +947,14 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
   def test_safe_embedding_lookup_sparse_return_special_vector(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
-      for compressed, allow_dense_grads in itertools.product([True, False],
+      for ragged, allow_dense_grads in itertools.product([True, False],
                                                              [True, False]):
-        sparse_ids, sparse_weights = self._ids_and_weights_2d(compressed)
+        sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
 
         embedding_lookup_result = (
             embedding_ops.safe_embedding_lookup_sparse_v2(
                 embedding_weights, sparse_ids, sparse_weights, default_id=3,
-                compressed=compressed, allow_dense_grads=allow_dense_grads))
+                allow_dense_grads=allow_dense_grads))
 
         self.assertAllClose(
             embedding_lookup_result,
@@ -956,16 +966,15 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
   def test_safe_embedding_lookup_sparse_no_weights(self):
     with self.cached_session():
       embedding_weights = self._random_weights()
-      for compressed, allow_dense_grads in itertools.product([True, False],
+      for ragged, allow_dense_grads in itertools.product([True, False],
                                                              [True, False]):
-        sparse_ids, _ = self._ids_and_weights_2d(compressed)
+        sparse_ids, _ = self._ids_and_weights_2d(ragged)
 
         embedding_lookup_result = (
             embedding_ops.safe_embedding_lookup_sparse_v2(
                                           embedding_weights,
                                           sparse_ids,
                                           None,
-                                          compressed=compressed,
                                           allow_dense_grads=allow_dense_grads))
 
         self.assertAllClose(
@@ -978,16 +987,15 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
   def test_safe_embedding_lookup_sparse_partitioned(self):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
-      for compressed, allow_dense_grads in itertools.product([True, False],
+      for ragged, allow_dense_grads in itertools.product([True, False],
                                                              [True, False]):
-        sparse_ids, _ = self._ids_and_weights_2d(compressed)
+        sparse_ids, _ = self._ids_and_weights_2d(ragged)
 
         embedding_lookup_result = (
             embedding_ops.safe_embedding_lookup_sparse_v2(
                                           embedding_weights,
                                           sparse_ids,
                                           None,
-                                          compressed=compressed,
                                           allow_dense_grads=allow_dense_grads))
 
         embedding_weights_list = list(itertools.chain(*embedding_weights))
@@ -1001,13 +1009,13 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
   def test_safe_embedding_lookup_sparse_partitioned_inconsistent_weights(self):
     with self.cached_session():
       embedding_weights = self._random_weights(num_shards=3)
-      for compressed, allow_dense_grads in itertools.product([True, False],
+      for ragged, allow_dense_grads in itertools.product([True, False],
                                                              [True, False]):
-        sparse_ids, sparse_weights = self._ids_and_weights_2d(compressed)
+        sparse_ids, sparse_weights = self._ids_and_weights_2d(ragged)
 
         embedding_weights[1] = embedding_weights[1].astype(np.float64)
         self.assertRaises(TypeError, embedding_ops.safe_embedding_lookup_sparse,
-                          embedding_weights, sparse_ids, compressed=compressed)
+                          embedding_weights, sparse_ids)
         embedding_weights_constant = [
             constant_op.constant(w, dtype=dtypes.float64)
             for w in embedding_weights
@@ -1017,7 +1025,6 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
                           embedding_weights_constant,
                           sparse_ids,
                           sparse_weights,
-                          compressed=compressed,
                           allow_dense_grads=allow_dense_grads)
 
   @test_util.run_deprecated_v1

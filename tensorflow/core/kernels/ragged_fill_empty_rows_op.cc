@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/sparse_fill_empty_rows_op.h"
+#include "tensorflow/core/kernels/ragged_fill_empty_rows_op.h"
 
 #include <algorithm>
 #include <numeric>
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
 
@@ -41,31 +40,31 @@ using GPUDevice = Eigen::GpuDevice;
 namespace functor {
 
 template <typename T, typename Tindex>
-struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
+struct RaggedFillEmptyRows<CPUDevice, T, Tindex> {
+ public:
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
-                    const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t,
+                    const Tensor& value_rowids_t, const Tensor& values_t,
+                    const Tensor& nrows_t,
                     typename AsyncOpKernel::DoneCallback done) {
     (void)done;  // Unused (only used in GPU implementation)
-    const int kOutputIndicesOutput = 0;
+    const int kOutputValueRowidsOutput = 0;
     const int kOutputValuesOutput = 1;
     const int kEmptyRowIndicatorOutput = 2;
     const int kReverseIndexMapOutput = 3;
 
     const T& default_value = default_value_t.scalar<T>()();
-    const auto indices = indices_t.matrix<Tindex>();
+    const auto value_rowids = value_rowids_t.vec<Tindex>();
     const auto values = values_t.vec<T>();
-    const auto dense_shape = dense_shape_t.vec<Tindex>();
+    const Tindex& nrows = nrows_t.scalar<Tindex>()();
 
-    const Tindex N = indices_t.shape().dim_size(0);
-    const Tindex dense_rows = dense_shape(0);
+    const Tindex N = value_rowids_t.shape().dim_size(0);
 
     bool* empty_row_indicator = nullptr;
     if (context->output_required(kEmptyRowIndicatorOutput)) {
       Tensor* empty_row_indicator_t = nullptr;
       TensorShape output_shape;
       TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape({dense_rows}, &output_shape));
+          TensorShape::BuildTensorShape({nrows}, &output_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
           kEmptyRowIndicatorOutput, output_shape, &empty_row_indicator_t));
       empty_row_indicator = empty_row_indicator_t->vec<bool>().data();
@@ -80,21 +79,19 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
       reverse_index_map = reverse_index_map_t->vec<Tindex>().data();
     }
 
-    int rank = indices_t.shape().dim_size(1);
-
-    if (dense_rows == 0) {
+    if (nrows == 0) {
       if (N != 0) {
         return errors::InvalidArgument(
-            "Received SparseTensor with dense_shape[0] = 0 but "
-            "indices.shape[0] = ",
+            "Received RaggedTensor with nrows = 0 but "
+            "va.shape[0] = ",
             N);
       }
-      Tensor* output_indices_t;
-      TensorShape output_indices_shape;
+      Tensor* output_value_rowids_t;
+      TensorShape output_value_rowids_shape;
       TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape({0, rank}, &output_indices_shape));
+          TensorShape::BuildTensorShape({0}, &output_value_rowids_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
-          kOutputIndicesOutput, output_indices_shape, &output_indices_t));
+          kOutputValueRowidsOutput, output_value_rowids_shape, &output_value_rowids_t));
       Tensor* output_values_t;
       TF_RETURN_IF_ERROR(context->allocate_output(
           kOutputValuesOutput, TensorShape({0}), &output_values_t));
@@ -104,20 +101,20 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
     }
 
     bool rows_are_ordered = true;
-    Tindex last_indices_row = 0;
-    std::vector<Tindex> csr_offset(dense_rows, 0);
+    Tindex last_value_rowids_row = 0;
+    std::vector<Tindex> csr_offset(nrows, 0);
     for (int i = 0; i < N; ++i) {
-      const Tindex row = indices(i, 0);
-      if (row < 0 || row >= dense_rows) {
-        return errors::InvalidArgument("indices(", i, ", 0) is invalid: ", row,
-                                       " >= ", dense_rows);
+      const Tindex row = value_rowids(i);
+      if (row < 0 || row >= nrows) {
+        return errors::InvalidArgument("value_rowids(", i, ", 0) is invalid: ", row,
+                                       " >= ", nrows);
       }
       ++csr_offset[row];
-      rows_are_ordered = rows_are_ordered & (row >= last_indices_row);
-      last_indices_row = row;
+      rows_are_ordered = rows_are_ordered & (row >= last_value_rowids_row);
+      last_value_rowids_row = row;
     }
     bool all_rows_full = true;
-    for (int row = 0; row < dense_rows; ++row) {
+    for (int row = 0; row < nrows; ++row) {
       // csr_offset here describes the number of elements in this dense row
       bool row_empty = (csr_offset[row] == 0);
       if (empty_row_indicator) {
@@ -138,7 +135,7 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
     }
 
     if (all_rows_full && rows_are_ordered) {
-      context->set_output(kOutputIndicesOutput, indices_t);
+      context->set_output(kOutputValueRowidsOutput, value_rowids_t);
       context->set_output(kOutputValuesOutput, values_t);
       if (reverse_index_map) {
         for (Tindex i = 0; i < N; ++i) {
@@ -146,29 +143,29 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
         }
       }
     } else {
-      Tensor* output_indices_t;
-      const Tindex N_full = csr_offset[dense_rows - 1];
-      TensorShape output_indices_shape;
+      Tensor* output_value_rowids_t;
+      const Tindex N_full = csr_offset[nrows - 1];
+      TensorShape output_value_rowids_shape;
       TF_RETURN_IF_ERROR(
-          TensorShape::BuildTensorShape({N_full, rank}, &output_indices_shape));
+          TensorShape::BuildTensorShape({N_full}, &output_value_rowids_shape));
       TF_RETURN_IF_ERROR(context->allocate_output(
-          kOutputIndicesOutput, output_indices_shape, &output_indices_t));
-      auto output_indices = output_indices_t->matrix<Tindex>();
+          kOutputValueRowidsOutput, output_value_rowids_shape, &output_value_rowids_t));
+      auto output_value_rowids = output_value_rowids_t->vec<Tindex>();
 
       Tensor* output_values_t;
       TF_RETURN_IF_ERROR(context->allocate_output(
           kOutputValuesOutput, TensorShape({N_full}), &output_values_t));
       auto output_values = output_values_t->vec<T>();
 
-      std::vector<Tindex> filled_count(dense_rows, 0);
+      std::vector<Tindex> filled_count(nrows, 0);
 
       // Fill in values for rows that are not missing
       for (Tindex i = 0; i < N; ++i) {
-        const Tindex row = indices(i, 0);
+        const Tindex row = value_rowids(i);
         Tindex& offset = filled_count[row];
         const Tindex output_i = ((row == 0) ? 0 : csr_offset[row - 1]) + offset;
         offset++;  // Increment the filled count for this row.
-        std::copy_n(&indices(i, 0), rank, &output_indices(output_i, 0));
+        std::copy_n(&value_rowids(i), 1, &output_value_rowids(output_i));
         output_values(output_i) = values(i);
         // We'll need this reverse index map to backprop correctly.
         if (reverse_index_map) {
@@ -177,16 +174,13 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
       }
 
       // Fill in values for rows that are missing
-      for (Tindex row = 0; row < dense_rows; ++row) {
+      for (Tindex row = 0; row < nrows; ++row) {
         const Tindex row_count = filled_count[row];
         if (row_count == 0) {  // We haven't filled this row
           const Tindex starting_index = (row == 0) ? 0 : csr_offset[row - 1];
           // Remaining index values were set to zero already.
           // Just need to set the row index in the right location.
-          output_indices(starting_index, 0) = row;
-          for (Tindex col = 1; col < rank; ++col) {
-            output_indices(starting_index, col) = 0;
-          }
+          output_value_rowids(starting_index) = row;
           output_values(starting_index) = default_value;
         }
       }
@@ -201,7 +195,7 @@ struct SparseFillEmptyRows<CPUDevice, T, Tindex> {
 namespace {
 
 template <typename Device, typename T, typename Tindex>
-void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
+void RaggedFillEmptyRowsOpImpl(OpKernelContext* context,
                                AsyncOpKernel::DoneCallback done = nullptr) {
   // Note that setting this empty lambda as the default parameter value directly
   // can cause strange compiler/linker errors, so we do it like this instead.
@@ -209,72 +203,69 @@ void SparseFillEmptyRowsOpImpl(OpKernelContext* context,
     done = [] {};
   }
 
-  const int kIndicesInput = 0;
+  const int kValueRowidsInput = 0;
   const int kValuesInput = 1;
-  const int kDenseShapeInput = 2;
+  const int kNRowsInput = 2;
   const int kDefaultValueInput = 3;
 
-  const Tensor& indices_t = context->input(kIndicesInput);
+  const Tensor& value_rowids_t = context->input(kValueRowidsInput);
   const Tensor& values_t = context->input(kValuesInput);
-  const Tensor& dense_shape_t = context->input(kDenseShapeInput);
+  const Tensor& nrows_t = context->input(kNRowsInput);
   const Tensor& default_value_t = context->input(kDefaultValueInput);
 
   OP_REQUIRES_ASYNC(
-      context, TensorShapeUtils::IsVector(dense_shape_t.shape()),
-      errors::InvalidArgument("dense_shape must be a vector, saw: ",
-                              dense_shape_t.shape().DebugString()),
+      context, TensorShapeUtils::IsScalar(nrows_t.shape()),
+      errors::InvalidArgument("nrows must be a scalar, saw: ",
+                              nrows_t.shape().DebugString()),
       done);
-  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsMatrix(indices_t.shape()),
-                    errors::InvalidArgument("indices must be a matrix, saw: ",
-                                            indices_t.shape().DebugString()),
+  OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(value_rowids_t.shape()),
+                  errors::InvalidArgument("value_rowids must be a vector, saw: ",
+                                            value_rowids_t.shape().DebugString()),
                     done);
   OP_REQUIRES_ASYNC(context, TensorShapeUtils::IsVector(values_t.shape()),
                     errors::InvalidArgument("values must be a vector, saw: ",
                                             values_t.shape().DebugString()),
                     done);
   OP_REQUIRES_ASYNC(
-      context, indices_t.dim_size(0) == values_t.dim_size(0),
+      context, value_rowids_t.dim_size(0) == values_t.dim_size(0),
       errors::InvalidArgument("The length of `values` (", values_t.dim_size(0),
-                              ") must match the first dimension of `indices` (",
-                              indices_t.dim_size(0), ")."),
+                              ") must match the first dimension of `value_rowids` (",
+                              value_rowids_t.dim_size(0), ")."),
       done);
   OP_REQUIRES_ASYNC(
       context, TensorShapeUtils::IsScalar(default_value_t.shape()),
       errors::InvalidArgument("default_value must be a scalar, saw: ",
                               default_value_t.shape().DebugString()),
       done);
-  // TODO(ebrevdo): add shape checks between values, indices,
-  // Also add check that dense rank > 0.
-  OP_REQUIRES_ASYNC(context, dense_shape_t.NumElements() != 0,
-                    errors::InvalidArgument("Dense shape cannot be empty."),
-                    done);
 
-  using FunctorType = functor::SparseFillEmptyRows<Device, T, Tindex>;
+  using FunctorType =
+      functor::RaggedFillEmptyRows<Device, T, Tindex>;
   OP_REQUIRES_OK_ASYNC(context,
-                       FunctorType()(context, default_value_t, indices_t,
-                                     values_t, dense_shape_t, done),
+                       FunctorType()(context, default_value_t, value_rowids_t,
+                                     values_t, nrows_t, done),
                        done);
 }
 
 }  // namespace
 
 template <typename Device, typename T, typename Tindex>
-class SparseFillEmptyRowsOp : public OpKernel {
+class RaggedFillEmptyRowsOp : public OpKernel {
  public:
-  explicit SparseFillEmptyRowsOp(OpKernelConstruction* context)
+  explicit RaggedFillEmptyRowsOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
-    SparseFillEmptyRowsOpImpl<Device, T, Tindex>(context);
+    RaggedFillEmptyRowsOpImpl<Device, T, Tindex>(context);
   }
+
 };
 
 #define REGISTER_KERNELS(D, T, Tindex)                   \
-  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")    \
+  REGISTER_KERNEL_BUILDER(Name("RaggedFillEmptyRows")    \
                               .Device(DEVICE_##D)        \
-                              .HostMemory("dense_shape") \
+                              .HostMemory("nrows") \
                               .TypeConstraint<T>("T"),   \
-                          SparseFillEmptyRowsOp<D##Device, T, Tindex>)
+                          RaggedFillEmptyRowsOp<D##Device, T, Tindex>)
 
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, int64)
 TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
@@ -288,37 +279,37 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNELS);
 // host->device memcpy before the output is allocated (similar to
 // SegmentSumGPUOp).
 template <typename T, typename Tindex>
-class SparseFillEmptyRowsGPUOp : public AsyncOpKernel {
+class RaggedFillEmptyRowsGPUOp : public AsyncOpKernel {
  public:
-  explicit SparseFillEmptyRowsGPUOp(OpKernelConstruction* context)
+  explicit RaggedFillEmptyRowsGPUOp(OpKernelConstruction* context)
       : AsyncOpKernel(context) {}
 
   void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
-    SparseFillEmptyRowsOpImpl<GPUDevice, T, Tindex>(context, done);
+    RaggedFillEmptyRowsOpImpl<GPUDevice, T, Tindex>(context, done);
   }
 };
-
-#define REGISTER_KERNELS(T, Tindex)                      \
-  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRows")    \
-                              .Device(DEVICE_GPU)        \
-                              .HostMemory("dense_shape") \
-                              .TypeConstraint<T>("T"),   \
-                          SparseFillEmptyRowsGPUOp<T, Tindex>)
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Tindex)                                            \
   template <>                                                                  \
-  Status SparseFillEmptyRows<GPUDevice, T, Tindex>::operator()(                \
+  Status RaggedFillEmptyRows<GPUDevice, T, Tindex>::operator()(          \
       OpKernelContext* context, const Tensor& default_value_t,                 \
-      const Tensor& indices_t, const Tensor& values_t,                         \
-      const Tensor& dense_shape_t, typename AsyncOpKernel::DoneCallback done); \
-  extern template struct SparseFillEmptyRows<GPUDevice, T, Tindex>;
+      const Tensor& value_rowids_t, const Tensor& values_t,                         \
+      const Tensor& nrows_t, typename AsyncOpKernel::DoneCallback done); \
+  extern template struct RaggedFillEmptyRows<GPUDevice, T, Tindex>;
 #define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_POD_TYPES(DECLARE_GPU_SPEC_INT64)
 #undef DECLARE_GPU_SPEC_INT64
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
+
+#define REGISTER_KERNELS(T, Tindex)                      \
+  REGISTER_KERNEL_BUILDER(Name("RaggedFillEmptyRows")    \
+                              .Device(DEVICE_GPU)        \
+                              .HostMemory("nrows") \
+                              .TypeConstraint<T>("T"),   \
+                          RaggedFillEmptyRowsGPUOp<T, Tindex>)
 
 #define REGISTER_KERNELS_TINDEX(T) REGISTER_KERNELS(T, int64)
 TF_CALL_POD_TYPES(REGISTER_KERNELS_TINDEX)
@@ -331,7 +322,7 @@ TF_CALL_POD_TYPES(REGISTER_KERNELS_TINDEX)
 namespace functor {
 
 template <typename T, typename Tindex>
-struct SparseFillEmptyRowsGrad<CPUDevice, T, Tindex> {
+struct RaggedFillEmptyRowsGrad<CPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context,
                     typename TTypes<Tindex>::ConstVec reverse_index_map,
                     typename TTypes<T>::ConstVec grad_values,
@@ -378,9 +369,9 @@ struct SparseFillEmptyRowsGrad<CPUDevice, T, Tindex> {
 }  // namespace functor
 
 template <typename Device, typename T, typename Tindex>
-class SparseFillEmptyRowsGradOp : public OpKernel {
+class RaggedFillEmptyRowsGradOp : public OpKernel {
  public:
-  explicit SparseFillEmptyRowsGradOp(OpKernelConstruction* context)
+  explicit RaggedFillEmptyRowsGradOp(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
@@ -414,17 +405,17 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
     auto d_default_value = d_default_value_t->scalar<T>();
 
     OP_REQUIRES_OK(context,
-                   functor::SparseFillEmptyRowsGrad<Device, T, Tindex>()(
+                   functor::RaggedFillEmptyRowsGrad<Device, T, Tindex>()(
                        context, reverse_index_map, grad_values, d_values,
                        d_default_value));
   }
 };
 
 #define REGISTER_KERNELS(D, T, Tindex)                    \
-  REGISTER_KERNEL_BUILDER(Name("SparseFillEmptyRowsGrad") \
+  REGISTER_KERNEL_BUILDER(Name("RaggedFillEmptyRowsGrad") \
                               .Device(DEVICE_##D)         \
                               .TypeConstraint<T>("T"),    \
-                          SparseFillEmptyRowsGradOp<D##Device, T, Tindex>)
+                          RaggedFillEmptyRowsGradOp<D##Device, T, Tindex>)
 
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, int64)
 TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
@@ -436,13 +427,13 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 namespace functor {
 #define DECLARE_GPU_SPEC(T, Tindex)                                 \
   template <>                                                       \
-  Status SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>::operator()( \
+  Status RaggedFillEmptyRowsGrad<GPUDevice, T, Tindex>::operator()( \
       OpKernelContext* context,                                     \
       typename TTypes<Tindex>::ConstVec reverse_index_map,          \
       typename TTypes<T>::ConstVec grad_values,                     \
       typename TTypes<T>::Vec d_values,                             \
       typename TTypes<T>::Scalar d_default_value);                  \
-  extern template struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex>;
+  extern template struct RaggedFillEmptyRowsGrad<GPUDevice, T, Tindex>;
 #define DECLARE_GPU_SPEC_INT64(T) DECLARE_GPU_SPEC(T, int64_t)
 TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC_INT64);
 #undef DECLARE_GPU_SPEC_INT64

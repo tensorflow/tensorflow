@@ -123,53 +123,6 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(st1._numpy(), [[1.0, 3.0], [0.0, 0.0]])
 
 
-class SparseTensorCompressionTest(test_util.TensorFlowTestCase):
-
-  def test_compress(self):
-    source = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 0]], values=[1., 2], dense_shape=[3, 4])
-    self.assertAllEqual(source.is_compressed, False)
-    compressed_tensor = source.compress()
-    self.assertAllEqual(compressed_tensor.indices, [0, 1])
-    self.assertAllEqual(compressed_tensor.values, source.values)
-    self.assertAllEqual(compressed_tensor.dense_shape, source.dense_shape)
-    self.assertAllEqual(compressed_tensor.is_compressed, True)
-
-  def test_decompress(self):
-    source = sparse_tensor.SparseTensor(
-        indices=[0, 1], values=[1., 2], dense_shape=[3, 4], compressed=True)
-    self.assertAllEqual(source.is_compressed, True)
-    decompressed_tensor = source.decompress()
-    self.assertAllEqual(decompressed_tensor.indices, [[0, 0], [1, 0]])
-    self.assertAllEqual(decompressed_tensor.values, source.values)
-    self.assertAllEqual(decompressed_tensor.dense_shape, source.dense_shape)
-    self.assertAllEqual(decompressed_tensor.is_compressed, False)
-
-  def test_compress_decompress(self):
-    source = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 0]], values=[1., 2], dense_shape=[3, 4])
-    decompressed_compressed_tensor = source.compress().decompress()
-    self.assertAllEqual(source.is_compressed, False)
-    self.assertAllEqual(decompressed_compressed_tensor.indices, source.indices)
-    self.assertAllEqual(decompressed_compressed_tensor.values, source.values)
-    self.assertAllEqual(decompressed_compressed_tensor.dense_shape,
-                                                            source.dense_shape)
-    self.assertAllEqual(decompressed_compressed_tensor.is_compressed, False)
-
-  def test_invalid_construction(self):
-    with self.assertRaises(ValueError):
-      sparse_tensor.SparseTensor(indices=[[0, 0], [1, 0]],
-                                 values=[1., 2],
-                                 dense_shape=[3, 4],
-                                 compressed=True)
-
-  def test_invalid_compression(self):
-    source = sparse_tensor.SparseTensor(
-        indices=[[0, 0], [1, 1]], values=[1., 2], dense_shape=[3, 4])
-    with self.assertRaises(ValueError):
-      source.compress()
-
-
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
 
   def test_convert_dense(self):

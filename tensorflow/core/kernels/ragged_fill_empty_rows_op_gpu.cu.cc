@@ -1,4 +1,4 @@
-/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/gpu_prim_helpers.h"
-#include "tensorflow/core/kernels/sparse_fill_empty_rows_op.h"
+#include "tensorflow/core/kernels/ragged_fill_empty_rows_op.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_device_functions.h"
@@ -81,24 +81,23 @@ struct CastFunctor {
   }
 };
 
-// Computes elements_per_row[0..dense_rows] and sets *rows_are_not_ordered to
+// Computes elements_per_row[0..nrows] and sets *rows_are_not_ordered to
 // true if the indices are not ordered by row.
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
-    GpuLaunchConfig cfg, Tindex dense_rows, int rank, const Tindex* indices,
+    GpuLaunchConfig cfg, Tindex nrows, const Tindex* indices,
     Tindex* elements_per_row, int* rows_are_not_ordered,
     int* first_invalid_index) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
-    Tindex row = indices[i * rank];
-    if (row < 0 || row >= dense_rows) {
+    Tindex row = indices[i];
+    if (row < 0 || row >= nrows) {
       GpuAtomicMin(first_invalid_index, i);
       continue;
     }
     GpuAtomicAdd(&elements_per_row[row], 1);
     // Note that this only needs to compare rows, not columns, to satisfy the
     // row-major order invariant.
-    if (i > 0 && row < indices[(i - 1) * rank]) {
-      // TODO(benbarsdell): Replace this with atomic_ref::store when available.
+    if (i > 0 && row < indices[(i - 1)]) {
       GpuAtomicMax(rows_are_not_ordered, 1);
     }
   }
@@ -106,9 +105,9 @@ __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
 
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CopyRowIndicesKernel(
-    GpuLaunchConfig cfg, int rank, const Tindex* indices, Tindex* row_indices) {
+    GpuLaunchConfig cfg, const Tindex* indices, Tindex* row_indices) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
-    row_indices[i] = indices[i * rank];
+    row_indices[i] = indices[i];
   }
 }
 
@@ -127,17 +126,15 @@ __global__ __launch_bounds__(1024) void ComputeEmptyRowIndicatorKernel(
 // empty row.
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
-    GpuLaunchConfig cfg, Tindex dense_rows, int rank,
+    GpuLaunchConfig cfg, Tindex nrows,
     const Tindex* input_index_map, const Tindex* indices, const T* values,
     const Tindex* num_new_rows_before, Tindex* output_indices, T* output_values,
     Tindex* reverse_index_map) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     Tindex input_i = input_index_map ? input_index_map[i] : i;
-    Tindex row = indices[input_i * rank];
+    Tindex row = indices[input_i];
     Tindex output_i = i + num_new_rows_before[row];
-    for (int dim = 0; dim < rank; ++dim) {
-      output_indices[output_i * rank + dim] = indices[input_i * rank + dim];
-    }
+    output_indices[output_i] = indices[input_i];
     output_values[output_i] = values[input_i];
     if (reverse_index_map) {
       reverse_index_map[input_i] = output_i;
@@ -149,16 +146,14 @@ __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
 // input) in output_indices and output_values.
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
-    GpuLaunchConfig cfg, int rank, const T* default_value,
+    GpuLaunchConfig cfg, const T* default_value,
     const Tindex* num_new_rows_through, const Tindex* input_row_ends,
     const bool* empty_row_indicator, Tindex* output_indices, T* output_values) {
   GPU_1D_KERNEL_LOOP(row, cfg.virtual_thread_count) {
     if (!empty_row_indicator[row]) continue;  // Only process empty rows
     Tindex input_i = (row == 0 ? 0 : input_row_ends[row - 1]);
     Tindex output_i = input_i + (row == 0 ? 0 : num_new_rows_through[row - 1]);
-    for (int dim = 0; dim < rank; ++dim) {
-      output_indices[output_i * rank + dim] = (dim == 0) ? row : 0;
-    }
+    output_indices[output_i] = row;
     output_values[output_i] = *default_value;
   }
 }
@@ -166,32 +161,30 @@ __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
 }  // namespace
 
 template <typename T, typename Tindex>
-struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
+struct RaggedFillEmptyRows<GPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context, const Tensor& default_value_t,
-                    const Tensor& indices_t, const Tensor& values_t,
-                    const Tensor& dense_shape_t,
+                    const Tensor& value_rowids_t, const Tensor& values_t,
+                    const Tensor& nrows_t,
                     typename AsyncOpKernel::DoneCallback done) {
     const int kEmptyRowIndicatorOutput = 2;
 
     const auto default_value = default_value_t.scalar<T>();
-    const auto indices = indices_t.matrix<Tindex>();
+    const auto value_rowids = value_rowids_t.vec<Tindex>();
     const auto values = values_t.vec<T>();
-    const auto dense_shape = dense_shape_t.vec<Tindex>();
 
-    const Tindex N = indices_t.shape().dim_size(0);
-    const int rank = indices_t.shape().dim_size(1);
-    const Tindex dense_rows = dense_shape(0);  // Must be on the host
+    const Tindex N = value_rowids_t.shape().dim_size(0);
+    const Tindex& nrows = nrows_t.scalar<Tindex>()();  // Must be on the host
     DataType index_type = DataTypeToEnum<Tindex>::value;
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     se::Stream* stream = context->op_device_context()->stream();
     if (!stream) return errors::Internal("No GPU stream available.");
 
-    if (dense_rows == 0) {
-      Tindex* output_indices;
+    if (nrows == 0) {
+      Tindex* output_value_rowids;
       T* output_values;
       Tindex* reverse_index_map;
       TF_RETURN_IF_ERROR(AllocateOutputsExceptEmptyRowIndicator(
-          context, N, rank, /*num_empty_rows=*/0, &output_indices,
+          context, N, /*num_empty_rows=*/0, &output_value_rowids,
           &output_values, &reverse_index_map));
       if (context->output_required(kEmptyRowIndicatorOutput)) {
         Tensor* unused = nullptr;
@@ -213,33 +206,33 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     //    enqueueing the remainder of the computation onto the stream as a host
     //    callback).
     // 6) If rows are not ordered:
-    //      Compute input_index_map by argsorting row indices.
-    // 7) Scatter input elements into output_indices and output_values using
+    //      Compute input_index_map by argsorting value_rowids.
+    // 7) Scatter input elements into output_value_rowids and output_values using
     //    input_index_map and num_empty_rows_through, leaving spaces for the
     //    new values that will be inserted.
-    // 8) Scatter new default values into output_indices and output_values using
+    // 8) Scatter new default values into output_value_rowids and output_values using
     //    num_new_rows_through, input_row_ends, and empty_row_indicator.
 
     // Summary of temporary allocations:
-    //   Tindex elements_per_row[dense_rows]
+    //   Tindex elements_per_row[nrows]
     //   int rows_are_not_ordered[1]
     //   Tindex row_indices[N]      (if rows_are_not_ordered)
     //   Tindex input_index_map[N]  (if rows_are_not_ordered)
-    //   Tindex input_row_ends[dense_rows]
-    //   bool empty_row_indicator[dense_rows]
-    //   Tindex num_empty_rows_through[dense_rows]
+    //   Tindex input_row_ends[nrows]
+    //   bool empty_row_indicator[nrows]
+    //   Tindex num_empty_rows_through[nrows]
     //   Workspace for inclusive sums.
     //   Workspace for radix sort.
 
     Tensor elements_per_row_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        index_type, TensorShape({dense_rows}), &elements_per_row_t));
+        index_type, TensorShape({nrows}), &elements_per_row_t));
     auto elements_per_row = elements_per_row_t.flat<Tindex>();
     se::DeviceMemoryBase elements_per_row_gpu_memory(
-        elements_per_row.data(), dense_rows * sizeof(Tindex));
+        elements_per_row.data(), nrows * sizeof(Tindex));
     if (!stream
              ->ThenMemZero(&elements_per_row_gpu_memory,
-                           dense_rows * sizeof(Tindex))
+                           nrows * sizeof(Tindex))
              .ok()) {
       return errors::Internal("Failed to zero elements_per_row");
     }
@@ -257,11 +250,11 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
                                               &first_invalid_index_t));
     auto first_invalid_index_gpu = first_invalid_index_t.flat<int>();
-    constexpr const int kAllIndicesValid = std::numeric_limits<int>::max();
+    constexpr const int kAllValueRowidsValid = std::numeric_limits<int>::max();
     se::DeviceMemoryBase first_invalid_index_gpu_memory(
         first_invalid_index_gpu.data(), sizeof(int));
     if (!stream
-             ->ThenMemset32(&first_invalid_index_gpu_memory, kAllIndicesValid,
+             ->ThenMemset32(&first_invalid_index_gpu_memory, kAllValueRowidsValid,
                             sizeof(int))
              .ok()) {
       return errors::Internal("Failed to initialize first_invalid_index");
@@ -270,16 +263,16 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     if (N > 0) {
       TF_RETURN_IF_ERROR(wrap_kernel_call(
           CountElementsPerRowKernel<Tindex>, /*device=*/device, /*size=*/N,
-          dense_rows, rank, indices, elements_per_row, rows_are_not_ordered_gpu,
+          nrows, value_rowids, elements_per_row, rows_are_not_ordered_gpu,
           first_invalid_index_gpu));
     }
 
     Tensor input_row_ends_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        index_type, TensorShape({dense_rows}), &input_row_ends_t));
+        index_type, TensorShape({nrows}), &input_row_ends_t));
     auto input_row_ends = input_row_ends_t.flat<Tindex>();
 
-    TF_RETURN_IF_ERROR(GpuInclusivePrefixSum(context, /*size=*/dense_rows,
+    TF_RETURN_IF_ERROR(GpuInclusivePrefixSum(context, /*size=*/nrows,
                                              /*input=*/elements_per_row.data(),
                                              /*output=*/input_row_ends.data()));
 
@@ -288,26 +281,26 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     if (context->output_required(kEmptyRowIndicatorOutput)) {
       Tensor* empty_row_indicator_t_ptr = nullptr;
       TF_RETURN_IF_ERROR(context->allocate_output(kEmptyRowIndicatorOutput,
-                                                  TensorShape({dense_rows}),
+                                                  TensorShape({nrows}),
                                                   &empty_row_indicator_t_ptr));
       empty_row_indicator = empty_row_indicator_t_ptr->vec<bool>().data();
     } else {
       TF_RETURN_IF_ERROR(context->allocate_temp(
-          DT_BOOL, TensorShape({dense_rows}), &empty_row_indicator_t));
+          DT_BOOL, TensorShape({nrows}), &empty_row_indicator_t));
       empty_row_indicator = empty_row_indicator_t.vec<bool>().data();
     }
 
-    if (dense_rows > 0) {
+    if (nrows > 0) {
       TF_RETURN_IF_ERROR(
           wrap_kernel_call(ComputeEmptyRowIndicatorKernel<Tindex>,
-                           /*device=*/device, /*size=*/dense_rows,
+                           /*device=*/device, /*size=*/nrows,
                            elements_per_row, empty_row_indicator));
     }
 
     // For each row, the number of empty rows up to and including that row.
     Tensor num_empty_rows_through_t;
     TF_RETURN_IF_ERROR(context->allocate_temp(
-        index_type, TensorShape({dense_rows}), &num_empty_rows_through_t));
+        index_type, TensorShape({nrows}), &num_empty_rows_through_t));
     auto num_empty_rows_through = num_empty_rows_through_t.flat<Tindex>();
 
     gpuprim::TransformInputIterator<Tindex, CastFunctor<Tindex>, bool*>
@@ -316,7 +309,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     // The inclusive sum in CUB does not work do the right thing if
     // `empty_row_indicator` is passed in as a `bool *`.
     TF_RETURN_IF_ERROR(
-        GpuInclusivePrefixSum(context, /*size=*/dense_rows,
+        GpuInclusivePrefixSum(context, /*size=*/nrows,
                               /*input=*/empty_row_indicator_cast,
                               /*output=*/num_empty_rows_through.data()));
 
@@ -324,7 +317,7 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     if (!stream
              ->ThenMemcpy(num_empty_rows_host.mutable_data(),
                           se::DeviceMemoryBase(
-                              num_empty_rows_through.data() + (dense_rows - 1),
+                              num_empty_rows_through.data() + (nrows - 1),
                               sizeof(*num_empty_rows_host.data())),
                           sizeof(*num_empty_rows_host.data()))
              .ok()) {
@@ -353,8 +346,8 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     // the host, so we enqueue the remainder of the computation onto the stream
     // asynchronously to avoid stalling execution.
     auto async_finish_computation =
-        [this, context, kAllIndicesValid, index_type, N, rank, indices, values,
-         default_value, dense_rows, num_empty_rows_host,
+        [this, context, kAllValueRowidsValid, index_type, N, value_rowids, values,
+         default_value, nrows, num_empty_rows_host,
          rows_are_not_ordered_host, first_invalid_index_host,
          num_empty_rows_through_t, num_empty_rows_through, input_row_ends_t,
          input_row_ends, empty_row_indicator_t, empty_row_indicator,
@@ -367,20 +360,20 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       ScopedActivateExecutorContext scoped_activation{stream->parent()};
 
       int first_invalid_index = *first_invalid_index_host.data();
-      OP_REQUIRES_ASYNC(context, first_invalid_index == kAllIndicesValid,
-                        errors::InvalidArgument("indices(", first_invalid_index,
+      OP_REQUIRES_ASYNC(context, first_invalid_index == kAllValueRowidsValid,
+                        errors::InvalidArgument("valule_rowids(", first_invalid_index,
                                                 ", 0) is invalid."),
                         done);
 
       Tindex num_empty_rows = *num_empty_rows_host.data();
 
-      Tindex* output_indices;
+      Tindex* output_value_rowids;
       T* output_values;
       Tindex* reverse_index_map;
       OP_REQUIRES_OK_ASYNC(
           context,
           AllocateOutputsExceptEmptyRowIndicator(
-              context, N, rank, num_empty_rows, &output_indices, &output_values,
+              context, N, num_empty_rows, &output_value_rowids, &output_values,
               &reverse_index_map),
           done);
 
@@ -391,8 +384,8 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
       int rows_are_not_ordered = *rows_are_not_ordered_host.data();
       if (rows_are_not_ordered) {
         OP_REQUIRES_OK_ASYNC(context,
-                             ArgSortByRows(context, device, N, rank, dense_rows,
-                                           indices, &input_index_map_t),
+                             ArgSortByRows(context, device, N, nrows,
+                                           value_rowids, &input_index_map_t),
                              done);
         input_index_map = input_index_map_t.vec<Tindex>().data();
       }
@@ -401,21 +394,21 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
         OP_REQUIRES_OK_ASYNC(
             context,
             wrap_kernel_call(ScatterInputElementsKernel<T, Tindex>,
-                             /*device=*/device, /*size=*/N, dense_rows, rank,
-                             input_index_map, indices, values,
-                             num_empty_rows_through, output_indices,
+                             /*device=*/device, /*size=*/N, nrows,
+                             input_index_map, value_rowids, values,
+                             num_empty_rows_through, output_value_rowids,
                              output_values, reverse_index_map),
             done);
       }
 
-      if (dense_rows > 0) {
+      if (nrows > 0) {
         OP_REQUIRES_OK_ASYNC(
             context,
             wrap_kernel_call(ScatterNewElementsKernel<T, Tindex>,
-                             /*device=*/device, /*size=*/dense_rows, rank,
+                             /*device=*/device, /*size=*/nrows,
                              default_value, num_empty_rows_through,
                              input_row_ends, empty_row_indicator,
-                             output_indices, output_values),
+                             output_value_rowids, output_values),
             done);
       }
 
@@ -430,14 +423,14 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
 
  private:
   Status AllocateOutputsExceptEmptyRowIndicator(
-      OpKernelContext* context, Tindex N, int rank, Tindex num_empty_rows,
-      Tindex** output_indices, T** output_values, Tindex** reverse_index_map) {
-    Tensor* output_indices_t;
+      OpKernelContext* context, Tindex N, Tindex num_empty_rows,
+      Tindex** output_value_rowids, T** output_values, Tindex** reverse_index_map) {
+    Tensor* output_value_rowids_t;
     const Tindex N_full = N + num_empty_rows;
-    TensorShape output_indices_shape({N_full, rank});
+    TensorShape output_value_rowids_shape({N_full});
     TF_RETURN_IF_ERROR(context->allocate_output(
-        "output_indices", output_indices_shape, &output_indices_t));
-    *output_indices = output_indices_t->matrix<Tindex>().data();
+        "output_value_rowids", output_value_rowids_shape, &output_value_rowids_t));
+    *output_value_rowids = output_value_rowids_t->vec<Tindex>().data();
 
     Tensor* output_values_t;
     TF_RETURN_IF_ERROR(context->allocate_output(
@@ -456,20 +449,21 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
     return OkStatus();
   }
 
-  Status ArgSortByRows(OpKernelContext* context, const GPUDevice& device,
-                       Tindex N, int rank, Tindex dense_rows,
-                       typename TTypes<Tindex>::ConstMatrix indices,
-                       Tensor* input_index_map_t) {
+  Status ArgSortByRows(
+      OpKernelContext* context, const GPUDevice& device, Tindex N,
+      Tindex nrows,
+      typename TTypes<Tindex>::ConstVec value_rowids,
+      Tensor* input_index_map_t) {
     DataType index_type = DataTypeToEnum<Tindex>::value;
-    // Extract row indices into separate array for use as keys for sorting.
+    // Extract value_rowids into separate array for use as keys for sorting.
     Tensor row_indices_t;
     TF_RETURN_IF_ERROR(
         context->allocate_temp(index_type, TensorShape({N}), &row_indices_t));
     auto row_indices = row_indices_t.flat<Tindex>();
     if (N > 0) {
       TF_RETURN_IF_ERROR(wrap_kernel_call(CopyRowIndicesKernel<Tindex>,
-                                          /*device=*/device, /*size=*/N, rank,
-                                          indices, row_indices));
+                                          /*device=*/device, /*size=*/N,
+                                          value_rowids, row_indices));
     }
     // Allocate input_index_map.
     TF_RETURN_IF_ERROR(context->allocate_temp(index_type, TensorShape({N}),
@@ -479,14 +473,14 @@ struct SparseFillEmptyRows<GPUDevice, T, Tindex> {
                         /*keys_out=*/static_cast<Tindex*>(nullptr),
                         /*indices_in=*/static_cast<Tindex*>(nullptr),
                         /*indices_out=*/input_index_map,
-                        /*num_bits=*/Log2Ceiling64(dense_rows));
+                        /*num_bits=*/Log2Ceiling64(nrows));
   }
 };
 
 }  // namespace functor
 
 #define DEFINE_INT64(T) \
-  template struct functor::SparseFillEmptyRows<GPUDevice, T, int64>;
+  template struct functor::RaggedFillEmptyRows<GPUDevice, T, int64>;
 TF_CALL_POD_TYPES(DEFINE_INT64)
 #undef DEFINE_INT64
 
@@ -519,7 +513,7 @@ struct ZeroMaskedValues {
 namespace functor {
 
 template <typename T, typename Tindex>
-struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
+struct RaggedFillEmptyRowsGrad<GPUDevice, T, Tindex> {
   Status operator()(OpKernelContext* context,
                     typename TTypes<Tindex>::ConstVec reverse_index_map,
                     typename TTypes<T>::ConstVec grad_values,
@@ -562,7 +556,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     if (gpuprim_status != gpuSuccess) {
       return errors::Internal(
-          "SparseFillEmptyRowsGrad: Could not launch "
+          "RaggedFillEmptyRowsGrad: Could not launch "
           "gpuprim::DeviceReduce::Sum to calculate temp_storage_bytes, "
           "status: ",
           GpuGetErrorString(gpuprim_status));
@@ -582,7 +576,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 
     if (gpuprim_status != gpuSuccess) {
       return errors::Internal(
-          "SparseFillEmptyRowsGrad: Could not launch "
+          "RaggedFillEmptyRowsGrad: Could not launch "
           "gpuprim::DeviceReduce::Sum to sum values from originally-empty "
           "rows. temp_storage_bytes: ",
           temp_storage_bytes, ", status: ", GpuGetErrorString(gpuprim_status));
@@ -595,7 +589,7 @@ struct SparseFillEmptyRowsGrad<GPUDevice, T, Tindex> {
 }  // namespace functor
 
 #define DEFINE_INT64(T) \
-  template struct functor::SparseFillEmptyRowsGrad<GPUDevice, T, int64>;
+  template struct functor::RaggedFillEmptyRowsGrad<GPUDevice, T, int64>;
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_INT64);
 #undef DEFINE_INT64
 
