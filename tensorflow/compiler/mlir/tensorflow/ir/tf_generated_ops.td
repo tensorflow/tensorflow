@@ -1276,38 +1276,6 @@ about broadcasting
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_BatchNormWithGlobalNormalizationOp : TF_Op<"BatchNormWithGlobalNormalization", [Pure]> {
-  let summary = "Batch normalization.";
-
-  let description = [{
-This op is deprecated. Prefer `tf.nn.batch_normalization`.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 4D input Tensor.}]>:$t,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D mean Tensor with size matching the last dimension of t.
-This is the first output from tf.nn.moments,
-or a saved moving average thereof.}]>:$m,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D variance Tensor with size matching the last dimension of t.
-This is the second output from tf.nn.moments,
-or a saved moving average thereof.}]>:$v,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D beta Tensor with size matching the last dimension of t.
-An offset to be added to the normalized tensor.}]>:$beta,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 1D gamma Tensor with size matching the last dimension of t.
-If "scale_after_normalization" is true, this tensor will be multiplied
-with the normalized tensor.}]>:$gamma,
-
-    F32Attr:$variance_epsilon,
-    BoolAttr:$scale_after_normalization
-  );
-
-  let results = (outs
-    TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$result
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_BatchToSpaceOp : TF_Op<"BatchToSpace", [Pure]> {
   let summary = "BatchToSpace for 4-D tensors of type T.";
 
@@ -2174,48 +2142,6 @@ case it might be faster to use the CPU.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_ClipByValueOp : TF_Op<"ClipByValue", [Pure, TF_SameOperandsAndResultElementTypeResolveRef]> {
-  let summary = "Clips tensor values to a specified min and max.";
-
-  let description = [{
-Given a tensor `t`, this operation returns a tensor of the same type and
-shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
-Any values less than `clip_value_min` are set to `clip_value_min`. Any values
-greater than `clip_value_max` are set to `clip_value_max`.
-  }];
-
-  let arguments = (ins
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A `Tensor`.}]>:$t,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-as `t`. The minimum value to clip by.}]>:$clip_value_min,
-    Arg<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-as `t`. The maximum value to clip by.}]>:$clip_value_max
-  );
-
-  let results = (outs
-    Res<TensorOf<[TF_Bfloat16, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>, [{A clipped `Tensor` with the same shape as input 't'.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_CollateTPUEmbeddingMemoryOp : TF_Op<"CollateTPUEmbeddingMemory", []> {
-  let summary = [{
-An op that merges the string-encoded memory config protos from all hosts.
-  }];
-
-  let arguments = (ins
-    Arg<Variadic<TF_StrTensor>, [{String-encoded memory config protos containing metadata about
-the memory allocations reserved for TPUEmbedding across all hosts.}]>:$memory_configs
-  );
-
-  let results = (outs
-    TF_StrTensor:$merged_memory_config
-  );
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_CollectiveAssignGroupV2Op : TF_Op<"CollectiveAssignGroupV2", [Pure, TF_NoConstantFold]> {
@@ -7052,26 +6978,6 @@ top_k_unique.
   let results = (outs
     TF_Float32Tensor:$output
   );
-}
-
-def TF_L2LossOp : TF_Op<"L2Loss", [Pure]> {
-  let summary = "L2 Loss.";
-
-  let description = [{
-Computes half the L2 norm of a tensor without the `sqrt`:
-
-    output = sum(t ** 2) / 2
-  }];
-
-  let arguments = (ins
-    Arg<TF_FloatTensor, [{Typically 2-D, but may have any dimensions.}]>:$t
-  );
-
-  let results = (outs
-    Res<TF_FloatTensor, [{0-D.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LRNOp : TF_Op<"LRN", [Pure]> {
@@ -15110,87 +15016,6 @@ has size `k`, the number of segments.}]>:$output
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
-}
-
-def TF_SelectOp : TF_Op<"Select", [Pure]> {
-  let summary = "Selects elements from `x` or `y`, depending on `condition`.";
-
-  let description = [{
-The `x`, and `y` tensors must all have the same shape, and the
-output will also have that shape.
-
-The `condition` tensor must be a scalar if `x` and `y` are scalars.
-If `x` and `y` are vectors or higher rank, then `condition` must be either a
-scalar, a vector with size matching the first dimension of `x`, or must have
-the same shape as `x`.
-
-The `condition` tensor acts as a mask that chooses, based on the value at each
-element, whether the corresponding element / row in the output should be
-taken from `x` (if true) or `y` (if false).
-
-If `condition` is a vector and `x` and `y` are higher rank matrices, then
-it chooses which row (outer dimension) to copy from `x` and `y`.
-If `condition` has the same shape as `x` and `y`, then it chooses which
-element to copy from `x` and `y`.
-
-For example:
-
-```python
-# 'condition' tensor is [[True,  False]
-#                        [False, True]]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e)  # => [[1, 6], [7, 4]]
-
-
-# 'condition' tensor is [True, False]
-# 't' is [[1, 2],
-#         [3, 4]]
-# 'e' is [[5, 6],
-#         [7, 8]]
-select(condition, t, e) ==> [[1, 2],
-                             [7, 8]]
-
-```
-  }];
-
-  let arguments = (ins
-    TF_BoolTensor:$condition,
-    Arg<TF_Tensor, [{= A `Tensor` which may have the same shape as `condition`.
-If `condition` is rank 1, `x` may have higher rank,
-but its first dimension must match the size of `condition`.}]>:$t,
-    Arg<TF_Tensor, [{= A `Tensor` with the same type and shape as `x`.}]>:$e
-  );
-
-  let results = (outs
-    Res<TF_Tensor, [{= A `Tensor` with the same type and shape as `x` and `y`.}]>:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
-
-  let hasVerifier = 1;
-}
-
-def TF_SelectV2Op : TF_Op<"SelectV2", [Pure, ResultsBroadcastableShape]> {
-  let summary = "";
-
-  let arguments = (ins
-    TF_BoolTensor:$condition,
-    TF_Tensor:$t,
-    TF_Tensor:$e
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
-
-  let builders = [
-    OpBuilder<(ins "Value":$condition, "Value":$e, "Value":$t)>
-  ];
 }
 
 def TF_SelfAdjointEigV2Op : TF_Op<"SelfAdjointEigV2", [Pure]> {
