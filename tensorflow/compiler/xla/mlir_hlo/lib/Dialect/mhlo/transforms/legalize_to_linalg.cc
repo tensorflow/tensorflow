@@ -836,6 +836,29 @@ class TransposeConverter
   }
 };
 
+class TransposeOpToTransposeConverter
+    : public OpConversionPattern<mhlo::TransposeOp> {
+  using OpConversionPattern<mhlo::TransposeOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::TransposeOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const override {
+    auto resultTy = typeConverter->convertType(op.getType()).cast<ShapedType>();
+
+    auto loc = op.getLoc();
+    Value emptyTensor =
+        getEmptyTensorFor(rewriter, loc, resultTy, op, adaptor.getOperands());
+
+    auto permutation = rewriter.getDenseI64ArrayAttr(
+        llvm::to_vector(op.getPermutation().getValues<int64_t>()));
+
+    rewriter.replaceOpWithNewOp<linalg::TransposeOp>(
+        op, op.getOperand(), emptyTensor, permutation,
+        linalg::getPrunedAttributeList(op));
+    return success();
+  }
+};
+
 class BitcastConvertConverter
     : public OpConversionPattern<mhlo::BitcastConvertOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -3654,7 +3677,6 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       SliceConverter,
       DynamicSliceConverter,
       DynamicUpdateSliceConverter,
-      TransposeConverter<mhlo::TransposeOp>,
       GatherConversion,
       PadOpConversion,
       PadOpNegativePaddingConversion,
@@ -3714,6 +3736,7 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgMapConverter<mhlo::SubtractOp>,
       PointwiseToLinalgMapConverter<mhlo::TanhOp>,
       PointwiseToLinalgMapConverter<mhlo::XorOp>,
+      TransposeOpToTransposeConverter,
       SelectOpToMapConverter
     >(typeConverter, context);
   } else {
@@ -3765,7 +3788,8 @@ void populateHloToLinalgConversionPattern(MLIRContext* context,
       PointwiseToLinalgConverter<mhlo::SqrtOp>,
       PointwiseToLinalgConverter<mhlo::SubtractOp>,
       PointwiseToLinalgConverter<mhlo::TanhOp>,
-      PointwiseToLinalgConverter<mhlo::XorOp>
+      PointwiseToLinalgConverter<mhlo::XorOp>,
+      TransposeConverter<mhlo::TransposeOp>
     >(typeConverter, context);
   }
 
