@@ -83,7 +83,7 @@ class MatrixInverseOp : public LinearAlgebraOp<Scalar> {
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixInverseOp);
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 typedef Eigen::GpuDevice GPUDevice;
 
@@ -163,6 +163,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
         /* on_host */ true);
     auto output_reshaped = output->template flat_inner_dims<Scalar, 3>();
     std::vector<DeviceLapackInfo> dev_info;
+#if GOOGLE_CUDA
     if (n < 32 || batch_size > n) {
       // For small matrices or very large batch sizes, we use the batched
       // interfaces in cuBlas to avoid being dominated by kernel launch
@@ -210,6 +211,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
             done);
       }
     } else {
+#endif
       // For large matrices, we compute the inverse of each matrix in the batch
       // sequentially. Here we use the cuSolver methods GETRF/GETRS because they
       // are MUCH faster than their batched cuBlas equivalents for large
@@ -230,7 +232,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
 #if GOOGLE_CUDA
       cublasOperation_t trans = CUBLAS_OP_N;
 #elif TENSORFLOW_USE_ROCM
-      rocblas_operation trans = rocblas_operation_none;
+      hipsolverOperation_t trans = HIPSOLVER_OP_N;
 #endif
 
       // Solve A X = I.
@@ -243,7 +245,9 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                           n, &dev_info.back()(batch)),
             done);
       }
+#if GOOGLE_CUDA
     }
+#endif
     // Callback for checking info after kernels finish.
     auto info_checker = [context, done](
                             const Status& status,
@@ -278,7 +282,7 @@ REGISTER_LINALG_OP_GPU("MatrixInverse", (MatrixInverseOpGpu<complex64>),
 REGISTER_LINALG_OP_GPU("MatrixInverse", (MatrixInverseOpGpu<complex128>),
                        complex128);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<float>), float);
 REGISTER_LINALG_OP("MatrixInverse", (MatrixInverseOp<double>), double);
