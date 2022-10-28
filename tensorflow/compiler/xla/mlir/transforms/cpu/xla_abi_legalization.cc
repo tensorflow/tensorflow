@@ -52,15 +52,7 @@ bool IsDefaultLayout(ArrayRef<int64_t> layout) {
 Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
                       ArrayRef<int64_t> layout, bool isInput) {
   int64_t rank = tensor.getType().getRank();
-  SmallVector<int64_t> permutation(rank);
-  SmallVector<int64_t> inverse_permutation(rank);
-  for (int64_t dim = 0; dim < rank; ++dim) {
-    permutation[dim] = rank - 1ll - layout[dim];
-  }
-  for (int64_t dim = 0; dim < rank; ++dim) {
-    inverse_permutation[permutation[dim]] = dim;
-  }
-
+  SmallVector<int64_t> permutation{llvm::reverse(layout)};
   SmallVector<int64_t> physical_dim_sizes(rank);
   for (int64_t dim = 0; dim < rank; ++dim) {
     physical_dim_sizes[dim] = tensor.getType().getDimSize(permutation[dim]);
@@ -69,13 +61,17 @@ Value NormalizeTensor(ImplicitLocOpBuilder& b, TypedValue<ShapedType> tensor,
       physical_dim_sizes, tensor.getType().getElementType());
 
   if (isInput) {
+    SmallVector<int64_t> inverse_permutation(rank);
+    for (int64_t dim = 0; dim < rank; ++dim) {
+      inverse_permutation[permutation[dim]] = dim;
+    }
     Value reshape = b.create<mhlo::ReshapeOp>(physical_shape, tensor);
     return b.create<mhlo::TransposeOp>(tensor.getType(), reshape,
                                        b.getI64VectorAttr(inverse_permutation));
   }
 
   Value transpose = b.create<mhlo::TransposeOp>(
-      physical_shape, tensor, b.getI64VectorAttr(inverse_permutation));
+      physical_shape, tensor, b.getI64VectorAttr(permutation));
   return b.create<mhlo::ReshapeOp>(tensor.getType(), transpose);
 }
 
@@ -268,6 +264,35 @@ struct RewriteCustomCalls : OpRewritePattern<mhlo::CustomCallOp> {
   }
 };
 
+template <typename Op>
+struct RewriteResultLayout : OpRewritePattern<Op> {
+  using OpRewritePattern<Op>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(Op op,
+                                PatternRewriter& rewriter) const override {
+    auto layout_attr = op->getAttr("result_layout");
+    if (!layout_attr) {
+      return failure();
+    }
+
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    b.setInsertionPointAfter(op);
+
+    SmallVector<SmallVector<int64_t>> result_layouts =
+        FlattenLayoutAttribute(layout_attr);
+
+    assert(result_layouts.size() == op->getNumResults() &&
+           "Unexpected number of result layouts");
+    for (const auto& [result, layout] :
+         llvm::zip(op->getResults(), result_layouts)) {
+      NormalizeInputInPlace(b, result, layout);
+    }
+
+    op->removeAttr("result_layout");
+    return success();
+  }
+};
+
 void LegalizeXlaAbiPass::runOnOperation() {
   ModuleOp module = getOperation();
   MLIRContext* ctx = module.getContext();
@@ -275,7 +300,8 @@ void LegalizeXlaAbiPass::runOnOperation() {
   // Convert lmhlo operations to XLA cpu runtime custom calls.
   RewritePatternSet patterns(ctx);
   patterns.insert<RewriteInputArgs, RewriteReturnArgs, RewriteI1Results,
-                  RewriteCustomCalls>(ctx);
+                  RewriteCustomCalls, RewriteResultLayout<mhlo::ConstantOp>>(
+      ctx);
 
   if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns)))) {
     return signalPassFailure();

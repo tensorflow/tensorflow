@@ -19,10 +19,10 @@ func.func @all_custom(%arg0: tensor<2x3x4xf32>, %arg1: tensor<2x3x4xf32>)
 //   CHECK-NOT:   attributes
 //       CHECK: %[[R0:.*]] = mhlo.reshape %[[ARG0]] {{.*}} -> tensor<4x3x2xf32>
 //       CHECK: %[[T0:.*]] = "mhlo.transpose"(%[[R0]]) {{.*}} -> tensor<2x3x4xf32>
-//       CHECK: %[[R1:.*]] = mhlo.reshape %[[ARG1]] {{.*}} -> tensor<3x2x4xf32>
+//       CHECK: %[[R1:.*]] = mhlo.reshape %[[ARG1]] {{.*}} -> tensor<2x4x3xf32>
 //       CHECK: %[[T1:.*]] = "mhlo.transpose"(%[[R1]]) {{.*}} -> tensor<2x3x4xf32>
 //       CHECK: %[[ADD:.*]] = mhlo.add %[[T0]], %[[T1]]
-//       CHECK: %[[TR:.*]] = "mhlo.transpose"(%[[ADD]]) {{.*}} -> tensor<2x4x3xf32>
+//       CHECK: %[[TR:.*]] = "mhlo.transpose"(%[[ADD]]) {{.*}} -> tensor<3x2x4xf32>
 //       CHECK: %[[RR:.*]] = mhlo.reshape %[[TR]] {{.*}} -> tensor<2x3x4xf32>
 //       CHECK: return %[[RR]]
 
@@ -108,3 +108,18 @@ func.func @custom_call_i1_input(%arg0: tensor<42xi1>) {
 // CHECK-LABEL: @custom_call_i1_input
 // CHECK: %[[CONVERTED:.*]] = mhlo.convert {{.*}} : (tensor<42xi1>) -> tensor<42xui8>
 // CHECK: "mhlo.custom_call"(%[[CONVERTED]])
+
+// -----
+
+func.func @constant_with_layout() -> tensor<2x3xf32> {
+  %c = "mhlo.constant"() {
+    value = dense<[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]> : tensor<2x3xf32>,
+    result_layout = dense<[0, 1]> : tensor<2xindex>
+  } : () -> tensor<2x3xf32>
+  return %c : tensor<2x3xf32>
+}
+
+// CHECK-LABEL: @constant_with_layout
+//       CHECK: %[[CST:.*]] = mhlo.constant {{.*}} : tensor<3x2xf32>
+//       CHECK: %[[TR:.*]] = "mhlo.transpose"(%[[CST]]) {{.*}} -> tensor<2x3xf32>
+//       CHECK: return %[[TR]]
