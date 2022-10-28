@@ -2764,6 +2764,7 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu/tests:scatter.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:select_and_scatter.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:select_and_scatter_test",
+        "//tensorflow/compiler/xla/service/gpu/tests:single_instruction.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:slice_to_dynamic.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:sorting.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:sorting_test",
