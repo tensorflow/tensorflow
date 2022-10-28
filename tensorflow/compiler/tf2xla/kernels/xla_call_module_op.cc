@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -45,9 +46,12 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// Version 1 uses MHLO, starting with version 2 use StableHLO.
+const int VERSION_START_STABLE_HLO = 2;
+
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
-StatusOr<mlir::Value> ComputeDimensionValue(string dim_arg_spec,
+StatusOr<mlir::Value> ComputeDimensionValue(int version, string dim_arg_spec,
                                             std::vector<mlir::Value> arguments,
                                             mlir::OpBuilder op_builder,
                                             mlir::Type dim_arg_type) {
@@ -75,9 +79,16 @@ StatusOr<mlir::Value> ComputeDimensionValue(string dim_arg_spec,
         "Invalid axis index ", arg_axis_idx, " when rank of input is ",
         arg_type.getShape().size(), " in dim_arg_spec '", dim_arg_spec, "'");
   }
-  mlir::Value val = op_builder.create<mlir::mhlo::GetDimensionSizeOp>(
-      arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
-      op_builder.getI64IntegerAttr(arg_axis_idx));
+  mlir::Value val;
+  if (version >= VERSION_START_STABLE_HLO) {
+    val = op_builder.create<mlir::stablehlo::GetDimensionSizeOp>(
+        arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+        op_builder.getI64IntegerAttr(arg_axis_idx));
+  } else {
+    val = op_builder.create<mlir::mhlo::GetDimensionSizeOp>(
+        arguments[arg_idx].getLoc(), dim_arg_type, arguments[arg_idx],
+        op_builder.getI64IntegerAttr(arg_axis_idx));
+  }
   return val;
 }
 
@@ -97,8 +108,8 @@ StatusOr<mlir::Value> ComputeDimensionValue(string dim_arg_spec,
 //
 // We create a new "main" function as follows:
 //   func public main(%arg2: f32[?, ?, 8]) {
-//      %arg0 = mhlo.get_dimension_size(%arg2) dimension=0
-//      %arg1 = mhlo.get_dimension_size(%arg2) dimension=1
+//      %arg0 = stablehlo.get_dimension_size(%arg2) dimension=0
+//      %arg1 = stablehlo.get_dimension_size(%arg2) dimension=1
 //      %res = func.call _wrapped_main(%arg0, %arg1, %arg2)
 //      return %res
 //   }
@@ -110,7 +121,7 @@ StatusOr<mlir::Value> ComputeDimensionValue(string dim_arg_spec,
 // RefineDynamicShapes method called in Compile we refine the shape of the
 // array arguments. This would create a type error at the call to _wrapped_main
 // with the expected type of %arg2.
-Status AddMainWrapper(mlir::ModuleOp module,
+Status AddMainWrapper(int version, mlir::ModuleOp module,
                       std::vector<string> dim_args_spec) {
   int nr_dim_args = dim_args_spec.size();
   // Locate the 'main' function.
@@ -118,7 +129,7 @@ Status AddMainWrapper(mlir::ModuleOp module,
   mlir::func::FuncOp orig_main =
       module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!orig_main) {
-    return errors::InvalidArgument("Cannot find 'main' in MHLO module");
+    return errors::InvalidArgument("Cannot find 'main' in module");
   }
   if (orig_main.getNumArguments() <= nr_dim_args) {
     return errors::InvalidArgument("'main' has ", orig_main.getNumArguments(),
@@ -150,10 +161,10 @@ Status AddMainWrapper(mlir::ModuleOp module,
   std::vector<mlir::Value> call_args(orig_main_body.getNumArguments());
   for (int i = 0; i < orig_main_body.getNumArguments(); ++i) {
     if (i < nr_dim_args) {
-      TF_ASSIGN_OR_RETURN(
-          call_args[i],
-          ComputeDimensionValue(dim_args_spec[i], block_args, op_builder,
-                                orig_main.getArgument(i).getType()));
+      TF_ASSIGN_OR_RETURN(call_args[i],
+                          ComputeDimensionValue(
+                              version, dim_args_spec[i], block_args, op_builder,
+                              orig_main.getArgument(i).getType()));
     } else {
       call_args[i] = new_main_block->getArgument(i - nr_dim_args);
     }
@@ -168,7 +179,7 @@ Status AddMainWrapper(mlir::ModuleOp module,
   // like constant propagation and shape inference work better.
   pm.addPass(mlir::createInlinerPass());
   if (!mlir::succeeded(pm.run(module))) {
-    return errors::InvalidArgument("MHLO inlining failed");
+    return errors::InvalidArgument("Module inlining failed");
   }
   VLOG(3) << "XlaCallModule module with inlined wrapper: "
           << debugString(module);
@@ -188,7 +199,7 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   // This is the convention used by MlirToXlaComputation.
   mlir::func::FuncOp main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main) {
-    return errors::InvalidArgument("Cannot find 'main' in MHLO module");
+    return errors::InvalidArgument("Cannot find 'main' in module");
   }
   mlir::Block &main_body = main.front();
   int nr_array_arguments = ctx->num_inputs();
@@ -247,43 +258,50 @@ Status RefineDynamicShapes(XlaOpKernelContext *ctx,
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   if (!mlir::succeeded(pm.run(**module))) {
-    return errors::InvalidArgument("MHLO shape inference failed");
+    return errors::InvalidArgument("Module shape inference failed");
   }
   VLOG(3) << "XlaCallModule module with inferred types: "
           << debugString(**module);
   return OkStatus();
 }
 
-Status LoadAndPreprocessModule(mlir::OwningOpRef<mlir::ModuleOp> *module,
+Status LoadAndPreprocessModule(int version,
+                               mlir::OwningOpRef<mlir::ModuleOp> *module,
                                mlir::MLIRContext *context, string module_str,
                                std::vector<string> dim_args_spec,
                                bool *has_dynamic_shapes, int *nr_outputs) {
+  // Allow only dialects with stability guarantees.
   context->loadDialect<mlir::func::FuncDialect>();
-  context->loadDialect<mlir::mhlo::MhloDialect>();
+  if (version >= VERSION_START_STABLE_HLO) {
+    context->loadDialect<mlir::stablehlo::StablehloDialect>();
+  } else {
+    context->loadDialect<mlir::mhlo::MhloDialect>();
+  }
   context->loadDialect<mlir::chlo::ChloDialect>();
   // Parses both IR text and bytecode.
   *module = mlir::parseSourceString<mlir::ModuleOp>(llvm::StringRef(module_str),
                                                     context);
   if (!*module) {
-    return errors::InvalidArgument("Cannot deserialize MHLO computation");
+    return errors::InvalidArgument("Cannot deserialize computation");
   }
-  VLOG(3) << "Parsed serialized module\n" << debugString(**module);
+  VLOG(3) << "Parsed serialized module (version" << version << ")\n"
+          << debugString(**module);
 
   if (failed((*module)->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     (*module)->dump();
-    return errors::InvalidArgument("Error verifying MHLO module");
+    return errors::InvalidArgument("Error verifying module");
   }
   mlir::func::FuncOp main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main) {
-    return errors::InvalidArgument("Cannot find 'main' in MHLO module");
+    return errors::InvalidArgument("Cannot find 'main' in module");
   }
   *has_dynamic_shapes = false;
   for (const mlir::Type arg_type : main.getArgumentTypes()) {
     mlir::RankedTensorType arg_ranked_type =
         arg_type.dyn_cast<mlir::RankedTensorType>();
     if (!arg_ranked_type) {
-      return errors::InvalidArgument("MHLO main has unranked arguments");
+      return errors::InvalidArgument("Module main has unranked arguments");
     }
     for (const int64_t arg_dim_size : arg_ranked_type.getShape()) {
       if (arg_dim_size < 0) {
@@ -295,9 +313,9 @@ Status LoadAndPreprocessModule(mlir::OwningOpRef<mlir::ModuleOp> *module,
   if (!dim_args_spec.empty()) {
     if (!has_dynamic_shapes) {
       return errors::InvalidArgument(
-          "MHLO main has dim_args_spec but does not have dynamic shapes");
+          "Module main has dim_args_spec but does not have dynamic shapes");
     }
-    TF_RETURN_IF_ERROR(AddMainWrapper(**module, dim_args_spec));
+    TF_RETURN_IF_ERROR(AddMainWrapper(version, **module, dim_args_spec));
     main = (*module)->lookupSymbol<mlir::func::FuncOp>("main");
   }
   *nr_outputs = main.getNumResults();
@@ -307,6 +325,7 @@ Status LoadAndPreprocessModule(mlir::OwningOpRef<mlir::ModuleOp> *module,
 class XlaCallModuleOp : public XlaOpKernel {
  public:
   explicit XlaCallModuleOp(OpKernelConstruction *ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("version", &version_));
     string module_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("module", &module_str));
     std::vector<PartialTensorShape> expected_output_shapes;
@@ -320,9 +339,10 @@ class XlaCallModuleOp : public XlaOpKernel {
                                         expected_output_shapes.size(),
                                         ") must match the size of Tout (",
                                         expected_output_dtypes.size(), ")"));
-    OP_REQUIRES_OK(ctx, LoadAndPreprocessModule(
-                            &module_, &context_, module_str, dim_args_spec_,
-                            &has_dynamic_shapes_, &nr_outputs_));
+    OP_REQUIRES_OK(
+        ctx, LoadAndPreprocessModule(version_, &module_, &context_, module_str,
+                                     dim_args_spec_, &has_dynamic_shapes_,
+                                     &nr_outputs_));
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
@@ -371,6 +391,7 @@ class XlaCallModuleOp : public XlaOpKernel {
   }
 
  private:
+  int version_;
   int nr_outputs_;
   std::vector<string> dim_args_spec_;
   bool has_dynamic_shapes_;

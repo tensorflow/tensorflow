@@ -20342,11 +20342,7 @@ very likely to change. This op will be used only in jax2tf under an
 experimental flag.
 
 This is an experimental op to allow a smooth evolution of jax2tf towards
-emitting and serializing MHLO directly from JAX. At the moment this op
-carries a serialized MHLO module, therefore there are no backward-compatibility
-guarantees, and should not be used for serialization.
-Eventually, the op will carry a MHLO object, which will have
-backwards-compatibility guarantees.
+emitting and serializing StableHLO directly from JAX.
 
 The serialized module must return a tuple if and only if the Sout is an empty
 list or a list with more than 1 elements. The length of Tout and Sout must
@@ -20368,6 +20364,7 @@ E.g., the specification "2.1" denotes the value args[2].shape[1].
     Arg<Variadic<TF_Tensor>, [{A list of `Tensor` with possibly different types to be passed as arguments
 to the HLO module.}]>:$args,
 
+    I64Attr:$version,
     StrAttr:$module,
     TF_ShapeAttrArray:$Sout,
     StrArrayAttr:$dim_args_spec

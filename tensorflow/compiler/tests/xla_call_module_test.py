@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
@@ -54,15 +55,57 @@ class XlaCallModuleOpTest(xla_test.XLATestCase):
       module = """
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+    %0 = stablehlo.cosine %arg0 : tensor<3xf32>
+    %1 = stablehlo.sine %0 : tensor<3xf32>
+    return %1 : tensor<3xf32>
+  }
+}
+"""
+      return xla.call_module([x], version=2,
+                             module=module, Tout=[x.dtype], Sout=[x.shape])
+
+    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
+
+  def test_basic_mhlo(self):
+    x = np.array([1., 2., 3.], dtype=np.float32)
+
+    def f(x):
+      # sin(cos(x))
+      module = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
     %0 = mhlo.cosine %arg0 : tensor<3xf32>
     %1 = mhlo.sine %0 : tensor<3xf32>
     return %1 : tensor<3xf32>
   }
 }
 """
-      return xla.call_module([x], module=module, Tout=[x.dtype], Sout=[x.shape])
+      return xla.call_module([x], version=1,
+                             module=module, Tout=[x.dtype], Sout=[x.shape])
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
+
+  def test_basic_disalow_mhlo(self):
+    """Disallows MHLO in newer versions of the op."""
+    x = np.array([1., 2., 3.], dtype=np.float32)
+
+    def f(x):
+      # sin(cos(x))
+      module = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+    %0 = mhlo.cosine %arg0 : tensor<3xf32>
+    %1 = mhlo.sine %0 : tensor<3xf32>
+    return %1 : tensor<3xf32>
+  }
+}
+"""
+      return xla.call_module([x], version=2,
+                             module=module, Tout=[x.dtype], Sout=[x.shape])
+
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'Cannot deserialize computation'):
+      self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
 
   def test_compare(self):
     x = np.uint32(2)
@@ -73,13 +116,13 @@ module @jit_f.0 {
       module = """
 module @jit_f_jax.0 {
   func.func public @main(%arg0: tensor<ui32>) -> tensor<i1> {
-    %0 = mhlo.constant dense<1> : tensor<ui32>
-    %1 = "mhlo.compare"(%arg0, %0) {compare_type = #mhlo<comparison_type UNSIGNED>, comparison_direction = #mhlo<comparison_direction GE>} : (tensor<ui32>, tensor<ui32>) -> tensor<i1>
+    %0 = stablehlo.constant dense<1> : tensor<ui32>
+    %1 = "stablehlo.compare"(%arg0, %0) {compare_type = #stablehlo<comparison_type UNSIGNED>, comparison_direction = #stablehlo<comparison_direction GE>} : (tensor<ui32>, tensor<ui32>) -> tensor<i1>
     return %1 : tensor<i1>
   }
 }
 """
-      return xla.call_module([x],
+      return xla.call_module([x], version=2,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[res.shape])
@@ -95,13 +138,13 @@ module @jit_f_jax.0 {
       module = """
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<3xf32>, %arg1: tensor<4xf64>) -> (tensor<3xf32>, tensor<4xf64>) {
-    %0 = mhlo.sine %arg0 : tensor<3xf32>
-    %1 = mhlo.cosine %arg1 : tensor<4xf64>
+    %0 = stablehlo.sine %arg0 : tensor<3xf32>
+    %1 = stablehlo.cosine %arg1 : tensor<4xf64>
     return %0, %1 : tensor<3xf32>, tensor<4xf64>
   }
 }
 """
-      return xla.call_module([x, y],
+      return xla.call_module([x, y], version=2,
                              module=module,
                              Tout=[x.dtype, y.dtype],
                              Sout=[x.shape, y.shape])
@@ -123,6 +166,7 @@ module @jit_f.0 {
 }
 """
       return xla.call_module([x],
+                             version=1,
                              module=module,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()],
@@ -151,7 +195,7 @@ module @jit_f.0 {
   }
 }
 """
-      return xla.call_module([x],
+      return xla.call_module([x], version=1,
                              module=module,
                              Tout=[x.dtype, np.int32],
                              Sout=[(None, 3), ()],
@@ -174,9 +218,7 @@ module @jit_fun.1 {
   }
 }
 """
-      return xla.call_module([
-          x,
-      ],
+      return xla.call_module([x,], version=1,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[(None,)],
@@ -204,7 +246,7 @@ module @jit_fun.0 {
   }
 }
 """
-      return xla.call_module([x, y],
+      return xla.call_module([x, y], version=1,
                              module=module,
                              Tout=[res[0].dtype, res[1].dtype],
                              Sout=[(2, None, 4), (2, None, 4)],
@@ -221,8 +263,8 @@ module @jit_fun.0 {
       module = """
 module @jit_fun{
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<?xi32>) -> tensor<i32> {
-    %0 = mhlo.constant dense<0> : tensor<i32>
-    %1 = mhlo.reduce(%arg1 init: %0) across dimensions = [0] : (tensor<?xi32>, tensor<i32>) -> tensor<i32>
+    %0 = stablehlo.constant dense<0> : tensor<i32>
+    %1 = stablehlo.reduce(%arg1 init: %0) across dimensions = [0] : (tensor<?xi32>, tensor<i32>) -> tensor<i32>
      reducer(%arg2: tensor<i32>, %arg3: tensor<i32>)  {
       %4 = mhlo.add %arg2, %arg3 : tensor<i32>
       "mhlo.return"(%4) : (tensor<i32>) -> ()
@@ -232,7 +274,7 @@ module @jit_fun{
   }
 }
 """
-      return xla.call_module([x],
+      return xla.call_module([x], version=2,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[res.shape],
@@ -259,9 +301,7 @@ module @jit_fun_3 {
   }
 }
 """
-      return xla.call_module([
-          x,
-      ],
+      return xla.call_module([x,], version=1,
                              module=module,
                              Tout=[res.dtype],
                              Sout=[()],
