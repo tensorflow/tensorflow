@@ -12,16 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 
 #include <string>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/protobuf/coordination_service.pb.h"
-namespace tensorflow {
+namespace tsl {
 namespace {
+using ::tensorflow::CoordinatedTask;
+using ::tensorflow::CoordinationServiceError;
 
 TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
   Status error = errors::Internal("Test Error");
@@ -98,4 +100,4 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
 }
 
 }  // namespace
-}  // namespace tensorflow
+}  // namespace tsl

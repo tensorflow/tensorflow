@@ -154,10 +154,7 @@ cc_library(
     name = "coordination_service_error_util",
     hdrs = ["coordination_service_error_util.h"],
     deps = [
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/distributed_runtime/coordination:coordination_service_error_util",
     ],
 )
 
@@ -192,19 +189,6 @@ tf_cc_test(
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cc_test(
-    name = "coordination_service_error_util_test",
-    srcs = ["coordination_service_error_util_test.cc"],
-    deps = [
-        ":coordination_service_error_util",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
     ],
 )
 
