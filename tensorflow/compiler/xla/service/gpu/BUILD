@@ -2928,6 +2928,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/stream_executor",
         "@com_google_absl//absl/cleanup",
     ],

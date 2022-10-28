@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -736,12 +737,10 @@ StatusOr<std::pair<XlaOp, pybind11::object>> PyClient::EmitPythonCallback(
 XLA_CPU_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_cpu_callback",
                                              &XlaPythonCpuCallback);
 
-#if TENSORFLOW_USE_ROCM
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
-                                         &XlaPythonGpuCallback, "ROCM");
-#elif defined(GOOGLE_CUDA)
-XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM("xla_python_gpu_callback",
-                                         &XlaPythonGpuCallback, "CUDA");
-#endif  // TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+XLA_REGISTER_CUSTOM_CALL_TARGET_WITH_SYM(
+    "xla_python_gpu_callback", &XlaPythonGpuCallback,
+    absl::AsciiStrToUpper(PlatformUtil::CanonicalPlatformName("gpu").value()));
+#endif
 
 }  // namespace xla
