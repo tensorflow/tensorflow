@@ -48968,13 +48968,6 @@ op {
   output_arg {
     name: "output"
     type_attr: "out_type"
-    experimental_full_type {
-      type_id: TFT_SHAPE_TENSOR
-      args {
-        type_id: TFT_VAR
-        s: "out_type"
-      }
-    }
   }
   attr {
     name: "T"
