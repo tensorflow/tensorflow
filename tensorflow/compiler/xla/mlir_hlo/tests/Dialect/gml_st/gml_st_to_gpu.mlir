@@ -273,3 +273,23 @@ func.func @vectorized_tiling(%arg0: memref<2048xf32>) -> memref<2048xf32> {
 // CHECK-DAG:    %[[TVOUT:.*]] = math.absf %[[TVARG]]
 // CHECK-DAG:    %[[TOUT:.*]] = memref.subview %[[WOUT]][%[[OFS]]] [4] [1]
 // CHECK-DAG:    vector.transfer_write %[[TVOUT]], %[[TOUT]][%c0]
+
+// -----
+
+func.func @materialize_scalar_of_transfer_read(
+      %in: memref<32xf32>, %idx: index) -> f32 {
+  %pad = arith.constant 0.0 : f32
+  %c0 = arith.constant 0 : index
+  %vector = vector.transfer_read %in[%c0], %pad {in_bounds = [true]}
+    : memref<32xf32>, vector<32xf32>
+  %tile = gml_st.tile [%idx] [1] [1] : !gml_st.tile<1>
+  %value = gml_st.materialize %vector[%tile]
+    : vector<32xf32>[!gml_st.tile<1>] to f32
+  return %value : f32
+}
+// CHECK-LABEL: @materialize_scalar_of_transfer_read(
+// CHECK-SAME: %[[IN:.*]]: memref<32xf32>, %[[IDX:.*]]: index
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:  %[[SUBVIEW:.*]] = memref.subview %[[IN]][%[[IDX]]]
+// CHECK:      %[[VALUE:.*]] = memref.load %[[SUBVIEW]][%[[C0]]]
+// CHECK:      return %[[VALUE]] : f32

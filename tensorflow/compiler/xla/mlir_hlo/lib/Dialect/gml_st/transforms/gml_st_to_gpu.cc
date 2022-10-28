@@ -492,10 +492,16 @@ LogicalResult EliminateMaterializeOfTransferReadPattern::matchAndRewrite(
   // for elementwise fusion and softmax, but might become a problem down the
   // line.
   auto subview = createSubView(materialize.getLoc(), source, tile, rewriter);
+  Type resultType = materialize.getResult().getType();
+  if (!resultType.isa<VectorType>()) {
+    // We have a transfer to a single element: just use memref.load directly.
+    rewriter.replaceOpWithNewOp<memref::LoadOp>(materialize, subview,
+                                                transferRead.getIndices());
+    return success();
+  }
   rewriter.replaceOpWithNewOp<TransferReadOp>(
-      materialize, materialize.getResult().getType().cast<VectorType>(),
-      subview, transferRead.getIndices(), transferRead.getPermutationMap(),
-      transferRead.getPadding(),
+      materialize, resultType, subview, transferRead.getIndices(),
+      transferRead.getPermutationMap(), transferRead.getPadding(),
       /*mask=*/nullptr, transferRead.getInBounds().value_or(nullptr));
   return success();
 }

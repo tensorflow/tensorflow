@@ -93,7 +93,8 @@ def GmlStToGpuPass : Pass<"gml-st-to-gpu", "mlir::func::FuncOp"> {
   let dependentDialects = ["::mlir::AffineDialect",
                            "::mlir::arith::ArithDialect",
                            "::mlir::gpu::GPUDialect", "::mlir::scf::SCFDialect",
-                           "::mlir::vector::VectorDialect"];
+                           "::mlir::vector::VectorDialect",
+                           "::mlir::memref::MemRefDialect"];
 }
 
 def VectorizeGmlStLoopsPass :
