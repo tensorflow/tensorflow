@@ -2258,6 +2258,34 @@ ENTRY test {
 },
 
 {
+"SparseShapeWithIndexPrimitiveType",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u32)})->f32[10,10]{1,0:D(D,C)#(u32)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u32)} parameter(0)
+})",
+},
+
+{
+"SparseShapeWithPointerPrimitiveType",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)*(u32)})->f32[10,10]{1,0:D(D,C)*(u32)}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)*(u32)} parameter(0)
+})",
+},
+
+{
 "SparseShapeWithPhysicalShape",
 R"(HloModule test
 
@@ -2268,6 +2296,20 @@ R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)P((s32[10]{0:
 
 ENTRY test {
   ROOT root = f32[10,10]{1,0:D(D,C)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+},
+
+{
+"SparseShapeFull",
+R"(HloModule test
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
+})",
+R"(HloModule test, entry_computation_layout={(f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))})->f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))}}
+
+ENTRY test {
+  ROOT root = f32[10,10]{1,0:D(D,C)#(u64)*(u32)S(42)P((s32[10]{0:T(100)}, s32[10]{0:T(100)}, f32[10]{0:T(100)}))} parameter(0)
 })",
 },
 });

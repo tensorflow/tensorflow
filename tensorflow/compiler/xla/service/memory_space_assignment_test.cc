@@ -3099,16 +3099,22 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+          /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+          /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           kAlternateMemorySpace);
   // Index {1} is a scalar, so it is always placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*dim_level_types=*/{}, /*tiles=*/{},
+          /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+          /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           kDefaultMemorySpace);
   // Index {2} of the while loop is placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*dim_level_types=*/{}, /*tiles=*/{},
+          /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+          /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID,
           kDefaultMemorySpace);
 
   // Expect the layout for the while loop and its aliased buffers.

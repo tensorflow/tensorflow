@@ -97,12 +97,11 @@ class Layout {
   // level types, and tiles.
   explicit Layout(absl::Span<const int64_t> minor_to_major,
                   absl::Span<const DimLevelType> dim_level_types,
-                  absl::Span<const Tile> tiles, int64_t memory_space,
-                  std::unique_ptr<Shape> physical_shape);
-
-  explicit Layout(absl::Span<const int64_t> minor_to_major,
-                  absl::Span<const DimLevelType> dim_level_types,
-                  absl::Span<const Tile> tiles, int64_t memory_space = 0);
+                  absl::Span<const Tile> tiles,
+                  PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
+                  int64_t memory_space = 0,
+                  std::unique_ptr<Shape> physical_shape = nullptr);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -133,10 +132,13 @@ class Layout {
       return *this;
     }
 
-    Equal& MinorToMajorOnly() {
-      ignore_tiles_ = true;
-      ignore_memory_space_ = true;
-      ignore_physical_shape_ = true;
+    Equal& IgnoreIndexPrimitiveType() {
+      ignore_index_primitive_type_ = true;
+      return *this;
+    }
+
+    Equal& IgnorePointerPrimitiveType() {
+      ignore_pointer_primitive_type_ = true;
       return *this;
     }
 
@@ -150,8 +152,18 @@ class Layout {
       return *this;
     }
 
+    Equal& MinorToMajorOnly() {
+      return IgnoreTiles()
+          .IgnoreIndexPrimitiveType()
+          .IgnorePointerPrimitiveType()
+          .IgnoreMemorySpace()
+          .IgnorePhysicalShape();
+    }
+
    private:
     bool ignore_tiles_ = false;
+    bool ignore_index_primitive_type_ = false;
+    bool ignore_pointer_primitive_type_ = false;
     bool ignore_memory_space_ = false;
     bool ignore_physical_shape_ = false;
   };
@@ -221,6 +233,20 @@ class Layout {
   absl::Span<const Tile> tiles() const { return tiles_; }
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
+  PrimitiveType index_primitive_type() const { return index_primitive_type_; }
+  Layout& set_index_primitive_type(PrimitiveType value) {
+    index_primitive_type_ = value;
+    return *this;
+  }
+
+  PrimitiveType pointer_primitive_type() const {
+    return pointer_primitive_type_;
+  }
+  Layout& set_pointer_primitive_type(PrimitiveType value) {
+    pointer_primitive_type_ = value;
+    return *this;
+  }
+
   static constexpr int64_t kDefaultMemorySpace = 0;
   static constexpr int64_t kGenericFastMemorySpace = 1;
   int64_t memory_space() const { return memory_space_; }
@@ -248,6 +274,7 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
+                      l.index_primitive_type_, l.pointer_primitive_type_,
                       l.memory_space_);
   }
 
@@ -271,6 +298,11 @@ class Layout {
 
   // The tiles used in tiling-based layout.
   absl::InlinedVector<Tile, 2> tiles_;
+
+  // The primitive type to use for sparse array indices and pointers.  Each of
+  // these must either be INVALID, or an unsigned integer type.
+  PrimitiveType index_primitive_type_ = PRIMITIVE_TYPE_INVALID;
+  PrimitiveType pointer_primitive_type_ = PRIMITIVE_TYPE_INVALID;
 
   // The assigned memory space.
   int64_t memory_space_ = 0;

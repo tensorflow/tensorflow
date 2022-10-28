@@ -90,7 +90,8 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
     absl::Span<const DimLevelType> dim_level_types,
-    absl::Span<const Tile> tiles, int64_t memory_space,
+    absl::Span<const Tile> tiles, PrimitiveType index_primitive_type,
+    PrimitiveType pointer_primitive_type, int64_t memory_space,
     std::optional<Shape> physical_shape) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
@@ -103,9 +104,9 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
-  *shape.mutable_layout() =
-      LayoutUtil::MakeLayout(minor_to_major, dim_level_types, tiles,
-                             memory_space, std::move(physical_shape));
+  *shape.mutable_layout() = LayoutUtil::MakeLayout(
+      minor_to_major, dim_level_types, tiles, index_primitive_type,
+      pointer_primitive_type, memory_space, std::move(physical_shape));
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
   return shape;
 }
@@ -300,7 +301,9 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
     int64_t memory_space) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, /*dim_level_types=*/{}, tiles,
-      memory_space, /*physical_shape=*/std::nullopt);
+      /*index_primitive_type=*/PRIMITIVE_TYPE_INVALID,
+      /*pointer_primitive_type=*/PRIMITIVE_TYPE_INVALID, memory_space,
+      /*physical_shape=*/std::nullopt);
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }
@@ -308,11 +311,13 @@ Shape MakeTupleShapeImpl(absl::Span<ShapePtrOrRef> shapes) {
 /* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
     PrimitiveType element_type, absl::Span<const int64_t> dimensions,
     absl::Span<const int64_t> minor_to_major,
-    absl::Span<const DimLevelType> dim_level_types, int64_t memory_space,
-    std::optional<Shape> physical_shape) {
+    absl::Span<const DimLevelType> dim_level_types,
+    PrimitiveType index_primitive_type, PrimitiveType pointer_primitive_type,
+    int64_t memory_space, std::optional<Shape> physical_shape) {
   auto ret = MakeShapeWithLayoutInternal(
       element_type, dimensions, minor_to_major, dim_level_types, /*tiles=*/{},
-      memory_space, std::move(physical_shape));
+      index_primitive_type, pointer_primitive_type, memory_space,
+      std::move(physical_shape));
   if (!ret.ok()) LOG(ERROR) << ret.status();
   return ret.value();
 }

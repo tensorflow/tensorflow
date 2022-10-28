@@ -358,7 +358,10 @@ class ShapeUtil {
   static Shape MakeShapeWithSparseLayout(
       PrimitiveType element_type, absl::Span<const int64_t> dimensions,
       absl::Span<const int64_t> minor_to_major,
-      absl::Span<const DimLevelType> dim_level_types, int64_t memory_space = 0,
+      absl::Span<const DimLevelType> dim_level_types,
+      PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
+      PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID,
+      int64_t memory_space = 0,
       std::optional<Shape> physical_shape = std::nullopt);
 
   // Constructs a new shape with the given dimension `dim` as the most major

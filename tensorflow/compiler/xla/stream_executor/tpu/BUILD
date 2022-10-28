@@ -38,7 +38,6 @@ cc_library(
         "c_api_defn.h",
     ],
     deps = [
-        "//tensorflow/c:tf_attrtype",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/tpu:libtftpu_header",
     ],
