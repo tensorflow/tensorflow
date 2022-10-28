@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_COMMON_H_
-#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_COMMON_H_
+#ifndef TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_COMMON_H_
+#define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_COMMON_H_
 
 #include <unordered_map>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/mutex.h"
 
-namespace tensorflow {
+namespace tsl {
 
 // GenericCachingChannelCache that caches results to FindWorkerChannel() calls.
 // To use instantiate with the type of channel cache needed.
@@ -98,6 +98,6 @@ class GenericCachingChannelCache : public ChannelCacheT {
   absl::flat_hash_map<string, ChannelState> channels_ TF_GUARDED_BY(mu_);
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
-#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_COMMON_H_
+#endif  // TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_COMMON_H_

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_channel.h"
 
 #include <cstdlib>
 #include <limits>
@@ -23,21 +23,22 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_channel_common.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_channel_common.h"
+#include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/macros.h"
+#include "tensorflow/tsl/platform/mutex.h"
+#include "tensorflow/tsl/platform/numbers.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/str_util.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/thread_annotations.h"
+#include "tensorflow/tsl/platform/types.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
@@ -365,4 +366,4 @@ GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& spec,
                                   caches, options.num_channels_per_target());
 }
 
-}  // end namespace tensorflow
+}  // namespace tsl

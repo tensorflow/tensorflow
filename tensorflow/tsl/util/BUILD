@@ -84,7 +84,6 @@ filegroup(
 filegroup(
     name = "framework_internal_impl_srcs",
     srcs = [
-        "device_name_utils.cc",
         "use_cudnn.cc",
     ],
 )

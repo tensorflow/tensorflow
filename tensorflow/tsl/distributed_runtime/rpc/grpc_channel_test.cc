@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_channel.h"
 
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/strcat.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
-namespace tensorflow {
+namespace tsl {
 #define IsSameAddrSp DeviceNameUtils::IsSameAddressSpace
 
 TEST(GrpcChannelTest, IsSameAddressSpace) {
@@ -62,7 +63,7 @@ TEST(GrpcChannelTest, HostPorts) {
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   std::unique_ptr<GrpcChannelCache> cc(
-      NewGrpcChannelCache(spec, channel_func, RPCOptions()));
+      NewGrpcChannelCache(spec, channel_func, tensorflow::RPCOptions()));
 
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
@@ -124,7 +125,7 @@ TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
   TF_EXPECT_OK(spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3"}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
-  RPCOptions rpc_options;
+  tensorflow::RPCOptions rpc_options;
   rpc_options.set_num_channels_per_target(4);
   std::unique_ptr<GrpcChannelCache> cc(
       NewGrpcChannelCache(spec, channel_func, rpc_options));
@@ -205,7 +206,7 @@ TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
   TF_EXPECT_OK(spec.AddHostPortsJob("mnist2", {"a:1", "b:2", "c:3"}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
-  RPCOptions rpc_options;
+  tensorflow::RPCOptions rpc_options;
   rpc_options.set_num_channels_per_target(4);
   std::unique_ptr<GrpcChannelCache> cc(
       NewGrpcChannelCache(spec, channel_func, rpc_options));
@@ -295,7 +296,7 @@ TEST(GrpcChannelTest, SparseHostPorts) {
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   std::unique_ptr<GrpcChannelCache> cc(
-      NewGrpcChannelCache(spec, channel_func, RPCOptions()));
+      NewGrpcChannelCache(spec, channel_func, tensorflow::RPCOptions()));
 
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
@@ -394,4 +395,4 @@ TEST(GrpcChannelTest, NewHostPortGrpcChannelValidation) {
           .ok());
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

@@ -1687,6 +1687,7 @@ tf_cuda_library(
         "//tensorflow/compiler/jit:common",
         "//tensorflow/tsl/framework:cancellation",
         "//tensorflow/tsl/util:command_line_flags",
+        "//tensorflow/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:btree",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",

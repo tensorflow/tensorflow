@@ -102,29 +102,11 @@ cc_library(
 )
 
 cc_library(
-    name = "grpc_channel_common",
-    hdrs = ["grpc_channel_common.h"],
-    deps = [
-        ":grpc_util",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core:tflite_portable_logging",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
-)
-
-cc_library(
     name = "grpc_channel",
-    srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
     deps = [
-        ":grpc_channel_common",
-        ":grpc_util",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
-    ] + tf_grpc_cc_dependencies(),
+        "//tensorflow/tsl/distributed_runtime/rpc:grpc_channel",
+    ],
 )
 
 cc_library(
@@ -447,7 +429,6 @@ tf_cuda_cc_tests(
     name = "rpc_tests",
     size = "small",
     srcs = [
-        "grpc_channel_test.cc",
         "rpc_rendezvous_mgr_test.cc",
     ],
     linkopts = select({
