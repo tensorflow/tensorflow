@@ -187,6 +187,7 @@ def ScalarizationPass : Pass<"scalarize", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "arith::ArithDialect",
     "gml_st::GmlStDialect",
+    "scf::SCFDialect",
     "tensor::TensorDialect"
   ];
   let constructor = "createScalarizationPass()";

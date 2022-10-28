@@ -36,6 +36,10 @@ def IsSameSizePred : CPred<
     "$0.getType().cast<ShapedType>().getShape() "
     "== $1.getType().cast<ShapedType>().getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
+def createFastMathNone : NativeCodeCall<
+    "::mlir::arith::FastMathFlagsAttr::get("
+      "$_builder.getContext(), ::mlir::arith::FastMathFlags::none"
+    ")">;
 
 
 // Unary Lowering Patterns.
@@ -49,19 +53,19 @@ def : Pat<(HLO_OrOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (Arith_OrIOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (Arith_AddFOp $l, $r),
+          (Arith_AddFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_SubtractOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (Arith_SubFOp $l, $r),
+          (Arith_SubFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_MulOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (Arith_MulFOp $l, $r),
+          (Arith_MulFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (Arith_DivFOp $l, $r),
+          (Arith_DivFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r),
-          (Arith_RemFOp $l, $r),
+          (Arith_RemFOp $l, $r, (createFastMathNone )),
           [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r),
           (Arith_AddIOp $l, $r),

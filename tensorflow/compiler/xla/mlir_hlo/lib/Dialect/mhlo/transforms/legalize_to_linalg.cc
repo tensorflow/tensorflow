@@ -3343,8 +3343,18 @@ struct GatherConversion : public OpConversionPattern<mhlo::GatherOp> {
           loc, rewriter.getIndexType(), remappedIndexFromIndices[i],
           indexFromOffset[i]));
 
+    Value extractOperand;
+    if (operand.getType().isa<RankedTensorType>()) {
+      extractOperand = operand;
+    } else {
+      // Cannot extract from unranked tensors, cast to ranked first.
+      SmallVector<int64_t> dims(operandRank, ShapedType::kDynamicSize);
+      auto type = RankedTensorType::get(
+          dims, operand.getType().cast<TensorType>().getElementType());
+      extractOperand = rewriter.create<tensor::CastOp>(loc, type, operand);
+    }
     Value element =
-        rewriter.create<tensor::ExtractOp>(loc, operand, combinedIndex);
+        rewriter.create<tensor::ExtractOp>(loc, extractOperand, combinedIndex);
     rewriter.create<linalg::YieldOp>(loc, element);
 
     rewriter.replaceOp(gatherOp, linalgOp.getResults());

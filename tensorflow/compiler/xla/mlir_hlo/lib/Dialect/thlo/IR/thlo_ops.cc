@@ -163,7 +163,7 @@ SmallVector<Range> getIterationDomainForTensor(OpBuilder &b, Location loc,
                                                int64_t dimCount = -1) {
   auto dimValues = tensor::createDimValues(b, loc, tensor);
   if (dimCount >= 0) dimValues.resize(dimCount);
-  return llvm::to_vector(llvm::map_range(dimValues, [&](Value d) {
+  return llvm::to_vector(llvm::map_range(dimValues, [&](OpFoldResult d) {
     return Range{b.getIndexAttr(0), d, b.getIndexAttr(1)};
   }));
 }
