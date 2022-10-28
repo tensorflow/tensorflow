@@ -476,6 +476,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SparseTensorDialect",
         "@llvm-project//mlir:Transforms",
         "@stablehlo//:chlo_ops",
     ],
