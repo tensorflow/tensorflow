@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/util/util.h"
+#include "tensorflow/core/util/port.h"
 #include "tensorflow/core/util/zen_util.h"
 
 namespace tensorflow {

@@ -124,31 +124,4 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
 // TODO(penporn): Remove this function from util.cc
 bool IsMKLEnabled() { return IsMklEnabled(); }
 
-bool IsZenDNNDisabled() {
-  static absl::once_flag once;
-#ifndef AMD_ZENDNN
-  return true;
-#else
-  static bool ZenDNN_enabled = false;
-  absl::call_once(once, [&] {
-    auto status = ReadBoolFromEnvVar("TF_ENABLE_ZENDNN_OPTS", ZenDNN_enabled,
-                                     &ZenDNN_enabled);
-
-    if (!status.ok()) {
-      LOG(WARNING) << "TF_ENABLE_ZENDNN_OPTS is not set to either '0', 'false',"
-                   << " '1', or 'true'. Using the default setting: "
-                   << ZenDNN_enabled;
-    }
-    if (ZenDNN_enabled) {
-      LOG(INFO) << "ZenDNN custom operations are on. "
-                << "You may see slightly different numerical results due to "
-                << "floating-point round-off errors from different computation "
-                << "orders. To turn them off, set the environment variable "
-                << "`TF_ENABLE_ZENDNN_OPTS=0`.";
-    }
-  });
-  return !ZenDNN_enabled;
-#endif  // !AMD_ZENDNN
-}
-
 }  // namespace tensorflow
